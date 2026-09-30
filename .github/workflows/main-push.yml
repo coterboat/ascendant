@@ -9,5 +9,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: record push
-        run: echo "main is at ${{ github.sha }}"
+      - name: wake director
+        env:
+          URL: ${{ secrets.DIRECTOR_WEBHOOK_URL }}
+          KEY: ${{ secrets.DIRECTOR_WEBHOOK_KEY }}
+          SHA: ${{ github.sha }}
+        run: |
+          echo "main is at $SHA"
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "director secrets not set, skipping"
+            exit 0
+          fi
+          curl -sS -m 8 -X POST "$URL" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $KEY" \
+            -H "X-Automation-Key: $KEY" \
+            -d "{\"event\":\"push\",\"sha\":\"$SHA\"}" || echo "ping failed; the hourly poll will catch it"
