@@ -28,17 +28,17 @@ Rulers and mandates, paths of ascension, magic, battle animation and effects, AI
 ### what to play and what to feel for (at the end)
 Play a full hotseat game to a capital capture, about 10 to 15 turns. Feel for three things. You should always know what an order will do before you commit it. After every battle, you should be able to say why it went that way from the report alone. And resolving orders simultaneously should create real guessing and counterplay, not confusion.
 
-### proposed tickets (cut after scope approval)
-1. `code` Godot project scaffold: project, `tests/runner.gd`, `tools/compile_check.gd`, headless boot.
-2. `code` Core rules model: provinces, factions, units, armies, game state, seeded RNG. Pure code with no scene dependencies. (needs 1)
-3. `code` `hard` Order collection and deterministic turn resolver: movement, collisions, capture, income, plus a replay/determinism test. (needs 2)
-4. `code` `hard` Autobattle rules and battle report generation, with a plain-language "why" summary. (needs 2)
-5. `code` Map screen: render provinces, selection, hover tooltips with number breakdowns. (needs 2)
-6. `code` Orders UI: move and recruit, with forecasts. (needs 3, 5)
-7. `code` Turn flow: hotseat handoff, end turn, turn report panel, battle report viewer. (needs 3, 4, 6)
-8. `code` New game screen, win condition, minimal codex. (needs 7)
-9. `design` Art lead: M1 manifest entries (terrain, banners, portraits) against the style bible.
-10. `asset` Asset builder: M1 asset batch from the manifest, within the Ludo budget. (needs 9)
+### tickets (github issues #1 to #10)
+1. #1 `code` Godot project scaffold: project, `tests/runner.gd`, `tools/compile_check.gd`, headless boot.
+2. #2 `code` Core rules model: provinces, factions, units, armies, game state, seeded RNG. Pure code with no scene dependencies. (needs 1)
+3. #3 `code` `hard` Order collection and deterministic turn resolver: movement, collisions, capture, income, plus a replay/determinism test. (needs 2)
+4. #4 `code` `hard` Autobattle rules and battle report generation, with a plain-language "why" summary. (needs 2)
+5. #5 `code` Map screen: render provinces, selection, hover tooltips with number breakdowns. (needs 2)
+6. #6 `code` Orders UI: move and recruit, with forecasts. (needs 3, 5)
+7. #7 `code` Turn flow: hotseat handoff, end turn, turn report panel, battle report viewer. (needs 3, 4, 6)
+8. #8 `code` New game screen, win condition, minimal codex. (needs 7)
+9. #9 `design` Art lead: M1 manifest entries (terrain, banners, portraits) against the style bible.
+10. #10 `asset` Asset builder: M1 asset batch from the manifest, within the Ludo budget. (needs 9)
 
 Budget: 1,500 Ludo credits for the milestone. M1 art is small, so expect well under that.
 
