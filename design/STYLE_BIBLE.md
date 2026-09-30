@@ -38,7 +38,7 @@ Six slots plus independents. The colour goes with the **player slot**, not the f
 **Keylines.** Every player-colour mark gets a 1 px ink line `#1A1612` inside and a 1 px halo `#F4F0E8` at 70% outside. At least one of the two is ≥ 3.5:1 on every terrain anchor. This matters because hue alone can drop to ΔE ≈ 4 on some terrain in the worst simulation.
 
 ### 1.2 Terrain anchors (colourful, but quieter than the pieces)
-Land textures: **mean L\* within ±6 of the anchor**, overall L\* 40–78, chroma ≤ 42, and ≤ 15 L\* variation inside a texture.
+Land textures: **mean L\* within ±6 of the anchor**, overall L\* 40–78, chroma ≤ 42, and **≤ 15 L\* variation inside a texture**. Variation is measured as the range (max − min) of the 64×64 block-mean L\* over the 512×512 tile, an 8×8 grid of blocks. Reference: the shipped M1 forest measures 12.2.
 
 | terrain (M1) | hex | target mean L\* | read |
 |---|---|---|---|
@@ -130,7 +130,7 @@ Silhouette plus a 14 px class glyph. **Gate:** fill the alpha black at 32 px, an
 From `studio/ludo-playbook.md` §1–9:
 1. **No negative prompts.** Every block is phrased positively. Refuse any prompt containing `no`, `not`, `without`, `never` or `NEGATIVE`.
 2. **One verbatim style block per class** (§6), first in the prompt, then ` Subject: …`. Tune the block, never an individual prompt.
-3. **Anchor to the same class, a prop against a prop** (§6.2). A transformed variant is anchored to its own base unit.
+3. **Anchor to the same class, a prop against a prop** (§6.2). A transformed variant is anchored to its own base unit. **A cross-faction style anchor must be desaturated to greyscale, or be a same-faction asset,** because colour and costume leak through style matching. On PR #14 the spearman anchor put the kingdom's blue tabard, gold trim and human faces into 8 of 9 beast portrait candidates, and the kingdom banner anchor put blue into all 3 beast banners.
 4. **Pick from fresh candidates; don't revise.** 3 candidates by default. The pick is recorded, and candidates are never committed (§3, rule 16).
 5. `image_type` always explicit. `augment_prompt: false` on stills and edits. Animation keeps augment on with short named motions.
 6. **Room in the frame.** Say what the hands hold. Name the expression and eye direction.
@@ -184,7 +184,7 @@ Hand-written SVG (not Ludo): state glyphs, class glyphs and slot emblems at `ass
 **Terrain lightness gate** (post-process, free):
 1. Measure the mean L\* of the 512 texture.
 2. Within ±6 of the target (forest 46, plains 73, hills 60): pass.
-3. Off by up to 15: shift L\* in Lab and keep a/b, so hue and chroma stay put, then re-check seams and the ≤ 15 L\* internal range.
+3. Off by up to 15: shift L\* in Lab and keep a/b, so hue and chroma stay put, then re-check seams and the internal variation. That is ≤ 15 L\*, measured as max − min of the 64×64 block-mean L\* on the 8×8 grid of the 512×512 tile (shipped forest: 12.2).
 4. Off by more than 15: re-roll instead (0.5 per result).
 
 Record the measured and corrected L\* in the batch notes.
@@ -294,7 +294,9 @@ Everything else is exactly as probed.
 | banner | kingdom banner **c2** | `assets/_probe/cel/candidates/asc_probe_cel_banner_v1_c2.webp` (raw), `…/asc_probe_cel_banner_c2_cut.png` (cutout) | `style_image` for other banners. Same subject as `asc_m1_banner_kingdom` |
 | VFX | impact **c1** | `assets/_probe/cel/candidates/asc_probe_cel_impact_v1_c1.webp` | `style_image` for VFX stills |
 | UI | panel **c2** | `assets/_probe/cel/candidates/asc_probe_cel_panel_v1_c2.webp` | `style_image` for UI chrome |
-| portrait | none probed | – | the first M1 portrait (`asc_m1_portrait_kingdom_spearmen` pick) anchors the series |
+| portrait (kingdom) | none probed | M1 `asc_m1_portrait_kingdom_spearmen` pick (PR #14, `assets/portraits/kingdom/spearmen.webp`) | anchors the kingdom portraits. It also anchored tuskers before the leak was found |
+| portrait (beasts) | tuskers **c2** | M1 `asc_m1_portrait_beasts_tuskers` pick (PR #14, `assets/portraits/beasts/tuskers.webp`) | anchors fangthrowers, war bear and warchief (a same-faction anchor) |
+| banner (cross-faction) | banner **c2, greyscale** | a greyscale copy of `asc_probe_cel_banner_v1_c2.webp`, made locally (e.g. `assets/_anchors/banner_grey.webp`) | anchors the beast banner and any other faction's banner. The colour c2 anchors only kingdom assets |
 
 **Anchors come from local files, not Ludo URLs.** Ludo result URLs expire after 7 days (the probe ran on 2026-09-30 01:24–01:56 ET, so they die around 2026-10-07). ludo.py's `styled` kind reads the anchor from a ledger URL. So:
 - Asset builder copies these files out of `probe12` into `assets/_anchors/<class>.<ext>` (with a `.gdignore`, so Godot doesn't import them).
