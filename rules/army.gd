@@ -1,6 +1,7 @@
 class_name Army
 ## Army belonging to a faction, located in a province, containing units and a commander.
 
+var id: String  # unique within a GameState, e.g. "kingdom-1"; orders refer to armies by id
 var owner: String
 var location: String  # province id
 var units: Array[Unit] = []
@@ -22,6 +23,7 @@ func to_dict() -> Dictionary:
 		cmd_dict = commander.to_dict()
 	
 	return {
+		"id": id,
 		"owner": owner,
 		"location": location,
 		"units": unit_dicts,
@@ -38,7 +40,8 @@ static func from_dict(data: Dictionary, all_unit_types: Dictionary, province_ids
 			push_error(msg)
 		return null
 	var a := Army.new()
-	a.owner = data.get("owner", "")
+	a.id = str(data.get("id", ""))
+	a.owner = str(data.get("owner", ""))
 	a.location = location
 	
 	for u_data in data.get("units", []):

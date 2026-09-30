@@ -36,7 +36,7 @@ static func from_dict(data: Dictionary) -> Faction:
 	var f := Faction.new()
 	f.id = data.get("id", "")
 	f.faction_name = data.get("name", "")
-	f.gold = data.get("gold", 0)
+	f.gold = Serial.to_int(data.get("gold", 0))
 	f.capital = data.get("capital", "")
 	
 	if data.has("unit_types"):
