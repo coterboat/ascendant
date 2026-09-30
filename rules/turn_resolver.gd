@@ -41,6 +41,8 @@ class_name TurnResolver
 ## Every event is a Dictionary:
 ##   {"type", "phase", "provinces": [ids], "factions": [ids], "armies": [ids], "cause",
 ##    "numbers": {...}, "text": plain-language sentence for the turn report, "codex": RulesCodex id}
+## Ids stay in the structured fields. `text` and rejection reasons only use player-facing names:
+## faction and province display names, and armies as army_label() describes them.
 
 const PHASES := ["orders", "movement", "battles", "capture", "recruitment", "income"]
 
@@ -88,22 +90,22 @@ static func seed_for_turn(state: GameState) -> int:
 static func check_move(state: GameState, faction_id: String, order: MoveOrder, already_ordered: Dictionary = {}) -> Dictionary:
 	var faction := state.find_faction(faction_id)
 	if faction == null:
-		return _reject("unknown_faction", "There is no faction '%s' in this game." % faction_id)
+		return _reject("unknown_faction", "Those orders are for a faction that is not in this game.")
 	var army := state.find_army(order.army_id)
 	if army == null:
-		return _reject("unknown_army", "There is no army '%s'." % order.army_id)
+		return _reject("unknown_army", "That army no longer exists. It may have been destroyed.")
 	if army.owner != faction_id:
-		return _reject("not_your_army", "Army %s belongs to %s, not to %s." % [army.id, _faction_name(state, army.owner), faction.faction_name])
+		return _reject("not_your_army", "The army at %s belongs to %s, not to %s." % [_province_name(state, army.location), _faction_name(state, army.owner), faction.faction_name])
 	var dest := state.find_province(order.to)
 	if dest == null:
-		return _reject("unknown_province", "There is no province '%s' on the map." % order.to)
+		return _reject("unknown_province", "That destination is not a province on the map.")
 	if dest.id == army.location:
-		return _reject("already_there", "Army %s is already in %s. To stay put, give it no move order." % [army.id, dest.name])
+		return _reject("already_there", "The %s is already in %s. To stay put, give it no move order." % [army_label(state, army), dest.name])
 	var here := state.find_province(army.location)
 	if here == null or not here.neighbors.has(dest.id):
 		return _reject("not_adjacent", "%s is not next to %s. Armies move one neighboring province per turn." % [dest.name, _province_name(state, army.location)])
 	if already_ordered.has(army.id):
-		return _reject("duplicate_move", "Army %s already has a move order this turn. Each army moves once per turn." % army.id)
+		return _reject("duplicate_move", "The %s already has a move order this turn. Each army moves once per turn." % army_label(state, army))
 	return {}
 
 
@@ -114,14 +116,14 @@ static func check_recruit(state: GameState, faction_id: String, order, gold_avai
 		return _reject("unknown_order", "That is not an order this game knows. Orders are moves and recruits.")
 	var faction := state.find_faction(faction_id)
 	if faction == null:
-		return _reject("unknown_faction", "There is no faction '%s' in this game." % faction_id)
+		return _reject("unknown_faction", "Those orders are for a faction that is not in this game.")
 	var ut := recruitable_type(faction, order.unit_type_id)
 	if ut == null:
 		for other in state.factions:
 			if recruitable_type(other, order.unit_type_id) != null:
 				var other_ut := recruitable_type(other, order.unit_type_id)
 				return _reject("not_in_roster", "%s belong to %s. %s can only recruit its own units." % [other_ut.name, other.faction_name, faction.faction_name])
-		return _reject("unknown_unit_type", "There is no unit type '%s'." % order.unit_type_id)
+		return _reject("unknown_unit_type", "That is not a unit type in this game. Recruit from your faction's roster.")
 	var capital := state.find_province(faction.capital)
 	if capital == null or capital.owner != faction_id:
 		return _reject("capital_not_held", "You don't hold your capital, %s, so you can't recruit. Retake it first." % _province_name(state, faction.capital))
@@ -191,7 +193,7 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 	unknown.sort()
 	for fid in unknown:
 		events.append(_event("order_rejected", "orders", [], [fid], [], "unknown_faction", {},
-			"Orders for '%s' were ignored: there is no such faction in this game." % fid, "orders"))
+			"Some orders were ignored: they were given for a faction that is not in this game.", "orders"))
 
 	for fid in known:
 		var list = orders_by_faction.get(fid, [])
@@ -209,7 +211,9 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 					continue
 				ordered[order.army_id] = true
 				var army := s.find_army(order.army_id)
-				moves.append({"army_id": army.id, "faction": fid, "from": army.location, "to": order.to})
+				# Label taken before anyone moves, so it names the province the army leaves from.
+				moves.append({"army_id": army.id, "faction": fid, "from": army.location, "to": order.to,
+					"label": army_label(s, army)})
 			elif order is RecruitOrder:
 				recruits[fid].append(order)  # checked in the recruitment phase, against that phase's state
 			else:
@@ -410,18 +414,28 @@ static func _recruitment(s: GameState, recruits: Dictionary, events: Array) -> v
 				events.append(_rejected_event(s, fid, r.order, r, "recruitment"))
 				continue
 			var ut := recruitable_type(faction, r.unit_type)
-			var army := _add_recruit(s, faction, ut)
+			var placed := _add_recruit(s, faction, ut)
+			var army: Army = placed.army
+			var joined: String
+			if placed.created:
+				joined = "They form a new army: the %s." % army_label(s, army)
+			elif ut.is_commander:
+				joined = "They now lead the %s." % army_label(s, army)
+			else:
+				joined = "They joined the %s." % army_label(s, army)
 			events.append(_event("recruited", "recruitment", [faction.capital], [fid], [army.id], "order",
-				{"cost": r.cost, "gold_after": r.gold_after},
-				"%s recruited %s at %s for %d gold (%d gold left). %s army %s." % [faction.faction_name, ut.name,
-					_province_name(s, faction.capital), r.cost, r.gold_after, "They now lead" if ut.is_commander else "They joined", army.id],
+				{"cost": r.cost, "gold_after": r.gold_after, "new_army": placed.created},
+				"%s recruited %s at %s for %d gold (%d gold left). %s" % [faction.faction_name, ut.name,
+					_province_name(s, faction.capital), r.cost, r.gold_after, joined],
 				"recruit"))
 
 
 ## Puts a new unit into the faction's first army (by id) at its capital, or a new army there.
 ## A commander goes to the first army at the capital without one.
-static func _add_recruit(s: GameState, faction: Faction, ut: UnitType) -> Army:
+## Returns {"army": the army it joined, "created": true if that army was formed by this recruit}.
+static func _add_recruit(s: GameState, faction: Faction, ut: UnitType) -> Dictionary:
 	var army: Army = null
+	var created := false
 	for a in _sorted_armies(s):
 		if a.owner == faction.id and a.location == faction.capital and (not ut.is_commander or a.commander == null):
 			army = a
@@ -432,12 +446,13 @@ static func _add_recruit(s: GameState, faction: Faction, ut: UnitType) -> Army:
 		army.owner = faction.id
 		army.location = faction.capital
 		s.armies.append(army)
+		created = true
 	var unit := Unit.new(ut, faction.id)
 	if ut.is_commander:
 		army.commander = unit
 	else:
 		army.units.append(unit)
-	return army
+	return {"army": army, "created": created}
 
 
 static func _income(s: GameState, events: Array) -> void:
@@ -474,12 +489,14 @@ static func _rejected_event(s: GameState, fid: String, order, check: Dictionary,
 	var desc := "unknown order"
 	var order_dict := {}
 	if order is MoveOrder:
-		desc = "move army %s to %s" % [order.army_id, _province_name(s, order.to)]
+		var army := s.find_army(order.army_id)
+		desc = "move %s to %s" % ["the " + army_label(s, army) if army else "an army that no longer exists",
+			_province_name(s, order.to)]
 		provinces = [order.to]
 		armies = [order.army_id]
 		order_dict = order.to_dict()
 	elif order is RecruitOrder:
-		desc = "recruit %s" % order.unit_type_id
+		desc = "recruit %s" % _unit_type_name(s, order.unit_type_id)
 		var f := s.find_faction(fid)
 		if f:
 			provinces = [f.capital]
@@ -493,13 +510,44 @@ static func _rejected_event(s: GameState, fid: String, order, check: Dictionary,
 
 
 static func _moved_event(s: GameState, m: Dictionary, cause: String) -> Dictionary:
-	var text := "%s army %s moved from %s to %s." % [_faction_name(s, m.faction), m.army_id,
-		_province_name(s, m.from), _province_name(s, m.to)]
+	var text := "The %s moved to %s." % [m.label, _province_name(s, m.to)]
 	if cause == "won_border_battle":
-		text = "%s army %s won the border battle and completed its move from %s to %s." % [_faction_name(s, m.faction),
-			m.army_id, _province_name(s, m.from), _province_name(s, m.to)]
+		text = "The %s won the border battle and completed its move to %s." % [m.label, _province_name(s, m.to)]
 	return _event("army_moved", "battles" if cause == "won_border_battle" else "movement", [m.from, m.to], [m.faction],
 		[m.army_id], cause, {}, text, "move")
+
+
+## Player-facing name for an army, used in every event text and reason instead of its id:
+##   "Aurel Crown army at Crownkeep (3 units, led by Knight Captain)"
+##   "Thornmane Clans army at Wildmoor (1 unit, no commander)"
+## The unit count excludes the commander. Only when another army of the same faction in the same
+## province would get exactly the same label, an ordinal is put in front ("first ...", "second ..."),
+## counting those look-alike armies in order of creation (natural sort of their ids), so the label is
+## deterministic. Callers add the article: "The %s moved to ...".
+static func army_label(s: GameState, army: Army) -> String:
+	var detail := _army_detail(army)
+	var twins := []
+	for a in s.armies:
+		if a.owner == army.owner and a.location == army.location and _army_detail(a) == detail:
+			twins.append(a.id)
+	var label := "%s army at %s (%s)" % [_faction_name(s, army.owner), _province_name(s, army.location), detail]
+	if twins.size() > 1:
+		twins.sort_custom(func(a, b): return a.naturalnocasecmp_to(b) < 0)
+		label = "%s %s" % [_ordinal(twins.find(army.id) + 1), label]
+	return label
+
+
+static func _army_detail(army: Army) -> String:
+	var n := army.units.size()
+	var detail := "%d %s" % [n, "unit" if n == 1 else "units"]
+	return detail + (", led by %s" % army.commander.type.name if army.commander else ", no commander")
+
+
+static func _ordinal(n: int) -> String:
+	const WORDS := ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"]
+	if n >= 1 and n <= WORDS.size():
+		return WORDS[n - 1]
+	return "number %d" % n
 
 
 static func _edge_key(a: String, b: String) -> String:
@@ -534,9 +582,18 @@ static func _sorted_armies(s: GameState) -> Array:
 
 static func _faction_name(s: GameState, fid: String) -> String:
 	var f := s.find_faction(fid)
-	return f.faction_name if f else fid
+	return f.faction_name if f else "an unknown faction"
 
 
 static func _province_name(s: GameState, pid: String) -> String:
 	var p := s.find_province(pid)
-	return p.name if p else pid
+	return p.name if p else "a place not on the map"
+
+
+## Display name of a unit type from any faction's roster, for text about orders that may be invalid.
+static func _unit_type_name(s: GameState, type_id: String) -> String:
+	for f in s.factions:
+		var ut := recruitable_type(f, type_id)
+		if ut:
+			return ut.name
+	return "an unknown unit type"

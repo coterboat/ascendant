@@ -174,6 +174,66 @@ func test_swap_fights_on_the_border() -> void:
 	_assert_event_shape(r.events)
 
 
+func test_swap_winner_then_fights_the_holder_of_its_destination() -> void:
+	# Kingdom knights + Knight Captain (46) Thornvale -> Wildmoor swap with beasts fangthrowers (12)
+	# Wildmoor -> Thornvale, while a beasts war bear (25) holds Wildmoor. Border battle first, then the
+	# winner meets the holder in Wildmoor, and the holder defends.
+	var s := _state([
+		["kingdom-1", "kingdom", "thornvale", ["knights", "knight_captain"]],
+		["beasts-2", "beasts", "wildmoor", ["fangthrowers"]],
+		["beasts-3", "beasts", "wildmoor", ["war_bear"]],
+	], {"thornvale": "kingdom", "wildmoor": "beasts"})
+	var r := _resolve(s, {"kingdom": [MoveOrder.new("kingdom-1", "wildmoor")], "beasts": [MoveOrder.new("beasts-2", "thornvale")]})
+	var ns: GameState = r.new_state
+	var types: Array = r.events.map(func(e): return e.type)
+	assert_eq(types, ["border_battle", "army_moved", "battle", "captured", "income", "income"])
+	var border: Dictionary = r.events[0]
+	assert_eq(border.provinces, ["thornvale", "wildmoor"])
+	assert_eq(border.armies, ["beasts-2", "kingdom-1"], "only the swapping armies fight on the border")
+	assert_eq(border.numbers.defender, "")
+	assert_eq(border.numbers.winner, "kingdom")
+	assert_eq(border.numbers.strengths, {"beasts": 12, "kingdom": 46})
+	assert_eq(border.numbers.destroyed, ["beasts-2"])
+	assert_eq(r.events[1].cause, "won_border_battle")
+	var b: Dictionary = r.events[2]
+	assert_eq(b.provinces, ["wildmoor"])
+	assert_eq(b.cause, "held_vs_arrival")
+	assert_eq(b.numbers.defender, "beasts", "the war bear held Wildmoor")
+	assert_eq(b.armies, ["beasts-3", "kingdom-1"])
+	assert_eq(b.numbers.strengths, {"beasts": 25, "kingdom": 46})
+	assert_eq(b.numbers.winner, "kingdom")
+	assert_eq(b.numbers.destroyed, ["beasts-3"])
+	assert_true(b.text.contains("In Wildmoor, Thornmane Clans held against Aurel Crown"), b.text)
+	assert_eq(r.events[3].provinces, ["wildmoor"])
+	assert_eq(r.events[3].cause, "battle_victory")
+	assert_eq(ns.armies.size(), 1)
+	assert_eq(ns.find_army("kingdom-1").location, "wildmoor")
+	assert_eq(ns.find_province("wildmoor").owner, "kingdom")
+	assert_eq(ns.find_province("thornvale").owner, "kingdom", "the swap loser never reached Thornvale")
+	_assert_event_shape(r.events)
+
+
+func test_same_faction_armies_swapping_do_not_fight() -> void:
+	var s := _state([
+		["kingdom-1", "kingdom", "thornvale", ["spearmen"]],
+		["kingdom-2", "kingdom", "highcrag", ["knights"]],
+	], {"thornvale": "kingdom", "highcrag": "kingdom"})
+	var r := _resolve(s, {"kingdom": [MoveOrder.new("kingdom-1", "highcrag"), MoveOrder.new("kingdom-2", "thornvale")]})
+	var ns: GameState = r.new_state
+	assert_eq(_events_of(r.events, "border_battle").size(), 0, "no border battle between friends")
+	assert_eq(_events_of(r.events, "battle").size(), 0)
+	var moved := _events_of(r.events, "army_moved")
+	assert_eq(moved.size(), 2)
+	for m in moved:
+		assert_eq(m.cause, "order")
+		assert_eq(m.phase, "movement")
+	assert_eq(ns.armies.size(), 2, "nobody is destroyed")
+	assert_eq(ns.find_army("kingdom-1").location, "highcrag")
+	assert_eq(ns.find_army("kingdom-2").location, "thornvale")
+	assert_eq(ns.find_army("kingdom-1").units.size(), 1)
+	assert_eq(ns.find_army("kingdom-2").units.size(), 1)
+
+
 func test_move_into_undefended_enemy_province_captures_it() -> void:
 	var s := _state([["kingdom-1", "kingdom", "wildmoor", ["spearmen"]]], {"ironspike": "beasts", "wildmoor": "kingdom"})
 	var r := _resolve(s, {"kingdom": [MoveOrder.new("kingdom-1", "ironspike")]})
@@ -183,7 +243,7 @@ func test_move_into_undefended_enemy_province_captures_it() -> void:
 	assert_eq(cap.size(), 1)
 	assert_eq(cap[0].cause, "undefended_enemy")
 	assert_eq(cap[0].factions, ["kingdom", "beasts"])
-	assert_eq(cap[0].numbers.income, 8)
+	assert_eq(cap[0].numbers.income, 5)
 	assert_eq(_events_of(r.events, "battle").size(), 0)
 	assert_true(cap[0].text.contains("Thornmane Clans lost it"), cap[0].text)
 
@@ -248,8 +308,15 @@ func test_recruitment_pays_in_order_and_joins_capital_army() -> void:
 	var ns: GameState = r.new_state
 	var rec := _events_of(r.events, "recruited")
 	assert_eq(rec.size(), 2)
-	assert_eq(rec[0].numbers, {"cost": 20, "gold_after": 30})
-	assert_eq(rec[1].numbers, {"cost": 8, "gold_after": 22})
+	assert_eq(rec[0].numbers, {"cost": 20, "gold_after": 30, "new_army": false})
+	assert_eq(rec[1].numbers, {"cost": 8, "gold_after": 22, "new_army": false})
+	# Both join the army that was already at the capital, and say so.
+	assert_eq(rec[0].armies, ["kingdom-1"])
+	assert_eq(rec[1].armies, ["kingdom-1"])
+	assert_true(rec[0].text.ends_with("They joined the Aurel Crown army at Crownkeep (2 units, no commander)."), rec[0].text)
+	assert_true(rec[1].text.ends_with("They joined the Aurel Crown army at Crownkeep (3 units, no commander)."), rec[1].text)
+	assert_false(rec[0].text.contains("new army"), rec[0].text)
+	assert_eq(ns.armies.size(), 1, "no new army")
 	assert_eq(ns.find_army("kingdom-1").units.size(), 3)
 	assert_eq(ns.find_army("kingdom-1").units[1].type.id, "knights")
 	# Recruitment comes before income: 50 - 28 + 12 (Crownkeep).
@@ -274,6 +341,32 @@ func test_recruit_forms_new_army_when_capital_is_empty() -> void:
 	assert_eq(r2.new_state.armies.back().id, "kingdom-2")
 	var errs := []
 	assert_true(r2.new_state.validate(errs), "ids stay unique: %s" % [errs])
+
+
+## Playtest A4: the recruit that forms an army says so, and the next one joins that same army.
+func test_recruit_text_forms_then_joins_new_army() -> void:
+	var s := GameState.new(1)
+	# The kingdom's starting army: "kingdom-1" with the default data, found by owner so the test
+	# doesn't depend on the order of factions in data/factions.gd.
+	var start_id: String = s.armies.filter(func(a): return a.owner == "kingdom")[0].id
+	var r := _resolve(s, {"kingdom": [MoveOrder.new(start_id, "westwatch"), RecruitOrder.new("spearmen"), RecruitOrder.new("spearmen")]}, 1)
+	var ns: GameState = r.new_state
+	var rec := _events_of(r.events, "recruited")
+	assert_eq(rec.size(), 2)
+	var new_id: String = rec[0].armies[0] if rec.size() > 0 else ""
+	assert_eq(rec[0].armies, [new_id])
+	assert_true(new_id.begins_with("kingdom-"), new_id)
+	assert_eq(s.find_army(new_id), null, "the army did not exist before the turn")
+	assert_eq(rec[0].numbers.new_army, true)
+	assert_eq(rec[0].text, "Aurel Crown recruited Spearmen at Crownkeep for 8 gold (42 gold left). They form a new army: the Aurel Crown army at Crownkeep (1 unit, no commander).")
+	assert_eq(rec[1].armies, [new_id], "second recruit joins the army the first one formed")
+	assert_eq(rec[1].numbers.new_army, false)
+	assert_eq(rec[1].text, "Aurel Crown recruited Spearmen at Crownkeep for 8 gold (34 gold left). They joined the Aurel Crown army at Crownkeep (2 units, no commander).")
+	var a := ns.find_army(new_id)
+	assert_eq(a.location, "crownkeep")
+	assert_eq(a.units.size(), 2)
+	assert_eq(ns.find_army(start_id).location, "westwatch")
+	assert_eq(ns.find_army(start_id).units.size(), 3, "the army that left gets no recruits")
 
 
 func test_recruit_not_enough_gold_is_rejected() -> void:
@@ -316,10 +409,10 @@ func test_income_from_owned_provinces() -> void:
 	var inc := _events_of(r.events, "income")
 	assert_eq(inc.size(), 2)
 	assert_eq(inc[0].factions, ["beasts"], "factions in sorted id order")
-	assert_eq(inc[0].numbers.income, 7 + 5 + 8)
+	assert_eq(inc[0].numbers.income, 12 + 9 + 5)  # Fangridge, Bloodfen, Ironspike
 	assert_eq(inc[1].numbers, {"income": 21, "gold_before": 50, "gold_after": 71, "by_province": {"crownkeep": 12, "rivermarch": 9}})
 	assert_eq(_gold(ns, "kingdom"), 71)
-	assert_eq(_gold(ns, "beasts"), 60)
+	assert_eq(_gold(ns, "beasts"), 66)
 	assert_true(inc[1].text.contains("Crownkeep 12") and inc[1].text.contains("50 -> 71"), inc[1].text)
 
 
@@ -333,8 +426,8 @@ func test_invalid_orders_are_rejected_with_reasons() -> void:
 	var cases := [
 		[MoveOrder.new("kingdom-1", "thornvale"), "not_adjacent", "Thornvale is not next to Crownkeep"],
 		[MoveOrder.new("beasts-2", "ebonpeak"), "not_your_army", "belongs to Thornmane Clans"],
-		[MoveOrder.new("kingdom-9", "westwatch"), "unknown_army", "no army 'kingdom-9'"],
-		[MoveOrder.new("kingdom-1", "atlantis"), "unknown_province", "no province 'atlantis'"],
+		[MoveOrder.new("kingdom-9", "westwatch"), "unknown_army", "That army no longer exists"],
+		[MoveOrder.new("kingdom-1", "atlantis"), "unknown_province", "not a province on the map"],
 		[MoveOrder.new("kingdom-1", "crownkeep"), "already_there", "already in Crownkeep"],
 	]
 	for c in cases:
@@ -345,7 +438,7 @@ func test_invalid_orders_are_rejected_with_reasons() -> void:
 		assert_eq(book.submit(s, "kingdom", c[0]), check.reason, "OrderBook gives the same reason")
 		assert_eq(book.orders_for("kingdom").size(), 0)
 	var recruit_cases := [
-		[RecruitOrder.new("dragon"), "unknown_unit_type", "no unit type 'dragon'"],
+		[RecruitOrder.new("dragon"), "unknown_unit_type", "not a unit type in this game"],
 		[RecruitOrder.new("tuskers"), "not_in_roster", "Tuskers belong to Thornmane Clans"],
 	]
 	for c in recruit_cases:
@@ -378,6 +471,85 @@ func test_invalid_orders_are_rejected_with_reasons() -> void:
 	for e in _events_of(r.events, "order_rejected"):
 		assert_true(e.text.contains("was rejected") or e.text.contains("ignored"), e.text)
 	_assert_event_shape(r.events)
+
+
+# --- player-facing text ---------------------------------------------------------------------------
+
+## Fails for any internal id in `text`: army ids, bare faction ids, or province ids (case-sensitive,
+## so the display name "Crownkeep" is fine but "crownkeep" is not).
+func _assert_no_raw_ids(text: String) -> void:
+	var army_ids := RegEx.create_from_string("\\b(kingdom|beasts)-\\d+\\b")
+	var faction_ids := RegEx.create_from_string("\\b(kingdom|beasts)\\b")
+	var pids := []
+	for p in MapData.PROVINCES:
+		pids.append(p.id)
+	var province_ids := RegEx.create_from_string("\\b(%s)\\b" % "|".join(pids))
+	assert_true(army_ids.search(text) == null, "no army id in: %s" % text)
+	assert_true(faction_ids.search(text) == null, "no faction id in: %s" % text)
+	assert_true(province_ids.search(text) == null, "no province id in: %s" % text)
+
+
+func test_event_text_uses_player_facing_names() -> void:
+	var texts := []
+	# Turn 1: plain move, swap, same-province battle, captures, recruits (one rejected), bad orders.
+	var s := _scripted_state()
+	var orders := _scripted_orders()
+	orders.kingdom.append_array([MoveOrder.new("kingdom-9", "westwatch"), MoveOrder.new("beasts-4", "ebonpeak"),
+		MoveOrder.new("kingdom-1", "atlantis"), MoveOrder.new("kingdom-1", "crownkeep"),
+		MoveOrder.new("kingdom-1", "highcrag"), "attack!", RecruitOrder.new("dragon"), RecruitOrder.new("tuskers")])
+	orders["pirates"] = [MoveOrder.new("kingdom-1", "westwatch")]
+	var r := _resolve(s, orders, 2026)
+	var events: Array = r.events.duplicate()
+	var types := {}
+	for e in r.events:
+		types[e.type] = true
+	for t in ["army_moved", "border_battle", "battle", "captured", "recruited", "order_rejected", "income"]:
+		assert_true(types.has(t), "turn 1 has a %s event" % t)
+	# Turn 2: every army moves to its first neighbor, and each side recruits (the third knight fails).
+	var s2: GameState = r.new_state
+	var orders2 := {"kingdom": [RecruitOrder.new("knights"), RecruitOrder.new("knights"), RecruitOrder.new("knights")],
+		"beasts": [RecruitOrder.new("warchief")]}
+	for a in TurnResolver._sorted_armies(s2):
+		orders2[a.owner].append(MoveOrder.new(a.id, s2.find_province(a.location).neighbors[0]))
+	var r2 := _resolve(s2, orders2, TurnResolver.seed_for_turn(s2))
+	events.append_array(r2.events)
+	# Turn 3: the enemy takes the kingdom capital while it recruits (cancelled).
+	var s3 := _state([["beasts-1", "beasts", "westwatch", ["tuskers"]]])
+	var r3 := _resolve(s3, {"kingdom": [RecruitOrder.new("spearmen")], "beasts": [MoveOrder.new("beasts-1", "crownkeep")]})
+	events.append_array(r3.events)
+	# Two look-alike armies of one faction in one province get ordinals, never ids.
+	var twins := _state([["kingdom-1", "kingdom", "crownkeep", ["spearmen"]], ["kingdom-2", "kingdom", "crownkeep", ["spearmen"]]])
+	var r4 := _resolve(twins, {"kingdom": [MoveOrder.new("kingdom-2", "westwatch"), MoveOrder.new("kingdom-2", "highcrag"),
+		RecruitOrder.new("spearmen")]})
+	events.append_array(r4.events)
+	var moved: Dictionary = _events_of(r4.events, "army_moved")[0]
+	assert_eq(moved.text, "The second Aurel Crown army at Crownkeep (1 unit, no commander) moved to Westwatch.")
+	assert_eq(moved.armies, ["kingdom-2"], "the id stays in the structured field")
+	assert_true(_events_of(r4.events, "order_rejected")[0].reason.begins_with("The second Aurel Crown army at Crownkeep"))
+	assert_eq(TurnResolver.army_label(twins, twins.find_army("kingdom-1")), "first Aurel Crown army at Crownkeep (1 unit, no commander)")
+	assert_eq(TurnResolver.army_label(s, s.find_army("kingdom-1")), "Aurel Crown army at Crownkeep (1 unit, led by Knight Captain)")
+
+	for e in events:
+		texts.append(e.text)
+		if e.has("reason"):
+			texts.append(e.reason)
+			assert_true(e.text.contains(e.reason), "the reason is in the event text")
+	# Forecasts and OrderBook reasons are shown to players too.
+	for order in [MoveOrder.new("kingdom-1", "westwatch"), MoveOrder.new("kingdom-2", "wildmoor"), MoveOrder.new("kingdom-1", "thornvale"),
+			MoveOrder.new("beasts-4", "thornvale"), MoveOrder.new("kingdom-9", "westwatch"), MoveOrder.new("kingdom-1", "atlantis")]:
+		texts.append(Forecast.move(s, "kingdom", order).text)
+		texts.append(OrderBook.new().submit(s, "kingdom", order))
+	texts.append(Forecast.gold_after_recruits(s, "kingdom", [RecruitOrder.new("knights"), RecruitOrder.new("tuskers"),
+		RecruitOrder.new("dragon"), RecruitOrder.new("knights"), RecruitOrder.new("knights")]).text)
+	texts.append(Forecast.gold_after_recruits(s3, "beasts", [RecruitOrder.new("warchief")]).text)
+	texts.append(OrderBook.new().submit(s, "pirates", MoveOrder.new("kingdom-1", "westwatch")))
+
+	var all_text := "\n".join(texts)
+	for t in texts:
+		_assert_no_raw_ids(t)
+	for name in ["Aurel Crown", "Thornmane Clans", "Crownkeep", "Wildmoor", "Thornvale", "Blackwood", "Rivermarch"]:
+		assert_true(all_text.contains(name), "display name %s appears" % name)
+	assert_true(all_text.contains("Aurel Crown army at "), "armies are named by faction and place")
 
 
 # --- forecasts ------------------------------------------------------------------------------------
@@ -441,6 +613,17 @@ func test_scripted_turn_reads_sensibly() -> void:
 	var blackwood: Dictionary = _events_of(r.events, "battle")[0]
 	assert_eq(blackwood.provinces, ["blackwood"])
 	assert_eq(blackwood.numbers.winner, "kingdom", "knights (20) beat tuskers (17)")
+	# Both capitals are empty at recruitment: the first recruit forms an army, the next joins it.
+	# Factions recruit in id order, so the beasts' tuskers come first.
+	var rec := _events_of(r.events, "recruited")
+	assert_eq(rec.map(func(e): return e.factions[0]), ["beasts", "kingdom", "kingdom"])
+	assert_true(rec[0].text.ends_with("They form a new army: the Thornmane Clans army at Fangridge (1 unit, no commander)."), rec[0].text)
+	assert_eq(rec[0].numbers.new_army, true)
+	assert_true(rec[1].text.ends_with("They form a new army: the Aurel Crown army at Crownkeep (1 unit, no commander)."), rec[1].text)
+	assert_true(rec[2].text.ends_with("They joined the Aurel Crown army at Crownkeep (2 units, no commander)."), rec[2].text)
+	assert_eq(rec[2].armies, rec[1].armies, "the second knights join the army the first formed")
+	assert_eq([rec[1].numbers.new_army, rec[2].numbers.new_army], [true, false])
+	assert_ne(rec[0].armies, rec[1].armies)
 
 
 func test_replay_is_identical_and_independent_of_order_supply() -> void:
@@ -471,6 +654,89 @@ func test_replay_is_identical_and_independent_of_order_supply() -> void:
 		chain_a = _resolve(chain_a, {}, TurnResolver.seed_for_turn(chain_a)).new_state
 		chain_b = _resolve(chain_b, {}, TurnResolver.seed_for_turn(chain_b)).new_state
 	assert_eq(var_to_str(chain_a.to_dict()), var_to_str(chain_b.to_dict()))
+
+
+## A busy turn for the order-independence test: several moves per faction, a three-army battle in
+## Thornvale, captures, recruits at a capital with two armies (kingdom) and at an empty one (beasts).
+func _busy_state() -> GameState:
+	return _state([
+		["kingdom-1", "kingdom", "crownkeep", ["spearmen"]],
+		["kingdom-2", "kingdom", "crownkeep", ["crossbowmen"]],
+		["kingdom-3", "kingdom", "highcrag", ["knights"]],
+		["kingdom-4", "kingdom", "rivermarch", ["spearmen"]],
+		["kingdom-5", "kingdom", "westwatch", ["crossbowmen"]],
+		["kingdom-8", "kingdom", "stonegate", ["knights"]],
+		["beasts-6", "beasts", "wildmoor", ["fangthrowers"]],
+		["beasts-7", "beasts", "wildmoor", ["tuskers"]],
+		["beasts-9", "beasts", "fangridge", ["tuskers"]],
+		["beasts-10", "beasts", "ironspike", ["war_bear"]],
+	], {"stonegate": "kingdom", "rivermarch": "kingdom", "westwatch": "kingdom", "highcrag": "kingdom", "ironspike": "beasts"})
+
+
+## Move orders for _busy_state, listed in `perm` order. Recruits keep their places in the list.
+func _busy_orders(kingdom_perm: Array, beasts_perm: Array) -> Dictionary:
+	var k := [MoveOrder.new("kingdom-3", "thornvale"), MoveOrder.new("kingdom-4", "greenglade"),
+		MoveOrder.new("kingdom-5", "stonegate"), MoveOrder.new("kingdom-8", "thornvale")]
+	var b := [MoveOrder.new("beasts-6", "thornvale"), MoveOrder.new("beasts-7", "thornvale"),
+		MoveOrder.new("beasts-9", "bloodfen"), MoveOrder.new("beasts-10", "wildmoor")]
+	return {
+		"kingdom": [k[kingdom_perm[0]], RecruitOrder.new("spearmen"), k[kingdom_perm[1]], k[kingdom_perm[2]],
+			RecruitOrder.new("knights"), k[kingdom_perm[3]]],
+		"beasts": [RecruitOrder.new("tuskers"), b[beasts_perm[0]], b[beasts_perm[1]], RecruitOrder.new("fangthrowers"),
+			b[beasts_perm[2]], b[beasts_perm[3]]],
+	}
+
+
+## to_dict() with armies sorted by id, for comparing states whose army arrays started in another order.
+func _canonical(s: GameState) -> String:
+	var d := s.to_dict()
+	d.armies.sort_custom(func(a, b): return a.id < b.id)
+	return var_to_str(d)
+
+
+func test_result_ignores_order_list_and_army_array_order() -> void:
+	var base_state := _busy_state()
+	var base := _resolve(base_state, _busy_orders([0, 1, 2, 3], [0, 1, 2, 3]), 404)
+	var want_events := var_to_str(base.events)
+	var want_state := var_to_str(base.new_state.to_dict())
+	# Sanity: the turn has everything the ordering rules touch.
+	var types: Array = base.events.map(func(e): return e.type)
+	assert_eq(types.count("army_moved"), 8)
+	assert_eq(types.count("battle"), 1)
+	assert_eq(types.count("recruited"), 4)
+	assert_true(types.count("captured") >= 3)
+	var battle: Dictionary = _events_of(base.events, "battle")[0]
+	assert_eq(battle.armies, ["beasts-6", "beasts-7", "kingdom-3", "kingdom-8"])
+	assert_eq(battle.numbers.winner, "kingdom", "knights x2 (40) beat fangthrowers + tuskers (29)")
+	var thornvale: Dictionary = _events_of(base.events, "captured").filter(func(e): return e.provinces == ["thornvale"])[0]
+	assert_eq(thornvale.armies, ["kingdom-3", "kingdom-8"])
+	var rec := _events_of(base.events, "recruited").filter(func(e): return e.factions == ["kingdom"])
+	assert_eq(rec[0].armies, ["kingdom-1"], "recruits join the first army (by id) at the capital")
+	assert_eq(base.new_state.find_army("kingdom-1").units.size(), 3)
+	assert_eq(base.new_state.find_army("kingdom-2").units.size(), 1)
+
+	# (a) Move orders shuffled within each faction (fixed permutations), recruits kept in order.
+	for perms in [[[3, 2, 1, 0], [3, 2, 1, 0]], [[1, 3, 0, 2], [2, 0, 3, 1]], [[2, 0, 3, 1], [1, 3, 2, 0]]]:
+		var r := _resolve(base_state, _busy_orders(perms[0], perms[1]), 404)
+		assert_eq(var_to_str(r.events), want_events, "events with move orders %s" % [perms])
+		assert_eq(var_to_str(r.new_state.to_dict()), want_state, "state with move orders %s" % [perms])
+
+	# (b) The same state with its armies array reversed or rotated.
+	var want_canonical := _canonical(base.new_state)
+	for how in ["reverse", "rotate"]:
+		var s := _busy_state()
+		if how == "reverse":
+			s.armies.reverse()
+		else:
+			for i in 3:
+				s.armies.push_back(s.armies.pop_front())
+		var r := _resolve(s, _busy_orders([0, 1, 2, 3], [0, 1, 2, 3]), 404)
+		assert_eq(var_to_str(r.events), want_events, "events with armies %sd" % how)
+		assert_eq(_canonical(r.new_state), want_canonical, "state with armies %sd" % how)
+		# Both at once.
+		var both := _resolve(s, _busy_orders([2, 0, 3, 1], [1, 3, 2, 0]), 404)
+		assert_eq(var_to_str(both.events), want_events, "events with armies %sd and orders shuffled" % how)
+		assert_eq(_canonical(both.new_state), want_canonical)
 
 
 func test_json_replay_gives_same_result() -> void:
@@ -530,6 +796,24 @@ func test_json_roundtrip_keeps_ints_as_ints() -> void:
 		assert_eq(b.get_state(), a.get_state())
 
 
+func test_json_roundtrip_keeps_extreme_seeds_exact() -> void:
+	# 2^53 + 1 is the first int a double can't hold; INT64_MAX and INT64_MIN are the extremes.
+	for seed_value in [9007199254740993, 9223372036854775807, -9223372036854775807 - 1]:
+		var s := GameState.new(seed_value)
+		var errs := []
+		var loaded := GameState.from_dict(JSON.parse_string(JSON.stringify(s.to_dict())), errs)
+		assert_eq(errs, [])
+		assert_eq(loaded.seed_value, seed_value, "seed %d survives JSON exactly" % seed_value)
+		assert_eq(loaded.seed_value, s.seed_value)
+		assert_eq(TurnResolver.seed_for_turn(loaded), TurnResolver.seed_for_turn(s))
+		var orders := {"kingdom": [MoveOrder.new("kingdom-1", "westwatch"), RecruitOrder.new("spearmen")],
+			"beasts": [MoveOrder.new("beasts-2", "ebonpeak")]}
+		var before := _resolve(s, orders, TurnResolver.seed_for_turn(s))
+		var after := _resolve(loaded, orders, TurnResolver.seed_for_turn(loaded))
+		assert_eq(var_to_str(after.new_state.to_dict()), var_to_str(before.new_state.to_dict()), "same new state for seed %d" % seed_value)
+		assert_eq(var_to_str(after.events), var_to_str(before.events), "same events for seed %d" % seed_value)
+
+
 # --- capitals, load validation, map fairness ------------------------------------------------------
 
 func test_capitals_come_from_faction_capital_field() -> void:
@@ -554,16 +838,25 @@ func test_capitals_come_from_faction_capital_field() -> void:
 	assert_eq(_events_of(r.events, "recruited")[0].provinces, ["fangridge"])
 
 
+## The entry with this id in a to_dict() list (factions, provinces, armies), whatever the data order.
+func _by_id(list: Array, id: String) -> Dictionary:
+	for entry in list:
+		if entry.id == id:
+			return entry
+	assert_true(false, "no entry '%s'" % id)
+	return {}
+
+
 func test_load_validation_rejects_bad_data_in_plain_language() -> void:
 	var good := GameState.new(1).to_dict()
 	var cases := [
-		[func(d): d.provinces[1].owner = "pirates", "owned by 'pirates', which is not a faction"],
-		[func(d): d.provinces[1].neighbors.append("atlantis"), "neighbor 'atlantis', which is not a province"],
-		[func(d): d.provinces[0].neighbors.append("deepwood"), "'deepwood' does not list 'crownkeep' back"],
-		[func(d): d.factions[0].capital = "atlantis", "capital 'atlantis', which is not a province"],
-		[func(d): d.factions[0].capital = "westwatch", "not marked as a capital"],
-		[func(d): d.factions[0].capital = "", "has no capital"],
-		[func(d): d.factions[1].capital = "crownkeep", "both have capital 'crownkeep'"],
+		[func(d): _by_id(d.provinces, "westwatch").owner = "pirates", "owned by 'pirates', which is not a faction"],
+		[func(d): _by_id(d.provinces, "westwatch").neighbors.append("atlantis"), "neighbor 'atlantis', which is not a province"],
+		[func(d): _by_id(d.provinces, "crownkeep").neighbors.append("deepwood"), "'deepwood' does not list 'crownkeep' back"],
+		[func(d): _by_id(d.factions, "kingdom").capital = "atlantis", "capital 'atlantis', which is not a province"],
+		[func(d): _by_id(d.factions, "kingdom").capital = "westwatch", "not marked as a capital"],
+		[func(d): _by_id(d.factions, "kingdom").capital = "", "has no capital"],
+		[func(d): _by_id(d.factions, "beasts").capital = "crownkeep", "both have capital 'crownkeep'"],
 		[func(d): d.armies[1].owner = "pirates", "belongs to 'pirates'"],
 		[func(d): d.armies[1].id = d.armies[0].id, "share the id"],
 	]
@@ -579,7 +872,7 @@ func test_load_validation_rejects_bad_data_in_plain_language() -> void:
 	assert_eq(errs, [])
 	# The resolver refuses an invalid state the same way, without engine errors.
 	var bad := GameState.new(1)
-	bad.provinces[1].owner = "pirates"
+	bad.find_province("westwatch").owner = "pirates"
 	var r := TurnResolver.resolve(bad, {}, 1)
 	assert_eq(r.new_state, null)
 	assert_true(r.errors[0].contains("pirates"))
@@ -597,6 +890,73 @@ func test_map_capitals_are_fair() -> void:
 	assert_eq(_distance(s, "crownkeep", "fangridge"), 5)
 	var errs := []
 	assert_true(s.validate(errs), "default map validates: %s" % [errs])
+
+
+## Both directions of MIRROR: province id -> its mirror's id.
+func _mirror_of() -> Dictionary:
+	var out := {}
+	for pid in MIRROR:
+		out[pid] = MIRROR[pid]
+		out[MIRROR[pid]] = pid
+	return out
+
+
+func test_map_is_a_full_mirror() -> void:
+	var s := GameState.new(1)
+	var mirror := _mirror_of()
+	# The mapping covers every province exactly once and nothing else.
+	assert_eq(mirror.size(), 14, "7 pairs, no province in two pairs")
+	assert_eq(mirror.size(), s.provinces.size())
+	for p in s.provinces:
+		assert_true(mirror.has(p.id), "%s has a mirror" % p.id)
+	for pid in MIRROR:
+		assert_ne(pid, MIRROR[pid])
+	# Every link a-b has the mirrored link mirror(a)-mirror(b), so the neighbor counts match too.
+	var links := 0
+	for p in s.provinces:
+		var m := s.find_province(mirror.get(p.id, ""))
+		if m == null:
+			continue
+		assert_eq(m.neighbors.size(), p.neighbors.size(), "%s and %s have as many neighbors" % [p.id, m.id])
+		for n in p.neighbors:
+			links += 1
+			assert_true(m.neighbors.has(mirror.get(n, "")), "link %s-%s mirrors to %s-%s" % [p.id, n, m.id, mirror.get(n, "?")])
+		# Terrain, forts, income and capitals match within each pair.
+		assert_eq(m.terrain, p.terrain, "%s and %s have the same terrain" % [p.id, m.id])
+		assert_eq(m.has_fort, p.has_fort, "%s and %s both have a fort or neither" % [p.id, m.id])
+		assert_eq(m.income, p.income)
+		assert_eq(m.is_capital, p.is_capital)
+	assert_eq(links, 38, "19 links, each listed from both ends")
+
+
+## Each kingdom-side province and its mirror on the beasts side (see data/map.gd).
+const MIRROR := {
+	"crownkeep": "fangridge", "westwatch": "ebonpeak", "highcrag": "ironspike", "rivermarch": "bloodfen",
+	"stonegate": "blackwood", "greenglade": "deepwood", "thornvale": "wildmoor",
+}
+
+
+func test_map_income_is_mirrored() -> void:
+	var s := GameState.new(1)
+	var paired := {}
+	var kingdom_half := 0
+	var beasts_half := 0
+	for pid in MIRROR:
+		var p := s.find_province(pid)
+		var m := s.find_province(MIRROR[pid])
+		assert_true(p != null and m != null, "mirror pair %s / %s exists" % [pid, MIRROR[pid]])
+		assert_eq(p.income, m.income, "%s and %s earn the same" % [p.name, m.name])
+		assert_eq(p.is_capital, m.is_capital, "%s and %s are both capitals or neither" % [p.name, m.name])
+		kingdom_half += p.income
+		beasts_half += m.income
+		paired[pid] = true
+		paired[MIRROR[pid]] = true
+	assert_eq(paired.size(), s.provinces.size(), "every province is in exactly one mirror pair")
+	assert_eq(kingdom_half, beasts_half, "both halves of the map earn the same per turn")
+	# Holding your whole half pays the same whichever faction you are.
+	for p in s.provinces:
+		p.owner = "kingdom" if MIRROR.has(p.id) else "beasts"
+	assert_eq(TurnResolver.income_of(s, "kingdom").total, TurnResolver.income_of(s, "beasts").total)
 
 
 func _distance(s: GameState, from: String, to: String) -> int:

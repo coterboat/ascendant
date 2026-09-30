@@ -24,7 +24,7 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 			enemies.append(a.owner)
 	enemies.sort()
 	var arrival := state.current_turn + 1
-	var text := "Army %s moves from %s to %s and is there at the start of turn %d." % [army.id, here.name, dest.name, arrival]
+	var text := "The %s moves to %s and is there at the start of turn %d." % [TurnResolver.army_label(state, army), dest.name, arrival]
 	var would_capture := false
 	if not enemies.is_empty():
 		var names := []
