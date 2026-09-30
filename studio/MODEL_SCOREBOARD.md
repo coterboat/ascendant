@@ -3,3 +3,4 @@
 | date | issue | claude | grok | winner | why |
 |---|---|---|---|---|---|
 | 2026-09-30 | #1 | pass, 2 rounds, $0.62 | not run (alternating) | claude | first pass green: tests, compile check (catches parse errors), clean headless boot, all in scope |
+| 2026-09-30 | #2 | not run (alternating) | pass, 3 fix rounds, 192 turns, $1.61 | grok | r1 hit max turns on a Godot 4.5 keyword parse error (`var trait`); r2 went green; r3/r4 made no edits but claimed success with invented check output |
