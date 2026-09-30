@@ -43,9 +43,11 @@
     "asc_m1_terrain_plains_v11",
     "asc_m1_terrain_plains_v4",
     "asc_m1_terrain_plains_v5",
-    "asc_m1_terrain_plains_v6"
+    "asc_m1_terrain_plains_v6",
+    "asc_m1_terrain_plains_v20"
    ],
-   "status": "spec (not produced: Ludo outage)"
+   "pick": "asc_m1_terrain_plains_v20 c2",
+   "status": "in-pr"
   },
   {
    "id": "asc_m1_terrain_hills",
@@ -64,9 +66,11 @@
     "asc_m1_terrain_hills_v3",
     "asc_m1_terrain_hills_v4",
     "asc_m1_terrain_hills_v5",
-    "asc_m1_terrain_hills_v6"
+    "asc_m1_terrain_hills_v6",
+    "asc_m1_terrain_hills_v20"
    ],
-   "status": "spec (not produced: Ludo outage)"
+   "pick": "asc_m1_terrain_hills_v20 c1",
+   "status": "in-pr"
   },
   {
    "id": "asc_m1_banner_kingdom",
@@ -100,9 +104,13 @@
     "asc_m1_banner_beasts_v2",
     "asc_m1_banner_beasts_v3",
     "asc_m1_banner_beasts_v4",
-    "asc_m1_banner_beasts_v5"
+    "asc_m1_banner_beasts_v5",
+    "asc_m1_banner_beasts_v20",
+    "asc_m1_banner_beasts_v20c1_cut",
+    "asc_m1_banner_beasts_v20c2_cut"
    ],
-   "status": "spec (not produced: Ludo outage)"
+   "pick": "asc_m1_banner_beasts_v20c1_cut.png",
+   "status": "in-pr"
   },
   {
    "id": "asc_m1_portrait_kingdom_spearmen",
@@ -137,9 +145,12 @@
     "asc_m1_portrait_kingdom_crossbowmen_v2",
     "asc_m1_portrait_kingdom_crossbowmen_v3",
     "asc_m1_portrait_kingdom_crossbowmen_v4",
-    "asc_m1_portrait_kingdom_crossbowmen_v5"
+    "asc_m1_portrait_kingdom_crossbowmen_v5",
+    "asc_m1_portrait_kingdom_crossbowmen_v20",
+    "asc_m1_portrait_kingdom_crossbowmen_v21"
    ],
-   "status": "spec (not produced: Ludo outage)"
+   "pick": "asc_m1_portrait_kingdom_crossbowmen_v21 c1",
+   "status": "in-pr"
   },
   {
    "id": "asc_m1_portrait_kingdom_knights",
@@ -208,9 +219,11 @@
     "asc_m1_portrait_beasts_fangthrowers_v2",
     "asc_m1_portrait_beasts_fangthrowers_v3",
     "asc_m1_portrait_beasts_fangthrowers_v4",
-    "asc_m1_portrait_beasts_fangthrowers_v5"
+    "asc_m1_portrait_beasts_fangthrowers_v5",
+    "asc_m1_portrait_beasts_fangthrowers_v20"
    ],
-   "status": "spec (not produced: Ludo outage)"
+   "pick": "asc_m1_portrait_beasts_fangthrowers_v20 c3",
+   "status": "in-pr"
   },
   {
    "id": "asc_m1_portrait_beasts_war_bear",
@@ -227,9 +240,11 @@
     "asc_m1_portrait_beasts_war_bear_v1",
     "asc_m1_portrait_beasts_war_bear_v2",
     "asc_m1_portrait_beasts_war_bear_v3",
-    "asc_m1_portrait_beasts_war_bear_v4"
+    "asc_m1_portrait_beasts_war_bear_v4",
+    "asc_m1_portrait_beasts_war_bear_v20"
    ],
-   "status": "spec (not produced: Ludo outage)"
+   "pick": "asc_m1_portrait_beasts_war_bear_v20 c3",
+   "status": "in-pr"
   },
   {
    "id": "asc_m1_portrait_beasts_warchief",
@@ -246,9 +261,11 @@
     "asc_m1_portrait_beasts_warchief_v1",
     "asc_m1_portrait_beasts_warchief_v2",
     "asc_m1_portrait_beasts_warchief_v3",
-    "asc_m1_portrait_beasts_warchief_v4"
+    "asc_m1_portrait_beasts_warchief_v4",
+    "asc_m1_portrait_beasts_warchief_v20"
    ],
-   "status": "spec (not produced: Ludo outage)"
+   "pick": "asc_m1_portrait_beasts_warchief_v20 c3",
+   "status": "in-pr"
   }
  ]
 }
