@@ -147,10 +147,24 @@
     "asc_m1_portrait_kingdom_crossbowmen_v4",
     "asc_m1_portrait_kingdom_crossbowmen_v5",
     "asc_m1_portrait_kingdom_crossbowmen_v20",
-    "asc_m1_portrait_kingdom_crossbowmen_v21"
+    "asc_m1_portrait_kingdom_crossbowmen_v21",
+    "asc_m1_portrait_kingdom_crossbowmen_v30"
    ],
    "pick": "asc_m1_portrait_kingdom_crossbowmen_v21 c1",
-   "status": "in-pr"
+   "status": "in-pr",
+   "reroll_text_only": {
+    "request_id": "asc_m1_portrait_kingdom_crossbowmen_v30",
+    "kind": "image",
+    "type": "portrait",
+    "perspective": "Any perspective",
+    "aspect": "ar_3_4",
+    "n": 3,
+    "style": false,
+    "art_style": "Cel-Shaded",
+    "augment": false,
+    "prompt": "same as this entry (C-portrait block + manifest subject), no style_image",
+    "result": "0/3 passed: 3/3 women (c2 clearly older) but painterly/gunmetal look off-series at 96x128 and blue-and-white gambeson without gold-trim tabard; v21_c1 kept"
+   }
   },
   {
    "id": "asc_m1_portrait_kingdom_knights",
