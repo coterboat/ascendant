@@ -26,10 +26,10 @@ Compile check (parses every project `.gd` file, skipping `.godot/` and other hid
 /home/box/playtester/godot/godot --headless --path . -s tools/compile_check.gd
 ```
 
-Headless boot of the main scene (should print no `ERROR` lines):
+Headless boot of the main scene. Godot itself exits 0 even when a script fails to parse or errors at runtime, so use the wrapper: it runs `godot --headless --path . --quit-after 120`, shows the output, and exits non-zero if Godot exits non-zero, times out (60s), or prints any `ERROR` / `SCRIPT ERROR` line:
 
 ```sh
-/home/box/playtester/godot/godot --headless --path . --quit-after 120
+tools/boot_check.sh
 ```
 
 Run it windowed to see the title screen:
