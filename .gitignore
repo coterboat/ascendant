@@ -1,0 +1,14 @@
+# Godot 4 editor/import cache
+.godot/
+.import/
+*.translation
+
+# Export output
+build/
+*.tmp
+
+# Editor / OS noise
+*.swp
+*~
+.DS_Store
+Thumbs.db
