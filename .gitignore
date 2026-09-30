@@ -1,3 +1,14 @@
-# Godot 4+ specific ignores
+# Godot 4 editor/import cache
 .godot/
-/android/
+.import/
+*.translation
+
+# Export output
+build/
+*.tmp
+
+# Editor / OS noise
+*.swp
+*~
+.DS_Store
+Thumbs.db
