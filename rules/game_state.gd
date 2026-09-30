@@ -101,7 +101,7 @@ static func from_dict(data: Dictionary, errors = null) -> GameState:
 	
 	return state
 
-func deep_copy() -> GameState:
+func deep_copy(errors = null) -> GameState:
 	var copy := GameState.new(seed_value)
 	copy.current_turn = current_turn
 	copy.provinces.clear()
@@ -122,7 +122,10 @@ func deep_copy() -> GameState:
 	for p in copy.provinces:
 		province_ids[p.id] = true
 	for a in armies:
-		copy.armies.append(Army.from_dict(a.to_dict(), all_unit_types, province_ids))
+		var army = Army.from_dict(a.to_dict(), all_unit_types, province_ids, errors)
+		if army == null:
+			return null
+		copy.armies.append(army)
 	# Copy RNG state for replay fidelity
 	copy.rng = SeededRNG.from_dict(rng.to_dict())
 	return copy

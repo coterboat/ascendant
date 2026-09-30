@@ -241,6 +241,32 @@ func test_unknown_ids_are_rejected() -> void:
 	assert_true(errs[0].contains("atlantis"))
 
 
+func test_deep_copy_rejects_unknown_ids() -> void:
+	var s := GameState.new(3)
+	s.armies[0].location = "nowhere"
+	var errs := []
+	var c := s.deep_copy(errs)
+	assert_eq(c, null)
+	assert_eq(errs.size(), 1)
+	assert_true(errs[0].contains("nowhere"))
+	
+	var s2 := GameState.new(3)
+	var bad_type := UnitType.new()
+	bad_type.id = "dragon"
+	s2.armies[1].units[0].type = bad_type
+	var errs2 := []
+	assert_eq(s2.deep_copy(errs2), null)
+	assert_eq(errs2.size(), 1)
+	assert_true(errs2[0].contains("dragon"))
+	
+	var v := GameState.new(3)
+	var errs3 := []
+	var vc := v.deep_copy(errs3)
+	assert_ne(vc, null)
+	assert_eq(errs3.size(), 0)
+	assert_eq(vc.to_dict(), v.to_dict())
+
+
 func test_every_stat_has_description() -> void:
 	var factions := FactionData.create_factions()
 	for f in factions:
