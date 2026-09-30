@@ -1,6 +1,6 @@
 # ASCENDANT: game brief
 
-Status: **DRAFT v2, awaiting Alex's approval.** Nothing downstream (milestones, tickets, style bible) starts until this is approved. Changes after approval need Alex's OK.
+Status: **APPROVED by Alex, 2026-09-30.** Changes after approval need Alex's OK.
 
 ## one line
 A deep, simultaneous-turn fantasy strategy game with the spirit of Dominions 6, where your ruler trades personal power for faction-wide strength, your people can transform down locked-in paths, battles are worth watching, and every rule is visible so you never need a wiki.
