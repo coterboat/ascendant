@@ -1,0 +1,645 @@
+{
+ "batch": "asc-style-probe",
+ "date": "2026-09-30",
+ "balance_before": 6890.1,
+ "balance_after": 6850.1,
+ "credits_spent": 40.0,
+ "note": "Every charged Ludo call of the batch, cutouts and re-rolls included, plus the two queued jobs canceled for a refund. Request bodies are as sent (data URIs shortened); prompts are the manifest text verbatim with nothing appended. Result URLs omitted (they expire after 7 days).",
+ "calls": [
+  {
+   "t": "2026-09-30 01:27:16",
+   "row": "asc_probe_storybook_unit",
+   "request_id": "asc_probe_storybook_unit_v1",
+   "endpoint": "/assets/image",
+   "body": {
+    "image_type": "sprite",
+    "prompt": "Illuminated storybook game sprite: clean confident dark ink outline of even, heavy weight around the whole figure, flat opaque gouache in saturated jewel tones with simple two-step shading, small gold-leaf accents on metal, bright even light from the upper left. Full figure in a three-quarter view facing right, seen from slightly above, feet at the bottom of the figure, single subject centred with wide empty margin on every side and clear headroom above the tallest point, plain flat mid-grey background. Subject: A disciplined human spearman of a high-fantasy kingdom, in a ready stance, polished steel helm with a short blue plume, royal-blue tabard with gold trim over steel mail, a round steel-rimmed shield held on his left arm, a long spear held level in his right hand with the spearhead pointing to the right, steady determined expression, eyes looking ahead to the right.",
+    "art_style": "Inked Painterly",
+    "perspective": "High Angle",
+    "aspect_ratio": "ar_1_1",
+    "n": 3,
+    "augment_prompt": false
+   },
+   "job": "72f1d58c-0c89-4242-9199-3874b3c92075",
+   "credits_charged": 1.5,
+   "planned": 1.5,
+   "secs": 149,
+   "results": 3
+  },
+  {
+   "t": "2026-09-30 01:27:37",
+   "row": "asc_probe_tabletop_unit",
+   "request_id": "asc_probe_tabletop_unit_v1",
+   "endpoint": "/assets/image",
+   "body": {
+    "image_type": "sprite",
+    "prompt": "Hand-painted game sprite of a vividly painted tabletop miniature: chunky readable proportions about five heads tall, crisp dark outline of even heavy weight, smooth painted volumes with bright highlights and clear shadows, saturated rich colours, soft studio light from the upper left. Full figure in a three-quarter view facing right, seen from slightly above, feet at the bottom of the figure, single subject centred with wide empty margin on every side and clear headroom above the tallest point, plain flat mid-grey background. Subject: A disciplined human spearman of a high-fantasy kingdom, in a ready stance, polished steel helm with a short blue plume, royal-blue tabard with gold trim over steel mail, a round steel-rimmed shield held on his left arm, a long spear held level in his right hand with the spearhead pointing to the right, steady determined expression, eyes looking ahead to the right.",
+    "art_style": "Hand-Painted",
+    "perspective": "High Angle",
+    "aspect_ratio": "ar_1_1",
+    "n": 3,
+    "augment_prompt": false
+   },
+   "job": "7579d9a9-026d-4af1-99ae-6c53f88ec605",
+   "credits_charged": 1.5,
+   "planned": 1.5,
+   "secs": 169,
+   "results": 3
+  },
+  {
+   "t": "2026-09-30 01:28:42",
+   "row": "asc_probe_cel_unit",
+   "request_id": "asc_probe_cel_unit_v1",
+   "endpoint": "/assets/image",
+   "body": {
+    "image_type": "sprite",
+    "prompt": "Cel-shaded game sprite of bright high fantasy: thick clean dark outline of even weight, flat saturated colours with one hard-edged shadow tone and one highlight tone, simple bold shapes and large readable forms, bright even light from the upper left. Full figure in a three-quarter view facing right, seen from slightly above, feet at the bottom of the figure, single subject centred with wide empty margin on every side and clear headroom above the tallest point, plain flat mid-grey background. Subject: A disciplined human spearman of a high-fantasy kingdom, in a ready stance, polished steel helm with a short blue plume, royal-blue tabard with gold trim over steel mail, a round steel-rimmed shield held on his left arm, a long spear held level in his right hand with the spearhead pointing to the right, steady determined expression, eyes looking ahead to the right.",
+    "art_style": "Cel-Shaded",
+    "perspective": "High Angle",
+    "aspect_ratio": "ar_1_1",
+    "n": 3,
+    "augment_prompt": false
+   },
+   "job": "362aa413-99b0-4bf3-9226-8d5bd81dae0a",
+   "credits_charged": 1.5,
+   "planned": 1.5,
+   "secs": 233,
+   "results": 3
+  },
+  {
+   "t": "2026-09-30 01:33:39",
+   "row": "asc_probe_storybook_terrain",
+   "request_id": "asc_probe_storybook_terrain_v1",
+   "endpoint": "/assets/image",
+   "body": {
+    "image_type": "texture",
+    "prompt": "Seamless tileable top-down map texture in the manner of an illuminated storybook map: flat opaque gouache in fresh saturated colours, simple repeated painted motifs with fine ink detail, low contrast within the texture, even flat lighting, uniform density from edge to edge, pattern continues across all four edges. Subject: Dense temperate forest seen from directly above, bold rounded tree canopies in rich deep greens with slightly darker gaps between them.",
+    "art_style": "Inked Painterly",
+    "perspective": "Top-Down",
+    "aspect_ratio": "ar_1_1",
+    "n": 2,
+    "augment_prompt": false
+   },
+   "job": "b651e4a7-8f09-4b87-bdea-6e7f0c6edced",
+   "credits_charged": 1,
+   "planned": 1.0,
+   "secs": 530,
+   "results": 2
+  },
+  {
+   "t": "2026-09-30 01:34:29",
+   "row": "asc_probe_storybook_banner",
+   "request_id": "asc_probe_storybook_banner_v1",
+   "endpoint": "/assets/image",
+   "body": {
+    "image_type": "asset",
+    "prompt": "Illuminated storybook heraldic banner: one tall cloth banner hanging from a short horizontal crossbar, one bold invented emblem in the centre readable at 48 pixels, flat opaque gouache in saturated jewel tones, clean dark ink outline, gold-leaf trim, viewed straight on, single banner centred with wide empty margin, plain flat mid-grey background. Subject: Banner of a disciplined human kingdom, royal-blue cloth with a white border and a straight lower edge cut into three points, a golden crown above a rising sun as the central emblem.",
+    "art_style": "Inked Painterly",
+    "perspective": "Any perspective",
+    "aspect_ratio": "ar_3_4",
+    "n": 2,
+    "augment_prompt": false
+   },
+   "job": "aa60e416-2a10-47af-8141-cb87f6af28a4",
+   "credits_charged": 1,
+   "planned": 1.0,
+   "secs": 579,
+   "results": 2
+  },
+  {
+   "t": "2026-09-30 01:35:23",
+   "row": "asc_probe_storybook_impact",
+   "request_id": "asc_probe_storybook_impact_v1",
+   "endpoint": "/assets/image",
+   "body": {
+    "image_type": "sprite-vfx",
+    "prompt": "Illuminated storybook spell effect sprite: bold flat shapes of glowing colour from a white-hot core out to a saturated jewel-toned rim, fine gold filigree sparks, clean graphic edges, single effect centred with wide empty margin on every side, plain flat black background. Subject: The impact burst of a weapon strike, a bright starburst flash with short radiating shards and a spray of small sparks, warm gold and white.",
+    "art_style": "Inked Painterly",
+    "perspective": "Any perspective",
+    "aspect_ratio": "ar_1_1",
+    "n": 2,
+    "augment_prompt": false
+   },
+   "job": "ab7ef528-e01c-4051-b844-0bbb956f1ad6",
+   "credits_charged": 1,
+   "planned": 1.0,
+   "secs": 632,
+   "results": 2
+  },
+  {
+   "t": "2026-09-30 01:38:14",
+   "row": "asc_probe_tabletop_terrain",
+   "request_id": "asc_probe_tabletop_terrain_v1",
+   "endpoint": "/assets/image",
+   "body": {
+    "image_type": "texture",
+    "prompt": "Seamless tileable top-down map texture in the manner of a vividly painted tabletop diorama board: soft painted brushwork, fresh saturated colours with gentle variation, low contrast within the texture, even flat lighting, uniform density from edge to edge, pattern continues across all four edges. Subject: Dense temperate forest seen from directly above, bold rounded tree canopies in rich deep greens with slightly darker gaps between them.",
+    "art_style": "Hand-Painted",
+    "perspective": "Top-Down",
+    "aspect_ratio": "ar_1_1",
+    "n": 2,
+    "augment_prompt": false
+   },
+   "job": "d7eb0906-f669-455b-b0b0-c0c8fb224e99",
+   "credits_charged": 1,
+   "planned": 1.0,
+   "secs": 633,
+   "results": 2
+  },
+  {
+   "t": "2026-09-30 01:40:27",
+   "row": "asc_probe_storybook_panel",
+   "request_id": "asc_probe_storybook_panel_v1",
+   "endpoint": "/assets/image",
+   "body": {
+    "image_type": "ui_asset",
+    "prompt": "Game interface element in the manner of an illuminated storybook: deep indigo panel with a gilt border of fine painted vine ornament and small jewel-coloured corner medallions, flat even lighting, symmetrical, plain dark empty centre, clean straight edges, viewed straight on. Subject: A square empty information panel frame with four matching ornamented corners and a thin straight border along each side.",
+    "art_style": "Inked Painterly",
+    "perspective": "Any perspective",
+    "aspect_ratio": "ar_1_1",
+    "n": 2,
+    "augment_prompt": false
+   },
+   "job": "b7b289a9-47f4-4651-877f-94930a35991e",
+   "credits_charged": 1,
+   "planned": 1.0,
+   "secs": 787,
+   "results": 2
+  },
+  {
+   "t": "2026-09-30 01:40:40",
+   "row": "asc_probe_storybook_unit_ironform",
+   "request_id": "asc_probe_storybook_unit_ironform_v1",
+   "endpoint": "/assets/image/edit",
+   "body": {
+    "image": "https://storage.googleapis.com/ludo-assets/api/b0670115fc4a8a46b84bfa0f9875b5f0.webp",
+    "prompt": "Remake the armour, shield and skin as dark riveted living iron with thin glowing orange seams, same pose, same outline, same weapon and shield.",
+    "n": 2,
+    "augment_prompt": false
+   },
+   "job": "1fecbdfa-419a-40dd-9828-58304249ad1e",
+   "credits_charged": 1,
+   "planned": 1.0,
+   "secs": 530,
+   "results": 2
+  },
+  {
+   "t": "2026-09-30 01:40:43",
+   "row": "asc_probe_tabletop_unit",
+   "request_id": "asc_probe_tabletop_unit_c1_cut",
+   "endpoint": "/assets/image/remove-background",
+   "body": {
+    "image": "https://storage.googleapis.com/ludo-assets/api/6b2f2701df0b5a8f739714fdaee2833b.webp",
+    "crop": true,
+    "creative_edit": false
+   },
+   "job": "dd0de6c8-679b-4094-becd-ce4fcaa3d3cc",
+   "credits_charged": 0.5,
+   "planned": 0.5,
+   "secs": 532,
+   "results": 1
+  },
+  {
+   "t": "2026-09-30 01:40:47",
+   "row": "asc_probe_storybook_unit",
+   "request_id": "asc_probe_storybook_unit_c1_cut",
+   "endpoint": "/assets/image/remove-background",
+   "body": {
+    "image": "https://storage.googleapis.com/ludo-assets/api/b0670115fc4a8a46b84bfa0f9875b5f0.webp",
+    "crop": true,
+    "creative_edit": false
+   },
+   "job": "b8b89c8f-b75a-458b-ab77-c25b41727b2c",
+   "credits_charged": 0.5,
+   "planned": 0.5,
+   "secs": 534,
+   "results": 1
+  },
+  {
+   "t": "2026-09-30 01:41:02",
+   "row": "asc_probe_tabletop_unit_ironform",
+   "request_id": "asc_probe_tabletop_unit_ironform_v1",
+   "endpoint": "/assets/image/edit",
+   "body": {
+    "image": "https://storage.googleapis.com/ludo-assets/api/6b2f2701df0b5a8f739714fdaee2833b.webp",
+    "prompt": "Remake the armour, shield and skin as dark riveted living iron with thin glowing orange seams, same pose, same outline, same weapon and shield.",
+    "n": 2,
+    "augment_prompt": false
+   },
+   "job": "ec35f03d-951e-46a4-8156-6296462d534c",
+   "credits_charged": 1,
+   "planned": 1.0,
+   "secs": 548,
+   "results": 2
+  },
+  {
+   "t": "2026-09-30 01:41:04",
+   "row": "asc_probe_cel_unit",
+   "request_id": "asc_probe_cel_unit_c3_cut",
+   "endpoint": "/assets/image/remove-background",
+   "body": {
+    "image": "https://storage.googleapis.com/ludo-assets/api/d7185819a2891f714697e734c5561efb.webp",
+    "crop": true,
+    "creative_edit": false
+   },
+   "job": "80d2e0ff-1293-43de-810d-501db463e813",
+   "credits_charged": 0.5,
+   "planned": 0.5,
+   "secs": 549,
+   "results": 1
+  },
+  {
+   "t": "2026-09-30 01:41:11",
+   "row": "asc_probe_tabletop_banner",
+   "request_id": "asc_probe_tabletop_banner_v1",
+   "endpoint": "/assets/image",
+   "body": {
+    "image_type": "asset",
+    "prompt": "Hand-painted heraldic banner for a tabletop fantasy game: one tall cloth banner hanging from a short horizontal crossbar, one bold invented emblem in the centre readable at 48 pixels, smooth painted cloth folds, saturated rich colours, crisp dark outline, viewed straight on, single banner centred with wide empty margin, plain flat mid-grey background. Subject: Banner of a disciplined human kingdom, royal-blue cloth with a white border and a straight lower edge cut into three points, a golden crown above a rising sun as the central emblem.",
+    "art_style": "Hand-Painted",
+    "perspective": "Any perspective",
+    "aspect_ratio": "ar_3_4",
+    "n": 2,
+    "augment_prompt": false
+   },
+   "job": "a47e4fd5-ff97-49e9-b0fb-5975243878bc",
+   "credits_charged": 1,
+   "planned": 1.0,
+   "secs": 745,
+   "results": 2
+  },
+  {
+   "t": "2026-09-30 01:41:16",
+   "row": "asc_probe_cel_unit_ironform",
+   "request_id": "asc_probe_cel_unit_ironform_v1",
+   "endpoint": "/assets/image/edit",
+   "body": {
+    "image": "https://storage.googleapis.com/ludo-assets/api/d7185819a2891f714697e734c5561efb.webp",
+    "prompt": "Remake the armour, shield and skin as dark riveted living iron with thin glowing orange seams, same pose, same outline, same weapon and shield.",
+    "n": 2,
+    "augment_prompt": false
+   },
+   "job": "fa8e88d6-a4d6-47f4-9d7a-361537f67146",
+   "credits_charged": 1,
+   "planned": 1.0,
+   "secs": 561,
+   "results": 2
+  },
+  {
+   "t": "2026-09-30 01:42:48",
+   "row": "asc_probe_tabletop_panel",
+   "request_id": "asc_probe_tabletop_panel_v1",
+   "endpoint": "/assets/image",
+   "body": {
+    "image_type": "ui_asset",
+    "prompt": "Game interface element in the manner of a premium fantasy board game: deep indigo lacquered wood panel with a bevelled brass border and small rounded brass corner caps set with coloured gems, smooth painted finish, flat even lighting, symmetrical, plain dark empty centre, clean straight edges, viewed straight on. Subject: A square empty information panel frame with four matching ornamented corners and a thin straight border along each side.",
+    "art_style": "Hand-Painted",
+    "perspective": "Any perspective",
+    "aspect_ratio": "ar_1_1",
+    "n": 2,
+    "augment_prompt": false
+   },
+   "job": "05a437df-ebad-4a8f-9dcd-72a1f5d8f5a6",
+   "credits_charged": 1,
+   "planned": 1.0,
+   "secs": 496,
+   "results": 2
+  },
+  {
+   "t": "2026-09-30 01:44:40",
+   "row": "asc_probe_storybook_unit_attack",
+   "request_id": "asc_probe_storybook_unit_attack_v1",
+   "endpoint": "/assets/sprite/animate",
+   "job": "ac3238fa-b0cb-46b0-b9eb-d66ca3c8d9c3",
+   "status": "canceled",
+   "credits_charged": 0,
+   "note": "canceled while queued: input canvas clipped the spear tip (feet anchor measured on the rear boot only); refunded"
+  },
+  {
+   "t": "2026-09-30 01:46:00",
+   "row": "asc_probe_tabletop_unit_attack",
+   "request_id": "asc_probe_tabletop_unit_attack_v1",
+   "endpoint": "/assets/sprite/animate",
+   "job": "b6d53530-0c9b-46e4-924f-f6e63b72ac50",
+   "status": "canceled",
+   "credits_charged": 0,
+   "note": "canceled while queued: re-placed with the corrected feet-anchor rule so all 3 directions match; refunded"
+  },
+  {
+   "t": "2026-09-30 01:45:18",
+   "row": "asc_probe_cel_terrain",
+   "request_id": "asc_probe_cel_terrain_v1",
+   "endpoint": "/assets/image",
+   "body": {
+    "image_type": "texture",
+    "prompt": "Seamless tileable top-down cel-shaded map texture: flat saturated colour with simple hard-edged shape motifs in two close tones, low contrast within the texture, even flat lighting, uniform density from edge to edge, pattern continues across all four edges. Subject: Dense temperate forest seen from directly above, bold rounded tree canopies in rich deep greens with slightly darker gaps between them.",
+    "art_style": "Cel-Shaded",
+    "perspective": "Top-Down",
+    "aspect_ratio": "ar_1_1",
+    "n": 2,
+    "augment_prompt": false
+   },
+   "job": "cf1dc1a2-c38a-41c7-9d94-4ef822024c23",
+   "credits_charged": 1,
+   "planned": 1.0,
+   "secs": 592,
+   "results": 2
+  },
+  {
+   "t": "2026-09-30 01:45:58",
+   "row": "asc_probe_tabletop_impact",
+   "request_id": "asc_probe_tabletop_impact_v1",
+   "endpoint": "/assets/image",
+   "body": {
+    "image_type": "sprite-vfx",
+    "prompt": "Hand-painted spell effect sprite for a tabletop fantasy game: soft glowing painted energy from a white-hot core out to rich saturated colour, gentle painterly wisps and crisp bright sparks, single effect centred with wide empty margin on every side, plain flat black background. Subject: The impact burst of a weapon strike, a bright starburst flash with short radiating shards and a spray of small sparks, warm gold and white.",
+    "art_style": "Hand-Painted",
+    "perspective": "Any perspective",
+    "aspect_ratio": "ar_1_1",
+    "n": 2,
+    "augment_prompt": false
+   },
+   "job": "e06c4a03-758e-48ef-8e49-158a1c7ff043",
+   "credits_charged": 1,
+   "planned": 1.0,
+   "secs": 735,
+   "results": 2
+  },
+  {
+   "t": "2026-09-30 01:47:19",
+   "row": "asc_probe_cel_impact",
+   "request_id": "asc_probe_cel_impact_v1",
+   "endpoint": "/assets/image",
+   "body": {
+    "image_type": "sprite-vfx",
+    "prompt": "Cel-shaded spell effect sprite: hard-edged flat shapes of glowing colour in three bands from a white core to a saturated rim, bold stylised sparks and shards, single effect centred with wide empty margin on every side, plain flat black background. Subject: The impact burst of a weapon strike, a bright starburst flash with short radiating shards and a spray of small sparks, warm gold and white.",
+    "art_style": "Cel-Shaded",
+    "perspective": "Any perspective",
+    "aspect_ratio": "ar_1_1",
+    "n": 2,
+    "augment_prompt": false
+   },
+   "job": "dfb81529-5620-4774-833d-78ebc24661da",
+   "credits_charged": 1,
+   "planned": 1.0,
+   "secs": 409,
+   "results": 2
+  },
+  {
+   "t": "2026-09-30 01:47:25",
+   "row": "asc_probe_cel_banner",
+   "request_id": "asc_probe_cel_banner_v1",
+   "endpoint": "/assets/image",
+   "body": {
+    "image_type": "asset",
+    "prompt": "Cel-shaded heraldic banner: one tall cloth banner hanging from a short horizontal crossbar, one bold invented emblem in the centre readable at 48 pixels, flat saturated colours with one hard shadow tone, thick clean dark outline, viewed straight on, single banner centred with wide empty margin, plain flat mid-grey background. Subject: Banner of a disciplined human kingdom, royal-blue cloth with a white border and a straight lower edge cut into three points, a golden crown above a rising sun as the central emblem.",
+    "art_style": "Cel-Shaded",
+    "perspective": "Any perspective",
+    "aspect_ratio": "ar_3_4",
+    "n": 2,
+    "augment_prompt": false
+   },
+   "job": "ef65ac8d-471c-4bf8-9adb-efbb06166f9b",
+   "credits_charged": 1,
+   "planned": 1.0,
+   "secs": 547,
+   "results": 2
+  },
+  {
+   "t": "2026-09-30 01:48:25",
+   "row": "asc_probe_storybook_unit_attack",
+   "request_id": "asc_probe_storybook_unit_attack_v2",
+   "endpoint": "/assets/sprite/animate",
+   "body": {
+    "initial_image": "data:image/png;base64,iVBORw0K...(base64 84214 chars)",
+    "final_image": "data:image/png;base64,iVBORw0K...(base64 84214 chars)",
+    "motion_prompt": "One strong spear thrust forward to the right, then draws the spear back to the ready stance, stays facing right, shield stays on the left arm.",
+    "model": "forge",
+    "duration": 1.5,
+    "frames": 16,
+    "frame_size": -9,
+    "crop": false,
+    "loop": false,
+    "image_type": "sprite",
+    "gif": true,
+    "spritesheet_with_background": true
+   },
+   "job": "5beeded4-bbf2-4f1d-8d23-b7513853c059",
+   "credits_charged": 4,
+   "planned": 4.0,
+   "secs": 178,
+   "results": {
+    "num_frames": 16,
+    "num_cols": 4,
+    "num_rows": 4,
+    "duration": 1.375
+   }
+  },
+  {
+   "t": "2026-09-30 01:48:41",
+   "row": "asc_probe_cel_panel",
+   "request_id": "asc_probe_cel_panel_v1",
+   "endpoint": "/assets/image",
+   "body": {
+    "image_type": "ui_asset",
+    "prompt": "Cel-shaded game interface element: deep indigo panel with a thick clean gold border and simple bold geometric corner pieces each set with one coloured gem, flat colours with one hard highlight tone, flat even lighting, symmetrical, plain dark empty centre, clean straight edges, viewed straight on. Subject: A square empty information panel frame with four matching ornamented corners and a thin straight border along each side.",
+    "art_style": "Cel-Shaded",
+    "perspective": "Any perspective",
+    "aspect_ratio": "ar_1_1",
+    "n": 2,
+    "augment_prompt": false
+   },
+   "job": "f919a850-ea34-47fd-91f8-4e0102d268da",
+   "credits_charged": 1,
+   "planned": 1.0,
+   "secs": 447,
+   "results": 2
+  },
+  {
+   "t": "2026-09-30 01:49:17",
+   "row": "asc_probe_tabletop_unit_attack",
+   "request_id": "asc_probe_tabletop_unit_attack_v2",
+   "endpoint": "/assets/sprite/animate",
+   "body": {
+    "initial_image": "data:image/png;base64,iVBORw0K...(base64 91718 chars)",
+    "final_image": "data:image/png;base64,iVBORw0K...(base64 91718 chars)",
+    "motion_prompt": "One strong spear thrust forward to the right, then draws the spear back to the ready stance, stays facing right, shield stays on the left arm.",
+    "model": "forge",
+    "duration": 1.5,
+    "frames": 16,
+    "frame_size": -9,
+    "crop": false,
+    "loop": false,
+    "image_type": "sprite",
+    "gif": true,
+    "spritesheet_with_background": true
+   },
+   "job": "52945fe5-9440-4455-a472-4f88b6f4c45e",
+   "credits_charged": 4,
+   "planned": 4.0,
+   "secs": 229,
+   "results": {
+    "num_frames": 16,
+    "num_cols": 4,
+    "num_rows": 4,
+    "duration": 1.5
+   }
+  },
+  {
+   "t": "2026-09-30 01:49:21",
+   "row": "asc_probe_storybook_unit_ironform",
+   "request_id": "asc_probe_storybook_unit_ironform_c1_cut",
+   "endpoint": "/assets/image/remove-background",
+   "body": {
+    "image": "https://storage.googleapis.com/ludo-assets/api/8ac45805224cc27d96a35586725bff56.webp",
+    "crop": true,
+    "creative_edit": false
+   },
+   "job": "86048b77-fd9a-4a37-91d9-a14b508ac81a",
+   "credits_charged": 0.5,
+   "planned": 0.5,
+   "secs": 170,
+   "results": 1
+  },
+  {
+   "t": "2026-09-30 01:49:24",
+   "row": "asc_probe_tabletop_unit_ironform",
+   "request_id": "asc_probe_tabletop_unit_ironform_c1_cut",
+   "endpoint": "/assets/image/remove-background",
+   "body": {
+    "image": "https://storage.googleapis.com/ludo-assets/api/3fef008e1a2de149ade88e1d08149d17.webp",
+    "crop": true,
+    "creative_edit": false
+   },
+   "job": "67d8f30a-2a65-43fb-b0ca-316904394496",
+   "credits_charged": 0.5,
+   "planned": 0.5,
+   "secs": 172,
+   "results": 1
+  },
+  {
+   "t": "2026-09-30 01:49:26",
+   "row": "asc_probe_cel_unit_attack",
+   "request_id": "asc_probe_cel_unit_attack_v2",
+   "endpoint": "/assets/sprite/animate",
+   "body": {
+    "initial_image": "data:image/png;base64,iVBORw0K...(base64 82334 chars)",
+    "final_image": "data:image/png;base64,iVBORw0K...(base64 82334 chars)",
+    "motion_prompt": "One strong spear thrust forward to the right, then draws the spear back to the ready stance, stays facing right, shield stays on the left arm.",
+    "model": "forge",
+    "duration": 1.5,
+    "frames": 16,
+    "frame_size": -9,
+    "crop": false,
+    "loop": false,
+    "image_type": "sprite",
+    "gif": true,
+    "spritesheet_with_background": true
+   },
+   "job": "620a3f31-670c-417a-8d30-ce463229d56f",
+   "credits_charged": 4,
+   "planned": 4.0,
+   "secs": 224,
+   "results": {
+    "num_frames": 16,
+    "num_cols": 4,
+    "num_rows": 4,
+    "duration": 1.25
+   }
+  },
+  {
+   "t": "2026-09-30 01:49:27",
+   "row": "asc_probe_cel_unit_ironform",
+   "request_id": "asc_probe_cel_unit_ironform_c1_cut",
+   "endpoint": "/assets/image/remove-background",
+   "body": {
+    "image": "https://storage.googleapis.com/ludo-assets/api/aa1b2059201f8187ac434b388201973b.webp",
+    "crop": true,
+    "creative_edit": false
+   },
+   "job": "7bc14a67-4a0c-451c-b208-7bd3c23be283",
+   "credits_charged": 0.5,
+   "planned": 0.5,
+   "secs": 174,
+   "results": 1
+  },
+  {
+   "t": "2026-09-30 01:50:44",
+   "row": "asc_probe_storybook_banner",
+   "request_id": "asc_probe_storybook_banner_c1_cut",
+   "endpoint": "/assets/image/remove-background",
+   "body": {
+    "image": "https://storage.googleapis.com/ludo-assets/api/0b78f080498846d56851cd879bfeedd5.webp",
+    "crop": true,
+    "creative_edit": false
+   },
+   "job": "b4ea86f0-49dd-4b9b-9b4b-e124f3dc3b48",
+   "credits_charged": 0.5,
+   "planned": 0.5,
+   "secs": 3,
+   "results": 1
+  },
+  {
+   "t": "2026-09-30 01:50:46",
+   "row": "asc_probe_tabletop_banner",
+   "request_id": "asc_probe_tabletop_banner_c2_cut",
+   "endpoint": "/assets/image/remove-background",
+   "body": {
+    "image": "https://storage.googleapis.com/ludo-assets/api/026ef1c6bcec7e71470ed24eaff89e3c.webp",
+    "crop": true,
+    "creative_edit": false
+   },
+   "job": "64af0194-8b76-42d2-93bd-75089e239171",
+   "credits_charged": 0.5,
+   "planned": 0.5,
+   "secs": 5,
+   "results": 1
+  },
+  {
+   "t": "2026-09-30 01:50:48",
+   "row": "asc_probe_cel_banner",
+   "request_id": "asc_probe_cel_banner_c2_cut",
+   "endpoint": "/assets/image/remove-background",
+   "body": {
+    "image": "https://storage.googleapis.com/ludo-assets/api/eb3cc9390fb44468e04118d2428e82e4.webp",
+    "crop": true,
+    "creative_edit": false
+   },
+   "job": "45961373-44b1-4214-b344-151232941080",
+   "credits_charged": 0.5,
+   "planned": 0.5,
+   "secs": 6,
+   "results": 1
+  },
+  {
+   "t": "2026-09-30 01:52:16",
+   "row": "asc_probe_cel_unit_attack",
+   "request_id": "asc_probe_cel_unit_attack_v3",
+   "endpoint": "/assets/sprite/animate",
+   "body": {
+    "initial_image": "data:image/png;base64,iVBORw0K...(base64 82334 chars)",
+    "final_image": "data:image/png;base64,iVBORw0K...(base64 82334 chars)",
+    "motion_prompt": "One strong spear thrust forward to the right, then draws the spear back to the ready stance, stays facing right, shield stays on the left arm.",
+    "model": "forge",
+    "duration": 1.5,
+    "frames": 16,
+    "frame_size": -9,
+    "crop": false,
+    "loop": false,
+    "image_type": "sprite",
+    "gif": true,
+    "spritesheet_with_background": true
+   },
+   "job": "49855d6d-4d95-4b54-b950-62caea18921b",
+   "credits_charged": 4,
+   "planned": 4.0,
+   "secs": 65,
+   "results": {
+    "num_frames": 16,
+    "num_cols": 4,
+    "num_rows": 4,
+    "duration": 1.4375
+   }
+  }
+ ]
+}

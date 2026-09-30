@@ -1,0 +1,17 @@
+{
+ "cell": [
+  192,
+  192
+ ],
+ "cols": 4,
+ "rows": 4,
+ "frames": 16,
+ "fps": 16,
+ "loop": false,
+ "anchor": [
+  88,
+  172
+ ],
+ "impact_frame": 10,
+ "_why": "impact_frame = frame of furthest rightward reach (auto-measured)"
+}

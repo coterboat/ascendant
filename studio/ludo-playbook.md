@@ -145,3 +145,32 @@ Where sources disagree, the newer one wins and the conflict is noted. EO7 is Jul
 - Never print, log or commit `LUDO_API_KEY`. Keep it in `.env.local`/`.env`, which are gitignored. (EO7's key was pasted into chat once and flagged "rotate this".) [C-CLAUDE] [E-WT] [E-LOG]
 - Masters, raw sheets and candidates stay gitignored. Commit only what the game loads. EO7's tracked candidates reached 390 MB and broke `git push`. [E-11] [C-ASSETS]
 - No Git LFS until history nears ~1 GB: LFS downloads are metered, and a bot re-cloning on every push burns the quota. [C-ASSETS]
+
+## 10. Findings from the ASCENDANT style probe (2026-09-30)
+
+Source key: **[A-PROBE]** `coterboat/ascendant` batch `asc-style-probe`: per-call ledger `assets/_probe/asc-style-probe_ledger.json`, every candidate in `assets/_probe/<direction>/candidates/`, contact sheet `studio/contact-sheets/asc-style-probe.png`. 21 rows, 40.0 cr.
+
+**`tools/ludo/ludo.py` on ASCENDANT**
+- **The global style append is switched off per entry with `"style": false`** in `tools/ludo/manifest.json`. The code is `if asset.get("style", True): prompt = prompt + ". " + style["image"]` (the `image` kind only). `art_style` still falls back to the global `style["art_style"]` unless the entry sets its own `art_style`, so set both. `edit`, `styled` and `animate` never append. [A-PROBE: all 21 request bodies in the ledger carry the manifest prompt verbatim, and the driver asserted `body["prompt"] == manifest prompt` before every createImage.]
+- ludo.py doesn't fit the probe plan as-is. Its `request_id` is hard-coded to `concurrent-<id>-v<N>`. It always sends `n: 1`. `cutout: true` cuts out every take, not just the pick, so 3 candidates cost 3 cutouts. `fit_megapixel`/`image_size` shell out to `sips`, which only exists on macOS, so `fit: true` breaks on the Linux box. The probe drove the API with ludo.py's `call()` transport (429 backoff, 5xx and OSError retries) and built its own bodies with `asc_…` request ids and `n` = 2–3 per createImage/editImage call. [A-PROBE]
+
+**createImage output by `image_type`**
+- `sprite`, `sprite-vfx` and `ui_asset` come back as **RGBA with the background already transparent**, at about 768 px (768×768, 784×768, 768×784, 800×800), even when the prompt asks for a plain flat mid-grey or black background. `texture` returns opaque RGB 1024×1024, and `asset` returns opaque RGB 864×1152 for `ar_3_4`. [A-PROBE: 42 images]
+  - The removeBackground cutout of a `sprite` pick matched the native alpha to within 1.1–3.9 alpha levels on average. On sprites it is close to a no-op, so decide per class whether that 0.5 cr is needed.
+  - `sprite-vfx` has no black plate to use additively. Flatten it onto black yourself (alpha-composite over `#000`).
+  - `ui_asset` can **key out the panel's own dark centre**. Storybook panel c1 came back with a transparent, mottled centre. Check the alpha of every panel candidate.
+
+**animateSprite (forge)**
+- **`loop: false` still trims the sheet**, and frame 0 isn't guaranteed to be your input. With `frames: 16, frame_size: -9, crop: false, final_image = initial_image`, four 1.5 s requests came back as 1.375 / 1.5 / 1.25 / 1.4375 s. The 1.25 s take (cel v2) started mid-motion, 8 px lower than the base. Gate every sheet on "frame 0 matches the base" before you use it. [A-PROBE]
+- A one-phrase thrust-and-return with `final_image` = base worked in **1 of 4 takes**. The failures: the spear swung overhead and pointed backwards (storybook v2); the figure turned to face left mid-clip even though the prompt says "stays facing right" (tabletop v2); and the clip started mid-motion with no thrust (cel v2). Cel v3 thrusts and returns, but loses the spearhead in frames 4–8. This backs STYLE_BIBLE §4.1: use animateSpriteKeyframes with a middle strike pose for attacks. [A-PROBE]
+- **Pole-arm units don't fit the standard 384 canvas.** A spear held level is about 1.4× the figure's height. With a 240 px figure and feet at (176, 344), the resting spear already reaches x ≈ 351–359, so a thrust leaves the cell (tabletop frames 1–2 touch the right edge). Give pole-arms a wider canvas, or carry the spear vertically in the base pose. [A-PROBE]
+
+**Jobs, queue, budget**
+- `DELETE /assets/jobs/{id}` on a queued job refunds everything (`credits_charged: 0`). **The request_id stays attached to the canceled job**: re-sending the same id returns that canceled job, so bump the version. [A-PROBE: jobs ac3238fa…, b6d53530…]
+- `credits.available` drops by the full hold **when a job is accepted**, not when it finishes. A budget guard should use `balance_before − available` (which already includes in-flight jobs) plus the next call's cost. Adding your own in-flight tally on top counts those jobs twice. The probe's guard did that and falsely blocked a call at 28 + 9 + 4. [A-PROBE]
+- Throughput at 01:25–01:50 ET: 2 jobs ran at once and the rest waited FIFO. Images took about 50 s each once started. Forge 1.5 s sheets took 1–3 min. [A-PROBE]
+
+**Post / gates**
+- Feet anchor for a three-quarter figure: the bottom 6% of the alpha catches only the rear boot. That put the storybook spear 15 px off the 384 canvas, and the queued job was canceled and redone. Use the bbox midpoint of the bottom 15%. [A-PROBE]
+- editImage with the T-ironform block kept the silhouette on 6/6 candidates (alpha IoU 0.96–0.995 against the base, height ±0.4%). It sometimes left the face as flesh (storybook c1), or turned the spear and plume to iron as well (storybook c2, cel c1). [A-PROBE]
+- Forest `texture` from these prompts renders too dark. All 6 candidates have mean L\* 27–30, against STYLE_BIBLE §1.2's 40–78 (forest anchor 46). Their seams already wrap (edge step / inner step 0.75–1.15), so they need a value lift in post or prompt, not a seam fix. [A-PROBE]
