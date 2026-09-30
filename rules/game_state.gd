@@ -63,7 +63,7 @@ func to_dict() -> Dictionary:
 		"rng": rng.to_dict(),
 	}
 
-static func from_dict(data: Dictionary) -> GameState:
+static func from_dict(data: Dictionary, errors = null) -> GameState:
 	var state := GameState.new(data.get("seed_value", 12345))
 	state.current_turn = data.get("current_turn", 0)
 	
@@ -87,9 +87,17 @@ static func from_dict(data: Dictionary) -> GameState:
 		if f.commander_type:
 			all_unit_types[f.commander_type.id] = f.commander_type
 	
+	# Build province_ids lookup
+	var province_ids := {}
+	for p in state.provinces:
+		province_ids[p.id] = true
+	
 	state.armies.clear()
 	for a_data in data.get("armies", []):
-		state.armies.append(Army.from_dict(a_data, all_unit_types))
+		var army = Army.from_dict(a_data, all_unit_types, province_ids, errors)
+		if army == null:
+			return null
+		state.armies.append(army)
 	
 	return state
 
@@ -109,8 +117,12 @@ func deep_copy() -> GameState:
 			all_unit_types[ut.id] = ut
 		if f.commander_type:
 			all_unit_types[f.commander_type.id] = f.commander_type
+	# Build province_ids lookup
+	var province_ids := {}
+	for p in copy.provinces:
+		province_ids[p.id] = true
 	for a in armies:
-		copy.armies.append(Army.from_dict(a.to_dict(), all_unit_types))
+		copy.armies.append(Army.from_dict(a.to_dict(), all_unit_types, province_ids))
 	# Copy RNG state for replay fidelity
 	copy.rng = SeededRNG.from_dict(rng.to_dict())
 	return copy

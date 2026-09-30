@@ -102,50 +102,78 @@ func test_factions_and_units_load_with_exact_ids() -> void:
 	assert_eq(unique_traits.size(), 8, "all 8 trait names are distinct")
 
 
+func _make_nondefault_state() -> GameState:
+	var s := GameState.new(42)
+	s.current_turn = 7
+	for f in s.factions:
+		if f.id == "kingdom":
+			f.gold = 123
+		if f.id == "beasts":
+			f.gold = 77
+	for p in s.provinces:
+		if p.id == "rivermarch":
+			p.owner = "kingdom"
+		if p.id == "bloodfen":
+			p.owner = "beasts"
+	s.armies[0].units[0].current_hp = 3
+	s.armies[1].commander.current_hp = 11
+	s.armies[0].location = "rivermarch"
+	for i in 5:
+		s.roll_for_test()
+	return s
+
 func test_game_state_serialization_roundtrips() -> void:
-	var state1 := GameState.new(42)
-	# Advance RNG to test state serialization
+	var s := _make_nondefault_state()
+	var d := s.to_dict()
+	assert_eq(d["current_turn"], 7)
+	var errs := []
+	var r := GameState.from_dict(d, errs)
+	assert_eq(errs.size(), 0)
+	assert_eq(r.to_dict(), d)
+	assert_eq(r.current_turn, 7)
+	assert_eq(r.factions[0].gold if r.factions[0].id == "kingdom" else r.factions[1].gold, 123)
+	assert_eq(r.factions[1].gold if r.factions[1].id == "beasts" else r.factions[0].gold, 77)
+	assert_eq(r.provinces.filter(func(p): return p.id == "rivermarch")[0].owner, "kingdom")
+	assert_eq(r.provinces.filter(func(p): return p.id == "bloodfen")[0].owner, "beasts")
+	assert_eq(r.armies[0].units[0].current_hp, 3)
+	assert_eq(r.armies[1].commander.current_hp, 11)
+	assert_eq(r.armies[0].location, "rivermarch")
 	for i in 5:
-		state1.roll_for_test()
-	var dict := state1.to_dict()
-	var state2 := GameState.from_dict(dict)
-	var dict2 := state2.to_dict()
-	
-	assert_eq(state1.provinces.size(), state2.provinces.size())
-	assert_eq(state1.factions.size(), state2.factions.size())
-	assert_eq(state1.armies.size(), state2.armies.size())
-	assert_eq(state1.current_turn, state2.current_turn)
-	assert_eq(state1.seed_value, state2.seed_value)
-	assert_eq(dict.rng, dict2.rng, "rng state roundtrips exactly")
-	
-	# Next rolls match after roundtrip (replay fidelity)
-	for i in 5:
-		assert_eq(state1.roll_for_test(), state2.roll_for_test(), "post-roundtrip RNG sequence matches")
-	
-	# Check deep equality on key fields
-	assert_eq(state2.provinces[0].id, "crownkeep")
-	assert_eq(state2.factions[0].id, "kingdom")
+		assert_eq(r.roll_for_test(), s.roll_for_test())
 
 
 func test_deep_copy_is_independent() -> void:
-	var state1 := GameState.new(123)
-	# Advance RNG
-	for i in 3:
-		state1.roll_for_test()
-	var copy := state1.deep_copy()
+	var s := _make_nondefault_state()
+	var c := s.deep_copy()
+	assert_eq(c.to_dict(), s.to_dict())
+	assert_eq(c.current_turn, 7)
+	assert_eq(c.factions[0].gold if c.factions[0].id == "kingdom" else c.factions[1].gold, 123)
+	assert_eq(c.factions[1].gold if c.factions[1].id == "beasts" else c.factions[0].gold, 77)
+	assert_eq(c.provinces.filter(func(p): return p.id == "rivermarch")[0].owner, "kingdom")
+	assert_eq(c.provinces.filter(func(p): return p.id == "bloodfen")[0].owner, "beasts")
+	assert_eq(c.armies[0].units[0].current_hp, 3)
+	assert_eq(c.armies[1].commander.current_hp, 11)
+	assert_eq(c.armies[0].location, "rivermarch")
 	
-	# Modify original
-	state1.provinces[0].owner = "modified"
-	state1.factions[0].gold = 999
-	state1.armies[0].location = "nowhere"
+	c.factions[0 if c.factions[0].id == "kingdom" else 1].gold = 1
+	c.provinces.filter(func(p): return p.id == "rivermarch")[0].owner = ""
+	c.armies[0].units[0].current_hp = 1
+	c.armies[0].location = "crownkeep"
 	
-	assert_ne(state1.provinces[0].owner, copy.provinces[0].owner)
-	assert_ne(state1.factions[0].gold, copy.factions[0].gold)
-	assert_ne(state1.armies[0].location, copy.armies[0].location)
+	assert_eq(s.factions[0].gold if s.factions[0].id == "kingdom" else s.factions[1].gold, 123)
+	assert_eq(s.provinces.filter(func(p): return p.id == "rivermarch")[0].owner, "kingdom")
+	assert_eq(s.armies[0].units[0].current_hp, 3)
+	assert_eq(s.armies[0].location, "rivermarch")
 	
-	# RNG state copied independently
-	for i in 5:
-		assert_eq(state1.roll_for_test(), copy.roll_for_test(), "deep_copy shares RNG sequence")
+	# Mutate s, check c unchanged
+	s.factions[0 if s.factions[0].id == "kingdom" else 1].gold = 999
+	s.provinces.filter(func(p): return p.id == "rivermarch")[0].owner = "modified"
+	s.armies[0].units[0].current_hp = 99
+	s.armies[0].location = "nowhere"
+	assert_eq(c.factions[0].gold if c.factions[0].id == "kingdom" else c.factions[1].gold, 1)
+	assert_eq(c.provinces.filter(func(p): return p.id == "rivermarch")[0].owner, "")
+	assert_eq(c.armies[0].units[0].current_hp, 1)
+	assert_eq(c.armies[0].location, "crownkeep")
 
 
 func test_seeded_rng_determinism() -> void:
@@ -186,6 +214,31 @@ func test_seeded_rng_determinism() -> void:
 	var gs2 := GameState.new(777)
 	var roll2 := gs2.roll_for_test()
 	assert_eq(roll1, roll2, "GameState seeded identically")
+
+func test_unknown_ids_are_rejected() -> void:
+	var gs := GameState.new(1)
+	var types := {}
+	for f in gs.factions:
+		for ut in f.unit_types:
+			types[ut.id] = ut
+		if f.commander_type:
+			types[f.commander_type.id] = f.commander_type
+	var errs := []
+	assert_eq(Unit.from_dict({"type_id": "dragon", "current_hp": 5, "owner": "kingdom"}, types, errs), null)
+	assert_true(errs[0].contains("dragon"))
+	errs.clear()
+	var bad_army_dict := {"owner": "kingdom", "location": "atlantis", "units": [], "commander": {}}
+	assert_eq(Army.from_dict(bad_army_dict, types, {"rivermarch": true}, errs), null)
+	assert_true(errs[0].contains("atlantis"))
+	errs.clear()
+	var bad_unit_army := {"owner": "kingdom", "location": "rivermarch", "units": [{"type_id": "dragon", "current_hp": 5, "owner": "kingdom"}], "commander": {}}
+	assert_eq(Army.from_dict(bad_unit_army, types, {"rivermarch": true}, errs), null)
+	assert_true(errs.back().contains("dragon"))
+	errs.clear()
+	var bad_gs_dict := gs.to_dict()
+	bad_gs_dict.armies[0].location = "atlantis"
+	assert_eq(GameState.from_dict(bad_gs_dict, errs), null)
+	assert_true(errs[0].contains("atlantis"))
 
 
 func test_every_stat_has_description() -> void:

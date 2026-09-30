@@ -28,15 +28,29 @@ func to_dict() -> Dictionary:
 		"commander": cmd_dict,
 	}
 
-static func from_dict(data: Dictionary, all_unit_types: Dictionary) -> Army:
+static func from_dict(data: Dictionary, all_unit_types: Dictionary, province_ids: Dictionary, errors = null) -> Army:
+	var location = data.get("location", "")
+	if not province_ids.has(location):
+		var msg = "unknown province '%s'" % location
+		if errors is Array:
+			errors.append(msg)
+		else:
+			push_error(msg)
+		return null
 	var a := Army.new()
 	a.owner = data.get("owner", "")
-	a.location = data.get("location", "")
+	a.location = location
 	
 	for u_data in data.get("units", []):
-		a.units.append(Unit.from_dict(u_data, all_unit_types))
+		var unit = Unit.from_dict(u_data, all_unit_types, errors)
+		if unit == null:
+			return null
+		a.units.append(unit)
 	
 	if data.has("commander") and not data.commander.is_empty():
-		a.commander = Unit.from_dict(data.commander, all_unit_types)
+		var cmd = Unit.from_dict(data.commander, all_unit_types, errors)
+		if cmd == null:
+			return null
+		a.commander = cmd
 	
 	return a
