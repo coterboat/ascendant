@@ -5,7 +5,7 @@ Every milestone ends in something Alex can play. Alex approves each milestone's 
 ---
 
 ## milestone 1: playable skeleton
-Status: **DRAFT scope, awaiting Alex's approval.**
+Status: **Scope APPROVED by Alex, 2026-09-30. In progress.**
 
 ### goal
 Two players on one computer take simultaneous turns on a small province map, move and recruit armies, and fight battles that resolve together. Every battle and turn outcome is explained in plain language. There's no magic, no rulers or mandates, and no animation yet. This milestone proves the turn engine and the readability promise.
