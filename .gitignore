@@ -1,0 +1,18 @@
+# Godot (same lines as the t1-scaffold .gitignore in #11)
+.godot/
+.import/
+*.translation
+build/
+*.tmp
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Asset pipeline (#10): candidates and masters stay local, never committed
+**/candidates/
+__pycache__/
+*.pyc
+
+# Secrets (LUDO_API_KEY lives in .env / .env.local)
+.env*

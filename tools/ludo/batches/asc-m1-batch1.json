@@ -1,0 +1,254 @@
+{
+ "style": {
+  "image": "",
+  "art_style": "Cel-Shaded",
+  "note": "Global style append is unused: every entry sets style:false and carries the full STYLE_BIBLE §6 block in its prompt."
+ },
+ "batch": "asc-m1-batch1",
+ "issue": 10,
+ "assets": [
+  {
+   "id": "asc_m1_terrain_forest",
+   "out": "assets/terrain/forest.webp",
+   "prompt": "Seamless tileable top-down cel-shaded map texture in bright sunlit daylight: light mid-tone colours, flat saturated colour with simple hard-edged shape motifs in two close light tones, soft pale highlights, low contrast within the texture, even flat lighting, uniform density from edge to edge, pattern continues across all four edges. Subject: Temperate forest seen from directly above, bold rounded tree canopies in bright sunlit leaf green with light yellow-green highlights, narrow mid-green gaps between the canopies.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "texture",
+   "augment": false,
+   "kind": "image",
+   "perspective": "Top-Down",
+   "aspect": "ar_1_1",
+   "request_ids": [
+    "asc_m1_terrain_forest_v1",
+    "asc_m1_terrain_forest_v2"
+   ],
+   "pick": "asc_m1_terrain_forest_v2 c1",
+   "status": "in-pr"
+  },
+  {
+   "id": "asc_m1_terrain_plains",
+   "out": "assets/terrain/plains.webp",
+   "prompt": "Seamless tileable top-down cel-shaded map texture in bright sunlit daylight: light mid-tone colours, flat saturated colour with simple hard-edged shape motifs in two close light tones, soft pale highlights, low contrast within the texture, even flat lighting, uniform density from edge to edge, pattern continues across all four edges. Subject: Open grassland plains seen from directly above, fresh light yellow-green grass with soft even texture, scattered tiny pale wildflower dots and faint trodden paths.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "texture",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/terrain.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields",
+   "request_ids": [
+    "asc_m1_terrain_plains_v1",
+    "asc_m1_terrain_plains_v2",
+    "asc_m1_terrain_plains_v3",
+    "asc_m1_terrain_plains_v11",
+    "asc_m1_terrain_plains_v4",
+    "asc_m1_terrain_plains_v5",
+    "asc_m1_terrain_plains_v6"
+   ],
+   "status": "spec (not produced: Ludo outage)"
+  },
+  {
+   "id": "asc_m1_terrain_hills",
+   "out": "assets/terrain/hills.webp",
+   "prompt": "Seamless tileable top-down cel-shaded map texture in bright sunlit daylight: light mid-tone colours, flat saturated colour with simple hard-edged shape motifs in two close light tones, soft pale highlights, low contrast within the texture, even flat lighting, uniform density from edge to edge, pattern continues across all four edges. Subject: Rolling hills seen from directly above, sunlit warm ochre and tan grassy slopes with soft curved ridge lines and a few small pale grey rock outcrops.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "texture",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/terrain.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields",
+   "request_ids": [
+    "asc_m1_terrain_hills_v1",
+    "asc_m1_terrain_hills_v2",
+    "asc_m1_terrain_hills_v3",
+    "asc_m1_terrain_hills_v4",
+    "asc_m1_terrain_hills_v5",
+    "asc_m1_terrain_hills_v6"
+   ],
+   "status": "spec (not produced: Ludo outage)"
+  },
+  {
+   "id": "asc_m1_banner_kingdom",
+   "out": "assets/banners/kingdom.webp",
+   "prompt": "Cel-shaded heraldic banner: one tall cloth banner hanging from a short horizontal crossbar, one bold invented emblem in the centre readable at 48 pixels, flat saturated colours with one hard shadow tone, thick clean dark outline, viewed straight on, single banner centred with wide empty margin, plain flat mid-grey background. Subject: Banner of a disciplined human kingdom, royal-blue cloth with a white border and a straight lower edge cut into three points, a golden crown above a rising sun as the central emblem.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "asset",
+   "augment": false,
+   "kind": "install",
+   "source_file": "assets/_anchors/banner_cut.png",
+   "note": "probe cel banner c2 cutout installed for 0 cr (passed 48 px + greyscale)",
+   "request_ids": [],
+   "pick": "banner_cut.png",
+   "status": "in-pr"
+  },
+  {
+   "id": "asc_m1_banner_beasts",
+   "out": "assets/banners/beasts.webp",
+   "prompt": "Cel-shaded heraldic banner: one tall cloth banner hanging from a short horizontal crossbar, one bold invented emblem in the centre readable at 48 pixels, flat saturated colours with one hard shadow tone, thick clean dark outline, viewed straight on, single banner centred with wide empty margin, plain flat mid-grey background. Subject: Banner of a wild beast tribe, ochre hide cloth with a crimson border and a ragged torn lower edge hung with small bones, a bone-white horned beast skull wreathed in green thorns as the central emblem.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "asset",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/banner_grey.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields",
+   "cutout": true,
+   "request_ids": [
+    "asc_m1_banner_beasts_v1",
+    "asc_m1_banner_beasts_v2",
+    "asc_m1_banner_beasts_v3",
+    "asc_m1_banner_beasts_v4",
+    "asc_m1_banner_beasts_v5"
+   ],
+   "status": "spec (not produced: Ludo outage)"
+  },
+  {
+   "id": "asc_m1_portrait_kingdom_spearmen",
+   "out": "assets/portraits/kingdom/spearmen.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: A disciplined human spearman of the Aurel Crown, young weathered face, open-faced steel helm with a short blue plume, royal-blue tabard with gold trim over steel mail, the upright shaft of a long spear resting against his right shoulder, steady determined expression, eyes looking at the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "image",
+   "perspective": "Any perspective",
+   "aspect": "ar_3_4",
+   "request_ids": [
+    "asc_m1_portrait_kingdom_spearmen_v1"
+   ],
+   "pick": "asc_m1_portrait_kingdom_spearmen_v1 c2",
+   "status": "in-pr"
+  },
+  {
+   "id": "asc_m1_portrait_kingdom_crossbowmen",
+   "out": "assets/portraits/kingdom/crossbowmen.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: A human crossbowman of the Aurel Crown, sharp-eyed older woman, padded blue-and-white gambeson, brimmed steel kettle hat, a loaded crossbow held across her chest with both hands, calm focused expression, eyes narrowed toward the left.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields",
+   "request_ids": [
+    "asc_m1_portrait_kingdom_crossbowmen_v1",
+    "asc_m1_portrait_kingdom_crossbowmen_v2",
+    "asc_m1_portrait_kingdom_crossbowmen_v3",
+    "asc_m1_portrait_kingdom_crossbowmen_v4",
+    "asc_m1_portrait_kingdom_crossbowmen_v5"
+   ],
+   "status": "spec (not produced: Ludo outage)"
+  },
+  {
+   "id": "asc_m1_portrait_kingdom_knights",
+   "out": "assets/portraits/kingdom/knights.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: A mounted human knight of the Aurel Crown, the rider with the armoured head of his white warhorse beside his shoulder, polished steel plate with gold trim and a royal-blue surcoat, great helm with the visor raised showing a proud face, a lance held upright in his right hand, eyes on the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields",
+   "request_ids": [
+    "asc_m1_portrait_kingdom_knights_v1"
+   ],
+   "pick": "asc_m1_portrait_kingdom_knights_v1 c2",
+   "status": "in-pr"
+  },
+  {
+   "id": "asc_m1_portrait_kingdom_knight_captain",
+   "out": "assets/portraits/kingdom/knight_captain.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: The knight-captain commander of the Aurel Crown, grizzled bearded veteran, ornate steel plate with gold filigree, royal-blue cloak fastened with a gold crown-and-sun clasp, a sword held hilt-up before his chest in his right hand, stern confident expression, eyes on the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields",
+   "request_ids": [
+    "asc_m1_portrait_kingdom_knight_captain_v1"
+   ],
+   "pick": "asc_m1_portrait_kingdom_knight_captain_v1 c3",
+   "status": "in-pr"
+  },
+  {
+   "id": "asc_m1_portrait_beasts_tuskers",
+   "out": "assets/portraits/beasts/tuskers.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: A tusker warrior of the Thornmane Clans, a hulking boar-headed beastman with long curved tusks and bristly tawny fur, crimson war paint stripes, moss-green leather harness with bone plates, a heavy stone-headed club resting on his right shoulder, fierce snarling expression, eyes glaring at the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields",
+   "request_ids": [
+    "asc_m1_portrait_beasts_tuskers_v1"
+   ],
+   "pick": "asc_m1_portrait_beasts_tuskers_v1 c2",
+   "status": "in-pr"
+  },
+  {
+   "id": "asc_m1_portrait_beasts_fangthrowers",
+   "out": "assets/portraits/beasts/fangthrowers.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: A fangthrower of the Thornmane Clans, a lean wolf-headed beastwoman with grey-brown fur and pointed ears, crimson war paint across the muzzle, moss-green leather wraps and a bone necklace, a bundle of bone-tipped javelins held over her left shoulder in her left hand, alert keen expression, eyes looking to the left.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait_beasts.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields",
+   "request_ids": [
+    "asc_m1_portrait_beasts_fangthrowers_v1",
+    "asc_m1_portrait_beasts_fangthrowers_v2",
+    "asc_m1_portrait_beasts_fangthrowers_v3",
+    "asc_m1_portrait_beasts_fangthrowers_v4",
+    "asc_m1_portrait_beasts_fangthrowers_v5"
+   ],
+   "status": "spec (not produced: Ludo outage)"
+  },
+  {
+   "id": "asc_m1_portrait_beasts_war_bear",
+   "out": "assets/portraits/beasts/war_bear.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: A war bear of the Thornmane Clans, a huge brown bear with moss and small thorny vines growing in its shaggy fur, bone plates strapped to its shoulders, crimson war-paint handprints on its brow, mouth open in a roar, eyes locked on the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait_beasts.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields",
+   "request_ids": [
+    "asc_m1_portrait_beasts_war_bear_v1",
+    "asc_m1_portrait_beasts_war_bear_v2",
+    "asc_m1_portrait_beasts_war_bear_v3",
+    "asc_m1_portrait_beasts_war_bear_v4"
+   ],
+   "status": "spec (not produced: Ludo outage)"
+  },
+  {
+   "id": "asc_m1_portrait_beasts_warchief",
+   "out": "assets/portraits/beasts/warchief.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: The warchief commander of the Thornmane Clans, a towering lion-maned beastman with a great tawny mane braided with bones and thorns, crimson war paint, a cloak of moss-green hide, a horned-skull totem staff held upright in his right hand, proud commanding expression, eyes on the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait_beasts.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields",
+   "request_ids": [
+    "asc_m1_portrait_beasts_warchief_v1",
+    "asc_m1_portrait_beasts_warchief_v2",
+    "asc_m1_portrait_beasts_warchief_v3",
+    "asc_m1_portrait_beasts_warchief_v4"
+   ],
+   "status": "spec (not produced: Ludo outage)"
+  }
+ ]
+}
