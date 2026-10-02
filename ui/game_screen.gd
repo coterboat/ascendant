@@ -44,6 +44,7 @@ extends Control
 ##   open_turn_report()   the Turn report button: the last resolved turn's report.
 ##   open_codex(key)      the Codex button, a report's "?", a right-click on a linked number.
 ##   show_results()       the Results button once the game is over: the victory screen again.
+##   open_ruler_panel()   the Ruler button (M2-6, games with rulers only): the map's ruler panel.
 ##   session              the GameSession being played. Read it; act through the API above.
 ##   computer             the AISeat playing the computer seats (it has none in a hotseat game).
 ##   next_scene           the screen this one switched to (SceneFlow), e.g. the title after "New game".
@@ -64,6 +65,7 @@ var end_turn_button: Button
 var report_button: Button
 var codex_button: Button
 var results_button: Button  # only once the game is over
+var ruler_button: Button  # M2-6: opens the ruler panel; only in a game with rulers
 var report_overlay: Control
 var report_panel: TurnReportPanel
 var battle_viewer: BattleReportViewer
@@ -191,6 +193,12 @@ func open_codex(key: String = "") -> void:
 	_bind()
 	_raise(codex)
 	codex.open(key)
+
+
+## The Ruler button (M2-6): the map's ruler panel, your ruler and the enemy's, with the sacrifice dialog.
+func open_ruler_panel() -> void:
+	_bind()
+	map.open_ruler_panel()
 
 
 ## The victory screen again (the Results button after "View the map").
@@ -398,6 +406,8 @@ func _update_hud() -> void:
 		report_help = "Nothing has happened yet. The report of each turn appears here once every player has ended the turn."
 	report_button.tooltip_text = TooltipText.plain("Turn report", report_help)
 	results_button.visible = session != null and session.is_over()
+	ruler_button.visible = session != null and map.state != null and RulerRules.has_rulers(map.state) \
+		and session.phase() != GameSession.Phase.INVALID
 	if session == null or map.state == null or session.phase() == GameSession.Phase.INVALID:
 		return
 	map.turn_label.text = "Turn %d" % session.turn_number()
@@ -506,6 +516,11 @@ func _build_hud() -> void:
 	results_button.add_theme_color_override("font_color", UiPalette.GILT)
 	results_button.visible = false
 	map.add_top_bar_control(results_button)
+	ruler_button = _hud_button("RulerButton", "Ruler", open_ruler_panel)
+	ruler_button.tooltip_text = TooltipText.plain("Ruler", "Your ruler and the enemy ruler, every number explained, with the mandates each side has and how succession works. Builds are public. Your living ruler can sacrifice power for a new mandate here.")
+	ruler_button.visible = false
+	CodexLink.attach(ruler_button, "ruler", open_codex)
+	map.add_top_bar_control(ruler_button)
 	report_button = _hud_button("TurnReportButton", "Turn report", open_turn_report)
 	map.add_top_bar_control(report_button)
 	codex_button = _hud_button("CodexButton", "Codex", open_codex.bind(""))

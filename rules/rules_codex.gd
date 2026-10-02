@@ -84,7 +84,7 @@ const ENTRIES := {
 	},
 	"phase_order": {
 		"title": "How a turn resolves",
-		"text": "Everyone gives orders first. Then the whole turn resolves at once, always in this order: 1. orders are checked, 2. movement, 3. battles, 4. capture, 5. recruitment, 6. income. The same orders and seed always give the same result.",
+		"text": "Everyone gives orders first. Then the whole turn resolves at once, always in this order: 1. sacrifice: each ruler's Sacrifice order is checked and applied, faction by faction, so its new mandate already counts this turn; 2. orders: every other order is checked against the state after the sacrifices; 3. movement; 4. battles; 5. capture, then Sworn Vassals; 6. recruitment; 7. income; 8. rulers: Mending Light heals, rulers heal, then successors who are due arrive. Without rulers, steps 1 and 8 have nothing to do. The same orders and seed always give the same result.",
 	},
 	"orders": {
 		"title": "Orders",
@@ -263,11 +263,11 @@ const ENTRIES := {
 	},
 	"mandates": {
 		"title": "Mandates",
-		"text": "Mandates are faction-wide traits bought with ruler power. Each faction can take the six shared mandates (Iron Discipline, Drilled Ranks, Veteran Levies, Heavy Tithes, Muster Grounds and Sworn Vassals) and two of its own: Royal Armories and King's Roads for the Aurel Crown, Blood Frenzy and Feast of Victory for the Thornmane Clans. They cost 2 to 4 power, each can be taken once, and together they must fit in the pool of 10. Mandates work from turn 1 and never go away, even when the ruler dies. Regular units means a faction's roster units, not commanders or rulers; fighters means units, commanders and the ruler.",
+		"text": "Mandates are faction-wide traits bought with ruler power. Each faction can take the six shared mandates (Iron Discipline, Drilled Ranks, Veteran Levies, Heavy Tithes, Muster Grounds and Sworn Vassals) and two of its own: Royal Armories and King's Roads for the Aurel Crown, Blood Frenzy and Feast of Victory for the Thornmane Clans. They cost 2 to 4 power, each can be taken once, and together they must fit in the pool of 10. Mandates work from turn 1, or from the turn a sacrifice buys them, and never go away, even when the ruler dies. Regular units means a faction's roster units, not commanders or rulers; fighters means units, commanders and the ruler.",
 	},
 	"sacrifice": {
 		"title": "Sacrifice",
-		"text": "During the game a living ruler can give up kept power for a new mandate with a Sacrifice order. It costs the mandate's price plus 1, at most one per turn, and needs that much kept power left. It happens first in the turn, so it already counts in that turn's moves, battles, recruits and income, and the ruler's stats and ability rank drop at once. The order shows everything it changes before you confirm, and the other player learns of it from the turn report.",
+		"text": "During the game a living ruler can give up kept power for a new mandate with a Sacrifice order: open the ruler panel (Ruler in the top bar) and press Sacrifice for a mandate. It costs the mandate's price plus 1, so Royal Armories costs 5. The mandate must be on your faction's list and not yours yet, the ruler must be alive and keep at least that much power, and you can give one Sacrifice order per turn. It resolves first in the turn, before any other order is checked, so the new mandate already counts in that turn's moves, battles, recruits and income: King's Roads bought this way allows a road move the same turn. Kept power drops for good, and with it the ruler's hit points, attack, defense and ability rank; its current hit points drop by as much as its maximum, never below 1. Your other orders are checked as if the sacrifice had already happened. If you cancel it, any order that relied on it is removed, and your orders list says why. Before you confirm, the dialog shows every number of yours it changes, before and after, and your queued attacks fought again. The other player learns of it from the turn report.",
 	},
 	"build": {
 		"title": "Builds",

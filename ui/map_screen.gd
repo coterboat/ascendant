@@ -14,6 +14,8 @@ extends Control
 ##   select_army(id)                       select an army (and its province)
 ##   focus_province(id)                    select a province and flash it to draw the eye
 ##   preview_move(id)                      hover preview: what clicking `id` would order for the selected army
+##   open_ruler_panel(), close_ruler_panel()   the ruler panel (M2-6): your ruler and the enemy's, read-only
+##   open_sacrifice_dialog(mandate_id)     the sacrifice dialog over it; queue_sacrifice(mandate_id) queues one
 ##   signal province_selected(id), signal army_selected(id), signal orders_changed
 ##   signal codex_requested(key)           a linked number or term was right-clicked (or F1)
 ##
@@ -56,6 +58,8 @@ var arrow_layer: Control  # drawn above the regions: one arrow per queued move
 var hover_panel: PanelContainer  # hover preview bar at the bottom of the map
 var hover_label: Label
 var own_codex: CodexPanel = null  # map preview only: opened when no game screen listens for codex_requested
+var ruler_panel: RulerPanel = null  # M2-6: opened by open_ruler_panel(), over the map and the side panel
+var sacrifice_dialog: SacrificeDialog = null  # M2-6: opened from the ruler panel
 
 # Scene nodes, looked up by _bind() rather than @onready so the screen also works before it is in
 # the tree (tests build it headless, and callers may set_state() before adding it).
@@ -116,6 +120,7 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 		selected_army_id = ""
 	_update_map_marks()
 	_show_details()
+	_follow_ruler_panel()
 
 
 func select_province(province_id: String) -> void:
@@ -221,6 +226,93 @@ func _input(event: InputEvent) -> void:
 	if not key.is_empty():
 		get_viewport().set_input_as_handled()
 		request_codex(key)
+
+
+# --- the ruler panel and the sacrifice dialog (M2-6, #34) -----------------------------------------
+
+## Opens the ruler panel over the map: the viewing faction's ruler with every number explained, its
+## mandates and the sacrifice button, beside the enemy ruler (read-only). Only in a game with rulers.
+func open_ruler_panel() -> void:
+	if state == null or not RulerRules.has_rulers(state):
+		return
+	if ruler_panel == null:
+		ruler_panel = RulerPanel.new()
+		ruler_panel.codex_requested.connect(request_codex)
+		ruler_panel.sacrifice_requested.connect(open_sacrifice_dialog.bind(""))
+		ruler_panel.closed.connect(close_sacrifice_dialog)
+		add_child(ruler_panel)
+	clear_preview()
+	move_child(ruler_panel, get_child_count() - 1)
+	ruler_panel.show_for(state, viewing_faction_id, orders if state.find_faction(viewing_faction_id) != null else null)
+	_raise_own_codex()
+
+
+func close_ruler_panel() -> void:
+	close_sacrifice_dialog()
+	if ruler_panel != null and ruler_panel.visible:
+		ruler_panel.close()
+
+
+## Opens the sacrifice dialog over the ruler panel, previewing `mandate_id` (or the first one possible).
+func open_sacrifice_dialog(mandate_id: String = "") -> void:
+	if orders == null or state == null or state.find_faction(viewing_faction_id) == null:
+		return
+	if sacrifice_dialog == null:
+		sacrifice_dialog = SacrificeDialog.new()
+		sacrifice_dialog.codex_requested.connect(request_codex)
+		sacrifice_dialog.confirmed.connect(_on_sacrifice_confirmed)
+		add_child(sacrifice_dialog)
+	move_child(sacrifice_dialog, get_child_count() - 1)
+	sacrifice_dialog.show_for(orders, mandate_id)
+	_raise_own_codex()
+
+
+func close_sacrifice_dialog() -> void:
+	if sacrifice_dialog != null and sacrifice_dialog.visible:
+		sacrifice_dialog.close()
+
+
+## Queues a Sacrifice order for the viewing faction. Returns "" or the rules' reason (also shown in the
+## panel). Orders the sacrifice made fail are removed and listed in the status line.
+func queue_sacrifice(mandate_id: String) -> String:
+	var reason := orders.queue_sacrifice(mandate_id)
+	if reason.is_empty():
+		status_text = "Sacrifice ordered: %s. It resolves first when the turn ends, so your other orders already count on it; click the cross to cancel." % \
+			RulerRules.mandate_name(mandate_id)
+		status_text += _removed_text(orders.last_removed())
+	else:
+		status_text = reason
+	_orders_changed()
+	return reason
+
+
+func _on_sacrifice_confirmed(mandate_id: String) -> void:
+	queue_sacrifice(mandate_id)
+
+
+## " Removed, because they no longer pass: ..." for a list of removed-order lines, "" for none.
+func _removed_text(lines: Array) -> String:
+	if lines.is_empty():
+		return ""
+	return " Also removed, because they relied on what changed: %s" % " ".join(lines)
+
+
+## Keeps the ruler panel in step with set_state(): closed when the map changes player or turn, rebuilt
+## otherwise.
+func _follow_ruler_panel() -> void:
+	if ruler_panel == null or not ruler_panel.visible:
+		return
+	if ruler_panel.viewing_faction_id != viewing_faction_id or ruler_panel.state == null \
+			or ruler_panel.state.current_turn != state.current_turn or not RulerRules.has_rulers(state):
+		close_ruler_panel()
+		return
+	ruler_panel.show_for(state, viewing_faction_id, orders if state.find_faction(viewing_faction_id) != null else null)
+
+
+## In the map preview the map's own codex sits above the panels it opens from.
+func _raise_own_codex() -> void:
+	if own_codex != null:
+		move_child(own_codex, get_child_count() - 1)
 
 
 ## Selects a province and flashes its region so the eye finds it (e.g. from a turn report line).
@@ -392,7 +484,7 @@ func change_via(index: int) -> void:
 
 func cancel_order(index: int) -> void:
 	var reason := orders.cancel(index)
-	status_text = reason if not reason.is_empty() else "Order cancelled."
+	status_text = reason if not reason.is_empty() else "Order cancelled." + _removed_text(orders.last_removed())
 	_orders_changed()
 
 
@@ -402,6 +494,8 @@ func _orders_changed() -> void:
 	clear_preview()
 	_update_map_marks()
 	_show_details()
+	if ruler_panel != null and ruler_panel.visible:
+		ruler_panel.refresh()  # a queued or cancelled sacrifice shows there
 	orders_changed.emit()
 
 
@@ -699,6 +793,16 @@ func _add_army(a: Army) -> void:
 		header.tooltip_text = RulerPanel.summary(state, a) + "\n\nClick to select this army."
 		CodexLink.attach(header, "ruler_army", request_codex)
 		RulerPanel.fill(box, state, a, request_codex)
+		var open := Button.new()
+		open.name = "OpenRulerPanel"
+		open.text = "Ruler panel: both rulers, mandates and sacrifice"
+		open.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		open.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		open.focus_mode = Control.FOCUS_NONE
+		open.tooltip_text = TooltipText.plain("Ruler panel", "Every number of your ruler and the enemy's, explained, with the mandates each side has. Your living ruler can sacrifice power for a new mandate there.")
+		CodexLink.attach(open, "ruler", request_codex)
+		open.pressed.connect(open_ruler_panel)
+		box.add_child(open)
 		return
 
 	var unit_breakdown := Breakdown.army_units(state, a.id)

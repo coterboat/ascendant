@@ -43,9 +43,10 @@ extends RefCounted
 enum Phase { ORDERS, HANDOFF, GAME_OVER, INVALID }
 
 const PHASE_NAMES := ["orders", "handoff", "game_over", "invalid"]
-## Report phases in display order: the resolver's phases, then the victory event. "rulers" (M2) only
-## has events in a game with rulers: healing and successors (TurnResolver._rulers_phase).
-const REPORT_PHASES := ["orders", "movement", "battles", "capture", "recruitment", "income", "rulers", "victory"]
+## Report phases in display order: the resolver's phases, then the victory event. "sacrifice" and
+## "rulers" (M2) only have events in a game with rulers: sacrifices (TurnResolver._sacrifice_phase), and
+## healing and successors (TurnResolver._rulers_phase).
+const REPORT_PHASES := ["sacrifice", "orders", "movement", "battles", "capture", "recruitment", "income", "rulers", "victory"]
 const BATTLE_TYPES := ["battle", "border_battle"]
 ## RulesCodex entries this flow links to (handoff screen, victory screen, final report).
 const CODEX_KEYS := ["hotseat", "handoff", "victory", "simultaneous_capture", "computer_opponent"]
@@ -68,6 +69,7 @@ var _victory := {}
 var _setup_errors: Array = []
 var _start_builds := {}  # faction id -> RulerRules.build_of at the start; {} in a game without rulers
 var _computer := {}  # faction id -> level, for the seats the computer plays
+var _removed: Array = []  # M2-6: texts of the orders the last queue_order / cancel_order removed
 
 
 func _init(state: GameState = null, players: Array = [], game_seed: int = 0, battle_resolver: BattleResolver = null,
@@ -218,6 +220,11 @@ func describe_order(faction_id: String, order) -> String:
 		if order.is_with_ruler():  # Warband Muster (M2-4)
 			return "Recruit %s with %s for %d gold." % [ut.name, RulerRules.current_name(_state, faction_id), price]
 		return "Recruit %s at %s for %d gold." % [ut.name, TurnResolver._province_name(_state, faction.capital), price]
+	if order is SacrificeOrder:  # M2-6
+		var mid: String = order.mandate_id
+		return "Sacrifice: %s gives up %d power for %s (%d, +%d for a mid-game sacrifice)." % [
+			RulerRules._cap(RulerRules.current_name(_state, faction_id)), RulerRules.sacrifice_cost(mid),
+			RulerRules.mandate_name(mid), RulerRules.mandate_cost(mid), MandateData.SACRIFICE_PREMIUM]
 	return "An order this game does not know."
 
 
@@ -295,12 +302,30 @@ func record() -> Dictionary:
 
 # --- actions --------------------------------------------------------------------------------------
 
-## Queues an order for the current player. "" when accepted, otherwise why it was rejected.
+## Queues an order for the current player. "" when accepted, otherwise why it was rejected. A Sacrifice
+## order can make other queued orders fail (fewer recruits with the Ninth Fang at a lower ability rank):
+## they are removed, and removed_orders() says which and why.
 func queue_order(order) -> String:
+	_removed = []
 	var why := _not_ordering("give orders")
 	if not why.is_empty():
 		return why
-	return _books[current_player()].submit(_state, current_player(), order)
+	var book: OrderBook = _books[current_player()]
+	why = book.submit(_state, current_player(), order)
+	_removed = book.last_dropped().map(func(d): return String(d.text))
+	return why
+
+
+## Queues a Sacrifice order (M2-6, design/M2_RULER.md §2.4) for the current player: the ruler gives up
+## power for `mandate_id`. "" when accepted, otherwise why it was rejected.
+func queue_sacrifice(mandate_id: String) -> String:
+	return queue_order(SacrificeOrder.new(mandate_id))
+
+
+## Plain lines for the orders the last queue_order or cancel_order removed because they no longer
+## pass ("Road move to Westwatch removed: you no longer have King's Roads."); [] when none were.
+func removed_orders() -> Array:
+	return _removed.duplicate()
 
 
 func queue_move(army_id: String, to: String) -> String:
@@ -311,8 +336,11 @@ func queue_recruit(unit_type_id: String) -> String:
 	return queue_order(RecruitOrder.new(unit_type_id))
 
 
-## Withdraws the current player's order at `index` (0-based, as in current_orders()).
+## Withdraws the current player's order at `index` (0-based, as in current_orders()). The other orders
+## are then checked again (M2-6): cancelling a sacrifice removes the orders that relied on it, and
+## removed_orders() says which and why.
 func cancel_order(index: int) -> String:
+	_removed = []
 	var why := _not_ordering("cancel orders")
 	if not why.is_empty():
 		return why
@@ -321,7 +349,7 @@ func cancel_order(index: int) -> String:
 	if index < 0 or index >= count:
 		return "There is no order number %d to cancel. You have %d %s queued." % [index + 1, count,
 			"order" if count == 1 else "orders"]
-	_books[fid].remove(fid, index)
+	_removed = _books[fid].cancel(_state, fid, index).map(func(d): return String(d.text))
 	return ""
 
 

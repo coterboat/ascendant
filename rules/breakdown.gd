@@ -260,6 +260,81 @@ static func unit_stat(state: GameState, faction_id: String, unit_type_id: String
 	return _coded(_make("%s of %s" % [label, us.name], desc, lines, label, us[stat]), "mandates")
 
 
+# --- mid-game sacrifice and succession countdown (M2-6, #34) ---------------------------------------
+
+## What a mandate costs by sacrifice (§2.4): "Royal Armories by sacrifice 5 = price 4 + 1 for a
+## mid-game sacrifice".
+static func sacrifice_cost(mandate_id: String) -> Dictionary:
+	var name := RulerRules.mandate_name(mandate_id)
+	var lines := [_line("Price of %s" % name, RulerRules.mandate_cost(mandate_id), "what it costs before the game"),
+		_line("Mid-game sacrifice", MandateData.SACRIFICE_PREMIUM, "a mandate bought during the game costs more")]
+	return _coded(_make("%s by sacrifice" % name, RulesCodex.text("sacrifice"), lines, "Power it costs",
+		RulerRules.sacrifice_cost(mandate_id)), "sacrifice")
+
+
+## The faction's kept power after sacrificing for `mandate_id`: kept power now minus the sacrifice's cost.
+static func sacrifice_kept_power(state: GameState, faction_id: String, mandate_id: String) -> Dictionary:
+	var kept := RulerRules.kept_power(state, faction_id)
+	var cost := RulerRules.sacrifice_cost(mandate_id)
+	var name := RulerRules.mandate_name(mandate_id)
+	var lines := [_line("Kept power now", kept, RulerRules.current_name(state, faction_id)),
+		_line("%s by sacrifice" % name, -cost, "price %d + %d for a mid-game sacrifice" % [RulerRules.mandate_cost(mandate_id),
+			MandateData.SACRIFICE_PREMIUM])]
+	return _coded(_make("Kept power after the sacrifice", RulesCodex.text("sacrifice"), lines, "Kept power after",
+		kept - cost), "sacrifice")
+
+
+## How the hit points of the faction's regular units on the map change when a sacrifice buys a mandate
+## that adds hit points (Veteran Levies, §2.3): their total now, plus what they gain at once.
+static func sacrifice_unit_hp(mandate_name: String, hp_before: int, hp_after: int, units: int) -> Dictionary:
+	var lines := [_line("Hit points of your regular units now", hp_before, "%d %s on the map" % [units, "unit" if units == 1 else "units"]),
+		_line(mandate_name, hp_after - hp_before, "bought by sacrifice, units already on the map gain the hit points at once")]
+	return _coded(_make("Hit points of your regular units", "Bought by sacrifice, %s gives the regular units you already have its extra hit points at once, as current and maximum hit points." % mandate_name,
+		lines, "Hit points after", hp_after), "sacrifice")
+
+
+## What `faction_id` earns in this turn's income phase if no provinces change hands: each province it
+## owns, with Heavy Tithes and Royal Court in the notes (TurnResolver.income_of, as the phase pays).
+## `ruler_at` moves the ruler for a forecast, as income_of takes it.
+static func income(state: GameState, faction_id: String, ruler_at: Dictionary = {}) -> Dictionary:
+	var f := state.find_faction(faction_id)
+	if f == null:
+		return _make("Income", "This faction is not in the game.", [], "Income this turn", 0)
+	var inc := TurnResolver.income_of(state, faction_id, ruler_at)
+	var ids: Array = inc.by_province.keys()
+	ids.sort()
+	var lines := []
+	for pid in ids:
+		var parts := RulerRules.province_income_parts(state, pid, ruler_at)
+		var bits := ["%d base" % int(parts.base)]
+		for m in parts.mods:
+			bits.append("%s %d" % [m.name, int(m.value)])
+		lines.append(_line(_province_name(state, pid), int(inc.by_province[pid]), " + ".join(bits)))
+	var desc := "%s This assumes no provinces change hands." % RulesCodex.text("income")
+	if not inc.modifiers.is_empty():
+		desc += " %s" % TurnResolver.income_modifiers_text(state, faction_id, inc, "ends the turn")
+	return _coded(_make("Income of %s this turn" % f.faction_name, desc, lines, "Income this turn", int(inc.total)), "income")
+
+
+## Turns until a dead ruler's successor arrives (§5.4, "heir in 2 turns"): the turn it arrives at the end
+## of, minus the turns before the one being ordered. 0 when it waits for the capital.
+static func successor_countdown(state: GameState, faction_id: String) -> Dictionary:
+	var info := RulerRules.succession_info(state, faction_id)
+	if info.is_empty():
+		return _coded(_make("Successor", "This faction's ruler is alive, so no successor is due.", [], "Turns until a successor", 0), "succession")
+	var due := int(info.successor_turn)
+	var now := state.current_turn + 1
+	var who := String(info.heir_name) if String(info.kind) == "mortal" else String(info.successor_name)
+	var lines := [_line("Arrives at the end of turn", due, "%s, at %s" % [who, String(info.capital_name)]),
+		_line("Turns before this one", -(now - 1), "this is turn %d" % now)]
+	var total := RulerRules.successor_countdown(state, faction_id)
+	if total == 0:
+		lines.append(_line("Waiting for the capital", -(due - now + 1), "a successor arrives only while you hold your capital"))
+	var desc := "%s %s" % [RulerRules.successor_sentence(info), RulesCodex.text(String(info.codex))]
+	return _coded(_make("Successor of %s" % String(info.name), desc, lines, "Turns until it arrives, this one included", total),
+		String(info.codex))
+
+
 ## Sum of the line values. Equal to the breakdown's total by construction; tests check it.
 static func sum_of_lines(breakdown: Dictionary) -> int:
 	var total := 0

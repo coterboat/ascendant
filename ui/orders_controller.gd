@@ -11,6 +11,11 @@ extends RefCounted
 ##                   the single source of truth, so they survive map rebuilds and resolve with the
 ##                   turn. orders() is empty unless `faction_id` is the session's current player, so
 ##                   one player's orders can never show up on another player's map.
+##
+## Sacrifice (M2-6, design/M2_RULER.md §2.4): the sacrifice phase resolves first, so every forecast here
+## reads view_state(), the start-of-turn state with the queued Sacrifice order applied (the same copy
+## OrderBook checks against). Cancelling an order checks the others again; last_removed() names the ones
+## that no longer pass, with the reason.
 
 ## Shown instead of battle odds when no enemy army is in the destination (M1 has no fog of war).
 const NO_ENEMY_TEXT := "No enemy army there now; enemies may still move in."
@@ -20,6 +25,9 @@ var faction_id := ""
 var book := OrderBook.new()
 var session: GameSession = null
 var _odds_cache := {}  # "army ids>province" -> move_odds() result; the state never changes under us
+var _view: GameState = null  # view_state() for the sacrifice in _view_key
+var _view_key := ""
+var _removed: Array = []  # texts of the orders the last queue or cancel removed (M2-6)
 
 
 func _init(p_state: GameState = null, p_faction_id: String = "", p_session: GameSession = null) -> void:
@@ -46,6 +54,47 @@ func queue_recruit_with_ruler(unit_type_id: String) -> String:
 	return _queue(RecruitOrder.new(unit_type_id, RecruitOrder.AT_RULER))
 
 
+## Queues a Sacrifice order (§2.4): the ruler gives up power for `mandate_id`. Returns "" when accepted,
+## otherwise the rules' reason. Orders it makes fail are removed: see last_removed().
+func queue_sacrifice(mandate_id: String) -> String:
+	return _queue(SacrificeOrder.new(mandate_id))
+
+
+## The queued Sacrifice order, or null.
+func queued_sacrifice() -> SacrificeOrder:
+	return RulerRules.queued_sacrifice(orders())
+
+
+## The state this faction's orders and forecasts read: the start-of-turn state, or a copy with the
+## queued Sacrifice order applied (RulerRules.state_after_orders), because the sacrifice phase resolves
+## first. Never changes `state`.
+func view_state() -> GameState:
+	var sac := queued_sacrifice()
+	if sac == null or state == null:
+		return state
+	if _view == null or _view_key != sac.mandate_id:
+		_view = RulerRules.state_after_orders(state, faction_id, orders())
+		_view_key = sac.mandate_id
+	return _view
+
+
+## Every mandate on this faction's list for the sacrifice dialog (Forecast.sacrifice_options).
+func sacrifice_options() -> Array:
+	return Forecast.sacrifice_options(state, faction_id, orders())
+
+
+## The sacrifice dialog's before → after preview for `mandate_id` (Forecast.sacrifice), with this
+## faction's other queued orders.
+func sacrifice_preview(mandate_id: String) -> Dictionary:
+	return Forecast.sacrifice(state, faction_id, mandate_id, orders())
+
+
+## Plain lines for the orders the last queue or cancel removed because they no longer pass ("Road move to
+## Westwatch removed: you no longer have King's Roads."); [] when none were.
+func last_removed() -> Array:
+	return _removed.duplicate()
+
+
 ## The order a click on `to` gives `army_id`: a one-step move to a neighbour, or, for a province further
 ## away, a road move through the first legal province by id when King's Roads allow one (§2.3).
 ## Anything else stays a one-step move, which the rules then refuse with their reason.
@@ -53,7 +102,7 @@ func move_order_for(army_id: String, to: String) -> MoveOrder:
 	var army: Army = state.find_army(army_id) if state else null
 	var here: Province = state.find_province(army.location) if army else null
 	if here != null and not here.neighbors.has(to):
-		var vias := RulerRules.road_vias(state, faction_id, army_id, to)
+		var vias := RulerRules.road_vias(view_state(), faction_id, army_id, to)
 		if not vias.is_empty():
 			return MoveOrder.new(army_id, to, vias[0])
 	return MoveOrder.new(army_id, to)
@@ -69,7 +118,7 @@ func road_destinations(army_id: String) -> Dictionary:
 	for o in orders():
 		if o is MoveOrder and o.army_id == army_id:
 			return {}
-	return RulerRules.road_destinations(state, faction_id, army_id)
+	return RulerRules.road_destinations(view_state(), faction_id, army_id)
 
 
 ## Every legal way through for the queued road move at `index` ([] for any other order).
@@ -77,7 +126,7 @@ func road_vias_at(index: int) -> Array:
 	var list := orders()
 	if index < 0 or index >= list.size() or not (list[index] is MoveOrder) or not list[index].is_road_move():
 		return []
-	return RulerRules.road_vias(state, faction_id, list[index].army_id, list[index].to)
+	return RulerRules.road_vias(view_state(), faction_id, list[index].army_id, list[index].to)
 
 
 ## Sends the queued road move at `index` through the next legal province instead (the player's other
@@ -94,12 +143,18 @@ func change_via(index: int) -> String:
 	return _queue(MoveOrder.new(o.army_id, o.to, next))
 
 
-## Withdraws the order at `index` (as listed by orders()). Returns "" or why it could not.
+## Withdraws the order at `index` (as listed by orders()). Returns "" or why it could not. The other
+## orders are checked again: cancelling a sacrifice removes the orders that relied on it (last_removed()).
 func cancel(index: int) -> String:
+	_removed = []
 	if session != null:
 		var why := _not_my_turn()
-		return why if not why.is_empty() else session.cancel_order(index)
-	book.remove(faction_id, index)
+		if not why.is_empty():
+			return why
+		why = session.cancel_order(index)
+		_removed = session.removed_orders()
+		return why
+	_removed = book.cancel(state, faction_id, index).map(func(d): return String(d.text))
 	return ""
 
 
@@ -120,7 +175,7 @@ func recruit_orders() -> Array:
 ## Forecast for a move that is not queued yet (catches a second move for the same army). A province
 ## two steps away is forecast as the road move a click would order.
 func move_forecast(army_id: String, to: String) -> Dictionary:
-	return Forecast.move(state, faction_id, move_order_for(army_id, to), orders())
+	return Forecast.move(view_state(), faction_id, move_order_for(army_id, to), orders())
 
 
 ## Battle odds for moving `army_id` to `to`, counting every army you have already ordered there.
@@ -132,11 +187,13 @@ func move_odds(army_id: String, to: String) -> Dictionary:
 		if o is MoveOrder and o.to == to and not ids.has(o.army_id):
 			ids.append(o.army_id)
 	ids.sort()
-	var key := "%s>%s" % [",".join(ids), to]
+	var view := view_state()
+	var key := "%s>%s|%s" % [",".join(ids), to, _view_key if view != state else ""]
 	if _odds_cache.has(key):
 		return _odds_cache[key]
-	# Forecast.battle_odds checks for enemy armies there itself (M1 has no fog: all are visible).
-	var odds := Forecast.battle_odds(state, faction_id, ids, to)
+	# Forecast.battle_odds checks for enemy armies there itself (M1 has no fog: all are visible). A queued
+	# sacrifice counts: its mandate fights in this turn's battles.
+	var odds := Forecast.battle_odds(view, faction_id, ids, to)
 	var out := {"enemy_present": false, "odds": {}, "line": NO_ENEMY_TEXT, "text": NO_ENEMY_TEXT}
 	if odds.get("ok", false):
 		var line := "Battle odds: %s (you won %d of %d test battles)." % [odds.label, odds.wins, odds.samples]
@@ -159,19 +216,19 @@ func move_preview(army_id: String, to: String) -> Dictionary:
 ## Gold after the queued recruits and the income forecast. Your queued moves count for Royal Court,
 ## which pays where the King ends the turn.
 func gold_after_recruits() -> Dictionary:
-	return Forecast.gold_after_recruits(state, faction_id, recruit_orders(), orders())
+	return Forecast.gold_after_recruits(view_state(), faction_id, recruit_orders(), orders())
 
 
 ## The price of one unit, the same the recruitment phase charges (Muster Grounds included).
 func recruit_cost(unit_type_id: String) -> int:
-	return Forecast.recruit_cost(state, faction_id, unit_type_id)
+	return Forecast.recruit_cost(view_state(), faction_id, unit_type_id)
 
 
 ## "16 gold (20 - Muster Grounds 4)", or "20 gold" when no mandate changes the price.
 func price_text(unit_type_id: String) -> String:
 	var f := state.find_faction(faction_id)
 	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id) if f else null
-	return RulerRules.price_text(state, faction_id, ut) if ut else ""
+	return RulerRules.price_text(view_state(), faction_id, ut) if ut else ""
 
 
 ## The roster this faction can recruit from at its capital.
@@ -184,17 +241,18 @@ func recruitable_types() -> Array:
 ## "used", "left", "text"} for this faction. "ok" is false when its ruler can't recruit in the field
 ## (another ruler, no rulers, or not on the map).
 func ruler_recruit_info() -> Dictionary:
-	var limit := RulerRules.field_recruit_limit(state, faction_id)
-	var army := RulerRules.ruler_army(state, faction_id)
+	var view := view_state()
+	var limit := RulerRules.field_recruit_limit(view, faction_id)
+	var army := RulerRules.ruler_army(view, faction_id)
 	if limit <= 0 or army == null:
 		return {"ok": false}
 	var used := 0
 	for o in orders():
 		if o is RecruitOrder and o.is_with_ruler():
 			used += 1
-	var name := RulerRules.current_name(state, faction_id)
-	var f := state.find_faction(faction_id)
-	var where := state.find_province(army.location)
+	var name := RulerRules.current_name(view, faction_id)
+	var f := view.find_faction(faction_id)
+	var where := view.find_province(army.location)
 	var text := "%s can recruit %d regular %s per turn (Warband Muster at ability rank %d), at the usual prices. They appear where %s ends this turn (now %s), if you own that province then; if not, they are cancelled and cost nothing. Commanders come only from your capital." % [
 		RulerRules._cap(name), limit, "unit" if limit == 1 else "units", RulerRules.ability_rank(f.kept_power), name,
 		where.name if where else "off the map"]
@@ -208,13 +266,14 @@ func vassal_forecasts() -> Array:
 	var out := []
 	if state == null:
 		return out
+	var view := view_state()  # Sworn Vassals bought by a queued sacrifice joins this turn
 	var fids := []
-	for f in state.factions:
-		if RulerRules.has_mandate(state, f.id, RulerRules.SWORN_VASSALS):
+	for f in view.factions:
+		if RulerRules.has_mandate(view, f.id, RulerRules.SWORN_VASSALS):
 			fids.append(f.id)
 	fids.sort()
 	for fid in fids:
-		var v := Forecast.vassal(state, fid, orders(), faction_id)
+		var v := Forecast.vassal(view, fid, orders(), faction_id)
 		v["faction"] = fid
 		out.append(v)
 	return out
@@ -236,6 +295,8 @@ func order_text(index: int) -> String:
 	if o is MoveOrder:
 		var f := _move_forecast_at(index)
 		return "%s %s" % [f.text, move_odds(o.army_id, o.to).line] if f.ok else f.reason
+	if o is SacrificeOrder:
+		return sacrifice_text(o)
 	var r := _recruit_result_at(index)
 	if not r.ok:
 		return "Not recruited: %s" % r.reason
@@ -249,6 +310,11 @@ func order_text(index: int) -> String:
 ## Breakdown (rules/breakdown.gd shape) behind an order line's numbers, for its tooltip.
 func order_breakdown(index: int) -> Dictionary:
 	var o = orders()[index]
+	if o is SacrificeOrder:
+		var b := Breakdown.sacrifice_kept_power(state, faction_id, o.mandate_id)
+		b.description = "%s %s %s" % [String(RulerRules.mandate_data(o.mandate_id).get("effect", "")),
+			Forecast.mandate_now(view_state(), faction_id, o.mandate_id, orders()), RulesCodex.text("sacrifice")]
+		return b
 	if o is MoveOrder:
 		var f := _move_forecast_at(index)
 		if not f.ok:
@@ -282,6 +348,8 @@ func order_codex_kind(index: int) -> String:
 	if index < 0 or index >= list.size():
 		return ""
 	var o = list[index]
+	if o is SacrificeOrder:
+		return "sacrifice"
 	if o is MoveOrder:
 		if move_odds(o.army_id, o.to).enemy_present:
 			return "move_odds"
@@ -320,10 +388,26 @@ func recruit_breakdown(unit_type_id: String, at: String = RecruitOrder.AT_CAPITA
 
 ## Queues `order` through the session's books (session-backed) or this controller's own book.
 func _queue(order) -> String:
+	_removed = []
 	if session != null:
 		var why := _not_my_turn()
-		return why if not why.is_empty() else session.queue_order(order)
-	return book.submit(state, faction_id, order)
+		if not why.is_empty():
+			return why
+		why = session.queue_order(order)
+		_removed = session.removed_orders()
+		return why
+	var reason := book.submit(state, faction_id, order)
+	_removed = book.last_dropped().map(func(d): return String(d.text))
+	return reason
+
+
+## The orders list's line for a queued Sacrifice order.
+func sacrifice_text(order: SacrificeOrder) -> String:
+	var mid := order.mandate_id
+	var kept := RulerRules.kept_power(state, faction_id)
+	return "Sacrifice for %s: %s gives up %d power (%d, +%d for a mid-game sacrifice), keeping %d. It resolves first, so it already counts for your other orders this turn." % [
+		RulerRules.mandate_name(mid), RulerRules._cap(RulerRules.current_name(state, faction_id)), RulerRules.sacrifice_cost(mid),
+		RulerRules.mandate_cost(mid), MandateData.SACRIFICE_PREMIUM, kept - RulerRules.sacrifice_cost(mid)]
 
 
 ## The price breakdown as a line note when a mandate changes the price ("16 gold (20 - Muster Grounds
@@ -331,7 +415,7 @@ func _queue(order) -> String:
 func _price_note(unit_type_id: String) -> String:
 	var f := state.find_faction(faction_id)
 	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id) if f else null
-	return price_text(unit_type_id) if ut and not RulerRules.price_mods(state, faction_id, ut).is_empty() else ""
+	return price_text(unit_type_id) if ut and not RulerRules.price_mods(view_state(), faction_id, ut).is_empty() else ""
 
 
 func _province_name(province_id: String) -> String:
@@ -349,7 +433,7 @@ func _move_forecast_at(index: int) -> Dictionary:
 	var list := orders()
 	var others := list.duplicate()
 	others.remove_at(index)
-	return Forecast.move(state, faction_id, list[index], others)
+	return Forecast.move(view_state(), faction_id, list[index], others)
 
 
 func _recruit_result_at(index: int) -> Dictionary:

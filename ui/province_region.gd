@@ -6,6 +6,9 @@ extends Control
 ## Colour is never the only channel (design/STYLE_BIBLE.md 1.1): the owner ring carries the owner's
 ## seat emblem (Player 1 circle, Player 2 square, nobody a slate shield) and every army badge carries
 ## its owner's emblem as a light glyph (SeatEmblem).
+## M2-6 (#34): a ruler's army badge wears a second, gilt ring outside its player colour (STYLE_BIBLE.md
+## 2.4, "ruler present"), and while a dead ruler's successor is pending its capital shows a countdown
+## badge ("heir in 2 turns"), with the breakdown and the succession rule in its tooltip.
 ## Reads the GameState only. Clicking it emits `pressed`; clicking an army badge emits `army_pressed`.
 ## The region, its income and its army badges link to their codex entries: right-clicking one (or F1)
 ## emits codex_requested.
@@ -18,6 +21,9 @@ signal codex_requested(key: String)
 const RING_EMBLEM_RADIUS := 9.0
 ## Army badge emblem box, in design space.
 const BADGE_EMBLEM_SIZE := 16.0
+## The ruler's gilt ring: how far outside the badge it sits, and its width (design space).
+const RULER_RING_GAP := 3.0
+const RULER_RING_WIDTH := 3.0
 
 var province_id := ""
 var selected := false:
@@ -45,6 +51,8 @@ var army_box: HFlowContainer  # army badges; several armies wrap onto a second r
 ## faction's seat colour (slate when two factions want it); its tooltip is the forecast. null when none.
 var vassal_marker: Control = null
 var vassal_seat := -2  # the pennant's seat; -1 neutral (contested); -2 no pennant
+## M2-6: the capital's countdown badge while a successor is pending ("heir in 2 turns"), or null.
+var countdown_badge: Label = null
 
 
 ## Builds the region for `province_id` from `state`. `center` is in the map canvas' design space.
@@ -104,7 +112,37 @@ func setup(state: GameState, p: Province, center: Vector2, seats: Array = []) ->
 	for a in state.armies:
 		if a.location == p.id:
 			army_box.add_child(_army_badge(state, a, seats))
+	for f in state.factions:
+		if f.capital == p.id and not RulerRules.countdown_text(state, f.id).is_empty():
+			countdown_badge = _countdown_badge(state, f.id)
+			box.add_child(countdown_badge)
 	queue_redraw()
+
+
+## The capital's countdown badge (§5.4): "heir in 2 turns" while a dead ruler's successor is pending,
+## with the countdown's breakdown and the succession rule in the tooltip, linked to the kind's codex entry.
+func _countdown_badge(state: GameState, faction_id: String) -> Label:
+	var b := Breakdown.successor_countdown(state, faction_id)
+	var info := RulerRules.succession_info(state, faction_id)
+	var l := _label(RulerRules.countdown_text(state, faction_id), 13, UiPalette.GILT)
+	l.name = "CountdownBadge"
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(UiPalette.PANEL_BG, 0.92)
+	style.border_color = UiPalette.GILT
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(6)
+	style.content_margin_left = 6
+	style.content_margin_right = 6
+	style.content_margin_top = 1
+	style.content_margin_bottom = 1
+	l.add_theme_stylebox_override("normal", style)
+	l.mouse_filter = Control.MOUSE_FILTER_PASS
+	l.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	l.tooltip_text = "%s\n\n%s" % [TooltipText.from_breakdown(b), TooltipText.wrap_text(
+		"The %s has no ruler until then: no %s, no ruler in battle and no sacrifices. Its mandates stay." % [
+			state.find_faction(faction_id).faction_name, RulerRules.ability_name(String(info.get("ruler", "")))])]
+	CodexLink.attach(l, String(b.get("codex", "succession")), codex_requested.emit)
+	return l
 
 
 ## King's Roads (M2): marks this province as a road destination of the selected army (`on`), going
@@ -211,14 +249,46 @@ func _army_badge(state: GameState, a: Army, seats: Array) -> Button:
 	if a.ruler != null:
 		# A ruler's army holds only its ruler (M2): name it and show the ruler's numbers (RulerPanel).
 		b.text = RulerPanel.badge_text(a)
-		b.tooltip_text = RulerPanel.summary(state, a) + "\n\n" + TooltipText.wrap_text(whose + "Click to select this army.")
+		b.tooltip_text = RulerPanel.summary(state, a) + "\n\n" + TooltipText.wrap_text(whose + "The gilt ring outside the badge marks the ruler. Click to select this army.")
 		CodexLink.attach(b, "ruler_army", codex_requested.emit)
+		b.add_child(_ruler_ring())
 	else:
 		var units := Breakdown.army_units(state, a.id)
 		b.tooltip_text = TooltipText.from_breakdown(units) + "\n\n" + TooltipText.wrap_text(whose + "Click to select this army.")
 		CodexLink.attach(b, TooltipText.codex_for("army_units", units), codex_requested.emit)
 	b.pressed.connect(func(): army_pressed.emit(a.id))
 	return b
+
+
+## The ruler's second ring (STYLE_BIBLE.md 2.4, "ruler present"): gilt, outside the badge's player colour,
+## with the bible's keylines (ink inside, halo outside) so it reads on any terrain. Drawn by a child that
+## covers the badge and paints just outside it; it never takes the mouse.
+func _ruler_ring() -> Control:
+	var ring := Control.new()
+	ring.name = "RulerRing"
+	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ring.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ring.draw.connect(func():
+		var rect := Rect2(Vector2.ZERO, ring.size).grow(RULER_RING_GAP + RULER_RING_WIDTH / 2.0)
+		var halo := StyleBoxFlat.new()
+		halo.draw_center = false
+		halo.border_color = UiPalette.KEYLINE_HALO
+		halo.set_border_width_all(int(RULER_RING_WIDTH + 2))
+		halo.set_corner_radius_all(9)
+		ring.draw_style_box(halo, rect.grow(1.0))
+		var gilt := StyleBoxFlat.new()
+		gilt.draw_center = false
+		gilt.border_color = UiPalette.GILT
+		gilt.set_border_width_all(int(RULER_RING_WIDTH))
+		gilt.set_corner_radius_all(8)
+		ring.draw_style_box(gilt, rect)
+		var ink := StyleBoxFlat.new()
+		ink.draw_center = false
+		ink.border_color = UiPalette.KEYLINE_INK
+		ink.set_border_width_all(1)
+		ink.set_corner_radius_all(7)
+		ring.draw_style_box(ink, rect.grow(-RULER_RING_WIDTH)))
+	return ring
 
 
 func _label(text: String, font_size: int, color: Color) -> Label:

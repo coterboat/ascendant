@@ -25,8 +25,9 @@ const TURN_CAP := 60
 ## Every event type the M1 turn report may hold. Anything else is reported as an error.
 const EVENT_TYPES := ["order_rejected", "army_moved", "battle", "border_battle", "captured", "recruited", "income", "game_over"]
 ## Event types a game with rulers adds: ruler deaths, the rulers phase's healing, successors (M2-3, #31),
-## and Sworn Vassals in the capture phase (M2-4, #32).
-const RULER_EVENT_TYPES := ["ruler_died", "mending", "ruler_healed", "ruler_arrived", "succession_waiting", "vassal_joined", "vassal_contested"]
+## Sworn Vassals in the capture phase (M2-4, #32) and sacrifices (M2-6, #34).
+const RULER_EVENT_TYPES := ["ruler_died", "mending", "ruler_healed", "ruler_arrived", "succession_waiting", "vassal_joined", "vassal_contested",
+	"sacrificed"]
 const BATTLE_TYPES := ["battle", "border_battle"]
 ## AutoBattleResolver report "end" values, in display order.
 const BATTLE_ENDS := ["rout", "destroyed", "round_cap", "mutual"]
@@ -214,8 +215,8 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 		for u in members:
 			if u.current_hp <= 0:
 				out.append({"check": "unit_hp_not_positive", "detail": "A %s in army %s has %d hp." % [u.type.id, a.id, u.current_hp]})
-			elif u.current_hp > u.type.hp:
-				out.append({"check": "unit_hp_above_max", "detail": "A %s in army %s has %d of %d hp." % [u.type.id, a.id, u.current_hp, u.type.hp]})
+			elif u.current_hp > RulerRules.unit_max_hp(state, u):  # its type's hp, plus Veteran Levies (M2)
+				out.append({"check": "unit_hp_above_max", "detail": "A %s in army %s has %d of %d hp." % [u.type.id, a.id, u.current_hp, RulerRules.unit_max_hp(state, u)]})
 			if u.owner != a.owner:
 				out.append({"check": "unit_owner_mismatch", "detail": "A %s owned by %s is in army %s of %s." % [u.type.id, u.owner, a.id, a.owner]})
 		if not owners_at.has(a.location):

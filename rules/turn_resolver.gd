@@ -4,14 +4,16 @@ class_name TurnResolver
 ##   TurnResolver.resolve(state, orders_by_faction, turn_seed, battle_resolver = null)
 ##       -> {"new_state": GameState, "events": Array}
 ##
-## `orders_by_faction` maps a faction id (String) to an Array of MoveOrder / RecruitOrder, in the
-## order that player gave them. `state` is never modified: resolution works on a deep copy. All
+## `orders_by_faction` maps a faction id (String) to an Array of MoveOrder / RecruitOrder / SacrificeOrder
+## (M2-6), in the order that player gave them. `state` is never modified: resolution works on a deep copy. All
 ## randomness comes from a SeededRNG built from `turn_seed`, so the same state, orders and seed always
 ## give the same new state and events. If `state` fails validation, new_state is null and the
 ## plain-language problems are in result["errors"]. `battle_resolver` defaults to the real battle
 ## rules, AutoBattleResolver; tests may pass StubBattleResolver for simple, predictable battles.
 ##
 ## Phase order (fixed, and shown to players as RulesCodex "phase_order"):
+##   sacrifice    (games with rulers, M2-6) each faction's Sacrifice order is checked and applied, in
+##                faction id order, before any other order is checked, so its mandate counts this turn.
 ##   orders       every faction's orders are checked; invalid moves are rejected with a reason.
 ##   movement     all valid moves happen at once. Hostile armies swapping provinces stop on the border.
 ##   battles      border battles first (sorted by border), then province battles (sorted by province),
@@ -64,7 +66,7 @@ class_name TurnResolver
 ## Ids stay in the structured fields. `text` and rejection reasons only use player-facing names:
 ## faction and province display names, and armies as army_label() describes them.
 
-const PHASES := ["orders", "movement", "battles", "capture", "recruitment", "income", "rulers"]
+const PHASES := ["sacrifice", "orders", "movement", "battles", "capture", "recruitment", "income", "rulers"]
 
 
 static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: int, battle_resolver: BattleResolver = null) -> Dictionary:
@@ -75,6 +77,8 @@ static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: 
 	var resolver: BattleResolver = battle_resolver if battle_resolver != null else AutoBattleResolver.new()
 	var rng := SeededRNG.new(turn_seed)
 	var events: Array = []
+
+	_sacrifice_phase(s, orders_by_faction, events)  # M2-6: first, so every other order sees the new mandates
 
 	var moves: Array = []  # of {"army_id", "faction", "from", "to"}, one per army
 	var recruits := {}  # faction id -> Array of orders, in given order
@@ -310,6 +314,34 @@ static func income_of(state: GameState, faction_id: String, ruler_at: Dictionary
 
 # --- phases ---------------------------------------------------------------------------------------
 
+## The sacrifice phase, first in the turn (M2-6, #34; design/M2_RULER.md §2.4, §3): each faction's
+## Sacrifice order is checked (RulerRules.sacrifice_check) and applied (RulerRules.apply_sacrifice), in
+## faction id order, before any other order is checked, so the new mandate already counts in this
+## turn's moves, battles, recruits and income. One per faction per turn: a second is rejected. Events:
+##   sacrificed      sacrifice   the ruler gave up power for a mandate. Codex "sacrifice".
+##   order_rejected  sacrifice   an illegal Sacrifice order, with the reason. Codex "sacrifice".
+## In a game without Sacrifice orders nothing happens and no event is added.
+static func _sacrifice_phase(s: GameState, orders_by_faction: Dictionary, events: Array) -> void:
+	var turn := s.current_turn + 1  # the turn being resolved, as players count it
+	for fid in _faction_ids(s):
+		var list = orders_by_faction.get(fid, [])
+		if not (list is Array):
+			continue  # the orders phase reports it
+		var done := ""  # the mandate this faction already sacrificed for this turn
+		for order in list:
+			if not (order is SacrificeOrder):
+				continue
+			var result := RulerRules.apply_sacrifice(s, fid, order.mandate_id, turn, done)
+			if not result.ok:
+				events.append(_rejected_event(s, fid, order, result, "sacrifice"))
+				continue
+			done = order.mandate_id
+			var numbers := result.duplicate()
+			numbers.erase("ok")
+			events.append(_event("sacrificed", "sacrifice", [result.province], [fid], [result.army], "sacrifice", numbers,
+				RulerRules.sacrifice_text(s, fid, result), "sacrifice"))
+
+
 static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: Array, recruits: Dictionary, events: Array) -> void:
 	var known := _faction_ids(s)
 	var unknown: Array = []
@@ -343,6 +375,8 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 					"label": army_label(s, army), "via": order.via})
 			elif order is RecruitOrder:
 				recruits[fid].append(order)  # checked in the recruitment phase, against that phase's state
+			elif order is SacrificeOrder:
+				continue  # resolved in the sacrifice phase, before these checks (M2-6)
 			else:
 				events.append(_rejected_event(s, fid, order,
 					_reject("unknown_order", "That is not an order this game knows. Orders are moves and recruits."), "orders"))
@@ -871,6 +905,19 @@ static func _rejected_event(s: GameState, fid: String, order, check: Dictionary,
 			desc += " with %s" % (who if not who.is_empty() else "the ruler")
 			if ruler:
 				provinces = [ruler.location]
+	elif order is SacrificeOrder:
+		# M2-6: name the mandate (or quote an unknown id) and put the event where the ruler stands.
+		var mandate := RulerRules.mandate_name(order.mandate_id) if not RulerRules.mandate_data(order.mandate_id).is_empty() \
+			else "'%s'" % order.mandate_id
+		desc = "sacrifice power for %s" % mandate
+		order_dict = order.to_dict()
+		codex = "sacrifice"
+		var ruler_army := RulerRules.ruler_army(s, fid)
+		var owner := s.find_faction(fid)
+		if ruler_army:
+			provinces = [ruler_army.location]
+		elif owner:
+			provinces = [owner.capital]
 	var ev := _event("order_rejected", phase, provinces, [fid], armies, check.code, {},
 		"Order from %s, \"%s\", was rejected: %s" % [_faction_name(s, fid), desc, check.reason], codex)
 	ev["order"] = order_dict
