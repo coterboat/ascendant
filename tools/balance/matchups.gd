@@ -1,0 +1,236 @@
+extends SceneTree
+## Battle balance harness (#4): Aurel Crown's win % for a matrix of matchups x ground, each cell
+## fought `--seeds` times with the real AutoBattleResolver on seeded battles. Prints markdown.
+##
+##   godot --headless --path . -s tools/balance/matchups.gd -- --seeds 400
+##
+## Options (all optional):
+##   --seeds N      battles per cell (default 400), on seeds S+1 .. S+N
+##   --seed S       base seed (default 0)
+##   --only GROUP   only one group of matchups: starting, pair, mixed or commander
+##   --grounds K,K  only these grounds (keys from Balance.GROUNDS, e.g. open,forest_crown)
+##   --samples N    also print the first N battle reports of the starting armies on open ground
+##   --out PATH     also write the markdown to PATH
+##
+## Matchups (tools/balance/balance.gd, built from the current costs in data/factions.gd): the starting
+## armies (with and without commanders), equal-gold pure-unit fights for every cross-faction pair at
+## about 100 gold, mixed armies at 50 and 100 gold, and commander-led armies. Grounds: open (both
+## arrived together: no defender, no terrain), then plains, forest, hills and a fort with each side
+## defending. The tables are followed by the targets of the balance pass and where each stands, and
+## by how often each "why" factor led a battle's summary.
+
+const Balance := preload("res://tools/balance/balance.gd")
+const GROUPS := ["starting", "pair", "mixed", "commander"]
+
+
+func _initialize() -> void:
+	var opts := _parse(OS.get_cmdline_user_args())
+	if opts.has("error"):
+		printerr("matchups: %s" % opts.error)
+		printerr("usage: godot --headless --path . -s tools/balance/matchups.gd -- [--seeds 400] [--seed 0] [--only starting|pair|mixed|commander] [--grounds open,forest_crown] [--samples N] [--out report.md]")
+		quit(2)
+		return
+	var started := Time.get_ticks_msec()
+	var state := Balance.new_state()
+	var grounds := []
+	for g in Balance.GROUNDS:
+		if opts.grounds.is_empty() or opts.grounds.has(g.key):
+			grounds.append(g)
+	var rows := []
+	for m in Balance.matchups(state):
+		if not opts.only.is_empty() and m.group != opts.only:
+			continue
+		var cells := {}
+		for g in grounds:
+			cells[g.key] = Balance.batch(state, m.crown, m.clans, g, opts.seeds, opts.seed)
+		rows.append({"m": m, "cells": cells})
+	var seconds := (Time.get_ticks_msec() - started) / 1000.0
+
+	var L := []
+	L.append("## Battle balance: Aurel Crown win %% (%d seeded battles per cell)" % opts.seeds)
+	L.append("")
+	L.append(_unit_table(state))
+	L.append("")
+	var head := "| Matchup (Crown vs Clans, gold) |"
+	var rule := "|---|"
+	for g in grounds:
+		head += " %s |" % g.label
+		rule += "---|"
+	L.append(head)
+	L.append(rule)
+	for row in rows:
+		var m: Dictionary = row.m
+		var line := "| %s: %s (%d) vs %s (%d) |" % [m.name, Balance.describe(state, Balance.CROWN, m.crown), Balance.cost(state, Balance.CROWN, m.crown),
+			Balance.describe(state, Balance.CLANS, m.clans), Balance.cost(state, Balance.CLANS, m.clans)]
+		for g in grounds:
+			line += " %.1f |" % row.cells[g.key].crown_pct
+		L.append(line)
+	L.append("")
+	L.append(_battle_shape(rows, grounds))
+	L.append("")
+	L.append(_targets(rows, grounds))
+	L.append("")
+	L.append(_why(rows, grounds))
+	if opts.samples > 0:
+		L.append("")
+		L.append("### Sample reports: starting armies, open ground")
+		var start: Dictionary = Balance.matchups(state)[0]
+		var b := Balance.batch(state, start.crown, start.clans, Balance.ground("open"), opts.samples, opts.seed, opts.samples)
+		for rep in b.reports:
+			L.append("")
+			L.append("```")
+			L.append("\n".join(rep.lines))
+			L.append("```")
+	L.append("")
+	L.append("Run: `--seeds %d --seed %d%s`, %.1f s." % [opts.seeds, opts.seed, (" --only " + opts.only) if not opts.only.is_empty() else "", seconds])
+	var md := "\n".join(L)
+	print(md)
+	if not opts.out.is_empty():
+		var f := FileAccess.open(opts.out, FileAccess.WRITE)
+		if f == null:
+			printerr("matchups: could not write %s (%s)" % [opts.out, error_string(FileAccess.get_open_error())])
+		else:
+			f.store_string(md + "\n")
+			f.close()
+	quit(0)
+
+
+func _unit_table(state: GameState) -> String:
+	var L := ["| Unit | Faction | hp | attack | defense | morale | cost | trait |", "|---|---|---|---|---|---|---|---|"]
+	for f in state.factions:
+		var types: Array = f.unit_types.duplicate()
+		types.append(f.commander_type)
+		for ut in types:
+			L.append("| %s | %s | %d | %d | %d | %d | %d | %s: %s |" % [ut.name, f.faction_name, ut.hp, ut.attack, ut.defense,
+				ut.morale, ut.cost, ut.trait_id, ut.trait_description])
+	return "\n".join(L)
+
+
+## Mean rounds and how battles ended, on open ground.
+func _battle_shape(rows: Array, grounds: Array) -> String:
+	var key: String = "open" if grounds.any(func(g): return g.key == "open") else grounds[0].key
+	var L := ["| Matchup (%s) | mean rounds | rout | destroyed | mutual rout | round cap |" % key, "|---|---|---|---|---|---|"]
+	for row in rows:
+		var c: Dictionary = row.cells[key]
+		var n: int = c.n
+		L.append("| %s | %.1f | %d%% | %d%% | %d%% | %d%% |" % [row.m.name, c.rounds, _pct(c.ends.get("rout", 0), n),
+			_pct(c.ends.get("destroyed", 0), n), _pct(c.ends.get("mutual", 0), n), _pct(c.ends.get("round_cap", 0), n)])
+	return "\n".join(L)
+
+
+## Where each target of the balance pass stands.
+func _targets(rows: Array, grounds: Array) -> String:
+	var L := ["### Targets"]
+	var has := func(k): return grounds.any(func(g): return g.key == k)
+	if has.call("open"):
+		for row in rows:
+			if row.m.name == "Starting armies":
+				var p: float = row.cells.open.crown_pct
+				L.append("- (a) Starting armies, open: Crown %.1f%%, Clans %.1f%% (target: each 40-60) %s" % [p, 100.0 - p, _ok(p >= 40.0 and p <= 60.0)])
+		var pairs := rows.filter(func(r): return r.m.group == "pair")
+		if not pairs.is_empty():
+			var vals: Array = pairs.map(func(r): return r.cells.open.crown_pct)
+			var mean: float = vals.reduce(func(a, b): return a + b, 0.0) / vals.size()
+			L.append("- (b) Equal-gold pairs, open: mean %.1f%%, min %.1f%%, max %.1f%% (target: mean 30-70, every pair 20-80) %s" % [
+				mean, vals.min(), vals.max(), _ok(mean >= 30.0 and mean <= 70.0 and vals.min() >= 20.0 and vals.max() <= 80.0)])
+	# Terrain: how much holding forest, hills or a fort raises the defender's win % over holding plains.
+	for t in ["forest", "hills", "fort"]:
+		var parts := []
+		for side in [["crown", Balance.CROWN, "Crown"], ["clans", Balance.CLANS, "Clans"]]:
+			var k: String = "%s_%s" % [t, side[0]]
+			var base: String = "plains_%s" % side[0]
+			if not has.call(k) or not has.call(base):
+				continue
+			var shifts := []
+			var extremes := 0
+			for row in rows:
+				var here: float = _defender_pct(row.cells[k], side[1])
+				var plain: float = _defender_pct(row.cells[base], side[1])
+				shifts.append(here - plain)
+				if here <= 0.5 or here >= 99.5:
+					extremes += 1
+			var mean: float = shifts.reduce(func(a, b): return a + b, 0.0) / shifts.size()
+			parts.append("%s defending %+.1f points (from %+.1f to %+.1f; %d cells at 0 or 100)" % [side[2], mean, shifts.min(), shifts.max(), extremes])
+		if not parts.is_empty():
+			L.append("- (c) %s vs plains, defender's win %%: %s (target: about +10 to +25, never 0 or 100)" % [t.capitalize(), "; ".join(parts)])
+	if has.call("open"):
+		var cmd := rows.filter(func(r): return r.m.group == "commander")
+		var bits := []
+		for r in cmd:
+			bits.append("%s %.1f%%" % [r.m.name, r.cells.open.crown_pct])
+		if not bits.is_empty():
+			L.append("- (d) Commander-led, open (Crown win %%): %s" % ", ".join(bits))
+	return "\n".join(L)
+
+
+## How often each factor was the first reason of a battle's "why", and how often it was cited at all.
+func _why(rows: Array, grounds: Array) -> String:
+	var top := {}
+	var cited := {}
+	var battles := 0
+	for row in rows:
+		for g in grounds:
+			var c: Dictionary = row.cells[g.key]
+			battles += c.n
+			for k in c.top:
+				var id: String = k.split("|")[0]
+				top[id] = int(top.get(id, 0)) + c.top[k]
+			for k in c.cited:
+				var id: String = k.split("|")[0]
+				cited[id] = int(cited.get(id, 0)) + c.cited[k]
+	var ids: Array = cited.keys()
+	ids.sort_custom(func(a, b): return cited[a] > cited[b] if cited[a] != cited[b] else a < b)
+	var parts := []
+	for id in ids:
+		parts.append("%s %d%% (first %d%%)" % [id, _pct(cited[id], battles), _pct(top.get(id, 0), battles)])
+	return "### Why factors over all %d battles\nCited (and first reason): %s." % [battles, ", ".join(parts)]
+
+
+static func _defender_pct(cell: Dictionary, fid: String) -> float:
+	return cell.crown_pct if fid == Balance.CROWN else 100.0 - cell.crown_pct
+
+
+static func _pct(n, total) -> int:
+	return 0 if int(total) == 0 else roundi(100.0 * float(n) / float(total))
+
+
+static func _ok(good: bool) -> String:
+	return "**ok**" if good else "**off**"
+
+
+func _parse(args: PackedStringArray) -> Dictionary:
+	var opts := {"seeds": 400, "seed": 0, "only": "", "grounds": [], "samples": 0, "out": ""}
+	var i := 0
+	while i < args.size():
+		var key := args[i]
+		if i + 1 >= args.size():
+			return {"error": "%s needs a value" % key}
+		var value := args[i + 1]
+		i += 2
+		match key:
+			"--seeds":
+				if not value.is_valid_int() or value.to_int() < 1:
+					return {"error": "--seeds must be a positive whole number"}
+				opts.seeds = value.to_int()
+			"--seed":
+				if not value.is_valid_int():
+					return {"error": "--seed must be a whole number"}
+				opts.seed = value.to_int()
+			"--only":
+				if not GROUPS.has(value):
+					return {"error": "--only must be one of %s" % ", ".join(GROUPS)}
+				opts.only = value
+			"--grounds":
+				for k in value.split(","):
+					if Balance.ground(k).is_empty():
+						return {"error": "unknown ground %s" % k}
+					opts.grounds.append(k)
+			"--samples":
+				if not value.is_valid_int() or value.to_int() < 0:
+					return {"error": "--samples must be a whole number"}
+				opts.samples = value.to_int()
+			"--out":
+				opts.out = value
+			_:
+				return {"error": "unknown option %s" % key}
+	return opts
