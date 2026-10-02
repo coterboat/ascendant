@@ -339,3 +339,85 @@ func test_every_losing_side_is_explained_in_the_event_text() -> void:
 	assert_true(rounds.contains("a side that routs is destroyed as it flees"), rounds)
 	assert_true(rounds.contains("attackers who have not won after 8 rounds are destroyed too"), rounds)
 	assert_true(RulesCodex.text("battle_morale").contains("destroyed as they flee"))
+
+
+# --- a winning army wiped out in a border battle (crash found by the autoplay simulator, PR #24) ---
+
+## Test double: `winner_id` wins, and the army `wiped_id` on its side loses every fighter.
+class WipeOutResolver extends BattleResolver:
+	var winner_id := ""
+	var wiped_id := ""
+
+	func _init(winner: String, wiped: String) -> void:
+		winner_id = winner
+		wiped_id = wiped
+
+	func resolve_battle(battle: Dictionary, _rng: SeededRNG) -> Dictionary:
+		for side in battle.sides:
+			for a in side.armies:
+				if a.id == wiped_id:
+					a.units.clear()
+					a.commander = null
+		return {"winner": winner_id, "strengths": {}, "tie_break": "none", "roll": 0, "why": "the test resolver decided it"}
+
+
+## Aurel Crown sends two armies Wildmoor -> Ironspike while Thornmane's War Bear swaps the other way.
+func _wipe_out_swap(first_hp := 0) -> Array:
+	var s := _state([
+		["kingdom-1", "kingdom", "wildmoor", ["spearmen"]],
+		["kingdom-2", "kingdom", "wildmoor", ["knights", "knights", "knight_captain"]],
+		["beasts-3", "beasts", "ironspike", ["war_bear"]],
+	], {"wildmoor": "kingdom", "ironspike": "beasts"})
+	if first_hp > 0:
+		s.find_army("kingdom-1").units[0].current_hp = first_hp  # wounded in an earlier battle
+	var orders := {"kingdom": [MoveOrder.new("kingdom-1", "ironspike"), MoveOrder.new("kingdom-2", "ironspike")],
+		"beasts": [MoveOrder.new("beasts-3", "wildmoor")]}
+	return [s, orders]
+
+
+## The turn after a border battle Aurel Crown won while losing the army `wiped`: no crash (the runner
+## fails a test on any script error), the survivor completes its move, the wiped army is gone.
+func _assert_survivor_moved(r: Dictionary, wiped: String, survivor: String) -> void:
+	var ns: GameState = r.new_state
+	assert_true(ns != null, "the turn resolved")
+	if ns == null:
+		return
+	assert_eq(ns.find_army(wiped), null, "the wiped-out army %s is gone" % wiped)
+	assert_true(ns.find_army(survivor) != null and ns.find_army(survivor).location == "ironspike", "the surviving winner %s completes its move" % survivor)
+	assert_eq(ns.find_army("beasts-3"), null, "the loser is destroyed")
+	var border: Array = r.events.filter(func(e): return e.type == "border_battle")
+	assert_eq(border.size(), 1)
+	if border.size() == 1:
+		assert_eq(border[0].numbers.winner, "kingdom")
+		assert_true(border[0].numbers.destroyed.has(wiped), "the event lists the wiped army as destroyed")
+	var moved: Array = r.events.filter(func(e): return e.type == "army_moved")
+	assert_eq(moved.map(func(e): return e.armies), [[survivor]], "only the survivor gets a move event")
+	if moved.size() == 1:
+		assert_eq(moved[0].cause, "won_border_battle")
+	assert_eq(ns.find_province("ironspike").owner, "kingdom", "the survivor captures Ironspike")
+	assert_eq(ns.find_province("wildmoor").owner, "kingdom", "the War Bear never arrived")
+
+
+func test_border_battle_winner_with_a_wiped_out_army_still_moves_the_rest() -> void:
+	var setup := _wipe_out_swap()
+	# Wiping the first mover (by id) used to stop the loop before the second one moved; wiping the
+	# second used to crash after the first had moved. Both must work.
+	for pair in [["kingdom-1", "kingdom-2"], ["kingdom-2", "kingdom-1"]]:
+		var r := TurnResolver.resolve(setup[0], setup[1], 1, WipeOutResolver.new("kingdom", pair[0]))
+		_assert_survivor_moved(r, pair[0], pair[1])
+
+
+func test_real_border_battle_that_wipes_out_a_winning_army() -> void:
+	# A wounded lone Spearman (1 hp) marches with Knights and their captain against a War Bear: the
+	# Crown wins, and on some seeds the bear's one hit on the spearman wipes that army out.
+	var setup := _wipe_out_swap(1)
+	var reproduced := 0
+	for turn_seed in range(1, 41):
+		var r := TurnResolver.resolve(setup[0], setup[1], turn_seed)
+		var border: Array = r.events.filter(func(e): return e.type == "border_battle")
+		if border.is_empty() or border[0].numbers.winner != "kingdom" or not border[0].numbers.destroyed.has("kingdom-1"):
+			continue
+		reproduced += 1
+		_assert_survivor_moved(r, "kingdom-1", "kingdom-2")
+		assert_true(border[0].text.contains("Aurel Crown won, but one of its armies lost every fighter and is gone too."), border[0].text)
+	assert_true(reproduced > 0, "some seed wipes out the wounded spearman's army while the Crown wins")

@@ -267,12 +267,17 @@ static func _border_battle(s: GameState, resolver: BattleResolver, rng: SeededRN
 	for m in clash.movers:
 		if not sides.has(m.faction):
 			sides[m.faction] = []
+		# Never null: an army has one move, so it is in exactly one clash, and earlier battles only
+		# removed their own armies.
 		sides[m.faction].append(s.find_army(m.army_id))
 	var ends := Array(clash.edge.split("|"))
 	var winner := _fight(s, resolver, rng, "border", ends, sides, "", events)
 	for m in clash.movers:
 		if m.faction == winner:
-			s.find_army(m.army_id).location = m.to
+			var army := s.find_army(m.army_id)
+			if army == null:
+				continue  # on the winning side, but every fighter in it fell: it is gone, not moving
+			army.location = m.to
 			events.append(_moved_event(s, m, "won_border_battle"))
 
 
