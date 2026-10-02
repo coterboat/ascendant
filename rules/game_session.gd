@@ -55,6 +55,7 @@ var _report_turn := 0
 var _battles := 0
 var _victory := {}
 var _setup_errors: Array = []
+var _start_builds := {}  # faction id -> RulerRules.build_of at the start; {} in a game without rulers
 
 
 func _init(state: GameState = null, players: Array = [], game_seed: int = 0, battle_resolver: BattleResolver = null) -> void:
@@ -74,6 +75,9 @@ func _init(state: GameState = null, players: Array = [], game_seed: int = 0, bat
 		return
 	_players = players.duplicate()
 	_start_dict = _state.to_dict()
+	for f in _state.factions:
+		if f.has_ruler():
+			_start_builds[f.id] = RulerRules.build_of(_state, f.id)
 	for fid in _players:
 		_books[fid] = OrderBook.new()
 
@@ -222,10 +226,20 @@ func history() -> Array:
 	return _history.duplicate(true)
 
 
-## Everything replay() needs to rebuild this game: JSON-safe.
+## Each faction's ruler build at the start of the game (M2): {faction id: {"ruler", "ruler_name",
+## "kept_power", "mandates", "mandate_names", "status", "generation"}}. {} in a game without rulers.
+func builds() -> Dictionary:
+	return _start_builds.duplicate(true)
+
+
+## Everything replay() needs to rebuild this game: JSON-safe. A game with rulers also carries
+## "builds" (see builds()) for reports; replay() doesn't need it, since builds live in "start_state".
 func record() -> Dictionary:
-	return {"start_state": _start_dict.duplicate(true), "players": _players.duplicate(),
+	var rec := {"start_state": _start_dict.duplicate(true), "players": _players.duplicate(),
 		"game_seed": Serial.int64_to_str(_game_seed), "history": history()}
+	if not _start_builds.is_empty():
+		rec["builds"] = builds()
+	return rec
 
 
 # --- actions --------------------------------------------------------------------------------------

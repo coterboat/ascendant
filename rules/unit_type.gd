@@ -11,6 +11,9 @@ var cost: int = 10
 var trait_id: String = ""
 var trait_description: String = ""
 var is_commander: bool = false
+## A ruler's stats (M2): built by RulerRules from the ruler and its kept power, never recruited
+## (cost 0, no trait). Rulers are not "units" for mandates and traits that name units.
+var is_ruler: bool = false
 
 # Short plain-language descriptions for tooltips/codex. Matches acceptance criterion for every stat.
 static func describe(stat: String) -> String:
@@ -31,7 +34,7 @@ func get_cost_desc() -> String: return describe("cost")
 func get_trait_desc() -> String: return trait_description if not trait_description.is_empty() else describe("trait")
 
 func to_dict() -> Dictionary:
-	return {
+	var d := {
 		"id": id,
 		"name": name,
 		"hp": hp,
@@ -43,6 +46,9 @@ func to_dict() -> Dictionary:
 		"trait_description": trait_description,
 		"is_commander": is_commander,
 	}
+	if is_ruler:
+		d["is_ruler"] = true  # only rulers carry the key, so M1 data saves exactly as before
+	return d
 
 static func from_dict(data: Dictionary) -> UnitType:
 	var ut := UnitType.new()
@@ -56,4 +62,5 @@ static func from_dict(data: Dictionary) -> UnitType:
 	ut.trait_id = data.get("trait", "")
 	ut.trait_description = data.get("trait_description", data.get("trait_desc", ""))
 	ut.is_commander = data.get("is_commander", false)
+	ut.is_ruler = data.get("is_ruler", false)
 	return ut

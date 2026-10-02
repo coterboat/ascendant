@@ -116,6 +116,122 @@ static func turn(state: GameState) -> Dictionary:
 		"Current turn", number)
 
 
+# --- rulers and mandates (M2, #29) ----------------------------------------------------------------
+# Every number comes from RulerRules, never redone here. These breakdowns also carry a "codex" key
+# naming the RulesCodex entry that explains them (TooltipText.codex_for uses it).
+
+## A faction's kept power (§7.1): the pool of 10, minus each mandate chosen before the game, minus
+## each mid-game sacrifice, minus what successions cost (the remainder, so the lines always sum up).
+static func kept_power(state: GameState, faction_id: String) -> Dictionary:
+	var f := state.find_faction(faction_id)
+	if f == null or not f.has_ruler():
+		return _coded(_make("Kept power", "This faction has no ruler in this game.", [], "Kept power", 0), "kept_power")
+	var lines := [_line("Power pool", RulerData.POWER_POOL, "every ruler starts with %d" % RulerData.POWER_POOL)]
+	var sacrificed := {}
+	for sac in f.sacrifices:
+		sacrificed[str(sac.get("mandate", ""))] = true
+	for mid in f.mandates:
+		if not sacrificed.has(mid):
+			lines.append(_line(RulerRules.mandate_name(mid), -RulerRules.mandate_cost(mid), "a mandate chosen before the game"))
+	for sac in f.sacrifices:
+		lines.append(_line("%s, sacrificed on turn %d" % [RulerRules.mandate_name(str(sac.get("mandate", ""))), int(sac.get("turn", 0))],
+			-int(sac.get("cost", 0)), "its price +%d for a mid-game sacrifice" % MandateData.SACRIFICE_PREMIUM))
+	var listed := sum_of_lines({"lines": lines})
+	if listed != f.kept_power:
+		lines.append(_line("Successions", f.kept_power - listed, "power lost when a ruler died and a successor took over"))
+	var desc := "%s keeps %d of its %d power. %s" % [RulerRules._cap(RulerRules.current_name(state, faction_id)),
+		f.kept_power, RulerData.POWER_POOL, RulesCodex.text("kept_power")]
+	return _coded(_make("Kept power of %s" % RulerRules.current_name(state, faction_id), desc, lines, "Kept power", f.kept_power), "kept_power")
+
+
+## Kept power of a build before the game (the build screen's power bar): pool - each mandate's cost.
+## `build` is {"ruler", "mandates"} or a preset id. An empty build keeps all 10.
+static func build_kept_power(build) -> Dictionary:
+	var b := RulerRules.normalize_build(build)
+	var lines := [_line("Power pool", RulerData.POWER_POOL, "every ruler starts with %d" % RulerData.POWER_POOL)]
+	var seen := {}
+	for mid in b.mandates:
+		if seen.has(mid):
+			continue
+		seen[mid] = true
+		lines.append(_line(RulerRules.mandate_name(mid), -RulerRules.mandate_cost(mid), "mandate"))
+	return _coded(_make("Kept power", RulesCodex.text("kept_power"), lines, "Kept power", RulerRules.kept_after(b)), "kept_power")
+
+
+## One of a ruler's numbers at `kept` power (§7.1): "hp" (maximum hit points), "attack" or "defense"
+## as base + what kept power adds, e.g. "Attack 14 = base 9 + 5 from 10 kept power"; "morale" is its
+## own morale, used when it fights with no regular units beside it.
+static func ruler_stat_at(ruler_id: String, stat: String, kept: int, generation: int = 1) -> Dictionary:
+	var name := RulerRules.ruler_name(ruler_id, generation)
+	if RulerRules.ruler_data(ruler_id).is_empty():
+		return _make(stat.capitalize(), "This is not a ruler in this game.", [], stat.capitalize(), 0)
+	var stats := RulerRules.ruler_stats(ruler_id, kept, generation)
+	if stat == "morale":
+		var mdesc := "The morale %s fights with when no regular units stand beside it. While it stands, it also gives its side +%d morale. %s" % [
+			name, RulerData.RULER_MORALE, UnitType.describe("morale")]
+		return _coded(_make("Morale of %s" % name, mdesc, [_line("Morale of %s" % name, stats.morale, "the same at any kept power")],
+			"Morale when it fights alone", stats.morale), "ruler_in_battle")
+	var label := String(RulerRules.STAT_NAMES.get(stat, stat))
+	var parts := RulerRules.stat_parts(ruler_id, stat, kept)
+	var every := ("+%d for every kept power" % parts.gain) if parts.per == 1 \
+		else ("+%d for every %d kept power, rounded down" % [parts.gain, parts.per])
+	var lines := [_line("Base %s of %s" % [label.to_lower(), name], parts.base, "with no kept power"),
+		_line("From %d kept power" % clampi(kept, 0, RulerData.POWER_POOL), parts.from_kept, every)]
+	var desc := "%s With 0 kept power %s has %d %s; with all %d kept, %d." % [UnitType.describe(stat), name,
+		RulerRules.stat_value(ruler_id, stat, 0), label.to_lower(), RulerData.POWER_POOL,
+		RulerRules.stat_value(ruler_id, stat, RulerData.POWER_POOL)]
+	return _coded(_make("%s of %s" % [label, name], desc, lines, label, stats[stat]), "ruler_power")
+
+
+## ruler_stat_at for the faction's current ruler and kept power.
+static func ruler_stat(state: GameState, faction_id: String, stat: String) -> Dictionary:
+	var f := state.find_faction(faction_id)
+	if f == null or not f.has_ruler():
+		return _coded(_make(stat.capitalize(), "This faction has no ruler in this game.", [], stat.capitalize(), 0), "ruler")
+	return ruler_stat_at(f.ruler_type, stat, f.kept_power, f.ruler_generation)
+
+
+## A ruler's ability rank at `kept` power (§7.1): "Ability rank 2 = 1 + 4 kept power / 3 (rounded
+## down)", then what that rank does.
+static func ability_rank_at(ruler_id: String, kept: int, generation: int = 1) -> Dictionary:
+	var name := RulerRules.ruler_name(ruler_id, generation)
+	if RulerRules.ruler_data(ruler_id).is_empty():
+		return _make("Ability rank", "This is not a ruler in this game.", [], "Ability rank", 0)
+	var rank := RulerRules.ability_rank(kept)
+	var lines := [_line("Every ruler", 1, "rank 1 with no kept power"),
+		_line("From %d kept power" % clampi(kept, 0, RulerData.POWER_POOL), rank - 1,
+			"+1 rank for every %d kept power, rounded down, up to rank %d" % [RulerData.ABILITY_RANK_PER, RulerData.MAX_ABILITY_RANK])]
+	var desc := "%s at rank %d: %s %s" % [RulerRules.ability_name(ruler_id), rank,
+		RulerRules.ability_text(ruler_id, rank, generation), RulesCodex.text("ability_rank")]
+	return _coded(_make("Ability rank of %s" % name, desc, lines, "Ability rank", rank), "ability_rank")
+
+
+## ability_rank_at for the faction's current ruler and kept power.
+static func ability_rank(state: GameState, faction_id: String) -> Dictionary:
+	var f := state.find_faction(faction_id)
+	if f == null or not f.has_ruler():
+		return _coded(_make("Ability rank", "This faction has no ruler in this game.", [], "Ability rank", 0), "ability_rank")
+	return ability_rank_at(f.ruler_type, f.kept_power, f.ruler_generation)
+
+
+## A roster unit's or commander's stat with the faction's mandates (§7.1): "hp" (maximum hit
+## points), "attack", "defense" or "cost", e.g. "Defense 6 = Spearmen 5 + Royal Armories 1" or
+## "Knights 16 gold = 20 - Muster Grounds 4". From RulerRules.unit_stats.
+static func unit_stat(state: GameState, faction_id: String, unit_type_id: String, stat: String) -> Dictionary:
+	var us := RulerRules.unit_stats(state, faction_id, unit_type_id)
+	var label := String(RulerRules.STAT_NAMES.get(stat, stat))
+	if not us.get("ok", false) or not us.base.has(stat):
+		return _make(label, "This faction can't recruit that unit type.", [], label, 0)
+	var lines := [_line(us.name, us.base[stat], "its own %s" % label.to_lower())]
+	var names := []
+	for m in us.mods[stat]:
+		lines.append(_line(m.name, m.value, "mandate"))
+		names.append(m.name)
+	var desc := "%s %s" % [UnitType.describe(stat), "No mandate of yours changes it." if names.is_empty()
+		else "Your mandates change it: %s." % ", ".join(names)]
+	return _coded(_make("%s of %s" % [label, us.name], desc, lines, label, us[stat]), "mandates")
+
+
 ## Sum of the line values. Equal to the breakdown's total by construction; tests check it.
 static func sum_of_lines(breakdown: Dictionary) -> int:
 	var total := 0
@@ -130,6 +246,12 @@ static func _make(title: String, description: String, lines: Array, total_label:
 
 static func _line(label: String, value: int, note: String) -> Dictionary:
 	return {"label": label, "value": value, "note": note}
+
+
+## The breakdown with the RulesCodex entry that explains it.
+static func _coded(breakdown: Dictionary, codex_key: String) -> Dictionary:
+	breakdown["codex"] = codex_key
+	return breakdown
 
 
 static func _faction_name(state: GameState, fid: String) -> String:

@@ -23,6 +23,9 @@ extends Control
 ## API:
 ##   start_game(config)   config = {"players": [faction ids in seat order], "seed": int}. Missing keys
 ##                        get default_config() values: every faction in data order and a random seed.
+##                        Rulers (M2) are opt-in until battles and succession handle them: config
+##                        "rulers": true, or "builds": {faction id: build or preset id}, or the
+##                        `-- --rulers` command-line switch for playtests (starting_state()).
 ##                        If the screen enters the tree without start_game(), it starts a default game.
 ##   end_turn()           the End turn button: hands off to the next player, or resolves the turn.
 ##   open_turn_report()   the Turn report button: the last resolved turn's report.
@@ -84,12 +87,22 @@ func start_game(game_config: Dictionary = {}) -> void:
 	error_overlay.visible = false
 	handoff.visible = false
 	# The state's seed and the game seed are the same, so GameSession's turn seeds match TurnResolver's.
-	session = GameSession.new(GameState.new(config.seed), config.players, config.seed, AutoBattleResolver.new())
+	session = GameSession.new(starting_state(config), config.players, config.seed, AutoBattleResolver.new())
 	map.session = session
 	if session.phase() == GameSession.Phase.INVALID:
 		_show_setup_errors(session.setup_errors())
 		return
 	_show_current_player()
+
+
+## The starting state for `game_config`: the M1 game, or with rulers when the config asks for them
+## ("rulers": true, or "builds") or the game was launched with `-- --rulers`. Factions without a
+## build get their balanced preset. Null when a build is illegal (the session then explains).
+static func starting_state(game_config: Dictionary) -> GameState:
+	var seed_value := int(game_config.get("seed", 0))
+	if game_config.get("rulers", false) or game_config.has("builds") or OS.get_cmdline_user_args().has("--rulers"):
+		return GameState.with_rulers(seed_value, game_config.get("builds", {}), [])
+	return GameState.new(seed_value)
 
 
 ## Ends the current player's turn. Returns "" or the session's reason it could not.
