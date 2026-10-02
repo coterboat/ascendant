@@ -735,7 +735,7 @@ func test_simulator_catches_broken_ruler_armies_and_successions() -> void:
 	gone.armies.erase(RulerRules.ruler_army(gone, "beasts"))
 	dead.ruler_status = RulerRules.DEAD
 	found = _checks(Simulator.check_invariants(prev, gone, []))
-	for expected in ["ruler_missing", "successor_missing", "ruler_events_mismatch"]:
+	for expected in ["ruler_missing", "successor_missing", "ruler_events_mismatch", "validate"]:
 		assert_true(found.has(expected), "catches %s: %s" % [expected, found])
 	# A successor overdue while the capital is held.
 	var late := _rulers()

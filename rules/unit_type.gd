@@ -50,17 +50,31 @@ func to_dict() -> Dictionary:
 		d["is_ruler"] = true  # only rulers carry the key, so M1 data saves exactly as before
 	return d
 
-static func from_dict(data: Dictionary) -> UnitType:
+## Returns null when a field has the wrong type, with a plain-language reason in `errors` (Serial load
+## checks). `who` names the unit type in it; Faction.from_dict passes "unit type 2 of faction 'kingdom'".
+static func from_dict(data: Dictionary, errors = null, who: String = "") -> UnitType:
+	if who.is_empty():
+		who = Serial.label("unit type", data)
+	var text := {}
+	for key in ["id", "name", "trait", "trait_description", "trait_desc"]:
+		text[key] = Serial.expect(data, key, TYPE_STRING, errors, who, "")
+		if text[key] == null:
+			return null
+	var flags := {}
+	for key in ["is_commander", "is_ruler"]:
+		flags[key] = Serial.expect(data, key, TYPE_BOOL, errors, who, false)
+		if flags[key] == null:
+			return null
 	var ut := UnitType.new()
-	ut.id = data.get("id", "")
-	ut.name = data.get("name", "")
+	ut.id = text.id
+	ut.name = text.name
 	ut.hp = Serial.to_int(data.get("hp", 10), 10)
 	ut.attack = Serial.to_int(data.get("attack", 5), 5)
 	ut.defense = Serial.to_int(data.get("defense", 5), 5)
 	ut.morale = Serial.to_int(data.get("morale", 5), 5)
 	ut.cost = Serial.to_int(data.get("cost", 10), 10)
-	ut.trait_id = data.get("trait", "")
-	ut.trait_description = data.get("trait_description", data.get("trait_desc", ""))
-	ut.is_commander = data.get("is_commander", false)
-	ut.is_ruler = data.get("is_ruler", false)
+	ut.trait_id = text.trait
+	ut.trait_description = text.trait_description if data.has("trait_description") else text.trait_desc
+	ut.is_commander = flags.is_commander
+	ut.is_ruler = flags.is_ruler
 	return ut

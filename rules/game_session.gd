@@ -384,17 +384,32 @@ func begin_turn() -> String:
 
 ## Rebuilds a game from record() (or the same data after a JSON round-trip) by resolving every turn
 ## again with its recorded orders and seed. Returns {"state": GameState or null, "events": the last
-## turn's resolver events, "errors": plain-language problems}.
-static func replay(game_record: Dictionary, battle_resolver: BattleResolver = null) -> Dictionary:
+## turn's resolver events, "errors": plain-language problems}. Malformed data never raises a script
+## error (#49): a record, starting state or turn that can't be read gives state null and the reason;
+## an order that can't be read is skipped and reported ("Turn 3: Order 2 for 'kingdom' should be ..."),
+## so errors next to a state mean the replay may differ from the game that was recorded.
+static func replay(game_record, battle_resolver: BattleResolver = null) -> Dictionary:
 	var errors := []
+	if not Serial.check(game_record, TYPE_DICTIONARY, errors, "the replay"):
+		return {"state": null, "events": [], "errors": errors}
 	if not game_record.has("start_state"):
 		return {"state": null, "events": [], "errors": ["This replay has no starting state."]}
 	var state := GameState.from_dict(game_record.start_state, errors)
 	if state == null:
 		return {"state": null, "events": [], "errors": errors}
+	var history = Serial.expect_dicts(game_record, "history", errors, "the replay", "turn")
+	if history == null:
+		return {"state": null, "events": [], "errors": errors}
 	var events: Array = []
-	for entry in game_record.get("history", []):
-		var orders := OrderBook.orders_from_dict(entry.get("orders", {}), errors)
+	for i in history.size():
+		var entry: Dictionary = history[i]
+		var orders_data = Serial.expect(entry, "orders", TYPE_DICTIONARY, errors, "turn %d of the replay" % (i + 1), {})
+		if orders_data == null:
+			return {"state": null, "events": [], "errors": errors}
+		var order_errors := []
+		var orders := OrderBook.orders_from_dict(orders_data, order_errors)
+		for e in order_errors:
+			errors.append("Turn %d: %s" % [i + 1, e])
 		var result := TurnResolver.resolve(state, orders, Serial.to_int(entry.get("seed", 0)), battle_resolver)
 		if result.new_state == null:
 			errors.append_array(result.get("errors", []))
