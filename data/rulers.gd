@@ -129,7 +129,7 @@ const ABILITIES := {
 		"name": "Warband Muster",
 		"values": [1, 2, 3, 4],
 		"short": "{value} recruits in the field",
-		"effect": "Each turn you may recruit up to {value} regular units with {ruler}, at the usual prices. They appear where {ruler} is after movement and battles, if you own that province then. Commanders still come only from the capital.",
+		"effect": "Each turn you may recruit up to {value} regular units with {ruler}, at the usual prices. They gather where {ruler} starts the turn and join your armies there at the end of the turn, if you still own that province then. Commanders still come only from the capital.",
 	},
 }
 

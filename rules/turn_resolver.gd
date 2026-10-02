@@ -94,7 +94,7 @@ static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: 
 		_border_battle(s, resolver, rng, clash, events)
 	_province_battles(s, resolver, rng, moved, battle_sites, events)
 	_capture(s, battle_sites, events)
-	_recruitment(s, recruits, events)
+	_recruitment(s, recruits, events, state)  # Warband Muster gathers where the ruler started the turn
 	_income(s, events)
 	_rulers_phase(s, events)
 
@@ -165,8 +165,11 @@ static func _check_road_move(state: GameState, faction: Faction, army: Army, her
 
 ## Checks a recruit order for `faction_id` with `gold_available` left to spend. Returns {} when
 ## valid, otherwise {"code", "reason"}. `with_ruler_before` counts the recruits with the ruler already
-## paid for this turn (Warband Muster's limit); price_recruits passes it.
-static func check_recruit(state: GameState, faction_id: String, order, gold_available: int, with_ruler_before: int = 0) -> Dictionary:
+## paid for this turn (Warband Muster's limit); price_recruits passes it. `start_state` is the state the
+## turn started from, where a recruit with the ruler gathers (muster_province); `state` itself when null,
+## which is the case whenever orders are checked before the turn resolves.
+static func check_recruit(state: GameState, faction_id: String, order, gold_available: int, with_ruler_before: int = 0,
+		start_state: GameState = null) -> Dictionary:
 	if not (order is RecruitOrder):
 		return _reject("unknown_order", "That is not an order this game knows. Orders are moves and recruits.")
 	var faction := state.find_faction(faction_id)
@@ -180,7 +183,7 @@ static func check_recruit(state: GameState, faction_id: String, order, gold_avai
 				return _reject("not_in_roster", "%s belong to %s. %s can only recruit its own units." % [other_ut.name, other.faction_name, faction.faction_name])
 		return _reject("unknown_unit_type", "That is not a unit type in this game. Recruit from your faction's roster.")
 	if order.at == RecruitOrder.AT_RULER:
-		var field := _check_recruit_with_ruler(state, faction, ut, with_ruler_before)
+		var field := _check_recruit_with_ruler(state, faction, ut, with_ruler_before, start_state if start_state != null else state)
 		if not field.is_empty():
 			return field
 	elif not order.at.is_empty():
@@ -195,12 +198,13 @@ static func check_recruit(state: GameState, faction_id: String, order, gold_avai
 	return {}
 
 
-## Warband Muster (§1.4): a recruit "with the ruler" needs a ruler with the ability, on the map, standing
-## in a province its faction owns (checked against `state`: the start of the turn when ordering, after
-## capture when resolving), a regular unit (commanders come only from the capital), and room under the
-## per-turn limit. The reasons say the recruit costs nothing, because a recruit that fails here at the
-## end of the turn is cancelled before anything is paid.
-static func _check_recruit_with_ruler(state: GameState, faction: Faction, ut: UnitType, with_ruler_before: int) -> Dictionary:
+## Warband Muster (§1.4): a recruit "with the ruler" needs a ruler with the ability, on the map (in
+## `state`: the start of the turn when ordering, after battles when resolving), a regular unit (commanders
+## come only from the capital), room under the per-turn limit, and the province where the ruler started
+## the turn (`start`, see muster_province) still owned by its faction (in `state`, so after capture when
+## resolving). The reasons say the recruit costs nothing, because a recruit that fails here at the end
+## of the turn is cancelled before anything is paid.
+static func _check_recruit_with_ruler(state: GameState, faction: Faction, ut: UnitType, with_ruler_before: int, start: GameState) -> Dictionary:
 	var fid := faction.id
 	var ability := RulerRules.ability_name(_first_ruler_with(RulerRules.WARBAND_MUSTER))
 	if not RulerRules.ruler_has_ability(state, fid, RulerRules.WARBAND_MUSTER):
@@ -223,11 +227,20 @@ static func _check_recruit_with_ruler(state: GameState, faction: Faction, ut: Un
 		return _reject("ruler_recruit_limit", "%s can recruit %d %s per turn (%s at ability rank %d), and %s already ordered." % [
 			name, limit, "unit" if limit == 1 else "units", ability, RulerRules.ability_rank(faction.kept_power),
 			"that one is" if with_ruler_before == 1 else "%d are" % with_ruler_before])
-	var where := state.find_province(army.location)
+	var at_id := muster_province(start, fid)
+	var where := state.find_province(at_id)
 	if where == null or where.owner != fid:
-		return _reject("ruler_province_not_held", "%s is at %s, which is not yours, so nobody can recruit with it there; no gold is spent." % [
-			name, _province_name(state, army.location)])
+		return _reject("ruler_province_not_held", "%s's recruits gather where it starts the turn, at %s, which is not yours, so nobody can recruit with it there; no gold is spent." % [
+			name, _province_name(state, at_id)])
 	return {}
+
+
+## Where recruits made with `fid`'s ruler gather and join its armies (Warband Muster, §1.4): the province
+## the ruler stands in at the start of the turn, in `start_state`, wherever it goes during the turn
+## (follow-up to #36: they no longer appear at the front the ruler moves to). "" without a ruler on the map.
+static func muster_province(start_state: GameState, fid: String) -> String:
+	var army := RulerRules.ruler_army(start_state, fid) if start_state != null else null
+	return army.location if army != null else ""
 
 
 ## The first ruler id (in data order) whose ability is `ability_id`, for naming the ability.
@@ -260,19 +273,22 @@ static func recruit_cost(state: GameState, faction_id: String, unit_type_id: Str
 
 
 ## Checks and prices a faction's recruit orders in the order given, spending gold as it goes.
-## Used by the recruitment phase and by Forecast, so the forecast always matches the result.
+## Used by the recruitment phase and by Forecast, so the forecast always matches the result. The
+## recruitment phase passes `start_state`, the state the turn started from (where recruits with the ruler
+## gather); every check made before the turn resolves leaves it null, so `state` is the start.
 ## Recruits at the capital and with the ruler (Warband Muster) share one gold pool and are paid in
 ## the order given; a recruit that fails a check costs nothing.
 ## Returns {"gold_before", "spent", "gold_after", "results": [per order: {"ok", "order", "at", and
 ## either "unit_type", "cost", "gold_after", "province" (where it appears) or "code", "reason"}]}.
-static func price_recruits(state: GameState, faction_id: String, orders: Array) -> Dictionary:
+static func price_recruits(state: GameState, faction_id: String, orders: Array, start_state: GameState = null) -> Dictionary:
+	var start := start_state if start_state != null else state
 	var faction := state.find_faction(faction_id)
 	var gold_before := faction.gold if faction else 0
 	var gold := gold_before
 	var with_ruler := 0
 	var results := []
 	for order in orders:
-		var check := check_recruit(state, faction_id, order, gold, with_ruler)
+		var check := check_recruit(state, faction_id, order, gold, with_ruler, start)
 		var at: String = order.at if order is RecruitOrder else ""
 		if check.is_empty():
 			var ut := recruitable_type(faction, order.unit_type_id)
@@ -281,7 +297,7 @@ static func price_recruits(state: GameState, faction_id: String, orders: Array) 
 			var province := faction.capital
 			if at == RecruitOrder.AT_RULER:
 				with_ruler += 1
-				province = RulerRules.ruler_army(state, faction_id).location
+				province = muster_province(start, faction_id)
 			results.append({"ok": true, "order": order, "at": at, "unit_type": ut.id, "cost": price, "gold_after": gold,
 				"province": province})
 		else:
@@ -799,13 +815,13 @@ static func _sworn_vassals(s: GameState, events: Array) -> void:
 				_province_name(s, pid), " and ".join(names)], "mandate_sworn_vassals"))
 
 
-static func _recruitment(s: GameState, recruits: Dictionary, events: Array) -> void:
+static func _recruitment(s: GameState, recruits: Dictionary, events: Array, start: GameState = null) -> void:
 	for fid in _faction_ids(s):
 		var list: Array = recruits.get(fid, [])
 		if list.is_empty():
 			continue
 		var faction := s.find_faction(fid)
-		var priced := price_recruits(s, fid, list)
+		var priced := price_recruits(s, fid, list, start)
 		faction.gold = priced.gold_after
 		for r in priced.results:
 			if not r.ok:
@@ -824,8 +840,8 @@ static func _recruitment(s: GameState, recruits: Dictionary, events: Array) -> v
 				joined = "They joined the %s." % army_label(s, army)
 			var how := "at %s" % _province_name(s, r.province)
 			if with_ruler:
-				# Warband Muster (§7.5): still a "recruited" event, saying with whom and where.
-				how = "with %s at %s" % [RulerRules.current_name(s, fid), _province_name(s, r.province)]
+				# Warband Muster (§7.5): still a "recruited" event, saying with whom and where they gathered.
+				how = "with %s at %s, where it started the turn," % [RulerRules.current_name(s, fid), _province_name(s, r.province)]
 			events.append(_event("recruited", "recruitment", [r.province], [fid], [army.id], "with_ruler" if with_ruler else "order",
 				{"cost": r.cost, "gold_after": r.gold_after, "new_army": placed.created},
 				"%s recruited %s %s for %d gold (%d gold left). %s" % [faction.faction_name, ut.name, how, r.cost,

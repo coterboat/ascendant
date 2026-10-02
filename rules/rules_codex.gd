@@ -217,7 +217,7 @@ const ENTRIES := {
 	},
 	"recruit": {
 		"title": "Recruiting",
-		"text": "Recruit units from your own roster at your capital. Each unit costs gold, paid in the order you gave the orders, from your gold before this turn's income. Recruiting happens after capture, so if your capital falls this turn your recruits are cancelled and you keep the gold. New units join your army at the capital, or form a new army if none is there. In a game with rulers, recruits never join the ruler's army: they join another army of yours there, or form a new one. With Muster Grounds every recruit costs less, and every price on screen already includes it. With Warband Muster the Ninth Fang can also recruit regular units where it stands, a few each turn (more at a higher ability rank), paid from the same gold; they are cancelled and cost nothing if the Fang has fallen or its province isn't yours after the battles.",
+		"text": "Recruit units from your own roster at your capital. Each unit costs gold, paid in the order you gave the orders, from your gold before this turn's income. Recruiting happens after capture, so if your capital falls this turn your recruits are cancelled and you keep the gold. New units join your army at the capital, or form a new army if none is there. In a game with rulers, recruits never join the ruler's army: they join another army of yours there, or form a new one. With Muster Grounds every recruit costs less, and every price on screen already includes it. With Warband Muster the Ninth Fang can also recruit regular units where it starts the turn, a few each turn (more at a higher ability rank), paid from the same gold; they appear there at the end of the turn, and are cancelled and cost nothing if the Fang has fallen or that province isn't yours after the battles.",
 	},
 	"income": {
 		"title": "Income",
@@ -272,7 +272,7 @@ const ENTRIES := {
 	},
 	"ruler_army": {
 		"title": "The ruler's army",
-		"text": "A ruler travels alone, as its own army: no units and no commander. It moves like any army, one province per turn, or two by a road move with King's Roads. It captures provinces like any army, and it fights together with every other army of yours in the same province or on the same border. Recruits never join the ruler's army, so it can always move on its own: with Warband Muster, the Ninth Fang's recruits join another army of yours where it stands, or form a new one. At the start of the game each capital holds the starting army and the ruler's army. A living ruler is always on the map in its army: when the ruler dies the army goes with it, and a successor arrives later in a new ruler's army at the capital.",
+		"text": "A ruler travels alone, as its own army: no units and no commander. It moves like any army, one province per turn, or two by a road move with King's Roads. It captures provinces like any army, and it fights together with every other army of yours in the same province or on the same border. Recruits never join the ruler's army, so it can always move on its own: with Warband Muster, the Ninth Fang's recruits join another army of yours where it started the turn, or form a new one. At the start of the game each capital holds the starting army and the ruler's army. A living ruler is always on the map in its army: when the ruler dies the army goes with it, and a successor arrives later in a new ruler's army at the capital.",
 	},
 	"ruler_death": {
 		"title": "When a ruler dies",
@@ -344,7 +344,7 @@ const ENTRIES := {
 	},
 	"ability_warband_muster": {
 		"title": "Warband Muster",
-		"text": "The Ninth Fang's province ability. Each turn you may recruit regular units with the Fang: 1 at ability rank 1, 2 at rank 2, 3 at rank 3 and 4 at rank 4, at the usual prices (Muster Grounds included). Select the Fang's province to find the Recruit with the Ninth Fang buttons. The recruits appear where the Fang is after movement and battles, if you own that province then; if the Fang has fallen or its province isn't yours, they are cancelled and cost nothing. They are paid from the same gold as capital recruits, in the order you gave them. Commanders still come only from the capital.",
+		"text": "The Ninth Fang's province ability. Each turn you may recruit regular units with the Fang: 1 at ability rank 1, 2 at rank 2, 3 at rank 3 and 4 at rank 4, at the usual prices (Muster Grounds included). Select the Fang's province to find the Recruit with the Ninth Fang buttons. The recruits gather where the Fang starts the turn and join your armies there at the end of the turn, even if the Fang marches on, so they can't reinforce an army the moment it moves up; if the Fang has fallen or that province isn't yours by then, they are cancelled and cost nothing. They are paid from the same gold as capital recruits, in the order you gave them. Commanders still come only from the capital.",
 	},
 	"mandate_iron_discipline": {
 		"title": "Iron Discipline",
@@ -392,7 +392,7 @@ const ENTRIES := {
 	},
 	"field_recruit": {
 		"title": "Recruiting in the field",
-		"text": "With Warband Muster, the Ninth Fang can recruit regular units where it stands, not only at the capital: up to its ability rank each turn, at the usual prices. Select the Fang's province to recruit with it. They appear where the Fang is after movement and battles, joining your first army there that isn't the Fang's own, or forming a new one, if you own that province then; if not, or if the Fang has fallen, they are cancelled and you keep the gold. Commanders still come only from the capital.",
+		"text": "With Warband Muster, the Ninth Fang can recruit regular units where it stands, not only at the capital: up to its ability rank each turn, at the usual prices. Select the Fang's province to recruit with it. They gather where the Fang starts the turn and appear there at the end of the turn, joining your first army there that isn't the Fang's own, or forming a new one, even if the Fang has marched on; if you no longer own that province then, or if the Fang has fallen, they are cancelled and you keep the gold. Commanders still come only from the capital.",
 	},
 }
 
