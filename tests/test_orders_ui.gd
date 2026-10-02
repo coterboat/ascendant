@@ -1,7 +1,8 @@
 extends "res://tests/test_case.gd"
 ## Issue #6 orders UI: the OrdersController queues moves and recruits through the OrderBook,
-## reports the rules' reasons, cancels, takes every number from Forecast, speaks in names (never
-## ids) and never changes the state. Plus the map screen's two-click move and cancel button.
+## reports the rules' reasons, cancels, takes every number from Forecast (battle odds included),
+## speaks in names (never ids) and never changes the state. Session-backed controllers keep the orders
+## in GameSession's books. Plus the map screen's two-click move, cancel button and hover preview.
 
 const MAP_SCENE := "res://ui/map_screen.tscn"
 
@@ -36,7 +37,8 @@ func test_queue_a_valid_move() -> void:
 	assert_eq(c.queue_move(army.id, to), "", "a move to a neighbor is accepted")
 	assert_eq(c.orders().size(), 1, "one order queued")
 	assert_true(c.order_texts()[0].contains(s.find_province(to).name), "the order names the destination")
-	assert_true(c.order_texts()[0].contains("odds not available yet"), "battle odds wait for issue #4")
+	assert_true(c.order_texts()[0].contains(OrdersController.NO_ENEMY_TEXT), "no enemy army there: a plain line instead of odds")
+	assert_false(c.move_odds(army.id, to).enemy_present)
 	assert_eq(c.move_forecast(army.id, to).ok, false, "a second move for the same army is forecast as refused")
 
 
@@ -133,4 +135,100 @@ func test_map_screen_two_click_move_and_cancel() -> void:
 		cancel.pressed.emit()
 	assert_eq(screen.orders.orders().size(), 0, "cancel removes it")
 	screen.get_parent().remove_child(screen)
+	screen.free()
+
+
+## Kingdom's army at Stonegate, next to the Thornmane army holding Blackwood, plus a second kingdom
+## army in Wildmoor (also next to Blackwood).
+func _border_state() -> GameState:
+	var s := _state()
+	s.find_army("kingdom-1").location = "stonegate"
+	s.find_army("beasts-2").location = "blackwood"
+	s.find_province("stonegate").owner = "kingdom"
+	s.find_province("blackwood").owner = "beasts"
+	var extra := Army.new()
+	extra.id = "kingdom-3"
+	extra.owner = "kingdom"
+	extra.location = "wildmoor"
+	var f := s.find_faction("kingdom")
+	extra.units.append(Unit.new(TurnResolver.recruitable_type(f, "knights"), "kingdom"))
+	s.armies.append(extra)
+	return s
+
+
+func test_move_into_an_enemy_army_shows_battle_odds_from_forecast() -> void:
+	var s := _border_state()
+	var c := OrdersController.new(s, "kingdom")
+	var odds := Forecast.battle_odds(s, "kingdom", ["kingdom-1"], "blackwood")
+	assert_true(odds.ok, "fixture: an enemy army holds Blackwood")
+	var expected_line := "Battle odds: %s (you won %d of %d test battles)." % [odds.label, odds.wins, odds.samples]
+
+	var preview := c.move_preview("kingdom-1", "blackwood")
+	assert_true(preview.ok)
+	assert_true(preview.text.contains(expected_line), "the hover preview has the odds: %s" % preview.text)
+
+	assert_eq(c.queue_move("kingdom-1", "blackwood"), "")
+	var line := c.order_texts()[0]
+	assert_true(line.contains(expected_line), "the forecast line has the verdict: %s" % line)
+	for r in odds.reasons:
+		assert_true(line.contains(r), "and the main reason '%s'" % r)
+	var desc: String = c.order_breakdown(0).description
+	assert_true(desc.contains(odds.text), "the tooltip has Forecast's full odds text")
+	assert_true(desc.contains(RulesCodex.text("battle_odds")), "and explains how odds are worked out")
+	assert_false(line.contains(OrdersController.NO_ENEMY_TEXT))
+
+	# A second army ordered into the same battle is counted in the odds of both orders.
+	assert_eq(c.queue_move("kingdom-3", "blackwood"), "")
+	var both := Forecast.battle_odds(s, "kingdom", ["kingdom-1", "kingdom-3"], "blackwood")
+	for i in 2:
+		assert_true(c.order_breakdown(i).description.contains(both.text), "order %d uses the odds of both armies" % i)
+	assert_eq(c.move_odds("kingdom-1", "blackwood").odds.text, both.text)
+
+	# A move with no enemy army in the destination gets the plain line instead.
+	var calm := OrdersController.new(s, "kingdom")
+	assert_eq(calm.queue_move("kingdom-1", "thornvale"), "")
+	assert_true(calm.order_texts()[0].contains(OrdersController.NO_ENEMY_TEXT), calm.order_texts()[0])
+
+
+func test_session_backed_controller_keeps_orders_in_the_session() -> void:
+	var session := GameSession.new(GameState.new(3), ["kingdom", "beasts"], 3, StubBattleResolver.new())
+	var c := OrdersController.new(session.state(), "kingdom", session)
+	assert_eq(c.queue_move("kingdom-1", "westwatch"), "")
+	assert_eq(c.queue_recruit("spearmen"), "")
+	assert_eq(session.current_orders().size(), 2, "orders live in the session's books")
+	assert_eq(c.orders(), session.current_orders())
+	assert_eq(c.queue_move("kingdom-1", "highcrag"), session.queue_move("kingdom-1", "highcrag"),
+		"refusals carry the session's reason")
+	var rebuilt := OrdersController.new(session.state(), "kingdom", session)
+	assert_eq(rebuilt.orders().size(), 2, "a new controller (map rebuild) sees the same orders")
+	var other := OrdersController.new(session.state(), "beasts", session)
+	assert_eq(other.orders(), [], "another player's controller sees nothing")
+	assert_false(other.queue_recruit("tuskers").is_empty(), "and can't order out of turn")
+	assert_eq(c.cancel(1), "")
+	assert_eq(session.current_orders().size(), 1, "cancel goes through the session")
+	assert_false(c.cancel(5).is_empty(), "a bad cancel is explained")
+	assert_eq(session.end_turn(), "")
+	assert_eq(c.orders(), [], "nothing to show once the computer is being passed")
+
+
+func test_map_screen_hover_preview_shows_the_move_forecast_before_the_click() -> void:
+	var s := _border_state()
+	var screen: MapScreen = load(MAP_SCENE).instantiate()
+	screen.set_state(s, "kingdom")
+	assert_eq(screen.preview_move("blackwood"), "", "no army selected: nothing to preview")
+	assert_false(screen.hover_panel.visible)
+	screen.select_army("kingdom-1")
+	var text := screen.preview_move("blackwood")
+	var odds := Forecast.battle_odds(s, "kingdom", ["kingdom-1"], "blackwood")
+	assert_true(screen.hover_panel.visible, "the preview bar shows")
+	assert_eq(screen.hover_label.text, text)
+	assert_true(text.begins_with("Click to order this move."), text)
+	assert_true(text.contains(Forecast.move(s, "kingdom", MoveOrder.new("kingdom-1", "blackwood")).text), "arrival forecast")
+	assert_true(text.contains("Battle odds: %s" % odds.label), "battle odds")
+	assert_true(screen.preview_move("thornvale").contains(OrdersController.NO_ENEMY_TEXT))
+	var far := screen.preview_move("fangridge")
+	assert_true(far.begins_with("This move can't be ordered:"), "a move the rules refuse says why: %s" % far)
+	screen.clear_preview()
+	assert_false(screen.hover_panel.visible)
+	assert_eq(screen.orders.orders().size(), 0, "hovering orders nothing")
 	screen.free()
