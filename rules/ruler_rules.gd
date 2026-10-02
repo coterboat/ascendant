@@ -524,23 +524,20 @@ static func apply_build(state: GameState, faction_id: String, build) -> Array:
 ## down) for every recruit. The numbers come from MandateData. Returns {"ok", "unit_type", "name",
 ## "is_commander", "hp", "attack", "defense", "cost", "base": {stat: the type's value},
 ## "mods": {stat: [{"mandate", "name", "value"}]}}; "ok" is false for a type the faction can't recruit.
-## M2-1 only shows these; battles (M2-2) and recruit prices (M2-4) start using them in those tickets.
+## The cost is recruit_price's (price_mods), the price the recruitment phase charges (M2-4).
 static func unit_stats(state: GameState, faction_id: String, unit_type_id: String) -> Dictionary:
 	var f := state.find_faction(faction_id)
 	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id) if f else null
 	if ut == null:
 		return {"ok": false}
 	var base := {"hp": ut.hp, "attack": ut.attack, "defense": ut.defense, "cost": ut.cost}
-	var mods := {"hp": [], "attack": [], "defense": [], "cost": []}
+	var mods := {"hp": [], "attack": [], "defense": [], "cost": price_mods(state, faction_id, ut)}
 	for mid in mandates(state, faction_id):
 		var md := mandate_data(mid)
 		if not ut.is_commander:
 			var bonus: Dictionary = md.get("units", {})
 			for stat in bonus:
 				mods[stat].append({"mandate": mid, "name": md.name, "value": int(bonus[stat])})
-		var divisor := int(md.get("recruit_divisor", 0))
-		if divisor > 0:
-			mods.cost.append({"mandate": mid, "name": md.name, "value": -floori(float(ut.cost) / divisor)})
 	var out := {"ok": true, "unit_type": ut.id, "name": ut.name, "is_commander": ut.is_commander,
 		"base": base, "mods": mods}
 	for stat in base:
@@ -549,6 +546,217 @@ static func unit_stats(state: GameState, faction_id: String, unit_type_id: Strin
 			total += m.value
 		out[stat] = total
 	return out
+
+
+# --- mandates and abilities on the map (M2-4, #32; §1.4, §2.3) -------------------------------------
+# The single source the resolver, Forecast, Breakdown and the orders UI read for King's Roads, Sworn
+# Vassals, Heavy Tithes, Royal Court, Muster Grounds and Warband Muster.
+
+const KINGS_ROADS := "kings_roads"
+const SWORN_VASSALS := "sworn_vassals"
+const HEAVY_TITHES := "heavy_tithes"
+const ROYAL_COURT := "royal_court"
+const WARBAND_MUSTER := "warband_muster"
+## Gold Heavy Tithes adds to every province its owner holds (§2.3).
+const TITHE_GOLD := 1
+
+
+## The price cuts `faction_id`'s mandates make on `ut` (Muster Grounds: cost / 5, rounded down, comes
+## off every recruit, commanders included): [{"mandate", "name", "value" (negative)}]. The numbers come
+## from MandateData's recruit_divisor.
+static func price_mods(state: GameState, faction_id: String, ut: UnitType) -> Array:
+	var out := []
+	if ut == null:
+		return out
+	for mid in mandates(state, faction_id):
+		var md := mandate_data(mid)
+		var divisor := int(md.get("recruit_divisor", 0))
+		if divisor > 0:
+			out.append({"mandate": mid, "name": md.name, "value": -floori(float(ut.cost) / divisor)})
+	return out
+
+
+## What `faction_id` pays for one `ut`: its cost with price_mods. Every recruit button, order line,
+## gold forecast and the recruitment phase charge this price (TurnResolver.recruit_cost wraps it).
+static func recruit_price(state: GameState, faction_id: String, ut: UnitType) -> int:
+	if ut == null:
+		return -1
+	var price := ut.cost
+	for m in price_mods(state, faction_id, ut):
+		price += int(m.value)
+	return price
+
+
+## "16 gold (20 - Muster Grounds 4)", or "20 gold" when no mandate changes the price.
+static func price_text(state: GameState, faction_id: String, ut: UnitType) -> String:
+	var mods := price_mods(state, faction_id, ut)
+	var price := recruit_price(state, faction_id, ut)
+	if mods.is_empty():
+		return "%d gold" % price
+	var parts := []
+	for m in mods:
+		parts.append("%s %d" % [m.name, -int(m.value)])
+	return "%d gold (%d - %s)" % [price, ut.cost, " - ".join(parts)]
+
+
+## True when the faction's ruler has `ability_id` (whether or not the ruler is on the map right now).
+static func ruler_has_ability(state: GameState, faction_id: String, ability_id: String) -> bool:
+	var f := state.find_faction(faction_id)
+	return f != null and f.has_ruler() and String(ruler_data(f.ruler_type).get("ability", "")) == ability_id
+
+
+## The ruler's ability effect now (Royal Court gold, Warband Muster recruits per turn, ...): 0 when the
+## faction has no ruler with that ability or its ruler is not on the map (dead, or no ruler's army).
+static func live_ability_value(state: GameState, faction_id: String, ability_id: String) -> int:
+	if not ruler_has_ability(state, faction_id, ability_id):
+		return 0
+	var f := state.find_faction(faction_id)
+	if f.ruler_status != ALIVE or ruler_army(state, faction_id) == null:
+		return 0
+	return ability_value(f.ruler_type, ability_rank(f.kept_power))
+
+
+# King's Roads -------------------------------------------------------------------------------------
+
+## The provinces a road move of `army_id` to `to` may go through, sorted by id ([] when no road move
+## there is legal). Legality is TurnResolver.check_move's; the orders UI picks the first (§2.3).
+static func road_vias(state: GameState, faction_id: String, army_id: String, to: String) -> Array:
+	var out := []
+	var army := state.find_army(army_id)
+	var here: Province = state.find_province(army.location) if army else null
+	if here == null or not has_mandate(state, faction_id, KINGS_ROADS):
+		return out
+	var ids: Array = here.neighbors.duplicate()
+	ids.sort()
+	for via in ids:
+		if TurnResolver.check_move(state, faction_id, MoveOrder.new(army_id, to, via)).is_empty():
+			out.append(via)
+	return out
+
+
+## Every province two steps away that `army_id` can reach by a road move this turn and could not reach
+## by a one-step move: {province id: [legal vias, sorted by id]}. Empty without King's Roads.
+static func road_destinations(state: GameState, faction_id: String, army_id: String) -> Dictionary:
+	var out := {}
+	var army := state.find_army(army_id)
+	var here: Province = state.find_province(army.location) if army else null
+	if here == null or army.owner != faction_id or not has_mandate(state, faction_id, KINGS_ROADS):
+		return out
+	var vias: Array = here.neighbors.duplicate()
+	vias.sort()
+	for via in vias:
+		var b := state.find_province(via)
+		if b == null:
+			continue
+		var ends: Array = b.neighbors.duplicate()
+		ends.sort()
+		for to in ends:
+			if to == here.id or here.neighbors.has(to):
+				continue
+			if TurnResolver.check_move(state, faction_id, MoveOrder.new(army_id, to, via)).is_empty():
+				if not out.has(to):
+					out[to] = []
+				out[to].append(via)
+	return out
+
+
+# Sworn Vassals ------------------------------------------------------------------------------------
+
+## Which neutral province joins each faction with Sworn Vassals this turn (§2.3). `owners` maps every
+## province id to its owner after this turn's army captures ("" for nobody); `occupied` holds the
+## province ids with an army in them after movement and battles. A province is eligible for a faction
+## when it has no owner, no army, and is next to a province the faction owns in `owners`. The best is
+## the highest income; ties go to the first by id. When two factions pick the same province, neither
+## gets it and neither picks again that turn. Returns {"picks": {fid: pid}, "joins": {fid: pid},
+## "contested": {pid: [fids, sorted]}}. The capture phase and Forecast.vassal both call this.
+static func vassal_picks(state: GameState, owners: Dictionary, occupied: Dictionary) -> Dictionary:
+	var fids := []
+	for f in state.factions:
+		if has_mandate(state, f.id, SWORN_VASSALS):
+			fids.append(f.id)
+	fids.sort()
+	var provinces: Array = state.provinces.duplicate()
+	provinces.sort_custom(func(a, b): return a.id < b.id)
+	var picks := {}
+	for fid in fids:
+		var best: Province = null
+		for p in provinces:
+			if not str(owners.get(p.id, "")).is_empty() or occupied.has(p.id):
+				continue
+			var borders_ours := false
+			for n in p.neighbors:
+				if str(owners.get(n, "")) == fid:
+					borders_ours = true
+					break
+			if borders_ours and (best == null or p.income > best.income):
+				best = p  # provinces go in id order, so a tie keeps the first
+		if best != null:
+			picks[fid] = best.id
+	var by_province := {}
+	for fid in fids:
+		if picks.has(fid):
+			if not by_province.has(picks[fid]):
+				by_province[picks[fid]] = []
+			by_province[picks[fid]].append(fid)
+	var joins := {}
+	var contested := {}
+	for pid in by_province:
+		if by_province[pid].size() == 1:
+			joins[by_province[pid][0]] = pid
+		else:
+			contested[pid] = by_province[pid]
+	return {"picks": picks, "joins": joins, "contested": contested}
+
+
+## The owners and occupied provinces of the board as it stands in `state` (the capture phase's input
+## to vassal_picks).
+static func board_now(state: GameState) -> Dictionary:
+	var owners := {}
+	for p in state.provinces:
+		owners[p.id] = p.owner
+	var occupied := {}
+	for a in state.armies:
+		occupied[a.location] = true
+	return {"owners": owners, "occupied": occupied}
+
+
+# Heavy Tithes and Royal Court ---------------------------------------------------------------------
+
+## What `province_id` earns its owner this turn (§1.4, §2.3): the map's base income, +1 with the owner's
+## Heavy Tithes, and Royal Court's gold when the owner's King is in it. `ruler_at` may move rulers for a
+## forecast: {faction id: province id where its ruler ends the turn}; by default each ruler is where
+## its army is now. Returns {"owner", "base", "mods": [{"key", "name", "value", "note"}], "total"}.
+## A neutral province earns nobody anything, so it has no modifiers.
+static func province_income_parts(state: GameState, province_id: String, ruler_at: Dictionary = {}) -> Dictionary:
+	var p := state.find_province(province_id)
+	if p == null:
+		return {"owner": "", "base": 0, "mods": [], "total": 0}
+	var mods := []
+	var fid := p.owner
+	if not fid.is_empty():
+		if has_mandate(state, fid, HEAVY_TITHES):
+			mods.append({"key": HEAVY_TITHES, "name": mandate_name(HEAVY_TITHES), "value": TITHE_GOLD,
+				"note": "mandate: every province you own earns %d more" % TITHE_GOLD})
+		var court := live_ability_value(state, fid, ROYAL_COURT)
+		if court > 0:
+			var army := ruler_army(state, fid)
+			var where: String = str(ruler_at.get(fid, army.location))
+			if where == p.id:
+				var f := state.find_faction(fid)
+				mods.append({"key": ROYAL_COURT, "name": ability_name(f.ruler_type), "value": court,
+					"note": "%s is here, ability rank %d" % [current_name(state, fid), ability_rank(f.kept_power)]})
+	var total := p.income
+	for m in mods:
+		total += int(m.value)
+	return {"owner": fid, "base": p.income, "mods": mods, "total": total}
+
+
+# Warband Muster -----------------------------------------------------------------------------------
+
+## How many regular units `faction_id` may recruit with its ruler this turn (Warband Muster: its value
+## at the ruler's ability rank), or 0 when its ruler can't (another ability, or not on the map).
+static func field_recruit_limit(state: GameState, faction_id: String) -> int:
+	return live_ability_value(state, faction_id, WARBAND_MUSTER)
 
 
 # --- validation (GameState.validate) --------------------------------------------------------------
