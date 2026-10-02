@@ -38,7 +38,9 @@ const M1_STATE_SHA := "27f8a807d8da7993553fbcb7ab06286a81371dd952c50a0f302a80269
 # --- fixtures -------------------------------------------------------------------------------------
 
 ## A game with rulers (`builds` as GameState.with_rulers takes them; the defaults give each faction a
-## ruler without mandates), with every army removed: tests place their own.
+## ruler without mandates), with every army removed: tests place their own. A ruler is never alive
+## off the map (GameState.validate, #49), so until _ruler() puts one on the map it counts as dead, with
+## its successor due long after any test ends. Off the map it fights in no battle either way.
 func _game(builds: Dictionary = {}) -> GameState:
 	var all := {"kingdom": {"ruler": "aurel_king", "mandates": []}, "beasts": {"ruler": "fang_chieftain", "mandates": []}}
 	for fid in builds:
@@ -47,6 +49,10 @@ func _game(builds: Dictionary = {}) -> GameState:
 	var s := GameState.with_rulers(7, all, errors)
 	assert_eq(errors, [], "the rulers set up")
 	s.armies.clear()
+	for f in s.factions:
+		f.ruler_status = RulerRules.DEAD
+		f.successor_turn = 999
+		f.successor_power = f.kept_power
 	return s
 
 
@@ -69,11 +75,14 @@ func _army(s: GameState, id: String, owner: String, location: String, unit_ids: 
 	return a
 
 
-## `fid`'s ruler at `location` in its own army, at full hp, with `kept` kept power (-1: as built).
+## `fid`'s ruler at `location` in its own army, alive and at full hp, with `kept` kept power (-1: as built).
 func _ruler(s: GameState, fid: String, location: String, kept: int = -1, id: String = "") -> Army:
 	var f := s.find_faction(fid)
 	if kept >= 0:
 		f.kept_power = kept
+	f.ruler_status = RulerRules.ALIVE
+	f.successor_turn = 0
+	f.successor_power = 0
 	RulerRules.refresh_ruler_type(f)
 	var a := Army.new()
 	a.id = id if not id.is_empty() else "%s-9" % fid

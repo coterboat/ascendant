@@ -146,3 +146,35 @@ func _key(map: MapScreen, node_name: String) -> String:
 		fail("the side panel has %s" % node_name)
 		return ""
 	return String(found[0].get_meta(CodexLink.META, ""))
+
+
+## M2_RULER §7.2 (#50): the M1 entries a game with rulers changes keep their M1 rule first, so an M1
+## game still reads right, then say what rulers add in an "In a game with rulers" sentence. They take
+## no numbers of their own: the mandate entries and data/mandates.gd hold those, so retuned mandates
+## can never leave these entries wrong. Plain text, since tooltips quote them.
+func test_m1_entries_say_what_a_game_with_rulers_changes() -> void:
+	var m1_rule := {
+		"orders": "Each turn you can move each army once, to a province next to it, and recruit units at your capital.",
+		"move": "An army moves one province per turn, to a neighbor of the province it is in.",
+		"recruit": "Recruit units from your own roster at your capital.",
+		"income": "At the end of the turn, each faction earns the income of every province it owns",
+		"victory": "Capture the enemy capital to win.",
+	}
+	var m2_rules := {
+		"orders": ["King's Roads", "road move", "Warband Muster", "Ninth Fang", "one Sacrifice order per turn", "before every other order"],
+		"move": ["King's Roads", "two provinces", "road move", "never fights a border battle"],
+		"recruit": ["never join the ruler's army", "Muster Grounds", "Warband Muster", "Ninth Fang"],
+		"income": ["Heavy Tithes", "Royal Court", "King Corvane"],
+		"victory": ["a ruler's death never ends the game", "only the capital decides"],
+		"ruler_army": ["one province per turn", "road move with King's Roads", "Warband Muster", "a successor arrives"],
+	}
+	var digits := RegEx.create_from_string("[0-9]")
+	for id in m2_rules:
+		var text := RulesCodex.text(id)
+		for phrase in m2_rules[id]:
+			assert_true(text.contains(phrase), "%s mentions '%s': %s" % [id, phrase, text])
+		if m1_rule.has(id):
+			assert_true(text.begins_with(m1_rule[id]), "%s states its M1 rule first: %s" % [id, text])
+			assert_true(text.find("In a game with rulers") > m1_rule[id].length(), "%s adds the rulers part after it: %s" % [id, text])
+		assert_true(digits.search(text) == null, "%s has no numbers of its own: %s" % [id, text])
+		assert_false(text.contains("[") or text.contains("_"), "%s is plain text with no ids: %s" % [id, text])

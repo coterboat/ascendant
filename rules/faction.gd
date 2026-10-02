@@ -65,37 +65,62 @@ func to_dict() -> Dictionary:
 		d["sacrifices"] = sacrifice_dicts
 	return d
 
-static func from_dict(data: Dictionary) -> Faction:
+## Returns null when a field has the wrong type, with a plain-language reason in `errors` (Serial load
+## checks). `who` names the faction in it; GameState.from_dict passes "faction 'kingdom'".
+static func from_dict(data: Dictionary, errors = null, who: String = "") -> Faction:
+	if who.is_empty():
+		who = Serial.label("faction", data)
+	var text := {}
+	for key in ["id", "name", "capital", "ruler_type"]:
+		text[key] = Serial.expect(data, key, TYPE_STRING, errors, who, "")
+		if text[key] == null:
+			return null
 	var f := Faction.new()
-	f.id = data.get("id", "")
-	f.faction_name = data.get("name", "")
+	f.id = text.id
+	f.faction_name = text.name
 	f.gold = Serial.to_int(data.get("gold", 0))
-	f.capital = data.get("capital", "")
-	
-	if data.has("unit_types"):
-		for u in data.unit_types:
-			f.unit_types.append(UnitType.from_dict(u))
-	
-	if data.has("commander_type") and not data.commander_type.is_empty():
-		f.commander_type = UnitType.from_dict(data.commander_type)
+	f.capital = text.capital
 
-	# Ruler fields are only present for a faction with a ruler (see to_dict). GameState.from_dict
+	var type_list = Serial.expect_dicts(data, "unit_types", errors, who, "unit type")
+	if type_list == null:
+		return null
+	for i in type_list.size():
+		var ut := UnitType.from_dict(type_list[i], errors, "unit type %d of %s" % [i + 1, who])
+		if ut == null:
+			return null
+		f.unit_types.append(ut)
+
+	var cmd_data = Serial.expect(data, "commander_type", TYPE_DICTIONARY, errors, who, {})  # {} when it has none
+	if cmd_data == null:
+		return null
+	if not cmd_data.is_empty():
+		f.commander_type = UnitType.from_dict(cmd_data, errors, "the commander type of %s" % who)
+		if f.commander_type == null:
+			return null
+
+	# A faction without a ruler has no mandates; any in the data are kept so validation can name them.
+	var mandate_list = Serial.expect(data, "mandates", TYPE_ARRAY, errors, who, [])
+	if mandate_list == null:
+		return null
+	f.mandates = Serial.to_string_array(mandate_list)
+
+	# The other ruler fields are only present for a faction with a ruler (see to_dict). GameState.from_dict
 	# checks them and rebuilds ruler_unit_type.
-	f.ruler_type = str(data.get("ruler_type", ""))
-	if f.has_ruler():
-		f.kept_power = Serial.to_int(data.get("kept_power", 0))
-		f.mandates = Serial.to_string_array(data.get("mandates", []))
-		f.ruler_generation = Serial.to_int(data.get("ruler_generation", 1), 1)
-		f.ruler_status = str(data.get("ruler_status", "alive"))
-		f.successor_turn = Serial.to_int(data.get("successor_turn", 0))
-		f.successor_power = Serial.to_int(data.get("successor_power", 0))
-		var sacs = data.get("sacrifices", [])
-		if sacs is Array:
-			for sac in sacs:
-				if sac is Dictionary:
-					f.sacrifices.append({"turn": Serial.to_int(sac.get("turn", 0)), "mandate": str(sac.get("mandate", "")),
-						"cost": Serial.to_int(sac.get("cost", 0))})
-	else:
-		# A faction without a ruler has no mandates; keep any in the data so validation can name them.
-		f.mandates = Serial.to_string_array(data.get("mandates", []))
+	f.ruler_type = text.ruler_type
+	if not f.has_ruler():
+		return f
+	var status = Serial.expect(data, "ruler_status", TYPE_STRING, errors, who, "alive")
+	if status == null:
+		return null
+	var sac_list = Serial.expect_dicts(data, "sacrifices", errors, who, "sacrifice")
+	if sac_list == null:
+		return null
+	f.ruler_status = status
+	f.kept_power = Serial.to_int(data.get("kept_power", 0))
+	f.ruler_generation = Serial.to_int(data.get("ruler_generation", 1), 1)
+	f.successor_turn = Serial.to_int(data.get("successor_turn", 0))
+	f.successor_power = Serial.to_int(data.get("successor_power", 0))
+	for sac in sac_list:
+		f.sacrifices.append({"turn": Serial.to_int(sac.get("turn", 0)), "mandate": str(sac.get("mandate", "")),
+			"cost": Serial.to_int(sac.get("cost", 0))})
 	return f

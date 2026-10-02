@@ -34,14 +34,25 @@ func to_dict() -> Dictionary:
 		"has_fort": has_fort,
 	}
 
-static func from_dict(data: Dictionary) -> Province:
+## Returns null when a field has the wrong type, with a plain-language reason in `errors` (Serial
+## load checks). `who` names the province in it; GameState.from_dict passes "province 'crownkeep'".
+static func from_dict(data: Dictionary, errors = null, who: String = "") -> Province:
+	if who.is_empty():
+		who = Serial.label("province", data)
 	var p := Province.new()
-	p.id = data.get("id", "")
-	p.name = data.get("name", "")
-	p.terrain = data.get("terrain", "")
+	for key in ["id", "name", "terrain", "owner"]:
+		var text = Serial.expect(data, key, TYPE_STRING, errors, who, "")
+		if text == null:
+			return null
+		p.set(key, String(text))
+	for key in ["is_capital", "has_fort"]:
+		var flag = Serial.expect(data, key, TYPE_BOOL, errors, who, false)
+		if flag == null:
+			return null
+		p.set(key, flag)
+	var neighbors = Serial.expect(data, "neighbors", TYPE_ARRAY, errors, who, [])
+	if neighbors == null:
+		return null
+	p.neighbors = Serial.to_string_array(neighbors)
 	p.income = Serial.to_int(data.get("income", 0))
-	p.neighbors = Serial.to_string_array(data.get("neighbors", []))
-	p.owner = data.get("owner", "")
-	p.is_capital = data.get("is_capital", false)
-	p.has_fort = data.get("has_fort", false)
 	return p
