@@ -20,24 +20,39 @@ extends Control
 ## Colours follow the seat: the map, the battle report and the victory screen get the session's seat
 ## order (UiPalette).
 ##
+## Computer seats (#35): config "ai" ({faction id: "easy" or "normal"}) gives seats to the computer.
+## One AISeat plays them for the whole game (one AIPlayer and one seeded RNG per seat). After every
+## End turn (and at the start) it plays each computer seat that is due, so with one human there is no
+## handoff at all: the human ends the turn, the computer gives its orders from the start-of-turn state
+## (never seeing the human's), the turn resolves and the human gets the turn report, with the
+## computer's notes for that turn in a collapsible section. A computer in seat 1 plays at the start of
+## each turn, before the human, from the same start-of-turn state. The top bar names the computer
+## faction with its "Computer (Normal)" tag. Two humans play exactly as before. With no human seat at
+## all (watch mode), End turn becomes Next turn and plays one whole turn per press.
+##
 ## API:
-##   start_game(config)   config = {"players": [faction ids in seat order], "seed": int}. Missing keys
-##                        get default_config() values: every faction in data order and a random seed.
+##   start_game(config)   config = {"players": [faction ids in seat order], "seed": int, "ai": {faction id:
+##                        level}}. "ai" is optional (absent: every seat is human). Missing keys get
+##                        default_config() values: every faction in data order and a random seed.
 ##                        Rulers (M2) are opt-in until battles and succession handle them: config
 ##                        "rulers": true, or "builds": {faction id: build or preset id}, or the
 ##                        `-- --rulers` command-line switch for playtests (starting_state()).
 ##                        If the screen enters the tree without start_game(), it starts a default game.
-##   end_turn()           the End turn button: hands off to the next player, or resolves the turn.
+##   end_turn()           the End turn button: hands off to the next player, or resolves the turn. With
+##                        computer seats, the computer then plays at once. In watch mode: next_turn().
+##   next_turn()          watch mode only: both computers give their orders and the turn resolves.
 ##   open_turn_report()   the Turn report button: the last resolved turn's report.
 ##   open_codex(key)      the Codex button, a report's "?", a right-click on a linked number.
 ##   show_results()       the Results button once the game is over: the victory screen again.
 ##   session              the GameSession being played. Read it; act through the API above.
+##   computer             the AISeat playing the computer seats (it has none in a hotseat game).
 ##   next_scene           the screen this one switched to (SceneFlow), e.g. the title after "New game".
 
 const SCENE := "res://ui/game_screen.tscn"
 const CODEX_SCENE := "res://ui/codex_panel.tscn"
 
 var session: GameSession = null
+var computer: AISeat = null  # plays the computer seats of `session`
 var config := {}  # the config the running game was started with (defaults filled in)
 var next_scene: Node = null  # the screen this one handed over to (SceneFlow.switch)
 
@@ -58,6 +73,8 @@ var error_overlay: Control
 var error_title: Label
 var error_label: Label
 var quit_overlay: Control
+var opponent_box: HBoxContainer  # top bar: the computer seats, each with its tag (#35)
+var _report_seen := 0  # the last turn report shown to the only human, so each one opens once
 var _bound := false
 
 
@@ -82,17 +99,31 @@ func start_game(game_config: Dictionary = {}) -> void:
 	config.merge(game_config, true)
 	config.players = Array(config.players).duplicate()
 	config.seed = int(config.seed)
+	var ai := {}
+	var ai_errors := []
+	if config.get("ai") is Dictionary:
+		for fid in config.ai:
+			ai[String(fid)] = String(config.ai[fid])
+	elif config.get("ai") != null:
+		ai_errors.append("The computer seats must be listed as faction and level, like Thornmane Clans: Normal.")
+	if ai.is_empty():
+		config.erase("ai")  # a hotseat game's config stays {"players", "seed"}
+	else:
+		config.ai = ai
 	_close_overlays()
 	victory_screen.visible = false
 	error_overlay.visible = false
 	handoff.visible = false
+	_report_seen = 0
 	# The state's seed and the game seed are the same, so GameSession's turn seeds match TurnResolver's.
-	session = GameSession.new(starting_state(config), config.players, config.seed, AutoBattleResolver.new())
+	session = GameSession.new(starting_state(config), config.players, config.seed, AutoBattleResolver.new(), ai)
+	computer = AISeat.new(session, config.seed)
 	map.session = session
-	if session.phase() == GameSession.Phase.INVALID:
-		_show_setup_errors(session.setup_errors())
+	_build_opponent_tag()
+	if session.phase() == GameSession.Phase.INVALID or not ai_errors.is_empty():
+		_show_setup_errors(ai_errors + session.setup_errors())
 		return
-	_show_current_player()
+	_advance()
 
 
 ## The starting state for `game_config`: the M1 game, or with rulers when the config asks for them
@@ -109,17 +140,35 @@ static func starting_state(game_config: Dictionary) -> GameState:
 func end_turn() -> String:
 	if session == null:
 		return "No game is running."
+	if is_watching():
+		return next_turn()
 	var why := session.end_turn()
 	if not why.is_empty():
 		map.set_hint(why)
 		return why
 	_close_overlays()
-	match session.phase():
-		GameSession.Phase.HANDOFF:
-			_show_handoff()
-		GameSession.Phase.GAME_OVER:
-			_show_game_over()
+	_advance()
 	return ""
+
+
+## Watch mode (no human seat): every computer seat gives its orders and the turn resolves, then the
+## turn report opens. Returns "" or why it could not.
+func next_turn() -> String:
+	if not is_watching():
+		return "Next turn is only for games where the computer plays every seat."
+	_close_overlays()
+	computer.play(session)
+	if session.is_over():
+		_show_game_over()
+		return ""
+	_show_watch()
+	open_turn_report()
+	return ""
+
+
+## True while nobody but the computer plays (watch mode) and the game is running.
+func is_watching() -> bool:
+	return session != null and session.human_seats() == 0 and session.is_computer_turn()
 
 
 ## Shows the last resolved turn's report on top. Does nothing before the first turn is resolved.
@@ -127,7 +176,9 @@ func open_turn_report() -> void:
 	_bind()
 	if session == null or session.turn_report().turn == 0:
 		return
-	report_panel.show_report(session)
+	# The computer's notes are those of the turn the report shows, which has resolved (AISeat.report_notes).
+	report_panel.show_report(session, computer.report_notes(session) if computer else [])
+	_report_seen = maxi(_report_seen, session.turn_report().turn)
 	_raise(report_overlay)
 
 
@@ -151,6 +202,25 @@ func show_results() -> void:
 
 # --- the turn cycle -------------------------------------------------------------------------------
 
+## After a seat ends its turn, and at the start: the computer plays every computer seat that is due
+## (not in watch mode, where Next turn does), then the screen shows whoever acts next. With one human,
+## each newly resolved turn's report opens as their turn starts; there is no handoff to wait behind.
+func _advance() -> void:
+	if session.human_seats() > 0:
+		computer.play(session)
+	match session.phase():
+		GameSession.Phase.HANDOFF:
+			_show_handoff()
+		GameSession.Phase.ORDERS:
+			if session.is_computer_turn():
+				_show_watch()
+				return
+			_show_current_player()
+			if session.human_seats() == 1 and session.turn_report().turn > _report_seen:
+				open_turn_report()
+		GameSession.Phase.GAME_OVER:
+			_show_game_over()
+
 ## The current player's ORDERS phase: their map, their orders, their capital selected for recruiting.
 func _show_current_player() -> void:
 	var fid := session.current_player()
@@ -162,6 +232,19 @@ func _show_current_player() -> void:
 	var capital: Province = map.state.find_province(f.capital) if f else null
 	if capital and capital.owner == fid:
 		map.select_province(capital.id)
+	_update_hud()
+
+
+## Watch mode: the map seen by nobody in particular, waiting for Next turn.
+func _show_watch() -> void:
+	map.visible = true
+	map.selected_army_id = ""
+	map.selected_province_id = ""
+	map.set_state(session.state(), "")
+	map.faction_label.text = "Watching"
+	map.faction_label.tooltip_text = TooltipText.plain("Watching the computer play",
+		"The computer plays every seat, so you only watch. Press Next turn to have each computer give its orders and resolve the turn. The turn report shows what each one was thinking.")
+	CodexLink.attach(map.faction_label, "computer_opponent", open_codex)
 	_update_hud()
 
 
@@ -297,11 +380,17 @@ func _show_setup_errors(errors: Array) -> void:
 # --- HUD ------------------------------------------------------------------------------------------
 
 func _update_hud() -> void:
-	var playing: bool = session != null and session.phase() == GameSession.Phase.ORDERS
+	var watching := is_watching()
+	var playing: bool = session != null and session.phase() == GameSession.Phase.ORDERS and not watching
 	var n: int = session.current_orders().size() if playing else 0
-	end_turn_button.disabled = not playing
+	end_turn_button.disabled = not (playing or watching)
 	end_turn_button.text = "End turn (%s)" % _count(n, "order") if playing else "End turn"
 	end_turn_button.tooltip_text = _end_turn_tooltip(n)
+	if watching:
+		end_turn_button.text = "Next turn"
+		end_turn_button.tooltip_text = TooltipText.plain("Next turn", "Each computer gives its orders from the map as it stands now, without seeing the other's, and the turn resolves. The turn report then shows what happened and what each computer was thinking.")
+	opponent_box.visible = opponent_box.get_child_count() > 0 and session != null and not session.is_over() \
+		and session.phase() != GameSession.Phase.INVALID
 	var has_report: bool = session != null and session.turn_report().turn > 0
 	report_button.disabled = not has_report
 	var report_help := "Read again what happened last turn. Click a line to see it on the map."
@@ -315,7 +404,13 @@ func _update_hud() -> void:
 	map.turn_label.tooltip_text = _turn_tooltip()
 	CodexLink.attach(map.turn_label, TooltipText.codex_for("turn"), open_codex)
 	# The hint wraps to at most two lines at 1600 px (tests/test_top_bar.gd); the tooltip says the rest.
-	if playing:
+	if watching:
+		map.set_hint("Watching the computer play both sides. Press Next turn to play a turn.",
+			TooltipText.plain("Watching", "Nobody but the computer plays in this game. Next turn plays one turn; the turn report shows what each computer was thinking. Hover any number to see where it comes from."))
+	elif playing and session.human_seats() == 1:
+		# Against the computer the seat count means nothing to the player, and the opponent tag needs the room.
+		map.set_hint("Move: select an army, then a neighbor. Recruit: select your capital.", _orders_help())
+	elif playing:
 		map.set_hint("Player %d of %d: select an army, then click a neighboring province to move it. Select your capital to recruit." % [
 			session.current_seat(), session.players().size()], _orders_help())
 	elif session.is_over():
@@ -325,8 +420,21 @@ func _update_hud() -> void:
 
 ## The top bar hint's tooltip during orders: the whole how-to, which doesn't fit in the bar.
 func _orders_help() -> String:
-	return TooltipText.plain("Player %d of %d: %s gives orders" % [session.current_seat(), session.players().size(), session.current_player_name()],
-		"Select one of your armies, then click a neighboring province to move it there; hover a province first to see the forecast and battle odds. Select your capital to recruit. Each order is listed in the side panel, where you can cancel it. Hover any number to see where it comes from; right-click it, or press F1, to open its codex entry. End turn when you are done.")
+	var how := "Select one of your armies, then click a neighboring province to move it there; hover a province first to see the forecast and battle odds. Select your capital to recruit. Each order is listed in the side panel, where you can cancel it. Hover any number to see where it comes from; right-click it, or press F1, to open its codex entry. End turn when you are done."
+	if session.human_seats() == 1 and not session.computer_seats().is_empty():
+		return TooltipText.plain("You give orders as %s" % session.current_player_name(), how)
+	return TooltipText.plain("Player %d of %d: %s gives orders" % [session.current_seat(), session.players().size(), session.current_player_name()], how)
+
+
+## "the computer (Thornmane Clans, Normal)" for every computer seat but the current one, joined.
+func _computer_names() -> String:
+	var names := []
+	var state := map.state if map.state else session.state()
+	for fid in session.players():
+		if session.is_computer(fid) and fid != session.current_player():
+			var f := state.find_faction(fid)
+			names.append("the computer (%s, %s)" % [f.faction_name if f else "an unknown faction", AISeat.level_name(session.computer_level(fid))])
+	return " and ".join(names)
 
 
 func _end_turn_tooltip(n: int) -> String:
@@ -336,6 +444,11 @@ func _end_turn_tooltip(n: int) -> String:
 	var seat := session.current_seat()
 	var players := session.players()
 	var text := "End your turn with %s queued. " % _count(n, "order")
+	if session.human_seats() == 1 and not session.computer_seats().is_empty():
+		var names := _computer_names()
+		text += "%s%s gives its orders from the map as it stood at the start of this turn, never seeing yours, and all orders resolve together as soon as you end your turn. Then the turn report shows what happened." % [
+			names.left(1).to_upper(), names.substr(1)]
+		return TooltipText.plain("End turn", text)
 	if seat < players.size():
 		var next: Faction = map.state.find_faction(players[seat]) if map.state else null
 		text += "The screen is then covered so you can pass the computer to player %d (%s), whose orders stay hidden from you. Nothing happens until the last player ends their turn." % [
@@ -352,8 +465,11 @@ func _turn_tooltip() -> String:
 	var seed_text := "\n\n" + TooltipText.wrap_text("Game seed %d. Start a game with the same players and this seed, give the same orders, and every turn and battle plays out the same." % config.seed)
 	if session.is_over():
 		return TooltipText.plain("Turn %d" % session.turn_number(), "The game ended on turn %d." % session.turn_number()) + seed_text
+	var who := "Player %d of %d is giving orders. %s" % [session.current_seat(), session.players().size(), RulesCodex.text("hotseat")]
+	if not session.computer_seats().is_empty():
+		who = "Every seat gives its orders for this turn from the same start-of-turn map, and nobody sees anyone else's. %s" % RulesCodex.text("phase_order")
 	var b := {"title": "Turn %d" % session.turn_number(),
-		"description": "Player %d of %d is giving orders. %s" % [session.current_seat(), session.players().size(), RulesCodex.text("hotseat")],
+		"description": who,
 		"lines": [{"label": "Turns resolved so far", "value": state.current_turn, "note": ""},
 			{"label": "This turn", "value": session.turn_number() - state.current_turn, "note": "the turn being ordered now"}],
 		"total_label": "Turn being played", "total": session.turn_number()}
@@ -403,6 +519,67 @@ func _build_hud() -> void:
 	map.back_button.text = "Quit to title"
 	map.back_button.tooltip_text = TooltipText.plain("Quit to title",
 		"Leave this game and go back to the title screen. You are asked to confirm first: games are not saved yet.")
+	# The computer seats sit right after the player's own name, in its group (#35); filled per game.
+	opponent_box = HBoxContainer.new()
+	opponent_box.name = "OpponentTag"
+	opponent_box.add_theme_constant_override("separation", 5)
+	opponent_box.visible = false
+	map.faction_label.get_parent().add_child(opponent_box)
+
+
+## The top bar's opponent tag: every computer seat as "vs", its emblem and its name, with the
+## "Computer (Normal)" chip under them: two compact lines, so the hint keeps its room. Empty in a
+## hotseat game.
+func _build_opponent_tag() -> void:
+	for c in opponent_box.get_children():
+		opponent_box.remove_child(c)
+		c.queue_free()
+	opponent_box.visible = false
+	if session == null or session.phase() == GameSession.Phase.INVALID:
+		return
+	var state := session.state()
+	var players := session.players()
+	for i in players.size():
+		var fid := String(players[i])
+		if not session.is_computer(fid):
+			continue
+		var stack := VBoxContainer.new()
+		stack.name = "Seat%d" % (i + 1)
+		stack.add_theme_constant_override("separation", 1)
+		stack.alignment = BoxContainer.ALIGNMENT_CENTER
+		opponent_box.add_child(stack)
+		var line := HBoxContainer.new()
+		line.name = "Line"
+		line.add_theme_constant_override("separation", 4)
+		stack.add_child(line)
+		if opponent_box.get_child_count() > 1 or session.human_seats() > 0:
+			var vs := Label.new()
+			vs.name = "Versus"
+			vs.text = "vs"
+			vs.custom_minimum_size = Vector2(24, 0)
+			vs.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			vs.add_theme_font_size_override("font_size", 14)
+			vs.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
+			line.add_child(vs)
+		var emblem := SeatEmblem.new(i, SeatEmblem.Look.TOKEN, 16.0)
+		emblem.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		line.add_child(emblem)
+		var f := state.find_faction(fid)
+		var faction_name := f.faction_name if f else "An unknown faction"
+		var name_label := Label.new()
+		name_label.name = "OpponentName"
+		name_label.text = faction_name
+		name_label.add_theme_font_size_override("font_size", 14)
+		name_label.add_theme_color_override("font_color", UiPalette.seat_color(i).lightened(0.3))
+		name_label.tooltip_text = TooltipText.plain("%s is played by the computer" % faction_name, AISeat.tag_help(faction_name, session.computer_level(fid)))
+		CodexLink.attach(name_label, "computer_opponent", open_codex)
+		line.add_child(name_label)
+		var tag := VictoryScreen.computer_tag(faction_name, session.computer_level(fid), open_codex)
+		tag.add_theme_font_size_override("font_size", 11)
+		tag.size_flags_horizontal = Control.SIZE_SHRINK_END
+		(tag.get_theme_stylebox("normal") as StyleBoxFlat).content_margin_top = 0
+		(tag.get_theme_stylebox("normal") as StyleBoxFlat).content_margin_bottom = 1
+		stack.add_child(tag)
 
 
 func _hud_button(node_name: String, text: String, action: Callable) -> Button:
