@@ -83,12 +83,13 @@ static func orders_from_dict(data: Dictionary, errors = null) -> Dictionary:
 	return out
 
 
+## Old records without "via" or "at" load as M1 orders (design/M2_RULER.md §9).
 static func order_from_dict(data: Dictionary, errors = null):
 	match str(data.get("type", "")):
 		"move":
-			return MoveOrder.new(str(data.get("army", "")), str(data.get("to", "")))
+			return MoveOrder.new(str(data.get("army", "")), str(data.get("to", "")), str(data.get("via", "")))
 		"recruit":
-			return RecruitOrder.new(str(data.get("unit_type", "")))
+			return RecruitOrder.new(str(data.get("unit_type", "")), str(data.get("at", "")))
 	var msg := "Unknown order type '%s'. Orders are 'move' and 'recruit'." % str(data.get("type", ""))
 	if errors is Array:
 		errors.append(msg)

@@ -4,7 +4,8 @@ class_name SceneFlow
 ##                       new game screen --Back--> title
 ##   title --Quick start--> game screen (default setup)
 ##   game screen --victory "New game"--> title with the new game screen open, set up for a rematch:
-##                                       the last game's seating, and a new seed
+##                                       the last game's seating (who plays each seat, a person or the
+##                                       computer at its level, included), and a new seed
 ##   game screen --"Back to title" / "Quit to title"--> title
 ##
 ## The one rule: the next screen is instantiated and fully set up while it is still OUT of the tree
@@ -17,8 +18,9 @@ const TITLE_SCENE := "res://ui/title_screen.tscn"
 const GAME_SCENE := "res://ui/game_screen.tscn"
 
 
-## A game screen already running a new game with `config` ({"players", "seed"}, see
-## GameScreen.start_game). It enters the tree with its session in place, so it never starts a default.
+## A game screen already running a new game with `config` ({"players", "seed"}, plus "ai" when the
+## computer plays a seat; see GameScreen.start_game and NewGameScreen). It enters the tree with its
+## session in place, so it never starts a default.
 static func make_game(config: Dictionary) -> GameScreen:
 	var game := load(GAME_SCENE).instantiate() as GameScreen
 	game.start_game(config)
@@ -26,8 +28,9 @@ static func make_game(config: Dictionary) -> GameScreen:
 
 
 ## The title screen; with `with_new_game`, its new game screen is already open. `last_game`, the
-## config of the game just played ({"players", "seed"}), pre-fills it for a rematch: the same seating
-## and a different seed (NewGameScreen.prefill).
+## config of the game just played ({"players", "seed"}, and "ai" for computer seats), pre-fills it for
+## a rematch: the same seating, the same computer seats at the same levels, and a different seed
+## (NewGameScreen.prefill).
 static func make_title(with_new_game: bool = false, last_game: Dictionary = {}) -> TitleScreen:
 	var title := load(TITLE_SCENE).instantiate() as TitleScreen
 	if with_new_game:

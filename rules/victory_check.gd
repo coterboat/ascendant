@@ -46,7 +46,8 @@ static func check(state: GameState, player_ids: Array) -> Dictionary:
 ## `players` is the seat order (used to list provinces held), `turn` the 1-based turn the game
 ## ended on, `turns_played` and `battles` count the whole game.
 ## Returns {"over", "winner", "draw", "turn", "turns_played", "battles", "provinces_held": {id: n},
-##          "captures": [{"captor", "capital", "of"}], "text", "event"}.
+##          "captures": [{"captor", "capital", "of"}], "text", "event"}, plus "builds" (see builds())
+## in a game with rulers, whose `text` then ends with builds_text().
 ## `text` names factions and provinces only by their display names.
 static func summary(state: GameState, players: Array, result: Dictionary, turn: int, turns_played: int, battles: int) -> Dictionary:
 	var held := {}
@@ -89,6 +90,10 @@ static func summary(state: GameState, players: Array, result: Dictionary, turn: 
 		codex = "victory"
 		involved = [winner]
 	text += " Provinces held: %s." % ", ".join(held_parts)
+	# M2: in a game with rulers, each player's build, so players can argue about builds afterwards.
+	var player_builds := builds(state, players)
+	if not player_builds.is_empty():
+		text += " " + _builds_sentence(state, players, player_builds)
 
 	var event := {
 		"type": "game_over", "phase": "victory", "provinces": capital_ids, "factions": involved, "armies": [],
@@ -97,10 +102,60 @@ static func summary(state: GameState, players: Array, result: Dictionary, turn: 
 			"battles": battles, "provinces_held": held.duplicate()},
 		"text": text, "codex": codex,
 	}
-	return {
+	var out := {
 		"over": true, "winner": winner, "draw": draw, "turn": turn, "turns_played": turns_played,
 		"battles": battles, "provinces_held": held, "captures": captures, "text": text, "event": event,
 	}
+	if not player_builds.is_empty():
+		out["builds"] = player_builds
+		event.numbers["builds"] = player_builds.duplicate(true)
+	return out
+
+
+## Each player's ruler build at the end of the game (design/M2_RULER.md §5.3), in seat order:
+## {faction id: RulerRules.build_of(...) plus "starting_kept_power" and "rulers_lost" (deaths so far)}.
+## {} in a game without rulers, so an M1 summary is unchanged.
+static func builds(state: GameState, players: Array) -> Dictionary:
+	var out := {}
+	for fid in players:
+		var b := RulerRules.build_of(state, str(fid))
+		if b.is_empty():
+			continue
+		var f := state.find_faction(str(fid))
+		b["starting_kept_power"] = RulerRules.starting_kept_power(state, f.id)
+		b["rulers_lost"] = f.ruler_generation - 1 + (1 if f.ruler_status == RulerRules.DEAD else 0)
+		out[f.id] = b
+	return out
+
+
+## The builds as one sentence per player, for the victory screen and the final turn report:
+## "Builds: Aurel Crown, King Corvane II (alive, 1 ruler lost), 5 kept power (10 at the start), no
+## mandates. Thornmane Clans, the Ninth Fang (dead, 1 ruler lost), 5 kept power, mandates: Iron
+## Discipline and Drilled Ranks." "" in a game without rulers.
+static func builds_text(state: GameState, players: Array) -> String:
+	return _builds_sentence(state, players, builds(state, players))
+
+
+## builds_text() from builds() already worked out (`all`).
+static func _builds_sentence(state: GameState, players: Array, all: Dictionary) -> String:
+	var parts := []
+	for fid in players:
+		if not all.has(str(fid)):
+			continue
+		var b: Dictionary = all[str(fid)]
+		var status: String = "alive" if b.status == RulerRules.ALIVE else "dead"
+		var lost := int(b.rulers_lost)
+		if lost > 0:
+			status += ", %d %s lost" % [lost, "ruler" if lost == 1 else "rulers"]
+		var kept := "%d kept power" % int(b.kept_power)
+		if int(b.starting_kept_power) != int(b.kept_power):
+			kept += " (%d at the start)" % int(b.starting_kept_power)
+		var names: Array = b.mandate_names
+		var mandates := "no mandates" if names.is_empty() else "mandates: %s" % RulerRules._and_list(names)
+		parts.append("%s, %s (%s), %s, %s." % [_faction_name(state, str(fid)), b.ruler_name, status, kept, mandates])
+	if parts.is_empty():
+		return ""
+	return "Builds: %s" % " ".join(parts)
 
 
 

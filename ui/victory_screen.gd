@@ -10,12 +10,17 @@ extends Control
 ##
 ## API:
 ##   show_for(session) -> bool    shows session.victory(); false (and hidden) while the game runs
-##   show_victory(victory, state = null, players = [])
+##   show_victory(victory, state = null, players = [], computer_seats = {})
 ##       victory  GameSession.victory() / VictoryCheck.summary()
 ##       state    the final GameState: display names, and the provinces listed in the tooltips.
 ##                Without it, names come from the faction and map data.
 ##       players  faction ids in seat order: row order and seat colours. Without it, the order of
 ##                victory.provinces_held (which VictoryCheck fills in seat order).
+##       computer_seats  GameSession.computer_seats() ({faction id: level}): each computer faction's
+##                row gets its "Computer (Normal)" tag (#35), and the seat line says who won in
+##                human-vs-computer terms.
+##   computer_tag(faction_name, level, open_codex) -> Label   the tag itself, shared with the game
+##                               screen's top bar and the turn report header
 ##   signal new_game_requested   the "New game" button
 ##   signal title_requested      the "Back to title" button
 ##   signal codex_requested(key) a linked number or line was right-clicked (or F1)
@@ -58,12 +63,12 @@ func show_for(session: GameSession) -> bool:
 	if session == null or not session.is_over():
 		visible = false
 		return false
-	show_victory(session.victory(), session.state(), session.players())
+	show_victory(session.victory(), session.state(), session.players(), session.computer_seats())
 	return true
 
 
 ## Shows a victory summary dictionary (see GameSession.victory()).
-func show_victory(summary: Dictionary, state: GameState = null, players: Array = []) -> void:
+func show_victory(summary: Dictionary, state: GameState = null, players: Array = [], computer_seats: Dictionary = {}) -> void:
 	victory = summary.duplicate(true)
 	var is_draw: bool = summary.get("draw", false)
 	var winner := String(summary.get("winner", ""))
@@ -87,6 +92,8 @@ func show_victory(summary: Dictionary, state: GameState = null, players: Array =
 		headline_label.text = "%s wins" % _faction_name(winner, state)
 		headline_label.add_theme_color_override("font_color", seat_color(seat).lightened(0.25))
 		seat_label.text = "Player %d wins the game." % (seat + 1) if seat >= 0 else ""
+		if seat >= 0 and not computer_seats.is_empty():
+			seat_label.text = _computer_game_line(winner, seat, seats, computer_seats)
 	seat_label.visible = not seat_label.text.is_empty()
 	headline_label.tooltip_text = rule_tip
 	seat_label.tooltip_text = rule_tip
@@ -119,6 +126,8 @@ func show_victory(summary: Dictionary, state: GameState = null, players: Array =
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
 		_link(l, "provinces_held")
 		row.add_child(l)
+		if computer_seats.has(fid):
+			row.add_child(computer_tag(_faction_name(fid, state), String(computer_seats[fid]), codex_requested.emit))
 		provinces_box.add_child(row)
 		_province_labels.append(l)
 
@@ -206,6 +215,50 @@ static func _province_name(pid: String, state: GameState) -> String:
 		if p.id == pid:
 			return p.name
 	return "a province"
+
+
+## The seat line of a game with a computer seat: "You beat the computer (Normal)." when the only person
+## won, "The computer (Normal) wins the game." when a computer seat did.
+static func _computer_game_line(winner: String, seat: int, seats: Array, computer_seats: Dictionary) -> String:
+	if computer_seats.has(winner):
+		return "Player %d, the computer (%s), wins the game." % [seat + 1, AISeat.level_name(String(computer_seats[winner]))]
+	var humans := seats.filter(func(fid): return not computer_seats.has(fid))
+	if humans.size() == 1:
+		var levels := []
+		for fid in seats:
+			if computer_seats.has(fid):
+				levels.append(AISeat.level_name(String(computer_seats[fid])))
+		return "You beat the computer (%s)." % ", ".join(levels)
+	return "Player %d wins the game." % (seat + 1)
+
+
+## The small "Computer (Normal)" tag shown next to a computer faction (#35): a chip in the panel style.
+## Its tooltip says who plays the seat and how, and links to the codex entry "computer_opponent";
+## `open_codex` gets the key on a right-click (or F1, through the host).
+static func computer_tag(faction_name: String, level: String, open_codex: Callable = Callable()) -> Label:
+	var tag := Label.new()
+	tag.name = "ComputerTag"
+	tag.text = AISeat.tag_text(level)
+	tag.add_theme_font_size_override("font_size", 15)
+	tag.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
+	tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var chip := StyleBoxFlat.new()
+	chip.bg_color = UiPalette.PANEL_RAISED
+	chip.border_color = UiPalette.PANEL_BORDER
+	chip.set_border_width_all(1)
+	chip.set_corner_radius_all(10)
+	chip.content_margin_left = 9
+	chip.content_margin_right = 9
+	chip.content_margin_top = 2
+	chip.content_margin_bottom = 3
+	tag.add_theme_stylebox_override("normal", chip)
+	tag.mouse_filter = Control.MOUSE_FILTER_PASS
+	tag.tooltip_text = TooltipText.plain(tag.text, AISeat.tag_help(faction_name, level))
+	if open_codex.is_valid():
+		CodexLink.attach(tag, "computer_opponent", open_codex)
+	else:
+		tag.tooltip_text = CodexLink.with_link(tag.tooltip_text, "computer_opponent")
+	return tag
 
 
 ## The seat's player colour (UiPalette.seat_color, the one source of player colours).
