@@ -23,6 +23,9 @@ var viewing_faction_id := ""
 var selected_province_id := ""
 var selected_army_id := ""
 var regions := {}  # province id -> ProvinceRegion
+var orders: OrdersController = null  # issue #6: the viewing faction's orders this turn
+var status_text := ""  # last order result: the rules' reason when an order was refused
+var arrow_layer: Control  # drawn above the regions: one arrow per queued move
 
 # Scene nodes, looked up by _bind() rather than @onready so the screen also works before it is in
 # the tree (tests build it headless, and callers may set_state() before adding it).
@@ -47,6 +50,9 @@ func _ready() -> void:
 
 ## Shows `new_state` as seen by `faction_id`. Rebuilds every region; the state is only read.
 func set_state(new_state: GameState, faction_id: String) -> void:
+	if orders == null or orders.state != new_state or orders.faction_id != faction_id:
+		orders = OrdersController.new(new_state, faction_id)
+		status_text = ""
 	state = new_state
 	viewing_faction_id = faction_id
 	_bind()
@@ -65,6 +71,7 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 		map_canvas.add_child(region)
 		regions[p.id] = region
 	map_canvas.queue_redraw()
+	arrow_layer.queue_redraw()
 	_update_top_bar()
 	if state.find_province(selected_province_id) == null:
 		selected_province_id = ""
@@ -76,6 +83,14 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 func select_province(province_id: String) -> void:
 	if state == null or state.find_province(province_id) == null:
 		return
+	# Two-click move: with one of your armies selected, clicking another province orders it there.
+	var mover := state.find_army(selected_army_id)
+	if mover and orders and mover.owner == viewing_faction_id and mover.location != province_id:
+		if queue_move(mover.id, province_id).is_empty():
+			return
+		# Refused: the reason stays in the status line and the click selects the province as usual.
+	else:
+		status_text = ""
 	selected_province_id = province_id
 	var army := state.find_army(selected_army_id)
 	if army == null or army.location != province_id:
@@ -120,6 +135,13 @@ func _bind() -> void:
 	map_view.resized.connect(_fit_map)
 	map_canvas.draw.connect(_draw_links)
 	back_button.pressed.connect(_on_back_pressed)
+	# Order arrows sit above the map canvas (same transform, see _fit_map) so regions don't hide them.
+	arrow_layer = Control.new()
+	arrow_layer.name = "OrderArrows"
+	arrow_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	arrow_layer.size = MapLayout.SIZE
+	arrow_layer.draw.connect(_draw_order_arrows)
+	map_view.add_child(arrow_layer)
 
 
 ## Scales the design-space canvas to fit the map view, centred, keeping its aspect ratio.
@@ -130,6 +152,8 @@ func _fit_map() -> void:
 	var s: float = min(avail.x / MapLayout.SIZE.x, avail.y / MapLayout.SIZE.y)
 	map_canvas.scale = Vector2(s, s)
 	map_canvas.position = (avail - MapLayout.SIZE * s) / 2.0
+	arrow_layer.scale = map_canvas.scale
+	arrow_layer.position = map_canvas.position
 
 
 ## Roads between neighbouring provinces, drawn under the regions.
@@ -168,7 +192,112 @@ func _update_top_bar() -> void:
 
 # --- side panel -----------------------------------------------------------------------------------
 
+# --- orders (issue #6) ----------------------------------------------------------------------------
+
+## Queues a move for the viewing faction. Returns "" or the rules' reason (also shown in the panel).
+func queue_move(army_id: String, to_province: String) -> String:
+	var reason := orders.queue_move(army_id, to_province)
+	status_text = reason if not reason.is_empty() else "Move ordered. Armies move when the turn ends; click the cross to cancel."
+	_orders_changed()
+	return reason
+
+
+## Queues one recruit at the capital. Returns "" or the rules' reason (also shown in the panel).
+func queue_recruit(unit_type_id: String) -> String:
+	var reason := orders.queue_recruit(unit_type_id)
+	status_text = reason if not reason.is_empty() else "Recruit ordered. It is paid and joins at your capital when the turn ends."
+	_orders_changed()
+	return reason
+
+
+func cancel_order(index: int) -> void:
+	orders.cancel(index)
+	status_text = "Order cancelled."
+	_orders_changed()
+
+
+func _orders_changed() -> void:
+	if arrow_layer:
+		arrow_layer.queue_redraw()
+	_show_details()
+
+
+## One arrow per queued move, from the army's province to its destination.
+func _draw_order_arrows() -> void:
+	if orders == null or state == null:
+		return
+	for o in orders.orders():
+		if not (o is MoveOrder):
+			continue
+		var army := state.find_army(o.army_id)
+		if army == null or not MapLayout.has_position(army.location) or not MapLayout.has_position(o.to):
+			continue
+		var a := MapLayout.position_of(army.location)
+		var b := MapLayout.position_of(o.to)
+		var dir := (b - a).normalized()
+		var side := Vector2(-dir.y, dir.x)
+		var start := a + dir * 34.0
+		var tip := b - dir * 34.0
+		var base := tip - dir * 26.0
+		arrow_layer.draw_line(start, base, UiPalette.KEYLINE_HALO, 13.0, true)
+		arrow_layer.draw_line(start, base, UiPalette.SELECTION, 7.0, true)
+		arrow_layer.draw_colored_polygon(PackedVector2Array([tip + dir * 3.0, base + side * 17.0, base - side * 17.0]), UiPalette.KEYLINE_HALO)
+		arrow_layer.draw_colored_polygon(PackedVector2Array([tip, base + side * 13.0, base - side * 13.0]), UiPalette.SELECTION)
+
+
+## The orders list under the province details: each order with its forecast and a cancel button,
+## live gold after recruits, and recruit buttons when your capital is selected.
+func _add_orders_section() -> void:
+	var f: Faction = state.find_faction(viewing_faction_id) if state else null
+	if orders == null or f == null:
+		return
+	details.add_child(HSeparator.new())
+	_add_heading("Your orders this turn", 20)
+	if not status_text.is_empty():
+		var status := _add_text(status_text, TooltipText.plain("Order check",
+			"Orders are checked with the same rules the turn uses, so a refused order would fail at the end of the turn too."), UiPalette.GILT)
+		status.name = "StatusLabel"
+	var texts := orders.order_texts()
+	if texts.is_empty():
+		_add_text("No orders yet. Select one of your armies, then click a neighboring province to move it there. Select your capital to recruit.",
+			"", UiPalette.TEXT_SECONDARY)
+	for i in texts.size():
+		var row := HBoxContainer.new()
+		row.name = "Order_%d" % i
+		details.add_child(row)
+		var line := _add_text(texts[i], TooltipText.from_breakdown(orders.order_breakdown(i)), UiPalette.TEXT_PRIMARY, row)
+		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line.custom_minimum_size.x = 300
+		var cancel := Button.new()
+		cancel.name = "CancelButton"
+		cancel.text = "✕"
+		cancel.tooltip_text = "Cancel this order. Nothing happens until the turn ends, so you can change your mind."
+		cancel.focus_mode = Control.FOCUS_NONE
+		cancel.pressed.connect(cancel_order.bind(i))
+		row.add_child(cancel)
+	var g := orders.gold_after_recruits()
+	var gold := _add_text("Gold after recruits: %d" % g.gold_after, TooltipText.from_breakdown(orders.gold_breakdown()), UiPalette.GILT)
+	gold.name = "GoldAfterLabel"
+	if selected_province_id == f.capital:
+		var capital := state.find_province(f.capital)
+		_add_heading("Recruit at %s" % capital.name, 18)
+		for ut in orders.recruitable_types():
+			var b := Button.new()
+			b.name = "Recruit_%s" % ut.id.validate_node_name()
+			b.text = "Recruit %s (%d gold)" % [ut.name, orders.recruit_cost(ut.id)]
+			b.tooltip_text = TooltipText.from_breakdown(orders.recruit_breakdown(ut.id))
+			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			b.focus_mode = Control.FOCUS_NONE
+			b.pressed.connect(queue_recruit.bind(ut.id))
+			details.add_child(b)
+
+
 func _show_details() -> void:
+	_show_province_details()
+	_add_orders_section()
+
+
+func _show_province_details() -> void:
 	_bind()
 	for child in details.get_children():
 		details.remove_child(child)
