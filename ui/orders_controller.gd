@@ -151,7 +151,7 @@ func order_breakdown(index: int) -> Dictionary:
 		var odds := move_odds(o.army_id, o.to)
 		var odds_desc: String = "%s %s" % [odds.text, RulesCodex.text("battle_odds")] if odds.enemy_present else odds.text
 		return _bd("Move forecast", "%s %s %s" % [f.text, odds_desc, RulesCodex.text("move")],
-			[_line("Turn now", state.current_turn, ""), _line("Moving one province", 1, "armies move one neighboring province per turn")],
+			[_line("Turn now", state.current_turn + 1, "turns count from 1"), _line("Moving one province", 1, "armies move one neighboring province per turn")],
 			"Arrives at the start of turn", f.arrival_turn)
 	var r := _recruit_result_at(index)
 	if not r.ok:
@@ -159,6 +159,18 @@ func order_breakdown(index: int) -> Dictionary:
 	return _bd("Recruit %s" % _unit_name(r.unit_type), "Recruits are paid in the order given. %s" % RulesCodex.text("recruit"),
 		[_line("Gold before this recruit", r.gold_after + r.cost, ""), _line("Cost", -r.cost, "")],
 		"Gold left after this recruit", r.gold_after)
+
+
+## Which kind of number an order line is, for its codex link (TooltipText.CODEX): a move into an
+## enemy army links to the battle odds, any other move to moving, a recruit to recruiting.
+func order_codex_kind(index: int) -> String:
+	var list := orders()
+	if index < 0 or index >= list.size():
+		return ""
+	var o = list[index]
+	if o is MoveOrder:
+		return "move_odds" if move_odds(o.army_id, o.to).enemy_present else "move_order"
+	return "recruit"
 
 
 func gold_breakdown() -> Dictionary:

@@ -209,17 +209,22 @@ func test_three_scripted_turns_through_the_game_screen() -> void:
 	assert_eq(game.report_panel.battle_buttons().size(), 1, "the battle row has a battle report button")
 	_assert_no_raw_ids(_visible_text(game), "turn report")
 
-	# The battle report: the why on top, then every line of the full report from the battle rules.
+	# The battle report viewer opens above the turn report, with the "why" first.
 	game.report_panel.battle_buttons()[0].pressed.emit()
-	assert_true(game.battle_overlay.visible)
+	var viewer := game.battle_viewer
+	assert_true(viewer.visible, "the battle report viewer opens")
+	assert_true(game.report_overlay.visible, "the turn report stays open under it")
+	assert_true(viewer.get_index() > game.report_overlay.get_index(), "the viewer is drawn above the report")
 	var report: Dictionary = battles[0].numbers.report
 	assert_false(report.is_empty(), "the real battle rules made a full report")
-	assert_eq(game.battle_title.text, "Battle %s" % report.place)
-	for clause in str(battles[0].numbers.why).split(";", false):
-		assert_true(game.battle_why.text.to_lower().contains(clause.strip_edges().to_lower()), "why: %s" % clause)
-	for line in report.lines:
-		assert_true(game.battle_lines.text.contains(line), "report line: %s" % line)
+	assert_eq(viewer.title_label.text, "Battle %s" % report.place)
+	assert_eq(viewer.section_names()[0], "why", "the why comes first")
+	var why_label := viewer.section("why").find_child("WhyLabel", true, false) as Label
+	assert_true(why_label.text.to_lower().contains(str(report.why).to_lower()), "why: %s" % why_label.text)
 	_assert_no_raw_ids(_visible_text(game), "battle report")
+	viewer.close()
+	assert_false(viewer.visible)
+	assert_true(game.report_overlay.visible, "closing the battle report returns to the turn report")
 	game.free()
 
 
@@ -324,24 +329,31 @@ func test_capturing_the_enemy_capital_shows_the_game_over_overlay() -> void:
 	assert_eq(session.phase(), GameSession.Phase.GAME_OVER)
 	assert_eq(session.winner(), "kingdom")
 	assert_false(game.handoff.visible, "no handoff after the last turn")
-	assert_true(game.victory_overlay.visible, "the game-over overlay shows")
-	assert_eq(game.victory_label.text, session.victory().text)
-	assert_eq(game.victory_title.text, "Aurel Crown wins")
+	var victory := game.victory_screen
+	assert_true(victory.visible, "the victory screen shows")
+	assert_eq(victory.summary_label.text, session.victory().text)
+	assert_eq(victory.headline_label.text, "Aurel Crown wins")
+	assert_eq(victory.turns_label.text, "Turns played: 5")
 	assert_true(game.end_turn_button.disabled, "End turn is disabled")
+	assert_true(game.results_button.visible, "Results appears once the game is over")
 	assert_true(game.end_turn().contains("The game is over"))
 	assert_eq(game.map.turn_label.text, "Turn 5")
 	_assert_no_raw_ids(_visible_text(game), "game over")
 
-	# The final turn report is one click away, with the victory banner on top.
-	(game.victory_overlay.find_child("FinalReportButton", true, false) as Button).pressed.emit()
+	# The final turn report is one click away, above the victory screen, with the victory banner on top.
+	(victory.find_child("FinalReportButton", true, false) as Button).pressed.emit()
 	assert_true(game.report_overlay.visible)
+	assert_true(game.report_overlay.get_index() > victory.get_index(), "the report opens above the victory screen")
 	assert_true(game.report_panel.victory_box.visible)
 	assert_eq(game.report_panel.victory_label.text, session.victory().text)
 	_assert_report_matches_session(game)
 	game.close_turn_report()
-	(game.victory_overlay.find_child("ViewMapButton", true, false) as Button).pressed.emit()
-	assert_false(game.victory_overlay.visible, "the final map can be looked at")
+	assert_true(victory.visible, "closing the report shows the victory screen again")
+	(victory.find_child("ViewMapButton", true, false) as Button).pressed.emit()
+	assert_false(victory.visible, "the final map can be looked at")
 	assert_true(game.map.visible)
+	game.results_button.pressed.emit()
+	assert_true(victory.visible, "Results brings the victory screen back")
 	game.free()
 
 
@@ -412,9 +424,10 @@ func test_shown_without_start_game_it_starts_a_default_game() -> void:
 func test_a_bad_config_is_explained() -> void:
 	var game := _game({"players": ["kingdom"], "seed": 1})
 	assert_eq(game.session.phase(), GameSession.Phase.INVALID)
-	assert_true(game.victory_overlay.visible)
-	assert_eq(game.victory_title.text, "This game could not start")
-	assert_true(game.victory_label.text.contains("at least two players"), game.victory_label.text)
+	assert_true(game.error_overlay.visible)
+	assert_false(game.victory_screen.visible, "no victory screen for a game that never started")
+	assert_eq(game.error_title.text, "This game could not start")
+	assert_true(game.error_label.text.contains("at least two players"), game.error_label.text)
 	assert_true(game.end_turn_button.disabled)
 	game.free()
 

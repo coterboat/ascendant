@@ -7,6 +7,8 @@ extends Control
 ## rules model (GameState builds the Faction objects); the hotseat explanation is RulesCodex
 ## "hotseat". The same faction can't be picked twice and the seed must be a whole number: either
 ## problem is explained in plain words and disables Start. Never changes rules state.
+## Player colours follow the seat (UiPalette.seat_color): Player 1 is Vermilion, Player 2 Cobalt, so the
+## faction picked for a seat is shown in that seat's colour and swapping seats swaps the colours.
 ## Builds its children in code, so it works before it is in the tree (headless tests).
 ##
 ## API:
@@ -27,7 +29,7 @@ const SEAT_COUNT := 2
 const MAX_SEED_DIGITS := 18  # any 18-digit number fits in a 64-bit int
 const MAX_RANDOM_SEED := 999999999
 const BACKGROUND := Color("#14131F")
-const NEGATIVE := Color("#F06A64")  # design/STYLE_BIBLE.md 1.3 "negative"; not in UiPalette yet
+const NEGATIVE := UiPalette.NEGATIVE  # design/STYLE_BIBLE.md 1.3 "negative"
 
 var seat_pickers: Array[OptionButton] = []
 var seat_labels: Array[Label] = []
@@ -188,7 +190,7 @@ func _refresh() -> void:
 	var ids := _seat_ids()
 	for i in seat_pickers.size():
 		var f := _faction(ids[i])
-		faction_labels[i].text = _faction_summary(f) if f else ""
+		faction_labels[i].text = "Plays in %s. %s" % [UiPalette.seat_color_name(i), _faction_summary(f)] if f else ""
 		faction_labels[i].tooltip_text = _faction_tooltip(f) if f else ""
 		seat_pickers[i].tooltip_text = "Player %d plays %s.\n\n%s" % [i + 1, f.faction_name, _faction_tooltip(f)] if f \
 			else "Pick the faction Player %d plays." % (i + 1)
@@ -286,9 +288,10 @@ func _build() -> void:
 		row.add_theme_constant_override("separation", 12)
 		seat_box.add_child(row)
 		row.add_child(VictoryScreen.seat_emblem(i))
-		var seat_label := _label("SeatLabel", "Player %d" % (i + 1), 24, VictoryScreen.seat_color(i).lightened(0.3))
+		var seat_label := _label("SeatLabel", "Player %d" % (i + 1), 24, UiPalette.seat_color(i).lightened(0.3))
 		seat_label.custom_minimum_size = Vector2(130, 0)
-		_tooltip(seat_label, TooltipText.plain("Player %d" % (i + 1), RulesCodex.text("hotseat")))
+		_tooltip(seat_label, TooltipText.plain("Player %d" % (i + 1), "%s Player %d plays in %s on the map, in battle reports and on the victory screen. Colours belong to the seat, so swapping seats swaps the colours too." % [
+			RulesCodex.text("hotseat"), i + 1, UiPalette.seat_color_name(i)]))
 		row.add_child(seat_label)
 		seat_labels.append(seat_label)
 		var picker := OptionButton.new()
@@ -301,6 +304,9 @@ func _build() -> void:
 			picker.set_item_metadata(idx, f.id)
 			picker.get_popup().set_item_tooltip(idx, _faction_tooltip(f))
 		picker.item_selected.connect(func(_index: int): _refresh())
+		# The picked faction reads in the seat's colour, the colour it will have in the game.
+		for state_name in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+			picker.add_theme_color_override(state_name, UiPalette.seat_color(i).lightened(0.3))
 		row.add_child(picker)
 		seat_pickers.append(picker)
 		var summary := _label("FactionSummary", "", 17, UiPalette.TEXT_SECONDARY)
@@ -315,7 +321,7 @@ func _build() -> void:
 	swap_button.custom_minimum_size = Vector2(200, 44)
 	swap_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	swap_button.add_theme_font_size_override("font_size", 20)
-	swap_button.tooltip_text = "Player 1 and Player 2 trade factions. Player 1 still gives orders first."
+	swap_button.tooltip_text = "Player 1 and Player 2 trade factions, and with them their colours (colours belong to the seat). Player 1 still gives orders first."
 	swap_button.pressed.connect(swap_seats)
 	box.add_child(swap_button)
 
