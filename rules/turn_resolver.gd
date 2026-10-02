@@ -1,25 +1,27 @@
 class_name TurnResolver
 ## Deterministic turn resolution. Pure rules code: no nodes, no scenes, no global RNG.
 ##
-##   TurnResolver.resolve(state, orders_by_faction, turn_seed) -> {"new_state": GameState, "events": Array}
+##   TurnResolver.resolve(state, orders_by_faction, turn_seed, battle_resolver = null)
+##       -> {"new_state": GameState, "events": Array}
 ##
 ## `orders_by_faction` maps a faction id (String) to an Array of MoveOrder / RecruitOrder, in the
 ## order that player gave them. `state` is never modified: resolution works on a deep copy. All
 ## randomness comes from a SeededRNG built from `turn_seed`, so the same state, orders and seed always
 ## give the same new state and events. If `state` fails validation, new_state is null and the
-## plain-language problems are in result["errors"].
+## plain-language problems are in result["errors"]. `battle_resolver` defaults to the real battle
+## rules, AutoBattleResolver; tests may pass StubBattleResolver for simple, predictable battles.
 ##
 ## Phase order (fixed, and shown to players as RulesCodex "phase_order"):
 ##   orders       every faction's orders are checked; invalid moves are rejected with a reason.
 ##   movement     all valid moves happen at once. Hostile armies swapping provinces stop on the border.
 ##   battles      border battles first (sorted by border), then province battles (sorted by province),
-##                each decided by a BattleResolver (StubBattleResolver until #4).
+##                each decided by the BattleResolver (AutoBattleResolver unless one is passed in).
 ##   capture      a province occupied by armies of exactly one faction becomes that faction's.
 ##   recruitment  recruit orders are checked and paid in the order given, at the faction's capital.
 ##   income       every faction earns the income of the provinces it owns.
 ##
 ## Collision rules (player-facing text: RulesCodex "move", "same_province", "swap", "hold",
-## "defended", "undefended", "battle_stub"):
+## "defended", "undefended", and the "battle_*" entries):
 ##   - Armies that leave a province are gone before anyone arrives: moving into a province the enemy
 ##     just left is not a battle, and "chasing" never causes a fight.
 ##   - Swap: faction X moves A->B while faction Y moves B->A. Every army moving along that border (both
@@ -31,7 +33,9 @@ class_name TurnResolver
 ##     and did not move (held). If no faction held (everyone arrived), there is no defender.
 ##   - Holding vs arriving / moving into a defended province: a battle; the holder is the defender.
 ##   - Undefended enemy or neutral province: no battle; the capture phase gives it to the mover.
-##   - Ties (StubBattleResolver): the defender wins; with no defender, one seeded roll picks.
+##   - Losing a battle: every army on a losing side is destroyed, whether that side was wiped out,
+##     broke and fled (routed), or was an attacker still standing when the round cap ran out. There
+##     are no retreats yet. The battle event text says which of these happened to each loser.
 ##
 ## Determinism: factions go in sorted id order, armies in sorted id order, provinces in sorted id
 ## order and borders in sorted "a|b" key order. Within one faction, orders keep the player's order
@@ -52,7 +56,7 @@ static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: 
 	var s := state.deep_copy(load_errors)
 	if s == null:
 		return {"new_state": null, "events": [], "errors": load_errors}
-	var resolver: BattleResolver = battle_resolver if battle_resolver != null else StubBattleResolver.new()
+	var resolver: BattleResolver = battle_resolver if battle_resolver != null else AutoBattleResolver.new()
 	var rng := SeededRNG.new(turn_seed)
 	var events: Array = []
 
@@ -263,12 +267,17 @@ static func _border_battle(s: GameState, resolver: BattleResolver, rng: SeededRN
 	for m in clash.movers:
 		if not sides.has(m.faction):
 			sides[m.faction] = []
+		# Never null: an army has one move, so it is in exactly one clash, and earlier battles only
+		# removed their own armies.
 		sides[m.faction].append(s.find_army(m.army_id))
 	var ends := Array(clash.edge.split("|"))
 	var winner := _fight(s, resolver, rng, "border", ends, sides, "", events)
 	for m in clash.movers:
 		if m.faction == winner:
-			s.find_army(m.army_id).location = m.to
+			var army := s.find_army(m.army_id)
+			if army == null:
+				continue  # on the winning side, but every fighter in it fell: it is gone, not moving
+			army.location = m.to
 			events.append(_moved_event(s, m, "won_border_battle"))
 
 
@@ -302,20 +311,27 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 	var battle := {"kind": kind, "provinces": province_ids, "defender": defender, "sides": side_list, "state": s}
 	var result := resolver.resolve_battle(battle, rng)
 	if not fids.has(result.get("winner", "")):
-		result = StubBattleResolver.new().resolve_battle(battle, rng)
+		# A resolver that names no valid winner falls back to the real battle rules.
+		result = AutoBattleResolver.new().resolve_battle(battle, rng)
 	var winner: String = result.winner
 
 	var destroyed := []
 	var units_lost := 0
 	var army_ids := []
+	var lost_by_faction := {}  # losing faction id -> {"armies", "units"} destroyed with it
+	var winner_wiped := 0  # winning armies whose every unit fell
 	for fid in fids:
 		for a in sides[fid]:
 			army_ids.append(a.id)
 			if fid != winner:
 				destroyed.append(a.id)
-				units_lost += a.units.size() + (1 if a.commander else 0)
+				var n: int = a.units.size() + (1 if a.commander else 0)
+				units_lost += n
+				var lost: Dictionary = lost_by_faction.get(fid, {"armies": 0, "units": 0})
+				lost_by_faction[fid] = {"armies": lost.armies + 1, "units": lost.units + n}
 			elif a.units.is_empty() and a.commander == null:
 				destroyed.append(a.id)  # every unit of this winning army fell in the battle
+				winner_wiped += 1
 	var survivors: Array[Army] = []
 	for a in s.armies:
 		if not destroyed.has(a.id):
@@ -361,8 +377,13 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 		" and ".join(losers), destroyed.size(), "army" if destroyed.size() == 1 else "armies",
 		units_lost, "unit" if units_lost == 1 else "units"]
 	if not report.is_empty():
-		# One line with the result and the "why"; the full report rides along in numbers.report (#7).
-		text = "%s %s" % [where, report.summary]
+		# One line with the result and the "why", then what happened to each loser's armies. The full
+		# report rides along in numbers.report (#7) and gets the same aftermath as its last line.
+		var aftermath := _aftermath(s, report, winner, fids, lost_by_faction, winner_wiped)
+		report["aftermath"] = aftermath
+		if report.get("lines") is Array:
+			report.lines.append("Aftermath: %s" % aftermath)
+		text = "%s %s %s" % [where, report.get("summary", result.get("why", "")), aftermath]
 
 	events.append(_event("border_battle" if kind == "border" else "battle", "battles", province_ids, fids, army_ids, cause,
 		{"strengths": strengths, "winner": winner, "defender": defender, "tie_break": result.get("tie_break", "none"),
@@ -370,6 +391,41 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 			"destroyed": destroyed, "why": result.get("why", ""), "report": report},
 		text, codex))
 	return winner
+
+
+## What happened to each losing side, one sentence each (RulesCodex "battle_rounds"): its armies are
+## destroyed whether it was wiped out, routed, or was still standing when the round cap ran out.
+## `report` is an AutoBattleResolver report; `lost_by_faction` counts the armies and units removed.
+static func _aftermath(s: GameState, report: Dictionary, winner: String, fids: Array, lost_by_faction: Dictionary, winner_wiped: int) -> String:
+	var sentences := []
+	for fid in fids:
+		if fid == winner:
+			continue
+		var sr := {}
+		for side in report.get("sides", []):
+			if side.faction == fid:
+				sr = side
+		var name := _faction_name(s, fid)
+		var lost: Dictionary = lost_by_faction.get(fid, {"armies": 0, "units": 0})
+		var one: bool = lost.armies == 1
+		var armies: String = "its army was" if one else "its %d armies were" % lost.armies
+		# "fighters", as in the battle report: units and commanders alike.
+		var units := "%d %s lost" % [lost.units, "fighter" if lost.units == 1 else "fighters"]
+		if sr.get("destroyed", false):
+			sentences.append("Every fighter %s had there fell: %s wiped out (%s)." % [name, armies, units])
+		elif sr.get("routed", false):
+			sentences.append("%s routed, and %s destroyed as %s fled (%s; there are no retreats yet)." % [
+				name, armies, "it" if one else "they", units])
+		elif report.get("end", "") == "round_cap" and report.get("defender", "") == winner:
+			sentences.append("%s could not break the defenders within %d rounds, and %s destroyed (%s; there are no retreats yet)." % [
+				name, report.get("round_cap", AutoBattleResolver.ROUND_CAP), armies, units])
+		else:
+			sentences.append("%s had less of its strength left when the battle ended, and %s destroyed (%s; there are no retreats yet)." % [
+				name, armies, units])
+	if winner_wiped > 0:
+		sentences.append("%s won, but %s lost every fighter and %s gone too." % [_faction_name(s, winner),
+			"one of its armies" if winner_wiped == 1 else "%d of its armies" % winner_wiped, "is" if winner_wiped == 1 else "are"])
+	return " ".join(sentences)
 
 
 static func _capture(s: GameState, battle_sites: Dictionary, events: Array) -> void:

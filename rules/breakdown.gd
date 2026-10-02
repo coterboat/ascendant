@@ -65,8 +65,8 @@ static func army_units(state: GameState, army_id: String) -> Dictionary:
 	return _make("Units in the %s" % TurnResolver.army_label(state, army), desc, lines, "Units", army.units.size())
 
 
-## An army's battle strength under the current battle rules: attack + defense of every unit and
-## its commander. The total is StubBattleResolver.army_strength, the number battles actually use.
+## An army's strength: attack + defense of every unit and its commander (StubBattleResolver.army_strength).
+## A size guide only; real battles (AutoBattleResolver) don't use it, and RulesCodex "army_strength" says so.
 static func army_strength(state: GameState, army_id: String) -> Dictionary:
 	var army := state.find_army(army_id)
 	if army == null:
@@ -77,7 +77,7 @@ static func army_strength(state: GameState, army_id: String) -> Dictionary:
 	if army.commander:
 		var c := army.commander.type
 		lines.append(_line("%s (commander)" % c.name, c.attack + c.defense, "attack %d + defense %d" % [c.attack, c.defense]))
-	return _make("Strength of the %s" % TurnResolver.army_label(state, army), RulesCodex.text("battle_stub"),
+	return _make("Strength of the %s" % TurnResolver.army_label(state, army), RulesCodex.text("army_strength"),
 		lines, "Strength", StubBattleResolver.army_strength(army))
 
 
@@ -106,11 +106,14 @@ static func unit_type_description(ut: UnitType) -> String:
 		ut.cost, ut.trait_id, ut.get_trait_desc()]
 
 
-## The turn number. Turns count up from 0; each resolved turn adds one (TurnResolver.resolve).
+## The turn being ordered, 1-based like every turn number players see (GameSession.turn_number()):
+## turn 1 is the first, and each resolved turn (TurnResolver.resolve) adds one.
 static func turn(state: GameState) -> Dictionary:
-	return _make("Turn %d" % state.current_turn,
-		"The number of turns resolved so far. %s" % RulesCodex.text("phase_order"),
-		[_line("Turns resolved so far", state.current_turn, "")], "Current turn", state.current_turn)
+	var number := state.current_turn + 1
+	return _make("Turn %d" % number,
+		"The turn you are giving orders for. Turn 1 is the first, and each resolved turn adds one. %s" % RulesCodex.text("phase_order"),
+		[_line("Turns resolved so far", state.current_turn, ""), _line("This turn", 1, "the turn being ordered now")],
+		"Current turn", number)
 
 
 ## Sum of the line values. Equal to the breakdown's total by construction; tests check it.

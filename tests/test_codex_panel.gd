@@ -137,6 +137,23 @@ func test_no_raw_ids_in_player_facing_text() -> void:
 	_free(panel)
 
 
+## #4: battles use the real rules, so the codex players browse must not describe the old placeholder
+## battle (strength totals, the winner taking no losses, ties going to the defender).
+func test_no_listed_entry_describes_placeholder_battles() -> void:
+	var panel = _make_panel()
+	var stub_phrases := ["placeholder", "until full battles", "takes no losses", "higher strength wins",
+		"strengths are tied", "on a tie the defender", "win ties", "wins ties", "ties go to the defender"]
+	var listed: Array[String] = panel.listed_keys()
+	assert_eq(listed.size(), RulesCodex.ENTRIES.size(), "the panel lists every entry")
+	for key in listed:
+		panel.show_entry(key)
+		var seen := ("%s\n%s" % [(panel.get_node("%EntryTitle") as Label).text, panel.shown_text()]).to_lower()
+		for phrase in stub_phrases:
+			assert_false(seen.contains(phrase), "codex entry %s describes the placeholder battle (%s)" % [key, phrase])
+	assert_true(listed.has("battle_rounds"), "the real battle rules are listed")
+	_free(panel)
+
+
 func test_close_button_emits_closed() -> void:
 	var panel = _make_panel()
 	var hits := [0]
@@ -167,9 +184,10 @@ func test_every_codex_key_the_game_links_exists() -> void:
 	for id in RulesCodex.ENTRIES:
 		for m in link.search_all(RulesCodex.text(id)):
 			keys[m.get_string(1)] = "RulesCodex entry " + id
-	# The scan must actually see the resolver's and the session's links, or it proves nothing.
+	# The scan must actually see the resolver's and the session's links, or it proves nothing. The last
+	# ones come from RulesCodex.text("...") calls (Breakdown's tooltips, the handoff screen).
 	for expected in ["orders", "move", "swap", "same_province", "defended", "capture", "recruit", "income",
-			"handoff", "victory", "simultaneous_capture"]:
+			"handoff", "victory", "simultaneous_capture", "army_strength", "phase_order"]:
 		assert_true(keys.has(expected), "scan found codex key %s" % expected)
 	for key in keys:
 		assert_true(RulesCodex.ENTRIES.has(key), "codex key %s (from %s) exists in RulesCodex" % [key, keys[key]])
@@ -189,10 +207,14 @@ func _scripts_under(dir_path: String) -> PackedStringArray:
 	return out
 
 
-## Codex keys written in source: `codex = "..."` (every literal on that line), `"codex": "..."`, and
-## the string literals in the last argument (the codex id) of each TurnResolver `_event(...)` call.
+## Codex keys written in source: `codex = "..."` (every literal on that line), `"codex": "..."`,
+## `RulesCodex.text("...")` / `RulesCodex.entry("...")`, and the string literals in the last argument
+## (the codex id) of each TurnResolver `_event(...)` call.
 func _codex_keys_in_source(src: String) -> Array[String]:
 	var out: Array[String] = []
+	var lookup := RegEx.create_from_string("RulesCodex\\.(?:text|entry)\\(\\s*\"([a-z][a-z0-9_]*)\"\\s*\\)")
+	for m in lookup.search_all(src):
+		out.append(m.get_string(1))
 	var literal := RegEx.create_from_string("\"([a-z][a-z0-9_]*)\"")
 	var assign := RegEx.create_from_string("\\bcodex\\s*:?=\\s*([^\\n]+)")
 	for m in assign.search_all(src):

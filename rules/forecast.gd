@@ -7,6 +7,9 @@ class_name Forecast
 ## Where and when a move arrives, or why it can't be given.
 ## `other_orders` are that faction's orders already given this turn (to catch a second move).
 ## Returns {"ok", "reason", "code", "from", "to", "arrival_turn", "enemy_present", "would_capture", "text"}.
+## `arrival_turn` is 1-based like every turn number players see (GameSession.turn_number()): an
+## order given on turn current_turn + 1 resolves at its end, so the army is there at the start of
+## turn current_turn + 2.
 static func move(state: GameState, faction_id: String, order: MoveOrder, other_orders: Array = []) -> Dictionary:
 	var ordered := {}
 	for o in other_orders:
@@ -23,19 +26,40 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 		if a.location == dest.id and a.owner != faction_id and not enemies.has(a.owner):
 			enemies.append(a.owner)
 	enemies.sort()
-	var arrival := state.current_turn + 1
+	var arrival := state.current_turn + 2
 	var text := "The %s moves to %s and is there at the start of turn %d." % [TurnResolver.army_label(state, army), dest.name, arrival]
 	var would_capture := false
 	if not enemies.is_empty():
 		var names := []
 		for fid in enemies:
 			names.append(state.find_faction(fid).faction_name)
-		text += " %s has an army there: if it stays, you fight a battle and it defends (defenders win ties). If it moves toward you instead, you meet on the border." % " and ".join(names)
+		text += " %s has an army there: if it stays, you fight a battle and it defends (%s). If it moves toward you instead, you meet on the border, where nobody gets terrain." % [
+			" and ".join(names), defender_ground(dest)]
 	elif dest.owner != faction_id:
 		would_capture = true
 		text += " %s is undefended: if no enemy army arrives too, you capture it and gain %d gold per turn." % [dest.name, dest.income]
 	return {"ok": true, "code": "", "reason": "", "from": here.id, "to": dest.id, "arrival_turn": arrival,
 		"enemy_present": not enemies.is_empty(), "would_capture": would_capture, "text": text}
+
+
+## What holding `province` gives its defender in battle (RulesCodex "battle_terrain"), from the same
+## AutoBattleResolver numbers the battle uses: "the forest gives it +2 defense".
+static func defender_ground(province: Province) -> String:
+	var bonus: Dictionary = AutoBattleResolver.TERRAIN.get(province.terrain, {})
+	var defense: int = bonus.get("defense", 0)
+	var attack: int = bonus.get("attack", 0)
+	var parts := []
+	if defense > 0:
+		parts.append("+%d defense" % defense)
+	if attack > 0:
+		parts.append("+%d attack" % attack)
+	var fort := "its fort gives +%d defense" % AutoBattleResolver.FORT_DEFENSE
+	if parts.is_empty():
+		var open := "open %s give no terrain bonus" % province.terrain
+		return "%s, but %s" % [open, fort] if province.has_fort else open
+	var verb := "give" if province.terrain.ends_with("s") else "gives"
+	var ground := "the %s %s it %s" % [province.terrain, verb, " and ".join(parts)]
+	return "%s, and %s" % [ground, fort] if province.has_fort else ground
 
 
 ## Odds of `faction_id` attacking `province_id` with the armies `army_ids` (RulesCodex "battle_odds"):

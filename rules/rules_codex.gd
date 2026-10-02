@@ -1,9 +1,9 @@
 class_name RulesCodex
 ## Plain-language rules text for the in-game codex, tooltips and the turn report.
 ## Every turn event carries a "codex" key naming one of these entries.
-## This text is the player-facing statement of the rules in TurnResolver, StubBattleResolver and
-## AutoBattleResolver (the "battle_*" and "trait_*" entries);
-## keep them in sync.
+## This text is the player-facing statement of the rules in TurnResolver and AutoBattleResolver
+## (the "battle_*" and "trait_*" entries); keep them in sync. StubBattleResolver is a test-only
+## stand-in and has no entry: players never see its rules.
 
 const ENTRIES := {
 	"phase_order": {
@@ -24,35 +24,31 @@ const ENTRIES := {
 	},
 	"swap": {
 		"title": "Armies swapping places",
-		"text": "If your army moves from A to B while an enemy army moves from B to A, they meet on the border between A and B and fight there. Nobody is defending. The winner finishes its move, and the loser never arrives.",
+		"text": "If your army moves from A to B while an enemy army moves from B to A, they meet on the border between A and B and fight there. Nobody is defending. The winner finishes its move, and the loser never arrives: its armies are destroyed.",
 	},
 	"hold": {
 		"title": "Holding a province",
-		"text": "An army with no move order holds its province. If enemies move in, the holding army is the defender, and the defender wins a battle when strengths are tied.",
+		"text": "An army with no move order holds its province. If enemies move in, the holding army is the defender: it gets the province's terrain and fort bonuses in the battle, and if the attackers have not won after 8 rounds, the defender holds and wins.",
 	},
 	"defended": {
 		"title": "Moving into a defended province",
-		"text": "Moving into a province where an enemy army is holding starts a battle there. The holding army defends.",
+		"text": "Moving into a province where an enemy army is holding starts a battle there. The holding army defends and gets the province's terrain and fort bonuses.",
 	},
 	"undefended": {
 		"title": "Moving into an undefended province",
 		"text": "Moving into an enemy or neutral province with no enemy army in it captures it, as long as no enemy army arrives there too.",
 	},
-	"battle_stub": {
-		"title": "Battles (placeholder rules)",
-		"text": "Until full battles arrive, each side's strength is the total attack plus defense of every unit and commander it has there. The higher strength wins and takes no losses. Every losing army is destroyed. On a tie the defender wins. If the tied sides have no defender, a seeded roll picks the winner.",
-	},
 	"battle_rounds": {
 		"title": "Battles",
-		"text": "A battle is fought in rounds, at most 8. Each round every unit and commander attacks one enemy at the same time, so a unit that falls still strikes that round. Attacks go at the enemy's front rank: crossbowmen stand behind their other units and commanders behind everyone, so they are only attacked once nothing in front of them is left. The battle ends when one side is wiped out or breaks. If every side left breaks in the same round, the one with more of its strength left keeps the field. The winner keeps its wounded units; units that fell are gone. Every army on a losing side is destroyed or scattered (there are no retreats yet).",
+		"text": "A battle is fought in rounds, at most 8. Each round every unit and commander attacks one enemy at the same time, so a unit that falls still strikes that round. Attacks go at the enemy's front rank: crossbowmen stand behind their other units and commanders behind everyone, so they are only attacked once nothing in front of them is left. The battle ends when one side is wiped out or breaks and flees (a rout). If every side left breaks in the same round, the one with more of its strength left keeps the field. The winner keeps its wounded units; units that fell are gone. The losing side loses every army it had in the battle, even units still standing: a side that routs is destroyed as it flees, and attackers who have not won after 8 rounds are destroyed too. There are no retreats yet.",
 	},
 	"battle_round_cap": {
 		"title": "When a battle runs out of time",
-		"text": "If nobody has won after 8 rounds, the defender holds its ground and wins. With no defender (a border battle, or armies that all arrived together), the side with the larger share of its starting hit points left wins; an exact tie is settled by a seeded roll.",
+		"text": "If nobody has won after 8 rounds, the defender holds its ground and wins, and the attacking armies are destroyed (there are no retreats yet). With no defender (a border battle, or armies that all arrived together), the side with the larger share of its starting hit points left wins and the other side's armies are destroyed; an exact tie is settled by a seeded roll.",
 	},
 	"battle_hit_chance": {
 		"title": "Hit chance and damage",
-		"text": "Every attack rolls to hit. The chance is 60%, plus 4% for every point the attacker's attack is above the target's defense (or minus 4% for every point below), never lower than 30% or higher than 90%. A hit deals half the attacker's attack (rounded up) minus a quarter of the target's defense (rounded down), at least 1. The battle report shows how often each side actually hit next to the chances it had, so you can see how much luck mattered.",
+		"text": "Every attack rolls to hit. The chance is 60%, plus 4% for every point the attacker's attack is above the target's defense (or minus 4% for every point below), never lower than 30% or higher than 90%. A hit deals half the attacker's attack (rounded up) minus a quarter of the target's defense (rounded down), at least 1. The battle report shows how often each side actually hit next to the chances it had. It measures luck in damage: how much more or less damage a side's hits did than average rolls would have. One big hit landing can outweigh several small misses, so a side can be lucky in damage while hitting less often than expected.",
 	},
 	"battle_terrain": {
 		"title": "Terrain in battle",
@@ -60,11 +56,15 @@ const ENTRIES := {
 	},
 	"battle_morale": {
 		"title": "Morale and routs",
-		"text": "A side's morale is the average morale of its units, +2 while its commander stands, plus trait effects (Inspire, Fury). Morale decides how much a side can lose before it breaks: 20% plus 5% per point of morale, of its starting hit points (at least 25%, at most 95%). Morale 10 breaks after losing 70% of its hit points; morale 6 after 50%. A side that breaks flees and loses the battle, even with units still standing.",
+		"text": "A side's morale is the average morale of its units, +2 while its commander stands, plus trait effects (Inspire, Fury). Morale decides how much a side can lose before it breaks: 20% plus 5% per point of morale, of its starting hit points (at least 25%, at most 95%). Morale 10 breaks after losing 70% of its hit points; morale 6 after 50%. A side that breaks flees and loses the battle, even with units still standing, and its armies are destroyed as they flee (there are no retreats yet).",
 	},
 	"battle_commanders": {
 		"title": "Commanders in battle",
 		"text": "A commander fights from the back line, so enemies reach it only after its units have fallen. While it stands its side gets +2 morale, and its own trait: the Knight Captain inspires (+2 more morale), the Warchief leads the pack (+1 attack to every unit).",
+	},
+	"army_strength": {
+		"title": "Army strength",
+		"text": "The strength shown for an army is a quick guide to its size: the attack plus defense of every unit and its commander. It does not decide battles. Battles are fought round by round with hit points, morale, terrain and traits, so a stronger-looking army can still lose.",
 	},
 	"battle_odds": {
 		"title": "Battle odds",

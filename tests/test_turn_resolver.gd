@@ -2,6 +2,10 @@ extends "res://tests/test_case.gd"
 ## Tests for issue #3: order collection, deterministic turn resolver, forecasts, load validation,
 ## JSON round-trips and map fairness.
 ##
+## These tests pin exact battle outcomes, so every resolve here passes StubBattleResolver explicitly
+## (higher attack + defense wins, the winner takes no losses, ties go to the holder). The game itself
+## uses the real AutoBattleResolver by default: see tests/test_real_battles.gd.
+##
 ## Unit strengths used below (attack + defense, see StubBattleResolver):
 ##   kingdom: spearmen 11, crossbowmen 12, knights 20, knight_captain 26
 ##   beasts:  tuskers 17, fangthrowers 12, war_bear 25, warchief 26
@@ -32,7 +36,7 @@ func _state(specs: Array, owners: Dictionary = {}) -> GameState:
 
 
 func _resolve(s: GameState, orders: Dictionary, turn_seed: int = 1) -> Dictionary:
-	var result := TurnResolver.resolve(s, orders, turn_seed)
+	var result := TurnResolver.resolve(s, orders, turn_seed, StubBattleResolver.new())
 	assert_true(result.new_state != null, "resolve produced a state")
 	return result
 
@@ -561,7 +565,9 @@ func test_forecasts_match_resolution() -> void:
 	])
 	var f := Forecast.move(s, "kingdom", MoveOrder.new("kingdom-1", "westwatch"))
 	assert_true(f.ok)
-	assert_eq(f.arrival_turn, s.current_turn + 1)
+	# 1-based, like GameSession.turn_number(): ordered on turn current_turn + 1, there at the start of the next.
+	assert_eq(f.arrival_turn, s.current_turn + 2)
+	assert_true(f.text.contains("is there at the start of turn %d." % (s.current_turn + 2)), f.text)
 	assert_true(f.would_capture)
 	assert_true(f.text.contains("capture it and gain 6 gold"), f.text)
 	var bad := Forecast.move(s, "kingdom", MoveOrder.new("kingdom-1", "thornvale"))
@@ -974,6 +980,7 @@ func _distance(s: GameState, from: String, to: String) -> int:
 
 
 func test_codex_covers_the_rules() -> void:
-	for id in ["phase_order", "orders", "move", "same_province", "swap", "hold", "defended", "undefended", "battle_stub", "capture", "recruit", "income"]:
+	for id in ["phase_order", "orders", "move", "same_province", "swap", "hold", "defended", "undefended", "battle_rounds",
+			"battle_round_cap", "battle_morale", "battle_terrain", "capture", "recruit", "income"]:
 		assert_false(RulesCodex.text(id).is_empty(), "codex entry %s" % id)
 		assert_false(RulesCodex.entry(id).get("title", "").is_empty())

@@ -147,7 +147,7 @@ func _show_no_report(event_text: String) -> void:
 	message_label.text = NO_REPORT_TEXT
 	message_label.visible = true
 	if not event_text.is_empty():
-		var l := _text(content, event_text, _tip("Battles", RulesCodex.text("battle_stub")), 20, UiPalette.TEXT_SECONDARY)
+		var l := _text(content, event_text, _tip("Battles", RulesCodex.text("battle_rounds")), 20, UiPalette.TEXT_SECONDARY)
 		l.name = "EventText"
 	_show_viewer()
 
