@@ -95,11 +95,11 @@ const ENTRIES := {
 	},
 	"orders": {
 		"title": "Orders",
-		"text": "Each turn you can move each army once, to a province next to it, and recruit units at your capital. An army with no move order holds where it is. An order that breaks a rule is rejected, and the turn report says why.",
+		"text": "Each turn you can move each army once, to a province next to it, and recruit units at your capital. An army with no move order holds where it is. An order that breaks a rule is rejected, and the turn report says why. In a game with rulers there is more. With King's Roads an army can instead make a road move, two provinces through your own land. With Warband Muster you can also recruit with the Ninth Fang where it stands. And a living ruler can give one Sacrifice order per turn, giving up power for a new mandate: it resolves before every other order, so your other orders are checked as if it had already happened.",
 	},
 	"move": {
 		"title": "Moving",
-		"text": "An army moves one province per turn, to a neighbor of the province it is in. It arrives during this turn's resolution and is ready to act next turn. All armies move at the same time, so an army that leaves a province is gone before anyone arrives there.",
+		"text": "An army moves one province per turn, to a neighbor of the province it is in. It arrives during this turn's resolution and is ready to act next turn. All armies move at the same time, so an army that leaves a province is gone before anyone arrives there. In a game with rulers, King's Roads let an army move two provinces instead, through a neighbor to a province next to that, when you owned both at the start of the turn. Such a road move never fights a border battle and never stops halfway.",
 	},
 	"same_province": {
 		"title": "Armies meeting in a province",
@@ -217,11 +217,11 @@ const ENTRIES := {
 	},
 	"recruit": {
 		"title": "Recruiting",
-		"text": "Recruit units from your own roster at your capital. Each unit costs gold, paid in the order you gave the orders, from your gold before this turn's income. Recruiting happens after capture, so if your capital falls this turn your recruits are cancelled and you keep the gold. New units join your army at the capital, or form a new army if none is there.",
+		"text": "Recruit units from your own roster at your capital. Each unit costs gold, paid in the order you gave the orders, from your gold before this turn's income. Recruiting happens after capture, so if your capital falls this turn your recruits are cancelled and you keep the gold. New units join your army at the capital, or form a new army if none is there. In a game with rulers, recruits never join the ruler's army: they join another army of yours there, or form a new one. With Muster Grounds every recruit costs less, and every price on screen already includes it. With Warband Muster the Ninth Fang can also recruit regular units where it stands, a few each turn (more at a higher ability rank), paid from the same gold; they are cancelled and cost nothing if the Fang has fallen or its province isn't yours after the battles.",
 	},
 	"income": {
 		"title": "Income",
-		"text": "At the end of the turn, each faction earns the income of every province it owns, after this turn's captures and recruits.",
+		"text": "At the end of the turn, each faction earns the income of every province it owns, after this turn's captures and recruits. In a game with rulers, two things can add to it. With Heavy Tithes every province you own earns more gold, the capital included. And King Corvane's Royal Court adds gold to the province he is in at the end of the turn, if you own it, as long as he lives. The income shown for each province and in the top bar already includes both; hover it to see each part.",
 	},
 	# --- game flow and winning (#7, #8): GameSession and VictoryCheck ---
 	"hotseat": {
@@ -234,7 +234,7 @@ const ENTRIES := {
 	},
 	"victory": {
 		"title": "Winning the game",
-		"text": "Capture the enemy capital to win. A capital is captured like any other province: after battles, if only your armies are in it, it becomes yours. The game ends when that turn finishes resolving, and the victory screen shows the turns played, the battles fought and how many provinces each side holds.",
+		"text": "Capture the enemy capital to win. A capital is captured like any other province: after battles, if only your armies are in it, it becomes yours. The game ends when that turn finishes resolving, and the victory screen shows the turns played, the battles fought and how many provinces each side holds. In a game with rulers, a ruler's death never ends the game, however often it happens: a successor takes over at the capital, and only the capital decides who wins. The victory screen also shows each player's build.",
 	},
 	"simultaneous_capture": {
 		"title": "Both capitals fall in the same turn",
@@ -272,7 +272,7 @@ const ENTRIES := {
 	},
 	"ruler_army": {
 		"title": "The ruler's army",
-		"text": "A ruler travels alone, as its own army: no units and no commander. It moves one province per turn and captures provinces like any army, and it fights together with every other army of yours in the same province or on the same border. Recruits never join the ruler's army, so it can always move on its own. At the start of the game each capital holds the starting army and the ruler's army.",
+		"text": "A ruler travels alone, as its own army: no units and no commander. It moves like any army, one province per turn, or two by a road move with King's Roads. It captures provinces like any army, and it fights together with every other army of yours in the same province or on the same border. Recruits never join the ruler's army, so it can always move on its own: with Warband Muster, the Ninth Fang's recruits join another army of yours where it stands, or form a new one. At the start of the game each capital holds the starting army and the ruler's army. A living ruler is always on the map in its army: when the ruler dies the army goes with it, and a successor arrives later in a new ruler's army at the capital.",
 	},
 	"ruler_death": {
 		"title": "When a ruler dies",

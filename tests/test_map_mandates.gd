@@ -402,9 +402,12 @@ func test_royal_court_follows_the_king_and_needs_him_alive() -> void:
 	assert_true(forecast.text.contains("Royal Court +4 at Westwatch, where King Corvane I ends the turn"), forecast.text)
 	var result := TurnResolver.resolve(s, {"kingdom": ride}, 32, StubBattleResolver.new())
 	assert_eq(result.new_state.find_faction("kingdom").gold, forecast.gold_next_turn, "the forecast equals the result")
-	# Without the King on the map (fallen), there is no Royal Court.
+	# Without the King on the map (fallen), there is no Royal Court. His death is recorded the way a
+	# battle records it, so the state is one the game can reach (a living ruler is always on the map).
 	var s2 := _game({"kingdom": {"ruler": "aurel_king", "mandates": ["heavy_tithes"]}})
-	s2.armies.erase(RulerRules.ruler_army(s2, "kingdom"))
+	RulerRules.record_death(s2, "kingdom", 1)
+	assert_eq(RulerRules.ruler_army(s2, "kingdom"), null, "his army went with him")
+	assert_true(s2.validate([]))
 	assert_eq(TurnResolver.income_of(s2, "kingdom").total, 13)
 	assert_eq(Breakdown.province_income(s2, "crownkeep").lines.size(), 2)
 

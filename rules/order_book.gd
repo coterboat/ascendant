@@ -153,16 +153,21 @@ func to_dict() -> Dictionary:
 	return out
 
 
-## Rebuilds an orders_by_faction dictionary from to_dict() output. Unknown order types are reported
-## in plain language (to `errors` when it is an Array, otherwise push_error) and skipped.
+## Rebuilds an orders_by_faction dictionary from to_dict() output. Unknown order types, a faction's
+## orders that are not a list and an order that is not a group of named values (#49) are reported in
+## plain language (to `errors` when it is an Array, otherwise push_error) and skipped.
 static func orders_from_dict(data: Dictionary, errors = null) -> Dictionary:
 	var out := {}
 	for fid in data:
 		var list := []
-		for d in data[fid]:
-			var order = order_from_dict(d, errors)
-			if order != null:
-				list.append(order)
+		var given = data[fid]
+		if given != null and Serial.check(given, TYPE_ARRAY, errors, "the orders for '%s'" % fid):
+			for i in given.size():
+				if not Serial.check(given[i], TYPE_DICTIONARY, errors, "order %d for '%s'" % [i + 1, fid]):
+					continue
+				var order = order_from_dict(given[i], errors)
+				if order != null:
+					list.append(order)
 		out[str(fid)] = list
 	return out
 

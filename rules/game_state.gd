@@ -113,7 +113,8 @@ func find_army(id: String) -> Army:
 	return null
 
 ## Checks the state is internally consistent: every owner is a real faction, neighbors exist and
-## list each other back, every faction's capital is a capital province, army ids are unique.
+## list each other back, every faction's capital is a capital province, army ids are unique, and (M2)
+## the ruler rules hold, including that a living ruler is on the map in its own army.
 ## Appends plain-language messages to `errors` (or push_error when it isn't an Array).
 func validate(errors = null) -> bool:
 	var ok := true
@@ -174,6 +175,23 @@ func validate(errors = null) -> bool:
 	# Rulers, kept power, mandates and ruler armies (M2): RulerRules owns those rules.
 	if not RulerRules.validate(self, errors):
 		ok = false
+	if not _living_rulers_on_map(errors):
+		ok = false
+	return ok
+
+
+## A living ruler always travels as its own army (#49): a ruler whose army is gone is dead, and
+## TurnResolver records that death right after the battle that removed the army (M2-3), so no state the
+## game makes has a living ruler off the map. (Unknown rulers and bad statuses are RulerRules.validate's.)
+func _living_rulers_on_map(errors) -> bool:
+	var ok := true
+	for f in factions:
+		if not f.has_ruler() or f.ruler_status != RulerRules.ALIVE or RulerRules.ruler_data(f.ruler_type).is_empty():
+			continue
+		if RulerRules.ruler_army(self, f.id) == null:
+			_report(errors, "%s (%s) is alive but has no ruler's army on the map. A living ruler always travels as its own army, and a ruler whose army is gone is dead." % [
+				Serial.cap(RulerRules.current_name(self, f.id)), f.faction_name if not f.faction_name.is_empty() else f.id])
+			ok = false
 	return ok
 
 func to_dict() -> Dictionary:
@@ -199,22 +217,45 @@ func to_dict() -> Dictionary:
 		"rng": rng.to_dict(),
 	}
 
-static func from_dict(data: Dictionary, errors = null) -> GameState:
+## Rebuilds a state from to_dict() output (or the same data after a JSON round-trip). Returns null when
+## the data is not a valid game, with plain-language reasons in `errors` (or push_error when it isn't
+## an Array): a field of the wrong type (#49, Serial load checks: "The 'owner' field of province
+## 'westwatch' should be text, but the saved data has a number there."), an unknown ruler, unit type or
+## province, or anything validate() rejects. Malformed data never raises a script error.
+static func from_dict(data, errors = null) -> GameState:
+	const WHO := "the saved game"
+	if not Serial.check(data, TYPE_DICTIONARY, errors, WHO):
+		return null
 	var state := GameState.new(Serial.to_int(data.get("seed_value", 12345), 12345))
 	state.current_turn = Serial.to_int(data.get("current_turn", 0))
 	state.next_army_id = Serial.to_int(data.get("next_army_id", 1), 1)
 
-	if data.has("rng"):
-		state.rng = SeededRNG.from_dict(data.rng)
+	var rng_data = Serial.expect(data, "rng", TYPE_DICTIONARY, errors, WHO, {})
+	if rng_data == null:
+		return null
+	if data.get("rng") != null:
+		state.rng = SeededRNG.from_dict(rng_data)
 
 	# Rebuild from dict overriding loaded data (for full roundtrip)
+	var province_list = Serial.expect_dicts(data, "provinces", errors, WHO, "province")
+	if province_list == null:
+		return null
 	state.provinces.clear()
-	for p_data in data.get("provinces", []):
-		state.provinces.append(Province.from_dict(p_data))
+	for i in province_list.size():
+		var p := Province.from_dict(province_list[i], errors, Serial.label("province", province_list[i], i))
+		if p == null:
+			return null
+		state.provinces.append(p)
 
+	var faction_list = Serial.expect_dicts(data, "factions", errors, WHO, "faction")
+	if faction_list == null:
+		return null
 	state.factions.clear()
-	for f_data in data.get("factions", []):
-		state.factions.append(Faction.from_dict(f_data))
+	for i in faction_list.size():
+		var f := Faction.from_dict(faction_list[i], errors, Serial.label("faction", faction_list[i], i))
+		if f == null:
+			return null
+		state.factions.append(f)
 
 	# Build lookup for units
 	var all_unit_types := {}
@@ -241,9 +282,12 @@ static func from_dict(data: Dictionary, errors = null) -> GameState:
 	for p in state.provinces:
 		province_ids[p.id] = true
 
+	var army_list = Serial.expect_dicts(data, "armies", errors, WHO, "army")
+	if army_list == null:
+		return null
 	state.armies.clear()
-	for a_data in data.get("armies", []):
-		var army = Army.from_dict(a_data, all_unit_types, province_ids, errors)
+	for i in army_list.size():
+		var army := Army.from_dict(army_list[i], all_unit_types, province_ids, errors, Serial.label("army", army_list[i], i))
 		if army == null:
 			return null
 		state.armies.append(army)
