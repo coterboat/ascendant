@@ -1,8 +1,388 @@
 class_name RulerPanel
-## The ruler's army on the map (M2, #29): its badge text, its summary tooltip, and the lines the map's
-## side panel shows for it, with a breakdown behind every number (hit points, attack, defense, morale,
-## kept power, ability rank) and a codex link on each. UI only: every number and sentence comes from
-## RulerRules and Breakdown, so nothing here can disagree with the rules.
+extends Control
+## The ruler panel (M2-6, #34; design/M2_RULER.md §1.5, §2.4, §5.4, §7.1): your ruler with a breakdown
+## behind every number (hit points, attack, defense, morale, kept power, ability rank and effect), its
+## succession rule, a countdown while a successor is pending ("heir in 2 turns"), and your mandates with
+## what each does for you now. Beside it the enemy ruler, read-only: builds are public from turn 1. From
+## here a living ruler can sacrifice power for a new mandate: the button opens the sacrifice dialog
+## (sacrifice_requested; MapScreen hosts both). Every number links its codex entry (right-click or F1).
+## Opened from the top bar's Ruler button (GameScreen) or the ruler's army in the side panel
+## (MapScreen.open_ruler_panel). Reads the state and the orders; never changes them.
+##
+## The static helpers further down are the ruler's army on the map (M2, #29): its badge text, its summary
+## tooltip, and the lines the map's side panel shows for it, with a breakdown behind every number and a
+## codex link on each. UI only: every number and sentence comes from RulerRules, Breakdown and Forecast,
+## so nothing here can disagree with the rules.
+
+signal closed
+signal sacrifice_requested
+signal codex_requested(key: String)
+
+const PANEL_SIZE := Vector2(1320, 800)
+
+var state: GameState = null
+var viewing_faction_id := ""
+var orders: OrdersController = null  # the viewing faction's orders (a queued sacrifice shows here)
+var columns: HBoxContainer  # one column per faction: yours first, then the others, read-only
+var close_button: Button
+var sacrifice_button: Button = null  # in your column, while you can give orders
+var footer_label: Label
+
+
+func _init() -> void:
+	name = "RulerPanel"
+	visible = false
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var dim := ColorRect.new()
+	dim.name = "Dim"
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(dim)
+	var center := CenterContainer.new()
+	center.name = "Center"
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(center)
+	var panel := PanelContainer.new()
+	panel.name = "Panel"
+	panel.custom_minimum_size = PANEL_SIZE
+	panel.add_theme_stylebox_override("panel", UiPalette.panel_style(22))
+	center.add_child(panel)
+	var box := VBoxContainer.new()
+	box.name = "Box"
+	box.add_theme_constant_override("separation", 12)
+	panel.add_child(box)
+	var head := HBoxContainer.new()
+	head.name = "Head"
+	box.add_child(head)
+	var title := Label.new()
+	title.name = "Title"
+	title.text = "Rulers"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_color_override("font_color", UiPalette.GILT)
+	head.add_child(title)
+	close_button = Button.new()
+	close_button.name = "CloseButton"
+	close_button.text = "Close"
+	close_button.custom_minimum_size = Vector2(120, 40)
+	close_button.focus_mode = Control.FOCUS_NONE
+	close_button.add_theme_font_size_override("font_size", 18)
+	close_button.tooltip_text = "Close the ruler panel and go back to the map."
+	close_button.pressed.connect(close)
+	head.add_child(close_button)
+	var scroll := ScrollContainer.new()
+	scroll.name = "Scroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(scroll)
+	columns = HBoxContainer.new()
+	columns.name = "Columns"
+	columns.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	columns.add_theme_constant_override("separation", 28)
+	scroll.add_child(columns)
+	footer_label = Label.new()
+	footer_label.name = "Footer"
+	footer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	footer_label.add_theme_font_size_override("font_size", 15)
+	footer_label.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
+	footer_label.text = "Builds are public from turn 1, so both rulers are shown. Only you can sacrifice for your own ruler, and the other player learns of it from the turn report. Hover a number for where it comes from; right-click it, or press F1, for its codex entry."
+	box.add_child(footer_label)
+
+
+## Shows the panel for `viewing_fid` (your column first, every other faction read-only after it) on
+## `p_state`. `p_orders` are your orders (a queued sacrifice is shown, and the Sacrifice button is only
+## there while they can change); null for a read-only panel.
+func show_for(p_state: GameState, viewing_fid: String, p_orders: OrdersController = null) -> void:
+	state = p_state
+	viewing_faction_id = viewing_fid
+	orders = p_orders
+	refresh()
+	visible = true
+
+
+## Rebuilds the columns from the state and orders (after an order was queued or cancelled).
+func refresh() -> void:
+	for c in columns.get_children():
+		columns.remove_child(c)
+		c.queue_free()
+	sacrifice_button = null
+	if state == null:
+		return
+	var fids := []
+	if state.find_faction(viewing_faction_id) != null:
+		fids.append(viewing_faction_id)
+	for f in state.factions:
+		if not fids.has(f.id):
+			fids.append(f.id)
+	for fid in fids:
+		var col := _column(fid, fid == viewing_faction_id)
+		columns.add_child(col)
+
+
+func close() -> void:
+	visible = false
+	closed.emit()
+
+
+## The column of one faction's ruler. Yours (`own`) adds the queued sacrifice and the Sacrifice button.
+func _column(fid: String, own: bool) -> VBoxContainer:
+	var f := state.find_faction(fid)
+	var col := VBoxContainer.new()
+	col.name = "Column_%s" % fid.validate_node_name()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.custom_minimum_size = Vector2(560, 0)
+	col.add_theme_constant_override("separation", 6)
+	var heading := _heading(col, "%s: %s" % ["Your ruler" if own else "Enemy ruler (read-only)", f.faction_name], 21)
+	heading.name = "FactionHeading"
+	heading.add_theme_color_override("font_color", UiPalette.owner_color(state, fid).lightened(0.3))
+	if not f.has_ruler():
+		_text(col, "The %s has no ruler in this game." % f.faction_name, TooltipText.plain("No ruler", RulesCodex.text("ruler")),
+			UiPalette.TEXT_SECONDARY)
+		return col
+	var rid := f.ruler_type
+	var name := RulerRules.current_name(state, fid)
+	var who := _text(col, RulerRules._cap(name), TooltipText.plain("%s, ruler of the %s" % [RulerRules._cap(name), f.faction_name],
+		"%s %s" % [String(RulerRules.ruler_data(rid).get("flavour", "")), RulesCodex.text("ruler")]), UiPalette.GILT)
+	who.name = "RulerName"
+	who.add_theme_font_size_override("font_size", 20)
+	_codex_link(who, "ruler_" + rid)
+	var kind := _text(col, RulerRules.kind_line(rid), TooltipText.plain("Where %s fights" % name, RulesCodex.text("ruler_rank")),
+		UiPalette.TEXT_SECONDARY)
+	kind.name = "KindLabel"
+	_codex_link(kind, "ruler_rank")
+	if RulerRules.has_living_ruler(state, fid):
+		_living(col, f)
+	elif not RulerRules.succession_info(state, fid).is_empty():
+		_dead(col, f)
+	else:
+		var away := _text(col, "Not on the map right now.", TooltipText.plain("The ruler's army", RulesCodex.text("ruler_army")),
+			UiPalette.TEXT_SECONDARY)
+		away.name = "StatusLabel"
+		_codex_link(away, "ruler_army")
+		_power_and_ability(col, f)
+	var succession := _text(col, "Succession: %s" % _succession_line(f), TooltipText.plain("Succession",
+		RulerRules.succession_text(rid, f.kept_power, f.ruler_generation, _province_name(state, f.capital))), UiPalette.TEXT_SECONDARY)
+	succession.name = "SuccessionLabel"
+	_codex_link(succession, String(RulerData.KINDS.get(String(RulerRules.ruler_data(rid).get("kind", "")), {}).get("codex", "succession")))
+	col.add_child(HSeparator.new())
+	_mandates(col, f, own)
+	if own:
+		_sacrifice_section(col, f)
+	return col
+
+
+## A living ruler's numbers, each with its breakdown and codex link.
+func _living(col: VBoxContainer, f: Faction) -> void:
+	var fid := f.id
+	var army := RulerRules.ruler_army(state, fid)
+	var status := _text(col, "Alive at %s" % _province_name(state, army.location), TooltipText.plain("Where the ruler is",
+		"%s %s" % [TurnResolver.army_label(state, army), RulesCodex.text("ruler_army")]))
+	status.name = "StatusLabel"
+	_codex_link(status, "ruler_army")
+	var hp := Breakdown.ruler_stat(state, fid, "hp")
+	var hp_label := _text(col, "Hit points: %d of %d" % [army.ruler.current_hp, int(hp.total)], "%s\n\n%s" % [
+		TooltipText.from_breakdown(hp), TooltipText.wrap_text("%s has %d of its %d hit points now. %s" % [
+			RulerRules._cap(RulerRules.current_name(state, fid)), army.ruler.current_hp, int(hp.total), RulesCodex.text("ruler_healing")])])
+	hp_label.name = "HpLabel"
+	_codex_link(hp_label, String(hp.codex))
+	for stat in ["attack", "defense", "morale"]:
+		var b := Breakdown.ruler_stat(state, fid, stat)
+		var shown := "Morale: %d alone, +%d to its side while it stands" % [int(b.total), RulerData.RULER_MORALE] if stat == "morale" \
+			else "%s: %d" % [stat.capitalize(), int(b.total)]
+		var l := _text(col, shown, TooltipText.from_breakdown(b))
+		l.name = "%sLabel" % stat.capitalize()
+		_codex_link(l, String(b.codex))
+	_power_and_ability(col, f)
+
+
+## A dead ruler: the countdown to its successor, the kept power it died with, and the successor's
+## numbers when it arrives (each with its breakdown).
+func _dead(col: VBoxContainer, f: Faction) -> void:
+	var fid := f.id
+	var info := RulerRules.succession_info(state, fid)
+	var countdown := Breakdown.successor_countdown(state, fid)
+	var line := "Dead: %s" % RulerRules.countdown_text(state, fid)
+	var status := _text(col, line, "%s\n\n%s" % [TooltipText.from_breakdown(countdown),
+		TooltipText.wrap_text("Until then the %s has no ruler: no %s, no ruler in battle and no sacrifices. Its mandates stay." % [
+			f.faction_name, RulerRules.ability_name(f.ruler_type)])], UiPalette.NEGATIVE)
+	status.name = "CountdownLabel"
+	_codex_link(status, String(countdown.codex))
+	var when := _text(col, RulerRules.successor_sentence(info), TooltipText.plain("The successor", RulesCodex.text(String(info.codex))),
+		UiPalette.TEXT_PRIMARY)
+	when.name = "SuccessorLabel"
+	_codex_link(when, String(info.codex))
+	var kept := Breakdown.kept_power(state, fid)
+	var kept_label := _text(col, "Kept power at death: %d; the successor will have %d" % [int(kept.total), int(info.successor_power)],
+		"%s\n\n%s" % [TooltipText.from_breakdown(kept), TooltipText.wrap_text(RulerRules.succession_text(f.ruler_type, f.kept_power,
+			f.ruler_generation, _province_name(state, f.capital)))])
+	kept_label.name = "KeptPowerLabel"
+	_codex_link(kept_label, String(kept.codex))
+	var gen := int(info.successor_generation)
+	var power := int(info.successor_power)
+	_heading(col, "When %s arrives" % String(info.successor_name), 17)
+	for stat in ["hp", "attack", "defense"]:
+		var b := Breakdown.ruler_stat_at(f.ruler_type, stat, power, gen)
+		var l := _text(col, "%s: %d" % [String(RulerRules.STAT_NAMES.get(stat, stat)) if stat != "hp" else "Hit points", int(b.total)],
+			TooltipText.from_breakdown(b), UiPalette.TEXT_SECONDARY)
+		l.name = "Successor%sLabel" % stat.capitalize()
+		_codex_link(l, String(b.codex))
+	var rank := Breakdown.ability_rank_at(f.ruler_type, power, gen)
+	var ability := _text(col, "Ability: %s, rank %d (%s)" % [RulerRules.ability_name(f.ruler_type), int(rank.total),
+		RulerRules.ability_short(f.ruler_type, int(rank.total))], TooltipText.from_breakdown(rank), UiPalette.TEXT_SECONDARY)
+	ability.name = "SuccessorAbilityLabel"
+	_codex_link(ability, String(rank.codex))
+
+
+## Kept power and the ability, rank and effect, for a living ruler.
+func _power_and_ability(col: VBoxContainer, f: Faction) -> void:
+	var fid := f.id
+	var kept := Breakdown.kept_power(state, fid)
+	var kept_label := _text(col, "Kept power: %d of %d" % [int(kept.total), RulerData.POWER_POOL], TooltipText.from_breakdown(kept))
+	kept_label.name = "KeptPowerLabel"
+	_codex_link(kept_label, String(kept.codex))
+	var rank := Breakdown.ability_rank(state, fid)
+	var ability := _text(col, "Ability: %s, rank %d (%s)" % [RulerRules.ability_name(f.ruler_type), int(rank.total),
+		RulerRules.ability_short(f.ruler_type, int(rank.total))], TooltipText.from_breakdown(rank))
+	ability.name = "AbilityLabel"
+	_codex_link(ability, String(rank.codex))
+	var effect := _text(col, RulerRules.ability_text(f.ruler_type, int(rank.total), f.ruler_generation),
+		TooltipText.plain(RulerRules.ability_name(f.ruler_type), RulesCodex.text("ability_" + RulerRules.ruler_data(f.ruler_type).ability)),
+		UiPalette.TEXT_SECONDARY)
+	effect.name = "AbilityEffectLabel"
+	effect.add_theme_font_size_override("font_size", 15)
+	_codex_link(effect, "ability_" + String(RulerRules.ruler_data(f.ruler_type).ability))
+
+
+## The faction's mandates, each with its cost, how it was bought, its effect and what it does now.
+func _mandates(col: VBoxContainer, f: Faction, own: bool) -> void:
+	var heading := _heading(col, "Mandates (%d)" % f.mandates.size(), 18)
+	heading.name = "MandatesHeading"
+	heading.tooltip_text = TooltipText.plain("Mandates of the %s" % f.faction_name, RulesCodex.text("mandates"))
+	heading.mouse_filter = Control.MOUSE_FILTER_PASS
+	_codex_link(heading, "mandates")
+	if f.mandates.is_empty():
+		_text(col, "None: %s kept all of its power." % RulerRules.current_name(state, f.id) if f.kept_power == RulerData.POWER_POOL \
+			else "None.", "", UiPalette.TEXT_SECONDARY)
+	var sacrificed := {}
+	for sac in f.sacrifices:
+		sacrificed[str(sac.get("mandate", ""))] = sac
+	for mid in f.mandates:
+		var md := RulerRules.mandate_data(mid)
+		var how := "%d power, chosen before the game" % int(md.get("cost", 0))
+		if sacrificed.has(mid):
+			how = "%d power, sacrificed for on turn %d" % [int(sacrificed[mid].get("cost", 0)), int(sacrificed[mid].get("turn", 0))]
+		var now := Forecast.mandate_now(state, f.id, mid, orders.orders() if own and orders else [], viewing_faction_id)
+		var rule := String(md.get("effect", "")) if own else _their(String(md.get("effect", "")))
+		var tip := TooltipText.plain(String(md.get("name", "")), "%s %s" % [rule, now])
+		if sacrificed.has(mid):
+			tip = "%s\n\n%s" % [TooltipText.from_breakdown(Breakdown.sacrifice_cost(mid)), tip]
+		var row := _text(col, "%s (%s)" % [String(md.get("name", "")), how], tip)
+		row.name = "Mandate_%s" % mid.validate_node_name()
+		_codex_link(row, String(md.get("codex", "mandates")))
+		var effect := _text(col, "    %s" % rule, "", UiPalette.TEXT_SECONDARY)
+		effect.name = "MandateEffect_%s" % mid.validate_node_name()
+		effect.add_theme_font_size_override("font_size", 15)
+
+
+## Your column's sacrifice part: the queued Sacrifice order, or the button that opens the dialog
+## (disabled, with the reason, when no sacrifice is possible).
+func _sacrifice_section(col: VBoxContainer, f: Faction) -> void:
+	col.add_child(HSeparator.new())
+	var heading := _heading(col, "Sacrifice", 18)
+	heading.name = "SacrificeHeading"
+	heading.tooltip_text = TooltipText.plain("Sacrifice", RulesCodex.text("sacrifice"))
+	heading.mouse_filter = Control.MOUSE_FILTER_PASS
+	_codex_link(heading, "sacrifice")
+	var can_order := orders != null and (orders.session == null or orders.session.current_player() == f.id) \
+		and (orders.session == null or orders.session.phase() == GameSession.Phase.ORDERS)
+	var queued: SacrificeOrder = orders.queued_sacrifice() if orders != null else null
+	var note := ""
+	if queued != null:
+		var b := Breakdown.sacrifice_kept_power(state, f.id, queued.mandate_id)
+		var q := _text(col, "Queued this turn: %s for %d power. Kept power %d → %d when the turn resolves." % [
+			RulerRules.mandate_name(queued.mandate_id), RulerRules.sacrifice_cost(queued.mandate_id), RulerRules.kept_power(state, f.id),
+			int(b.total)], TooltipText.from_breakdown(b), UiPalette.GILT)
+		q.name = "QueuedSacrificeLabel"
+		_codex_link(q, "sacrifice")
+		note = "One sacrifice per turn: cancel it in your orders list to choose another."
+	elif not can_order:
+		note = "You can sacrifice only while you give orders for your own turn."
+	else:
+		var check := RulerRules.sacrifice_check(state, f.id, "")
+		if check.get("code", "") in ["no_ruler", "no_living_ruler"]:
+			note = String(check.reason)
+		else:
+			var cheapest := -1
+			for o in Forecast.sacrifice_options(state, f.id, orders.orders()):
+				if o.ok:
+					cheapest = 0
+					break
+				if not o.owned and o.code == "not_enough_power" and (cheapest < 0 or int(o.cost) < cheapest):
+					cheapest = int(o.cost)
+			if cheapest > 0:
+				note = "No mandate fits: the cheapest one left costs %d power by sacrifice, and %s keeps %d." % [cheapest,
+					RulerRules.current_name(state, f.id), f.kept_power]
+			elif cheapest < 0:
+				note = "Every mandate on your list is yours already."
+	if not can_order and queued == null:
+		var l := _text(col, note, "", UiPalette.TEXT_SECONDARY)
+		l.name = "SacrificeNote"
+		return
+	sacrifice_button = Button.new()
+	sacrifice_button.name = "SacrificeButton"
+	sacrifice_button.text = "Sacrifice power for a mandate…"
+	sacrifice_button.focus_mode = Control.FOCUS_NONE
+	sacrifice_button.add_theme_font_size_override("font_size", 18)
+	sacrifice_button.disabled = not note.is_empty()
+	sacrifice_button.tooltip_text = TooltipText.plain("Sacrifice power for a mandate", "%s %s" % [
+		note if not note.is_empty() else "Choose a mandate and see everything it changes, before and after, before you confirm.",
+		RulesCodex.text("sacrifice")])
+	_codex_link(sacrifice_button, "sacrifice")
+	sacrifice_button.pressed.connect(func(): sacrifice_requested.emit())
+	col.add_child(sacrifice_button)
+	if not note.is_empty():
+		var l := _text(col, note, "", UiPalette.TEXT_SECONDARY)
+		l.name = "SacrificeNote"
+
+
+## A mandate's rule as the other player reads it, in the enemy's column: "Your side never breaks while
+## one of your commanders stands" becomes "Its side never breaks while one of its commanders stands".
+static func _their(rule: String) -> String:
+	var text := rule
+	for pair in [["Your ", "Its "], [" your ", " its "], ["you own", "it owns"], ["joins you", "joins it"], ["you win", "it wins"]]:
+		text = text.replace(pair[0], pair[1])
+	return text
+
+
+func _succession_line(f: Faction) -> String:
+	var next := RulerRules.successor_for(f.ruler_type, f.kept_power, f.ruler_generation)
+	var later := "%d %s" % [int(next.delay), "turn" if int(next.delay) == 1 else "turns"]
+	match String(RulerRules.ruler_data(f.ruler_type).get("kind", "")):
+		"undying":
+			return "undying, re-forms %s later with the same kept power" % later
+		"god":
+			return "god, returns %s later with %d less kept power for good" % [later, int(RulerRules.ruler_data(f.ruler_type).succession.get("minus", 0))]
+	return "mortal line, an heir %s later with half the kept power" % later
+
+
+func _heading(parent: Control, text: String, font_size: int) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.add_theme_font_size_override("font_size", font_size)
+	l.add_theme_color_override("font_color", UiPalette.GILT)
+	parent.add_child(l)
+	return l
+
+
+func _codex_link(control: Control, key: String) -> void:
+	CodexLink.attach(control, key, codex_requested.emit)
+
+
+# --- the ruler's army on the map (M2, #29) --------------------------------------------------------
 
 
 ## The ruler's badge on its province (instead of "3 units"): a ruler's army holds only the ruler.

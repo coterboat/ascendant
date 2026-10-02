@@ -46,6 +46,11 @@ const CODEX := {
 	"road_move": "road_move",
 	"field_recruit": "field_recruit",
 	"vassal": "mandate_sworn_vassals",
+	# mid-game sacrifice and the ruler panel (M2-6): the sacrifice order line, the Ruler button, the
+	# capital's countdown badge (its breakdown names the kind's own succession entry when it has one)
+	"sacrifice": "sacrifice",
+	"ruler_panel": "ruler",
+	"successor_countdown": "succession",
 	# victory screen
 	"game_over": "victory",
 	"draw": "simultaneous_capture",

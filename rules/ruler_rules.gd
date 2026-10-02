@@ -30,6 +30,12 @@ class_name RulerRules
 ##   crown_successor(state, fid, turn)      the due successor arrives at the capital, if the faction holds it
 ##   heal_ruler, apply_mending_light        the rulers phase's healing
 ##   death_text, arrival_text, waiting_text, healed_text, mending_text   the turn report's sentences
+## Mid-game sacrifice (M2-6, #34; the sacrifice phase, OrderBook and the sacrifice dialog call these):
+##   sacrifice_cost(mandate_id)             the mandate's price + MandateData.SACRIFICE_PREMIUM
+##   sacrifice_check(state, fid, mid, already)   {} or {"code", "reason"}: living ruler, own list, not owned, power, one per turn
+##   apply_sacrifice(state, fid, mid, turn) the effect: kept power, mandate, record, ruler hp, Veteran Levies
+##   state_after_orders(state, fid, orders) the state a faction's other orders are checked against
+##   successor_countdown, countdown_text    "heir in 2 turns" while a successor is pending
 
 const ALIVE := "alive"
 const DEAD := "dead"
@@ -185,9 +191,16 @@ static func ability_text(ruler_id: String, rank: int, generation: int = 1) -> St
 	return effect.format({"ruler": ruler_name(ruler_id, generation), "value": ability_value(ruler_id, rank)})
 
 
-## Short form for labels: "+3 gold", "heal 6", "-1 enemy morale", "2 recruits in the field".
+## Short form for labels: "+3 gold", "heal 6", "-1 enemy morale", "2 recruits in the field" ("1 recruit
+## in the field": the word after the number agrees with it).
 static func ability_short(ruler_id: String, rank: int) -> String:
-	return String(ability_data(ruler_id).get("short", "")).format({"value": ability_value(ruler_id, rank)})
+	var template := String(ability_data(ruler_id).get("short", ""))
+	var value := ability_value(ruler_id, rank)
+	var words := template.split(" ")
+	var at := words.find("{value}")
+	if value == 1 and at >= 0 and at + 1 < words.size() and words[at + 1].ends_with("s"):
+		words[at + 1] = words[at + 1].trim_suffix("s")
+	return " ".join(words).format({"value": value})
 
 
 ## Everything about a ruler at kept power `kept`: {"ruler", "name", "kept_power", "hp", "attack",
@@ -1075,6 +1088,253 @@ static func field_recruit_limit(state: GameState, faction_id: String) -> int:
 	return live_ability_value(state, faction_id, WARBAND_MUSTER)
 
 
+# --- mid-game sacrifice (§2.4; M2-6, #34) ---------------------------------------------------------
+# A Sacrifice order names one mandate. sacrifice_check is the rule (OrderBook, TurnResolver's sacrifice
+# phase and the sacrifice dialog all ask it) and apply_sacrifice the effect. The sacrifice phase runs
+# first in the turn, so a faction's other orders are checked against state_after_orders: the state with
+# its queued sacrifice applied. OrderBook, Forecast and the orders UI all read that copy, so a road move
+# or a Muster Grounds price can rely on a mandate the ruler is sacrificing for this turn.
+
+## What each mandate does from the moment it is bought by sacrifice, for the turn report. {faction} is
+## the faction's name; {units} the regular units' bonus from data/mandates.gd; {gained} what the units
+## already on the map gained (Veteran Levies).
+const SACRIFICE_NOW := {
+	"iron_discipline": "From now on a side of the {faction} never breaks while one of its commanders in that battle stands.",
+	"drilled_ranks": "From now on every fighter of the {faction} hits 70% of the time at base, instead of 60%.",
+	"veteran_levies": "Every regular unit of the {faction} now has {units}{gained}.",
+	"heavy_tithes": "Every province the {faction} owns now earns 1 more gold per turn, starting with this turn's income.",
+	"muster_grounds": "Every recruit of the {faction} now costs a fifth less, starting with this turn's recruits.",
+	"sworn_vassals": "From this turn on, one neutral province next to the land of the {faction} swears fealty to it each turn.",
+	"royal_armories": "Every regular unit of the {faction} now has {units}.",
+	"kings_roads": "From this turn on, armies of the {faction} can move two provinces in one turn inside its own land.",
+	"blood_frenzy": "From now on every fighter of the {faction} below its full hit points has +3 attack.",
+	"feast_of_victory": "From now on, after every battle the {faction} wins, its fighters still standing heal to full.",
+}
+## Player-facing words for the stats a mandate's "units" bonus names.
+const UNIT_BONUS_WORDS := {"hp": "maximum hit points", "attack": "attack", "defense": "defense"}
+
+
+## Power a mandate costs by sacrifice: its price plus MandateData.SACRIFICE_PREMIUM (Royal Armories: 5).
+static func sacrifice_cost(mandate_id: String) -> int:
+	return mandate_cost(mandate_id) + MandateData.SACRIFICE_PREMIUM
+
+
+## {} when `faction_id` may sacrifice for `mandate_id` now (§2.4), otherwise {"code", "reason"} with a
+## plain-language reason. `already` is the mandate of a Sacrifice order the faction already gave this
+## turn ("" when none). Codes: "unknown_faction", "no_ruler" (a game without rulers), "second_sacrifice",
+## "no_living_ruler", "unknown_mandate", "foreign_mandate", "owned_mandate", "not_enough_power".
+static func sacrifice_check(state: GameState, faction_id: String, mandate_id: String, already: String = "") -> Dictionary:
+	var f := state.find_faction(faction_id)
+	if f == null:
+		return _refusal("unknown_faction", "Those orders are for a faction that is not in this game.")
+	if not f.has_ruler():
+		return _refusal("no_ruler", "The %s has no ruler in this game, so nobody can sacrifice power for a mandate." % f.faction_name)
+	if not already.is_empty():
+		return _refusal("second_sacrifice", "You already gave a Sacrifice order this turn, for %s. A ruler can sacrifice only once per turn: cancel that order first to choose another mandate." % mandate_name(already))
+	var name := _cap(current_name(state, faction_id))
+	if not has_living_ruler(state, faction_id):
+		var why := "%s is dead, and only a living ruler can sacrifice power." % name
+		var info := succession_info(state, faction_id)
+		if not info.is_empty():
+			why += " %s" % successor_sentence(info)
+		return _refusal("no_living_ruler", why)
+	var md := mandate_data(mandate_id)
+	if md.is_empty():
+		return _refusal("unknown_mandate", "'%s' is not a mandate in this game." % mandate_id)
+	if not String(md.faction).is_empty() and md.faction != faction_id:
+		return _refusal("foreign_mandate", "%s is %s mandate, so the %s can't take it, not even by sacrifice." % [
+			md.name, _a(_faction_name(state, md.faction)), f.faction_name])
+	if f.mandates.has(mandate_id):
+		return _refusal("owned_mandate", "The %s already has %s. Each mandate can be taken only once." % [f.faction_name, md.name])
+	var cost := sacrifice_cost(mandate_id)
+	if f.kept_power < cost:
+		return _refusal("not_enough_power", "%s costs %d power by sacrifice (%d, +%d for a mid-game sacrifice), but %s keeps only %d." % [
+			md.name, cost, int(md.cost), MandateData.SACRIFICE_PREMIUM, name, f.kept_power])
+	return {}
+
+
+## The Sacrifice order's effect (§2.4), applied to `state` in place, for the turn `turn` (1-based). It is
+## checked first: an illegal one changes nothing and returns {"ok": false, "code", "reason"}. Otherwise
+## kept power drops by sacrifice_cost, the mandate joins the faction's mandates and its sacrifices
+## record ({turn, mandate, cost}), the ruler's current hp drops by as much as its maximum hp does, never
+## below 1 (then refresh_ruler gives it its new stats), and a mandate that adds hit points to regular
+## units (Veteran Levies) gives the regular units already on the map that many current hit points at
+## once (§2.3). Returns {"ok": true, "faction", "mandate", "mandate_name", "cost", "price", "premium",
+## "turn", "army", "province", "ruler_name", "kept_before", "kept_after", "hp_before", "hp_after",
+## "max_hp_before", "max_hp_after", "attack_before", "attack_after", "defense_before", "defense_after",
+## "rank_before", "rank_after", "units_gained", "hp_gained", "unit_hp_gain"}.
+static func apply_sacrifice(state: GameState, faction_id: String, mandate_id: String, turn: int, already: String = "") -> Dictionary:
+	var check := sacrifice_check(state, faction_id, mandate_id, already)
+	if not check.is_empty():
+		var refused := check.duplicate()
+		refused["ok"] = false
+		return refused
+	var f := state.find_faction(faction_id)
+	var army := ruler_army(state, faction_id)
+	var unit := army.ruler
+	var before := ruler_stats(f.ruler_type, f.kept_power, f.ruler_generation)
+	var hp_before := unit.current_hp
+	var kept_before := f.kept_power
+	var cost := sacrifice_cost(mandate_id)
+	f.kept_power = kept_before - cost
+	f.mandates.append(mandate_id)
+	f.sacrifices.append({"turn": turn, "mandate": mandate_id, "cost": cost})
+	var after := ruler_stats(f.ruler_type, f.kept_power, f.ruler_generation)
+	unit.current_hp = maxi(1, hp_before - (int(before.hp) - int(after.hp)))
+	refresh_ruler(state, faction_id)
+	var gain := int(mandate_data(mandate_id).get("units", {}).get("hp", 0))
+	var gained := 0
+	var hp_gained := 0
+	if gain > 0:
+		for a in state.armies:
+			if a.owner != faction_id:
+				continue
+			for u in a.units:
+				var raised := mini(u.current_hp + gain, unit_max_hp(state, u))
+				if raised > u.current_hp:
+					hp_gained += raised - u.current_hp
+					gained += 1
+					u.current_hp = raised
+	return {"ok": true, "faction": faction_id, "mandate": mandate_id, "mandate_name": mandate_name(mandate_id),
+		"cost": cost, "price": mandate_cost(mandate_id), "premium": MandateData.SACRIFICE_PREMIUM, "turn": turn,
+		"army": army.id, "province": army.location, "ruler_name": current_name(state, faction_id),
+		"kept_before": kept_before, "kept_after": f.kept_power, "hp_before": hp_before, "hp_after": unit.current_hp,
+		"max_hp_before": int(before.hp), "max_hp_after": int(after.hp), "attack_before": int(before.attack),
+		"attack_after": int(after.attack), "defense_before": int(before.defense), "defense_after": int(after.defense),
+		"rank_before": int(before.ability_rank), "rank_after": int(after.ability_rank), "units_gained": gained,
+		"hp_gained": hp_gained, "unit_hp_gain": gain}
+
+
+## The first Sacrifice order in `orders`, or null.
+static func queued_sacrifice(orders: Array) -> SacrificeOrder:
+	for o in orders:
+		if o is SacrificeOrder:
+			return o
+	return null
+
+
+## The state `faction_id`'s other orders are checked against (§2.4): `state` itself, or, when `orders`
+## hold a legal Sacrifice order, a copy with it applied, because the sacrifice phase runs first in the
+## turn. OrderBook, Forecast and the orders UI read it; `state` is never changed.
+static func state_after_orders(state: GameState, faction_id: String, orders: Array) -> GameState:
+	var sac := queued_sacrifice(orders)
+	if sac == null or not sacrifice_check(state, faction_id, sac.mandate_id).is_empty():
+		return state
+	return with_sacrifice(state, faction_id, sac.mandate_id)
+
+
+## A copy of `state` with `faction_id`'s sacrifice for `mandate_id` applied, as the sacrifice phase of
+## the turn being ordered would apply it (an illegal sacrifice leaves the copy as it was).
+static func with_sacrifice(state: GameState, faction_id: String, mandate_id: String) -> GameState:
+	var copy := state.deep_copy([])
+	if copy == null:
+		return state
+	apply_sacrifice(copy, faction_id, mandate_id, state.current_turn + 1)
+	return copy
+
+
+## The sacrificed sentence for the turn report (§2.4), from apply_sacrifice's result `info`: "King
+## Corvane I gave up 5 power for Royal Armories (4, +1 for a mid-game sacrifice). Kept power 10 → 5: hit
+## points 46 of 46 → 31 of 31, attack 14 → 11, defense 13 → 10, Royal Court rank 4 → 2 (+3 gold). Every
+## regular unit of the Aurel Crown now has +1 attack and +1 defense."
+static func sacrifice_text(state: GameState, faction_id: String, info: Dictionary) -> String:
+	var f := state.find_faction(faction_id)
+	var rid := f.ruler_type if f else ""
+	var head := "%s gave up %d power for %s (%d, +%d for a mid-game sacrifice)." % [_cap(String(info.get("ruler_name", ""))),
+		int(info.get("cost", 0)), String(info.get("mandate_name", "")), int(info.get("price", 0)), int(info.get("premium", 0))]
+	var rank_before := int(info.get("rank_before", 1))
+	var rank_after := int(info.get("rank_after", 1))
+	var ability := "%s rank %d → %d (%s)" % [ability_name(rid), rank_before, rank_after, ability_effect(rid, rank_after)]
+	if rank_before == rank_after:
+		ability = "%s stays at rank %d (%s)" % [ability_name(rid), rank_after, ability_effect(rid, rank_after)]
+	var stats := "Kept power %d → %d: hit points %d of %d → %d of %d, attack %d → %d, defense %d → %d, %s." % [
+		int(info.get("kept_before", 0)), int(info.get("kept_after", 0)), int(info.get("hp_before", 0)),
+		int(info.get("max_hp_before", 0)), int(info.get("hp_after", 0)), int(info.get("max_hp_after", 0)),
+		int(info.get("attack_before", 0)), int(info.get("attack_after", 0)), int(info.get("defense_before", 0)),
+		int(info.get("defense_after", 0)), ability]
+	return "%s %s %s" % [head, stats, sacrifice_now_text(state, faction_id, String(info.get("mandate", "")),
+		int(info.get("units_gained", 0)), int(info.get("unit_hp_gain", 0)))]
+
+
+## What `mandate_id` does for `faction_id` from the moment it is bought by sacrifice, in one sentence (see
+## SACRIFICE_NOW). `units_gained` regular units already on the map gained `hp_gain` hit points each.
+static func sacrifice_now_text(state: GameState, faction_id: String, mandate_id: String, units_gained: int = 0, hp_gain: int = 0) -> String:
+	var template := String(SACRIFICE_NOW.get(mandate_id, ""))
+	if template.is_empty():
+		return String(mandate_data(mandate_id).get("effect", ""))
+	var gained := ""
+	if units_gained > 0:
+		gained = ", and %s already on the map %s %d hit points at once" % [
+			"the 1 unit" if units_gained == 1 else "the %d units" % units_gained, "gained", hp_gain]
+	return template.format({"faction": _faction_name(state, faction_id), "units": units_bonus_text(mandate_id), "gained": gained})
+
+
+## A mandate's bonus to regular units in words, from data/mandates.gd: "+1 attack and +1 defense",
+## "+2 maximum hit points"; "" for a mandate without one.
+static func units_bonus_text(mandate_id: String) -> String:
+	var bonus: Dictionary = mandate_data(mandate_id).get("units", {})
+	var parts := []
+	for stat in ["attack", "defense", "hp"]:
+		if bonus.has(stat):
+			parts.append("+%d %s" % [int(bonus[stat]), UNIT_BONUS_WORDS[stat]])
+	return _and_list(parts)
+
+
+## A unit's maximum hit points with its faction's mandates: its type's, plus Veteran Levies for a
+## regular unit (never commanders or rulers). unit_stats' "hp" for the unit's own type.
+static func unit_max_hp(state: GameState, unit: Unit) -> int:
+	if unit == null or unit.type == null:
+		return 0
+	var hp := unit.type.hp
+	if unit.type.is_commander or unit.type.is_ruler:
+		return hp
+	for mid in mandates(state, unit.owner):
+		hp += int(mandate_data(mid).get("units", {}).get("hp", 0))
+	return hp
+
+
+## When and where a dead ruler's successor arrives, in one sentence (from succession_info): "Corvane II
+## will be crowned at Crownkeep at the end of turn 6."
+static func successor_sentence(info: Dictionary) -> String:
+	var capital := String(info.get("capital_name", ""))
+	var due := int(info.get("successor_turn", 0))
+	match String(info.get("kind", "")):
+		"undying":
+			return "%s re-forms at %s at the end of turn %d." % [_cap(String(info.get("name", ""))), capital, due]
+		"god":
+			return "The god takes a new body at %s at the end of turn %d." % [capital, due]
+	return "%s will be crowned at %s at the end of turn %d." % [_cap(String(info.get("heir_name", ""))), capital, due]
+
+
+## Turns until a dead ruler's successor arrives, counting the turn being ordered (§5.4): 2 on the turn
+## after a mortal ruler died, 1 when it arrives at the end of this turn, 0 when it is due but waits for
+## the capital. -1 while the ruler lives (or without rulers).
+static func successor_countdown(state: GameState, faction_id: String) -> int:
+	var info := succession_info(state, faction_id)
+	if info.is_empty():
+		return -1
+	return maxi(0, int(info.successor_turn) - state.current_turn)
+
+
+## The capital's countdown badge and the ruler panel's line while a successor is pending (§5.4): "heir in
+## 2 turns" (a mortal line), "re-forms in 4 turns" (undying), "returns in 1 turn" (the god), or "successor
+## waits for the capital" when it is due but the capital isn't held. "" while the ruler lives.
+static func countdown_text(state: GameState, faction_id: String) -> String:
+	var info := succession_info(state, faction_id)
+	if info.is_empty():
+		return ""
+	var n := successor_countdown(state, faction_id)
+	if n <= 0:
+		return "successor waits for the capital"
+	var what := "heir in"
+	match String(info.kind):
+		"undying":
+			what = "re-forms in"
+		"god":
+			what = "returns in"
+	return "%s %d %s" % [what, n, "turn" if n == 1 else "turns"]
+
+
 # --- validation (GameState.validate) --------------------------------------------------------------
 
 ## Checks every ruler rule a state must keep (§9): known rulers of the right faction, kept power 0..10
@@ -1256,3 +1516,8 @@ static func _report(errors, msg: String) -> void:
 		errors.append(msg)
 	else:
 		push_error(msg)
+
+
+## A refused check in the shape TurnResolver's checks use: {"code", "reason"}.
+static func _refusal(code: String, reason: String) -> Dictionary:
+	return {"code": code, "reason": reason}
