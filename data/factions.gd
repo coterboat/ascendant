@@ -6,6 +6,11 @@ class_name FactionData
 ## filled in by create_factions(), not written here, so the two can't drift apart.
 ## Stats and costs were tuned in the M1 balance pass (#4): tools/balance/matchups.gd prints the
 ## win rates they give, and tests/test_balance.gd keeps the starting armies within 40-60%.
+## Two rules keep battles from swinging on damage breakpoints (a hit deals ceil(attack / 2) minus
+## floor(defense / 4)): attack values are odd, and defense values, counting Spearmen's Shield Wall,
+## are a multiple of 4 or one more (4, 5, 8, 9, 12, 13). Then a +2 forest, fort or Shield Wall bonus
+## and the hills' +1 change only the hit chance, never a whole damage step, so holding ground is a
+## real edge that doesn't decide the battle. The two starting armies cost about the same.
 ## Portraits and banners referenced but not loaded here.
 
 const FACTIONS: Array[Dictionary] = [

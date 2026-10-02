@@ -10,6 +10,8 @@ extends SceneTree
 ##   --only GROUP   only one group of matchups: starting, pair, mixed or commander
 ##   --grounds K,K  only these grounds (keys from Balance.GROUNDS, e.g. open,forest_crown)
 ##   --samples N    also print the first N battle reports of the starting armies on open ground
+##   --compositions GOLD   also print a matrix of army styles (Balance.STYLES) at GOLD gold each,
+##                  commanders included, on open ground: how big armies of each make-up fare
 ##   --out PATH     also write the markdown to PATH
 ##
 ## Matchups (tools/balance/balance.gd, built from the current costs in data/factions.gd): the starting
@@ -71,6 +73,9 @@ func _initialize() -> void:
 	L.append(_targets(rows, grounds))
 	L.append("")
 	L.append(_why(rows, grounds))
+	if opts.compositions > 0:
+		L.append("")
+		L.append(_compositions(state, opts.compositions, mini(opts.seeds, 200), opts.seed))
 	if opts.samples > 0:
 		L.append("")
 		L.append("### Sample reports: starting armies, open ground")
@@ -163,6 +168,28 @@ func _targets(rows: Array, grounds: Array) -> String:
 	return "\n".join(L)
 
 
+## Aurel Crown's win % for each Crown army style against each Thornmane style, `gold` gold each with
+## their commanders, on open ground: whether one make-up beats everything once armies are big.
+func _compositions(state: GameState, gold: int, seeds: int, base_seed: int) -> String:
+	var clans_styles: Array = Balance.STYLES[Balance.CLANS]
+	var L := ["### Army styles at %d gold each, with commanders, open ground (Aurel Crown win %%, %d battles per cell)" % [gold, seeds]]
+	var head := "| Aurel Crown style vs Thornmane Clans style |"
+	var rule := "|---|"
+	for st in clans_styles:
+		head += " %s |" % st[0]
+		rule += "---|"
+	L.append(head)
+	L.append(rule)
+	for cs in Balance.STYLES[Balance.CROWN]:
+		var crown := Balance.ratio_army(state, Balance.CROWN, cs[1], gold)
+		var line := "| %s |" % cs[0]
+		for ks in clans_styles:
+			var clans := Balance.ratio_army(state, Balance.CLANS, ks[1], gold)
+			line += " %.0f |" % Balance.batch(state, crown, clans, Balance.ground("open"), seeds, base_seed).crown_pct
+		L.append(line)
+	return "\n".join(L)
+
+
 ## How often each factor was the first reason of a battle's "why", and how often it was cited at all.
 func _why(rows: Array, grounds: Array) -> String:
 	var top := {}
@@ -199,7 +226,7 @@ static func _ok(good: bool) -> String:
 
 
 func _parse(args: PackedStringArray) -> Dictionary:
-	var opts := {"seeds": 400, "seed": 0, "only": "", "grounds": [], "samples": 0, "out": ""}
+	var opts := {"seeds": 400, "seed": 0, "only": "", "grounds": [], "samples": 0, "compositions": 0, "out": ""}
 	var i := 0
 	while i < args.size():
 		var key := args[i]
@@ -229,6 +256,10 @@ func _parse(args: PackedStringArray) -> Dictionary:
 				if not value.is_valid_int() or value.to_int() < 0:
 					return {"error": "--samples must be a whole number"}
 				opts.samples = value.to_int()
+			"--compositions":
+				if not value.is_valid_int() or value.to_int() < 50:
+					return {"error": "--compositions must be a gold budget of at least 50"}
+				opts.compositions = value.to_int()
 			"--out":
 				opts.out = value
 			_:

@@ -107,6 +107,49 @@ static func mixed(state: GameState, owner: String, budget: int, start: Array = [
 	return ids
 
 
+## Army styles for the large-army composition matrix (matchups.gd --compositions): unit type ids
+## with weights, filled to a budget by ratio_army().
+const STYLES := {
+	CROWN: [["Spearmen + Crossbowmen 1:1", [["spearmen", 1], ["crossbowmen", 1]]],
+		["Spearmen + Crossbowmen 2:1", [["spearmen", 2], ["crossbowmen", 1]]],
+		["Spearmen, Crossbowmen, Knights 1:1:1", [["spearmen", 1], ["crossbowmen", 1], ["knights", 1]]],
+		["Knights only", [["knights", 1]]],
+		["Spearmen only", [["spearmen", 1]]]],
+	CLANS: [["Tuskers only", [["tuskers", 1]]],
+		["Tuskers + War Bears 2:1", [["tuskers", 2], ["war_bear", 1]]],
+		["Tuskers, Fangthrowers, War Bears 1:1:1", [["tuskers", 1], ["fangthrowers", 1], ["war_bear", 1]]],
+		["Fangthrowers only", [["fangthrowers", 1]]],
+		["War Bears only", [["war_bear", 1]]]],
+}
+
+
+## Fills `budget` gold (after the commander, when `with_commander`) keeping unit counts in the
+## proportions of `weights` ([[type id, weight], ...]): each step adds the affordable type furthest
+## below its share. Returns type ids.
+static func ratio_army(state: GameState, owner: String, weights: Array, budget: int, with_commander := true) -> Array:
+	var ids := []
+	if with_commander:
+		ids.append(state.find_faction(owner).commander_type.id)
+	var gold := budget - cost(state, owner, ids)
+	var counts := {}
+	for w in weights:
+		counts[w[0]] = 0
+	while true:
+		var pick := ""
+		var lowest := INF
+		for w in weights:
+			if TurnResolver.recruit_cost(state, owner, w[0]) <= gold and float(counts[w[0]]) / w[1] < lowest:
+				lowest = float(counts[w[0]]) / w[1]
+				pick = w[0]
+		if pick.is_empty():
+			break
+		counts[pick] += 1
+		gold -= TurnResolver.recruit_cost(state, owner, pick)
+	for w in weights:
+		ids.append_array(_repeat(w[0], counts[w[0]]))
+	return ids
+
+
 ## Counts [a, b] of two unit types whose total costs are as equal as possible, both within 25% of
 ## `budget` (closest to the budget on a tie).
 static func equal_gold(state: GameState, a_type: String, b_type: String, budget: int) -> Array:
