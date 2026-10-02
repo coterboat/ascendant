@@ -21,7 +21,12 @@ extends Control
 ##   session                    set it before set_state(): orders then go through GameSession's books
 ##   intercept_back             true: the back button emits back_requested instead of leaving
 ##   add_top_bar_control(c)     puts a HUD control in the top bar, just before the back button
-##   set_hint(text)             the short help text in the top bar
+##   set_hint(text, tooltip)    the short help text in the top bar (at most two lines; the tooltip can
+##                              say more)
+##
+## Colour is never the only channel (design/STYLE_BIBLE.md 1.1): every owner ring and army badge also
+## carries the seat's emblem (SeatEmblem: Player 1 circle, Player 2 square, nobody a slate shield), and
+## so does the viewing player's name in the top bar.
 
 signal province_selected(province_id: String)
 signal army_selected(army_id: String)
@@ -58,9 +63,10 @@ var map_view: Control
 var map_canvas: Control
 var details: VBoxContainer
 var faction_label: Label
-var gold_label: Label
+var faction_emblem: SeatEmblem  # the viewing player's seat emblem, left of their name
+var gold_label: Label  # hidden when nobody's gold is shown (game over, spectator)
 var turn_label: Label
-var hint_label: Label
+var hint_label: Label  # wraps to at most two lines
 var back_button: Button
 
 
@@ -171,10 +177,12 @@ func add_top_bar_control(control: Control) -> void:
 	row.move_child(control, back_button.get_index())
 
 
-func set_hint(text: String) -> void:
+## The help text in the top bar. Keep it short: it wraps to at most two lines. `tooltip`, already
+## formatted (TooltipText.plain), is shown on hover for help that doesn't fit; empty shows the text.
+func set_hint(text: String, tooltip: String = "") -> void:
 	_bind()
 	hint_label.text = text
-	hint_label.tooltip_text = TooltipText.wrap_text(text)
+	hint_label.tooltip_text = tooltip if not tooltip.is_empty() else TooltipText.wrap_text(text)
 
 
 ## Faction ids in seat order, which pick the player colours: the session's players, or without a
@@ -203,12 +211,8 @@ func request_codex(key: String) -> void:
 
 
 ## F1 over a linked number opens its codex entry. Only when no host listens: the game screen handles
-## F1 itself, for its overlays too. Esc closes the map's own codex in one press.
+## F1 itself, for its overlays too. (Esc is the codex panel's own business.)
 func _input(event: InputEvent) -> void:
-	if own_codex != null and own_codex.visible and event.is_action_pressed("ui_cancel"):
-		get_viewport().set_input_as_handled()
-		own_codex.close()
-		return
 	if not CodexLink.is_open_key(event) or not codex_requested.get_connections().is_empty():
 		return
 	var key := CodexLink.key_at(get_viewport().gui_get_hovered_control())
@@ -240,6 +244,11 @@ func _bind() -> void:
 	turn_label = %TurnLabel
 	hint_label = get_node("Layout/TopBar/Row/Hint")
 	back_button = %BackButton
+	faction_emblem = SeatEmblem.new(-1, SeatEmblem.Look.TOKEN, 24.0)
+	faction_emblem.name = "FactionEmblem"
+	faction_emblem.visible = false
+	faction_label.get_parent().add_child(faction_emblem)
+	faction_label.get_parent().move_child(faction_emblem, 0)
 	map_view.resized.connect(_fit_map)
 	map_canvas.draw.connect(_draw_links)
 	back_button.pressed.connect(_on_back_pressed)
@@ -316,11 +325,16 @@ func _update_top_bar() -> void:
 	faction_label.add_theme_color_override("font_color", UiPalette.owner_color(state, viewing_faction_id, seats).lightened(0.25))
 	faction_label.tooltip_text = ""
 	CodexLink.detach(faction_label)
+	faction_emblem.seat = seat
+	faction_emblem.visible = f != null and seat >= 0
 	if f:
-		var colour := "" if seat < 0 else " You are Player %d: your provinces and armies are drawn in %s." % [seat + 1, UiPalette.seat_color_name(seat)]
+		var colour := "" if seat < 0 else " You are Player %d: your provinces and armies are drawn in %s, with a %s emblem." % [
+			seat + 1, UiPalette.seat_color_name(seat), SeatEmblem.shape_of(seat)]
 		faction_label.tooltip_text = TooltipText.plain("You are playing %s" % faction_label.text,
 			"The map, gold and forecasts are shown from this faction's point of view.%s" % colour)
 		CodexLink.attach(faction_label, TooltipText.codex_for("faction"), request_codex)
+	# Without a faction (game over, spectator) the gold label is hidden, so the bar has no empty gap.
+	gold_label.visible = f != null
 	if f:
 		var g := Breakdown.gold(state, viewing_faction_id)
 		var income: int = g.total - f.gold
@@ -467,15 +481,22 @@ func _show_province_details() -> void:
 	_add_heading(p.name, 28)
 	var owner_name := "Nobody (neutral)" if p.owner.is_empty() else state.find_faction(p.owner).faction_name
 	var seats := seat_order()
-	var owner_label := _add_text("Owner: %s" % owner_name, TooltipText.plain("Owner",
-		"The faction that holds %s and earns its income. %s" % [p.name, RulesCodex.text("capture")]))
+	var owner_seat := UiPalette.seat_index(state, p.owner, seats)
+	var owner_help := RulesCodex.text("neutral")
+	if not p.owner.is_empty():
+		var mark := "" if owner_seat < 0 else " It is Player %d, drawn in %s with a %s emblem." % [
+			owner_seat + 1, UiPalette.seat_color_name(owner_seat), SeatEmblem.shape_of(owner_seat)]
+		owner_help = "The faction that holds %s and earns its income.%s %s" % [p.name, mark, RulesCodex.text("capture")]
+	var owner_label := _add_text("Owner: %s" % owner_name, TooltipText.plain("Owner", owner_help))
 	owner_label.name = "OwnerLabel"
 	owner_label.add_theme_color_override("font_color", UiPalette.owner_color(state, p.owner, seats).lightened(0.3))
-	_link(owner_label, "owner")
+	_link(owner_label, TooltipText.owner_kind(p.owner))
+	# Terrain, capital and fort explain themselves with their codex entries' own words.
+	var terrain_kind := TooltipText.terrain_kind(p.terrain)
 	var terrain_label := _add_text("Terrain: %s" % p.terrain.capitalize(), TooltipText.plain("Terrain: %s" % p.terrain.capitalize(),
-		"%s %s" % [Province.describe("terrain"), MapData.get_terrain_description(p.terrain)]))
+		TooltipText.codex_text(terrain_kind)))
 	terrain_label.name = "TerrainLabel"
-	_link(terrain_label, "terrain")
+	_link(terrain_label, terrain_kind)
 	var income := Breakdown.province_income(state, p.id)
 	var income_label := _add_text("Income: %d gold per turn" % p.income, TooltipText.from_breakdown(income), UiPalette.GILT)
 	income_label.name = "IncomeLabel"
@@ -486,18 +507,18 @@ func _show_province_details() -> void:
 		for f in state.factions:
 			if f.capital == p.id:
 				capital_text = "Yes, the capital of %s" % f.faction_name
-	var capital_label := _add_text("Capital: %s" % capital_text, TooltipText.plain("Capital", "%s %s" % [Province.describe("capital"),
-		RulesCodex.text("recruit")]))
+	var capital_label := _add_text("Capital: %s" % capital_text, TooltipText.plain("Capital", TooltipText.codex_text("capital")))
 	capital_label.name = "CapitalLabel"
 	_link(capital_label, "capital")
-	var fort_label := _add_text("Fort: %s" % ("Yes" if p.has_fort else "No"), TooltipText.plain("Fort", Province.describe("fort")))
+	var fort_label := _add_text("Fort: %s" % ("Yes" if p.has_fort else "No"), TooltipText.plain("Fort", TooltipText.codex_text("fort")))
 	fort_label.name = "FortLabel"
 	_link(fort_label, "fort")
 	var names := []
 	for n in p.neighbors:
 		var np := state.find_province(n)
 		names.append(np.name if np else n)
-	var neighbors_label := _add_text("Neighbors: %s" % ", ".join(names), TooltipText.plain("Neighbors", RulesCodex.text("move")))
+	var neighbors_label := _add_text("Neighbors: %s" % ", ".join(names), TooltipText.plain("Neighbors",
+		"The provinces joined to %s by a road. %s" % [p.name, RulesCodex.text("move")]))
 	neighbors_label.name = "NeighborsLabel"
 	_link(neighbors_label, "neighbors")
 
@@ -557,8 +578,7 @@ func _add_army(a: Army) -> void:
 		commander_label = _add_text("Commander: none", TooltipText.plain("No commander", "This army has no commander to lead it."),
 			UiPalette.TEXT_SECONDARY, box)
 	commander_label.name = "CommanderLabel"
-	if a.commander:
-		_link(commander_label, "commander")
+	_link(commander_label, "commander")
 	var seen := []
 	for u in a.units:
 		if seen.has(u.type.name):
@@ -567,8 +587,8 @@ func _add_army(a: Army) -> void:
 		var b := Breakdown.unit_count(state, a.id, u.type.name)
 		var count_label := _add_text("    %s x%d" % [u.type.name, b.total], TooltipText.from_breakdown(b), UiPalette.TEXT_SECONDARY, box)
 		count_label.name = "UnitCount"
-		# Each unit type's codex entry is its trait's (e.g. "Shield Wall (Spearmen)").
-		CodexLink.attach(count_label, AutoBattleResolver.codex_id_for_trait(u.type.trait_id), request_codex)
+		# The count's tooltip has the unit's stats and trait; its entry is Units, which links on to each.
+		_link(count_label, "unit_count", b)
 
 
 ## Links a side panel label to the codex entry for its kind of number (TooltipText.CODEX).

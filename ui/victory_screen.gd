@@ -213,37 +213,10 @@ static func seat_color(seat_index: int) -> Color:
 	return UiPalette.seat_color(seat_index)
 
 
-## The seat's emblem from design/STYLE_BIBLE.md 1.1 (P1 circle, P2 square, P3 triangle, P4 diamond),
-## drawn in the seat colour with an ink keyline and a light halo.
-static func seat_emblem(seat_index: int) -> Control:
-	var c := Control.new()
-	c.name = "SeatEmblem"
-	c.custom_minimum_size = Vector2(24, 24)
-	c.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	c.draw.connect(func(): _draw_emblem(c, seat_index))
-	return c
-
-
-static func _draw_emblem(c: Control, seat_index: int) -> void:
-	var center := c.size * 0.5
-	var r := minf(c.size.x, c.size.y) * 0.5 - 2.0
-	var fill := seat_color(seat_index)
-	var layers := [[r + 2.0, UiPalette.KEYLINE_HALO], [r + 1.0, UiPalette.KEYLINE_INK], [r, fill]]
-	for layer in layers:
-		var radius: float = layer[0]
-		var color: Color = layer[1]
-		match seat_index % 4:
-			0:
-				c.draw_circle(center, radius, color)
-			1:
-				c.draw_rect(Rect2(center - Vector2(radius, radius) * 0.85, Vector2(radius, radius) * 1.7), color)
-			2:
-				c.draw_colored_polygon(PackedVector2Array([center + Vector2(0, -radius), center + Vector2(radius, radius * 0.8),
-					center + Vector2(-radius, radius * 0.8)]), color)
-			3:
-				c.draw_colored_polygon(PackedVector2Array([center + Vector2(0, -radius), center + Vector2(radius, 0),
-					center + Vector2(0, radius), center + Vector2(-radius, 0)]), color)
+## The seat's emblem from design/STYLE_BIBLE.md 1.1 (P1 circle, P2 square, ...) in the seat colour with
+## keylines. SeatEmblem draws it, the same mark the map uses.
+static func seat_emblem(seat_index: int) -> SeatEmblem:
+	return SeatEmblem.new(seat_index)
 
 
 # --- nodes ----------------------------------------------------------------------------------------

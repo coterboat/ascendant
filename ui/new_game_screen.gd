@@ -15,9 +15,13 @@ extends Control
 ##   config() -> Dictionary          {"players", "seed"}; only meaningful when is_valid()
 ##   is_valid() -> bool
 ##   error_text() -> String          every problem in plain words, "" when valid
-##   set_seed(value: int)            new_seed() -> int picks a random one (the "New seed" button)
+##   set_seed(value: int)            new_seed(avoid) -> int picks a random one (the "New seed" button),
+##                                   never `avoid`
 ##   swap_seats()                    Player 1 and Player 2 trade factions (the "Swap seats" button)
 ##   select_faction(seat, faction_id) -> bool   seat is 1-based; false for an unknown seat or faction
+##   set_seats(players) -> bool      every seat at once: faction ids in seat order
+##   prefill(last_game)              a rematch of last_game ({"players", "seed"}): the same seating and
+##                                   a new seed (the victory screen's New game)
 ##   seat_faction(seat) -> String, faction_ids() -> Array[String]
 ##   start() -> bool                 emits start_requested when valid (the Start button, Enter in the seed)
 ##   back()                          emits back_requested (the Back button, Esc)
@@ -35,6 +39,7 @@ var seat_pickers: Array[OptionButton] = []
 var seat_labels: Array[Label] = []
 var faction_labels: Array[Label] = []
 var hotseat_label: Label
+var rematch_label: Label  # shown after prefill(): why the seats are already set
 var seed_edit: LineEdit
 var new_seed_button: Button
 var swap_button: Button
@@ -84,11 +89,35 @@ func set_seed(value: int) -> void:
 	_refresh()
 
 
-## Picks a new random seed, shows it and returns it.
-func new_seed() -> int:
+## Picks a new random seed, never `avoid` (the last game's seed, for a rematch), shows it and returns it.
+func new_seed(avoid: int = -1) -> int:
 	var value := _rng.randi_range(1, MAX_RANDOM_SEED)
+	while value == avoid:
+		value = _rng.randi_range(1, MAX_RANDOM_SEED)
 	set_seed(value)
 	return value
+
+
+## Seats every player at once: `players` holds faction ids in seat order. Returns false, changing
+## nothing, unless there is one known faction per seat.
+func set_seats(players: Array) -> bool:
+	if players.size() != seat_pickers.size():
+		return false
+	var ids := faction_ids()
+	for fid in players:
+		if not ids.has(String(fid)):
+			return false
+	for i in seat_pickers.size():
+		seat_pickers[i].select(ids.find(String(players[i])))
+	_refresh()
+	return true
+
+
+## A rematch of `last_game` ({"players", "seed"}, GameScreen.config): the same factions in the same
+## seats, and a new random seed so the dice fall differently. An unusable seating is left as it is.
+func prefill(last_game: Dictionary) -> void:
+	rematch_label.visible = set_seats(Array(last_game.get("players", [])))
+	new_seed(int(last_game.get("seed", -1)))
 
 
 func swap_seats() -> void:
@@ -270,6 +299,10 @@ func _build() -> void:
 	panel.add_child(box)
 
 	box.add_child(_label("TitleLabel", "New game", 48, UiPalette.GILT))
+	rematch_label = _label("RematchLabel", "Rematch: the same players in the same seats as the last game, with a new seed. Change anything you like.", 18, UiPalette.GILT)
+	rematch_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rematch_label.visible = false
+	box.add_child(rematch_label)
 	var hotseat := RulesCodex.entry("hotseat")
 	var hotseat_title := _label("HotseatTitle", String(hotseat.get("title", "")), 22, UiPalette.TEXT_PRIMARY)
 	box.add_child(hotseat_title)

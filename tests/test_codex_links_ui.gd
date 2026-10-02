@@ -75,7 +75,7 @@ func test_every_codex_key_the_ui_maps_to_exists() -> void:
 	assert_eq(TooltipText.codex_for("no such kind"), "", "an unknown kind links nothing")
 	assert_eq(TooltipText.codex_for("gold", {"codex": "recruit"}), "recruit", "a breakdown's own codex key wins")
 	assert_eq(TooltipText.codex_for("gold", {"codex": "no_such_entry"}), "", "but only when it exists")
-	# Unit count lines link to each unit type's trait entry.
+	# Every unit type's trait has its own entry (the Units entry, the battle report and the trait links).
 	for f in GameState.new().factions:
 		var types: Array = f.unit_types.duplicate()
 		types.append(f.commander_type)
@@ -93,7 +93,7 @@ func test_map_numbers_link_to_the_codex_and_every_key_exists() -> void:
 	assert_true(linked >= 15, "top bar, side panel, badges, recruit buttons and order lines are linked (%d)" % linked)
 	for label in [map.gold_label, map.turn_label, map.faction_label]:
 		assert_true(label.has_meta(CodexLink.META), "the top bar's %s is linked" % label.name)
-	assert_eq(String(map.gold_label.get_meta(CodexLink.META)), "income")
+	assert_eq(String(map.gold_label.get_meta(CodexLink.META)), "gold")
 	assert_eq(String(map.turn_label.get_meta(CodexLink.META)), "phase_order")
 	var numbers := _assert_numbers_linked(map.details, "side panel")
 	assert_true(numbers >= 5, "income, units, strength, unit counts, gold after recruits, recruit buttons (%d)" % numbers)
@@ -101,7 +101,7 @@ func test_map_numbers_link_to_the_codex_and_every_key_exists() -> void:
 		var region: ProvinceRegion = map.regions[id]
 		assert_eq(String(region.income_label.get_meta(CodexLink.META)), "income", "%s's income badge" % id)
 		for badge in region.army_box.get_children():
-			assert_eq(String(badge.get_meta(CodexLink.META)), "orders", "%s's army badge" % id)
+			assert_eq(String(badge.get_meta(CodexLink.META)), "army", "%s's army badge" % id)
 			assert_false((badge as Button).text.contains("1 units"), "badge plural: %s" % badge.text)
 	# The order lines: a move links to moving, a recruit to recruiting.
 	var lines := map.details.find_children("OrderLine", "Label", true, false)
@@ -149,7 +149,7 @@ func test_right_click_opens_the_codex_at_the_entry() -> void:
 	assert_true(CodexLink.is_open_key(f1))
 	var child := Control.new()
 	game.map.gold_label.add_child(child)
-	assert_eq(CodexLink.key_at(child), "income", "F1 over a child of a linked label")
+	assert_eq(CodexLink.key_at(child), "gold", "F1 over a child of a linked label")
 	assert_eq(CodexLink.key_at(game.map.hint_label), "", "nothing linked: F1 does nothing")
 	game.free()
 
@@ -180,7 +180,7 @@ func test_victory_screen_numbers_link_to_the_codex() -> void:
 	screen.codex_requested.connect(func(key: String): asked.append(key))
 	screen.turns_label.gui_input.emit(CodexLink.right_click())
 	screen.province_labels()[0].gui_input.emit(CodexLink.right_click())
-	assert_eq(asked, ["phase_order", "capture"], "right-clicks ask for the entries behind the numbers")
+	assert_eq(asked, ["phase_order", "province"], "right-clicks ask for the entries behind the numbers")
 	screen.free()
 
 
