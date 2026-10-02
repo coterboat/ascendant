@@ -235,7 +235,7 @@ const ENTRIES := {
 	},
 	"ruler_healing": {
 		"title": "Ruler healing",
-		"text": "At the end of every turn a living ruler heals a quarter of its maximum hit points, rounded up: a King with 46 maximum hit points heals 12. Regular units and commanders do not heal on their own; only Mending Light and Feast of Victory heal them.",
+		"text": "At the end of every turn a living ruler heals a quarter of its maximum hit points, rounded up, wherever it is, even after a battle that turn: a King with 46 maximum hit points heals 12. This happens in the rulers phase, the last step of the turn after income: first Mending Light heals, then rulers heal, then successors who are due arrive. Regular units and commanders do not heal on their own; only Mending Light and Feast of Victory heal them.",
 	},
 	"ruler_army": {
 		"title": "The ruler's army",
@@ -243,23 +243,23 @@ const ENTRIES := {
 	},
 	"ruler_death": {
 		"title": "When a ruler dies",
-		"text": "A ruler dies when its hit points reach 0, or when it is on the losing side of a battle: a ruler on a losing side is lost with its army; there are no retreats yet. While a faction has no ruler it has no province ability, no ruler in battle and cannot sacrifice, but its mandates stay. What comes next depends on the kind of ruler: see Succession. A ruler's death never ends the game; only the capital decides that.",
+		"text": "A ruler dies when its hit points reach 0, even if its side wins the battle, or when it is on the losing side of a battle: a ruler on a losing side is lost with its army; there are no retreats yet. The death is recorded right after that battle, and the turn report says who succeeds, where, when and with how much kept power. While a faction has no ruler it has no province ability, no ruler in battle and cannot sacrifice, but its mandates stay. What comes next depends on the kind of ruler: see Succession. A ruler's death never ends the game; only the capital decides that.",
 	},
 	"succession": {
 		"title": "Succession",
-		"text": "When a ruler dies, a successor arrives at your capital at the end of a later turn, at full hit points, in a new ruler's army. How long that takes and how much kept power the successor has depend on the kind of ruler. A mortal line crowns an heir 2 turns later with half the kept power, rounded down. The undying Ever-Regent re-forms 4 turns later with all of it. The Great Thornmane takes a new body 1 turn later with 3 less kept power, for good. Mandates always stay. If you don't hold your capital when the successor is due, it waits until you do.",
+		"text": "When a ruler dies during a turn, a successor arrives at your capital at the end of a later turn, in the rulers phase, at full hit points, in a new ruler's army of its own, and can take orders from the next turn. How long that takes and how much kept power the successor has depend on the kind of ruler, and the kept power at the moment of death decides it. A mortal line crowns an heir 2 turns later with half the kept power, rounded down. The undying Ever-Regent re-forms 4 turns later with all of it. The Great Thornmane takes a new body 1 turn later with 3 less kept power, for good, never below 0. Each successor is the next generation of the line, and mandates always stay. If you don't hold your capital when the successor is due, it waits and arrives at the end of the first turn you hold it again.",
 	},
 	"succession_mortal": {
 		"title": "Succession: mortal line",
-		"text": "King Corvane and the Ninth Fang are mortal lines. When one dies during a turn, the heir is crowned at your capital at the end of the turn 2 turns later, with half the dead ruler's kept power, rounded down: 10 kept power becomes 5, and 7 becomes 3. The heir is the next of the line: Corvane II after King Corvane I, the Tenth Fang after the Ninth.",
+		"text": "King Corvane and the Ninth Fang are mortal lines. When one dies during turn 4, the heir is crowned at your capital at the end of turn 6, 2 turns later, and can take orders from turn 7. The heir has half the dead ruler's kept power, rounded down: 10 kept power becomes 5, and 7 becomes 3. The heir is the next of the line: Corvane II after King Corvane I (crowned as King Corvane II), the Tenth Fang after the Ninth.",
 	},
 	"succession_undying": {
 		"title": "Succession: undying",
-		"text": "The Ever-Regent is bound to the sunstone in Crownkeep and cannot truly die. When he is destroyed during a turn, he re-forms at your capital at the end of the turn 4 turns later, with the same kept power he had.",
+		"text": "The Ever-Regent is bound to the sunstone in Crownkeep and cannot truly die. When he is destroyed during turn 4, he re-forms at your capital at the end of turn 8, 4 turns later, with the same kept power he had, and can take orders from turn 9.",
 	},
 	"succession_god": {
 		"title": "Succession: god",
-		"text": "The Great Thornmane is a god walking in a body of briar and fur. When the body is slain during a turn, the god takes a new one at your capital at the end of the next turn, with 3 less kept power for good, never below 0: 10 becomes 7, and 2 becomes 0.",
+		"text": "The Great Thornmane is a god walking in a body of briar and fur. When the body is slain during turn 4, the god takes a new one at your capital at the end of turn 5, 1 turn later, and can take orders from turn 6. The new body has 3 less kept power for good, never below 0: 10 becomes 7, and 2 becomes 0.",
 	},
 	"mandates": {
 		"title": "Mandates",

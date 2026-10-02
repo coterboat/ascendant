@@ -23,6 +23,13 @@ class_name RulerRules
 ##   apply_build(state, fid, build)         sets the ruler, kept power and mandates; places its army
 ## A build is {"ruler": ruler id, "mandates": [mandate ids, in the order taken]}; anywhere a build is
 ## taken, a preset id (BuildPresetData) may stand in for one.
+## Death and succession (M2-3, #31; TurnResolver calls these):
+##   has_living_ruler(state, fid)           alive and on the map (no ability, ruler morale or sacrifice otherwise)
+##   record_death(state, fid, turn)         dead; the successor falls due at the end of turn + delay
+##   succession_info(state, fid)            who succeeds a dead ruler, where, when, with what kept power
+##   crown_successor(state, fid, turn)      the due successor arrives at the capital, if the faction holds it
+##   heal_ruler, apply_mending_light        the rulers phase's healing
+##   death_text, arrival_text, waiting_text, healed_text, mending_text   the turn report's sentences
 
 const ALIVE := "alive"
 const DEAD := "dead"
@@ -225,7 +232,7 @@ static func heir_name(ruler_id: String, generation: int) -> String:
 
 
 ## Who takes over if this ruler dies with `kept` power (§5.2): {"delay" (turns), "kept_power",
-## "generation", "name", "heir_name", "kind"}. Succession itself happens in M2-3 (#31).
+## "generation", "name", "heir_name", "kind"}. record_death and crown_successor apply it (M2-3, #31).
 static func successor_for(ruler_id: String, kept: int, generation: int = 1) -> Dictionary:
 	var r := ruler_data(ruler_id)
 	var s: Dictionary = r.get("succession", {})
@@ -258,6 +265,315 @@ static func succession_text(ruler_id: String, kept: int, generation: int, capita
 			return "God: if the body of %s is slain, the god returns at %s %s with %d less kept power for good, never below 0 (now %d, so %d). Mandates always stay." % [
 				name, capital_name, later, int(r.succession.get("minus", 0)), kept, next.kept_power]
 	return ""
+
+
+# --- death, healing and succession (§1.7, §5; M2-3, #31) ------------------------------------------
+# A ruler dies when, after a battle, its army is gone (its side lost, and every losing army is
+# destroyed) or its army no longer holds it (it fell while its side won: the battle resolver sets
+# army.ruler to null). TurnResolver records the death right after that battle (record_death) and
+# runs the rulers phase at the end of the turn: apply_mending_light, then heal_ruler, then
+# crown_successor for every successor that is due. The rules and the turn report's sentences live
+# here; TurnResolver turns them into events.
+
+## A living ruler heals 1 / RULER_HEAL_DIVISOR of its maximum hp at the end of every turn, rounded up.
+const RULER_HEAL_DIVISOR := 4
+## The ability that heals your units and commanders in the rulers phase (§1.4).
+const MENDING_LIGHT := "mending_light"
+## How the turn report says a ruler of each kind died: [fell while its side won, lost with its side].
+const DEATH_VERBS := {"mortal": ["fell", "was lost"], "undying": ["was struck down", "was broken"],
+	"god": ["was slain", "was destroyed"]}
+
+
+## True when the faction's ruler is alive and on the map. A faction without one has no province
+## ability, no ruler in battle and can't sacrifice (§5.1).
+static func has_living_ruler(state: GameState, faction_id: String) -> bool:
+	var f := state.find_faction(faction_id)
+	return f != null and f.has_ruler() and f.ruler_status == ALIVE and ruler_army(state, faction_id) != null
+
+
+## Hit points a living ruler with `max_hp` heals in the rulers phase: a quarter, rounded up (§1.7).
+## A 46-hp King heals 12.
+static func ruler_heal_amount(max_hp: int) -> int:
+	return ceili(float(maxi(0, max_hp)) / RULER_HEAL_DIVISOR)
+
+
+## True when the faction holds its capital, the only place successors arrive (§5.2).
+static func holds_capital(state: GameState, faction_id: String) -> bool:
+	var f := state.find_faction(faction_id)
+	var capital := state.find_province(f.capital) if f != null else null
+	return capital != null and capital.owner == faction_id
+
+
+## Kept power the faction started the game with: the pool minus its pre-game mandates.
+static func starting_kept_power(state: GameState, faction_id: String) -> int:
+	var f := state.find_faction(faction_id)
+	if f == null or not f.has_ruler():
+		return 0
+	var sacrificed := {}
+	for sac in f.sacrifices:
+		sacrificed[str(sac.get("mandate", ""))] = true
+	var cost := 0
+	for mid in f.mandates:
+		if not sacrificed.has(mid):
+			cost += mandate_cost(mid)
+	return RulerData.POWER_POOL - cost
+
+
+## Records that `faction_id`'s ruler died during `turn` (1-based, as players see it), §5.1: its status
+## becomes dead, its army is removed if anything is left of it, and its successor falls due at the
+## end of turn `turn` + the kind's delay with the kind's share of the kept power at the moment of
+## death (successor_for). Mandates stay. Returns succession_info(), or {} when the faction has no
+## living ruler to lose (nothing changes then).
+static func record_death(state: GameState, faction_id: String, turn: int) -> Dictionary:
+	var f := state.find_faction(faction_id)
+	if f == null or not f.has_ruler() or f.ruler_status != ALIVE:
+		return {}
+	var army := ruler_army(state, faction_id)
+	if army != null:
+		army.ruler = null
+		if army.units.is_empty() and army.commander == null:
+			state.armies.erase(army)
+	var next := successor_for(f.ruler_type, f.kept_power, f.ruler_generation)
+	f.ruler_status = DEAD
+	f.successor_turn = maxi(1, turn + int(next.delay))  # never 0: 0 means "no successor due"
+	f.successor_power = int(next.kept_power)
+	return succession_info(state, faction_id)
+
+
+## A dead ruler's succession, for reports and screens: {"faction", "ruler", "kind", "name" (the ruler
+## who died), "kept_power" (at death), "generation" (of the one who died), "successor_turn" (the
+## successor arrives at the end of it), "successor_power", "successor_generation", "successor_name"
+## (as ruler: "King Corvane II"), "heir_name" (before taking over: "Corvane II"), "delay", "minus"
+## (the god's loss), "capital", "capital_name", "codex" (the kind's RulesCodex entry)}.
+## {} unless the faction's ruler is dead.
+static func succession_info(state: GameState, faction_id: String) -> Dictionary:
+	var f := state.find_faction(faction_id)
+	if f == null or not f.has_ruler() or f.ruler_status != DEAD:
+		return {}
+	var r := ruler_data(f.ruler_type)
+	var kind := String(r.get("kind", ""))
+	var spec: Dictionary = r.get("succession", {})
+	var next_gen := maxi(1, f.ruler_generation) + 1
+	return {"faction": faction_id, "ruler": f.ruler_type, "kind": kind,
+		"name": ruler_name(f.ruler_type, f.ruler_generation), "kept_power": f.kept_power,
+		"generation": f.ruler_generation, "successor_turn": f.successor_turn, "successor_power": f.successor_power,
+		"successor_generation": next_gen, "successor_name": ruler_name(f.ruler_type, next_gen),
+		"heir_name": heir_name(f.ruler_type, next_gen), "delay": int(spec.get("delay", 0)),
+		"minus": int(spec.get("minus", 0)), "capital": f.capital, "capital_name": _province_name(state, f.capital),
+		"codex": String(RulerData.KINDS.get(kind, {}).get("codex", "succession"))}
+
+
+## True when the faction's dead ruler has a successor due by the end of `turn`. It still arrives only
+## if the faction holds its capital then (crown_successor).
+static func successor_due(state: GameState, faction_id: String, turn: int) -> bool:
+	var f := state.find_faction(faction_id)
+	return f != null and f.has_ruler() and f.ruler_status == DEAD and f.successor_turn > 0 and turn >= f.successor_turn
+
+
+## The successor takes over at the end of `turn` (§5.2): kept power becomes the successor's, the
+## generation goes up by 1, the ruler is alive again and stands at full hp in a new ruler's army at
+## the capital (never joined to another army). Only when the successor is due by `turn` and the
+## faction holds its capital; otherwise nothing changes and it returns null, and the successor waits
+## for the end of the first turn the faction holds its capital again. Returns the new ruler's army.
+static func crown_successor(state: GameState, faction_id: String, turn: int) -> Army:
+	if not successor_due(state, faction_id, turn) or not holds_capital(state, faction_id):
+		return null
+	var f := state.find_faction(faction_id)
+	f.kept_power = clampi(f.successor_power, 0, RulerData.POWER_POOL)
+	f.ruler_generation = maxi(1, f.ruler_generation) + 1
+	f.ruler_status = ALIVE
+	f.successor_turn = 0
+	f.successor_power = 0
+	refresh_ruler_type(f)
+	var army := Army.new()
+	army.id = state.new_army_id(faction_id)
+	army.owner = faction_id
+	army.location = f.capital
+	army.ruler = Unit.new(f.ruler_unit_type, faction_id)  # a new Unit starts at its type's full hp
+	state.armies.append(army)
+	refresh_ruler(state, faction_id)
+	return army
+
+
+## The rulers phase's ruler healing (§1.7): the faction's living ruler heals ruler_heal_amount of its
+## maximum hp, never above it. Returns {"army", "province", "name", "healed", "hp_before", "hp_after",
+## "max_hp", "share"}; "healed" is 0 when it was at full hp, and the dictionary is just {"healed": 0}
+## without a living ruler on the map.
+static func heal_ruler(state: GameState, faction_id: String) -> Dictionary:
+	if not has_living_ruler(state, faction_id):
+		return {"healed": 0}
+	var army := ruler_army(state, faction_id)
+	var unit := army.ruler
+	var max_hp := unit.type.hp
+	var before := unit.current_hp
+	var share := ruler_heal_amount(max_hp)
+	unit.current_hp = clampi(before + share, 1, max_hp)
+	return {"army": army.id, "province": army.location, "name": unit.type.name, "healed": unit.current_hp - before,
+		"hp_before": before, "hp_after": unit.current_hp, "max_hp": max_hp, "share": share}
+
+
+## Mending Light (§1.4), in the rulers phase before ruler healing: with a living Ever-Regent on the
+## map, each wounded unit and commander of the faction in the Regent's province (any of its armies
+## there) heals the ability's value at the Regent's ability rank, up to its maximum. Rulers are not
+## healed by it. Armies go in id order, then units in order, then the commander. Returns {"province",
+## "rank", "amount", "healed": [{"army", "name", "healed", "hp_after", "max_hp"}], "total", "ruler",
+## "name"}; "healed" is empty when nobody needed it, the ruler is dead, or its ability is another one.
+static func apply_mending_light(state: GameState, faction_id: String) -> Dictionary:
+	var f := state.find_faction(faction_id)
+	if f == null or not has_living_ruler(state, faction_id) or String(ruler_data(f.ruler_type).get("ability", "")) != MENDING_LIGHT:
+		return {"healed": [], "total": 0}
+	var regent := ruler_army(state, faction_id)
+	var rank := ability_rank(f.kept_power)
+	var amount := ability_value(f.ruler_type, rank)
+	var armies: Array = state.armies.duplicate()
+	armies.sort_custom(func(a, b): return a.id < b.id)
+	var healed := []
+	var total := 0
+	for a in armies:
+		if a.owner != faction_id or a.location != regent.location:
+			continue
+		var members: Array = a.units.duplicate()
+		if a.commander != null:
+			members.append(a.commander)
+		for u in members:
+			var gain := clampi(u.type.hp - u.current_hp, 0, amount)
+			if gain == 0:
+				continue
+			u.current_hp += gain
+			total += gain
+			healed.append({"army": a.id, "name": u.type.name, "healed": gain, "hp_after": u.current_hp, "max_hp": u.type.hp})
+	return {"province": regent.location, "rank": rank, "amount": amount, "healed": healed, "total": total,
+		"ruler": f.ruler_type, "name": current_name(state, faction_id)}
+
+
+## ability_short in words that never start with a minus sign, for report sentences: "+3 gold",
+## "heal 6", "2 less enemy morale", "2 recruits in the field" ("1 recruit in the field").
+static func ability_effect(ruler_id: String, rank: int) -> String:
+	var template := String(ability_data(ruler_id).get("short", ""))
+	var value := ability_value(ruler_id, rank)
+	if template.begins_with("-{value} "):
+		return "%d less %s" % [value, template.trim_prefix("-{value} ")]
+	var words := template.split(" ")
+	var at := words.find("{value}")
+	if value == 1 and at >= 0 and at + 1 < words.size() and words[at + 1].ends_with("s"):
+		words[at + 1] = words[at + 1].trim_suffix("s")  # "1 recruit", not "1 recruits"
+	return " ".join(words).format({"value": value})
+
+
+## The ruler_died sentence for the turn report (§5.4): who died and how, who succeeds, where, when and
+## with how much kept power, and what the faction lacks until then. `info` is record_death()'s
+## result; `fell` is true when the ruler fell while its side won the battle, false when it was lost
+## with its side; `place` is "at Blackwood" or "on the border between Stonegate and Blackwood".
+static func death_text(state: GameState, faction_id: String, info: Dictionary, fell: bool, place: String) -> String:
+	var side := "the %s" % _faction_name(state, faction_id)
+	var kind := String(info.get("kind", ""))
+	var name := String(info.get("name", ""))
+	var subject := "%s's body" % _cap(name) if kind == "god" else _cap(name)
+	var verbs: Array = DEATH_VERBS.get(kind, DEATH_VERBS.mortal)
+	var how: String
+	if fell:
+		how = "%s %s in the battle %s, though %s won it." % [subject, verbs[0], place, side]
+	else:
+		how = "%s %s when %s lost the battle %s. A ruler on a losing side is lost with its army; there are no retreats yet." % [
+			subject, verbs[1], side, place]
+	var due := int(info.get("successor_turn", 0))
+	var when := "at the end of turn %d, ready for orders on turn %d" % [due, due + 1]
+	var capital := String(info.get("capital_name", ""))
+	var kept := int(info.get("kept_power", 0))
+	var next_kept := int(info.get("successor_power", 0))
+	var next: String
+	match kind:
+		"undying":
+			next = "%s cannot truly die and re-forms at %s %s, with the same %d kept power." % [_cap(name), capital, when, next_kept]
+		"god":
+			if next_kept < kept:
+				next = "The god takes a new body at %s %s, weaker for good: %d kept power instead of %d (%d less, never below 0)." % [
+					capital, when, next_kept, kept, int(info.get("minus", 0))]
+			else:
+				next = "The god takes a new body at %s %s, with %d kept power: it had none left to lose, and kept power never goes below 0." % [
+					capital, when, next_kept]
+		_:
+			next = "The line goes on: %s will be crowned at %s %s, with %d kept power (half of %d, rounded down)." % [
+				String(info.get("heir_name", "")), capital, when, next_kept, kept]
+	var until := "Until then %s has no ruler: no %s, no ruler in battle and no sacrifices." % [side,
+		ability_name(String(info.get("ruler", "")))]
+	if not mandates(state, faction_id).is_empty():
+		until += " Its mandates stay."
+	return "%s %s %s" % [how, next, until]
+
+
+## The ruler_arrived sentence (§5.4): who took over where, with what kept power and numbers. Call it
+## right after crown_successor; `kept_before` is the kept power of the ruler who died, `next_turn` the
+## first turn the new ruler can be given orders.
+static func arrival_text(state: GameState, faction_id: String, kept_before: int, next_turn: int) -> String:
+	var f := state.find_faction(faction_id)
+	var rid := f.ruler_type
+	var name := ruler_name(rid, f.ruler_generation)
+	var stats := ruler_stats(rid, f.kept_power, f.ruler_generation)
+	var capital := _province_name(state, f.capital)
+	var head: String
+	match String(ruler_data(rid).get("kind", "")):
+		"undying":
+			head = "%s re-formed at %s with the same %d kept power" % [_cap(name), capital, f.kept_power]
+		"god":
+			var lost := kept_before - f.kept_power
+			head = "%s took a new body at %s with %d kept power, %s" % [_cap(name), capital, f.kept_power,
+				"%d less than before, for good" % lost if lost > 0 else "no less than before: kept power never goes below 0"]
+		_:
+			var heir := heir_name(rid, f.ruler_generation)
+			head = "%s was crowned at %s%s with %d kept power" % [_cap(heir), capital,
+				"" if heir == name else " as %s" % name, f.kept_power]
+	return "%s: %d hit points, attack %d, defense %d, %s %s (ability rank %d). The new ruler's army stands at %s, ready for orders on turn %d." % [
+		head, stats.hp, stats.attack, stats.defense, stats.ability_name, ability_effect(rid, stats.ability_rank),
+		stats.ability_rank, capital, next_turn]
+
+
+## The succession_waiting sentence: a successor fell due, but the faction doesn't hold its capital.
+static func waiting_text(state: GameState, faction_id: String) -> String:
+	var info := succession_info(state, faction_id)
+	if info.is_empty():
+		return ""
+	var side := "the %s" % _faction_name(state, faction_id)
+	var capital := String(info.capital_name)
+	var who: String
+	match String(info.kind):
+		"undying":
+			who = "%s was due to re-form" % _cap(info.name)
+		"god":
+			who = "%s was due to take a new body" % _cap(info.name)
+		_:
+			who = "%s was due to be crowned" % _cap(info.heir_name)
+	return "%s at %s at the end of turn %d, but %s doesn't hold %s. Successors arrive only at the capital, so this waits until the end of the first turn %s holds %s again." % [
+		who, capital, int(info.successor_turn), side, capital, side, capital]
+
+
+## The ruler_healed sentence (§1.7). `info` is heal_ruler()'s result; `place` the province's name.
+static func healed_text(info: Dictionary, place: String) -> String:
+	return "%s healed %d hit points at %s (a living ruler heals a quarter of its maximum, rounded up, at the end of every turn): now %d of %d." % [
+		_cap(String(info.get("name", ""))), int(info.get("healed", 0)), place, int(info.get("hp_after", 0)), int(info.get("max_hp", 0))]
+
+
+## The mending sentence (§1.4). `info` is apply_mending_light()'s result; `place` the province's name.
+static func mending_text(state: GameState, faction_id: String, info: Dictionary, place: String) -> String:
+	var order := []
+	var counts := {}
+	var gains := {}
+	for h in info.get("healed", []):
+		if not counts.has(h.name):
+			order.append(h.name)
+			counts[h.name] = 0
+			gains[h.name] = 0
+		counts[h.name] += 1
+		gains[h.name] += int(h.healed)
+	var parts := []
+	for type_name in order:
+		parts.append(("%s +%d" % [type_name, gains[type_name]]) if counts[type_name] == 1
+			else ("%d %s +%d" % [counts[type_name], type_name, gains[type_name]]))
+	var n: int = info.get("healed", []).size()
+	return "%s (rank %d, heal %d): %s healed %d wounded %s of the %s at %s, %d hit points in all (%s)." % [
+		ability_name(String(info.get("ruler", ""))), int(info.get("rank", 0)), int(info.get("amount", 0)),
+		String(info.get("name", "")), n, "fighter" if n == 1 else "fighters", _faction_name(state, faction_id), place,
+		int(info.get("total", 0)), ", ".join(parts)]
 
 
 ## The ruler's stats as a UnitType: is_ruler, cost 0, no trait (§9). Its id is the ruler's id.
