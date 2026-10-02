@@ -44,6 +44,11 @@ static func position_of(province_id: String) -> Vector2:
 	return Vector2(-1, -1)
 
 
+## True for provinces on the east half (mirror twins), whose markers are drawn mirrored too.
+static func is_east(province_id: String) -> bool:
+	return MIRROR.values().has(province_id)
+
+
 static func has_position(province_id: String) -> bool:
 	return position_of(province_id) != Vector2(-1, -1)
 

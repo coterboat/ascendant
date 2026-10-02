@@ -18,6 +18,7 @@ var _fill := Color.WHITE
 var _ring := Color.WHITE
 var _is_capital := false
 var _has_fort := false
+var _east := false
 
 var name_label: Label
 var income_label: Label
@@ -37,6 +38,7 @@ func setup(state: GameState, p: Province, center: Vector2) -> void:
 	_ring = UiPalette.owner_color(state, p.owner)
 	_is_capital = p.is_capital
 	_has_fort = p.has_fort
+	_east = MapLayout.is_east(p.id)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var owner_name := "nobody (neutral)" if p.owner.is_empty() else state.find_faction(p.owner).faction_name
@@ -138,7 +140,7 @@ func _draw() -> void:
 	if _is_capital:
 		_draw_crown(Vector2(r, r * 0.32))
 	if _has_fort:
-		_draw_fort(Vector2(r * 0.42, r * 1.55))
+		_draw_fort(Vector2(r * (1.58 if _east else 0.42), r * 1.55))
 
 
 ## Capital marker: a small gilt crown above the name.

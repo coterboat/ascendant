@@ -125,3 +125,4 @@ func test_layout_places_every_province_as_an_exact_mirror() -> void:
 		assert_eq([ep.terrain, ep.income, ep.has_fort, ep.is_capital], [wp.terrain, wp.income, wp.has_fort, wp.is_capital],
 			"mirror twins %s and %s match in the rules data" % [west_id, east_id])
 	assert_eq(MapLayout.WEST.size() + MapLayout.MIRROR.size(), s.provinces.size(), "every province is placed exactly once")
+	assert_true(MapLayout.is_east("fangridge") and not MapLayout.is_east("crownkeep"), "east half is the mirror side")
