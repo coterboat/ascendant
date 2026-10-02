@@ -50,26 +50,26 @@ In the formulas, k is kept power. ÷2 is rounded down.
 
 | ruler | hp | attack | defense |
 |---|---|---|---|
-| King Corvane | 16 + 3k | 9 + k÷2 | 8 + k÷2 |
-| the Ever-Regent | 14 + 2k | 10 + k | 6 + k÷2 |
-| the Great Thornmane | 26 + 4k | 10 + k | 9 + k÷2 |
-| the Ninth Fang | 20 + 3k | 11 + k | 7 + k÷2 |
+| King Corvane | 18 + 2k | 9 + k÷2 | 8 + k÷2 |
+| the Ever-Regent | 14 + k | 8 + k | 6 + k÷2 |
+| the Great Thornmane | 24 + 3k | 8 + k | 7 + k÷2 |
+| the Ninth Fang | 20 + 2k | 9 + k | 7 + k÷2 |
 
 Full table (builders test against this):
 
 | kept power | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| King hp | 16 | 19 | 22 | 25 | 28 | 31 | 34 | 37 | 40 | 43 | 46 |
+| King hp | 18 | 20 | 22 | 24 | 26 | 28 | 30 | 32 | 34 | 36 | 38 |
 | King attack | 9 | 9 | 10 | 10 | 11 | 11 | 12 | 12 | 13 | 13 | 14 |
 | King defense | 8 | 8 | 9 | 9 | 10 | 10 | 11 | 11 | 12 | 12 | 13 |
-| Regent hp | 14 | 16 | 18 | 20 | 22 | 24 | 26 | 28 | 30 | 32 | 34 |
-| Regent attack | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 |
+| Regent hp | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 |
+| Regent attack | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 |
 | Regent defense | 6 | 6 | 7 | 7 | 8 | 8 | 9 | 9 | 10 | 10 | 11 |
-| Thornmane hp | 26 | 30 | 34 | 38 | 42 | 46 | 50 | 54 | 58 | 62 | 66 |
-| Thornmane attack | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 |
-| Thornmane defense | 9 | 9 | 10 | 10 | 11 | 11 | 12 | 12 | 13 | 13 | 14 |
-| Fang hp | 20 | 23 | 26 | 29 | 32 | 35 | 38 | 41 | 44 | 47 | 50 |
-| Fang attack | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 |
+| Thornmane hp | 24 | 27 | 30 | 33 | 36 | 39 | 42 | 45 | 48 | 51 | 54 |
+| Thornmane attack | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 |
+| Thornmane defense | 7 | 7 | 8 | 8 | 9 | 9 | 10 | 10 | 11 | 11 | 12 |
+| Fang hp | 20 | 22 | 24 | 26 | 28 | 30 | 32 | 34 | 36 | 38 | 40 |
+| Fang attack | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 |
 | Fang defense | 7 | 7 | 8 | 8 | 9 | 9 | 10 | 10 | 11 | 11 | 12 |
 | ability rank (all) | 1 | 1 | 1 | 2 | 2 | 2 | 3 | 3 | 3 | 4 | 4 |
 
@@ -84,7 +84,7 @@ Each ruler has one ability. It works in **the province the ruler is in** and sca
 |---|---|---|---|---|---|---|
 | **Royal Court** | King Corvane | +2 gold | +3 gold | +4 gold | +5 gold | income phase: the province the King is in earns this much more, if you own it |
 | **Mending Light** | the Ever-Regent | heal 3 | heal 6 | heal 9 | heal 12 | rulers phase: each of your wounded units and commanders in the Regent's province heals this many hp, up to its maximum (not rulers; they heal by §1.7) |
-| **Dread** | the Great Thornmane | −1 morale | −1 morale | −2 morale | −2 morale | every enemy side in a province battle the avatar fights in. Not border battles. Stacks with Fury |
+| **Dread** | the Great Thornmane | −1 morale | −1 morale | −1 morale | −1 morale | every enemy side in a province battle the avatar fights in. Not border battles. Stacks with Fury |
 | **Warband Muster** | the Ninth Fang | 1 unit | 2 units | 3 units | 4 units | recruitment phase: you may recruit this many regular units per turn "with the Fang". They appear where the Fang is after movement and battles, if you own that province then. Same prices. Commanders still come only from the capital |
 
 ### 1.5 the ruler on the map
@@ -124,19 +124,19 @@ At the end of every turn, in the rulers phase, a living ruler heals **25% of its
 
 | id | name | who | cost | effect, one line |
 |---|---|---|---|---|
-| `iron_discipline` | Iron Discipline | shared | 3 | Your side never breaks (routs) while one of your commanders in that battle stands. |
+| `iron_discipline` | Iron Discipline | shared | 3 | Your side never breaks (routs) while one of your commanders in that battle stands, except at the end of the last round. |
 | `drilled_ranks` | Drilled Ranks | shared | 2 | Your fighters' base hit chance is 70% instead of 60%. |
-| `veteran_levies` | Veteran Levies | shared | 2 | Your regular units have +2 maximum hp. |
-| `heavy_tithes` | Heavy Tithes | shared | 4 | Every province you own earns +1 gold per turn. |
+| `veteran_levies` | Veteran Levies | shared | 3 | Your regular units have +2 maximum hp. |
+| `heavy_tithes` | Heavy Tithes | shared | 4 | Every province you own earns +2 gold per turn. |
 | `muster_grounds` | Muster Grounds | shared | 4 | Recruits cost a fifth less: cost − (cost ÷ 5, rounded down). |
 | `sworn_vassals` | Sworn Vassals | shared | 4 | Each turn, one neutral province next to your land swears fealty and joins you. |
-| `royal_armories` | Royal Armories | Aurel Crown only | 4 | Your regular units have +1 attack and +1 defense. |
+| `royal_armories` | Royal Armories | Aurel Crown only | 3 | Your regular units have +1 attack. |
 | `kings_roads` | King's Roads | Aurel Crown only | 2 | Armies can move two provinces in one turn inside your own territory. |
 | `blood_frenzy` | Blood Frenzy | Thornmane Clans only | 3 | Your fighters below full hp have +3 attack. Tuskers' Berserk stacks with it, for +6. |
 | `feast_of_victory` | Feast of Victory | Thornmane Clans only | 3 | After each battle you win, your fighters still standing heal to full hp. |
 
-Buying everything would cost 25 for either faction (19 for the shared six, 6 for the exclusives), so a 10-power pool always forces a choice. Example spend-everything builds:
-- Crown: Royal Armories + Heavy Tithes + Veteran Levies (4 + 4 + 2).
+Buying everything would cost 25 for the Crown and 26 for the Clans (20 for the shared six, 5 or 6 for the exclusives), so a 10-power pool always forces a choice. Example spend-everything builds:
+- Crown: Royal Armories + Heavy Tithes + Veteran Levies (3 + 4 + 3).
 - Clans: Iron Discipline + Blood Frenzy + Sworn Vassals (3 + 3 + 4).
 
 Tithe of Blood (from the brief) needs rituals, so it waits for M5.
@@ -146,6 +146,7 @@ Each effect lives in the rules code (§9) and nowhere else. Tooltips, forecasts 
 
 - **Iron Discipline.**
   - When it applies: at the end of a battle round, a side of yours that would break (lost % ≥ break %) does not break if at least one of your commanders in that battle is standing. Rulers don't count; the brief says "commander". Once the last commander falls, the normal check applies from the end of that round.
+  - Not at the end of the last round (round 8, the round cap): there the normal check applies, so a line it holds past its break point can't win by lasting out the round cap (M2-8).
   - It has no downside, because M1 destroys routed armies anyway.
   - It is worth more to the Clans, whose morale is lower. That is intended.
 - **Drilled Ranks.**
@@ -154,7 +155,7 @@ Each effect lives in the rules code (§9) and nowhere else. Tooltips, forecasts 
 - **Veteran Levies.**
   - Each regular unit's maximum hp is its type's hp + 2. New recruits arrive at the new maximum.
   - Bought by sacrifice: your existing regular units gain +2 maximum hp and +2 current hp at once.
-- **Heavy Tithes.** Income phase: +1 gold for every province you own, the capital included. It is shown in each province's income breakdown.
+- **Heavy Tithes.** Income phase: +2 gold for every province you own, the capital included. It is shown in each province's income breakdown.
 - **Muster Grounds.**
   - Every recruit, commanders included, costs cost − (cost ÷ 5, rounded down).
   - Crown: Spearmen 7, Crossbowmen 8, Knights 16, Knight Captain 28.
@@ -168,7 +169,7 @@ Each effect lives in the rules code (§9) and nowhere else. Tooltips, forecasts 
   - At most one province per faction per turn. No gold changes hands.
   - The map marks the province that will join at the end of the turn. Its forecast says: "Rivermarch (9 gold) swears fealty to you at the end of this turn, unless an army ends the turn there."
 - **Royal Armories.**
-  - Regular units: attack = type attack + 1, defense = type defense + 1.
+  - Regular units: attack = type attack + 1. Defense is unchanged: every regular unit's attack is odd and its defense breakpoint-safe (#41), so the +1 changes only the hit chance and never a damage step, also on a forest or fort (M2-8).
   - The starting army gets it too, and so do units you already have when it is bought by sacrifice.
 - **King's Roads.**
   - A move order may name a **via** province, which makes it a **road move** from A through B (via) to C.
@@ -311,7 +312,7 @@ Each faction has 3 presets. AI seats use them, and they are the build screen's q
 |---|---|---|---|---|---|---|---|
 | `warrior_king` | Warrior King (keep) | Crown | King Corvane | none | 10 | field | Royal Armories, Veteran Levies |
 | `iron_crown` | Iron Crown (spend) | Crown | King Corvane | Royal Armories, Heavy Tithes, Veteran Levies | 0 | home | none |
-| `regents_court` | Regent's Court (balanced) | Crown | the Ever-Regent | Royal Armories, King's Roads | 4 | field | Drilled Ranks, Veteran Levies |
+| `regents_court` | Regent's Court (balanced) | Crown | the Ever-Regent | Royal Armories, King's Roads | 5 | field | Drilled Ranks, Veteran Levies |
 | `beast_god_unbound` | Beast-God Unbound (keep) | Clans | the Great Thornmane | none | 10 | field | Iron Discipline, Blood Frenzy |
 | `clan_moot` | Clan Moot (spend) | Clans | the Ninth Fang | Iron Discipline, Blood Frenzy, Sworn Vassals | 0 | home | none |
 | `blood_of_the_fang` | Blood of the Fang (balanced) | Clans | the Ninth Fang | Iron Discipline, Drilled Ranks | 5 | field | Blood Frenzy, Veteran Levies |
@@ -489,6 +490,32 @@ These win rates count battle mandates only. The spend side's economy mandates, n
 - A 0-kept Regent in the second rank falls in 20%.
 
 Battles in this engine are steep. +8 gold on one side of an even 137-gold battle already wins 71%. Morale effects are threshold-sensitive: −1 enemy morale moved one test from 26% to 48%. That is why Dread is only −1/−2.
+
+**Autoplay results (M2-8, #36):** `autoplay.gd -- --matrix --jobs 8`, AIPlayer in both seats, seeds from 1, turn cap 60. The 1,206 games are 900 for band B plus 306 for A2's explicit builds; 1,406 before tuning, when two pairings had too few decisive games and were doubled.
+- How the bands are measured: the engine has exactly two factions, so a same-faction mirror can't be set up. A is the Bradley-Terry head-to-head from both builds' records against the same opponents, the other faction's three presets in both seat orders: P(keep wins) = odds_keep / (odds_keep + odds_spend). "A, direct" pools the real keep-vs-spend games of band B. A2 is measured the same way as A. D counts ruler deaths before a game's last turn, since a ruler lost with its capital dies with the game.
+
+| band | target | before tuning | after tuning |
+|---|---|---|---|
+| A, Crown (Warrior King / Iron Crown) | each 40-60% | 83 / 17 miss | 82 / 18 miss |
+| A, Clans (Beast-God Unbound / Clan Moot) | each 40-60% | 84 / 16 miss | 71 / 29 miss |
+| A, direct (keep / spend) | report | 100 / 0 | 80 / 20 |
+| A2, Regent keep 10 / spend 10 | report, 35-65% | 85 / 15 | 68 / 32 |
+| A2, Fang keep 10 / spend 10 | report, 35-65% | 99 / 1 | 100 / 0 |
+| B, pairings over 65% | none | 7 of 9 miss | 8 of 9 miss |
+| C, Crown / Clans | report | 41 / 59 | 45 / 55 |
+| D, mid-game ruler death by turn 8 | 25-60% | 17% miss | 13% miss |
+| D, successors due that arrived | all | 241 of 241 | 161 of 161 |
+| E, median decisive length (games at the cap) | 10-16 | 19 (24% at the cap) miss | 21 (7%) miss |
+| F, games with a sacrifice | 15-50% | 47% pass | 49% pass |
+| G, keep wins by turn 8 / spend wins after turn 12 | report | none decided by turn 8 / 0% | none / 20% |
+| H, integrity | 0 problems, replays identical | pass | pass |
+
+- **Why B, A and A2 still miss:**
+  - Warband Muster on a field Fang decides these AI games. Blood of the Fang wins all 300 of its band B games and the Fang keeping 10 wins all 102 of its A2 games.
+  - In a diagnostic with Warband Muster at 0, Blood of the Fang fell to 17% against Warrior King and 22% against Regent's Court. Removing its Iron Discipline or cutting the Fang's body changed nothing.
+  - The knob allows ±1 per rank, so rank 2 can't go below 1 recruit. The way it works needs a rule change.
+  - Beyond that, a ruler that keeps 10 still beats the matching spend build in most games.
+- **Why D and E miss:** these AI-vs-AI games are close to deterministic (several seeds play the same game). Both sides expand without fighting, then one or two battles decide the game, and the AI's ruler joins only likely wins. So rulers rarely die in mid-game, and games run past turn 16. No ruler or mandate number changes that.
 
 ---
 
