@@ -107,8 +107,8 @@ func test_three_scripted_turns_through_the_flow() -> void:
 	assert_eq(s.find_province("ebonpeak").owner, "beasts")
 	assert_true(_army_at(s, "kingdom", "crownkeep") != null, "kingdom recruit formed an army at home")
 	assert_true(_army_at(s, "beasts", "fangridge") != null, "beasts recruit formed an army at home")
-	assert_eq(_gold(session, "kingdom"), 50 - 8 + 12 + 6)  # 60
-	assert_eq(_gold(session, "beasts"), 40 - 11 + 12 + 6)  # 47 (Tuskers cost 11)
+	assert_eq(_gold(session, "kingdom"), 45 - 8 + 12 + 6)  # 55
+	assert_eq(_gold(session, "beasts"), 45 - 11 + 12 + 6)  # 52 (both start with 45 gold; Tuskers cost 11)
 	var r1 := session.turn_report()
 	assert_eq(r1.header, "Turn 1 results")
 	assert_eq(r1.turn, 1)
@@ -126,8 +126,8 @@ func test_three_scripted_turns_through_the_flow() -> void:
 	s = session.state()
 	assert_eq(s.find_army("kingdom-1").location, "stonegate")
 	assert_eq(s.find_army("beasts-2").location, "blackwood")
-	assert_eq(_gold(session, "kingdom"), 60 + 12 + 6 + 8)  # 86
-	assert_eq(_gold(session, "beasts"), 47 + 12 + 6 + 8)  # 73
+	assert_eq(_gold(session, "kingdom"), 55 + 12 + 6 + 8)  # 81
+	assert_eq(_gold(session, "beasts"), 52 + 12 + 6 + 8)  # 78
 	assert_eq(session.turn_report().header, "Turn 2 results")
 	assert_eq(_types(session.turn_report().events).count("captured"), 2)
 	assert_eq(session.acknowledge_handoff(), "")
@@ -142,8 +142,8 @@ func test_three_scripted_turns_through_the_flow() -> void:
 	assert_eq(s.find_army("beasts-2"), null, "the holding army was destroyed")
 	assert_eq(s.find_army("kingdom-1").location, "blackwood")
 	assert_eq(s.find_province("blackwood").owner, "kingdom", "the winner captures Blackwood")
-	assert_eq(_gold(session, "kingdom"), 86 + 12 + 6 + 8 + 8)  # 120, with Blackwood's income
-	assert_eq(_gold(session, "beasts"), 73 - 22 + 12 + 6)  # 69: War Bear costs 22, Blackwood is lost
+	assert_eq(_gold(session, "kingdom"), 81 + 12 + 6 + 8 + 8)  # 115, with Blackwood's income
+	assert_eq(_gold(session, "beasts"), 78 - 22 + 12 + 6)  # 74: War Bear costs 22, Blackwood is lost
 	var battles := session.battle_events()
 	assert_eq(battles.size(), 1)
 	assert_eq(battles[0].provinces, ["blackwood"])
@@ -224,7 +224,7 @@ func test_queue_and_cancel_go_through_order_validation() -> void:
 	assert_true(session.queue_recruit("war_bear").contains("Thornmane Clans"), "not in roster")
 	assert_eq(session.queue_recruit("knights"), "")
 	assert_eq(session.queue_recruit("knights"), "")
-	assert_true(session.queue_recruit("knights").contains("only have 10 gold"), "third knights is too expensive")
+	assert_true(session.queue_recruit("knights").contains("only have 5 gold"), "third knights is too expensive")
 	assert_eq(session.current_orders().size(), 2)
 	assert_eq(session.cancel_order(1), "")
 	assert_eq(session.current_orders().size(), 1)

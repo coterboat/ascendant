@@ -102,9 +102,9 @@ func test_tooltip_text_shows_lines_total_and_wrapped_description() -> void:
 	var s := GameState.new()
 	var text := TooltipText.from_breakdown(Breakdown.gold(s, "kingdom"))
 	assert_true(text.begins_with("Gold of Aurel Crown"), "title first")
-	assert_true(text.contains("Gold now: 50"), "first line shows the base value")
+	assert_true(text.contains("Gold now: 45"), "first line shows the base value")
 	assert_true(text.contains("Income from Crownkeep: +12"), "later lines show signed modifiers")
-	assert_true(text.contains("= Gold next turn (before recruits): 62"), "total line")
+	assert_true(text.contains("= Gold next turn (before recruits): 57"), "total line")
 	var wrapped := TooltipText.wrap_text(RulesCodex.text("phase_order"), 40)
 	for line in wrapped.split("\n"):
 		assert_true(line.length() <= 40, "wrapped line fits: '%s'" % line)

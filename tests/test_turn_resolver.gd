@@ -307,13 +307,13 @@ func test_moving_into_a_province_the_enemy_just_left_is_not_a_battle() -> void:
 # --- recruitment and income -----------------------------------------------------------------------
 
 func test_recruitment_pays_in_order_and_joins_capital_army() -> void:
-	var s := _state([["kingdom-1", "kingdom", "crownkeep", ["spearmen"]]])  # kingdom has 50 gold
+	var s := _state([["kingdom-1", "kingdom", "crownkeep", ["spearmen"]]])  # kingdom has 45 gold
 	var r := _resolve(s, {"kingdom": [RecruitOrder.new("knights"), RecruitOrder.new("spearmen")]})
 	var ns: GameState = r.new_state
 	var rec := _events_of(r.events, "recruited")
 	assert_eq(rec.size(), 2)
-	assert_eq(rec[0].numbers, {"cost": 20, "gold_after": 30, "new_army": false})
-	assert_eq(rec[1].numbers, {"cost": 8, "gold_after": 22, "new_army": false})
+	assert_eq(rec[0].numbers, {"cost": 20, "gold_after": 25, "new_army": false})
+	assert_eq(rec[1].numbers, {"cost": 8, "gold_after": 17, "new_army": false})
 	# Both join the army that was already at the capital, and say so.
 	assert_eq(rec[0].armies, ["kingdom-1"])
 	assert_eq(rec[1].armies, ["kingdom-1"])
@@ -323,8 +323,8 @@ func test_recruitment_pays_in_order_and_joins_capital_army() -> void:
 	assert_eq(ns.armies.size(), 1, "no new army")
 	assert_eq(ns.find_army("kingdom-1").units.size(), 3)
 	assert_eq(ns.find_army("kingdom-1").units[1].type.id, "knights")
-	# Recruitment comes before income: 50 - 28 + 12 (Crownkeep).
-	assert_eq(_gold(ns, "kingdom"), 34)
+	# Recruitment comes before income: 45 - 28 + 12 (Crownkeep).
+	assert_eq(_gold(ns, "kingdom"), 29)
 	var phases: Array = r.events.map(func(e): return e.phase)
 	assert_true(phases.find("recruitment") < phases.find("income"), "recruitment before income")
 
@@ -362,10 +362,10 @@ func test_recruit_text_forms_then_joins_new_army() -> void:
 	assert_true(new_id.begins_with("kingdom-"), new_id)
 	assert_eq(s.find_army(new_id), null, "the army did not exist before the turn")
 	assert_eq(rec[0].numbers.new_army, true)
-	assert_eq(rec[0].text, "Aurel Crown recruited Spearmen at Crownkeep for 8 gold (42 gold left). They form a new army: the Aurel Crown army at Crownkeep (1 unit, no commander).")
+	assert_eq(rec[0].text, "Aurel Crown recruited Spearmen at Crownkeep for 8 gold (37 gold left). They form a new army: the Aurel Crown army at Crownkeep (1 unit, no commander).")
 	assert_eq(rec[1].armies, [new_id], "second recruit joins the army the first one formed")
 	assert_eq(rec[1].numbers.new_army, false)
-	assert_eq(rec[1].text, "Aurel Crown recruited Spearmen at Crownkeep for 8 gold (34 gold left). They joined the Aurel Crown army at Crownkeep (2 units, no commander).")
+	assert_eq(rec[1].text, "Aurel Crown recruited Spearmen at Crownkeep for 8 gold (29 gold left). They joined the Aurel Crown army at Crownkeep (2 units, no commander).")
 	var a := ns.find_army(new_id)
 	assert_eq(a.location, "crownkeep")
 	assert_eq(a.units.size(), 2)
@@ -380,9 +380,9 @@ func test_recruit_not_enough_gold_is_rejected() -> void:
 	assert_eq(rej.size(), 1)
 	assert_eq(rej[0].cause, "not_enough_gold")
 	assert_eq(rej[0].phase, "recruitment")
-	assert_eq(rej[0].reason, "Knights cost 20 gold, but you only have 10 gold left.")
+	assert_eq(rej[0].reason, "Knights cost 20 gold, but you only have 5 gold left.")
 	assert_eq(_events_of(r.events, "recruited").size(), 2)
-	assert_eq(_gold(r.new_state, "kingdom"), 10 + 12)
+	assert_eq(_gold(r.new_state, "kingdom"), 5 + 12)
 
 
 func test_recruit_without_holding_capital_is_rejected() -> void:
@@ -391,7 +391,7 @@ func test_recruit_without_holding_capital_is_rejected() -> void:
 	var rej := _events_of(r.events, "order_rejected")
 	assert_eq(rej[0].cause, "capital_not_held")
 	assert_true(rej[0].reason.contains("Crownkeep"), rej[0].reason)
-	assert_eq(_gold(r.new_state, "kingdom"), 50, "no gold spent")
+	assert_eq(_gold(r.new_state, "kingdom"), 45, "no gold spent")
 
 
 func test_capital_captured_this_turn_cancels_recruits() -> void:
@@ -403,7 +403,7 @@ func test_capital_captured_this_turn_cancels_recruits() -> void:
 	assert_true(cap.numbers.is_capital)
 	assert_true(cap.text.contains("capital"), cap.text)
 	assert_eq(_events_of(r.events, "order_rejected")[0].cause, "capital_not_held")
-	assert_eq(_gold(ns, "kingdom"), 50, "kept gold, and no income from provinces")
+	assert_eq(_gold(ns, "kingdom"), 45, "kept gold, and no income from provinces")
 
 
 func test_income_from_owned_provinces() -> void:
@@ -414,10 +414,10 @@ func test_income_from_owned_provinces() -> void:
 	assert_eq(inc.size(), 2)
 	assert_eq(inc[0].factions, ["beasts"], "factions in sorted id order")
 	assert_eq(inc[0].numbers.income, 12 + 9 + 5)  # Fangridge, Bloodfen, Ironspike
-	assert_eq(inc[1].numbers, {"income": 21, "gold_before": 50, "gold_after": 71, "by_province": {"crownkeep": 12, "rivermarch": 9}})
-	assert_eq(_gold(ns, "kingdom"), 71)
-	assert_eq(_gold(ns, "beasts"), 66)
-	assert_true(inc[1].text.contains("Crownkeep 12") and inc[1].text.contains("50 -> 71"), inc[1].text)
+	assert_eq(inc[1].numbers, {"income": 21, "gold_before": 45, "gold_after": 66, "by_province": {"crownkeep": 12, "rivermarch": 9}})
+	assert_eq(_gold(ns, "kingdom"), 66)
+	assert_eq(_gold(ns, "beasts"), 45 + 26)
+	assert_true(inc[1].text.contains("Crownkeep 12") and inc[1].text.contains("45 -> 66"), inc[1].text)
 
 
 # --- invalid orders -------------------------------------------------------------------------------
@@ -455,10 +455,10 @@ func test_invalid_orders_are_rejected_with_reasons() -> void:
 	assert_eq(book.submit(s, "kingdom", MoveOrder.new("kingdom-1", "westwatch")), "")
 	assert_true(book.submit(s, "kingdom", MoveOrder.new("kingdom-1", "highcrag")).contains("already has a move order"))
 	assert_true(book.submit(s, "kingdom", "attack!").contains("not an order"))
-	# OrderBook tracks gold across recruits: 50 gold buys two knights, not three.
+	# OrderBook tracks gold across recruits: 45 gold buys two knights, not three.
 	assert_eq(book.submit(s, "kingdom", RecruitOrder.new("knights")), "")
 	assert_eq(book.submit(s, "kingdom", RecruitOrder.new("knights")), "")
-	assert_eq(book.submit(s, "kingdom", RecruitOrder.new("knights")), "Knights cost 20 gold, but you only have 10 gold left.")
+	assert_eq(book.submit(s, "kingdom", RecruitOrder.new("knights")), "Knights cost 20 gold, but you only have 5 gold left.")
 	assert_eq(book.orders_for("kingdom").size(), 3)
 
 	# The resolver rejects the same things itself, without engine errors, and ignores them.
@@ -583,15 +583,16 @@ func test_forecasts_match_resolution() -> void:
 	assert_eq(Forecast.recruit_cost(s, "kingdom", "tuskers"), -1)
 	assert_eq(Forecast.recruit_cost(s, "beasts", "warchief"), 35)
 
-	var recruits := [RecruitOrder.new("knights"), RecruitOrder.new("crossbowmen"), RecruitOrder.new("knights"), RecruitOrder.new("knights")]
+	# 45 gold: a Knight Captain (35) and Crossbowmen (10) spend it exactly; the Knights after them can't be paid.
+	var recruits := [RecruitOrder.new("knight_captain"), RecruitOrder.new("crossbowmen"), RecruitOrder.new("knights")]
 	var g := Forecast.gold_after_recruits(s, "kingdom", recruits)
-	assert_eq(g.gold_now, 50)
-	assert_eq(g.spent, 50)
+	assert_eq(g.gold_now, 45)
+	assert_eq(g.spent, 45)
 	assert_eq(g.gold_after, 0)
 	assert_eq(g.income, 12)
 	assert_eq(g.gold_next_turn, 12)
-	assert_true(g.results[2].ok, "exactly enough gold is enough")
-	assert_false(g.results[3].ok)
+	assert_true(g.results[1].ok, "exactly enough gold is enough")
+	assert_false(g.results[2].ok)
 	assert_true(g.text.contains("Not recruited: Knights cost 20 gold, but you only have 0 gold left."), g.text)
 	var r := _resolve(s, {"kingdom": recruits})
 	assert_eq(_events_of(r.events, "recruited").back().numbers.gold_after, g.gold_after, "forecast gold matches resolution")

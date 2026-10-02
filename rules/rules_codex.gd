@@ -25,7 +25,7 @@ const ENTRIES := {
 	},
 	"fort": {
 		"title": "Fort",
-		"text": "Some provinces have a fort, drawn as a small tower on the map. An army holding a province with a fort gets +2 defense in battles there, on top of the terrain. Only the defender gets it, never armies that just arrived, and Fangthrowers' Skirmish does not ignore it. A fort does not change income.",
+		"text": "Some provinces have a fort, drawn as a small tower on the map. An army holding a province with a fort gets +2 defense in battles there, on top of the terrain. Only the defender gets it, never armies that just arrived. A fort does not change income.",
 	},
 	"terrain_plains": {
 		"title": "Plains",
@@ -33,11 +33,11 @@ const ENTRIES := {
 	},
 	"terrain_forest": {
 		"title": "Forest",
-		"text": "Dense woodland. An army holding a forest province gets +2 defense in battles there; armies that just arrived get nothing. Knights' charge is weaker in a forest, and Fangthrowers' Skirmish ignores the forest's defense bonus. Terrain does not change movement or income.",
+		"text": "Dense woodland. An army holding a forest province gets +2 defense in battles there; armies that just arrived get nothing. Knights' charge is weaker in a forest. Terrain does not change movement or income.",
 	},
 	"terrain_hills": {
 		"title": "Hills",
-		"text": "Rugged high ground. An army holding a hills province gets +1 defense and +1 attack in battles there; armies that just arrived get nothing. Fangthrowers' Skirmish ignores the hills' defense bonus, but not their attack bonus. Terrain does not change movement or income.",
+		"text": "Rugged high ground. An army holding a hills province gets +1 defense and +1 attack in battles there; armies that just arrived get nothing. Terrain does not change movement or income.",
 	},
 	"gold": {
 		"title": "Gold",
@@ -115,7 +115,7 @@ const ENTRIES := {
 	"battle_rounds": {
 		"title": "Battles",
 		"text": "A battle is fought in rounds, at most %d." % AutoBattleResolver.ROUND_CAP
-			+ " Each round every unit and commander attacks one enemy at the same time, so a unit that falls still strikes that round. Attacks go at the enemy's front rank: crossbowmen stand behind their other units and commanders behind everyone, so they are only attacked once nothing in front of them is left. The battle ends when one side is wiped out or breaks and flees (a rout). If every side left breaks in the same round, the one with more of its strength left keeps the field. The winner keeps its wounded units; units that fell are gone. The losing side loses every army it had in the battle, even units still standing: a side that routs is destroyed as it flees, and attackers who have not won after %d rounds are destroyed too. There are no retreats yet." % AutoBattleResolver.ROUND_CAP,
+			+ " Each round every unit and commander attacks one enemy at the same time, so a unit that falls still strikes that round. Attacks go at the enemy's front rank. Crossbowmen stand in the second rank, behind their other units, which shield them while at least as many of those stand as crossbowmen (Fangthrowers reach them anyway); commanders stand behind everyone and are only attacked once no unit is left in front of them. The battle ends when one side is wiped out or breaks and flees (a rout). If every side left breaks in the same round, the one with more of its strength left keeps the field. The winner keeps its wounded units; units that fell are gone. The losing side loses every army it had in the battle, even units still standing: a side that routs is destroyed as it flees, and attackers who have not won after %d rounds are destroyed too. There are no retreats yet." % AutoBattleResolver.ROUND_CAP,
 	},
 	"battle_round_cap": {
 		"title": "When a battle runs out of time",
@@ -135,7 +135,7 @@ const ENTRIES := {
 		"text": "Only the defender, the side that was already holding the province, gets the ground: forest +%d defense," % AutoBattleResolver.TERRAIN.forest.defense
 			+ " hills +%d defense" % AutoBattleResolver.TERRAIN.hills.defense + " and +%d attack, plains nothing." % AutoBattleResolver.TERRAIN.hills.attack
 			+ " A fort adds +%d defense on top." % AutoBattleResolver.FORT_DEFENSE
-			+ " Border battles and armies that all arrived at once have no defender, so nobody gets terrain. Knights' charge is weaker in a forest, and Fangthrowers ignore forest and hills cover (not forts).",
+			+ " Border battles and armies that all arrived at once have no defender, so nobody gets terrain. Knights' charge is weaker in a forest.",
 	},
 	"battle_morale": {
 		"title": "Morale and routs",
@@ -169,7 +169,7 @@ const ENTRIES := {
 	},
 	"trait_volley": {
 		"title": "Volley (Crossbowmen)",
-		"text": AutoBattleResolver.TRAIT_TEXT["Volley"] + " Behind a line of Spearmen or Knights, Crossbowmen keep shooting untouched.",
+		"text": AutoBattleResolver.TRAIT_TEXT["Volley"] + " Behind a line of Spearmen or Knights at least as big as theirs, Crossbowmen keep shooting, out of reach of everything but Fangthrowers.",
 	},
 	"trait_charge": {
 		"title": "Charge (Knights)",
@@ -185,7 +185,7 @@ const ENTRIES := {
 	},
 	"trait_skirmish": {
 		"title": "Skirmish (Fangthrowers)",
-		"text": AutoBattleResolver.TRAIT_TEXT["Skirmish"] + " A defender holding a forest or hills gets no cover against their attacks.",
+		"text": AutoBattleResolver.TRAIT_TEXT["Skirmish"] + " Fangthrowers are the Thornmane answer to Crossbowmen shooting from behind a shield wall.",
 	},
 	"trait_fury": {
 		"title": "Fury (War Bear)",

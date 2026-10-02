@@ -6,9 +6,11 @@ extends BattleResolver
 ##
 ## A battle is fought in rounds, at most ROUND_CAP. Each round every standing fighter (unit or
 ## commander) attacks once, all at the same time (damage lands at the end of the round):
-##   target  a random standing enemy from the front rank. Volley units (Crossbowmen) stand behind the
-##           other units and commanders stand behind everyone: they can only be targeted once nothing
-##           in front of them stands.
+##   target  a random standing enemy it can reach (_targets). Units without Volley form the front
+##           rank. Volley units (Crossbowmen) form the second rank: the front rank shields them while
+##           at least as many front-rank units stand as second-rank ones, and attackers with Skirmish
+##           (Fangthrowers) can always reach them. Commanders stand behind everyone and can only be
+##           targeted once no unit stands in front of them.
 ##   hit     chance = BASE_HIT + HIT_PER_POINT per point of attack above the target's defense,
 ##           clamped to MIN_HIT..MAX_HIT percent. One roll of 1-100 per attack.
 ##   damage  ceil(attack / 2) - floor(target defense / 4), at least MIN_DAMAGE.
@@ -33,11 +35,11 @@ extends BattleResolver
 ## see is built from them (TRAIT_TEXT, which is data/factions.gd's trait_desc and the start of each
 ## RulesCodex trait_* entry, and TRAIT_SHORT):
 ##   Shield Wall  +SHIELD_WALL_DEFENSE defense while another friendly fighter stands.
-##   Volley       fights from the second rank (see target above).
+##   Volley       fights from the second rank, shielded while its front rank is at least as big.
 ##   Charge       +CHARGE_DAMAGE damage on hits in round 1 (CHARGE_DAMAGE_FOREST in a forest).
 ##   Inspire      +INSPIRE_MORALE to its side's morale while it stands.
 ##   Berserk      +BERSERK_ATTACK attack while below full hp.
-##   Skirmish     ignores the defender's forest and hills defense bonus (not forts).
+##   Skirmish     can attack the second rank as well as the front rank (see target above).
 ##   Fury         each standing War Bear gives enemy sides -FURY_MORALE morale (at most -FURY_MAX).
 ##   Pack Leader  +PACK_LEADER_ATTACK attack to every friendly unit while it stands.
 ##
@@ -85,11 +87,11 @@ const PACK_LEADER := "Pack Leader"
 ## (data/factions.gd trait_desc, shown in unit tooltips) and the first sentence of its codex entry.
 const TRAIT_TEXT := {
 	SHIELD_WALL: "Gets +%d defense while any other fighter on its side still stands." % SHIELD_WALL_DEFENSE,
-	VOLLEY: "Shoots from the second rank: enemies can attack it only once every unit in front of it (its side's units without Volley) has fallen. Commanders stand further back, so they don't shield it.",
+	VOLLEY: "Shoots from the second rank, behind its side's units without Volley. While at least as many of those stand as units with Volley, they shield it: only enemies with Skirmish can attack it. Commanders stand further back, so they don't count.",
 	CHARGE: "Deals +%d damage with every hit in the first round of a battle" % CHARGE_DAMAGE + " (+%d in a forest)." % CHARGE_DAMAGE_FOREST,
 	INSPIRE: "While it stands, its side gets +%d morale" % INSPIRE_MORALE + ", on top of the +%d any standing commander gives." % COMMANDER_MORALE,
 	BERSERK: "Gets +%d attack while below full hit points." % BERSERK_ATTACK,
-	SKIRMISH: "Ignores the defender's forest and hills defense bonus when it attacks (a fort's bonus still counts).",
+	SKIRMISH: "Can attack the enemy's second rank (its units with Volley) as well as its front rank, even while the front rank shields them.",
 	FURY: "While it stands, every enemy side gets -%d morale" % FURY_MORALE + " (at most -%d in all, however many roar)." % FURY_MAX,
 	PACK_LEADER: "While it stands, every unit on its side gets +%d attack." % PACK_LEADER_ATTACK,
 }
@@ -100,7 +102,7 @@ const TRAIT_SHORT := {
 	CHARGE: "+%d damage in the first round" % CHARGE_DAMAGE,
 	INSPIRE: "+%d morale" % INSPIRE_MORALE,
 	BERSERK: "+%d attack when wounded" % BERSERK_ATTACK,
-	SKIRMISH: "ignores forest and hills cover",
+	SKIRMISH: "reaches the second rank",
 	FURY: "-%d enemy morale" % FURY_MORALE,
 	PACK_LEADER: "+%d attack to every unit" % PACK_LEADER_ATTACK,
 }
@@ -334,7 +336,7 @@ static func _build_sides(sides_in: Array, defender_fid: String, state) -> Array:
 			"routed": false, "destroyed": false, "held_field": false, "out_round": 0, "rout_info": {},
 			"attacks": 0, "hits": 0, "chance_sum": 0, "chance_min": 100, "chance_max": 0,
 			"dealt": 0, "expected": 0.0, "luck_by": {}, "impact": {}, "triggers": {}, "trait_units": {},
-			"volley_expected": 0.0, "cmd_expected": 0.0, "lost": [], "morale_log": []})
+			"volley_expected": 0.0, "cmd_expected": 0.0, "skirmish_reach": 0.0, "skirmish_targets": {}, "lost": [], "morale_log": []})
 		for f in fighters:
 			if not f.trait.is_empty():
 				sides[i].trait_units[f.trait] = f.name
@@ -424,7 +426,7 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 		for f in side.fighters:
 			if not f.alive:
 				continue
-			var pool := _targets(sides, si, standing)
+			var pool := _targets(sides, si, standing, f)
 			if pool.is_empty():
 				continue
 			var t: Dictionary = pool[rng.randi_range(0, pool.size() - 1)]
@@ -446,9 +448,13 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 				var d2: int = dfn.value - dfn.parts[p]
 				var saved: float = hit_chance(atk.value, d2) / 100.0 * (damage(atk.value, d2) + bonus) - expected
 				_add_impact(tside, p, saved)
-			if dfn.skirmish > 0:
-				var d3: int = dfn.value + dfn.skirmish
-				_add_impact(side, SKIRMISH, expected - hit_chance(atk.value, d3) / 100.0 * (damage(atk.value, d3) + bonus))
+			if f.trait == SKIRMISH and t.tier == 1 and _screened(tside, t):
+				# Only Skirmish reached this target past its front rank. Counted in full: every hit on a
+				# shielded second-rank fighter takes away about as much of the damage it would have gone on
+				# to deal from safety (Volley's own factor counts half of what it dealt while shielded).
+				side.skirmish_reach += expected
+				side.skirmish_targets[t.name] = int(side.skirmish_targets.get(t.name, 0)) + 1
+				_add_impact(side, SKIRMISH, expected)
 			if bonus > 0:
 				_add_impact(side, CHARGE, chance / 100.0 * bonus)
 			if f.cmd:
@@ -531,18 +537,28 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 		"line": "Round %d: %s.%s" % [round_no, ", ".join(parts), "" if highlights.is_empty() else " " + " ".join(highlights)]}
 
 
-## Standing enemies `si` can reach: on each enemy side, those in its front-most occupied rank.
-static func _targets(sides: Array, si: int, standing: Array) -> Array:
+## Standing enemies fighter `attacker` of side `si` can reach. On each enemy side: its front rank
+## (units without Volley), plus its second rank (Volley units) when the front rank no longer shields it
+## (fewer front-rank units than second-rank ones stand) or when `attacker` has Skirmish; the second rank
+## alone once the front rank has fallen; its commanders once no unit stands. Fighters keep their side's
+## order, so a seed always picks the same target.
+static func _targets(sides: Array, si: int, standing: Array, attacker: Dictionary = {}) -> Array:
+	var reach: bool = attacker.get("trait", "") == SKIRMISH
 	var pool := []
 	for oi in standing:
 		if oi == si:
 			continue
-		var best := 99
+		var counts := [0, 0, 0]
 		for f in sides[oi].fighters:
 			if f.alive:
-				best = mini(best, f.tier)
+				counts[f.tier] += 1
+		var tiers := [0]
+		if counts[0] == 0:
+			tiers = [1] if counts[1] > 0 else [2]
+		elif counts[1] > 0 and (reach or counts[1] > counts[0]):
+			tiers = [0, 1]
 		for f in sides[oi].fighters:
-			if f.alive and f.tier == best:
+			if f.alive and tiers.has(f.tier):
 				pool.append(f)
 	return pool
 
@@ -573,10 +589,18 @@ static func _line_baseline(side: Dictionary, f: Dictionary, defense: int, terrai
 	return per_unit * f.type.cost / side.line_cost * standing
 
 
+## True when enemies without Skirmish can't reach fighter `f` because the ranks in front of it shield
+## it: a second-rank (Volley) fighter while at least as many front-rank units as second-rank ones stand,
+## a commander while any unit stands.
 static func _screened(side: Dictionary, f: Dictionary) -> bool:
+	var counts := [0, 0, 0]
 	for o in side.fighters:
-		if o.alive and o.tier < f.tier:
-			return true
+		if o.alive:
+			counts[o.tier] += 1
+	if f.tier == 1:
+		return counts[0] > 0 and counts[0] >= counts[1]
+	if f.tier == 2:
+		return counts[0] + counts[1] > 0
 	return false
 
 
@@ -599,16 +623,12 @@ static func _attack(f: Dictionary, side: Dictionary, env: Dictionary) -> Diction
 	return {"value": value, "parts": parts}
 
 
-static func _defense(t: Dictionary, tside: Dictionary, attacker: Dictionary, env: Dictionary) -> Dictionary:
+static func _defense(t: Dictionary, tside: Dictionary, _attacker: Dictionary, env: Dictionary) -> Dictionary:
 	var parts := {}
-	var skirmish := 0
 	if tside.is_defender:
 		var td: int = TERRAIN.get(env.terrain, {}).get("defense", 0)
 		if td > 0:
-			if attacker.trait == SKIRMISH:
-				skirmish = td
-			else:
-				parts["terrain"] = td
+			parts["terrain"] = td
 		if env.fort:
 			parts["fort"] = FORT_DEFENSE
 	if t.trait == SHIELD_WALL:
@@ -620,7 +640,7 @@ static func _defense(t: Dictionary, tside: Dictionary, attacker: Dictionary, env
 	for p in parts:
 		value += parts[p]
 		tside.triggers[p] = tside.triggers.get(p, 0) + 1
-	return {"value": value, "parts": parts, "skirmish": skirmish}
+	return {"value": value, "parts": parts}
 
 
 static func _morale(sides: Array, si: int, standing: Array) -> Dictionary:
@@ -847,8 +867,9 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 					c = "%s %s went berserk once wounded (+%d attack), adding about %d damage" % [who, unit, BERSERK_ATTACK, dmg] if won \
 						else "even though %s %s went berserk" % [who, unit]
 				SKIRMISH:
-					c = "%s %s ignored the %s cover, adding about %d damage" % [who, unit, env.terrain, dmg] if won \
-						else "even though %s %s ignored the %s cover" % [who, unit, env.terrain]
+					var behind := _most_hit(s.skirmish_targets)
+					c = "%s %s skirmished past the front line and hit the %s behind it, for about %d damage" % [who, unit, behind, roundi(s.skirmish_reach)] if won \
+						else "even though %s %s skirmished past the front line to the %s" % [who, unit, behind]
 				PACK_LEADER:
 					c = "%s %s drove the pack (+%d attack to every unit), adding about %d damage" % [who, unit, PACK_LEADER_ATTACK, dmg] if won \
 						else "even though %s %s drove the pack" % [who, unit]
@@ -896,10 +917,16 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 			var impact := float(_hp(s)) if held_by_it else float(INSPIRE_MORALE) * 0.5
 			var c := ""
 			if si == wi:
-				c = ("%s %s kept the line from breaking (+%d morale)" if held_by_it else "%s %s inspired the line (+%d morale)") % [
-					_poss(s.name), cname, COMMANDER_MORALE if key == "commander" else INSPIRE_MORALE]
+				# The commander's own +morale and Inspire's are separate factors, so their clauses differ
+				# even when both kept the line from breaking.
+				if key == "commander":
+					c = "%s %s kept the line from breaking (+%d morale while it stands)" % [_poss(s.name), cname, COMMANDER_MORALE]
+				else:
+					c = ("%s %s inspired the line to hold (+%d morale from Inspire)" if held_by_it else "%s %s inspired the line (+%d morale from Inspire)") % [
+						_poss(s.name), cname, INSPIRE_MORALE]
 			else:
-				c = "even though %s %s steadied the line" % [_poss(s.name), cname]
+				c = "even though %s %s steadied the line" % [_poss(s.name), cname] if key == "commander" \
+					else "even though %s %s inspired the line" % [_poss(s.name), cname]
 			out.append({"id": "morale_" + key, "side": si, "faction": s.faction, "impact": impact, "clause": c,
 				"brief": "%s %s (%s)" % [_poss(s.name), cname, "+%d morale" % (COMMANDER_MORALE + (INSPIRE_MORALE if key == INSPIRE else 0))]})
 
@@ -1089,6 +1116,17 @@ static func _commander_name(side: Dictionary) -> String:
 		if f.cmd:
 			return f.name
 	return "commander"
+
+
+## The name hit most often in `counts` ({name: hits}; the first in name order on a tie), for the clause.
+static func _most_hit(counts: Dictionary) -> String:
+	var names: Array = counts.keys()
+	names.sort()
+	var best := ""
+	for n in names:
+		if best.is_empty() or counts[n] > counts[best]:
+			best = n
+	return best if not best.is_empty() else "second rank"
 
 
 static func _side_with_trait(sides: Array, trait_id: String, not_side: int) -> int:

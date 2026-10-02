@@ -169,6 +169,8 @@ func test_trait_descriptions_match_the_rules() -> void:
 	assert_true(t["Berserk"].contains("+%d attack" % AutoBattleResolver.BERSERK_ATTACK))
 	assert_true(t["Fury"].contains("-%d morale" % AutoBattleResolver.FURY_MORALE) and t["Fury"].contains("-%d in all" % AutoBattleResolver.FURY_MAX))
 	assert_true(t["Pack Leader"].contains("+%d attack" % AutoBattleResolver.PACK_LEADER_ATTACK))
+	assert_true(t["Skirmish"].contains("second rank") and t["Volley"].contains("Skirmish"), "Volley and Skirmish describe each other's rule")
+	assert_false(t["Skirmish"].contains("forest"), "Skirmish no longer touches terrain")
 
 
 ## A fighter record as AutoBattleResolver builds it, for checking one rule at a time.
@@ -206,13 +208,12 @@ func test_each_trait_does_exactly_what_its_text_says() -> void:
 	var pack := _side([tusker, chief])
 	assert_eq(AutoBattleResolver._attack(tusker, pack, plains).parts.get("Pack Leader", 0), AutoBattleResolver.PACK_LEADER_ATTACK)
 	assert_false(AutoBattleResolver._attack(chief, pack, plains).parts.has("Pack Leader"), "commanders don't get it")
-	# Skirmish: a defender's forest bonus doesn't count against Fangthrowers; a fort's still does.
+	# Terrain and forts count against every attacker, Fangthrowers included (Skirmish is about reach).
 	var thrower := _fighter(1, "fangthrowers", CLANS)
 	var held := _side([spear], true)
-	var vs_skirmish := AutoBattleResolver._defense(spear, held, thrower, {"terrain": "forest", "fort": true})
-	assert_false(vs_skirmish.parts.has("terrain"), "forest cover ignored")
-	assert_eq(vs_skirmish.parts.get("fort", 0), AutoBattleResolver.FORT_DEFENSE, "the fort still counts")
-	assert_eq(AutoBattleResolver._defense(spear, held, tusker, forest).parts.get("terrain", 0), AutoBattleResolver.TERRAIN.forest.defense)
+	var vs_thrower := AutoBattleResolver._defense(spear, held, thrower, {"terrain": "forest", "fort": true})
+	assert_eq(vs_thrower.parts.get("terrain", 0), AutoBattleResolver.TERRAIN.forest.defense, "forest cover counts")
+	assert_eq(vs_thrower.parts.get("fort", 0), AutoBattleResolver.FORT_DEFENSE, "the fort counts")
 	# Inspire and the commander: +N morale each while the Knight Captain stands. Fury: -N per War Bear,
 	# at most -MAX.
 	var captain := _fighter(0, "knight_captain", CROWN)
@@ -227,17 +228,21 @@ func test_each_trait_does_exactly_what_its_text_says() -> void:
 	assert_eq(m.parts.get("Fury", 0), -AutoBattleResolver.FURY_MORALE)
 	var three := AutoBattleResolver._morale([crown, {"fighters": bears, "base_morale": 9}], 0, [0, 1])
 	assert_eq(three.parts.get("Fury", 0), -mini(AutoBattleResolver.FURY_MAX, 3 * AutoBattleResolver.FURY_MORALE))
-	# Volley: Crossbowmen can't be targeted while a unit without Volley stands in front of them, and
-	# commanders only once every unit has fallen.
+	# Volley: the front rank shields the Crossbowmen while at least as many front-rank units stand as
+	# Crossbowmen; Skirmish reaches them anyway; commanders are targets only once every unit has fallen.
 	var bow := _fighter(0, "crossbowmen", CROWN)
 	var front := _fighter(0, "spearmen", CROWN)
 	var lord := _fighter(0, "knight_captain", CROWN)
-	var sides := [{"fighters": [front, bow, lord]}, {"fighters": [tusker]}]
-	assert_eq(AutoBattleResolver._targets(sides, 1, [0, 1]), [front], "only the front rank")
+	var sides := [{"fighters": [front, bow, lord]}, {"fighters": [tusker, thrower]}]
+	assert_eq(AutoBattleResolver._targets(sides, 1, [0, 1], tusker), [front], "one Spearman shields one Crossbowman")
+	assert_eq(AutoBattleResolver._targets(sides, 1, [0, 1], thrower), [front, bow], "Skirmish reaches the second rank")
+	var bow2 := _fighter(0, "crossbowmen", CROWN)
+	var thin := [{"fighters": [front, bow, bow2, lord]}, {"fighters": [tusker]}]
+	assert_eq(AutoBattleResolver._targets(thin, 1, [0, 1], tusker), [front, bow, bow2], "one Spearman can't shield two Crossbowmen")
 	front.alive = false
-	assert_eq(AutoBattleResolver._targets(sides, 1, [0, 1]), [bow], "then the crossbowmen")
+	assert_eq(AutoBattleResolver._targets(sides, 1, [0, 1], tusker), [bow], "then the crossbowmen")
 	bow.alive = false
-	assert_eq(AutoBattleResolver._targets(sides, 1, [0, 1]), [lord], "the commander last")
+	assert_eq(AutoBattleResolver._targets(sides, 1, [0, 1], thrower), [lord], "the commander last, even for Skirmish")
 
 
 func test_charge_adds_its_damage_in_the_first_round_only() -> void:
@@ -270,3 +275,29 @@ func test_charge_adds_its_damage_in_the_first_round_only() -> void:
 					assert_eq(dealt, plain + (bonus if first else 0), "%s round %d hit" % [terrain, r.round])
 					checked[0 if first else 1] = true
 		assert_true(checked[0] and checked[1], "%s: saw a charging hit and a later hit" % terrain)
+
+
+func test_skirmish_reaching_the_second_rank_is_named_in_the_why() -> void:
+	# A Fangthrower army against Crossbowmen behind a line of Spearmen: when the Fangthrowers' hits on
+	# the shielded Crossbowmen carry the battle, the why says so.
+	var s := Balance.new_state()
+	var crown := Balance.ratio_army(s, CROWN, [["spearmen", 1], ["crossbowmen", 1]], 300)
+	var clans := Balance.ratio_army(s, CLANS, [["fangthrowers", 1]], 300)
+	var b := Balance.batch(s, crown, clans, Balance.ground("open"), 12, 0, 12)
+	var named := 0
+	for rep in b.reports:
+		for f in rep.factors:
+			if f.id == "Skirmish" and f.faction == CLANS and rep.winner == CLANS:
+				named += 1
+				assert_true(String(f.text).contains("skirmished past the front line and hit the Crossbowmen behind it"), f.text)
+	assert_true(named > 0, "Skirmish is named when it carries the battle")
+
+
+func test_big_armies_have_no_unbeatable_make_up() -> void:
+	# At 300 gold a Crown line of Spearmen and Crossbowmen used to beat every Thornmane army style. Now
+	# Skirmish and the thinner Volley shield give it a counter: an all-Fangthrower army beats it.
+	var s := Balance.new_state()
+	var line := Balance.ratio_army(s, CROWN, [["spearmen", 1], ["crossbowmen", 1]], 300)
+	var throwers := Balance.ratio_army(s, CLANS, [["fangthrowers", 1]], 300)
+	var p := _pct(s, line, throwers, "open", 30)
+	assert_true(p < 50.0, "Spearmen + Crossbowmen 1:1 against all Fangthrowers at 300 gold: Aurel Crown won %.1f%%" % p)

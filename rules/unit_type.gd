@@ -19,8 +19,8 @@ var is_ruler: bool = false
 static func describe(stat: String) -> String:
 	match stat:
 		"hp": return "Hit points. Reduced by damage in battle."
-		"attack": return "Damage dealt per attack round."
-		"defense": return "Damage reduction per hit received."
+		"attack": return "How dangerous its strikes are. The higher its attack is above the target's defense, the more likely each attack is to hit, and a higher attack deals more damage with every hit."
+		"defense": return "How hard it is to hurt. The higher its defense is above the attacker's attack, the less likely an attack is to hit it, and every hit that lands deals less damage."
 		"morale": return "Resistance to routing and morale checks."
 		"cost": return "Gold cost to recruit."
 		"trait": return "Special ability or unique mechanic."

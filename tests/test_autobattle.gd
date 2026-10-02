@@ -141,8 +141,9 @@ func test_every_trait_has_an_effect() -> void:
 	assert_true(_side(pair.report, "kingdom").triggers.get("Shield Wall", 0) > 0, "Shield Wall with a friend")
 	var alone := _battle(["spearmen"], ["tuskers"], "rivermarch", 1)
 	assert_eq(_side(alone.report, "kingdom").triggers.get("Shield Wall", 0), 0, "no Shield Wall alone")
-	# Volley: crossbowmen are untouched while a spearman stands in front of them.
-	var volley := _battle(["spearmen", "spearmen", "spearmen", "crossbowmen"], ["fangthrowers"], "rivermarch", 2)
+	# Volley: crossbowmen are untouched while their front rank is at least as big (Tuskers, which have no
+	# Skirmish, attack them; Fangthrowers could reach them on purpose).
+	var volley := _battle(["spearmen", "spearmen", "spearmen", "crossbowmen"], ["tuskers"], "rivermarch", 2)
 	var first: Dictionary = volley.report.rounds[0]
 	assert_true(first.highlights.filter(func(h): return h.contains("Crossbowmen fell")).is_empty(), "crossbowmen screened in round 1")
 	var vs := _side(volley.report, "kingdom")
@@ -167,11 +168,20 @@ func test_every_trait_has_an_effect() -> void:
 		{"faction": "kingdom", "armies": [_custom_army("y", "kingdom", [_custom_type("wall", 50, 1, 30, 20)])]}], {"kind": "province", "defender": ""}, SeededRNG.new(1))
 	assert_false(String(fresh.result.report.rounds[0].line).contains("berserk"), "an unhurt tusker is not berserk in round 1")
 	assert_true(String(berserk.report.rounds[0].line).contains("berserk"), "a wounded one is, from the first round")
-	# Skirmish: fangthrowers ignore forest cover, so the defender gets no terrain bonus against them.
-	var skirm := _battle(["spearmen"], ["fangthrowers"], "greenglade", 5)
-	assert_eq(_side(skirm.report, "kingdom").triggers.get("terrain", 0), 0, "forest ignored by Skirmish")
-	var tusk := _battle(["spearmen"], ["tuskers"], "greenglade", 5)
-	assert_true(_side(tusk.report, "kingdom").triggers.get("terrain", 0) > 0, "forest counts against others")
+	# Skirmish: fangthrowers reach the crossbowmen behind a full front rank; tuskers never do.
+	var reached := 0
+	for sd in range(1, 12):
+		var skirm := _battle(["spearmen", "spearmen", "spearmen", "crossbowmen"], ["fangthrowers", "fangthrowers", "fangthrowers"], "rivermarch", sd)
+		var k := _side(skirm.report, "kingdom")
+		if k.lost.has("Crossbowmen") and k.lost.size() < 4:
+			reached += 1
+		var tusk := _battle(["spearmen", "spearmen", "spearmen", "crossbowmen"], ["tuskers", "tuskers", "tuskers"], "rivermarch", sd)
+		var t := _side(tusk.report, "kingdom")
+		assert_false(t.lost.has("Crossbowmen") and t.lost.size() < 4, "tuskers can't reach screened crossbowmen")
+	assert_true(reached > 0, "fangthrowers kill screened crossbowmen before the front falls")
+	# Terrain counts against Fangthrowers like anyone else now.
+	var forest := _battle(["spearmen"], ["fangthrowers"], "greenglade", 5)
+	assert_true(_side(forest.report, "kingdom").triggers.get("terrain", 0) > 0, "forest cover counts against fangthrowers")
 	# Fury and Inspire: morale parts.
 	var fury := _battle(["spearmen", "spearmen", "knight_captain"], ["war_bear"], "rivermarch", 6)
 	var log0: Dictionary = _side(fury.report, "kingdom").morale_log[0]

@@ -10,26 +10,27 @@ class_name FactionData
 ## floor(defense / 4)): attack values are odd, and defense values, counting Spearmen's Shield Wall,
 ## are a multiple of 4 or one more (4, 5, 8, 9, 12, 13). Then a +2 forest, fort or Shield Wall bonus
 ## and the hills' +1 change only the hit chance, never a whole damage step, so holding ground is a
-## real edge that doesn't decide the battle. The two starting armies cost about the same.
+## real edge that doesn't decide the battle. The two starting armies cost about the same, and both
+## factions start with the same gold.
 ## Portraits and banners referenced but not loaded here.
 
 const FACTIONS: Array[Dictionary] = [
 	{
 		"id": "kingdom",
 		"name": "Aurel Crown",
-		"gold": 50,
+		"gold": 45,
 		"capital": "crownkeep",
 		"unit_types": [
-			{"id": "spearmen", "name": "Spearmen", "hp": 8, "attack": 9, "defense": 7, "morale": 7, "cost": 8, "trait": "Shield Wall"},
+			{"id": "spearmen", "name": "Spearmen", "hp": 8, "attack": 9, "defense": 7, "morale": 6, "cost": 8, "trait": "Shield Wall"},
 			{"id": "crossbowmen", "name": "Crossbowmen", "hp": 8, "attack": 11, "defense": 9, "morale": 7, "cost": 10, "trait": "Volley"},
-			{"id": "knights", "name": "Knights", "hp": 17, "attack": 11, "defense": 9, "morale": 12, "cost": 20, "trait": "Charge"},
+			{"id": "knights", "name": "Knights", "hp": 18, "attack": 11, "defense": 9, "morale": 12, "cost": 20, "trait": "Charge"},
 		],
-		"commander": {"id": "knight_captain", "name": "Knight Captain", "hp": 27, "attack": 13, "defense": 13, "morale": 12, "cost": 35, "trait": "Inspire"}
+		"commander": {"id": "knight_captain", "name": "Knight Captain", "hp": 26, "attack": 13, "defense": 13, "morale": 12, "cost": 35, "trait": "Inspire"}
 	},
 	{
 		"id": "beasts",
 		"name": "Thornmane Clans",
-		"gold": 40,
+		"gold": 45,
 		"capital": "fangridge",
 		"unit_types": [
 			{"id": "tuskers", "name": "Tuskers", "hp": 14, "attack": 11, "defense": 4, "morale": 7, "cost": 11, "trait": "Berserk"},
