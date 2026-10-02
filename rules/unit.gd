@@ -30,6 +30,6 @@ static func from_dict(data: Dictionary, all_unit_types: Dictionary, errors = nul
 		else:
 			push_error(msg)
 		return null
-	var u := Unit.new(ut, data.get("owner", ""))
-	u.current_hp = data.get("current_hp", ut.hp)
+	var u := Unit.new(ut, str(data.get("owner", "")))
+	u.current_hp = Serial.to_int(data.get("current_hp", ut.hp), ut.hp)
 	return u

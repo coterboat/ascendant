@@ -29,13 +29,14 @@ func get_state() -> int:
 func set_state(s: int) -> void:
 	_rng.state = s
 
+## Seed and state are full 64-bit values, so they are stored as strings (see Serial) to survive JSON.
 func to_dict() -> Dictionary:
 	return {
-		"seed": _rng.seed,
-		"state": _rng.state,
+		"seed": Serial.int64_to_str(_rng.seed),
+		"state": Serial.int64_to_str(_rng.state),
 	}
 
 static func from_dict(data: Dictionary) -> SeededRNG:
-	var rng := SeededRNG.new(data.get("seed", 0))
-	rng.set_state(data.get("state", 0))
+	var rng := SeededRNG.new(Serial.to_int(data.get("seed", 0)))
+	rng.set_state(Serial.to_int(data.get("state", 0)))
 	return rng
