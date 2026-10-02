@@ -38,6 +38,42 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 		"enemy_present": not enemies.is_empty(), "would_capture": would_capture, "text": text}
 
 
+## Odds of `faction_id` attacking `province_id` with the armies `army_ids` (RulesCodex "battle_odds"):
+## the real AutoBattleResolver fought on fixed internal seeds against the enemy armies there now,
+## which defend and get the terrain. Returns {"ok", "text", and when ok: "win_rate", "wins",
+## "samples", "label" ("likely win" | "close" | "likely loss"), "reasons"}.
+static func battle_odds(state: GameState, faction_id: String, army_ids: Array, province_id: String) -> Dictionary:
+	var province := state.find_province(province_id)
+	if province == null:
+		return {"ok": false, "text": "That is not a province on the map."}
+	var by_faction := {faction_id: []}
+	for id in army_ids:
+		var a := state.find_army(id)
+		if a != null and a.owner == faction_id:
+			by_faction[faction_id].append(a)
+	if by_faction[faction_id].is_empty():
+		return {"ok": false, "text": "None of those armies can attack."}
+	var defenders := []
+	for a in state.armies:
+		if a.location == province_id and a.owner != faction_id:
+			if not by_faction.has(a.owner):
+				by_faction[a.owner] = []
+				defenders.append(a.owner)
+			by_faction[a.owner].append(a)
+	if defenders.is_empty():
+		return {"ok": false, "text": "No enemy army is in %s, so there is no battle to forecast." % province.name}
+	var fids: Array = by_faction.keys()
+	fids.sort()
+	var sides := []
+	for fid in fids:
+		sides.append({"faction": fid, "armies": by_faction[fid]})
+	var ctx := {"kind": "province", "defender": defenders[0] if defenders.size() == 1 else "", "province": province,
+		"province_ids": [province_id], "state": state}
+	var odds := AutoBattleResolver.estimate(sides, ctx, faction_id)
+	odds["ok"] = true
+	return odds
+
+
 ## Gold cost of one unit of `unit_type_id` for `faction_id`, or -1 if they can't recruit it.
 static func recruit_cost(state: GameState, faction_id: String, unit_type_id: String) -> int:
 	return TurnResolver.recruit_cost(state, faction_id, unit_type_id)
