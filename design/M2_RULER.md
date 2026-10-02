@@ -73,7 +73,7 @@ Full table (builders test against this):
 | Fang defense | 7 | 7 | 8 | 8 | 9 | 9 | 10 | 10 | 11 | 11 | 12 |
 | ability rank (all) | 1 | 1 | 1 | 2 | 2 | 2 | 3 | 3 | 3 | 4 | 4 |
 
-For scale: the Knight Captain is 25 hp, 14 attack, 12 defense. The Warchief is 30 hp, 16 attack, 10 defense. A 10-kept ruler is worth roughly two commanders in battle. A 0-kept ruler is about a Knight.
+For scale: the Knight Captain is 26 hp, 13 attack, 13 defense. The Warchief is 31 hp, 15 attack, 9 defense. A 10-kept ruler is worth roughly one and a half to two commanders in battle. A 0-kept ruler is about a Knight (18 hp, 11 attack, 9 defense).
 
 Every ruler gives its side **+2 morale while it stands** (`RULER_MORALE = 2`). This stacks with a commander's +2. Rulers have no trait. They are not "units" for any mandate or trait that names units, so Royal Armories, Veteran Levies and Pack Leader skip them.
 
@@ -85,7 +85,7 @@ Each ruler has one ability. It works in **the province the ruler is in** and sca
 | **Royal Court** | King Corvane | +2 gold | +3 gold | +4 gold | +5 gold | income phase: the province the King is in earns this much more, if you own it |
 | **Mending Light** | the Ever-Regent | heal 3 | heal 6 | heal 9 | heal 12 | rulers phase: each of your wounded units and commanders in the Regent's province heals this many hp, up to its maximum (not rulers; they heal by §1.7) |
 | **Dread** | the Great Thornmane | −1 morale | −1 morale | −1 morale | −1 morale | every enemy side in a province battle the avatar fights in. Not border battles. Stacks with Fury |
-| **Warband Muster** | the Ninth Fang | 1 unit | 2 units | 3 units | 4 units | recruitment phase: you may recruit this many regular units per turn "with the Fang". They appear where the Fang is after movement and battles, if you own that province then. Same prices. Commanders still come only from the capital |
+| **Warband Muster** | the Ninth Fang | 1 unit | 2 units | 3 units | 4 units | recruitment phase: you may recruit this many regular units per turn "with the Fang". They gather where the Fang stands at the start of the turn and join your armies there at the end of the turn, wherever the Fang has gone, if you still own that province then (so they never reinforce, in the same turn, the army the Fang moves up with). Same prices. Commanders still come only from the capital |
 
 ### 1.5 the ruler on the map
 - **The ruler travels alone, as its own army.** That army holds only the ruler: no units, no commander. It moves one province per turn like any army (or two, by King's Roads, §2.3) and captures provinces like any army.
@@ -188,7 +188,7 @@ Each effect lives in the rules code (§9) and nowhere else. Tooltips, forecasts 
 
 ### 2.4 mid-game sacrifice
 - **What:** a new order, **Sacrifice**, which names one mandate. The ruler gives up kept power and the faction gains the mandate for good.
-- **Cost:** the mandate's price **+1**. For example, Royal Armories mid-game costs 5. The premium keeps the pre-game choice meaningful: "keep everything, then convert at turn 7" is legal, but it loses value.
+- **Cost:** the mandate's price **+1**. For example, Royal Armories mid-game costs 4. The premium keeps the pre-game choice meaningful: "keep everything, then convert at turn 7" is legal, but it loses value.
 - **Legal when:**
   - your ruler is alive
   - you don't already own the mandate
@@ -205,7 +205,7 @@ Each effect lives in the rules code (§9) and nowhere else. Tooltips, forecasts 
   - income next turn
   - the battle odds of every attack you have queued this turn, fought again with the change
 - Nothing changes until the player presses Confirm. The order can be cancelled like any other until End Turn.
-- **Turn report:** "King Corvane I gave up 5 power for Royal Armories (4, +1 for a mid-game sacrifice). Kept power 10 → 5. Every regular unit of the Aurel Crown now has +1 attack and +1 defense."
+- **Turn report:** "King Corvane I gave up 4 power for Royal Armories (3, +1 for a mid-game sacrifice). Kept power 10 → 6. Every regular unit of the Aurel Crown now has +1 attack."
 
 ---
 
@@ -298,7 +298,7 @@ For a ruler that dies with 10 kept power: the heir has 5, the Regent has 10 agai
   - "King Corvane I fell in the battle of Thornvale. The Aurel line goes on: Corvane II will be crowned at Crownkeep at the end of turn 7 with 3 kept power (half of 7, rounded down). Until then the Aurel Crown has no ruler: no Royal Court, no ruler in battle, no sacrifices. Your mandates stay."
   - "The Ever-Regent was lost with his army when the Aurel Crown routed at Stonegate. Bound to the sunstone, he re-forms at Crownkeep at the end of turn 9 with all 6 of his kept power."
   - "The Great Thornmane's avatar was destroyed at Wildmoor. The god takes a new body at Fangridge at the end of turn 6, weaker for good: 7 kept power instead of 10."
-- **Turn report on arrival:** "Corvane II was crowned at Crownkeep with 3 kept power: 25 hp, attack 10, defense 9, Royal Court +3 gold."
+- **Turn report on arrival:** "Corvane II was crowned at Crownkeep with 3 kept power: 24 hp, attack 10, defense 9, Royal Court +3 gold."
 - **While waiting:** the capital shows a countdown badge ("heir in 2 turns"), and the ruler panel shows the same.
 
 ---
@@ -360,12 +360,12 @@ Behaviours `orders()` must have in M2:
 
 ### 7.1 tooltips and breakdowns
 Every number explains itself on hover, through `Breakdown` (lines sum to the total, as in M1):
-- **Kept power:** "Kept power 4 = pool 10 − Royal Armories 4 − King's Roads 2", plus sacrifice lines and succession lines ("Succession: half of 9, rounded down −5").
+- **Kept power:** "Kept power 5 = pool 10 − Royal Armories 3 − King's Roads 2", plus sacrifice lines and succession lines ("Succession: half of 9, rounded down −5").
 - **Ruler stats:** "Attack 14 = base 9 + 5 from 10 kept power (½ per point, rounded down)".
 - **Ability rank:** "Ability rank 2 = 1 + 4 kept power ÷ 3 (rounded down)", followed by what rank 2 does.
-- **Unit stats with mandates:** "Defense 6 = Spearmen 5 + Royal Armories 1" and "Max hp 12 = Spearmen 10 + Veteran Levies 2".
+- **Unit stats with mandates:** "Attack 10 = Spearmen 9 + Royal Armories 1" and "Max hp 10 = Spearmen 8 + Veteran Levies 2".
 - **Recruit price:** "Knights 16 gold = 20 − Muster Grounds 4".
-- **Province income:** "Income of Crownkeep 15 = base 12 + Heavy Tithes 1 + Royal Court 2 (King Corvane I is here, ability rank 1)". This fills the "Modifiers" line M1 left at 0.
+- **Province income:** "Income of Crownkeep 16 = base 12 + Heavy Tithes 2 + Royal Court 2 (King Corvane I is here, ability rank 1)". This fills the "Modifiers" line M1 left at 0.
 - **Every mandate name**, wherever it appears (build screen, ruler panel, reports): a tooltip with the exact effect, what it changes for you right now, and a codex link.
 
 ### 7.2 codex entries (`RulesCodex`), all new terms
@@ -391,7 +391,7 @@ Every number explains itself on hover, through `Breakdown` (lines sum to the tot
 - **Sacrifice:** before → after preview and Confirm (§2.4).
 - **Orders:**
   - the move forecast covers road moves
-  - the recruit forecast covers Muster Grounds prices and Warband Muster ("joins the Ninth Fang wherever it ends this turn, if you own that province then")
+  - the recruit forecast covers Muster Grounds prices and Warband Muster ("gathers at Ebonpeak, where the Ninth Fang starts this turn, and joins your armies there at the end of the turn, if you still own Ebonpeak then")
   - the gold forecast includes Tithes and Royal Court
   - the map marks the province Sworn Vassals will take
   - battle odds include rulers, mandates and Dread automatically, because they fight the real resolver
@@ -515,6 +515,29 @@ Battles in this engine are steep. +8 gold on one side of an even 137-gold battle
   - In a diagnostic with Warband Muster at 0, Blood of the Fang fell to 17% against Warrior King and 22% against Regent's Court. Removing its Iron Discipline or cutting the Fang's body changed nothing.
   - The knob allows ±1 per rank, so rank 2 can't go below 1 recruit. The way it works needs a rule change.
   - Beyond that, a ruler that keeps 10 still beats the matching spend build in most games.
+- **Warband Muster rule (follow-up to #36, director's decision, provisional for Alex):** each option was run through the full matrix. Option 4 won: recruits gather where the Fang starts the turn.
+
+  | option | Blood of the Fang, decisive wins | vs Warrior King / Iron Crown / Regent's Court | Fang keeping 10 | B over | Crown / Clans |
+  |---|---|---|---|---|---|
+  | as in #52 | 100% | 100 / 100 / 100 | 100% | 8 of 9 | 45 / 55 |
+  | 1. +50% price | 100% | 100 / 100 / 100 | 100% | 8 of 9 | 53 / 47 |
+  | 2. arrive a turn later, if the Fang is still there | 53% | 19 / 100 / 33 | 65% | 8 of 9 | 62 / 38 |
+  | 3. not next to an enemy army | 100% | 100 / 100 / 100 | 100% | 8 of 9 | 45 / 55 |
+  | 4. gather where the Fang starts the turn | 79% | 82 / 100 / 51 | 84% | 7 of 9 | 53 / 47 |
+
+  - "Fang keeping 10" is its record in A2's games against the Crown presets.
+  - Option 1 at 53 / 47: its Clan Moot fell to 0%, because the AI kept paying +50% for recruits "with the Fang" at its own capital.
+  - Option 2 was run with the AI not doing that. It changes the most, but it overshoots against Warrior King and Regent's Court and needs new pending state. It also penalises the AI, which can't plan a turn ahead.
+  - Option 4 adds no state and is forecast from the start of the turn.
+  - Blood of the Fang still beats Iron Crown 100% at battle level (Iron Discipline and Drilled Ranks); that is a separate problem.
+  - Bands after the rule (1,206 games):
+    - A: Crown 86 / 14, Clans 71 / 29 (miss). A, direct: 80 / 20.
+    - A2: Regent 68 / 32; Fang keeping 10 95 / 5 against Clan Moot.
+    - B: 7 of 9 over (miss). C: 53 / 47.
+    - D: 17% (miss); every successor due arrived.
+    - E: median 24, 77 games at the cap (miss).
+    - F: 49% (pass). H: pass.
+  - An AI change that lets a ruler-led main army attack at even odds made D worse (12%) and the keep rulers dominant (all 9 pairings over 65%), so it was dropped.
 - **Why D and E miss:** these AI-vs-AI games are close to deterministic (several seeds play the same game). Both sides expand without fighting, then one or two battles decide the game, and the AI's ruler joins only likely wins. So rulers rarely die in mid-game, and games run past turn 16. No ruler or mandate number changes that.
 
 ---
