@@ -5,7 +5,7 @@ Every milestone ends in something Alex can play. Alex approves each milestone's 
 ---
 
 ## milestone 1: playable skeleton
-Status: **Scope APPROVED by Alex, 2026-09-30. Built; awaiting Alex's playtest.**
+Status: **Scope APPROVED by Alex, 2026-09-30. Built; awaiting Alex's playtest.** Code tickets #1-#8 closed (2026-10-02), balanced by #41, plus Computer seats (#42). The art batch (#10, PR #14) is waiting for Alex. Open design calls are in #25.
 
 ### goal
 Two players on one computer take simultaneous turns on a small province map, move and recruit armies, and fight battles that resolve together. Every battle and turn outcome is explained in plain language. There's no magic, no rulers or mandates, and no animation yet. This milestone proves the turn engine and the readability promise.
@@ -45,7 +45,7 @@ Budget: 1,500 Ludo credits for the milestone. M1 art is small, so expect well un
 ---
 
 ## milestone 2: the ruler
-Status: **PROPOSED by the director (Claude session, 2026-10-01). Not yet approved by Alex; built provisionally so there is something to play. Alex can change anything.**
+Status: **PROPOSED by the director (Claude session, 2026-10-01). Not yet approved by Alex; built provisionally so there is something to play. Alex can change anything.** All code tickets are built and merged (#29-#36, plus #54 for Warband Muster); ruler portraits (#37) are waiting for Alex. To play it, tick **Rulers (M2 preview)** on the new game screen; it's off by default, so M1 plays unchanged. Bands that still miss and the provisional calls are in #25 and in §8.4 of `M2_RULER.md`.
 
 Full spec, with every number, rule and acceptance criterion: `design/M2_RULER.md`. Its §12 lists the director's calls to review first.
 
