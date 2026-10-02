@@ -20,7 +20,8 @@ extends BattleResolver
 ## Fury). At the end of each round a side breaks (routs) once it has lost at least
 ## BREAK_BASE_PCT + morale x MORALE_PCT_PER_POINT percent of its starting hp (clamped to
 ## MIN_BREAK_PCT..MAX_BREAK_PCT).
-## A routed side leaves the battle; the TurnResolver then removes its armies (no retreats in M1).
+## A routed side leaves the battle and loses. The TurnResolver then destroys every army on a losing
+## side, routed or not (including attackers still standing at the round cap): no retreats in M1.
 ## The battle ends when only one side is left in the field. If every remaining side drops out in the
 ## same round, the one with the largest share of its starting hp left keeps the field (then the
 ## defender, then a seeded roll). Round cap: after ROUND_CAP rounds the defender holds if it is still
@@ -300,7 +301,7 @@ static func _build_sides(sides_in: Array, defender_fid: String, state) -> Array:
 			"hp_start": hp, "count_start": fighters.size(), "strength": strength, "power": hp * power_attack,
 			"routed": false, "destroyed": false, "held_field": false, "out_round": 0, "rout_info": {},
 			"attacks": 0, "hits": 0, "chance_sum": 0, "chance_min": 100, "chance_max": 0,
-			"dealt": 0, "expected": 0.0, "impact": {}, "triggers": {}, "trait_units": {},
+			"dealt": 0, "expected": 0.0, "luck_by": {}, "impact": {}, "triggers": {}, "trait_units": {},
 			"volley_expected": 0.0, "lost": [], "morale_log": []})
 		for f in fighters:
 			if not f.trait.is_empty():
@@ -384,6 +385,10 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			side.chance_min = mini(side.chance_min, chance)
 			side.chance_max = maxi(side.chance_max, chance)
 			side.expected += expected
+			# Luck of this attack in damage (what it did minus what an average roll would), by kind of
+			# attack, so the report can say where a side's luck came from.
+			var luck_key: String = f.name + ("|charge" if bonus > 0 else "")
+			side.luck_by[luck_key] = side.luck_by.get(luck_key, 0.0) + (dmg if hit else 0) - expected
 			attacks[si] += 1
 			if hit:
 				side.hits += 1
@@ -656,7 +661,7 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 		chosen_out.append({"id": c.id, "faction": c.faction, "impact": snappedf(c.impact, 0.1), "text": c.clause, "favors_winner": c.faction == winner.faction})
 	var all_out := []
 	for f in factors:
-		all_out.append({"id": f.id, "faction": f.faction, "impact": snappedf(f.impact, 0.1), "brief": f.brief})
+		all_out.append({"id": f.id, "faction": f.faction, "impact": snappedf(f.impact, 0.1), "brief": f.brief, "text": f.clause})
 	return {"kind": env.kind, "provinces": ctx.get("province_ids", []).duplicate(), "place": where,
 		"terrain": env.terrain, "fort": env.fort, "defender": ctx.get("defender", ""), "winner": winner.faction,
 		"winner_name": winner.name, "end": end, "rounds_fought": n, "round_cap": ROUND_CAP,
@@ -792,7 +797,9 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 				else "even though %s brought the bigger force (%s)" % [st.name, force],
 			"brief": "%s has the bigger force (%d hp against %d)" % [st.name, st.hp_start, o.hp_start]})
 
-	# Luck: damage dealt compared with what the hit chances predicted.
+	# Luck: damage dealt compared with what average rolls would have dealt (hit chance x damage of
+	# every attack). The clause states exactly that, in damage, and gives hit rates only as separate
+	# facts: a side whose big hits landed can be luckier in damage while hitting less often.
 	var luck := []
 	for s in sides:
 		luck.append(s.dealt - s.expected)
@@ -807,24 +814,18 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 	var adv: float = luck[wi] - others
 	var lucky: int = wi if adv >= 0 else luckiest_other
 	if lucky >= 0:
-		var ls: Dictionary = sides[lucky]
-		var rate := 0 if ls.attacks == 0 else roundi(100.0 * ls.hits / ls.attacks)
-		var exp_rate := 0 if ls.attacks == 0 else roundi(float(ls.chance_sum) / ls.attacks)
-		var clause := "even though luck favored %s (hits landed %d%%, about %d%% expected)" % [ls.name, rate, exp_rate]
+		# The side it is compared with: the unluckiest other side when the winner had the better
+		# rolls, otherwise the winner. Either way luck[lucky] >= luck[other].
+		var other := wi
 		if lucky == wi:
-			clause = "luck was with %s: its hits landed %d%% of the time against about %d%% expected" % [ls.name, rate, exp_rate]
-			if luckiest_other >= 0:
-				# Name both sides' rates so the claim always matches the numbers shown.
-				var unlucky := luckiest_other
-				for si in sides.size():
-					if si != wi and luck[si] < luck[unlucky]:
-						unlucky = si
-				var us: Dictionary = sides[unlucky]
-				var urate := 0 if us.attacks == 0 else roundi(100.0 * us.hits / us.attacks)
-				var uexp := 0 if us.attacks == 0 else roundi(float(us.chance_sum) / us.attacks)
-				clause = "the dice favored %s: it hit %d%% of the time (about %d%% expected), %s %d%% (about %d%% expected)" % [
-					ls.name, rate, exp_rate, us.name, urate, uexp]
-		out.append({"id": "luck", "side": lucky, "faction": ls.faction, "impact": absf(adv), "clause": clause, "brief": "luck"})
+			other = luckiest_other
+			for si in sides.size():
+				if si != wi and luck[si] < luck[other]:
+					other = si
+		var clause := _luck_clause(sides, lucky, other, luck)
+		if lucky != wi:
+			clause = "even though " + clause
+		out.append({"id": "luck", "side": lucky, "faction": sides[lucky].faction, "impact": absf(adv), "clause": clause, "brief": "luck"})
 
 	if end == "round_cap":
 		out.append({"id": "round_cap", "side": wi, "faction": winner.faction, "impact": 1000000.0,
@@ -832,6 +833,62 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 				else "after %d undecided rounds %s had more of its strength left" % [ROUND_CAP, winner.name],
 			"brief": "%s only has to hold for %d rounds" % [winner.name, ROUND_CAP]})
 	return out
+
+
+## The luck clause, in the terms luck is measured in: how much more or less damage two sides' hits did
+## than average rolls would have, then their hit rates as separate facts. `lucky` had the better rolls
+## (luck[lucky] >= luck[other]), so the side named first is the one the rolls helped or hurt most:
+##   "Aurel Crown's hits did about 9 more damage than average rolls would (mostly its Knights' charge),
+##    and Thornmane Clans' about 4 less; hit rates: Aurel Crown 67% (about 77% expected), ..."
+static func _luck_clause(sides: Array, lucky: int, other: int, luck: Array) -> String:
+	var ls: Dictionary = sides[lucky]
+	var os: Dictionary = sides[other]
+	var a := roundi(luck[lucky])
+	var b := roundi(luck[other])
+	var text := "both sides' hits did about as much damage as average rolls would"
+	if a > 0:
+		text = "%s hits did about %d more damage than average rolls would%s, and %s" % [
+			_poss(ls.name), a, _luck_source(ls, true), _luck_brief(os, b)]
+	elif b < 0:
+		text = "%s hits did about %d less damage than average rolls would%s, and %s" % [
+			_poss(os.name), -b, _luck_source(os, false), _luck_brief(ls, a)]
+	var rates := []
+	for s in [ls, os]:
+		var rate := 0 if s.attacks == 0 else roundi(100.0 * s.hits / s.attacks)
+		var exp_rate := 0 if s.attacks == 0 else roundi(float(s.chance_sum) / s.attacks)
+		rates.append("%s %d%% (about %d%% expected)" % [s.name, rate, exp_rate])
+	return "%s; hit rates: %s" % [text, ", ".join(rates)]
+
+
+## The second side's part of the luck clause: "Thornmane Clans' about 4 less", "... about as much".
+static func _luck_brief(side: Dictionary, d: int) -> String:
+	if d > 0:
+		return "%s about %d more" % [_poss(side.name), d]
+	if d < 0:
+		return "%s about %d less" % [_poss(side.name), -d]
+	return "%s about as much" % _poss(side.name)
+
+
+## " (mostly its Knights' charge)" when one kind of attack made up at least half of a side's luck in
+## that direction (landed hits for good luck, misses for bad luck), otherwise "".
+static func _luck_source(side: Dictionary, good: bool) -> String:
+	var total: float = absf(side.dealt - side.expected)
+	var best_key := ""
+	var best := 0.0
+	var keys: Array = side.luck_by.keys()
+	keys.sort()
+	for k in keys:
+		var v: float = side.luck_by[k] if good else -side.luck_by[k]
+		if v > best + 0.000001:
+			best = v
+			best_key = k
+	if best_key.is_empty() or best < total * 0.5:
+		return ""
+	var parts := best_key.split("|")
+	var charge := parts.size() > 1
+	if good:
+		return " (mostly its %s %s)" % [_poss(parts[0]), "charge" if charge else "hits"]
+	return " (mostly its %s %s)" % [_poss(parts[0]), "missed charges" if charge else "misses"]
 
 
 ## Picks the 1-3 factors that best explain the result: the biggest ones that helped the winner, plus

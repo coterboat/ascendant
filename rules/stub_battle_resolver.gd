@@ -1,6 +1,8 @@
 class_name StubBattleResolver
 extends BattleResolver
-## Deterministic placeholder battle rules until #4 lands (text in RulesCodex "battle_stub"):
+## Test-only stand-in battle rules: simple and predictable, so resolver tests can pin exact outcomes.
+## The game never uses it (TurnResolver defaults to AutoBattleResolver) and players never see its
+## rules, so it has no RulesCodex entry. Tests pass `StubBattleResolver.new()` explicitly. Rules:
 ##   - Each side's strength = sum of attack + defense of every unit and commander in its armies.
 ##   - Highest strength wins. The winner takes no losses; every losing army is destroyed.
 ##   - Tie: the defender (a faction that was already in the province and held) wins.

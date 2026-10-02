@@ -65,8 +65,8 @@ static func army_units(state: GameState, army_id: String) -> Dictionary:
 	return _make("Units in the %s" % TurnResolver.army_label(state, army), desc, lines, "Units", army.units.size())
 
 
-## An army's battle strength under the current battle rules: attack + defense of every unit and
-## its commander. The total is StubBattleResolver.army_strength, the number battles actually use.
+## An army's strength: attack + defense of every unit and its commander (StubBattleResolver.army_strength).
+## A size guide only; real battles (AutoBattleResolver) don't use it, and RulesCodex "army_strength" says so.
 static func army_strength(state: GameState, army_id: String) -> Dictionary:
 	var army := state.find_army(army_id)
 	if army == null:
@@ -77,7 +77,7 @@ static func army_strength(state: GameState, army_id: String) -> Dictionary:
 	if army.commander:
 		var c := army.commander.type
 		lines.append(_line("%s (commander)" % c.name, c.attack + c.defense, "attack %d + defense %d" % [c.attack, c.defense]))
-	return _make("Strength of the %s" % TurnResolver.army_label(state, army), RulesCodex.text("battle_stub"),
+	return _make("Strength of the %s" % TurnResolver.army_label(state, army), RulesCodex.text("army_strength"),
 		lines, "Strength", StubBattleResolver.army_strength(army))
 
 
