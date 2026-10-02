@@ -627,7 +627,17 @@ func _refresh() -> void:
 		others += 1
 		var l := _label("Other_%s" % mid, "", SMALL_SIZE, UiPalette.TEXT_PRIMARY, true)
 		other_box.add_child(l)
-		_rule(l, "%s: %s" % [md.name, md.effect], _mandate_tooltip(mid, []), String(md.codex))
+		var vassal: Dictionary = Forecast.vassal(state, faction_id) if mid == RulerRules.SWORN_VASSALS and state else {}
+		if not String(vassal.get("province", "")).is_empty():
+			# §4: the province Sworn Vassals would take on turn 1, from the capture phase's own pick.
+			var pid := String(vassal.province)
+			var p := state.find_province(pid)
+			_number(l, "%s: %s (%d gold) would join you at the end of turn 1." % [md.name, p.name, p.income],
+				Breakdown.province_income(state, pid), ["province_income", pid], "",
+				TooltipText.wrap_text("%s %s" % [md.effect, String(vassal.text)]))
+			CodexLink.attach(l, String(md.codex), open_codex)
+		else:
+			_rule(l, "%s: %s" % [md.name, md.effect], _mandate_tooltip(mid, []), String(md.codex))
 	if others == 0:
 		var none := _label("NoOtherEffects", "", SMALL_SIZE, UiPalette.TEXT_SECONDARY, true)
 		none.text = "None: no mandate of this build works outside the numbers above." if not mandates.is_empty() \

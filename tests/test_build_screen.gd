@@ -366,13 +366,30 @@ func test_the_numbers_are_the_specs() -> void:
 	assert_eq(knights[1].text, "was 20")
 	assert_eq(knights[0].get_theme_color("font_color"), UiPalette.POSITIVE, "a lower price is good")
 	assert_eq(knights[2].color, UiPalette.POSITIVE)
-	# Gold and income from the starting state.
-	assert_eq(b._economy.gold.text, "Gold: 50 to start, 62 on turn 2 before recruits")
-	assert_eq(b._economy.income.text, "Income on turn 1: 12 from Crownkeep")
+	# Gold and income from the starting state: the King starts at Crownkeep, so with 6 kept power (ability
+	# rank 3) Royal Court adds 4 gold there on turn 1 (§1.4), and the preview shows it.
+	assert_eq(b._economy.income.text, "Income on turn 1: 16 from Crownkeep")
+	var income: Dictionary = b._economy.income.get_meta(BuildScreen.BREAKDOWN)
+	assert_eq(income.lines.map(func(l): return [l.label, l.value]), [["Base income of Crownkeep", 12], ["Royal Court", 4]])
+	assert_eq(b._economy.gold.text, "Gold: 50 to start, 66 on turn 2 before recruits")
+	assert_true(b.set_mandate("heavy_tithes", true))
+	assert_eq(b._economy.income.text, "Income on turn 1: 15 from Crownkeep", "Heavy Tithes +1, but with 2 kept power Royal Court drops to rank 1 (+2)")
+	assert_true(b.set_mandate("heavy_tithes", false))
 	# Other effects: one line per mandate that is not a number.
+	# Sworn Vassals names the province it would take on turn 1 (Forecast.vassal, the capture phase's pick).
 	assert_true(b.set_mandate("sworn_vassals", true))
 	var others := b.other_box.get_children().filter(func(n): return not n.is_queued_for_deletion())
-	assert_eq(others.map(func(l): return l.text), ["Sworn Vassals: %s" % RulerRules.mandate_data("sworn_vassals").effect])
+	assert_eq(others.map(func(l): return l.text), ["Sworn Vassals: Rivermarch (9 gold) would join you at the end of turn 1."])
+	var start := GameState.with_rulers(SEED, {"kingdom": b.current_build()}, [])
+	assert_eq(Forecast.vassal(start, "kingdom").province, "rivermarch")
+	assert_eq(others[0].get_meta(BuildScreen.BREAKDOWN), Breakdown.province_income(start, "rivermarch"))
+	assert_eq(String(others[0].get_meta(CodexLink.META)), "mandate_sworn_vassals")
+	assert_true(others[0].tooltip_text.replace("\n", " ").contains(String(Forecast.vassal(start, "kingdom").text)), "the forecast's own words")
+	# A mandate that is no number gets its rule as the line.
+	assert_true(b.set_mandate("sworn_vassals", false))
+	assert_true(b.set_mandate("kings_roads", true))
+	others = b.other_box.get_children()
+	assert_eq(others.map(func(l): return l.text), ["King's Roads: %s" % RulerRules.mandate_data("kings_roads").effect])
 	b.free()
 
 
