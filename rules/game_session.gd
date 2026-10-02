@@ -31,6 +31,14 @@ extends RefCounted
 ## Turn report: the events TurnResolver.resolve returned for the last resolved turn (each has "type",
 ## "phase", "provinces" to focus the map, "text", "codex"), plus, on the final turn, one "game_over"
 ## event in phase "victory" carrying the victory summary text.
+##
+## Computer seats (#35, design/M2_RULER.md 6.2): the optional `computer_seats` ({faction id: "easy" or
+## "normal"}) marks seats the computer plays; every other seat is human. The session itself never runs
+## the AI: AISeat (ai/ai_seat.gd) plays a computer seat's ORDERS phase through the same queue_order /
+## end_turn calls a person uses, so the same checks apply and its orders land in history() like anyone's.
+## Handoffs happen only where a cover is needed: before a human seat, and only when the game has more
+## than one human seat. Otherwise end_turn() (and the resolution) go straight to the next seat's ORDERS
+## phase. With no computer seats every seat is human, so a hotseat game flows exactly as before.
 
 enum Phase { ORDERS, HANDOFF, GAME_OVER, INVALID }
 
@@ -39,7 +47,9 @@ const PHASE_NAMES := ["orders", "handoff", "game_over", "invalid"]
 const REPORT_PHASES := ["orders", "movement", "battles", "capture", "recruitment", "income", "victory"]
 const BATTLE_TYPES := ["battle", "border_battle"]
 ## RulesCodex entries this flow links to (handoff screen, victory screen, final report).
-const CODEX_KEYS := ["hotseat", "handoff", "victory", "simultaneous_capture"]
+const CODEX_KEYS := ["hotseat", "handoff", "victory", "simultaneous_capture", "computer_opponent"]
+## The levels a computer seat can play at: AIPlayer.DIFFICULTIES (tests/test_ai_seat.gd checks they match).
+const COMPUTER_LEVELS := ["easy", "normal"]
 
 var _state: GameState
 var _start_dict := {}
@@ -55,9 +65,11 @@ var _report_turn := 0
 var _battles := 0
 var _victory := {}
 var _setup_errors: Array = []
+var _computer := {}  # faction id -> level, for the seats the computer plays
 
 
-func _init(state: GameState = null, players: Array = [], game_seed: int = 0, battle_resolver: BattleResolver = null) -> void:
+func _init(state: GameState = null, players: Array = [], game_seed: int = 0, battle_resolver: BattleResolver = null,
+		computer_seats: Dictionary = {}) -> void:
 	_game_seed = game_seed
 	_battle_resolver = battle_resolver
 	if state == null:
@@ -69,10 +81,13 @@ func _init(state: GameState = null, players: Array = [], game_seed: int = 0, bat
 			_setup_errors.append_array(copy_errors)
 	if _state != null:
 		_check_players(players)
+		_check_computer_seats(players, computer_seats)
 	if not _setup_errors.is_empty():
 		_phase = Phase.INVALID
 		return
 	_players = players.duplicate()
+	for fid in computer_seats:
+		_computer[String(fid)] = String(computer_seats[fid])
 	_start_dict = _state.to_dict()
 	for fid in _players:
 		_books[fid] = OrderBook.new()
@@ -104,6 +119,30 @@ func setup_errors() -> Array:
 ## Faction ids in seat order (seat 1 first).
 func players() -> Array:
 	return _players.duplicate()
+
+
+## {faction id: level} for the seats the computer plays ({} in a hotseat game).
+func computer_seats() -> Dictionary:
+	return _computer.duplicate()
+
+
+func is_computer(faction_id: String) -> bool:
+	return _computer.has(faction_id)
+
+
+## The level ("easy" or "normal") the computer plays `faction_id` at, or "" for a human seat.
+func computer_level(faction_id: String) -> String:
+	return String(_computer.get(faction_id, ""))
+
+
+## How many seats people play.
+func human_seats() -> int:
+	return _players.size() - _computer.size()
+
+
+## True while a computer seat is giving orders (AISeat plays it).
+func is_computer_turn() -> bool:
+	return _phase == Phase.ORDERS and is_computer(current_player())
 
 
 ## Faction id of the player whose turn it is (ORDERS) or who is next (HANDOFF). "" otherwise.
@@ -222,10 +261,14 @@ func history() -> Array:
 	return _history.duplicate(true)
 
 
-## Everything replay() needs to rebuild this game: JSON-safe.
+## Everything replay() needs to rebuild this game: JSON-safe. A game with computer seats adds
+## "ai": {faction id: level}. replay() never runs the AI: its orders are in history() like anyone's.
 func record() -> Dictionary:
-	return {"start_state": _start_dict.duplicate(true), "players": _players.duplicate(),
+	var out := {"start_state": _start_dict.duplicate(true), "players": _players.duplicate(),
 		"game_seed": Serial.int64_to_str(_game_seed), "history": history()}
+	if not _computer.is_empty():
+		out["ai"] = _computer.duplicate()
+	return out
 
 
 # --- actions --------------------------------------------------------------------------------------
@@ -267,7 +310,7 @@ func end_turn() -> String:
 		return why
 	if _seat < _players.size() - 1:
 		_seat += 1
-		_phase = Phase.HANDOFF
+		_phase = Phase.HANDOFF if _needs_handoff(_seat) else Phase.ORDERS
 		return ""
 	return _resolve_turn()
 
@@ -354,9 +397,25 @@ func _resolve_turn() -> String:
 		_phase = Phase.GAME_OVER
 	else:
 		_seat = 0
-		_phase = Phase.HANDOFF
+		_phase = Phase.HANDOFF if _needs_handoff(0) else Phase.ORDERS
 	_report = events
 	return ""
+
+
+## Whether the seat at `seat_index` starts its turn behind a handoff cover: only a human seat, and only
+## when another person shares the computer. A computer seat, or the only human, needs no cover.
+func _needs_handoff(seat_index: int) -> bool:
+	return not is_computer(_players[seat_index]) and human_seats() > 1
+
+
+func _check_computer_seats(players: Array, computer_seats: Dictionary) -> void:
+	for fid in computer_seats:
+		var seat := players.find(String(fid))
+		if seat < 0:
+			_setup_errors.append("The computer is set to play a faction that has no seat in this game.")
+			continue
+		if not COMPUTER_LEVELS.has(String(computer_seats[fid])):
+			_setup_errors.append("Player %d is set to be played by the computer at a level this game does not have. The levels are Easy and Normal." % (seat + 1))
 
 
 ## "" in the ORDERS phase, otherwise why `action` isn't possible now.
