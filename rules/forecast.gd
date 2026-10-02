@@ -7,6 +7,9 @@ class_name Forecast
 ## Where and when a move arrives, or why it can't be given.
 ## `other_orders` are that faction's orders already given this turn (to catch a second move).
 ## Returns {"ok", "reason", "code", "from", "to", "arrival_turn", "enemy_present", "would_capture", "text"}.
+## `arrival_turn` is 1-based like every turn number players see (GameSession.turn_number()): an
+## order given on turn current_turn + 1 resolves at its end, so the army is there at the start of
+## turn current_turn + 2.
 static func move(state: GameState, faction_id: String, order: MoveOrder, other_orders: Array = []) -> Dictionary:
 	var ordered := {}
 	for o in other_orders:
@@ -23,7 +26,7 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 		if a.location == dest.id and a.owner != faction_id and not enemies.has(a.owner):
 			enemies.append(a.owner)
 	enemies.sort()
-	var arrival := state.current_turn + 1
+	var arrival := state.current_turn + 2
 	var text := "The %s moves to %s and is there at the start of turn %d." % [TurnResolver.army_label(state, army), dest.name, arrival]
 	var would_capture := false
 	if not enemies.is_empty():

@@ -565,7 +565,9 @@ func test_forecasts_match_resolution() -> void:
 	])
 	var f := Forecast.move(s, "kingdom", MoveOrder.new("kingdom-1", "westwatch"))
 	assert_true(f.ok)
-	assert_eq(f.arrival_turn, s.current_turn + 1)
+	# 1-based, like GameSession.turn_number(): ordered on turn current_turn + 1, there at the start of the next.
+	assert_eq(f.arrival_turn, s.current_turn + 2)
+	assert_true(f.text.contains("is there at the start of turn %d." % (s.current_turn + 2)), f.text)
 	assert_true(f.would_capture)
 	assert_true(f.text.contains("capture it and gain 6 gold"), f.text)
 	var bad := Forecast.move(s, "kingdom", MoveOrder.new("kingdom-1", "thornvale"))

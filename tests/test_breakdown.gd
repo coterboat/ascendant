@@ -77,7 +77,8 @@ func test_turn_breakdown_and_missing_ids_are_safe() -> void:
 	s.current_turn = 4
 	var t := Breakdown.turn(s)
 	_assert_consistent(t, "turn")
-	assert_eq(t.total, 4)
+	assert_eq(t.total, 5, "4 turns resolved: the players are ordering turn 5 (1-based)")
+	assert_eq(t.title, "Turn 5")
 	assert_eq(Breakdown.province_income(s, "nowhere").total, 0, "unknown province gives an empty breakdown")
 	assert_eq(Breakdown.gold(s, "nobody").total, 0, "unknown faction gives an empty breakdown")
 	assert_eq(Breakdown.army_strength(s, "ghost-1").total, 0, "unknown army gives an empty breakdown")

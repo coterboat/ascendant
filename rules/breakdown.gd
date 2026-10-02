@@ -106,11 +106,14 @@ static func unit_type_description(ut: UnitType) -> String:
 		ut.cost, ut.trait_id, ut.get_trait_desc()]
 
 
-## The turn number. Turns count up from 0; each resolved turn adds one (TurnResolver.resolve).
+## The turn being ordered, 1-based like every turn number players see (GameSession.turn_number()):
+## turn 1 is the first, and each resolved turn (TurnResolver.resolve) adds one.
 static func turn(state: GameState) -> Dictionary:
-	return _make("Turn %d" % state.current_turn,
-		"The number of turns resolved so far. %s" % RulesCodex.text("phase_order"),
-		[_line("Turns resolved so far", state.current_turn, "")], "Current turn", state.current_turn)
+	var number := state.current_turn + 1
+	return _make("Turn %d" % number,
+		"The turn you are giving orders for. Turn 1 is the first, and each resolved turn adds one. %s" % RulesCodex.text("phase_order"),
+		[_line("Turns resolved so far", state.current_turn, ""), _line("This turn", 1, "the turn being ordered now")],
+		"Current turn", number)
 
 
 ## Sum of the line values. Equal to the breakdown's total by construction; tests check it.
