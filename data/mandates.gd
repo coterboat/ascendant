@@ -12,9 +12,12 @@ class_name MandateData
 ## Effects that are plain numbers live here too, so RulerRules.unit_stats has no numbers of its own:
 ##   units            added to every regular unit's stats (not commanders, not rulers)
 ##   recruit_divisor  every recruit, commanders included, costs cost - (cost / divisor, rounded down)
+##   base_hit         its side's base hit chance in battle, instead of AutoBattleResolver.BASE_HIT
+##   wounded_attack   attack every fighter of its side (units, commanders, the ruler) gets in battle
+##                    while below its maximum hit points
 ##
 ## The effects are stored and shown in M2-1 (#29); battles (M2-2, #30) and the map and economy
-## (M2-4, #32) put them into play.
+## (M2-4, #32) put them into play. Battles read them through RulerRules.battle_effects and unit_stats.
 
 ## A mandate bought by a mid-game sacrifice costs its price plus this (§2.4).
 const SACRIFICE_PREMIUM := 1
@@ -30,6 +33,7 @@ const MANDATES: Array[Dictionary] = [
 		"id": "drilled_ranks", "name": "Drilled Ranks", "faction": "", "cost": 2, "area": "battle",
 		"effect": "Your fighters' base hit chance is 70% instead of 60%.",
 		"codex": "mandate_drilled_ranks",
+		"base_hit": 70,
 	},
 	{
 		"id": "veteran_levies", "name": "Veteran Levies", "faction": "", "cost": 2, "area": "units",
@@ -68,6 +72,7 @@ const MANDATES: Array[Dictionary] = [
 		"id": "blood_frenzy", "name": "Blood Frenzy", "faction": "beasts", "cost": 3, "area": "battle",
 		"effect": "Your fighters below full hit points have +3 attack. A Tusker's Berserk adds to it, for +6.",
 		"codex": "mandate_blood_frenzy",
+		"wounded_attack": 3,
 	},
 	{
 		"id": "feast_of_victory", "name": "Feast of Victory", "faction": "beasts", "cost": 3, "area": "battle",

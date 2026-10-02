@@ -69,7 +69,7 @@ const ENTRIES := {
 	},
 	"stat_morale": {
 		"title": "Morale",
-		"text": "Courage: how much a side can lose before it breaks and flees. In battle a side's morale is the average morale of its units, raised while its commander stands (more with Inspire) and lowered by enemy War Bears' Fury. The higher it is, the larger the share of its starting hit points a side can lose before it routs, and a side that routs loses the battle. Morale and routs has the exact numbers.",
+		"text": "Courage: how much a side can lose before it breaks and flees. In battle a side's morale is the average morale of its units, raised while its commander or ruler stands (more with Inspire) and lowered by enemy War Bears' Fury (and the Great Thornmane's Dread). The higher it is, the larger the share of its starting hit points a side can lose before it routs, and a side that routs loses the battle. Morale and routs has the exact numbers.",
 	},
 	"stat_cost": {
 		"title": "Cost",
@@ -125,7 +125,7 @@ const ENTRIES := {
 	"battle_rounds": {
 		"title": "Battles",
 		"text": "A battle is fought in rounds, at most %d." % AutoBattleResolver.ROUND_CAP
-			+ " Each round every unit and commander attacks one enemy at the same time, so a unit that falls still strikes that round. Attacks go at the enemy's front rank. Crossbowmen stand in the second rank, behind their other units, which shield them while at least as many of those stand as crossbowmen (Fangthrowers reach them anyway); commanders stand behind everyone and are only attacked once no unit is left in front of them. The battle ends when one side is wiped out or breaks and flees (a rout). If every side left breaks in the same round, the one with more of its strength left keeps the field. The winner keeps its wounded units; units that fell are gone. The losing side loses every army it had in the battle, even units still standing: a side that routs is destroyed as it flees, and attackers who have not won after %d rounds are destroyed too. There are no retreats yet." % AutoBattleResolver.ROUND_CAP,
+			+ " Each round every unit, commander and ruler attacks one enemy at the same time, so a fighter that falls still strikes that round. Attacks go at the enemy's front rank. Crossbowmen stand in the second rank, behind their other units, which shield them while at least as many of those stand as crossbowmen (Fangthrowers reach them anyway); commanders stand behind everyone and are only attacked once no unit is left in front of them. In a game with rulers, a ruler fights in its own rank: King Corvane, the Great Thornmane and the Ninth Fang in the front rank, the Ever-Regent in the second rank, where the same shield rule covers him. The battle ends when one side is wiped out or breaks and flees (a rout). If every side left breaks in the same round, the one with more of its strength left keeps the field. The winner keeps its wounded units; units that fell are gone, and a ruler that fell dies. The losing side loses every army it had in the battle, even units still standing: a side that routs is destroyed as it flees, and attackers who have not won after %d rounds are destroyed too. There are no retreats yet." % AutoBattleResolver.ROUND_CAP,
 	},
 	"battle_round_cap": {
 		"title": "When a battle runs out of time",
@@ -133,7 +133,8 @@ const ENTRIES := {
 	},
 	"battle_hit_chance": {
 		"title": "Hit chance and damage",
-		"text": "Every attack rolls to hit. The chance is %d%%," % AutoBattleResolver.BASE_HIT
+		"text": "Every attack rolls to hit. The chance is %d%%" % AutoBattleResolver.BASE_HIT
+			+ " (70% for a side with the Drilled Ranks mandate),"
 			+ " plus %d%% for every point the attacker's attack is above the target's defense" % AutoBattleResolver.HIT_PER_POINT
 			+ " (or minus %d%% for every point below)," % AutoBattleResolver.HIT_PER_POINT
 			+ " never lower than %d%%" % AutoBattleResolver.MIN_HIT + " or higher than %d%%." % AutoBattleResolver.MAX_HIT
@@ -150,19 +151,24 @@ const ENTRIES := {
 	"battle_morale": {
 		"title": "Morale and routs",
 		"text": "A side's morale is the average morale of its units, +%d while its commander stands, plus trait effects (Inspire, Fury)." % AutoBattleResolver.COMMANDER_MORALE
+			+ " In a game with rulers, a side's ruler adds +%d while it stands, on top of the commander's," % RulerData.RULER_MORALE
+			+ " and the Great Thornmane's Dread takes 1 or 2 from every enemy side in a province battle while the avatar stands. A side with no units uses the highest morale among its commanders and ruler."
 			+ " Morale decides how much a side can lose before it breaks: %d%%" % AutoBattleResolver.BREAK_BASE_PCT
 			+ " plus %d%% per point of morale, of its starting hit points" % AutoBattleResolver.MORALE_PCT_PER_POINT
 			+ " (at least %d%%," % AutoBattleResolver.MIN_BREAK_PCT + " at most %d%%)." % AutoBattleResolver.MAX_BREAK_PCT
 			+ " Morale 10 breaks after losing %d%% of its hit points;" % (AutoBattleResolver.BREAK_BASE_PCT + 10 * AutoBattleResolver.MORALE_PCT_PER_POINT)
 			+ " morale 6 after %d%%." % (AutoBattleResolver.BREAK_BASE_PCT + 6 * AutoBattleResolver.MORALE_PCT_PER_POINT)
-			+ " A side that breaks flees and loses the battle, even with units still standing, and its armies are destroyed as they flee (there are no retreats yet).",
+			+ " A side that breaks flees and loses the battle, even with units still standing, and its armies are destroyed as they flee (there are no retreats yet)."
+			+ " With the Iron Discipline mandate, a side does not break while one of its commanders stands.",
 	},
 	"battle_commanders": {
 		"title": "Commanders in battle",
 		"text": "A commander fights from the back line, so enemies reach it only after its units have fallen. While it stands its side gets +%d morale," % AutoBattleResolver.COMMANDER_MORALE
 			+ " and its own trait: the Knight Captain inspires (+%d more morale)," % AutoBattleResolver.INSPIRE_MORALE
 			+ " the Warchief leads the pack (+%d attack to every unit)." % AutoBattleResolver.PACK_LEADER_ATTACK
-			+ " When the battle report explains a result, a commander's damage counts only as far as it beat what the same gold in its side's ordinary units would have dealt; its morale and its trait are counted on their own.",
+			+ " When the battle report explains a result, a commander's damage counts only as far as it beat what the same gold in its side's ordinary units would have dealt; its morale and its trait are counted on their own."
+			+ " A ruler is not a commander: it fights in its own rank, its +%d morale adds to the commander's," % RulerData.RULER_MORALE
+			+ " and Iron Discipline holds a line only while a commander stands. The report counts all the damage a ruler deals, since it costs no gold.",
 	},
 	"army_strength": {
 		"title": "Army strength",
@@ -254,11 +260,11 @@ const ENTRIES := {
 	},
 	"ruler_rank": {
 		"title": "Where a ruler fights",
-		"text": "King Corvane, the Great Thornmane and the Ninth Fang fight in the front rank, with the other units, so enemies can attack them from the first round. The Ever-Regent fights in the second rank, with the crossbowmen: enemies reach him only once every front-rank fighter on his side has fallen. Commanders still stand behind everyone.",
+		"text": "King Corvane, the Great Thornmane and the Ninth Fang fight in the front rank, with the other units, so enemies can attack them from the first round, and they count as part of the line that shields the crossbowmen. The Ever-Regent fights in the second rank, with the crossbowmen, under the same rule: the front rank shields him while at least as many front-rank fighters stand as second-rank ones (the Regent counts among those), and Fangthrowers, with Skirmish, reach him anyway. Once his side's front rank is too thin, or gone, any enemy can attack him. Commanders still stand behind everyone.",
 	},
 	"ruler_in_battle": {
 		"title": "Rulers in battle",
-		"text": "A ruler fights beside every army of yours in the same battle, with the hit points, attack and defense its kept power gives it. While it stands, its side gets +2 morale, on top of a commander's +2. If no regular units fight on its side, the side's morale is the highest morale among its commanders and its ruler. Rulers are not units: mandates and traits that name units, such as Royal Armories or Pack Leader, skip them.",
+		"text": "A ruler fights beside every army of yours in the same battle, with the hit points, attack and defense its kept power gives it. While it stands, its side gets +2 morale, on top of a commander's +2. If no regular units fight on its side, the side's morale is the highest morale among its commanders and its ruler. Rulers are not units: mandates and traits that name units, such as Royal Armories, Veteran Levies or Pack Leader, skip them; those that name fighters, such as Drilled Ranks, Blood Frenzy and Feast of Victory, count it. A ruler whose hit points reach 0 falls and dies even if its side wins, and a ruler on a losing side is lost with its army. The battle report lists the ruler under Who fought, counts it among the losses, and names it in the why when its damage or its morale decided the battle: all of its damage counts, since a ruler costs no gold.",
 	},
 	"ruler_healing": {
 		"title": "Ruler healing",
@@ -334,7 +340,7 @@ const ENTRIES := {
 	},
 	"ability_dread": {
 		"title": "Dread",
-		"text": "The Great Thornmane's province ability. Every enemy side in a province battle the avatar fights in has 1 less morale at ability rank 1 or 2, and 2 less at rank 3 or 4, so it breaks sooner. It doesn't work in border battles. It adds to a War Bear's Fury.",
+		"text": "The Great Thornmane's province ability. Every enemy side in a province battle the avatar fights in has 1 less morale at ability rank 1 or 2, and 2 less at rank 3 or 4, while the avatar stands, so it breaks sooner. It doesn't work in border battles. It adds to a War Bear's Fury.",
 	},
 	"ability_warband_muster": {
 		"title": "Warband Muster",
@@ -350,7 +356,7 @@ const ENTRIES := {
 	},
 	"mandate_veteran_levies": {
 		"title": "Veteran Levies",
-		"text": "Shared mandate, 2 power. Each of your regular units has 2 more maximum hit points than its type, and new recruits arrive at the new maximum. Bought by sacrifice, your regular units already on the map gain 2 maximum and 2 current hit points at once.",
+		"text": "Shared mandate, 2 power. Each of your regular units has 2 more maximum hit points than its type, and new recruits, the starting army included, arrive at the new maximum. Bought by sacrifice, your regular units already on the map gain 2 maximum and 2 current hit points at once.",
 	},
 	"mandate_heavy_tithes": {
 		"title": "Heavy Tithes",

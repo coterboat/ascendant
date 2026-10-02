@@ -134,6 +134,9 @@ static func defender_ground(province: Province) -> String:
 ## the real AutoBattleResolver fought on fixed internal seeds against the enemy armies there now,
 ## which defend and get the terrain. Returns {"ok", "text", and when ok: "win_rate", "wins",
 ## "samples", "label" ("likely win" | "close" | "likely loss"), "reasons"}.
+## In a game with rulers (M2-2) the battle reads `state`, so every side's mandates count, a ruler's army
+## among `army_ids` (or among the defenders) fights in its rank, and the Great Thornmane's Dread works:
+## the sacrifice preview (sacrifice) fights its queued attacks again on the state after the sacrifice.
 static func battle_odds(state: GameState, faction_id: String, army_ids: Array, province_id: String) -> Dictionary:
 	var province := state.find_province(province_id)
 	if province == null:

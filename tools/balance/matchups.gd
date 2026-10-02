@@ -13,6 +13,12 @@ extends SceneTree
 ##   --compositions GOLD   also print a matrix of army styles (Balance.STYLES) at GOLD gold each,
 ##                  commanders included, on open ground: how big armies of each make-up fare
 ##   --out PATH     also write the markdown to PATH
+##   --crown-mandates ID,ID   fight with these mandates on the Aurel Crown side (M2-2), e.g. royal_armories
+##   --clans-mandates ID,ID   the same for the Thornmane Clans, e.g. drilled_ranks,blood_frenzy
+##   --crown-ruler RULER:KEPT  add that ruler, with that kept power, beside the Aurel Crown army in every
+##                  battle (e.g. aurel_king:10); --clans-ruler the same for the Thornmane Clans
+##                  Mandates and rulers move units off the breakpoint-safe stats of #41, so this is how
+##                  to see what they shift. Without them every number is the M1 battle's.
 ##
 ## Matchups (tools/balance/balance.gd, built from the current costs in data/factions.gd): the starting
 ## armies (with and without commanders), equal-gold pure-unit fights for every cross-faction pair at
@@ -34,6 +40,14 @@ func _initialize() -> void:
 		return
 	var started := Time.get_ticks_msec()
 	var state := Balance.new_state()
+	if not opts.mandates.is_empty() or not opts.rulers.is_empty():
+		var errors := []
+		state = Balance.new_state_with(opts.mandates, opts.rulers, errors)
+		if state == null:
+			printerr("matchups: %s" % " ".join(errors))
+			quit(2)
+			return
+	var ruler_fids: Array = opts.rulers.keys()
 	var grounds := []
 	for g in Balance.GROUNDS:
 		if opts.grounds.is_empty() or opts.grounds.has(g.key):
@@ -44,13 +58,16 @@ func _initialize() -> void:
 			continue
 		var cells := {}
 		for g in grounds:
-			cells[g.key] = Balance.batch(state, m.crown, m.clans, g, opts.seeds, opts.seed)
+			cells[g.key] = Balance.batch(state, m.crown, m.clans, g, opts.seeds, opts.seed, 0, ruler_fids)
 		rows.append({"m": m, "cells": cells})
 	var seconds := (Time.get_ticks_msec() - started) / 1000.0
 
 	var L := []
 	L.append("## Battle balance: Aurel Crown win %% (%d seeded battles per cell)" % opts.seeds)
 	L.append("")
+	if not opts.mandates.is_empty() or not opts.rulers.is_empty():
+		L.append(_m2_line(state, opts))
+		L.append("")
 	L.append(_unit_table(state))
 	L.append("")
 	var head := "| Matchup (Crown vs Clans, gold) |"
@@ -75,19 +92,20 @@ func _initialize() -> void:
 	L.append(_why(rows, grounds))
 	if opts.compositions > 0:
 		L.append("")
-		L.append(_compositions(state, opts.compositions, mini(opts.seeds, 200), opts.seed))
+		L.append(_compositions(state, opts.compositions, mini(opts.seeds, 200), opts.seed, ruler_fids))
 	if opts.samples > 0:
 		L.append("")
 		L.append("### Sample reports: starting armies, open ground")
 		var start: Dictionary = Balance.matchups(state)[0]
-		var b := Balance.batch(state, start.crown, start.clans, Balance.ground("open"), opts.samples, opts.seed, opts.samples)
+		var b := Balance.batch(state, start.crown, start.clans, Balance.ground("open"), opts.samples, opts.seed, opts.samples, ruler_fids)
 		for rep in b.reports:
 			L.append("")
 			L.append("```")
 			L.append("\n".join(rep.lines))
 			L.append("```")
 	L.append("")
-	L.append("Run: `--seeds %d --seed %d%s`, %.1f s." % [opts.seeds, opts.seed, (" --only " + opts.only) if not opts.only.is_empty() else "", seconds])
+	L.append("Run: `--seeds %d --seed %d%s%s`, %.1f s." % [opts.seeds, opts.seed, (" --only " + opts.only) if not opts.only.is_empty() else "",
+		opts.m2_args, seconds])
 	var md := "\n".join(L)
 	print(md)
 	if not opts.out.is_empty():
@@ -100,15 +118,32 @@ func _initialize() -> void:
 	quit(0)
 
 
+## The roster's numbers as they fight (RulerRules.unit_stats: with the side's mandates, if any).
 func _unit_table(state: GameState) -> String:
 	var L := ["| Unit | Faction | hp | attack | defense | morale | cost | trait |", "|---|---|---|---|---|---|---|---|"]
 	for f in state.factions:
 		var types: Array = f.unit_types.duplicate()
 		types.append(f.commander_type)
 		for ut in types:
-			L.append("| %s | %s | %d | %d | %d | %d | %d | %s: %s |" % [ut.name, f.faction_name, ut.hp, ut.attack, ut.defense,
-				ut.morale, ut.cost, ut.trait_id, ut.trait_description])
+			var us := RulerRules.unit_stats(state, f.id, ut.id)
+			L.append("| %s | %s | %d | %d | %d | %d | %d | %s: %s |" % [ut.name, f.faction_name, us.hp, us.attack, us.defense,
+				ut.morale, us.cost, ut.trait_id, ut.trait_description])
 	return "\n".join(L)
+
+
+## What the run fought with (M2-2): each side's mandates and ruler.
+func _m2_line(state: GameState, opts: Dictionary) -> String:
+	var parts := []
+	for fid in [Balance.CROWN, Balance.CLANS]:
+		var f := state.find_faction(fid)
+		var names := []
+		for mid in opts.mandates.get(fid, []):
+			names.append(RulerRules.mandate_name(mid))
+		var bit := "%s: %s" % [f.faction_name, ", ".join(names) if not names.is_empty() else "no mandates"]
+		if opts.rulers.has(fid):
+			bit += ", with %s (%d kept power) in every battle" % [RulerRules.current_name(state, fid), f.kept_power]
+		parts.append(bit)
+	return "**With rulers (M2-2):** %s." % "; ".join(parts)
 
 
 ## Mean rounds and how battles ended, on open ground.
@@ -170,7 +205,7 @@ func _targets(rows: Array, grounds: Array) -> String:
 
 ## Aurel Crown's win % for each Crown army style against each Thornmane style, `gold` gold each with
 ## their commanders, on open ground: whether one make-up beats everything once armies are big.
-func _compositions(state: GameState, gold: int, seeds: int, base_seed: int) -> String:
+func _compositions(state: GameState, gold: int, seeds: int, base_seed: int, ruler_fids: Array = []) -> String:
 	var clans_styles: Array = Balance.STYLES[Balance.CLANS]
 	var L := ["### Army styles at %d gold each, with commanders, open ground (Aurel Crown win %%, %d battles per cell)" % [gold, seeds]]
 	var head := "| Aurel Crown style vs Thornmane Clans style |"
@@ -185,7 +220,7 @@ func _compositions(state: GameState, gold: int, seeds: int, base_seed: int) -> S
 		var line := "| %s |" % cs[0]
 		for ks in clans_styles:
 			var clans := Balance.ratio_army(state, Balance.CLANS, ks[1], gold)
-			line += " %.0f |" % Balance.batch(state, crown, clans, Balance.ground("open"), seeds, base_seed).crown_pct
+			line += " %.0f |" % Balance.batch(state, crown, clans, Balance.ground("open"), seeds, base_seed, 0, ruler_fids).crown_pct
 		L.append(line)
 	return "\n".join(L)
 
@@ -226,7 +261,8 @@ static func _ok(good: bool) -> String:
 
 
 func _parse(args: PackedStringArray) -> Dictionary:
-	var opts := {"seeds": 400, "seed": 0, "only": "", "grounds": [], "samples": 0, "compositions": 0, "out": ""}
+	var opts := {"seeds": 400, "seed": 0, "only": "", "grounds": [], "samples": 0, "compositions": 0, "out": "", "mandates": {},
+		"rulers": {}, "m2_args": ""}
 	var i := 0
 	while i < args.size():
 		var key := args[i]
@@ -262,6 +298,22 @@ func _parse(args: PackedStringArray) -> Dictionary:
 				opts.compositions = value.to_int()
 			"--out":
 				opts.out = value
+			"--crown-mandates", "--clans-mandates":
+				var fid: String = Balance.CROWN if key == "--crown-mandates" else Balance.CLANS
+				var ids := []
+				for mid in value.split(","):
+					if RulerRules.mandate_data(mid).is_empty():
+						return {"error": "unknown mandate %s" % mid}
+					ids.append(mid)
+				opts.mandates[fid] = ids
+				opts.m2_args += " %s %s" % [key, value]
+			"--crown-ruler", "--clans-ruler":
+				var fid: String = Balance.CROWN if key == "--crown-ruler" else Balance.CLANS
+				var bits := value.split(":")
+				if bits.size() != 2 or not RulerRules.rulers_for(fid).has(bits[0]) or not bits[1].is_valid_int():
+					return {"error": "%s needs RULER:KEPT with one of %s" % [key, ", ".join(RulerRules.rulers_for(fid))]}
+				opts.rulers[fid] = [bits[0], bits[1].to_int()]
+				opts.m2_args += " %s %s" % [key, value]
 			_:
 				return {"error": "unknown option %s" % key}
 	return opts
