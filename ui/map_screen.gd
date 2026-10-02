@@ -114,6 +114,7 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 		selected_province_id = ""
 	if state.find_army(selected_army_id) == null:
 		selected_army_id = ""
+	_update_map_marks()
 	_show_details()
 
 
@@ -135,6 +136,7 @@ func select_province(province_id: String) -> void:
 		selected_army_id = ""
 	for id in regions:
 		regions[id].selected = id == province_id
+	_update_road_targets()
 	_show_details()
 	province_selected.emit(province_id)
 
@@ -372,6 +374,22 @@ func queue_recruit(unit_type_id: String) -> String:
 	return reason
 
 
+## Queues one recruit with the ruler (Warband Muster). Returns "" or the rules' reason.
+func queue_recruit_with_ruler(unit_type_id: String) -> String:
+	var reason := orders.queue_recruit_with_ruler(unit_type_id)
+	status_text = reason if not reason.is_empty() else "Recruit ordered. It is paid and joins %s where it ends the turn, if you own that province then." % \
+		RulerRules.current_name(state, viewing_faction_id)
+	_orders_changed()
+	return reason
+
+
+## Sends the road move at `index` through its next legal province (King's Roads).
+func change_via(index: int) -> void:
+	var reason := orders.change_via(index)
+	status_text = reason if not reason.is_empty() else "Road move changed: it now goes the other way. It moved to the end of your orders."
+	_orders_changed()
+
+
 func cancel_order(index: int) -> void:
 	var reason := orders.cancel(index)
 	status_text = reason if not reason.is_empty() else "Order cancelled."
@@ -382,11 +400,63 @@ func _orders_changed() -> void:
 	if arrow_layer:
 		arrow_layer.queue_redraw()
 	clear_preview()
+	_update_map_marks()
 	_show_details()
 	orders_changed.emit()
 
 
-## One arrow per queued move, from the army's province to its destination.
+## The map marks that follow the orders: King's Roads destinations for the selected army and the
+## provinces Sworn Vassals will take (both from the rules, through OrdersController).
+func _update_map_marks() -> void:
+	_update_road_targets()
+	_update_vassal_marks()
+
+
+## With one of your armies selected, marks every province two steps away that a click would reach by
+## the King's Roads (OrdersController.road_destinations), naming the way through.
+func _update_road_targets() -> void:
+	if state == null or orders == null:
+		return
+	var targets := {}
+	var army := state.find_army(selected_army_id)
+	if army != null and army.owner == viewing_faction_id:
+		targets = orders.road_destinations(army.id)
+	for id in regions:
+		var vias: Array = targets.get(id, [])
+		var via_name := ""
+		if not vias.is_empty():
+			via_name = state.find_province(vias[0]).name
+		regions[id].set_road_target(not vias.is_empty(), via_name)
+
+
+## Marks the province each faction's Sworn Vassals will take at the end of the turn (Forecast.vassal,
+## counting your queued moves), with the forecast in its tooltip.
+func _update_vassal_marks() -> void:
+	if state == null or orders == null:
+		return
+	var marks := {}  # province id -> [forecast]
+	for v in orders.vassal_forecasts():
+		if String(v.province).is_empty():
+			continue
+		if not marks.has(v.province):
+			marks[v.province] = []
+		marks[v.province].append(v)
+	var seats := seat_order()
+	for id in regions:
+		var list: Array = marks.get(id, [])
+		if list.is_empty():
+			regions[id].set_vassal_mark(-2, "")
+			continue
+		var texts := []
+		for v in list:
+			texts.append(v.text)
+		# Two factions after one province: it joins nobody, so the mark is the neutral one.
+		var seat := -1 if list.size() > 1 else UiPalette.seat_index(state, list[0].faction, seats)
+		regions[id].set_vassal_mark(seat, TooltipText.plain("Sworn Vassals", " ".join(texts) + " " + RulesCodex.text("mandate_sworn_vassals")))
+
+
+## One arrow per queued move, from the army's province to its destination. A road move (King's Roads)
+## bends through the province it goes through, which gets a small ring.
 func _draw_order_arrows() -> void:
 	if orders == null or state == null:
 		return
@@ -398,15 +468,38 @@ func _draw_order_arrows() -> void:
 			continue
 		var a := MapLayout.position_of(army.location)
 		var b := MapLayout.position_of(o.to)
+		if o.is_road_move() and MapLayout.has_position(o.via) and state.find_province(o.via) != null:
+			var v := _via_bend(a, b, o.via)
+			var first := (v - a).normalized()
+			_draw_shaft(a + first * 34.0, v)
+			arrow_layer.draw_circle(v, 12.0, UiPalette.KEYLINE_HALO)
+			arrow_layer.draw_circle(v, 8.0, UiPalette.SELECTION)
+			arrow_layer.draw_circle(v, 4.0, UiPalette.GILT)
+			a = v
 		var dir := (b - a).normalized()
 		var side := Vector2(-dir.y, dir.x)
-		var start := a + dir * 34.0
+		var start := a + dir * (14.0 if o.is_road_move() else 34.0)
 		var tip := b - dir * 34.0
 		var base := tip - dir * 26.0
-		arrow_layer.draw_line(start, base, UiPalette.KEYLINE_HALO, 13.0, true)
-		arrow_layer.draw_line(start, base, UiPalette.SELECTION, 7.0, true)
+		_draw_shaft(start, base)
 		arrow_layer.draw_colored_polygon(PackedVector2Array([tip + dir * 3.0, base + side * 17.0, base - side * 17.0]), UiPalette.KEYLINE_HALO)
 		arrow_layer.draw_colored_polygon(PackedVector2Array([tip, base + side * 13.0, base - side * 13.0]), UiPalette.SELECTION)
+
+
+## Where a road move's arrow bends inside the province it goes through: off its centre, towards the
+## side the arrow comes from and goes to, so the province's name and income stay readable.
+func _via_bend(from: Vector2, to: Vector2, via_id: String) -> Vector2:
+	var centre := MapLayout.position_of(via_id)
+	var r := MapLayout.radius_of(state.find_province(via_id))
+	var toward := ((from + to) / 2.0) - centre
+	if toward.length() < 1.0:
+		toward = Vector2(0, 1)  # straight through: pass below the labels instead
+	return centre + toward.normalized() * r * 0.72
+
+
+func _draw_shaft(from: Vector2, to: Vector2) -> void:
+	arrow_layer.draw_line(from, to, UiPalette.KEYLINE_HALO, 13.0, true)
+	arrow_layer.draw_line(from, to, UiPalette.SELECTION, 7.0, true)
 
 
 ## The orders list under the province details: each order with its forecast and a cancel button,
@@ -435,6 +528,21 @@ func _add_orders_section() -> void:
 		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		line.custom_minimum_size.x = 300
 		_link(line, orders.order_codex_kind(i))
+		var vias := orders.road_vias_at(i)
+		if vias.size() > 1:
+			# King's Roads: the first way through is picked by province id; the player can choose another.
+			var o: MoveOrder = orders.orders()[i]
+			var next: String = vias[(vias.find(o.via) + 1) % vias.size()]
+			var via_button := Button.new()
+			via_button.name = "ViaButton"
+			via_button.text = "↻"
+			via_button.tooltip_text = TooltipText.plain("Another way through",
+				"This road move goes through %s. Click to go through %s instead; it arrives at the same time either way. %s" % [
+					state.find_province(o.via).name, state.find_province(next).name, RulesCodex.text("road_move")])
+			via_button.focus_mode = Control.FOCUS_NONE
+			via_button.pressed.connect(change_via.bind(i))
+			_link(via_button, "road_move")
+			row.add_child(via_button)
 		var cancel := Button.new()
 		cancel.name = "CancelButton"
 		cancel.text = "✕"
@@ -459,6 +567,33 @@ func _add_orders_section() -> void:
 			b.focus_mode = Control.FOCUS_NONE
 			b.pressed.connect(queue_recruit.bind(ut.id))
 			details.add_child(b)
+	_add_ruler_recruit_section()
+
+
+## Warband Muster (§1.4): with the Ninth Fang's province selected, a "Recruit with the Ninth Fang"
+## section: how many recruits are left this turn and one button per regular unit, at the same prices.
+func _add_ruler_recruit_section() -> void:
+	var info := orders.ruler_recruit_info()
+	if not info.get("ok", false) or selected_province_id != info.province:
+		return
+	var heading := _add_heading("Recruit with %s" % info.ruler, 18)
+	heading.name = "RulerRecruitHeading"
+	var left := _add_text("%d of %d left this turn (Warband Muster)" % [info.left, info.limit],
+		TooltipText.plain("Recruit with %s" % info.ruler, info.text), UiPalette.TEXT_SECONDARY)
+	left.name = "RulerRecruitLeft"
+	_link(left, "field_recruit")
+	for ut in orders.recruitable_types():
+		var b := Button.new()
+		b.name = "RecruitWithRuler_%s" % ut.id.validate_node_name()
+		b.text = "Recruit %s with %s (%d gold)" % [ut.name, info.ruler, orders.recruit_cost(ut.id)]
+		b.tooltip_text = TooltipText.from_breakdown(orders.recruit_breakdown(ut.id, RecruitOrder.AT_RULER))
+		_link(b, "field_recruit")
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		b.focus_mode = Control.FOCUS_NONE
+		b.disabled = info.left <= 0
+		b.pressed.connect(queue_recruit_with_ruler.bind(ut.id))
+		details.add_child(b)
 
 
 func _show_details() -> void:
@@ -498,7 +633,8 @@ func _show_province_details() -> void:
 	terrain_label.name = "TerrainLabel"
 	_link(terrain_label, terrain_kind)
 	var income := Breakdown.province_income(state, p.id)
-	var income_label := _add_text("Income: %d gold per turn" % p.income, TooltipText.from_breakdown(income), UiPalette.GILT)
+	# The total its owner earns (Heavy Tithes and Royal Court included, M2); the tooltip breaks it down.
+	var income_label := _add_text("Income: %d gold per turn" % int(income.total), TooltipText.from_breakdown(income), UiPalette.GILT)
 	income_label.name = "IncomeLabel"
 	_link(income_label, "province_income", income)
 	var capital_text := "No"
@@ -579,7 +715,7 @@ func _add_army(a: Army) -> void:
 	var commander_label: Label
 	if a.commander:
 		commander_label = _add_text("Commander: %s" % a.commander.type.name, TooltipText.plain("Commander: %s" % a.commander.type.name,
-			Breakdown.unit_type_description(a.commander.type)), UiPalette.TEXT_PRIMARY, box)
+			Breakdown.unit_type_description(a.commander.type, RulerRules.price_text(state, a.owner, a.commander.type))), UiPalette.TEXT_PRIMARY, box)
 	else:
 		commander_label = _add_text("Commander: none", TooltipText.plain("No commander", "This army has no commander to lead it."),
 			UiPalette.TEXT_SECONDARY, box)

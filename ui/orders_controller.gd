@@ -28,20 +28,70 @@ func _init(p_state: GameState = null, p_faction_id: String = "", p_session: Game
 	session = p_session
 
 
-## Queues a move. Returns "" when accepted, otherwise the rules' reason it was refused.
+## Queues a move. A province two steps away that King's Roads reach is ordered as a road move through
+## the first legal province by id (move_order_for). Returns "" when accepted, otherwise the rules' reason
+## it was refused.
 func queue_move(army_id: String, to_province: String) -> String:
-	if session != null:
-		var why := _not_my_turn()
-		return why if not why.is_empty() else session.queue_move(army_id, to_province)
-	return book.submit(state, faction_id, MoveOrder.new(army_id, to_province))
+	return _queue(move_order_for(army_id, to_province))
 
 
 ## Queues one recruit at the capital. Returns "" when accepted, otherwise the rules' reason.
 func queue_recruit(unit_type_id: String) -> String:
-	if session != null:
-		var why := _not_my_turn()
-		return why if not why.is_empty() else session.queue_recruit(unit_type_id)
-	return book.submit(state, faction_id, RecruitOrder.new(unit_type_id))
+	return _queue(RecruitOrder.new(unit_type_id))
+
+
+## Queues one recruit with the ruler (Warband Muster: the unit appears where the Ninth Fang ends the
+## turn). Returns "" when accepted, otherwise the rules' reason.
+func queue_recruit_with_ruler(unit_type_id: String) -> String:
+	return _queue(RecruitOrder.new(unit_type_id, RecruitOrder.AT_RULER))
+
+
+## The order a click on `to` gives `army_id`: a one-step move to a neighbour, or, for a province further
+## away, a road move through the first legal province by id when King's Roads allow one (§2.3).
+## Anything else stays a one-step move, which the rules then refuse with their reason.
+func move_order_for(army_id: String, to: String) -> MoveOrder:
+	var army: Army = state.find_army(army_id) if state else null
+	var here: Province = state.find_province(army.location) if army else null
+	if here != null and not here.neighbors.has(to):
+		var vias := RulerRules.road_vias(state, faction_id, army_id, to)
+		if not vias.is_empty():
+			return MoveOrder.new(army_id, to, vias[0])
+	return MoveOrder.new(army_id, to)
+
+
+## The provinces two steps away that `army_id` can reach by the King's Roads this turn, {province id:
+## [legal vias, sorted]}: the map draws them as road destinations. Empty when the army is not yours,
+## already has a move, or your faction has no King's Roads.
+func road_destinations(army_id: String) -> Dictionary:
+	var army: Army = state.find_army(army_id) if state else null
+	if army == null or army.owner != faction_id:
+		return {}
+	for o in orders():
+		if o is MoveOrder and o.army_id == army_id:
+			return {}
+	return RulerRules.road_destinations(state, faction_id, army_id)
+
+
+## Every legal way through for the queued road move at `index` ([] for any other order).
+func road_vias_at(index: int) -> Array:
+	var list := orders()
+	if index < 0 or index >= list.size() or not (list[index] is MoveOrder) or not list[index].is_road_move():
+		return []
+	return RulerRules.road_vias(state, faction_id, list[index].army_id, list[index].to)
+
+
+## Sends the queued road move at `index` through the next legal province instead (the player's other
+## choice, §2.3). The order is given again, so it moves to the end of the list. "" or the reason.
+func change_via(index: int) -> String:
+	var vias := road_vias_at(index)
+	if vias.size() < 2:
+		return "This road move has only one way through."
+	var o: MoveOrder = orders()[index]
+	var next: String = vias[(vias.find(o.via) + 1) % vias.size()]
+	var why := cancel(index)
+	if not why.is_empty():
+		return why
+	return _queue(MoveOrder.new(o.army_id, o.to, next))
 
 
 ## Withdraws the order at `index` (as listed by orders()). Returns "" or why it could not.
@@ -67,9 +117,10 @@ func recruit_orders() -> Array:
 	return out
 
 
-## Forecast for a move that is not queued yet (catches a second move for the same army).
+## Forecast for a move that is not queued yet (catches a second move for the same army). A province
+## two steps away is forecast as the road move a click would order.
 func move_forecast(army_id: String, to: String) -> Dictionary:
-	return Forecast.move(state, faction_id, MoveOrder.new(army_id, to), orders())
+	return Forecast.move(state, faction_id, move_order_for(army_id, to), orders())
 
 
 ## Battle odds for moving `army_id` to `to`, counting every army you have already ordered there.
@@ -105,18 +156,68 @@ func move_preview(army_id: String, to: String) -> Dictionary:
 	return {"ok": true, "text": "Click to order this move. %s %s" % [f.text, move_odds(army_id, to).line]}
 
 
+## Gold after the queued recruits and the income forecast. Your queued moves count for Royal Court,
+## which pays where the King ends the turn.
 func gold_after_recruits() -> Dictionary:
-	return Forecast.gold_after_recruits(state, faction_id, recruit_orders())
+	return Forecast.gold_after_recruits(state, faction_id, recruit_orders(), orders())
 
 
+## The price of one unit, the same the recruitment phase charges (Muster Grounds included).
 func recruit_cost(unit_type_id: String) -> int:
 	return Forecast.recruit_cost(state, faction_id, unit_type_id)
+
+
+## "16 gold (20 - Muster Grounds 4)", or "20 gold" when no mandate changes the price.
+func price_text(unit_type_id: String) -> String:
+	var f := state.find_faction(faction_id)
+	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id) if f else null
+	return RulerRules.price_text(state, faction_id, ut) if ut else ""
 
 
 ## The roster this faction can recruit from at its capital.
 func recruitable_types() -> Array:
 	var f := state.find_faction(faction_id)
 	return f.unit_types.duplicate() if f else []
+
+
+## The Warband Muster part of the recruit panel (§1.4): {"ok", "army_id", "province", "ruler", "limit",
+## "used", "left", "text"} for this faction. "ok" is false when its ruler can't recruit in the field
+## (another ruler, no rulers, or not on the map).
+func ruler_recruit_info() -> Dictionary:
+	var limit := RulerRules.field_recruit_limit(state, faction_id)
+	var army := RulerRules.ruler_army(state, faction_id)
+	if limit <= 0 or army == null:
+		return {"ok": false}
+	var used := 0
+	for o in orders():
+		if o is RecruitOrder and o.is_with_ruler():
+			used += 1
+	var name := RulerRules.current_name(state, faction_id)
+	var f := state.find_faction(faction_id)
+	var where := state.find_province(army.location)
+	var text := "%s can recruit %d regular %s per turn (Warband Muster at ability rank %d), at the usual prices. They appear where %s ends this turn (now %s), if you own that province then; if not, they are cancelled and cost nothing. Commanders come only from your capital." % [
+		RulerRules._cap(name), limit, "unit" if limit == 1 else "units", RulerRules.ability_rank(f.kept_power), name,
+		where.name if where else "off the map"]
+	return {"ok": true, "army_id": army.id, "province": army.location, "ruler": name, "limit": limit, "used": used,
+		"left": maxi(0, limit - used), "text": text}
+
+
+## Every Sworn Vassals forecast on the board (§2.3), one per faction with the mandate, in faction id
+## order: Forecast.vassal with this faction's queued moves (other armies hold), plus "faction".
+func vassal_forecasts() -> Array:
+	var out := []
+	if state == null:
+		return out
+	var fids := []
+	for f in state.factions:
+		if RulerRules.has_mandate(state, f.id, RulerRules.SWORN_VASSALS):
+			fids.append(f.id)
+	fids.sort()
+	for fid in fids:
+		var v := Forecast.vassal(state, fid, orders(), faction_id)
+		v["faction"] = fid
+		out.append(v)
+	return out
 
 
 ## One plain-language line per queued order (names, never ids), with its forecast.
@@ -138,6 +239,10 @@ func order_text(index: int) -> String:
 	var r := _recruit_result_at(index)
 	if not r.ok:
 		return "Not recruited: %s" % r.reason
+	if r.at == RecruitOrder.AT_RULER:
+		var name := RulerRules.current_name(state, faction_id)
+		return "Recruit one %s with %s for %d gold, leaving %d gold. It joins %s where it ends this turn (now %s), if you own that province then; if not, it is cancelled and costs nothing." % [
+			_unit_name(r.unit_type), name, r.cost, r.gold_after, name, _province_name(r.province)]
 	return "Recruit one %s at %s for %d gold, leaving %d gold." % [_unit_name(r.unit_type), _capital_name(), r.cost, r.gold_after]
 
 
@@ -150,26 +255,39 @@ func order_breakdown(index: int) -> Dictionary:
 			return _bd("Move order", f.reason, [], "Arrives at the start of turn", 0)
 		var odds := move_odds(o.army_id, o.to)
 		var odds_desc: String = "%s %s" % [odds.text, RulesCodex.text("battle_odds")] if odds.enemy_present else odds.text
-		return _bd("Move forecast", "%s %s %s" % [f.text, odds_desc, RulesCodex.text("move")],
-			[_line("Turn now", state.current_turn + 1, "turns count from 1"), _line("Moving one province", 1, "armies move one neighboring province per turn")],
+		var step := _line("Moving one province", 1, "armies move one neighboring province per turn")
+		var rule := RulesCodex.text("move")
+		if o.is_road_move():
+			step = _line("Moving two provinces by the King's Roads", 1, "a road move takes one turn, through land you own")
+			rule = RulesCodex.text("road_move")
+			if road_vias_at(index).size() > 1:
+				rule += " Another way through is open: use the button next to this order to change it."
+		return _bd("Move forecast", "%s %s %s" % [f.text, odds_desc, rule],
+			[_line("Turn now", state.current_turn + 1, "turns count from 1"), step],
 			"Arrives at the start of turn", f.arrival_turn)
 	var r := _recruit_result_at(index)
 	if not r.ok:
 		return _bd("Recruit order", r.reason, [], "Gold spent", 0)
-	return _bd("Recruit %s" % _unit_name(r.unit_type), "Recruits are paid in the order given. %s" % RulesCodex.text("recruit"),
-		[_line("Gold before this recruit", r.gold_after + r.cost, ""), _line("Cost", -r.cost, "")],
+	var rules := RulesCodex.text("field_recruit" if r.at == RecruitOrder.AT_RULER else "recruit")
+	return _bd("Recruit %s" % _unit_name(r.unit_type), "Recruits are paid in the order given. %s" % rules,
+		[_line("Gold before this recruit", r.gold_after + r.cost, ""), _line("Cost", -r.cost, _price_note(r.unit_type))],
 		"Gold left after this recruit", r.gold_after)
 
 
 ## Which kind of number an order line is, for its codex link (TooltipText.CODEX): a move into an
-## enemy army links to the battle odds, any other move to moving, a recruit to recruiting.
+## enemy army links to the battle odds, a road move to road moves, any other move to moving, a recruit
+## with the ruler to recruiting in the field, any other recruit to recruiting.
 func order_codex_kind(index: int) -> String:
 	var list := orders()
 	if index < 0 or index >= list.size():
 		return ""
 	var o = list[index]
 	if o is MoveOrder:
-		return "move_odds" if move_odds(o.army_id, o.to).enemy_present else "move_order"
+		if move_odds(o.army_id, o.to).enemy_present:
+			return "move_odds"
+		return "road_move" if o.is_road_move() else "move_order"
+	if o is RecruitOrder and o.is_with_ruler():
+		return "field_recruit"
 	return "recruit"
 
 
@@ -179,19 +297,46 @@ func gold_breakdown() -> Dictionary:
 		"Gold after recruits", g.gold_after)
 
 
-## Tooltip numbers for a recruit button: what one more of this unit would leave you with.
-func recruit_breakdown(unit_type_id: String) -> Dictionary:
+## Tooltip numbers for a recruit button: what one more of this unit would leave you with. `at` is
+## RecruitOrder.AT_RULER for the "Recruit with the Ninth Fang" buttons (Warband Muster).
+func recruit_breakdown(unit_type_id: String, at: String = RecruitOrder.AT_CAPITAL) -> Dictionary:
 	var g := gold_after_recruits()
 	var cost := recruit_cost(unit_type_id)
 	var f := state.find_faction(faction_id)
 	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id) if f else null
-	var desc := "%s %s" % [Breakdown.unit_type_description(ut) if ut else "", RulesCodex.text("recruit")]
-	return _bd("Recruit %s" % _unit_name(unit_type_id),
-		desc.strip_edges(), [_line("Gold left after queued recruits", g.gold_after, ""), _line("Cost of one %s" % _unit_name(unit_type_id), -cost, "")],
+	var rules := RulesCodex.text("recruit")
+	var title := "Recruit %s" % _unit_name(unit_type_id)
+	if at == RecruitOrder.AT_RULER:
+		var info := ruler_recruit_info()
+		rules = String(info.get("text", RulesCodex.text("field_recruit")))
+		title = "Recruit %s with %s" % [_unit_name(unit_type_id), RulerRules.current_name(state, faction_id)]
+	var desc := "%s %s" % [Breakdown.unit_type_description(ut, price_text(unit_type_id)) if ut else "", rules]
+	return _bd(title, desc.strip_edges(), [_line("Gold left after queued recruits", g.gold_after, ""),
+		_line("Cost of one %s" % _unit_name(unit_type_id), -cost, _price_note(unit_type_id))],
 		"Gold left if you recruit it", g.gold_after - cost)
 
 
 # --- helpers --------------------------------------------------------------------------------------
+
+## Queues `order` through the session's books (session-backed) or this controller's own book.
+func _queue(order) -> String:
+	if session != null:
+		var why := _not_my_turn()
+		return why if not why.is_empty() else session.queue_order(order)
+	return book.submit(state, faction_id, order)
+
+
+## The price breakdown as a line note when a mandate changes the price ("16 gold (20 - Muster Grounds
+## 4)"), "" otherwise, so an M1 tooltip reads exactly as before.
+func _price_note(unit_type_id: String) -> String:
+	var f := state.find_faction(faction_id)
+	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id) if f else null
+	return price_text(unit_type_id) if ut and not RulerRules.price_mods(state, faction_id, ut).is_empty() else ""
+
+
+func _province_name(province_id: String) -> String:
+	var p: Province = state.find_province(province_id) if state else null
+	return p.name if p else "a place not on the map"
 
 func _not_my_turn() -> String:
 	if session.current_player() == faction_id:

@@ -42,6 +42,10 @@ const CODEX := {
 	"recruit": "recruit",
 	"gold_after_recruits": "recruit",
 	"order_check": "orders",
+	# mandates and abilities on the map (M2-4): road moves, recruits with the ruler, Sworn Vassals' pennant
+	"road_move": "road_move",
+	"field_recruit": "field_recruit",
+	"vassal": "mandate_sworn_vassals",
 	# victory screen
 	"game_over": "victory",
 	"draw": "simultaneous_capture",
