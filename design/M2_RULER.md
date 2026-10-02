@@ -158,7 +158,7 @@ Each effect lives in the rules code (§9) and nowhere else. Tooltips, forecasts 
 - **Muster Grounds.**
   - Every recruit, commanders included, costs cost − (cost ÷ 5, rounded down).
   - Crown: Spearmen 7, Crossbowmen 8, Knights 16, Knight Captain 28.
-  - Clans: Tuskers 10, Fangthrowers 8, War Bear 20, Warchief 32.
+  - Clans: Tuskers 9, Fangthrowers 7, War Bear 18, Warchief 28 (from the costs after the balance pass, #41).
   - Applies at the capital and to Warband Muster recruits.
 - **Sworn Vassals.**
   - In the capture phase, after armies have captured provinces, your **best eligible province** joins you.
