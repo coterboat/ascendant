@@ -588,6 +588,7 @@ static func _moved_event(s: GameState, m: Dictionary, cause: String) -> Dictiona
 ## Player-facing name for an army, used in every event text and reason instead of its id:
 ##   "Aurel Crown army at Crownkeep (3 units, led by Knight Captain)"
 ##   "Thornmane Clans army at Wildmoor (1 unit, no commander)"
+##   "Thornmane Clans army at Fangridge (Warchief alone)"
 ## The unit count excludes the commander. Only when another army of the same faction in the same
 ## province would get exactly the same label, an ordinal is put in front ("first ...", "second ..."),
 ## counting those look-alike armies in order of creation (natural sort of their ids), so the label is
@@ -607,6 +608,8 @@ static func army_label(s: GameState, army: Army) -> String:
 
 static func _army_detail(army: Army) -> String:
 	var n := army.units.size()
+	if n == 0:
+		return "%s alone" % army.commander.type.name if army.commander else "no units"
 	var detail := "%d %s" % [n, "unit" if n == 1 else "units"]
 	return detail + (", led by %s" % army.commander.type.name if army.commander else ", no commander")
 

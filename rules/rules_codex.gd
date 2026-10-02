@@ -2,8 +2,10 @@ class_name RulesCodex
 ## Plain-language rules text for the in-game codex, tooltips and the turn report.
 ## Every turn event carries a "codex" key naming one of these entries.
 ## This text is the player-facing statement of the rules in TurnResolver and AutoBattleResolver
-## (the "battle_*" and "trait_*" entries); keep them in sync. StubBattleResolver is a test-only
-## stand-in and has no entry: players never see its rules.
+## (the "battle_*" and "trait_*" entries); keep them in sync. The battle and trait entries take their
+## numbers from AutoBattleResolver's constants (the trait entries start with its TRAIT_TEXT), so a
+## retuned number shows up here by itself. StubBattleResolver is a test-only stand-in and has no
+## entry: players never see its rules.
 
 const ENTRIES := {
 	"phase_order": {
@@ -38,29 +40,48 @@ const ENTRIES := {
 		"title": "Moving into an undefended province",
 		"text": "Moving into an enemy or neutral province with no enemy army in it captures it, as long as no enemy army arrives there too.",
 	},
+	# The battle_* entries state AutoBattleResolver's rules, with its numbers taken from its constants.
 	"battle_rounds": {
 		"title": "Battles",
-		"text": "A battle is fought in rounds, at most 8. Each round every unit and commander attacks one enemy at the same time, so a unit that falls still strikes that round. Attacks go at the enemy's front rank: crossbowmen stand behind their other units and commanders behind everyone, so they are only attacked once nothing in front of them is left. The battle ends when one side is wiped out or breaks and flees (a rout). If every side left breaks in the same round, the one with more of its strength left keeps the field. The winner keeps its wounded units; units that fell are gone. The losing side loses every army it had in the battle, even units still standing: a side that routs is destroyed as it flees, and attackers who have not won after 8 rounds are destroyed too. There are no retreats yet.",
+		"text": "A battle is fought in rounds, at most %d." % AutoBattleResolver.ROUND_CAP
+			+ " Each round every unit and commander attacks one enemy at the same time, so a unit that falls still strikes that round. Attacks go at the enemy's front rank: crossbowmen stand behind their other units and commanders behind everyone, so they are only attacked once nothing in front of them is left. The battle ends when one side is wiped out or breaks and flees (a rout). If every side left breaks in the same round, the one with more of its strength left keeps the field. The winner keeps its wounded units; units that fell are gone. The losing side loses every army it had in the battle, even units still standing: a side that routs is destroyed as it flees, and attackers who have not won after %d rounds are destroyed too. There are no retreats yet." % AutoBattleResolver.ROUND_CAP,
 	},
 	"battle_round_cap": {
 		"title": "When a battle runs out of time",
-		"text": "If nobody has won after 8 rounds, the defender holds its ground and wins, and the attacking armies are destroyed (there are no retreats yet). With no defender (a border battle, or armies that all arrived together), the side with the larger share of its starting hit points left wins and the other side's armies are destroyed; an exact tie is settled by a seeded roll.",
+		"text": "If nobody has won after %d rounds, the defender holds its ground and wins, and the attacking armies are destroyed (there are no retreats yet). With no defender (a border battle, or armies that all arrived together), the side with the larger share of its starting hit points left wins and the other side's armies are destroyed; an exact tie is settled by a seeded roll." % AutoBattleResolver.ROUND_CAP,
 	},
 	"battle_hit_chance": {
 		"title": "Hit chance and damage",
-		"text": "Every attack rolls to hit. The chance is 60%, plus 4% for every point the attacker's attack is above the target's defense (or minus 4% for every point below), never lower than 30% or higher than 90%. A hit deals half the attacker's attack (rounded up) minus a quarter of the target's defense (rounded down), at least 1. The battle report shows how often each side actually hit next to the chances it had. It measures luck in damage: how much more or less damage a side's hits did than average rolls would have. One big hit landing can outweigh several small misses, so a side can be lucky in damage while hitting less often than expected.",
+		"text": "Every attack rolls to hit. The chance is %d%%," % AutoBattleResolver.BASE_HIT
+			+ " plus %d%% for every point the attacker's attack is above the target's defense" % AutoBattleResolver.HIT_PER_POINT
+			+ " (or minus %d%% for every point below)," % AutoBattleResolver.HIT_PER_POINT
+			+ " never lower than %d%%" % AutoBattleResolver.MIN_HIT + " or higher than %d%%." % AutoBattleResolver.MAX_HIT
+			+ " A hit deals half the attacker's attack (rounded up) minus a quarter of the target's defense (rounded down), at least %d." % AutoBattleResolver.MIN_DAMAGE
+			+ " The battle report shows how often each side actually hit next to the chances it had. It measures luck in damage: how much more or less damage a side's hits did than average rolls would have. One big hit landing can outweigh several small misses, so a side can be lucky in damage while hitting less often than expected.",
 	},
 	"battle_terrain": {
 		"title": "Terrain in battle",
-		"text": "Only the defender, the side that was already holding the province, gets the ground: forest +2 defense, hills +1 defense and +1 attack, plains nothing. A fort adds +2 defense on top. Border battles and armies that all arrived at once have no defender, so nobody gets terrain. Knights' charge is weaker in a forest, and Fangthrowers ignore forest and hills cover (not forts).",
+		"text": "Only the defender, the side that was already holding the province, gets the ground: forest +%d defense," % AutoBattleResolver.TERRAIN.forest.defense
+			+ " hills +%d defense" % AutoBattleResolver.TERRAIN.hills.defense + " and +%d attack, plains nothing." % AutoBattleResolver.TERRAIN.hills.attack
+			+ " A fort adds +%d defense on top." % AutoBattleResolver.FORT_DEFENSE
+			+ " Border battles and armies that all arrived at once have no defender, so nobody gets terrain. Knights' charge is weaker in a forest, and Fangthrowers ignore forest and hills cover (not forts).",
 	},
 	"battle_morale": {
 		"title": "Morale and routs",
-		"text": "A side's morale is the average morale of its units, +2 while its commander stands, plus trait effects (Inspire, Fury). Morale decides how much a side can lose before it breaks: 20% plus 5% per point of morale, of its starting hit points (at least 25%, at most 95%). Morale 10 breaks after losing 70% of its hit points; morale 6 after 50%. A side that breaks flees and loses the battle, even with units still standing, and its armies are destroyed as they flee (there are no retreats yet).",
+		"text": "A side's morale is the average morale of its units, +%d while its commander stands, plus trait effects (Inspire, Fury)." % AutoBattleResolver.COMMANDER_MORALE
+			+ " Morale decides how much a side can lose before it breaks: %d%%" % AutoBattleResolver.BREAK_BASE_PCT
+			+ " plus %d%% per point of morale, of its starting hit points" % AutoBattleResolver.MORALE_PCT_PER_POINT
+			+ " (at least %d%%," % AutoBattleResolver.MIN_BREAK_PCT + " at most %d%%)." % AutoBattleResolver.MAX_BREAK_PCT
+			+ " Morale 10 breaks after losing %d%% of its hit points;" % (AutoBattleResolver.BREAK_BASE_PCT + 10 * AutoBattleResolver.MORALE_PCT_PER_POINT)
+			+ " morale 6 after %d%%." % (AutoBattleResolver.BREAK_BASE_PCT + 6 * AutoBattleResolver.MORALE_PCT_PER_POINT)
+			+ " A side that breaks flees and loses the battle, even with units still standing, and its armies are destroyed as they flee (there are no retreats yet).",
 	},
 	"battle_commanders": {
 		"title": "Commanders in battle",
-		"text": "A commander fights from the back line, so enemies reach it only after its units have fallen. While it stands its side gets +2 morale, and its own trait: the Knight Captain inspires (+2 more morale), the Warchief leads the pack (+1 attack to every unit).",
+		"text": "A commander fights from the back line, so enemies reach it only after its units have fallen. While it stands its side gets +%d morale," % AutoBattleResolver.COMMANDER_MORALE
+			+ " and its own trait: the Knight Captain inspires (+%d more morale)," % AutoBattleResolver.INSPIRE_MORALE
+			+ " the Warchief leads the pack (+%d attack to every unit)." % AutoBattleResolver.PACK_LEADER_ATTACK
+			+ " When the battle report explains a result, a commander's damage counts only as far as it beat what the same gold in its side's ordinary units would have dealt; its morale and its trait are counted on their own.",
 	},
 	"army_strength": {
 		"title": "Army strength",
@@ -70,37 +91,38 @@ const ENTRIES := {
 		"title": "Battle odds",
 		"text": "Before you attack, the forecast fights the same battle with the real rules 24 times on fixed test seeds and tells you how often you won: likely win (65% or more), close, or likely loss (35% or less), with the main reasons. The real battle uses this turn's own rolls, so a likely win can still go wrong.",
 	},
+	# Trait entries start with AutoBattleResolver.TRAIT_TEXT, built from the constants the rules use.
 	"trait_shield_wall": {
 		"title": "Shield Wall (Spearmen)",
-		"text": "Spearmen get +2 defense while any other fighter on their side still stands. Alone they lose it.",
+		"text": AutoBattleResolver.TRAIT_TEXT["Shield Wall"] + " Spearmen standing alone lose it.",
 	},
 	"trait_volley": {
 		"title": "Volley (Crossbowmen)",
-		"text": "Crossbowmen shoot over their own lines: enemies can only attack them once every other unit on their side (not counting the commander) has fallen.",
+		"text": AutoBattleResolver.TRAIT_TEXT["Volley"] + " Behind a line of Spearmen or Knights, Crossbowmen keep shooting untouched.",
 	},
 	"trait_charge": {
 		"title": "Charge (Knights)",
-		"text": "Knights deal +4 damage with every hit in the first round of a battle, or +2 in a forest, where heavy horses are slowed.",
+		"text": AutoBattleResolver.TRAIT_TEXT["Charge"] + " Heavy horses are slowed in a forest.",
 	},
 	"trait_inspire": {
 		"title": "Inspire (Knight Captain)",
-		"text": "While the Knight Captain stands, its side gets +2 morale on top of the usual +2 for having a commander, so it can take more losses before it breaks.",
+		"text": AutoBattleResolver.TRAIT_TEXT["Inspire"] + " With it, the Knight Captain's side can take more losses before it breaks.",
 	},
 	"trait_berserk": {
 		"title": "Berserk (Tuskers)",
-		"text": "A wounded Tusker (below full hit points) gets +3 attack. Wounds carry over between battles, so a wounded Tusker starts the next battle already berserk.",
+		"text": AutoBattleResolver.TRAIT_TEXT["Berserk"] + " Wounds carry over between battles, so a wounded Tusker starts the next battle already berserk.",
 	},
 	"trait_skirmish": {
 		"title": "Skirmish (Fangthrowers)",
-		"text": "Fangthrowers ignore the defender's forest and hills defense bonus when they attack. A fort's bonus still counts.",
+		"text": AutoBattleResolver.TRAIT_TEXT["Skirmish"] + " A defender holding a forest or hills gets no cover against their attacks.",
 	},
 	"trait_fury": {
 		"title": "Fury (War Bear)",
-		"text": "Each War Bear still standing roars: every enemy side gets -2 morale, at most -4 for two or more bears. Kill the bears and the roar stops.",
+		"text": AutoBattleResolver.TRAIT_TEXT["Fury"] + " Each War Bear still standing roars; kill the bears and the roar stops.",
 	},
 	"trait_pack_leader": {
 		"title": "Pack Leader (Warchief)",
-		"text": "While the Warchief stands, every unit on its side gets +1 attack.",
+		"text": AutoBattleResolver.TRAIT_TEXT["Pack Leader"] + " Commanders don't get it, only units.",
 	},
 	"capture": {
 		"title": "Capturing provinces",

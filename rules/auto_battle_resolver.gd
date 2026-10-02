@@ -28,7 +28,10 @@ extends BattleResolver
 ## standing; with no defender, the side with the largest share of its starting hp left wins (ties: a
 ## seeded roll).
 ##
-## Traits (data/factions.gd), one effect each:
+## Traits (data/factions.gd gives each unit type one), one effect each. The trait constants below are
+## the single source of truth for their numbers: the rules read them, and every description players
+## see is built from them (TRAIT_TEXT, which is data/factions.gd's trait_desc and the start of each
+## RulesCodex trait_* entry, and TRAIT_SHORT):
 ##   Shield Wall  +SHIELD_WALL_DEFENSE defense while another friendly fighter stands.
 ##   Volley       fights from the second rank (see target above).
 ##   Charge       +CHARGE_DAMAGE damage on hits in round 1 (CHARGE_DAMAGE_FOREST in a forest).
@@ -37,6 +40,12 @@ extends BattleResolver
 ##   Skirmish     ignores the defender's forest and hills defense bonus (not forts).
 ##   Fury         each standing War Bear gives enemy sides -FURY_MORALE morale (at most -FURY_MAX).
 ##   Pack Leader  +PACK_LEADER_ATTACK attack to every friendly unit while it stands.
+##
+## The report's "why" names the 1-3 factors worth the most hp to a side. Every factor is measured as
+## what it added over doing without it, in expected damage (or hp kept from a rout), so they compare:
+## a trait counts only its own effect (Charge: the charge bonus on its hits), and a commander counts
+## the damage it dealt beyond what the same gold in its side's ordinary units would have dealt
+## (_line_baseline). Its morale and its trait (Inspire, Pack Leader) are factors of their own.
 
 const ROUND_CAP := 8
 const BASE_HIT := 60
@@ -57,11 +66,11 @@ const TERRAIN := {
 const FORT_DEFENSE := 2
 const SHIELD_WALL_DEFENSE := 2
 const CHARGE_DAMAGE := 4
-const CHARGE_DAMAGE_FOREST := 2
+const CHARGE_DAMAGE_FOREST := 3
 const INSPIRE_MORALE := 2
 const BERSERK_ATTACK := 3
 const FURY_MORALE := 2
-const FURY_MAX := 4
+const FURY_MAX := 3
 const PACK_LEADER_ATTACK := 1
 
 const SHIELD_WALL := "Shield Wall"
@@ -72,15 +81,28 @@ const BERSERK := "Berserk"
 const SKIRMISH := "Skirmish"
 const FURY := "Fury"
 const PACK_LEADER := "Pack Leader"
+## What each trait does, built from the constants the rules use: a unit type's trait description
+## (data/factions.gd trait_desc, shown in unit tooltips) and the first sentence of its codex entry.
+const TRAIT_TEXT := {
+	SHIELD_WALL: "Gets +%d defense while any other fighter on its side still stands." % SHIELD_WALL_DEFENSE,
+	VOLLEY: "Shoots from the second rank: enemies can attack it only once every unit in front of it (its side's units without Volley) has fallen. Commanders stand further back, so they don't shield it.",
+	CHARGE: "Deals +%d damage with every hit in the first round of a battle" % CHARGE_DAMAGE + " (+%d in a forest)." % CHARGE_DAMAGE_FOREST,
+	INSPIRE: "While it stands, its side gets +%d morale" % INSPIRE_MORALE + ", on top of the +%d any standing commander gives." % COMMANDER_MORALE,
+	BERSERK: "Gets +%d attack while below full hit points." % BERSERK_ATTACK,
+	SKIRMISH: "Ignores the defender's forest and hills defense bonus when it attacks (a fort's bonus still counts).",
+	FURY: "While it stands, every enemy side gets -%d morale" % FURY_MORALE + " (at most -%d in all, however many roar)." % FURY_MAX,
+	PACK_LEADER: "While it stands, every unit on its side gets +%d attack." % PACK_LEADER_ATTACK,
+}
+## One-line summaries of TRAIT_TEXT, for odds reasons and compact lists.
 const TRAIT_SHORT := {
-	SHIELD_WALL: "+2 defense in a group",
+	SHIELD_WALL: "+%d defense in a group" % SHIELD_WALL_DEFENSE,
 	VOLLEY: "shoots from the second rank",
-	CHARGE: "bonus damage in the first round",
-	INSPIRE: "+2 morale",
-	BERSERK: "+3 attack when wounded",
+	CHARGE: "+%d damage in the first round" % CHARGE_DAMAGE,
+	INSPIRE: "+%d morale" % INSPIRE_MORALE,
+	BERSERK: "+%d attack when wounded" % BERSERK_ATTACK,
 	SKIRMISH: "ignores forest and hills cover",
-	FURY: "-2 enemy morale",
-	PACK_LEADER: "+1 attack to every unit",
+	FURY: "-%d enemy morale" % FURY_MORALE,
+	PACK_LEADER: "+%d attack to every unit" % PACK_LEADER_ATTACK,
 }
 
 ## Odds estimate: the real battle is fought ODDS_SAMPLES times on fixed internal seeds.
@@ -276,15 +298,24 @@ static func _build_sides(sides_in: Array, defender_fid: String, state) -> Array:
 		var morale_sum := 0
 		var regulars := 0
 		var strength := 0
+		var line_attacks := []
+		var line_cost := 0
 		for a in armies:
 			labels.append(_army_label(a, state))
 			for u in a.units:
 				fighters.append(_fighter(i, a, u, false))
 				morale_sum += u.type.morale
 				regulars += 1
+				line_attacks.append(u.type.attack)
+				line_cost += u.type.cost
 			if a.commander:
 				fighters.append(_fighter(i, a, a.commander, true))
 			strength += StubBattleResolver.army_strength(a)
+		if regulars == 0:
+			# A commander fighting alone is compared with its faction's roster instead.
+			for ut in _roster_types(sd.faction, state):
+				line_attacks.append(ut.attack)
+				line_cost += ut.cost
 		var base_morale := 0
 		if regulars > 0:
 			base_morale = floori(float(morale_sum) / regulars)
@@ -297,16 +328,64 @@ static func _build_sides(sides_in: Array, defender_fid: String, state) -> Array:
 			hp += f.hp
 			power_attack += f.type.attack
 		sides.append({"faction": sd.faction, "name": _faction_name(sd.faction, state), "fighters": fighters,
-			"armies": labels, "is_defender": sd.faction == defender_fid, "base_morale": base_morale,
-			"hp_start": hp, "count_start": fighters.size(), "strength": strength, "power": hp * power_attack,
+			"armies": labels, "roster": _roster(armies), "is_defender": sd.faction == defender_fid, "base_morale": base_morale,
+			"hp_start": hp, "count_start": fighters.size(), "regulars": regulars, "strength": strength, "power": hp * power_attack,
+			"line_attacks": line_attacks, "line_cost": float(line_cost) / maxi(1, line_attacks.size()),
 			"routed": false, "destroyed": false, "held_field": false, "out_round": 0, "rout_info": {},
 			"attacks": 0, "hits": 0, "chance_sum": 0, "chance_min": 100, "chance_max": 0,
 			"dealt": 0, "expected": 0.0, "luck_by": {}, "impact": {}, "triggers": {}, "trait_units": {},
-			"volley_expected": 0.0, "lost": [], "morale_log": []})
+			"volley_expected": 0.0, "cmd_expected": 0.0, "lost": [], "morale_log": []})
 		for f in fighters:
 			if not f.trait.is_empty():
 				sides[i].trait_units[f.trait] = f.name
 	return sides
+
+
+## Who fought on a side, for the report: unit types with counts in first-seen order (armies by id,
+## units in army order), then the commanders. Ids for the viewer, names and text for players:
+##   {"units": [{"id", "name", "count"}], "commanders": [{"id", "name"}],
+##    "text": "Spearmen (2), Crossbowmen, led by Knight Captain" | "Warchief alone"}
+static func _roster(armies: Array) -> Dictionary:
+	var units := []
+	var index := {}
+	var commanders := []
+	for a in armies:
+		for u in a.units:
+			if not index.has(u.type.id):
+				index[u.type.id] = units.size()
+				units.append({"id": u.type.id, "name": u.type.name, "count": 0})
+			units[index[u.type.id]].count += 1
+		if a.commander:
+			commanders.append({"id": a.commander.type.id, "name": a.commander.type.name})
+	var parts := []
+	for e in units:
+		parts.append(e.name if e.count == 1 else "%s (%d)" % [e.name, e.count])
+	var leaders := {}
+	var leader_order := []
+	for c in commanders:
+		if not leaders.has(c.name):
+			leaders[c.name] = 0
+			leader_order.append(c.name)
+		leaders[c.name] += 1
+	var led := []
+	for n in leader_order:
+		led.append(n if leaders[n] == 1 else "%s (%d)" % [n, leaders[n]])
+	var text := ", ".join(parts)
+	if not led.is_empty():
+		text = ("%s alone" % " and ".join(led)) if parts.is_empty() else "%s, led by %s" % [text, " and ".join(led)]
+	return {"units": units, "commanders": commanders, "text": text}
+
+
+## The unit types `fid` can recruit (not its commander), from the game state when there is one.
+static func _roster_types(fid: String, state) -> Array:
+	if state is GameState:
+		var f: Faction = state.find_faction(fid)
+		if f != null:
+			return f.unit_types
+	for f in FactionData.FACTIONS:
+		if f.id == fid:
+			return f.unit_types.map(func(u): return UnitType.from_dict(u))
+	return []
 
 
 static func _fighter(side_idx: int, army: Army, unit: Unit, is_cmd: bool) -> Dictionary:
@@ -317,7 +396,7 @@ static func _fighter(side_idx: int, army: Army, unit: Unit, is_cmd: bool) -> Dic
 	elif t == VOLLEY:
 		tier = 1
 	return {"side": side_idx, "army": army.id, "army_ref": army, "unit": unit, "type": unit.type, "name": unit.type.name,
-		"trait": t, "cmd": is_cmd, "tier": tier, "hp": unit.current_hp, "max": unit.type.hp,
+		"trait": t, "cmd": is_cmd, "tier": tier, "hp": unit.current_hp, "hp0": unit.current_hp, "max": unit.type.hp,
 		"alive": unit.current_hp > 0, "pending": 0}
 
 
@@ -373,7 +452,8 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			if bonus > 0:
 				_add_impact(side, CHARGE, chance / 100.0 * bonus)
 			if f.cmd:
-				_add_impact(side, "commander", expected)
+				side.cmd_expected += expected
+				_add_impact(side, "commander", expected - _line_baseline(side, f, dfn.value, atk.parts.get("terrain", 0)))
 			if f.tier == 1 and _screened(side, f):
 				side.volley_expected += expected
 				_add_impact(side, VOLLEY, expected * 0.5)
@@ -465,6 +545,32 @@ static func _targets(sides: Array, si: int, standing: Array) -> Array:
 			if f.alive and f.tier == best:
 				pool.append(f)
 	return pool
+
+
+## What the same gold as commander `f` would have dealt with this attack if it had been spent on its
+## side's ordinary units, on average (the yardstick for the commander's "why" factor): the commander's
+## cost in average units of its side (or of its faction's roster when it fights alone), each attacking
+## a target with `defense` (with the side's terrain attack bonus `terrain_attack`), times the share of
+## those units that would still be standing, taken as the share of the side's units still standing
+## (or, for a lone commander, its own share of hit points left).
+static func _line_baseline(side: Dictionary, f: Dictionary, defense: int, terrain_attack: int) -> float:
+	var attacks: Array = side.line_attacks
+	if attacks.is_empty() or side.line_cost <= 0.0:
+		return 0.0
+	var per_unit := 0.0
+	for a in attacks:
+		per_unit += hit_chance(a + terrain_attack, defense) / 100.0 * damage(a + terrain_attack, defense)
+	per_unit /= attacks.size()
+	var standing := 0.0
+	if side.regulars > 0:
+		var alive := 0
+		for o in side.fighters:
+			if o.alive and not o.cmd:
+				alive += 1
+		standing = float(alive) / side.regulars
+	else:
+		standing = float(f.hp) / maxi(1, f.hp0)
+	return per_unit * f.type.cost / side.line_cost * standing
 
 
 static func _screened(side: Dictionary, f: Dictionary) -> bool:
@@ -616,14 +722,11 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 	var losses := []
 	for s in sides:
 		var lost_count: int = s.lost.size()
-		var fled := ""
-		if s.routed:
-			fled = " and the other %d fled" % (s.count_start - lost_count)
-		losses.append("%s lost %d of %d %s%s" % [s.name, lost_count, s.count_start,
-			"fighter" if s.count_start == 1 else "fighters", fled])
+		losses.append(_losses_text(s))
 		var rate := 0 if s.attacks == 0 else roundi(100.0 * s.hits / s.attacks)
 		var avg := 0 if s.attacks == 0 else roundi(float(s.chance_sum) / s.attacks)
 		side_reports.append({"faction": s.faction, "name": s.name, "armies": s.armies.duplicate(),
+			"roster": s.roster.duplicate(true),
 			"defender": s.is_defender, "fighters_start": s.count_start, "fighters_lost": lost_count,
 			"lost": s.lost.duplicate(), "hp_start": s.hp_start, "hp_end": _hp(s), "routed": s.routed,
 			"destroyed": s.destroyed, "out_round": s.out_round, "attacks": s.attacks, "hits": s.hits,
@@ -669,6 +772,29 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 		"why": why, "summary": summary, "lines": lines}
 
 
+## One side's losses for the casualty line, in plain words:
+##   "Aurel Crown lost 1 of 4 fighters", "Thornmane Clans lost 2 of 3 fighters, and the last one fled",
+##   "Thornmane Clans' only fighter fled", "Aurel Crown lost none of its 4 fighters".
+static func _losses_text(s: Dictionary) -> String:
+	var n: int = s.count_start
+	var lost: int = s.lost.size()
+	var fled: int = n - lost if s.routed else 0
+	if n == 1:
+		if lost == 1:
+			return "%s lost its only fighter" % s.name
+		return ("%s only fighter fled" % _poss(s.name)) if fled == 1 else "%s lost no fighters" % s.name
+	if lost == 0:
+		return ("%s lost no fighters, but all %d fled" % [s.name, n]) if fled > 0 else "%s lost none of its %d fighters" % [s.name, n]
+	if lost == n:
+		return ("%s lost both fighters" % s.name) if n == 2 else "%s lost all %d fighters" % [s.name, n]
+	var text := "%s lost %d of %d fighters" % [s.name, lost, n]
+	if fled == 1:
+		text += ", and the last one fled"
+	elif fled > 1:
+		text += ", and the other %d fled" % fled
+	return text
+
+
 ## Every candidate deciding factor: {"id", "side" (index it helped), "faction", "impact" (about how
 ## many hp it was worth to that side), "clause" (phrased for the report), "brief" (seed-free, for odds)}.
 static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds_fought: int) -> Array:
@@ -701,10 +827,13 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 						else "even though the fort gave the defending %s +%d defense" % [s.name, FORT_DEFENSE]
 					brief = "the fort gives the defending %s +%d defense" % [s.name, FORT_DEFENSE]
 				"commander":
+					# v is the damage beyond what the same gold in ordinary units would have dealt.
 					var cname := _commander_name(s)
-					c = "%s %s fought from the back line and dealt about %d damage" % [who, cname, dmg] if won \
-						else "even though %s %s dealt about %d damage" % [who, cname, dmg]
-					brief = "%s %s (+%d morale, hits hard)" % [who, cname, COMMANDER_MORALE]
+					var total := roundi(s.cmd_expected)
+					c = "%s %s fought from the back line and dealt about %d damage, about %d more than the same gold in ordinary units would have" % [
+						who, cname, total, dmg] if won \
+						else "even though %s %s dealt about %d damage from the back line" % [who, cname, total]
+					brief = "%s %s (fights from the back line, +%d morale)" % [who, cname, COMMANDER_MORALE]
 				SHIELD_WALL:
 					c = "%s %s held their shield wall (+%d defense), turning aside about %d damage" % [who, unit, SHIELD_WALL_DEFENSE, dmg] if won \
 						else "even though %s %s held their shield wall" % [who, unit]
@@ -774,26 +903,36 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 			out.append({"id": "morale_" + key, "side": si, "faction": s.faction, "impact": impact, "clause": c,
 				"brief": "%s %s (%s)" % [_poss(s.name), cname, "+%d morale" % (COMMANDER_MORALE + (INSPIRE_MORALE if key == INSPIRE else 0))]})
 
-	# Numbers: who brought the bigger force (hp x attack), as a share of the fight.
+	# Numbers: the bigger force, as a share of the fight's hp x attack. A side counts as the bigger force
+	# only when it brought more hit points than every other side and at least as many fighters, and its
+	# hp x attack was bigger too.
 	var total_power := 0
 	var total_hp := 0
-	var strongest := 0
+	var biggest := 0
 	for si in sides.size():
 		total_power += sides[si].power
 		total_hp += sides[si].hp_start
-		if sides[si].power > sides[strongest].power:
-			strongest = si
-	if total_power > 0:
-		var st: Dictionary = sides[strongest]
-		var share := float(st.power) / total_power
-		var even := 1.0 / sides.size()
-		var impact := (share - even) * total_hp * 0.5
-		var other := 0 if strongest != 0 else 1
-		var o: Dictionary = sides[other]
+		if sides[si].hp_start > sides[biggest].hp_start:
+			biggest = si
+	var st: Dictionary = sides[biggest]
+	var runner_up := -1  # the next biggest side, which the clause compares with
+	var bigger := total_power > 0
+	for si in sides.size():
+		if si == biggest:
+			continue
+		var o: Dictionary = sides[si]
+		if o.hp_start >= st.hp_start or o.count_start > st.count_start:
+			bigger = false
+		if runner_up < 0 or o.hp_start > sides[runner_up].hp_start:
+			runner_up = si
+	var even := 1.0 / sides.size()
+	if bigger and runner_up >= 0 and float(st.power) / total_power > even:
+		var o: Dictionary = sides[runner_up]
+		var impact := (float(st.power) / total_power - even) * total_hp * 0.5
 		var force := "%d %s (%d hp) against %d (%d hp)" % [st.count_start, "fighter" if st.count_start == 1 else "fighters",
 			st.hp_start, o.count_start, o.hp_start]
-		out.append({"id": "numbers", "side": strongest, "faction": st.faction, "impact": impact,
-			"clause": "%s brought the bigger force: %s" % [st.name, force] if strongest == wi
+		out.append({"id": "numbers", "side": biggest, "faction": st.faction, "impact": impact,
+			"clause": "%s brought the bigger force: %s" % [st.name, force] if biggest == wi
 				else "even though %s brought the bigger force (%s)" % [st.name, force],
 			"brief": "%s has the bigger force (%d hp against %d)" % [st.name, st.hp_start, o.hp_start]})
 

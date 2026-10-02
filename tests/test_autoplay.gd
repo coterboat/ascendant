@@ -208,7 +208,9 @@ func test_best_recruits_spends_on_the_strongest_affordable_mix() -> void:
 		cost += ut.cost
 		value += ut.hp * ut.attack
 	assert_true(cost <= 50, "affordable: %d" % cost)
-	assert_eq(value, 432, "2 Knights and 1 Crossbowmen (hp x attack 180 + 180 + 72) is the best mix for 50 gold")
+	# The best hp x attack mix for 50 gold, worked out by hand from the unit data (#4 balance pass):
+	# Knights 17 x 11 = 187 for 20 gold, Crossbowmen 8 x 11 = 88 for 10, Spearmen 8 x 9 = 72 for 8.
+	assert_eq(value, 462, "2 Knights and 1 Crossbowmen (187 + 187 + 88) is the best mix for 50 gold")
 	assert_eq(Policies.Base.best_recruits(s, "kingdom", 50), [], "a reserve of all the gold buys nothing")
 	var priced := TurnResolver.price_recruits(s, "kingdom", orders)
 	for r in priced.results:

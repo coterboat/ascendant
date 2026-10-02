@@ -331,3 +331,75 @@ func test_print_sample_reports() -> void:
 		print("\n".join(r.report.lines))
 		print("---")
 	print(_odds(["spearmen", "spearmen", "crossbowmen", "knight_captain"], ["tuskers", "tuskers", "fangthrowers"], "thornvale", "beasts").text)
+
+
+# --- report wording (#4 balance pass) --------------------------------------------------------------
+
+func test_a_commander_alone_is_called_that() -> void:
+	var s := _state([["beasts-1", "beasts", "fangridge", ["warchief"]], ["kingdom-2", "kingdom", "fangridge", ["spearmen", "spearmen"]]])
+	assert_eq(TurnResolver.army_label(s, s.find_army("beasts-1")), "Thornmane Clans army at Fangridge (Warchief alone)")
+	assert_eq(TurnResolver.army_label(s, s.find_army("kingdom-2")), "Aurel Crown army at Fangridge (2 units, no commander)")
+	var r := AutoBattleResolver.resolve(s.find_army("beasts-1"), s.find_army("kingdom-2"), s.find_province("fangridge"), SeededRNG.new(1), s)
+	var text := _all_text(r.report)
+	assert_false(text.contains("0 units"), text)
+	assert_true(text.contains("(Warchief alone)"), text)
+
+
+func test_losses_read_naturally() -> void:
+	var cases := [
+		[1, 0, true, "Thornmane Clans' only fighter fled"],
+		[1, 1, false, "Thornmane Clans lost its only fighter"],
+		[1, 0, false, "Thornmane Clans lost no fighters"],
+		[3, 0, true, "Thornmane Clans lost no fighters, but all 3 fled"],
+		[4, 0, false, "Thornmane Clans lost none of its 4 fighters"],
+		[3, 1, true, "Thornmane Clans lost 1 of 3 fighters, and the other 2 fled"],
+		[3, 2, true, "Thornmane Clans lost 2 of 3 fighters, and the last one fled"],
+		[3, 1, false, "Thornmane Clans lost 1 of 3 fighters"],
+		[2, 2, false, "Thornmane Clans lost both fighters"],
+		[4, 4, false, "Thornmane Clans lost all 4 fighters"],
+	]
+	for c in cases:
+		var lost := []
+		for i in c[1]:
+			lost.append("Tuskers")
+		var side := {"name": "Thornmane Clans", "count_start": c[0], "lost": lost, "routed": c[2]}
+		assert_eq(AutoBattleResolver._losses_text(side), c[3])
+	# And in real reports: never "lost 0 of" or "the other 1 fled".
+	for sd in range(1, 30):
+		var r := _battle(["spearmen", "crossbowmen"], ["warchief"], "rivermarch", sd)
+		var casualties: String = r.report.lines.filter(func(l): return String(l).begins_with("Casualties: "))[0]
+		assert_false(casualties.contains("lost 0 of") or casualties.contains("the other 1 fled"), casualties)
+
+
+func test_the_bigger_force_has_more_hit_points_and_fighters() -> void:
+	# More fighters but fewer hit points is not "the bigger force", and neither is the reverse.
+	var many_small := _custom_type("Militia", 6, 6, 4, 8)
+	var one_big := _custom_type("Giant", 40, 8, 4, 8)
+	var sides := [{"faction": "beasts", "armies": [_custom_army("b", "beasts", [one_big])]},
+		{"faction": "kingdom", "armies": [_custom_army("k", "kingdom", [many_small, many_small, many_small])]}]
+	for sd in range(1, 15):
+		var rep: Dictionary = AutoBattleResolver.fight(sides, {"kind": "province", "defender": ""}, SeededRNG.new(sd)).result.report
+		assert_true(rep.all_factors.filter(func(f): return f.id == "numbers").is_empty(), "nobody is the bigger force: %s" % rep.why)
+	# More of both is.
+	var bigger := [{"faction": "beasts", "armies": [_custom_army("b", "beasts", [one_big])]},
+		{"faction": "kingdom", "armies": [_custom_army("k", "kingdom", [one_big, many_small])]}]
+	var rep2: Dictionary = AutoBattleResolver.fight(bigger, {"kind": "province", "defender": ""}, SeededRNG.new(1)).result.report
+	var numbers: Array = rep2.all_factors.filter(func(f): return f.id == "numbers")
+	assert_eq(numbers.size(), 1)
+	if numbers.size() == 1:
+		assert_eq(numbers[0].faction, "kingdom")
+		assert_true(String(numbers[0].text).contains("2 fighters (46 hp) against 1 (40 hp)"), numbers[0].text)
+
+
+func test_report_lists_each_sides_roster() -> void:
+	var r := _battle(["spearmen", "crossbowmen", "spearmen", "knight_captain"], ["tuskers", "tuskers", "war_bear"], "rivermarch", 3)
+	var k := _side(r.report, "kingdom")
+	var b := _side(r.report, "beasts")
+	assert_eq(k.roster.units, [{"id": "spearmen", "name": "Spearmen", "count": 2}, {"id": "crossbowmen", "name": "Crossbowmen", "count": 1}])
+	assert_eq(k.roster.commanders, [{"id": "knight_captain", "name": "Knight Captain"}])
+	assert_eq(k.roster.text, "Spearmen (2), Crossbowmen, led by Knight Captain")
+	assert_eq(b.roster.text, "Tuskers (2), War Bear")
+	assert_eq(b.roster.commanders, [])
+	_assert_no_raw_ids(k.roster.text + " " + b.roster.text)
+	var alone := _battle(["spearmen"], ["warchief"], "rivermarch", 3)
+	assert_eq(_side(alone.report, "beasts").roster.text, "Warchief alone")
