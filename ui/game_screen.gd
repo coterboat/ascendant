@@ -210,9 +210,10 @@ func _go_to_title() -> void:
 	_switch(SceneFlow.make_title())
 
 
-## "New game" on the victory screen: the new game screen (over the title, where Back leads).
+## "New game" on the victory screen: the new game screen (over the title, where Back leads), set up
+## for a rematch: the same players in the same seats, and a new seed.
 func _go_to_new_game() -> void:
-	_switch(SceneFlow.make_title(true))
+	_switch(SceneFlow.make_title(true, config))
 
 
 func _switch(next: Node) -> void:
@@ -235,14 +236,9 @@ func _raise(overlay: Control) -> void:
 
 
 ## F1 over a number linked to the codex opens its entry (right-click is handled by the link itself).
-## Esc closes the codex when it is on top, in one press: its search box has focus and would otherwise
-## take the first Esc just to stop editing.
+## Esc on the codex is the codex panel's own business (CodexPanel.handle_cancel).
 func _input(event: InputEvent) -> void:
 	if not is_inside_tree():
-		return
-	if event.is_action_pressed("ui_cancel") and codex.visible and _top_overlay() == codex:
-		get_viewport().set_input_as_handled()
-		codex.close()
 		return
 	if not CodexLink.is_open_key(event):
 		return
@@ -261,15 +257,16 @@ func _top_overlay() -> Control:
 	return null
 
 
-## Esc closes the topmost plain overlay (the report, the quit question). The battle report viewer
-## closes itself, the codex is closed in _input, and the victory screen stays.
+## Esc closes the topmost plain overlay (the report, the quit question). The battle report viewer and
+## the codex close themselves, and the victory screen stays.
 func _unhandled_input(event: InputEvent) -> void:
 	if not event.is_action_pressed("ui_cancel"):
 		return
 	var top := _top_overlay()
 	if top != null and (top == quit_overlay or top == report_overlay):
 		top.visible = false
-		get_viewport().set_input_as_handled()
+		if is_inside_tree():
+			get_viewport().set_input_as_handled()
 
 
 # --- the real screens (#7, #8) ----------------------------------------------------------------------
@@ -317,11 +314,19 @@ func _update_hud() -> void:
 	map.turn_label.text = "Turn %d" % session.turn_number()
 	map.turn_label.tooltip_text = _turn_tooltip()
 	CodexLink.attach(map.turn_label, TooltipText.codex_for("turn"), open_codex)
+	# The hint wraps to at most two lines at 1600 px (tests/test_top_bar.gd); the tooltip says the rest.
 	if playing:
-		map.set_hint("Player %d of %d, %s: give your orders. Select an army, then click a neighboring province to move it. Select your capital to recruit." % [
-			session.current_seat(), session.players().size(), session.current_player_name()])
+		map.set_hint("Player %d of %d: select an army, then click a neighboring province to move it. Select your capital to recruit." % [
+			session.current_seat(), session.players().size()], _orders_help())
 	elif session.is_over():
-		map.set_hint("The game is over. Results shows the summary again; Turn report shows how the last turn went.")
+		map.set_hint("The game is over. Results shows the summary; Turn report shows the last turn.",
+			TooltipText.plain("Game over", "Results shows who won and the game in numbers. Turn report shows how the last turn went. The map shows the final positions; hover any number to see where it comes from."))
+
+
+## The top bar hint's tooltip during orders: the whole how-to, which doesn't fit in the bar.
+func _orders_help() -> String:
+	return TooltipText.plain("Player %d of %d: %s gives orders" % [session.current_seat(), session.players().size(), session.current_player_name()],
+		"Select one of your armies, then click a neighboring province to move it there; hover a province first to see the forecast and battle odds. Select your capital to recruit. Each order is listed in the side panel, where you can cancel it. Hover any number to see where it comes from; right-click it, or press F1, to open its codex entry. End turn when you are done.")
 
 
 func _end_turn_tooltip(n: int) -> String:

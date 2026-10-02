@@ -211,6 +211,60 @@ func test_hotseat_explanation_comes_from_the_codex() -> void:
 	screen.free()
 
 
+## Rematch (M1 polish): prefill() keeps the last game's seating and picks a new seed.
+func test_rematch_prefill_keeps_the_seating_with_a_new_seed() -> void:
+	var screen := _screen()
+	assert_false(screen.rematch_label.visible, "a plain new game says nothing about a rematch")
+	screen.prefill({"players": ["beasts", "kingdom"], "seed": 4242})
+	assert_eq(screen.seat_faction(1), "beasts", "Player 1 keeps their faction")
+	assert_eq(screen.seat_faction(2), "kingdom", "and so does Player 2")
+	assert_true(screen.is_valid(), screen.error_text())
+	assert_ne(screen.config().seed, 4242, "with a new seed")
+	assert_true(screen.rematch_label.visible, "and the screen says why the seats are already set")
+	assert_true(screen.faction_labels[0].text.begins_with("Plays in Vermilion. Capital Fangridge"), "colours follow the seats: %s" % screen.faction_labels[0].text)
+	_assert_no_raw_ids(_visible_text(screen), "rematch setup")
+	for i in 20:
+		assert_ne(screen.new_seed(4242), 4242, "a new seed is never the last game's")
+	# A seating that can't be used changes nothing.
+	assert_false(screen.set_seats(["kingdom"]), "one faction for two seats")
+	assert_false(screen.set_seats(["kingdom", "pirates"]), "a faction that isn't in the game")
+	assert_eq(screen.config().players, ["beasts", "kingdom"])
+	screen.prefill({"players": ["pirates", "kingdom"], "seed": 1})
+	assert_false(screen.rematch_label.visible, "no rematch note when the seating could not be used")
+	screen.free()
+
+
+## The victory screen's New game opens the setup as a rematch, and Start plays it.
+func test_victory_new_game_is_a_rematch() -> void:
+	var game := SceneFlow.make_game({"players": ["beasts", "kingdom"], "seed": 999})
+	game.victory_screen.new_game_button.pressed.emit()
+	var title := game.next_scene as TitleScreen
+	assert_true(title != null and title.new_game_screen != null and title.new_game_screen.visible, "New game opens the setup")
+	if title == null or title.new_game_screen == null:
+		game.free()
+		return
+	var setup := title.new_game_screen
+	assert_eq(setup.config().players, ["beasts", "kingdom"], "with the last game's seating")
+	assert_ne(setup.config().seed, 999, "and a new seed")
+	assert_true(setup.rematch_label.visible)
+	var rematch_seed: int = setup.config().seed
+	setup.start_button.pressed.emit()
+	var rematch := title.next_scene as GameScreen
+	assert_true(rematch != null, "Start begins the rematch")
+	if rematch:
+		assert_eq(rematch.session.players(), ["beasts", "kingdom"])
+		assert_eq(rematch.config.seed, rematch_seed)
+		rematch.free()
+	title.free()
+	game.free()
+
+	# The title's own New game is a fresh setup: default seats, no rematch note.
+	var fresh := SceneFlow.make_title(true)
+	assert_eq(fresh.new_game_screen.config().players, ["kingdom", "beasts"])
+	assert_false(fresh.new_game_screen.rematch_label.visible)
+	fresh.free()
+
+
 func test_back_and_escape_emit_back_requested() -> void:
 	var screen := _screen()
 	var backs := [0]

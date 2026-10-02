@@ -17,11 +17,14 @@ extends RefCounted
 ##   random  every army holds or moves to a random neighbor; recruits random affordable units.
 ##   turtle  recruits like greedy, keeps its strongest army in the capital, walks the others home, and
 ##           only attacks adjacent enemy armies that Forecast.battle_odds calls a "likely win".
+##   ai      the computer opponent, AIPlayer (ai/ai_player.gd) at "normal": guards its capital against
+##           anything that can reach it, masses armies, attacks on good odds, expands when it is safe.
+##   ai_easy AIPlayer at "easy": sometimes lets good moves pass and recruits at random.
 ##
 ##   var policy = Policies.make("greedy")
 ##   var orders: Array = policy.orders(state, "kingdom", SeededRNG.new(7))
 
-const NAMES := ["greedy", "random", "turtle"]
+const NAMES := ["greedy", "random", "turtle", "ai", "ai_easy"]
 
 
 ## A new policy by name, or null for an unknown name.
@@ -33,6 +36,10 @@ static func make(policy_name: String) -> Base:
 			return RandomPolicy.new()
 		"turtle":
 			return Turtle.new()
+		"ai":
+			return AIPolicy.new("ai", "normal")
+		"ai_easy":
+			return AIPolicy.new("ai_easy", "easy")
 	return null
 
 
@@ -412,4 +419,39 @@ class Turtle extends Base:
 					plan[id] = dest
 		var out := checked_moves(state, faction_id, plan)
 		out.append_array(best_recruits(state, faction_id))
+		return out
+
+
+class AIPolicy extends Base:
+	## The AIPlayer that plans this seat's orders, and the difficulty it plays at.
+	var ai := AIPlayer.new()
+	var difficulty := "normal"
+	## Slowest single plan of the game, in microseconds (reporting only).
+	var slowest_usec := 0
+
+	func _init(p_name: String = "ai", p_difficulty: String = "normal") -> void:
+		policy_name = p_name
+		difficulty = p_difficulty
+
+	func orders(state: GameState, faction_id: String, rng: SeededRNG) -> Array:
+		var planned: Array = ai.plan_orders(state, faction_id, rng, difficulty)
+		var st: Dictionary = ai.last_plan_stats()
+		for key in ["odds_calls", "odds_cached", "odds_skipped", "attacks", "held_back", "captures", "recalls",
+				"retreats", "dropped_invalid"]:
+			if int(st.get(key, 0)) > 0:
+				bump(key, int(st.get(key, 0)))
+		bump("plans")
+		bump("plan_ms_total", int(st.get("usec", 0)) / 1000)
+		slowest_usec = maxi(slowest_usec, int(st.get("usec", 0)))
+		stats["plan_ms_max"] = slowest_usec / 1000
+		# AIPlayer pre-checks every order; check the moves again the way the other policies do.
+		var plan := {}
+		var out := []
+		for o in planned:
+			if o is MoveOrder:
+				plan[o.army_id] = o.to
+		out.append_array(checked_moves(state, faction_id, plan))
+		for o in planned:
+			if o is RecruitOrder:
+				out.append(o)
 		return out

@@ -82,6 +82,14 @@ static func owner_color(state: GameState, faction_id: String, seats: Array = [])
 	return faction_color(seats if not seats.is_empty() else seat_order(state), faction_id)
 
 
+## 0-based seat of a faction (0 is Player 1), or -1 for nobody, with the same seat order as
+## owner_color(). The seat picks the emblem (SeatEmblem) as well as the colour.
+static func seat_index(state: GameState, faction_id: String, seats: Array = []) -> int:
+	if faction_id.is_empty():
+		return -1
+	return (seats if not seats.is_empty() else seat_order(state)).find(faction_id)
+
+
 static func terrain_color(terrain: String) -> Color:
 	return TERRAIN.get(terrain, TERRAIN_UNKNOWN)
 

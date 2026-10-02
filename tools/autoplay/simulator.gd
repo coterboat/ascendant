@@ -353,7 +353,11 @@ static func summarize(results: Array) -> Dictionary:
 			if not policy_stats.has(key):
 				policy_stats[key] = {}
 			for counter in r.policy_stats[i]:
-				policy_stats[key][counter] = int(policy_stats[key].get(counter, 0)) + int(r.policy_stats[i][counter])
+				# Counters are summed over games, except "*_max" ones, which keep the largest.
+				if str(counter).ends_with("_max"):
+					policy_stats[key][counter] = maxi(int(policy_stats[key].get(counter, 0)), int(r.policy_stats[i][counter]))
+				else:
+					policy_stats[key][counter] = int(policy_stats[key].get(counter, 0)) + int(r.policy_stats[i][counter])
 
 	s.finished = results.size() - unfinished
 	s.unfinished = unfinished

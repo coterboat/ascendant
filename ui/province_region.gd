@@ -3,12 +3,21 @@ extends Control
 ## One province on the map: a placeholder region filled with its terrain colour, ringed in its
 ## owner's seat colour (UiPalette: colours follow the seat), with markers for capital and fort, its
 ## name, its income and its armies.
+## Colour is never the only channel (design/STYLE_BIBLE.md 1.1): the owner ring carries the owner's
+## seat emblem (Player 1 circle, Player 2 square, nobody a slate shield) and every army badge carries
+## its owner's emblem as a light glyph (SeatEmblem).
 ## Reads the GameState only. Clicking it emits `pressed`; clicking an army badge emits `army_pressed`.
-## The income and army badges link to their codex entries: right-clicking one emits codex_requested.
+## The region, its income and its army badges link to their codex entries: right-clicking one (or F1)
+## emits codex_requested.
 
 signal pressed(province_id: String)
 signal army_pressed(army_id: String)
 signal codex_requested(key: String)
+
+## Emblem on the owner ring, in the map's design space (the map view scales it up about 1.2x at 1600x900).
+const RING_EMBLEM_RADIUS := 9.0
+## Army badge emblem box, in design space.
+const BADGE_EMBLEM_SIZE := 16.0
 
 var province_id := ""
 var selected := false:
@@ -17,6 +26,7 @@ var selected := false:
 		queue_redraw()
 
 var ring_color := Color.WHITE  # the owner's seat colour (slate when unowned)
+var owner_seat := -1  # the owner's 0-based seat, which picks the ring emblem; -1 for nobody
 var _polygon := PackedVector2Array()
 var _fill := Color.WHITE
 var _is_capital := false
@@ -25,7 +35,7 @@ var _east := false
 
 var name_label: Label
 var income_label: Label
-var army_box: HBoxContainer
+var army_box: HFlowContainer  # army badges; several armies wrap onto a second row inside the region
 
 
 ## Builds the region for `province_id` from `state`. `center` is in the map canvas' design space.
@@ -41,6 +51,7 @@ func setup(state: GameState, p: Province, center: Vector2, seats: Array = []) ->
 	_polygon = MapLayout.region_polygon(p.id, Vector2(r, r), r)
 	_fill = UiPalette.terrain_color(p.terrain)
 	ring_color = UiPalette.owner_color(state, p.owner, seats)
+	owner_seat = UiPalette.seat_index(state, p.owner, seats)
 	_is_capital = p.is_capital
 	_has_fort = p.has_fort
 	_east = MapLayout.is_east(p.id)
@@ -48,7 +59,8 @@ func setup(state: GameState, p: Province, center: Vector2, seats: Array = []) ->
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var owner_name := "nobody (neutral)" if p.owner.is_empty() else state.find_faction(p.owner).faction_name
 	tooltip_text = TooltipText.plain("%s: %s, owned by %s" % [p.name, p.terrain.capitalize(), owner_name],
-		"%s Click to see its details." % MapData.get_terrain_description(p.terrain))
+		"%s Click to see its terrain, income and armies." % marks_text(p))
+	CodexLink.attach(self, TooltipText.codex_for("province"), codex_requested.emit)
 
 	var box := VBoxContainer.new()
 	box.name = "Labels"
@@ -71,15 +83,29 @@ func setup(state: GameState, p: Province, center: Vector2, seats: Array = []) ->
 	CodexLink.attach(income_label, TooltipText.codex_for("province_income", income), codex_requested.emit)
 	box.add_child(income_label)
 
-	army_box = HBoxContainer.new()
+	army_box = HFlowContainer.new()
 	army_box.name = "Armies"
-	army_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	army_box.alignment = FlowContainer.ALIGNMENT_CENTER
+	army_box.add_theme_constant_override("h_separation", 4)
+	army_box.add_theme_constant_override("v_separation", 2)
 	army_box.mouse_filter = Control.MOUSE_FILTER_PASS
 	box.add_child(army_box)
 	for a in state.armies:
 		if a.location == p.id:
 			army_box.add_child(_army_badge(state, a, seats))
 	queue_redraw()
+
+
+## What the ring and markers say, in words: "Player 1's province: Vermilion ring, circle emblem.
+## Capital (the crown). Fort (the tower)." Neutral provinces get the slate ring and shield.
+func marks_text(p: Province) -> String:
+	var text := "Neutral: slate ring, shield emblem." if owner_seat < 0 else "Player %d's province: %s ring, %s emblem." % [
+		owner_seat + 1, UiPalette.seat_color_name(owner_seat), SeatEmblem.shape_of(owner_seat)]
+	if p.is_capital:
+		text += " Capital (the crown)."
+	if p.has_fort:
+		text += " Fort (the tower)."
+	return text
 
 
 func _army_badge(state: GameState, a: Army, seats: Array) -> Button:
@@ -94,20 +120,31 @@ func _army_badge(state: GameState, a: Army, seats: Array) -> Button:
 	style.border_color = UiPalette.KEYLINE_INK
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(6)
-	style.content_margin_left = 6
+	style.content_margin_left = 6 + BADGE_EMBLEM_SIZE
 	style.content_margin_right = 6
 	for s in ["normal", "hover", "pressed"]:
 		b.add_theme_stylebox_override(s, style)
 	b.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
 	b.add_theme_color_override("font_hover_color", UiPalette.TEXT_PRIMARY)
+	# The owner's emblem as a light glyph at the badge's left, so the badge reads without its colour.
+	var seat := UiPalette.seat_index(state, a.owner, seats)
+	var emblem := SeatEmblem.new(seat, SeatEmblem.Look.GLYPH, BADGE_EMBLEM_SIZE)
+	emblem.anchor_top = 0.5
+	emblem.anchor_bottom = 0.5
+	emblem.offset_left = 3
+	emblem.offset_right = 3 + BADGE_EMBLEM_SIZE
+	emblem.offset_top = -BADGE_EMBLEM_SIZE / 2.0
+	emblem.offset_bottom = BADGE_EMBLEM_SIZE / 2.0
+	b.add_child(emblem)
+	var whose := "" if seat < 0 else "Player %d's army (%s badge, %s emblem). " % [seat + 1, UiPalette.seat_color_name(seat), SeatEmblem.shape_of(seat)]
 	if a.ruler != null:
 		# A ruler's army holds only its ruler (M2): name it and show the ruler's numbers (RulerPanel).
 		b.text = RulerPanel.badge_text(a)
-		b.tooltip_text = RulerPanel.summary(state, a) + "\n\nClick to select this army."
+		b.tooltip_text = RulerPanel.summary(state, a) + "\n\n" + TooltipText.wrap_text(whose + "Click to select this army.")
 		CodexLink.attach(b, "ruler_army", codex_requested.emit)
 	else:
 		var units := Breakdown.army_units(state, a.id)
-		b.tooltip_text = TooltipText.from_breakdown(units) + "\n\nClick to select this army."
+		b.tooltip_text = TooltipText.from_breakdown(units) + "\n\n" + TooltipText.wrap_text(whose + "Click to select this army.")
 		CodexLink.attach(b, TooltipText.codex_for("army_units", units), codex_requested.emit)
 	b.pressed.connect(func(): army_pressed.emit(a.id))
 	return b
@@ -156,6 +193,15 @@ func _draw() -> void:
 		_draw_crown(Vector2(r, r * 0.32))
 	if _has_fort:
 		_draw_fort(Vector2(r * (1.58 if _east else 0.42), r * 1.55))
+	SeatEmblem.draw_emblem(self, emblem_position(), RING_EMBLEM_RADIUS, owner_seat)
+
+
+## Where the owner emblem sits: on the ring at the upper left (upper right on the mirrored east half),
+## like the token emblem at the top-left in the style bible, clear of the crown, the name and the fort.
+func emblem_position() -> Vector2:
+	var r := size.x / 2.0
+	var dir := Vector2(0.7 if _east else -0.7, -0.7).normalized()
+	return Vector2(r, r) + dir * r * 0.93
 
 
 ## Capital marker: a small gilt crown above the name.

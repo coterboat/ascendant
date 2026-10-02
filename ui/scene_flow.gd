@@ -3,7 +3,8 @@ class_name SceneFlow
 ##   title --New game--> new game screen (over the title) --Start--> game screen
 ##                       new game screen --Back--> title
 ##   title --Quick start--> game screen (default setup)
-##   game screen --victory "New game"--> title with the new game screen open
+##   game screen --victory "New game"--> title with the new game screen open, set up for a rematch:
+##                                       the last game's seating, and a new seed
 ##   game screen --"Back to title" / "Quit to title"--> title
 ##
 ## The one rule: the next screen is instantiated and fully set up while it is still OUT of the tree
@@ -24,11 +25,13 @@ static func make_game(config: Dictionary) -> GameScreen:
 	return game
 
 
-## The title screen; with `with_new_game`, its new game screen is already open.
-static func make_title(with_new_game: bool = false) -> TitleScreen:
+## The title screen; with `with_new_game`, its new game screen is already open. `last_game`, the
+## config of the game just played ({"players", "seed"}), pre-fills it for a rematch: the same seating
+## and a different seed (NewGameScreen.prefill).
+static func make_title(with_new_game: bool = false, last_game: Dictionary = {}) -> TitleScreen:
 	var title := load(TITLE_SCENE).instantiate() as TitleScreen
 	if with_new_game:
-		title.open_new_game()
+		title.open_new_game(last_game)
 	return title
 
 
