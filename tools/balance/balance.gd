@@ -42,6 +42,40 @@ static func new_state() -> GameState:
 	return s
 
 
+## A fresh game state with rulers (M2-2): `mandates` maps a faction id to the mandate ids it has
+## ({CROWN: ["royal_armories"]}); `rulers` maps a faction id to [ruler id, kept power] for a ruler that
+## fights beside its army in every battle of a batch (batch's `ruler_fids`). Every faction gets a ruler
+## so its mandates count (its default is its first ruler), but only the factions in `rulers` field one.
+## No armies. Returns null with the reasons in `errors` when a mandate or ruler doesn't fit the faction.
+static func new_state_with(mandates: Dictionary, rulers: Dictionary = {}, errors: Array = []) -> GameState:
+	var builds := {}
+	for fid in [CROWN, CLANS]:
+		var rid: String = rulers[fid][0] if rulers.has(fid) else RulerRules.rulers_for(fid)[0]
+		builds[fid] = {"ruler": rid, "mandates": mandates.get(fid, [])}
+	var s := GameState.with_rulers(1, builds, errors)
+	if s == null:
+		return null
+	for fid in rulers:
+		var f := s.find_faction(fid)
+		f.kept_power = clampi(int(rulers[fid][1]), 0, RulerData.POWER_POOL)
+		RulerRules.refresh_ruler_type(f)
+	s.armies.clear()
+	return s
+
+
+## The ruler's army of `owner` at full hp (state with rulers), or null without one.
+static func ruler_army(state: GameState, owner: String, id := "") -> Army:
+	var f := state.find_faction(owner)
+	if f == null or f.ruler_unit_type == null:
+		return null
+	var a := Army.new()
+	a.id = id if not id.is_empty() else owner + "-9"
+	a.owner = owner
+	a.location = "rivermarch"
+	a.ruler = Unit.new(f.ruler_unit_type, owner)
+	return a
+
+
 static func ground(key: String) -> Dictionary:
 	for g in GROUNDS:
 		if g.key == key:
@@ -64,7 +98,9 @@ static func army(state: GameState, owner: String, type_ids: Array, id := "") -> 
 		if ut.is_commander:
 			a.commander = Unit.new(ut, owner)
 		else:
-			a.units.append(Unit.new(ut, owner))
+			var u := Unit.new(ut, owner)
+			u.current_hp = RulerRules.unit_max_hp(state, u)  # Veteran Levies (M2-2); the type's hp without it
+			a.units.append(u)
 	return a
 
 
@@ -201,14 +237,22 @@ static func matchups(state: GameState) -> Array:
 ## Fights `seeds` battles of `crown_ids` against `clans_ids` on `g` (a GROUNDS entry), on seeds
 ## base_seed + 1 .. base_seed + seeds. Returns {"n", "crown_wins", "crown_pct", "rounds" (mean),
 ## "ends": {end: n}, "top": {factor key: n}, "cited": {factor key: n}, "reports": [first few reports]}.
-## Factor keys are "<factor id>|<faction id>".
-static func batch(state: GameState, crown_ids: Array, clans_ids: Array, g: Dictionary, seeds: int, base_seed := 0, keep_reports := 0) -> Dictionary:
+## Factor keys are "<factor id>|<faction id>". `ruler_fids` lists the factions whose ruler (new_state_with)
+## fights beside their army, in its own army as in the game (M2-2).
+static func batch(state: GameState, crown_ids: Array, clans_ids: Array, g: Dictionary, seeds: int, base_seed := 0, keep_reports := 0,
+		ruler_fids: Array = []) -> Dictionary:
 	var crown := army(state, CROWN, crown_ids, "kingdom-1")
 	var clans := army(state, CLANS, clans_ids, "beasts-2")
 	var province := state.find_province(g.province)
 	crown.location = province.id
 	clans.location = province.id
 	var sides := [{"faction": CLANS, "armies": [clans]}, {"faction": CROWN, "armies": [crown]}]
+	for side in sides:
+		if ruler_fids.has(side.faction):
+			var ra := ruler_army(state, side.faction, side.faction + "-9")
+			if ra != null:
+				ra.location = province.id
+				side.armies.append(ra)
 	var ctx := {"kind": "province", "defender": g.defender, "province": province, "province_ids": [province.id], "state": state}
 	var out := {"n": seeds, "crown_wins": 0, "crown_pct": 0.0, "rounds": 0.0, "ends": {}, "top": {}, "cited": {}, "reports": []}
 	var rounds := 0

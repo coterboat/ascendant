@@ -48,6 +48,29 @@ extends BattleResolver
 ## a trait counts only its own effect (Charge: the charge bonus on its hits), and a commander counts
 ## the damage it dealt beyond what the same gold in its side's ordinary units would have dealt
 ## (_line_baseline). Its morale and its trait (Inspire, Pack Leader) are factors of their own.
+##
+## Rulers and mandates (M2-2, #30; design/M2_RULER.md §1.6, §2.3, §7.4). Only in a game with rulers
+## (GameState.with_rulers): without a ruler on the field and without mandates, a battle is fought, and
+## reported, exactly as above. The numbers come from data (RulerData, MandateData) through RulerRules
+## (unit_stats, unit_max_hp, battle_effects, dread_value), the same functions every tooltip reads:
+##   the ruler    fights beside its side's armies with the stats its kept power gives it. King Corvane,
+##                the Great Thornmane and the Ninth Fang stand in the front rank; the Ever-Regent in the
+##                second rank, with the Volley units and under the same shield rule (Skirmish reaches
+##                him). +RULER_MORALE morale to its side while it stands. Not a unit: Royal Armories,
+##                Veteran Levies and Pack Leader skip it. When it falls in a battle its side wins, its
+##                army no longer holds it (army.ruler = null) and TurnResolver records the death.
+##   Dread        the Great Thornmane: every enemy side in a province battle (not a border battle) has
+##                its ability value less morale while the avatar stands. Adds to Fury.
+##   Iron Discipline   a side that would break does not while one of its commanders stands.
+##   Drilled Ranks     the side's base hit chance is the mandate's base_hit (70) instead of BASE_HIT.
+##   Veteran Levies    regular units have more maximum hp (RulerRules.unit_max_hp).
+##   Royal Armories    regular units have more attack and defense (RulerRules.unit_stats), as named parts.
+##   Blood Frenzy      every fighter below its maximum hp has more attack, a named part like Berserk.
+##   Feast of Victory  after a battle the side wins, its standing fighters heal to full (_apply_losses).
+## Each of these is a "why" factor measured like the rest: the ruler counts the damage it dealt (it costs
+## no gold, so all of it is what it added), its morale is a factor of its own (morale_ruler), the stat
+## mandates count what their parts added (mandate_*), Veteran Levies the damage its extra hp absorbed,
+## Iron Discipline the hp it kept from a rout, and Dread is measured like Fury (ability_dread).
 
 const ROUND_CAP := 8
 const BASE_HIT := 60
@@ -107,6 +130,13 @@ const TRAIT_SHORT := {
 	PACK_LEADER: "+%d attack to every unit" % PACK_LEADER_ATTACK,
 }
 
+## M2-2: the ruler's morale part and its "why" factor id, Dread's morale part, and the prefix of every
+## mandate's part and factor id ("mandate_royal_armories"), which is also its RulesCodex entry.
+const RULER := "ruler"
+const DREAD := "Dread"
+const MANDATE_PREFIX := "mandate_"
+const RULER_RANK_WORDS := {"front": "in the front rank", "second": "from the second rank"}
+
 ## Odds estimate: the real battle is fought ODDS_SAMPLES times on fixed internal seeds.
 const ODDS_SAMPLES := 24
 const ODDS_SEED := 4040
@@ -136,8 +166,10 @@ static func resolve(attacker, defender, province: Province, rng: SeededRNG, stat
 
 
 ## BattleResolver interface, called by TurnResolver for every battle (any number of sides).
-## Applies the winner's losses to its armies (dead units removed, wounds kept); the TurnResolver
-## removes the losing armies. The battle dictionary may carry "state" for names and terrain.
+## Applies the winner's losses to its armies (dead units removed, wounds kept, a fallen ruler leaves
+## its army, Feast of Victory heals); the TurnResolver removes the losing armies. The battle dictionary
+## may carry "state" for names, terrain, rulers and mandates. With Feast of Victory, the report gains
+## "feast": {"faction", "name", "fighters", "healed"} (TurnResolver's aftermath line says so).
 func resolve_battle(battle: Dictionary, rng: SeededRNG) -> Dictionary:
 	var state = battle.get("state")
 	var kind: String = battle.get("kind", "province")
@@ -148,7 +180,9 @@ func resolve_battle(battle: Dictionary, rng: SeededRNG) -> Dictionary:
 	var ctx := {"kind": kind, "defender": battle.get("defender", ""), "province": province,
 		"province_ids": pids, "state": state if state is GameState else null}
 	var r := fight(battle.sides, ctx, rng)
-	_apply_losses(r.sides, r.result.winner)
+	var feast := _apply_losses(r.sides, r.result.winner)
+	if not feast.is_empty():
+		r.result.report["feast"] = feast
 	return r.result
 
 
@@ -208,8 +242,9 @@ static func odds_seed(i: int) -> int:
 	return ODDS_SEED + i * 7919
 
 
-static func hit_chance(attack: int, defense: int) -> int:
-	return clampi(BASE_HIT + HIT_PER_POINT * (attack - defense), MIN_HIT, MAX_HIT)
+## `base` is the attacker's base hit chance: BASE_HIT, or Drilled Ranks' (RulerRules.battle_effects).
+static func hit_chance(attack: int, defense: int, base: int = BASE_HIT) -> int:
+	return clampi(base + HIT_PER_POINT * (attack - defense), MIN_HIT, MAX_HIT)
 
 
 static func damage(attack: int, defense: int) -> int:
@@ -239,7 +274,7 @@ static func fight(sides_in: Array, ctx: Dictionary, rng: SeededRNG) -> Dictionar
 		terrain = province.terrain
 		fort = province.has_fort
 	var defender_fid: String = ctx.get("defender", "")
-	var sides := _build_sides(sides_in, defender_fid, state)
+	var sides := _build_sides(sides_in, defender_fid, state, kind)
 	var env := {"terrain": terrain, "fort": fort, "kind": kind}
 
 	var rounds := []
@@ -247,6 +282,7 @@ static func fight(sides_in: Array, ctx: Dictionary, rng: SeededRNG) -> Dictionar
 	while round_no < ROUND_CAP and _standing(sides).size() > 1:
 		round_no += 1
 		rounds.append(_fight_round(sides, round_no, env, rng))
+	_count_extra_hp(sides)
 
 	var standing := _standing(sides)
 	var winner_idx := -1
@@ -289,12 +325,15 @@ static func fight(sides_in: Array, ctx: Dictionary, rng: SeededRNG) -> Dictionar
 	return {"result": result, "sides": sides}
 
 
-static func _build_sides(sides_in: Array, defender_fid: String, state) -> Array:
+static func _build_sides(sides_in: Array, defender_fid: String, state, kind: String = "province") -> Array:
 	var sides := []
 	for i in sides_in.size():
 		var sd: Dictionary = sides_in[i]
 		var armies: Array = sd.armies.duplicate()
 		armies.sort_custom(func(a, b): return a.id < b.id)
+		# M2-2: what the side's mandates do in battle (nothing in a game without rulers).
+		var effects := RulerRules.battle_effects(state if state is GameState else null, sd.faction)
+		var mods_by_type := {}  # unit type id -> its part mods, from RulerRules.unit_stats
 		var fighters := []
 		var labels := []
 		var morale_sum := 0
@@ -302,21 +341,29 @@ static func _build_sides(sides_in: Array, defender_fid: String, state) -> Array:
 		var strength := 0
 		var line_attacks := []
 		var line_cost := 0
+		var ruler_info := {}
 		for a in armies:
 			labels.append(_army_label(a, state))
 			for u in a.units:
-				fighters.append(_fighter(i, a, u, false))
+				var mods := _unit_mods(mods_by_type, sd.faction, u.type, state)
+				var max_hp: int = RulerRules.unit_max_hp(state, u) if state is GameState else u.type.hp
+				fighters.append(_fighter(i, a, u, false, false, mods, max_hp))
 				morale_sum += u.type.morale
 				regulars += 1
-				line_attacks.append(u.type.attack)
+				line_attacks.append(u.type.attack + _mods_total(mods.attack))
 				line_cost += u.type.cost
 			if a.commander:
 				fighters.append(_fighter(i, a, a.commander, true))
+			if a.ruler:
+				# The ruler fights beside its side's armies: not a unit, so no unit mods (§1.3).
+				var rf := _fighter(i, a, a.ruler, false, true)
+				fighters.append(rf)
+				ruler_info = _ruler_info(state, sd.faction, rf, kind)
 			strength += StubBattleResolver.army_strength(a)
 		if regulars == 0:
 			# A commander fighting alone is compared with its faction's roster instead.
 			for ut in _roster_types(sd.faction, state):
-				line_attacks.append(ut.attack)
+				line_attacks.append(ut.attack + _mods_total(_unit_mods(mods_by_type, sd.faction, ut, state).attack))
 				line_cost += ut.cost
 		var base_morale := 0
 		if regulars > 0:
@@ -336,21 +383,68 @@ static func _build_sides(sides_in: Array, defender_fid: String, state) -> Array:
 			"routed": false, "destroyed": false, "held_field": false, "out_round": 0, "rout_info": {},
 			"attacks": 0, "hits": 0, "chance_sum": 0, "chance_min": 100, "chance_max": 0,
 			"dealt": 0, "expected": 0.0, "luck_by": {}, "impact": {}, "triggers": {}, "trait_units": {},
-			"volley_expected": 0.0, "cmd_expected": 0.0, "skirmish_reach": 0.0, "skirmish_targets": {}, "lost": [], "morale_log": []})
+			"volley_expected": 0.0, "cmd_expected": 0.0, "skirmish_reach": 0.0, "skirmish_targets": {}, "lost": [], "morale_log": [],
+			# M2-2: the side's mandates and ruler.
+			"mandates": effects.mandates, "base_hit": int(effects.base_hit), "base_hit_key": String(effects.base_hit_key),
+			"frenzy": int(effects.wounded_attack), "frenzy_key": String(effects.wounded_attack_key),
+			"iron": bool(effects.iron_discipline), "feast": bool(effects.feast_of_victory), "iron_held": [],
+			"ruler_info": ruler_info, "dread": int(ruler_info.get("dread", 0)), "ruler_expected": 0.0, "ruler_dealt": 0,
+			"ruler_fell": 0})
 		for f in fighters:
 			if not f.trait.is_empty():
 				sides[i].trait_units[f.trait] = f.name
 	return sides
 
 
+## The attack, defense and maximum hp parts the side's mandates give a regular unit of type `ut`, from
+## RulerRules.unit_stats (Royal Armories, Veteran Levies): {"attack": [{"key", "value"}], "defense": [...],
+## "hp": [...]}, keyed "mandate_<id>". Empty for commanders, rulers, types outside the faction's roster
+## and games without mandates. Cached per type in `cache`.
+static func _unit_mods(cache: Dictionary, fid: String, ut: UnitType, state) -> Dictionary:
+	if cache.has(ut.id):
+		return cache[ut.id]
+	var out := {"attack": [], "defense": [], "hp": []}
+	if state is GameState and not ut.is_commander and not ut.is_ruler and not RulerRules.mandates(state, fid).is_empty():
+		var us := RulerRules.unit_stats(state, fid, ut.id)
+		if us.get("ok", false):
+			for stat in out:
+				for m in us.mods[stat]:
+					out[stat].append({"key": MANDATE_PREFIX + String(m.mandate), "value": int(m.value)})
+	cache[ut.id] = out
+	return out
+
+
+static func _mods_total(mods: Array) -> int:
+	var total := 0
+	for m in mods:
+		total += int(m.value)
+	return total
+
+
+## The ruler on a side, for the report and the "why": {"id", "name", "rank" ("front" | "second"),
+## "kept_power", "max_hp", "attack", "defense", "hp_start", and "dread" (its Dread in this battle: the
+## morale every enemy side loses while it stands, only in a province battle; 0 otherwise)}.
+static func _ruler_info(state, fid: String, rf: Dictionary, kind: String) -> Dictionary:
+	var ut: UnitType = rf.type
+	var f: Faction = state.find_faction(fid) if state is GameState else null
+	var dread := 0
+	if kind == "province" and state is GameState:
+		dread = RulerRules.dread_value(state, fid)
+	return {"id": ut.id, "name": ut.name, "rank": RulerRules.battle_rank(ut.id), "kept_power": f.kept_power if f != null else 0,
+		"max_hp": int(rf.max), "attack": ut.attack, "defense": ut.defense, "hp_start": int(rf.hp), "dread": dread}
+
+
 ## Who fought on a side, for the report: unit types with counts in first-seen order (armies by id,
 ## units in army order), then the commanders. Ids for the viewer, names and text for players:
 ##   {"units": [{"id", "name", "count"}], "commanders": [{"id", "name"}],
 ##    "text": "Spearmen (2), Crossbowmen, led by Knight Captain" | "Warchief alone"}
+## With a ruler on the side (M2-2), also "ruler": {"id", "name"}, and the text ends ", with King
+## Corvane I" ("King Corvane I alone" when the ruler fought by itself).
 static func _roster(armies: Array) -> Dictionary:
 	var units := []
 	var index := {}
 	var commanders := []
+	var ruler := {}
 	for a in armies:
 		for u in a.units:
 			if not index.has(u.type.id):
@@ -359,6 +453,8 @@ static func _roster(armies: Array) -> Dictionary:
 			units[index[u.type.id]].count += 1
 		if a.commander:
 			commanders.append({"id": a.commander.type.id, "name": a.commander.type.name})
+		if a.ruler:
+			ruler = {"id": a.ruler.type.id, "name": a.ruler.type.name}
 	var parts := []
 	for e in units:
 		parts.append(e.name if e.count == 1 else "%s (%d)" % [e.name, e.count])
@@ -375,7 +471,14 @@ static func _roster(armies: Array) -> Dictionary:
 	var text := ", ".join(parts)
 	if not led.is_empty():
 		text = ("%s alone" % " and ".join(led)) if parts.is_empty() else "%s, led by %s" % [text, " and ".join(led)]
-	return {"units": units, "commanders": commanders, "text": text}
+	if ruler.is_empty():
+		return {"units": units, "commanders": commanders, "text": text}
+	if text.is_empty():
+		text = "%s alone" % ruler.name
+	else:
+		text = "%s, with %s" % [text.trim_suffix(" alone"), ruler.name] if not text.ends_with(" alone") \
+			else "%s and %s" % [text.trim_suffix(" alone"), ruler.name]
+	return {"units": units, "commanders": commanders, "ruler": ruler, "text": text}
 
 
 ## The unit types `fid` can recruit (not its commander), from the game state when there is one.
@@ -390,16 +493,23 @@ static func _roster_types(fid: String, state) -> Array:
 	return []
 
 
-static func _fighter(side_idx: int, army: Army, unit: Unit, is_cmd: bool) -> Dictionary:
+## One fighter. Tier 0 is the front rank, 1 the second rank (Volley units, and a ruler whose battle rank
+## is "second"), 2 the commanders behind everyone. `mods` are its mandate parts (_unit_mods) and
+## `max_hp` its maximum hp with them (RulerRules.unit_max_hp; the type's hp when not given).
+static func _fighter(side_idx: int, army: Army, unit: Unit, is_cmd: bool, is_ruler: bool = false, mods: Dictionary = {},
+		max_hp: int = -1) -> Dictionary:
 	var t: String = unit.type.trait_id
 	var tier := 0
 	if is_cmd:
 		tier = 2
+	elif is_ruler:
+		tier = 1 if RulerRules.battle_rank(unit.type.id) == "second" else 0
 	elif t == VOLLEY:
 		tier = 1
 	return {"side": side_idx, "army": army.id, "army_ref": army, "unit": unit, "type": unit.type, "name": unit.type.name,
-		"trait": t, "cmd": is_cmd, "tier": tier, "hp": unit.current_hp, "hp0": unit.current_hp, "max": unit.type.hp,
-		"alive": unit.current_hp > 0, "pending": 0}
+		"trait": t, "cmd": is_cmd, "tier": tier, "hp": unit.current_hp, "hp0": unit.current_hp,
+		"max": max_hp if max_hp > 0 else unit.type.hp, "alive": unit.current_hp > 0, "pending": 0,
+		"ruler": is_ruler, "mods": mods if not mods.is_empty() else {"attack": [], "defense": [], "hp": []}, "taken": 0}
 
 
 static func _standing(sides: Array) -> Array:
@@ -436,18 +546,29 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			var bonus := 0
 			if f.trait == CHARGE and round_no == 1:
 				bonus = CHARGE_DAMAGE_FOREST if env.terrain == "forest" else CHARGE_DAMAGE
-			var chance := hit_chance(atk.value, dfn.value)
+			var base: int = side.base_hit  # BASE_HIT, or Drilled Ranks'
+			var chance := hit_chance(atk.value, dfn.value, base)
 			var dmg := damage(atk.value, dfn.value) + bonus
 			var expected := chance / 100.0 * dmg
 			# What each modifier was worth on this attack, in expected damage.
 			for p in atk.parts:
 				var a2: int = atk.value - atk.parts[p]
-				var gain: float = expected - hit_chance(a2, dfn.value) / 100.0 * (damage(a2, dfn.value) + bonus)
+				var gain: float = expected - hit_chance(a2, dfn.value, base) / 100.0 * (damage(a2, dfn.value) + bonus)
 				_add_impact(side, p, gain)
 			for p in dfn.parts:
 				var d2: int = dfn.value - dfn.parts[p]
-				var saved: float = hit_chance(atk.value, d2) / 100.0 * (damage(atk.value, d2) + bonus) - expected
+				var saved: float = hit_chance(atk.value, d2, base) / 100.0 * (damage(atk.value, d2) + bonus) - expected
 				_add_impact(tside, p, saved)
+			if base != BASE_HIT:
+				# Drilled Ranks: what the side's higher base hit chance added to this attack.
+				var plain_chance := hit_chance(atk.value, dfn.value)
+				if plain_chance != chance:
+					_add_impact(side, side.base_hit_key, (chance - plain_chance) / 100.0 * dmg)
+					side.triggers[side.base_hit_key] = side.triggers.get(side.base_hit_key, 0) + 1
+			if f.ruler:
+				# The ruler costs no gold, so all the damage it deals is what it added (§7.4).
+				side.ruler_expected += expected
+				_add_impact(side, RULER, expected)
 			if f.trait == SKIRMISH and t.tier == 1 and _screened(tside, t):
 				# Only Skirmish reached this target past its front rank. Counted in full: every hit on a
 				# shielded second-rank fighter takes away about as much of the damage it would have gone on
@@ -460,7 +581,7 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			if f.cmd:
 				side.cmd_expected += expected
 				_add_impact(side, "commander", expected - _line_baseline(side, f, dfn.value, atk.parts.get("terrain", 0)))
-			if f.tier == 1 and _screened(side, f):
+			if f.tier == 1 and not f.ruler and _screened(side, f):
 				side.volley_expected += expected
 				_add_impact(side, VOLLEY, expected * 0.5)
 			if atk.parts.has(BERSERK) and not berserk.has(si):
@@ -484,6 +605,8 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 				t.pending += dmg
 				if bonus > 0:
 					charge[si] = charge.get(si, 0) + bonus
+				if f.ruler:
+					side.ruler_dealt += dmg
 
 	var highlights := []
 	for si in standing:
@@ -494,11 +617,15 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 	for si in standing:
 		for f in sides[si].fighters:
 			if f.alive and f.pending > 0:
+				var before: int = f.hp
 				f.hp = maxi(0, f.hp - f.pending)
+				f.taken += before - f.hp
 				if f.hp == 0:
 					f.alive = false
 					sides[si].lost.append(f.name)
-					highlights.append("%s %s fell." % [_poss(sides[si].name), f.name])
+					highlights.append("%s %s fell." % [_poss(sides[si].name), _bare(f.name)])
+					if f.ruler:
+						sides[si].ruler_fell = round_no
 			f.pending = 0
 
 	# Morale is checked for every side before any of them leaves, so the order of sides never matters.
@@ -521,6 +648,16 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			side.out_round = round_no
 			highlights.append("%s had no one left standing." % side.name)
 		elif checks[si].lost_pct >= checks[si].break_pct:
+			var holder := _iron_holder(side)
+			if not holder.is_empty():
+				# Iron Discipline: the side would break, but one of its commanders still stands (§2.3).
+				checks[si]["held_by"] = holder
+				side.iron_held.append(checks[si])
+				if side.iron_held.size() == 1:
+					highlights.append("%s would have broken after losing %d%% of its strength (morale %d holds only to %d%%), but %s held it while its %s stood." % [
+						side.name, checks[si].lost_pct, checks[si].morale, checks[si].break_pct,
+						RulerRules.mandate_name(RulerRules.IRON_DISCIPLINE), holder])
+				continue
 			side.routed = true
 			side.out_round = round_no
 			side.rout_info = checks[si]
@@ -575,7 +712,7 @@ static func _line_baseline(side: Dictionary, f: Dictionary, defense: int, terrai
 		return 0.0
 	var per_unit := 0.0
 	for a in attacks:
-		per_unit += hit_chance(a + terrain_attack, defense) / 100.0 * damage(a + terrain_attack, defense)
+		per_unit += hit_chance(a + terrain_attack, defense, side.base_hit) / 100.0 * damage(a + terrain_attack, defense)
 	per_unit /= attacks.size()
 	var standing := 0.0
 	if side.regulars > 0:
@@ -612,10 +749,15 @@ static func _attack(f: Dictionary, side: Dictionary, env: Dictionary) -> Diction
 			parts["terrain"] = ta
 	if f.trait == BERSERK and f.hp < f.max:
 		parts[BERSERK] = BERSERK_ATTACK
-	if not f.cmd:
+	var frenzy: int = side.get("frenzy", 0)
+	if frenzy > 0 and f.hp < f.max:
+		parts[side.frenzy_key] = frenzy  # Blood Frenzy: every fighter, the ruler included
+	if not f.cmd and not f.get("ruler", false):
 		for o in side.fighters:
 			if o.alive and o.cmd and o.trait == PACK_LEADER:
 				parts[PACK_LEADER] = PACK_LEADER_ATTACK
+	for m in f.get("mods", {}).get("attack", []):
+		parts[m.key] = int(parts.get(m.key, 0)) + int(m.value)  # Royal Armories
 	var value: int = f.type.attack
 	for p in parts:
 		value += parts[p]
@@ -636,6 +778,8 @@ static func _defense(t: Dictionary, tside: Dictionary, _attacker: Dictionary, en
 			if o.alive and o != t:
 				parts[SHIELD_WALL] = SHIELD_WALL_DEFENSE
 				break
+	for m in t.get("mods", {}).get("defense", []):
+		parts[m.key] = int(parts.get(m.key, 0)) + int(m.value)  # Royal Armories
 	var value: int = t.type.defense
 	for p in parts:
 		value += parts[p]
@@ -660,10 +804,58 @@ static func _morale(sides: Array, si: int, standing: Array) -> Dictionary:
 				bears += 1
 	if bears > 0:
 		parts[FURY] = -mini(FURY_MAX, FURY_MORALE * bears)
+	# M2-2: the side's own ruler while it stands, and an enemy avatar's Dread while it stands.
+	for f in side.fighters:
+		if f.alive and f.get("ruler", false):
+			parts[RULER] = RulerData.RULER_MORALE
+	var dread := 0
+	for oi in standing:
+		if oi != si and int(sides[oi].get("dread", 0)) > 0 and _ruler_standing(sides[oi]):
+			dread += int(sides[oi].dread)
+	if dread > 0:
+		parts[DREAD] = -dread
 	var value: int = side.base_morale
 	for p in parts:
 		value += parts[p]
 	return {"value": value, "parts": parts}
+
+
+static func _ruler_standing(side: Dictionary) -> bool:
+	for f in side.fighters:
+		if f.get("ruler", false) and f.alive:
+			return true
+	return false
+
+
+## Iron Discipline (§2.3): the name of a commander of `side` still standing when the side has the
+## mandate, so it does not break this round; "" otherwise (rulers don't count).
+static func _iron_holder(side: Dictionary) -> String:
+	if not side.iron:
+		return ""
+	for f in side.fighters:
+		if f.alive and f.cmd:
+			return f.name
+	return ""
+
+
+## Veteran Levies (§7.4): the damage each regular unit's extra maximum hp absorbed (up to the bonus, for
+## a unit that took that much), added to the side's impact under the mandate's key once the battle ends.
+static func _count_extra_hp(sides: Array) -> void:
+	for s in sides:
+		var absorbed := {}
+		var keys := []
+		for f in s.fighters:
+			var left: int = f.taken
+			for m in f.mods.hp:
+				var a := mini(int(m.value), left)
+				left -= a
+				if not absorbed.has(m.key):
+					absorbed[m.key] = 0
+					keys.append(m.key)
+				absorbed[m.key] += a
+		for k in keys:
+			if absorbed[k] > 0:
+				_add_impact(s, k, float(absorbed[k]))
 
 
 static func _hp(side: Dictionary) -> int:
@@ -704,18 +896,36 @@ static func _add_impact(side: Dictionary, key: String, amount: float) -> void:
 	side.impact[key] = side.impact.get(key, 0.0) + amount
 
 
-static func _apply_losses(sides: Array, winner: String) -> void:
+## The winner's losses on its armies: fallen units and commanders leave them, a fallen ruler leaves its
+## army (army.ruler = null; TurnResolver removes the empty army and records the death, M2-3's contract),
+## and survivors keep their wounds, unless the side has Feast of Victory: then every fighter still
+## standing heals to its maximum hp. Returns {"faction", "name", "fighters" (standing), "healed" (hp
+## in all)} for a Feast that healed anyone, otherwise {}.
+static func _apply_losses(sides: Array, winner: String) -> Dictionary:
+	var feast := {}
 	for s in sides:
 		if s.faction != winner:
 			continue
+		var standing := 0
+		var healed := 0
 		for f in s.fighters:
 			var army: Army = f.army_ref
 			if f.alive:
-				f.unit.current_hp = f.hp
+				var hp: int = f.hp
+				if s.feast:
+					standing += 1
+					healed += maxi(0, f.max - hp)
+					hp = maxi(hp, f.max)
+				f.unit.current_hp = hp
 			elif f.cmd:
 				army.commander = null
+			elif f.ruler:
+				army.ruler = null
 			else:
 				army.units.erase(f.unit)
+		if s.feast and healed > 0:
+			feast = {"faction": s.faction, "name": s.name, "fighters": standing, "healed": healed}
+	return feast
 
 
 # --- the report -----------------------------------------------------------------------------------
@@ -745,7 +955,7 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 		losses.append(_losses_text(s))
 		var rate := 0 if s.attacks == 0 else roundi(100.0 * s.hits / s.attacks)
 		var avg := 0 if s.attacks == 0 else roundi(float(s.chance_sum) / s.attacks)
-		side_reports.append({"faction": s.faction, "name": s.name, "armies": s.armies.duplicate(),
+		var sr := {"faction": s.faction, "name": s.name, "armies": s.armies.duplicate(),
 			"roster": s.roster.duplicate(true),
 			"defender": s.is_defender, "fighters_start": s.count_start, "fighters_lost": lost_count,
 			"lost": s.lost.duplicate(), "hp_start": s.hp_start, "hp_end": _hp(s), "routed": s.routed,
@@ -754,7 +964,13 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 			"hit_chance_range": [s.chance_min if s.attacks > 0 else 0, s.chance_max],
 			"damage_dealt": s.dealt, "damage_expected": snappedf(s.expected, 0.1),
 			"triggers": s.triggers.duplicate(), "morale_log": s.morale_log.duplicate(true),
-			"base_morale": s.base_morale})
+			"base_morale": s.base_morale}
+		# M2-2: only a side with a ruler or battle mandates carries these, so an M1 report is unchanged.
+		if not s.ruler_info.is_empty():
+			sr["ruler"] = _ruler_report(s)
+		if not s.mandates.is_empty():
+			sr["mandates"] = _mandates_report(s)
+		side_reports.append(sr)
 	lines.append("Casualties: %s." % "; ".join(losses))
 	var hit_parts := []
 	for sr in side_reports:
@@ -815,6 +1031,36 @@ static func _losses_text(s: Dictionary) -> String:
 	return text
 
 
+## A side's ruler in the report (§9): {"id", "name", "rank" ("front" | "second"), "kept_power",
+## "max_hp", "attack", "defense", "hp_start", "hp_end", "fell" (its hp reached 0), "fell_round" (0 if it
+## didn't), "damage_dealt", "damage_expected", and "dread" (the morale it took from every enemy side
+## while it stood) when its Dread worked in this battle}. A ruler on a losing side is lost with its army
+## even when it did not fall (TurnResolver).
+static func _ruler_report(s: Dictionary) -> Dictionary:
+	var info: Dictionary = s.ruler_info
+	var hp_end := 0
+	for f in s.fighters:
+		if f.ruler:
+			hp_end = f.hp
+	var out := {"id": info.id, "name": info.name, "rank": info.rank, "kept_power": info.kept_power,
+		"max_hp": info.max_hp, "attack": info.attack, "defense": info.defense, "hp_start": info.hp_start,
+		"hp_end": hp_end, "fell": s.ruler_fell > 0, "fell_round": s.ruler_fell, "damage_dealt": s.ruler_dealt,
+		"damage_expected": snappedf(s.ruler_expected, 0.1)}
+	if int(info.dread) > 0:
+		out["dread"] = int(info.dread)
+	return out
+
+
+## The battle mandates a side fought with, in the order taken: [{"id", "name", "effect", "codex"}].
+static func _mandates_report(s: Dictionary) -> Array:
+	var out := []
+	for mid in s.mandates:
+		var md := RulerRules.mandate_data(mid)
+		out.append({"id": mid, "name": String(md.get("name", "")), "effect": String(md.get("effect", "")),
+			"codex": String(md.get("codex", "mandates"))})
+	return out
+
+
 ## Every candidate deciding factor: {"id", "side" (index it helped), "faction", "impact" (about how
 ## many hp it was worth to that side), "clause" (phrased for the report), "brief" (seed-free, for odds)}.
 static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds_fought: int) -> Array:
@@ -867,14 +1113,27 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 					c = "%s %s went berserk once wounded (+%d attack), adding about %d damage" % [who, unit, BERSERK_ATTACK, dmg] if won \
 						else "even though %s %s went berserk" % [who, unit]
 				SKIRMISH:
-					var behind := _most_hit(s.skirmish_targets)
-					c = "%s %s skirmished past the front line and hit the %s behind it, for about %d damage" % [who, unit, behind, roundi(s.skirmish_reach)] if won \
-						else "even though %s %s skirmished past the front line to the %s" % [who, unit, behind]
+					var behind := _the(_most_hit(s.skirmish_targets))
+					c = "%s %s skirmished past the front line and hit %s behind it, for about %d damage" % [who, unit, behind, roundi(s.skirmish_reach)] if won \
+						else "even though %s %s skirmished past the front line to %s" % [who, unit, behind]
 				PACK_LEADER:
 					c = "%s %s drove the pack (+%d attack to every unit), adding about %d damage" % [who, unit, PACK_LEADER_ATTACK, dmg] if won \
 						else "even though %s %s drove the pack" % [who, unit]
+				RULER:
+					# The damage the ruler dealt (§7.4): it costs no gold, so all of it is what it added.
+					var rname := String(s.ruler_info.name)
+					var rank: String = RULER_RANK_WORDS.get(String(s.ruler_info.rank), "")
+					c = "%s fought %s and dealt about %d damage%s" % [rname, rank, dmg, " before falling" if s.ruler_fell > 0 else ""] if won \
+						else "even though %s fought %s and dealt about %d damage" % [rname, rank, dmg]
+					brief = "%s (fights %s, +%d morale while it stands)" % [rname, rank, RulerData.RULER_MORALE]
 				_:
-					continue
+					if not k.begins_with(MANDATE_PREFIX):
+						continue
+					var words := _mandate_words(s, k, dmg)
+					if words.is_empty():
+						continue
+					c = String(words.done) + String(words.tail) if won else "even though %s" % words.done
+					brief = String(words.brief)
 			if brief.is_empty():
 				brief = "%s %s (%s)" % [who, unit, TRAIT_SHORT.get(k, k)]
 			out.append({"id": k, "side": si, "faction": s.faction, "impact": v, "clause": c, "brief": brief})
@@ -900,6 +1159,20 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 							else "%s %s roared (%d morale) and shook %s") % [_poss(bs.name), bs.trait_units[FURY], fury, s.name] if bear_side == wi
 							else "even though %s %s roared (%d morale)" % [_poss(bs.name), bs.trait_units[FURY], fury],
 						"brief": "%s %s (%s)" % [_poss(bs.name), bs.trait_units[FURY], TRAIT_SHORT[FURY]]})
+			# M2-2: the Great Thornmane's Dread, measured like Fury (§7.4).
+			var dread: int = ri.parts.get(DREAD, 0)
+			if dread < 0:
+				var dread_side := _side_with_dread(sides, si)
+				if dread_side >= 0:
+					var ds: Dictionary = sides[dread_side]
+					var decisive_dread: bool = ri.lost_pct < break_pct(ri.morale - dread)
+					var whose := "%s %s (%d morale)" % [_poss(String(ds.ruler_info.name)), RulerRules.ability_name(String(ds.ruler_info.id)), dread]
+					out.append({"id": "ability_dread", "side": dread_side, "faction": ds.faction,
+						"impact": float(ri.hp) if decisive_dread else float(-dread) * 0.5,
+						"clause": ("%s made %s break a round sooner than it would have" if decisive_dread else "%s shook %s") % [whose, s.name]
+							if dread_side == wi else "even though %s shook %s" % [whose, s.name],
+						"brief": "%s %s (%d enemy morale while it stands)" % [_poss(String(ds.ruler_info.name)),
+							RulerRules.ability_name(String(ds.ruler_info.id)), dread]})
 	for si in sides.size():
 		var s: Dictionary = sides[si]
 		for key in ["commander", INSPIRE]:
@@ -929,6 +1202,31 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 					else "even though %s %s inspired the line" % [_poss(s.name), cname]
 			out.append({"id": "morale_" + key, "side": si, "faction": s.faction, "impact": impact, "clause": c,
 				"brief": "%s %s (%s)" % [_poss(s.name), cname, "+%d morale" % (COMMANDER_MORALE + (INSPIRE_MORALE if key == INSPIRE else 0))]})
+	# M2-2: the ruler's +morale kept the line, measured like the commander's (§7.4), and Iron Discipline
+	# held a side past its breaking point while a commander stood: the hp it kept from a rout.
+	for si in sides.size():
+		var s: Dictionary = sides[si]
+		var won: bool = si == wi
+		if not s.ruler_info.is_empty():
+			var held_by_ruler := false
+			for e in s.morale_log:
+				var part: int = e.parts.get(RULER, 0)
+				if part > 0 and e.lost_pct < e.break_pct and e.lost_pct >= break_pct(e.morale - part):
+					held_by_ruler = true
+			if held_by_ruler:
+				var rname := String(s.ruler_info.name)
+				out.append({"id": "morale_" + RULER, "side": si, "faction": s.faction, "impact": float(_hp(s)),
+					"clause": "%s kept the line from breaking (+%d morale while it stands)" % [rname, RulerData.RULER_MORALE] if won
+						else "even though %s steadied the line (+%d morale)" % [rname, RulerData.RULER_MORALE],
+					"brief": "%s (+%d morale while it stands)" % [rname, RulerData.RULER_MORALE]})
+		if not s.iron_held.is_empty():
+			var last: Dictionary = s.iron_held.back()
+			var iron := RulerRules.mandate_name(RulerRules.IRON_DISCIPLINE)
+			var held := "%s held the %s line past its breaking point (lost %d%%, breaks at %d%%) while its %s stood" % [
+				iron, s.name, last.lost_pct, last.break_pct, last.held_by]
+			out.append({"id": MANDATE_PREFIX + RulerRules.IRON_DISCIPLINE, "side": si, "faction": s.faction, "impact": float(_hp(s)),
+				"clause": held if won else "even though %s" % held,
+				"brief": "%s keeps %s from breaking while one of its commanders stands" % [iron, s.name]})
 
 	# Numbers: the bigger force, as a share of the fight's hp x attack. A side counts as the bigger force
 	# only when it brought more hit points than every other side and at least as many fighters, and its
@@ -1136,8 +1434,57 @@ static func _side_with_trait(sides: Array, trait_id: String, not_side: int) -> i
 	return -1
 
 
+## The first side other than `not_side` whose ruler has Dread in this battle, or -1.
+static func _side_with_dread(sides: Array, not_side: int) -> int:
+	for i in sides.size():
+		if i != not_side and sides[i].dread > 0:
+			return i
+	return -1
+
+
+## A stat mandate's part of the "why", from its data (§7.4): {"done" (what it did, the clause without
+## its worth), "tail" (", worth about N damage"), "brief" (seed-free, for odds)}; {} for a mandate with
+## no part to explain. `key` is "mandate_<id>", `dmg` its worth in damage (hp absorbed for Veteran Levies).
+static func _mandate_words(s: Dictionary, key: String, dmg: int) -> Dictionary:
+	var mid := key.trim_prefix(MANDATE_PREFIX)
+	var md := RulerRules.mandate_data(mid)
+	if md.is_empty():
+		return {}
+	var name := String(md.name)
+	if md.has("base_hit"):
+		return {"done": "%s raised %s base hit chance to %d%%" % [name, _poss(s.name), s.base_hit],
+			"tail": ", worth about %d damage" % dmg,
+			"brief": "%s raises %s base hit chance to %d%%" % [name, _poss(s.name), s.base_hit]}
+	if md.has("wounded_attack"):
+		return {"done": "%s gave %s wounded fighters +%d attack" % [name, _poss(s.name), s.frenzy],
+			"tail": ", adding about %d damage" % dmg,
+			"brief": "%s gives %s wounded fighters +%d attack" % [name, _poss(s.name), s.frenzy]}
+	var units: Dictionary = md.get("units", {})
+	if units.has("hp") and units.size() == 1:
+		var bonus := RulerRules.units_bonus_text(mid)
+		return {"done": "%s gave %s units %s" % [name, _poss(s.name), bonus],
+			"tail": ", which absorbed about %d damage" % dmg,
+			"brief": "%s gives %s units %s" % [name, _poss(s.name), bonus]}
+	if not units.is_empty():
+		var bonus := RulerRules.units_bonus_text(mid)
+		return {"done": "%s gave every %s unit %s" % [name, s.name, bonus],
+			"tail": ", worth about %d damage" % dmg,
+			"brief": "%s gives every %s unit %s" % [name, s.name, bonus]}
+	return {}
+
+
 static func _poss(name: String) -> String:
 	return name + ("'" if name.ends_with("s") else "'s")
+
+
+## A name without its leading "the", for "Thornmane Clans' Great Thornmane fell." (other names unchanged).
+static func _bare(name: String) -> String:
+	return name.trim_prefix("the ")
+
+
+## A name with "the" in front, unless it already has it: "the Crossbowmen", "the Ever-Regent".
+static func _the(name: String) -> String:
+	return name if name.begins_with("the ") else "the " + name
 
 
 static func _cap(text: String) -> String:

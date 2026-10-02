@@ -36,6 +36,11 @@ class_name RulerRules
 ##   apply_sacrifice(state, fid, mid, turn) the effect: kept power, mandate, record, ruler hp, Veteran Levies
 ##   state_after_orders(state, fid, orders) the state a faction's other orders are checked against
 ##   successor_countdown, countdown_text    "heir in 2 turns" while a successor is pending
+## Battles (M2-2, #30; AutoBattleResolver reads these with unit_stats and unit_max_hp):
+##   battle_effects(state, fid)             base hit chance, Blood Frenzy, Iron Discipline, Feast, battle mandates
+##   dread_value(state, fid)                the morale the Great Thornmane's Dread takes from every enemy side
+##   mandate_battle_text(mid)               what a battle mandate does, for the battle report
+##   fill_regular_units(state, fid)         the starting army at its maximum hp (Veteran Levies)
 
 const ALIVE := "alive"
 const DEAD := "dead"
@@ -449,12 +454,13 @@ static func apply_mending_light(state: GameState, faction_id: String) -> Diction
 		if a.commander != null:
 			members.append(a.commander)
 		for u in members:
-			var gain := clampi(u.type.hp - u.current_hp, 0, amount)
+			var max_hp := unit_max_hp(state, u)  # M2-2: Veteran Levies raises a regular unit's maximum
+			var gain := clampi(max_hp - u.current_hp, 0, amount)
 			if gain == 0:
 				continue
 			u.current_hp += gain
 			total += gain
-			healed.append({"army": a.id, "name": u.type.name, "healed": gain, "hp_after": u.current_hp, "max_hp": u.type.hp})
+			healed.append({"army": a.id, "name": u.type.name, "healed": gain, "hp_after": u.current_hp, "max_hp": max_hp})
 	return {"province": regent.location, "rank": rank, "amount": amount, "healed": healed, "total": total,
 		"ruler": f.ruler_type, "name": current_name(state, faction_id)}
 
@@ -843,6 +849,7 @@ static func apply_build(state: GameState, faction_id: String, build) -> Array:
 		army.location = capital.id
 		state.armies.append(army)
 	army.ruler = Unit.new(f.ruler_unit_type, faction_id)
+	fill_regular_units(state, faction_id)  # M2-2: the starting army at its maximum, Veteran Levies included
 	return []
 
 
@@ -875,6 +882,90 @@ static func unit_stats(state: GameState, faction_id: String, unit_type_id: Strin
 			total += m.value
 		out[stat] = total
 	return out
+
+
+# --- rulers and mandates in battle (M2-2, #30; §1.6, §2.3) -----------------------------------------
+# AutoBattleResolver reads these (and unit_stats, unit_max_hp), so the battle, the odds forecast and every
+# tooltip use the same numbers. A faction without a ruler has no mandates, so none of this changes an M1
+# battle.
+
+const IRON_DISCIPLINE := "iron_discipline"
+const DRILLED_RANKS := "drilled_ranks"
+const VETERAN_LEVIES := "veteran_levies"
+const ROYAL_ARMORIES := "royal_armories"
+const BLOOD_FRENZY := "blood_frenzy"
+const FEAST_OF_VICTORY := "feast_of_victory"
+## The Great Thornmane's ability (§1.4): enemy sides in its province battles lose morale.
+const DREAD := "dread"
+## The mandate areas that work in battle (data/mandates.gd "area").
+const BATTLE_AREAS := ["battle", "units"]
+
+
+## What `faction_id`'s mandates do in battle, with their numbers from data/mandates.gd (§2.3):
+## {"mandates": [the battle mandates it owns, in the order taken], "base_hit" (its fighters' base hit
+## chance: AutoBattleResolver.BASE_HIT, or Drilled Ranks' base_hit), "base_hit_key" ("mandate_<id>" of the
+## mandate that sets it, or ""), "wounded_attack" (attack for every fighter below its maximum hp: Blood
+## Frenzy's, or 0), "wounded_attack_key", "iron_discipline" and "feast_of_victory" (whether it has them)}.
+## `state` may be null (no mandates). Unit stat mandates (Royal Armories, Veteran Levies) are in unit_stats.
+static func battle_effects(state: GameState, faction_id: String) -> Dictionary:
+	var out := {"mandates": [], "base_hit": AutoBattleResolver.BASE_HIT, "base_hit_key": "", "wounded_attack": 0,
+		"wounded_attack_key": "", "iron_discipline": false, "feast_of_victory": false}
+	if state == null:
+		return out
+	for mid in mandates(state, faction_id):
+		var md := mandate_data(mid)
+		if not BATTLE_AREAS.has(String(md.get("area", ""))):
+			continue
+		out.mandates.append(mid)
+		if md.has("base_hit"):
+			out.base_hit = int(md.base_hit)
+			out.base_hit_key = AutoBattleResolver.MANDATE_PREFIX + mid
+		if md.has("wounded_attack"):
+			out.wounded_attack += int(md.wounded_attack)
+			out.wounded_attack_key = AutoBattleResolver.MANDATE_PREFIX + mid
+		if mid == IRON_DISCIPLINE:
+			out.iron_discipline = true
+		elif mid == FEAST_OF_VICTORY:
+			out.feast_of_victory = true
+	return out
+
+
+## What a battle mandate does, in a few words that read for either side, from data/mandates.gd (the
+## battle report's "Mandates in play"): "+1 attack and +1 defense for every regular unit", "base hit
+## chance 70% instead of 60%", "+3 attack for every fighter below its full hit points". Other mandates
+## give their one-line effect.
+static func mandate_battle_text(mandate_id: String) -> String:
+	var md := mandate_data(mandate_id)
+	if md.has("base_hit"):
+		return "base hit chance %d%% instead of %d%%" % [int(md.base_hit), AutoBattleResolver.BASE_HIT]
+	if md.has("wounded_attack"):
+		return "+%d attack for every fighter below its full hit points" % int(md.wounded_attack)
+	if md.has("units"):
+		return "%s for every regular unit" % units_bonus_text(mandate_id)
+	match mandate_id:
+		IRON_DISCIPLINE:
+			return "its side never breaks while one of its commanders stands"
+		FEAST_OF_VICTORY:
+			return "after a battle its side wins, its fighters still standing heal to full"
+	return String(md.get("effect", ""))
+
+
+## Dread (§1.4): how much morale every enemy side loses in a province battle `faction_id`'s living
+## Great Thornmane fights in, while it stands (its value at the ruler's ability rank); 0 for any other
+## ruler, a dead one, or a game without rulers. Not in border battles: the battle decides that.
+static func dread_value(state: GameState, faction_id: String) -> int:
+	return live_ability_value(state, faction_id, DREAD)
+
+
+## Gives every regular unit of `faction_id` its full maximum hp (unit_max_hp, so Veteran Levies counts):
+## the starting army when a build is applied before turn 1 (§2.3: "new recruits arrive at the new
+## maximum", and the starting army is the first recruits). Commanders and the ruler are already full.
+static func fill_regular_units(state: GameState, faction_id: String) -> void:
+	for a in state.armies:
+		if a.owner != faction_id:
+			continue
+		for u in a.units:
+			u.current_hp = unit_max_hp(state, u)
 
 
 # --- mandates and abilities on the map (M2-4, #32; §1.4, §2.3) -------------------------------------

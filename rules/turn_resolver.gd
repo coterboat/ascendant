@@ -467,6 +467,11 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 	var fids: Array = sides.keys()
 	fids.sort()
 	var rulers_in := _rulers_in_battle(sides)  # M2: whose rulers fight here, to record deaths after
+	var ruler_names := {}  # M2-2: army id -> the name of the ruler it holds, read before the battle
+	for fid in fids:
+		for a in sides[fid]:
+			if a.ruler != null:
+				ruler_names[a.id] = a.ruler.type.name
 	var side_list := []
 	for fid in fids:
 		side_list.append({"faction": fid, "armies": sides[fid]})
@@ -481,8 +486,10 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 	var destroyed := []
 	var units_lost := 0
 	var army_ids := []
-	var lost_by_faction := {}  # losing faction id -> {"armies", "units"} destroyed with it
+	var lost_by_faction := {}  # losing faction id -> {"armies", "units" (fighters), "rulers" (names)} destroyed with it
 	var winner_wiped := 0  # winning armies whose every unit fell
+	var rulers_lost := []  # M2-2: rulers lost with a losing side, by name
+	var fallen := []  # M2-2: rulers of the winning side that fell, by name (their armies go with them)
 	for fid in fids:
 		for a in sides[fid]:
 			army_ids.append(a.id)
@@ -490,11 +497,18 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 				destroyed.append(a.id)
 				var n: int = a.units.size() + (1 if a.commander else 0)
 				units_lost += n
-				var lost: Dictionary = lost_by_faction.get(fid, {"armies": 0, "units": 0})
-				lost_by_faction[fid] = {"armies": lost.armies + 1, "units": lost.units + n}
+				var lost: Dictionary = lost_by_faction.get(fid, {"armies": 0, "units": 0, "rulers": []})
+				var rulers: Array = lost.rulers.duplicate()
+				if a.ruler != null:
+					rulers.append(a.ruler.type.name)  # the ruler is a fighter too (M2-2)
+					rulers_lost.append(a.ruler.type.name)
+				lost_by_faction[fid] = {"armies": lost.armies + 1, "units": lost.units + n + (1 if a.ruler else 0), "rulers": rulers}
 			elif a.units.is_empty() and a.commander == null and a.ruler == null:
 				destroyed.append(a.id)  # every unit of this winning army fell (a ruler's army holds only its ruler)
-				winner_wiped += 1
+				if ruler_names.has(a.id):
+					fallen.append(ruler_names[a.id])  # its ruler fell (M2-2): the ruler_died event follows
+				else:
+					winner_wiped += 1
 	var survivors: Array[Army] = []
 	for a in s.armies:
 		if not destroyed.has(a.id):
@@ -536,31 +550,41 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 	for fid in fids:
 		if fid != winner:
 			losers.append(_faction_name(s, fid))
-	var text := "%s %s won: %s. %s lost %d %s (%d %s)." % [where, _faction_name(s, winner), result.get("why", ""),
-		" and ".join(losers), destroyed.size(), "army" if destroyed.size() == 1 else "armies",
-		units_lost, "unit" if units_lost == 1 else "units"]
+	var lost_text := "%d %s" % [units_lost, "unit" if units_lost == 1 else "units"]
+	if not rulers_lost.is_empty():
+		# M2-2: the ruler counts among the losses ("lost 1 army (King Corvane I)").
+		lost_text = RulerRules._and_list(rulers_lost) if units_lost == 0 else "%s and %s" % [lost_text, RulerRules._and_list(rulers_lost)]
+	var text := "%s %s won: %s. %s lost %d %s (%s)." % [where, _faction_name(s, winner), result.get("why", ""),
+		" and ".join(losers), destroyed.size() - fallen.size(), "army" if destroyed.size() - fallen.size() == 1 else "armies", lost_text]
+	if not fallen.is_empty():
+		text += " %s won, but %s fell." % [_faction_name(s, winner), RulerRules._and_list(fallen)]
 	if not report.is_empty():
 		# One line with the result and the "why", then what happened to each loser's armies. The full
 		# report rides along in numbers.report (#7) and gets the same aftermath as its last line.
-		var aftermath := _aftermath(s, report, winner, fids, lost_by_faction, winner_wiped)
+		var aftermath := _aftermath(s, report, winner, fids, lost_by_faction, winner_wiped, fallen)
 		report["aftermath"] = aftermath
 		if report.get("lines") is Array:
 			report.lines.append("Aftermath: %s" % aftermath)
 		text = "%s %s %s" % [where, report.get("summary", result.get("why", "")), aftermath]
 
+	var numbers := {"strengths": strengths, "winner": winner, "defender": defender, "tie_break": result.get("tie_break", "none"),
+		"roll": result.get("roll", 0), "armies_destroyed": destroyed.size(), "units_lost": units_lost,
+		"destroyed": destroyed, "why": result.get("why", ""), "report": report}
+	if not rulers_lost.is_empty() or not fallen.is_empty():
+		numbers["rulers_lost"] = rulers_lost.size() + fallen.size()  # M2-2: only in games with rulers
 	events.append(_event("border_battle" if kind == "border" else "battle", "battles", province_ids, fids, army_ids, cause,
-		{"strengths": strengths, "winner": winner, "defender": defender, "tie_break": result.get("tie_break", "none"),
-			"roll": result.get("roll", 0), "armies_destroyed": destroyed.size(), "units_lost": units_lost,
-			"destroyed": destroyed, "why": result.get("why", ""), "report": report},
-		text, codex))
+		numbers, text, codex))
 	_record_ruler_deaths(s, rulers_in, winner, kind, province_ids, events)
 	return winner
 
 
 ## What happened to each losing side, one sentence each (RulesCodex "battle_rounds"): its armies are
 ## destroyed whether it was wiped out, routed, or was still standing when the round cap ran out.
-## `report` is an AutoBattleResolver report; `lost_by_faction` counts the armies and units removed.
-static func _aftermath(s: GameState, report: Dictionary, winner: String, fids: Array, lost_by_faction: Dictionary, winner_wiped: int) -> String:
+## `report` is an AutoBattleResolver report; `lost_by_faction` counts the armies and fighters removed
+## (and names the rulers among them). M2-2: `fallen` names the winner's rulers that fell, and a Feast of
+## Victory (report "feast") gets its own sentence.
+static func _aftermath(s: GameState, report: Dictionary, winner: String, fids: Array, lost_by_faction: Dictionary, winner_wiped: int,
+		fallen: Array = []) -> String:
 	var sentences := []
 	for fid in fids:
 		if fid == winner:
@@ -570,11 +594,15 @@ static func _aftermath(s: GameState, report: Dictionary, winner: String, fids: A
 			if side.faction == fid:
 				sr = side
 		var name := _faction_name(s, fid)
-		var lost: Dictionary = lost_by_faction.get(fid, {"armies": 0, "units": 0})
+		var lost: Dictionary = lost_by_faction.get(fid, {"armies": 0, "units": 0, "rulers": []})
 		var one: bool = lost.armies == 1
 		var armies: String = "its army was" if one else "its %d armies were" % lost.armies
-		# "fighters", as in the battle report: units and commanders alike.
+		# "fighters", as in the battle report: units, commanders and the ruler alike.
 		var units := "%d %s lost" % [lost.units, "fighter" if lost.units == 1 else "fighters"]
+		var rulers: Array = lost.get("rulers", [])
+		if not rulers.is_empty():
+			units = ("%s lost" % RulerRules._and_list(rulers)) if lost.units == rulers.size() \
+				else "%s, among them %s" % [units, RulerRules._and_list(rulers)]
 		if sr.get("destroyed", false):
 			sentences.append("Every fighter %s had there fell: %s wiped out (%s)." % [name, armies, units])
 		elif sr.get("routed", false):
@@ -589,6 +617,15 @@ static func _aftermath(s: GameState, report: Dictionary, winner: String, fids: A
 	if winner_wiped > 0:
 		sentences.append("%s won, but %s lost every fighter and %s gone too." % [_faction_name(s, winner),
 			"one of its armies" if winner_wiped == 1 else "%d of its armies" % winner_wiped, "is" if winner_wiped == 1 else "are"])
+	if not fallen.is_empty():
+		sentences.append("%s won, but %s fell in the battle." % [_faction_name(s, winner), RulerRules._and_list(fallen)])
+	var feast: Dictionary = report.get("feast", {})
+	if not feast.is_empty():
+		# Feast of Victory (§2.3): the winner's fighters still standing healed to full.
+		var n := int(feast.get("fighters", 0))
+		sentences.append("%s: the %s %s healed to full (+%d hp)." % [RulerRules.mandate_name(RulerRules.FEAST_OF_VICTORY),
+			RulerRules._possessive(String(feast.get("name", ""))), "only surviving fighter" if n == 1 else "%d surviving fighters" % n,
+			int(feast.get("healed", 0))])
 	return " ".join(sentences)
 
 
@@ -819,6 +856,7 @@ static func _add_recruit(s: GameState, faction: Faction, ut: UnitType, location:
 	if ut.is_commander:
 		army.commander = unit
 	else:
+		unit.current_hp = RulerRules.unit_max_hp(s, unit)  # M2-2: recruits arrive at the maximum Veteran Levies gives
 		army.units.append(unit)
 	return {"army": army, "created": created}
 

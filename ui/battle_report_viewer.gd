@@ -3,11 +3,13 @@ extends Control
 ## The full battle report (#7): opens from a battle row of the turn report and shows the report that
 ## AutoBattleResolver (#4) attaches to battle events (event.numbers.report), in readable sections:
 ##   1. why        the result and the "why" summary, on top
-##   2. sides      who fought: each side's armies, fighters, starting morale, whether it defended
+##   2. sides      who fought: each side's armies, roster, fighters, starting morale, whether it defended,
+##                 its ruler and the mandates in play (M2-2), the traits and mandates that changed attacks,
+##                 and Skirmish's reach
 ##   3. terrain    terrain and fort modifiers
 ##   4. rounds     round by round highlights
-##   5. casualties losses per side
-##   6. routs      morale checks: who broke and fled, who held
+##   5. casualties losses per side, a ruler's death and Feast of Victory
+##   6. routs      morale checks: who broke and fled, who held (and when Iron Discipline held a side)
 ##   7. hits       hit rates against the chances each side had
 ##   8. round_cap  only when the battle ran out of rounds
 ## Reads the report only: every number comes from the report (or the rules' terrain and fort bonus
@@ -35,7 +37,8 @@ const SECTION_ORDER := ["why", "sides", "terrain", "rounds", "casualties", "rout
 const NO_REPORT_TEXT := "No detailed report for this battle."
 const NEGATIVE := UiPalette.NEGATIVE  # design/STYLE_BIBLE.md 1.3 "negative"
 
-## RulesCodex entry that explains each deciding factor of the "why" (factor ids from the report).
+## RulesCodex entry that explains each deciding factor of the "why" (factor ids from the report). A
+## mandate's factor id ("mandate_royal_armories") is its own entry (_factor_entry).
 const FACTOR_ENTRIES := {
 	"terrain": "battle_terrain",
 	"fort": "battle_terrain",
@@ -46,12 +49,17 @@ const FACTOR_ENTRIES := {
 	"numbers": "battle_rounds",
 	"luck": "battle_hit_chance",
 	"round_cap": "battle_round_cap",
+	"ruler": "ruler_in_battle",
+	"morale_ruler": "ruler_in_battle",
+	"ability_dread": "ability_dread",
 }
 ## Player-facing names for the morale effects in a morale check.
 const MORALE_PART_NAMES := {
 	"commander": "Its commander still standing",
 	"Inspire": "Inspire (its commander's trait)",
 	"Fury": "Fury (enemy War Bears roaring)",
+	"ruler": "Its ruler still standing",
+	"Dread": "Dread (the enemy's Great Thornmane)",
 }
 
 var title_label: Label
@@ -194,7 +202,7 @@ func _add_why() -> void:
 
 func _add_sides() -> void:
 	var box := _section("sides", "Who fought",
-		_tip("Who fought", "Each side's armies as they stood when the battle began. Fighters are units and commanders. %s" % RulesCodex.text("battle_commanders")),
+		_tip("Who fought", "Each side's armies as they stood when the battle began. Fighters are units, commanders and rulers. %s" % RulesCodex.text("battle_commanders")),
 		"battle_commanders")
 	var row := HBoxContainer.new()
 	row.name = "SideCards"
@@ -210,18 +218,83 @@ func _add_sides() -> void:
 		for label in sr.get("armies", []):
 			_text(col, "Army: %s" % label, _tip("Army",
 				"An army on this side when the battle began: how many units it had (its commander is not counted as a unit) and who led it."), 17)
+		var roster: Dictionary = sr.get("roster", {})
+		if not String(roster.get("text", "")).is_empty():
+			var roster_label := _text(col, "Roster: %s" % roster.text, _tip("Roster",
+				"Every kind of fighter this side brought, with how many of each when there were more than one: its units, then who led them, then its ruler if it fought."), 17)
+			roster_label.name = "Roster"
 		_text(col, "Fighters: %d, with %d hit points in all" % [int(sr.get("fighters_start", 0)), int(sr.get("hp_start", 0))],
-			_tip("Fighters and hit points", "Every unit and commander fights. The hit points are the total of all of theirs when the battle began; wounded units start with fewer."), 17)
+			_tip("Fighters and hit points", "Every unit, commander and ruler fights. The hit points are the total of all of theirs when the battle began; wounded fighters start with fewer."), 17)
 		_text(col, "Starting morale: %d" % int(sr.get("base_morale", 0)),
-			_tip("Starting morale", "The average morale of this side's units, rounded down. A standing commander and some traits add to it or take from it every round (see Morale and routs below). %s" % RulesCodex.text("battle_morale")), 17)
+			_tip("Starting morale", "The average morale of this side's units, rounded down. A standing commander or ruler and some traits add to it or take from it every round (see Morale and routs below). %s" % RulesCodex.text("battle_morale")), 17)
+		_add_ruler_lines(col, sr)
+		_add_mandate_lines(col, sr)
 		var triggers: Dictionary = sr.get("triggers", {})
 		var trait_keys: Array = triggers.keys().filter(func(k): return k != "terrain" and k != "fort")
 		trait_keys.sort()
 		for key in trait_keys:
 			var n := int(triggers[key])
-			var entry := RulesCodex.entry(AutoBattleResolver.codex_id_for_trait(String(key)))
-			_text(col, "%s: changed %d %s" % [key, n, "attack" if n == 1 else "attacks"],
-				_tip(String(entry.get("title", key)), "Counted once for every attack this trait changed in the battle. %s" % String(entry.get("text", ""))), 17)
+			var entry := RulesCodex.entry(_part_entry(String(key)))
+			var what := "mandate" if String(key).begins_with(AutoBattleResolver.MANDATE_PREFIX) else "trait"
+			_text(col, "%s: changed %d %s" % [_part_name(String(key)), n, "attack" if n == 1 else "attacks"],
+				_tip(String(entry.get("title", _part_name(String(key)))), "Counted once for every attack this %s changed in the battle. %s" % [what, String(entry.get("text", ""))]), 17)
+		# Skirmish is about reach since #41 (it attacks the second rank), so it sits with the side that has it.
+		for f in _report.get("all_factors", []):
+			if f.get("id", "") == AutoBattleResolver.SKIRMISH and f.get("faction", "") == sr.get("faction", ""):
+				_text(col, "Skirmish: %s." % _cap(String(f.get("brief", ""))),
+					_tip(String(RulesCodex.entry("trait_skirmish").get("title", "Skirmish")), RulesCodex.text("trait_skirmish")), 17, UiPalette.TEXT_SECONDARY)
+
+
+## The side's ruler in "Who fought" (M2-2): its rank and numbers, then how it ended, and its Dread when
+## that worked in this battle. Nothing for a side without a ruler.
+func _add_ruler_lines(col: VBoxContainer, sr: Dictionary) -> void:
+	var r: Dictionary = sr.get("ruler", {})
+	if r.is_empty():
+		return
+	var name := String(r.get("name", ""))
+	var rank := "the front rank" if String(r.get("rank", "front")) == "front" else "the second rank"
+	var tip := _tip("Rulers in battle", "%s %s" % [RulesCodex.text("ruler_in_battle"), RulesCodex.text("ruler_rank")])
+	var line := _text(col, "Ruler: %s, in %s: %d hit points, attack %d, defense %d (%d kept power), +%d morale to its side while it stands" % [
+		_cap(name), rank, int(r.get("max_hp", 0)), int(r.get("attack", 0)), int(r.get("defense", 0)), int(r.get("kept_power", 0)),
+		RulerData.RULER_MORALE], tip, 17)
+	line.name = "RulerLine"
+	CodexLink.attach(line, "ruler_in_battle", codex_requested.emit)
+	var ending := ""
+	if r.get("fell", false):
+		ending = "%s fell in round %d, after dealing %d damage." % [_cap(name), int(r.get("fell_round", 0)), int(r.get("damage_dealt", 0))]
+	elif String(sr.get("faction", "")) == String(_report.get("winner", "")):
+		ending = "%s dealt %d damage and ended the battle with %d of %d hit points." % [_cap(name), int(r.get("damage_dealt", 0)),
+			int(r.get("hp_end", 0)), int(r.get("max_hp", 0))]
+	else:
+		ending = "%s dealt %d damage and was still standing with %d of %d hit points, but was lost with its side." % [_cap(name),
+			int(r.get("damage_dealt", 0)), int(r.get("hp_end", 0)), int(r.get("max_hp", 0))]
+	var end_label := _text(col, ending, _tip("When a ruler dies", RulesCodex.text("ruler_death")), 17, UiPalette.TEXT_SECONDARY)
+	end_label.name = "RulerEnding"
+	CodexLink.attach(end_label, "ruler_death", codex_requested.emit)
+	if int(r.get("dread", 0)) > 0:
+		var ability := RulerRules.ability_name(String(r.get("id", "")))
+		var dread := _text(col, "%s: every enemy side had %d less morale while %s stood." % [ability, int(r.dread), name],
+			_tip(String(RulesCodex.entry("ability_dread").get("title", ability)), RulesCodex.text("ability_dread")), 17)
+		dread.name = "DreadLine"
+		CodexLink.attach(dread, "ability_dread", codex_requested.emit)
+
+
+## The battle mandates a side fought with (M2-2), one line each with its codex entry.
+func _add_mandate_lines(col: VBoxContainer, sr: Dictionary) -> void:
+	var mandates: Array = sr.get("mandates", [])
+	if mandates.is_empty():
+		return
+	var names := []
+	for m in mandates:
+		names.append(String(m.get("name", "")))
+	var head := _text(col, "Mandates in play: %s" % ", ".join(names), _tip("Mandates", RulesCodex.text("mandates")), 17)
+	head.name = "MandatesLine"
+	CodexLink.attach(head, "mandates", codex_requested.emit)
+	for m in mandates:
+		var key := String(m.get("codex", "mandates"))
+		var l := _text(col, "  %s: %s" % [m.get("name", ""), RulerRules.mandate_battle_text(String(m.get("id", "")))],
+			_tip(String(RulesCodex.entry(key).get("title", m.get("name", ""))), RulesCodex.text(key)), 17, UiPalette.TEXT_SECONDARY)
+		CodexLink.attach(l, key, codex_requested.emit)
 
 
 func _add_terrain() -> void:
@@ -262,10 +335,6 @@ func _add_terrain() -> void:
 		if n > 0:
 			_text(box, "The %s bonus changed %d %s." % ["terrain" if key == "terrain" else "fort", n, "attack" if n == 1 else "attacks"],
 				_tip("Bonus used", "Counted once for every attack the bonus changed: each time the defender was attacked, and each attack it made with an attack bonus. %s" % RulesCodex.text("battle_terrain")), 17, UiPalette.TEXT_SECONDARY)
-	for f in _report.get("all_factors", []):
-		if f.get("id", "") == AutoBattleResolver.SKIRMISH:
-			_text(box, "Skirmish: %s." % _cap(String(f.get("brief", ""))),
-				_tip(String(RulesCodex.entry("trait_skirmish").get("title", "Skirmish")), RulesCodex.text("trait_skirmish")), 17, UiPalette.TEXT_SECONDARY)
 
 
 func _add_rounds() -> void:
@@ -298,7 +367,7 @@ func _add_rounds() -> void:
 
 
 func _add_casualties() -> void:
-	var tip := _tip("Casualties", "Fighters are units and commanders. A fighter that falls is gone for good. %s" % RulesCodex.text("battle_rounds"))
+	var tip := _tip("Casualties", "Fighters are units, commanders and rulers. A unit or commander that falls is gone for good; a ruler that falls dies, and its successor comes later. %s" % RulesCodex.text("battle_rounds"))
 	var box := _section("casualties", "Casualties", tip, "battle_rounds")
 	var winner := String(_report.get("winner", ""))
 	for sr in _sides():
@@ -313,10 +382,28 @@ func _add_casualties() -> void:
 			var fled := start - lost.size()
 			var fled_text := "Its last fighter standing fled when it broke." if fled == 1 else "The other %d fled when it broke." % fled
 			_text(box, fled_text, _tip("Morale and routs", RulesCodex.text("battle_morale")), 17, UiPalette.TEXT_SECONDARY)
-		if String(sr.get("faction", "")) == winner:
+		var feast: Dictionary = _report.get("feast", {})
+		if String(sr.get("faction", "")) == winner and String(feast.get("faction", "")) == winner:
+			var n := int(feast.get("fighters", 0))
+			var feast_label := _text(box, "It won, and Feast of Victory healed its %s to full (+%d hit points)." % [
+				"only surviving fighter" if n == 1 else "%d surviving fighters" % n, int(feast.get("healed", 0))],
+				_tip(String(RulesCodex.entry("mandate_feast_of_victory").get("title", "")), RulesCodex.text("mandate_feast_of_victory")), 17, UiPalette.POSITIVE)
+			feast_label.name = "FeastLine"
+			CodexLink.attach(feast_label, "mandate_feast_of_victory", codex_requested.emit)
+		elif String(sr.get("faction", "")) == winner and sr.get("mandates", []).any(func(m): return m.get("id", "") == RulerRules.FEAST_OF_VICTORY):
+			var none := _text(box, "It won, and its survivors were already at full hit points, so Feast of Victory had nothing to heal.",
+				_tip(String(RulesCodex.entry("mandate_feast_of_victory").get("title", "")), RulesCodex.text("mandate_feast_of_victory")), 17, UiPalette.TEXT_SECONDARY)
+			CodexLink.attach(none, "mandate_feast_of_victory", codex_requested.emit)
+		elif String(sr.get("faction", "")) == winner:
 			_text(box, "It won, so its wounded survivors stay in its armies, still wounded.", tip, 17, UiPalette.TEXT_SECONDARY)
 		else:
 			_text(box, "It lost, so all of its armies there were destroyed or scattered (there are no retreats yet).", tip, 17, UiPalette.TEXT_SECONDARY)
+		var r: Dictionary = sr.get("ruler", {})
+		if not r.is_empty() and (r.get("fell", false) or String(sr.get("faction", "")) != winner):
+			var death := "%s fell, though its side won: a ruler whose hit points reach 0 dies." % _cap(String(r.get("name", ""))) \
+				if String(sr.get("faction", "")) == winner else "Its ruler, %s, was lost with it." % r.get("name", "")
+			var death_label := _text(box, death, _tip("When a ruler dies", RulesCodex.text("ruler_death")), 17, NEGATIVE.lightened(0.15))
+			CodexLink.attach(death_label, "ruler_death", codex_requested.emit)
 
 
 func _add_routs() -> void:
@@ -342,10 +429,25 @@ func _add_routs() -> void:
 			_text(box, "%s broke in round %d too, but kept the field: every side broke in the same round, and it had the most strength left. Its morale was %d, which holds to %d%% losses; it had lost %d%%." % [
 				who, int(e.get("round", 0)), int(e.get("morale", 0)), int(e.get("break_pct", 0)), int(e.get("lost_pct", 0))],
 				_morale_tooltip(sr, e), 18)
+		elif e.has("held_by"):
+			_text(box, "%s did not break, though it lost %d%% of its hit points and its morale of %d holds only to %d%%: Iron Discipline held it while its %s stood." % [
+				who, int(e.get("lost_pct", 0)), int(e.get("morale", 0)), int(e.get("break_pct", 0)), String(e.get("held_by", ""))],
+				_morale_tooltip(sr, e), 18)
 		else:
 			_text(box, "%s did not break: it lost %d%% of its hit points, and its morale of %d holds to %d%% losses." % [
 				who, int(e.get("lost_pct", 0)), int(e.get("morale", 0)), int(e.get("break_pct", 0))],
 				_morale_tooltip(sr, e), 18)
+		# Iron Discipline (M2-2): rounds the side would have broken in but held while a commander stood.
+		var held: Array = checks.filter(func(c): return c.has("held_by"))
+		if not held.is_empty():
+			var last: Dictionary = held.back()
+			var rounds: Array = held.map(func(c): return str(int(c.get("round", 0))))
+			var iron := _text(box, "Iron Discipline held %s in %s %s: it had lost %d%% with morale %d, which holds only to %d%%, but its %s still stood." % [
+				who, "round" if held.size() == 1 else "rounds", ", ".join(rounds), int(last.get("lost_pct", 0)), int(last.get("morale", 0)),
+				int(last.get("break_pct", 0)), String(last.get("held_by", ""))],
+				_tip(String(RulesCodex.entry("mandate_iron_discipline").get("title", "")), RulesCodex.text("mandate_iron_discipline")), 17, UiPalette.TEXT_SECONDARY)
+			iron.name = "IronLine"
+			CodexLink.attach(iron, "mandate_iron_discipline", codex_requested.emit)
 
 
 func _add_hits() -> void:
@@ -445,6 +547,8 @@ func _highlight_tooltip(h: String) -> String:
 		key = "trait_charge"
 	elif h.contains("berserk"):
 		key = "trait_berserk"
+	elif h.contains("Iron Discipline"):
+		key = "mandate_iron_discipline"
 	elif h.contains("broke"):
 		key = "battle_morale"
 	var entry := RulesCodex.entry(key)
@@ -479,8 +583,25 @@ func _why_entry() -> String:
 static func _factor_entry(factor_id: String) -> String:
 	if FACTOR_ENTRIES.has(factor_id):
 		return FACTOR_ENTRIES[factor_id]
+	if factor_id.begins_with(AutoBattleResolver.MANDATE_PREFIX):
+		return factor_id if RulesCodex.ENTRIES.has(factor_id) else "mandates"
 	var trait_entry := AutoBattleResolver.codex_id_for_trait(factor_id.trim_prefix("morale_"))
 	return trait_entry if RulesCodex.ENTRIES.has(trait_entry) else ""
+
+
+## The player-facing name of an attack or defense part counted in a side's triggers: a trait's name, or
+## a mandate's ("mandate_royal_armories" is Royal Armories).
+static func _part_name(key: String) -> String:
+	if key.begins_with(AutoBattleResolver.MANDATE_PREFIX):
+		return RulerRules.mandate_name(key.trim_prefix(AutoBattleResolver.MANDATE_PREFIX))
+	return key
+
+
+## The RulesCodex entry of an attack or defense part: the trait's or the mandate's.
+static func _part_entry(key: String) -> String:
+	if key.begins_with(AutoBattleResolver.MANDATE_PREFIX):
+		return _factor_entry(key)
+	return AutoBattleResolver.codex_id_for_trait(key)
 
 
 ## "Spearmen (2), Crossbowmen" from ["Spearmen", "Crossbowmen", "Spearmen"], in first-seen order.
