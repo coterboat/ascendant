@@ -1,9 +1,14 @@
 class_name NewGameScreen
 extends Control
-## New game setup (#8): which seat (Player 1, Player 2) plays which faction, and the game seed,
-## random by default. Start emits start_requested(config) with
+## New game setup (#8): which seat (Player 1, Player 2) plays which faction, whether a person or the
+## computer plays it (#35; the computer at Easy or Normal), and the game seed, random by default.
+## Start emits start_requested(config) with
 ##   {"players": [faction ids in seat order], "seed": int}
-## which is what GameScreen.start_game(config) takes. Factions come from data/factions.gd through the
+## plus, only when the computer plays a seat, "ai": {faction id: "easy" or "normal"}. A seat not in
+## "ai" is human, so a hotseat config is exactly {"players", "seed"} as before. This is what
+## GameScreen.start_game(config) takes. Every seat may be the computer: then the game is watch mode.
+## While any seat is the computer, the computer's explanation (RulesCodex "computer_opponent") takes the
+## place of the hotseat one. Factions come from data/factions.gd through the
 ## rules model (GameState builds the Faction objects); the hotseat explanation is RulesCodex
 ## "hotseat". The same faction can't be picked twice and the seed must be a whole number: either
 ## problem is explained in plain words and disables Start. Never changes rules state.
@@ -12,16 +17,21 @@ extends Control
 ## Builds its children in code, so it works before it is in the tree (headless tests).
 ##
 ## API:
-##   config() -> Dictionary          {"players", "seed"}; only meaningful when is_valid()
+##   config() -> Dictionary          {"players", "seed"}, plus "ai" for computer seats; only meaningful
+##                                   when is_valid()
 ##   is_valid() -> bool
 ##   error_text() -> String          every problem in plain words, "" when valid
 ##   set_seed(value: int)            new_seed(avoid) -> int picks a random one (the "New seed" button),
 ##                                   never `avoid`
-##   swap_seats()                    Player 1 and Player 2 trade factions (the "Swap seats" button)
+##   swap_seats()                    Player 1 and Player 2 trade factions (the "Swap seats" button); who
+##                                   plays each seat, a person or the computer, stays with the seat
+##   set_seat_kind(seat, kind) -> bool    "human" or "computer"; seat_kind(seat) -> String
+##   set_seat_level(seat, level) -> bool  the computer's level, "easy" or "normal"; seat_level(seat)
 ##   select_faction(seat, faction_id) -> bool   seat is 1-based; false for an unknown seat or faction
 ##   set_seats(players) -> bool      every seat at once: faction ids in seat order
-##   prefill(last_game)              a rematch of last_game ({"players", "seed"}): the same seating and
-##                                   a new seed (the victory screen's New game)
+##   prefill(last_game)              a rematch of last_game ({"players", "seed", "ai"}): the same seating,
+##                                   the same human and computer seats at the same levels, and a new
+##                                   seed (the victory screen's New game)
 ##   seat_faction(seat) -> String, faction_ids() -> Array[String]
 ##   start() -> bool                 emits start_requested when valid (the Start button, Enter in the seed)
 ##   back()                          emits back_requested (the Back button, Esc)
@@ -30,12 +40,21 @@ signal start_requested(config: Dictionary)
 signal back_requested
 
 const SEAT_COUNT := 2
+const KINDS := ["human", "computer"]  # the seat kind pickers' items, in order
+const KIND_NAMES := ["Human", "Computer"]
+const LEVELS := ["easy", "normal"]  # AIPlayer.DIFFICULTIES, in the level pickers' order
+const DEFAULT_LEVEL := "normal"
 const MAX_SEED_DIGITS := 18  # any 18-digit number fits in a 64-bit int
 const MAX_RANDOM_SEED := 999999999
 const BACKGROUND := Color("#14131F")
 const NEGATIVE := UiPalette.NEGATIVE  # design/STYLE_BIBLE.md 1.3 "negative"
 
 var seat_pickers: Array[OptionButton] = []
+var kind_pickers: Array[OptionButton] = []  # Human or Computer, per seat
+var level_pickers: Array[OptionButton] = []  # Easy or Normal, per seat; shown for computer seats only
+var computer_title: Label  # "Playing against the computer": replaces the hotseat title while a seat is the computer
+var computer_label: Label  # how the computer plays, in place of the hotseat explanation
+var _hotseat_title: Label
 var seat_labels: Array[Label] = []
 var faction_labels: Array[Label] = []
 var hotseat_label: Label
@@ -73,7 +92,15 @@ func _unhandled_input(event: InputEvent) -> void:
 # --- API ------------------------------------------------------------------------------------------
 
 func config() -> Dictionary:
-	return {"players": _seat_ids(), "seed": _seed_value()}
+	var out := {"players": _seat_ids(), "seed": _seed_value()}
+	var ai := {}
+	var ids := _seat_ids()
+	for i in ids.size():
+		if seat_kind(i + 1) == "computer" and not String(ids[i]).is_empty():
+			ai[ids[i]] = seat_level(i + 1)
+	if not ai.is_empty():
+		out["ai"] = ai
+	return out
 
 
 func is_valid() -> bool:
@@ -116,7 +143,15 @@ func set_seats(players: Array) -> bool:
 ## A rematch of `last_game` ({"players", "seed"}, GameScreen.config): the same factions in the same
 ## seats, and a new random seed so the dice fall differently. An unusable seating is left as it is.
 func prefill(last_game: Dictionary) -> void:
-	rematch_label.visible = set_seats(Array(last_game.get("players", [])))
+	var players := Array(last_game.get("players", []))
+	rematch_label.visible = set_seats(players)
+	if rematch_label.visible:
+		var ai: Dictionary = last_game.get("ai", {}) if last_game.get("ai") is Dictionary else {}
+		for i in players.size():
+			var fid := String(players[i])
+			set_seat_kind(i + 1, "computer" if ai.has(fid) else "human")
+			if ai.has(fid):
+				set_seat_level(i + 1, String(ai[fid]))
 	new_seed(int(last_game.get("seed", -1)))
 
 
@@ -138,6 +173,39 @@ func select_faction(seat: int, faction_id: String) -> bool:
 	seat_pickers[seat - 1].select(index)
 	_refresh()
 	return true
+
+
+## Sets who plays `seat` (1-based): "human" or "computer". Returns false, changing nothing, otherwise.
+func set_seat_kind(seat: int, kind: String) -> bool:
+	if seat < 1 or seat > kind_pickers.size() or not KINDS.has(kind):
+		return false
+	kind_pickers[seat - 1].select(KINDS.find(kind))
+	_refresh()
+	return true
+
+
+## "human" or "computer" for `seat` (1-based), or "".
+func seat_kind(seat: int) -> String:
+	if seat < 1 or seat > kind_pickers.size():
+		return ""
+	return KINDS[maxi(kind_pickers[seat - 1].selected, 0)]
+
+
+## Sets the computer's level for `seat` (1-based): "easy" or "normal". Returns false, changing nothing,
+## otherwise. The level is kept while the seat is human, for when it is switched back to the computer.
+func set_seat_level(seat: int, level: String) -> bool:
+	if seat < 1 or seat > level_pickers.size() or not LEVELS.has(level):
+		return false
+	level_pickers[seat - 1].select(LEVELS.find(level))
+	_refresh()
+	return true
+
+
+## The computer's level picked for `seat` (1-based), or "".
+func seat_level(seat: int) -> String:
+	if seat < 1 or seat > level_pickers.size():
+		return ""
+	return LEVELS[maxi(level_pickers[seat - 1].selected, 0)]
 
 
 ## Faction id picked for `seat` (1-based), or "".
@@ -216,10 +284,27 @@ func _refresh() -> void:
 	start_button.disabled = not problems.is_empty()
 	start_button.tooltip_text = "Start the game with these players and this seed. Player 1 gives orders first." if problems.is_empty() \
 		else "You can't start yet:\n%s" % "\n".join(problems)
+	var computers := 0
+	for i in kind_pickers.size():
+		var is_computer := seat_kind(i + 1) == "computer"
+		level_pickers[i].visible = is_computer
+		if is_computer:
+			computers += 1
+	computer_label.visible = computers > 0
+	computer_title.visible = computers > 0
+	# Against the computer, passing the computer around doesn't apply: its explanation takes the place.
+	hotseat_label.visible = computers == 0
+	_hotseat_title.visible = computers == 0
+	if computers == kind_pickers.size():
+		computer_label.text = "The computer plays every seat, so you will watch: press Next turn to play each turn. %s" % _computer_short()
+	elif computers > 0:
+		computer_label.text = _computer_short()
 	var ids := _seat_ids()
 	for i in seat_pickers.size():
 		var f := _faction(ids[i])
 		faction_labels[i].text = "Plays in %s. %s" % [UiPalette.seat_color_name(i), _faction_summary(f)] if f else ""
+		if f and seat_kind(i + 1) == "computer":
+			faction_labels[i].text += " The computer plays this seat at the %s level." % AISeat.level_name(seat_level(i + 1))
 		faction_labels[i].tooltip_text = _faction_tooltip(f) if f else ""
 		seat_pickers[i].tooltip_text = "Player %d plays %s.\n\n%s" % [i + 1, f.faction_name, _faction_tooltip(f)] if f \
 			else "Pick the faction Player %d plays." % (i + 1)
@@ -227,6 +312,10 @@ func _refresh() -> void:
 
 func _faction(fid: String) -> Faction:
 	return _model.find_faction(fid)
+
+
+func _computer_short() -> String:
+	return "The computer plays by the same rules as you and gives its orders at the same time, without seeing yours. Easy makes more mistakes than Normal."
 
 
 ## "Capital Crownkeep, 50 gold to start. Spearmen, Crossbowmen and Knights, led by a Knight Captain."
@@ -304,12 +393,22 @@ func _build() -> void:
 	rematch_label.visible = false
 	box.add_child(rematch_label)
 	var hotseat := RulesCodex.entry("hotseat")
-	var hotseat_title := _label("HotseatTitle", String(hotseat.get("title", "")), 22, UiPalette.TEXT_PRIMARY)
-	box.add_child(hotseat_title)
+	_hotseat_title = _label("HotseatTitle", String(hotseat.get("title", "")), 22, UiPalette.TEXT_PRIMARY)
+	box.add_child(_hotseat_title)
 	hotseat_label = _label("HotseatLabel", String(hotseat.get("text", "")), 18, UiPalette.TEXT_SECONDARY)
 	hotseat_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_tooltip(hotseat_label, TooltipText.plain(String(RulesCodex.entry("handoff").get("title", "")), RulesCodex.text("handoff")))
 	box.add_child(hotseat_label)
+	var computer_entry := RulesCodex.entry("computer_opponent")
+	computer_title = _label("ComputerTitle", String(computer_entry.get("title", "")), 22, UiPalette.TEXT_PRIMARY)
+	computer_title.visible = false
+	box.add_child(computer_title)
+	computer_label = _label("ComputerLabel", "", 18, UiPalette.TEXT_SECONDARY)
+	computer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	computer_label.visible = false
+	_tooltip(computer_label, CodexLink.with_link(TooltipText.plain(String(computer_entry.get("title", "")),
+		RulesCodex.text("computer_opponent")), "computer_opponent"))
+	box.add_child(computer_label)
 
 	box.add_child(_label("SeatsHeading", "Who plays which faction", 26, UiPalette.GILT))
 	for i in SEAT_COUNT:
@@ -342,6 +441,8 @@ func _build() -> void:
 			picker.add_theme_color_override(state_name, UiPalette.seat_color(i).lightened(0.3))
 		row.add_child(picker)
 		seat_pickers.append(picker)
+		row.add_child(_kind_picker(i))
+		row.add_child(_level_picker(i))
 		var summary := _label("FactionSummary", "", 17, UiPalette.TEXT_SECONDARY)
 		summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		summary.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -354,7 +455,7 @@ func _build() -> void:
 	swap_button.custom_minimum_size = Vector2(200, 44)
 	swap_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	swap_button.add_theme_font_size_override("font_size", 20)
-	swap_button.tooltip_text = "Player 1 and Player 2 trade factions, and with them their colours (colours belong to the seat). Player 1 still gives orders first."
+	swap_button.tooltip_text = "Player 1 and Player 2 trade factions, and with them their colours (colours belong to the seat). Player 1 still gives orders first, and each seat keeps its player, a person or the computer."
 	swap_button.pressed.connect(swap_seats)
 	box.add_child(swap_button)
 
@@ -415,6 +516,43 @@ func _build() -> void:
 		start_button.add_theme_stylebox_override(state_name, sb)
 	start_button.pressed.connect(start)
 	buttons.add_child(start_button)
+
+
+## Human or Computer for seat `i` (0-based).
+func _kind_picker(i: int) -> OptionButton:
+	var picker := OptionButton.new()
+	picker.name = "KindPicker"
+	picker.custom_minimum_size = Vector2(170, 44)
+	picker.add_theme_font_size_override("font_size", 20)
+	for k in KIND_NAMES.size():
+		picker.add_item(KIND_NAMES[k])
+	picker.get_popup().set_item_tooltip(0, "A person plays this seat. With two people, the screen is covered between their turns so nobody sees the other's orders.")
+	picker.get_popup().set_item_tooltip(1, "The computer plays this seat, by the same rules as you. It gives its orders at the same time as you, without seeing yours.")
+	picker.tooltip_text = CodexLink.with_link(TooltipText.plain("Who plays Player %d" % (i + 1),
+		"A person, or the computer. %s" % RulesCodex.text("computer_opponent")), "computer_opponent")
+	picker.select(0)
+	picker.item_selected.connect(func(_index: int): _refresh())
+	kind_pickers.append(picker)
+	return picker
+
+
+## Easy or Normal for seat `i` (0-based); hidden while the seat is human.
+func _level_picker(i: int) -> OptionButton:
+	var picker := OptionButton.new()
+	picker.name = "LevelPicker"
+	picker.custom_minimum_size = Vector2(140, 44)
+	picker.add_theme_font_size_override("font_size", 20)
+	for level in LEVELS:
+		picker.add_item(AISeat.level_name(level))
+	picker.get_popup().set_item_tooltip(0, AISeat.tag_help("this faction", "easy"))
+	picker.get_popup().set_item_tooltip(1, AISeat.tag_help("this faction", "normal"))
+	picker.tooltip_text = TooltipText.plain("How well the computer plays Player %d" % (i + 1),
+		"Easy makes more mistakes: it passes up about one in three of its good attacks and captures, recruits at random and keeps a thinner guard on its capital. Normal plays as well as it can. Neither level cheats.")
+	picker.select(LEVELS.find(DEFAULT_LEVEL))
+	picker.visible = false
+	picker.item_selected.connect(func(_index: int): _refresh())
+	level_pickers.append(picker)
+	return picker
 
 
 func _label(node_name: String, text: String, font_size: int, color: Color) -> Label:

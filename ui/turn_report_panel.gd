@@ -5,6 +5,13 @@ extends PanelContainer
 ## Clicking a row asks the map to focus its first province; battle rows get a "Battle report" button.
 ## Rows whose event names a RulesCodex entry get a small "?" button that asks for that entry
 ## (codex_requested), so the host can open the codex panel there.
+## Games with a computer seat (#35) add two things. Under the header, the seats are named, each computer
+## faction with its "Computer (Normal)" tag. Under the events, pinned above the footer so it never
+## scrolls out of sight, a collapsible "What the computer was thinking" section lists the computer's own
+## notes (AIPlayer.last_plan_notes) for the turn that just resolved, in a box of its own that scrolls
+## when the notes are long. The host passes them in (AISeat.report_notes), and they are never shown
+## before the turn resolves, because they describe the computer's simultaneous orders. The section
+## remembers whether the player opened or closed it.
 ## Reads the session only and never changes rules state. Builds its children in code.
 
 signal province_focus_requested(province_id: String)
@@ -22,8 +29,13 @@ const PHASE_TITLES := {
 }
 const GAME_OVER_TYPE := "game_over"
 const BACKGROUND := Color(0.1, 0.11, 0.14, 1.0)
+## The computer's notes box: at most this tall (it scrolls past that), sized from a rough line count.
+const NOTES_MAX_HEIGHT := 190
+const NOTE_LINE_HEIGHT := 25
+const NOTE_CHARS_PER_LINE := 105
 
 var header_label: Label
+var seats_box: HBoxContainer  # the seats, with the computer tag; only in games with a computer seat
 var empty_label: Label
 var victory_box: PanelContainer
 var victory_label: Label
@@ -32,6 +44,12 @@ var scroll: ScrollContainer
 var _event_rows: Array[Button] = []
 var _battle_buttons: Array[Button] = []
 var _codex_buttons: Array[Button] = []
+var computer_notes_open := true  # the player's choice for the notes section, kept across turns
+var notes_section: VBoxContainer  # pinned under the events; hidden without computer notes
+var notes_toggle: Button = null  # the section's header button, while the report has computer notes
+var notes_scroll: ScrollContainer
+var notes_body: VBoxContainer
+var _note_labels: Array[Label] = []
 
 
 func _init() -> void:
@@ -40,14 +58,19 @@ func _init() -> void:
 	_build()
 
 
-## Rebuilds the panel from session.turn_report().
-func show_report(session: GameSession) -> void:
+## Rebuilds the panel from session.turn_report(). `computer_notes` (AISeat.report_notes) fills the
+## "What the computer was thinking" section; leave it empty in a hotseat game.
+func show_report(session: GameSession, computer_notes: Array = []) -> void:
 	show_report_data(session.turn_report() if session != null else {})
+	_show_seats(session)
+	show_computer_notes(computer_notes)
 
 
 ## Rebuilds the panel from a report dictionary shaped like GameSession.turn_report().
 func show_report_data(report: Dictionary) -> void:
 	_clear_rows()
+	_clear_seats()
+	show_computer_notes([])
 	header_label.text = report.get("header", "No turns have been resolved yet.")
 	var events: Array = report.get("events", [])
 	empty_label.visible = events.is_empty() and int(report.get("turn", 0)) > 0
@@ -87,6 +110,107 @@ func codex_buttons() -> Array[Button]:
 
 static func phase_title(phase: String) -> String:
 	return PHASE_TITLES.get(phase, phase.capitalize())
+
+
+## Fills the "What the computer was thinking" section under the events: one block per computer seat
+## ({"faction_name", "seat", "level", "notes"}, see AISeat.report_notes). An empty list hides it.
+func show_computer_notes(entries: Array) -> void:
+	_note_labels.clear()
+	for c in notes_body.get_children():
+		notes_body.remove_child(c)
+		c.queue_free()
+	notes_section.visible = not entries.is_empty()
+	notes_toggle = notes_section.get_node("ComputerNotesToggle") if not entries.is_empty() else null
+	if entries.is_empty():
+		return
+	var lines := 0  # rough wrapped line count, for the box's height
+	for entry in entries:
+		var level := String(entry.get("level", ""))
+		var faction_name := String(entry.get("faction_name", "The computer"))
+		if entries.size() > 1:
+			var who := Label.new()
+			who.text = "%s, %s" % [faction_name, AISeat.tag_text(level)]
+			who.add_theme_font_size_override("font_size", 18)
+			who.add_theme_color_override("font_color", UiPalette.seat_color(int(entry.get("seat", 0))).lightened(0.3))
+			notes_body.add_child(who)
+			lines += 1
+		var notes: Array = entry.get("notes", [])
+		if notes.is_empty():
+			notes = ["Nothing new to report this turn."]
+		for line in notes:
+			var l := Label.new()
+			l.text = "•  %s" % line
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			l.add_theme_font_size_override("font_size", 17)
+			l.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
+			l.tooltip_text = TooltipText.plain("%s, %s" % [faction_name, AISeat.tag_text(level)], AISeat.tag_help(faction_name, level))
+			CodexLink.attach(l, "computer_opponent", codex_requested.emit)
+			notes_body.add_child(l)
+			_note_labels.append(l)
+			lines += ceili((String(line).length() + 3) / float(NOTE_CHARS_PER_LINE))
+	notes_scroll.custom_minimum_size = Vector2(0, mini(lines * NOTE_LINE_HEIGHT + 6, NOTES_MAX_HEIGHT))
+	_refresh_notes_toggle()
+
+
+## Opens or closes the notes section; the choice holds for the next reports too.
+func toggle_computer_notes() -> void:
+	computer_notes_open = not computer_notes_open
+	_refresh_notes_toggle()
+
+
+## The note lines of the notes section, in display order (empty without computer notes).
+func computer_note_labels() -> Array[Label]:
+	return _note_labels
+
+
+func _refresh_notes_toggle() -> void:
+	if notes_toggle == null:
+		return
+	var count := _note_labels.size()
+	notes_toggle.text = "What the computer was thinking (%s)  ·  %s" % [TooltipText.count(count, "note"),
+		"click to hide" if computer_notes_open else "click to show"]
+	notes_scroll.visible = computer_notes_open
+
+
+## The seats under the header, each computer faction with its tag. Only for games with a computer seat.
+func _show_seats(session: GameSession) -> void:
+	_clear_seats()
+	if session == null or session.computer_seats().is_empty():
+		return
+	var state := session.state()
+	var players := session.players()
+	for i in players.size():
+		var fid := String(players[i])
+		if i > 0:
+			var vs := Label.new()
+			vs.text = "vs"
+			vs.add_theme_font_size_override("font_size", 18)
+			vs.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
+			seats_box.add_child(vs)
+		var seat := HBoxContainer.new()
+		seat.name = "Seat%d" % (i + 1)
+		seat.add_theme_constant_override("separation", 8)
+		seats_box.add_child(seat)
+		seat.add_child(VictoryScreen.seat_emblem(i))
+		var f := state.find_faction(fid)
+		var faction_name := f.faction_name if f else "An unknown faction"
+		var name_label := Label.new()
+		name_label.text = faction_name
+		if not session.is_computer(fid) and session.human_seats() == 1:
+			name_label.text += " (you)"
+		name_label.add_theme_font_size_override("font_size", 18)
+		name_label.add_theme_color_override("font_color", UiPalette.seat_color(i).lightened(0.3))
+		seat.add_child(name_label)
+		if session.is_computer(fid):
+			seat.add_child(VictoryScreen.computer_tag(faction_name, session.computer_level(fid), codex_requested.emit))
+	seats_box.visible = true
+
+
+func _clear_seats() -> void:
+	for c in seats_box.get_children():
+		seats_box.remove_child(c)
+		c.queue_free()
+	seats_box.visible = false
 
 
 func _is_game_over(e: Dictionary) -> bool:
@@ -197,6 +321,12 @@ func _build() -> void:
 	header_label.add_theme_font_size_override("font_size", 32)
 	box.add_child(header_label)
 
+	seats_box = HBoxContainer.new()
+	seats_box.name = "Seats"
+	seats_box.add_theme_constant_override("separation", 8)
+	seats_box.visible = false
+	box.add_child(seats_box)
+
 	victory_box = PanelContainer.new()
 	victory_box.name = "VictoryBanner"
 	var vstyle := StyleBoxFlat.new()
@@ -231,3 +361,32 @@ func _build() -> void:
 	rows_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rows_box.add_theme_constant_override("separation", 6)
 	scroll.add_child(rows_box)
+
+	# The computer's notes (#35): pinned under the events, hidden in hotseat games.
+	notes_section = VBoxContainer.new()
+	notes_section.name = "ComputerNotes"
+	notes_section.add_theme_constant_override("separation", 4)
+	notes_section.visible = false
+	box.add_child(notes_section)
+	notes_section.add_child(HSeparator.new())
+	var toggle := Button.new()
+	toggle.name = "ComputerNotesToggle"
+	toggle.flat = true
+	toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	toggle.add_theme_font_size_override("font_size", 22)
+	for state_name in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+		toggle.add_theme_color_override(state_name, Color(0.95, 0.82, 0.5))
+	toggle.tooltip_text = TooltipText.plain("What the computer was thinking",
+		"The computer's own reasons for the orders it gave this turn. It decided them from the map at the start of the turn, at the same time as you and without seeing your orders, so they only appear once the turn has resolved. Click to show or hide them.")
+	CodexLink.attach(toggle, "computer_opponent", codex_requested.emit)
+	toggle.pressed.connect(toggle_computer_notes)
+	notes_section.add_child(toggle)
+	notes_scroll = ScrollContainer.new()
+	notes_scroll.name = "ComputerNotesScroll"
+	notes_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	notes_section.add_child(notes_scroll)
+	notes_body = VBoxContainer.new()
+	notes_body.name = "ComputerNotesBody"
+	notes_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	notes_body.add_theme_constant_override("separation", 4)
+	notes_scroll.add_child(notes_body)

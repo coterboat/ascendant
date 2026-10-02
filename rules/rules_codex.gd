@@ -77,6 +77,11 @@ const ENTRIES := {
 		"title": "Unit traits",
 		"text": "Every kind of unit and every commander has one trait: a special rule for how it fights, such as Shield Wall or Charge. Traits only work in battle. Each trait has its own codex entry, and the battle report points out when one made a difference.",
 	},
+	# --- computer seats (#35): GameSession computer seats, played by AISeat with the AIPlayer brain.
+	"computer_opponent": {
+		"title": "Playing against the computer",
+		"text": "Any seat can be played by the computer instead of a person. The computer plays by exactly the same rules as you: it sees the same map, it gets the same gold and units, and its orders are checked the same way. It gives its orders at the same time as you, from the map as it stood at the start of the turn, so it never sees the orders you give. After the turn resolves, the turn report shows what it was thinking. Easy makes more mistakes than Normal: it passes up about one in three of its good attacks and captures, recruits at random instead of picking the best mix, works out the odds of fewer battles before it fights, and settles for a thinner guard on its capital. Neither level cheats.",
+	},
 	"phase_order": {
 		"title": "How a turn resolves",
 		"text": "Everyone gives orders first. Then the whole turn resolves at once, always in this order: 1. orders are checked, 2. movement, 3. battles, 4. capture, 5. recruitment, 6. income. The same orders and seed always give the same result.",
