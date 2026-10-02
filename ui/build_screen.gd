@@ -44,6 +44,7 @@ extends Control
 ##   acknowledge() -> bool        Ready / Start the game on a cover
 ##   back()                       the Back button (Esc): drops every build chosen so far, emits back_requested
 ##   computer_preset(faction_id, game_seed, seat) -> String   the preset a computer seat plays (static)
+##   computer_build(faction_id, game_seed, seat) -> Dictionary the build it plays: AIPlayer.choose_build (static)
 ##   number_labels() -> Array     every label on screen that shows a number (for tests)
 
 signal finished(config: Dictionary)
@@ -271,15 +272,16 @@ func handle_cancel() -> bool:
 	return false
 
 
-## The preset a computer seat plays (§6.1): presets[faction][roll], where the roll is the first draw of
-## the seat's computer RNG, seeded like AISeat's (AISeat.seat_seed). The same seed and seat always give
-## the same preset.
+## The preset a computer seat plays (§6.1): computer_build's preset id.
 static func computer_preset(fid: String, game_seed: int, seat_index: int) -> String:
-	var presets := RulerRules.presets_for(fid)
-	if presets.is_empty():
-		return ""
-	var rng := SeededRNG.new(AISeat.seat_seed(game_seed, seat_index))
-	return String(presets[rng.randi_range(0, presets.size() - 1)].id)
+	return String(computer_build(fid, game_seed, seat_index).get("preset", ""))
+
+
+## The build a computer seat plays (§6.1), {"preset", "ruler", "mandates"}: AIPlayer.choose_build, the
+## single source of the computer's build, on the first draw of the seat's computer RNG (AISeat.seat_seed),
+## the same draw AISeat makes when the game starts. The same seed and seat always give the same build.
+static func computer_build(fid: String, game_seed: int, seat_index: int) -> Dictionary:
+	return AIPlayer.choose_build(null, fid, SeededRNG.new(AISeat.seat_seed(game_seed, seat_index)))
 
 
 ## Every visible label on the build page that shows a number (each carries the "breakdown" meta).
@@ -400,7 +402,7 @@ func _finish() -> void:
 	var players := _players()
 	for i in players.size():
 		var fid := String(players[i])
-		builds[fid] = locked[fid].duplicate(true) if locked.has(fid) else RulerRules.preset_build(computer_preset(fid, _seed(), i))
+		builds[fid] = locked[fid].duplicate(true) if locked.has(fid) else computer_build(fid, _seed(), i)
 	cfg["builds"] = builds
 	_reset()
 	step = Step.DONE

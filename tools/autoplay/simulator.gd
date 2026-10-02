@@ -18,6 +18,13 @@ extends RefCounted
 ## Determinism: the game seed fixes the starting state (GameState.new(seed)), the turn seeds
 ## (GameSession.turn_seed) and each seat's policy RNG (policy_seed), so the same seed, seats and policies
 ## always give the same game.
+##
+## Rulers (M2-7, #35): play_game's `options` {"rulers": true, "builds": [preset id or "" per seat]} start
+## the game with rulers (GameState.with_rulers). Each seat's build is rolled with AIPlayer.choose_build
+## as the first draw of its policy RNG, exactly as an AI seat in a real game (AISeat) rolls it; a preset
+## id in "builds" overrides that seat's roll (the draw is still made, so the orders after it stay the
+## same). Results then carry "builds" ({faction id: preset id}) and "ruler" counts, and summarize() adds
+## the wins by build and the ruler counts (sacrifices, deaths, successors).
 
 const Policies := preload("res://tools/autoplay/policies.gd")
 
@@ -37,7 +44,7 @@ const END_NAMES := {"rout": "rout (a side broke and fled)", "destroyed": "destro
 const SUMMARY_KEYS := ["games", "matchup", "seats", "policies", "seeds", "turn_cap", "finished", "unfinished",
 	"draws", "wins_by_faction", "wins_by_seat", "length", "length_decisive", "length_all", "length_buckets", "battles",
 	"why_factors", "final_gold", "mean_gold", "provinces_held", "orders", "rejections",
-	"resolution_rejections", "violations", "errors", "script_errors", "policy_stats", "patterns"]
+	"resolution_rejections", "violations", "errors", "script_errors", "policy_stats", "patterns", "builds", "rulers"]
 ## Trait names as they appear as "why" factor ids (data/factions.gd), for the trait line of the report.
 const TRAITS := ["Shield Wall", "Volley", "Charge", "Inspire", "Berserk", "Skirmish", "Fury", "Pack Leader"]
 const LENGTH_BUCKETS := [[1, 9, "under 10"], [10, 15, "10-15"], [16, 20, "16-20"], [21, 30, "21-30"], [31, 100000, "31+"]]
@@ -50,10 +57,11 @@ static func policy_seed(game_seed: int, seat: int) -> int:
 
 ## Plays `games` games on seeds base_seed, base_seed + 1, ... and returns their play_game results.
 ## `probe` (optional) is passed to every play_game call.
-static func run_batch(games: int, base_seed: int, seat_factions: Array, policy_names: Array, turn_cap: int = TURN_CAP, probe: Callable = Callable()) -> Array:
+static func run_batch(games: int, base_seed: int, seat_factions: Array, policy_names: Array, turn_cap: int = TURN_CAP, probe: Callable = Callable(),
+		options: Dictionary = {}) -> Array:
 	var results := []
 	for i in games:
-		results.append(play_game(base_seed + i, seat_factions, policy_names, turn_cap, probe))
+		results.append(play_game(base_seed + i, seat_factions, policy_names, turn_cap, probe, options))
 	return results
 
 
@@ -69,13 +77,16 @@ static func run_batch(games: int, base_seed: int, seat_factions: Array, policy_n
 ##    "policy_stats": [per seat], "first_battle_turn", "quiet_streak", "final_state": dict}
 ## `probe` (optional) is called after every turn and returns the engine/script errors logged since its
 ## last call (a PackedStringArray or Array of strings), so each one is filed under this seed and turn.
-static func play_game(game_seed: int, seat_factions: Array, policy_names: Array, turn_cap: int = TURN_CAP, probe: Callable = Callable()) -> Dictionary:
+## `options` (optional): {"rulers": true, "builds": [...]} for a game with rulers (see the class comment).
+static func play_game(game_seed: int, seat_factions: Array, policy_names: Array, turn_cap: int = TURN_CAP, probe: Callable = Callable(),
+		options: Dictionary = {}) -> Dictionary:
 	var result := {
 		"seed": game_seed, "seats": seat_factions.duplicate(), "policies": policy_names.duplicate(),
 		"turn_cap": turn_cap, "finished": false, "winner": "", "winner_seat": 0, "draw": false, "turns": 0, "battles": [],
 		"captures": 0, "final_gold": {}, "mean_gold": {}, "provinces_held": {}, "orders": 0,
 		"rejections": {}, "resolution_rejections": {}, "violations": [], "errors": [], "script_errors": [], "repro": {},
 		"policy_stats": [], "first_battle_turn": 0, "quiet_streak": 0, "final_state": {},
+		"builds": {}, "ruler": {"sacrifices": {}, "deaths": {}, "arrivals": {}},
 	}
 	if seat_factions.size() != policy_names.size():
 		_error(result, 0, "There are %d seats but %d policies." % [seat_factions.size(), policy_names.size()])
@@ -90,7 +101,23 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 		policies.append(policy)
 		rngs.append(SeededRNG.new(policy_seed(game_seed, i)))
 
-	var session := GameSession.new(GameState.new(game_seed), seat_factions, game_seed, AutoBattleResolver.new())
+	var start := GameState.new(game_seed)
+	if options.get("rulers", false):
+		var forced: Array = options.get("builds", [])
+		var builds := {}
+		for i in seat_factions.size():
+			var fid := str(seat_factions[i])
+			var rolled := AIPlayer.choose_build(null, fid, rngs[i])  # the seat RNG's first draw, as in AISeat
+			var pick: String = str(forced[i]) if i < forced.size() else ""
+			builds[fid] = RulerRules.preset_build(pick) if not pick.is_empty() else rolled
+			result.builds[fid] = str(builds[fid].get("preset", ""))
+		var build_errors := []
+		start = GameState.with_rulers(game_seed, builds, build_errors)
+		if start == null:
+			for e in build_errors:
+				_error(result, 0, "setup: %s" % e)
+			return result
+	var session := GameSession.new(start, seat_factions, game_seed, AutoBattleResolver.new())
 	for e in session.setup_errors():
 		_error(result, 0, "setup: %s" % e)
 	if session.phase() == GameSession.Phase.INVALID:
@@ -142,6 +169,10 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 				result.captures += 1
 			elif type == "order_rejected":
 				_bump(result.resolution_rejections, str(e.get("cause", "unknown")))
+			elif type == "sacrificed" or type == "ruler_died" or type == "ruler_arrived":
+				var bucket: Dictionary = result.ruler[{"sacrificed": "sacrifices", "ruler_died": "deaths", "ruler_arrived": "arrivals"}[type]]
+				for fid in e.get("factions", []):
+					_bump(bucket, str(fid))
 		if fought and result.first_battle_turn == 0:
 			result.first_battle_turn = turn
 		quiet = 0 if fought else quiet + 1
@@ -370,6 +401,42 @@ static func summarize(results: Array) -> Dictionary:
 	var quiet := []
 	var first_battle := []
 	var no_battle_games := 0
+	var by_build := {}  # preset id -> {"games", "wins", "decisive", "faction"}
+	var rulers := {"games": 0, "sacrifices": 0, "games_with_sacrifice": 0, "deaths": 0, "games_with_death": 0,
+		"arrivals": 0, "games_to_turn_8": 0, "deaths_by_turn_8_games": 0}
+	for r in results:
+		var rb: Dictionary = r.get("builds", {})
+		if not rb.is_empty():
+			rulers.games += 1
+			var decisive: bool = r.finished and not r.draw and not str(r.winner).is_empty()
+			for fid in rb:
+				var pid := str(rb[fid])
+				if not by_build.has(pid):
+					by_build[pid] = {"games": 0, "wins": 0, "decisive": 0, "faction": str(fid)}
+				by_build[pid].games += 1
+				if decisive:
+					by_build[pid].decisive += 1
+					if str(r.winner) == str(fid):
+						by_build[pid].wins += 1
+			var rr: Dictionary = r.get("ruler", {})
+			var n_sac := 0
+			var n_dead := 0
+			for fid in rr.get("sacrifices", {}):
+				n_sac += int(rr.sacrifices[fid])
+			for fid in rr.get("deaths", {}):
+				n_dead += int(rr.deaths[fid])
+			for fid in rr.get("arrivals", {}):
+				rulers.arrivals += int(rr.arrivals[fid])
+			rulers.sacrifices += n_sac
+			rulers.deaths += n_dead
+			if n_sac > 0:
+				rulers.games_with_sacrifice += 1
+			if n_dead > 0:
+				rulers.games_with_death += 1
+			if int(r.turns) >= 8:
+				rulers.games_to_turn_8 += 1
+				if n_dead > 0:
+					rulers.deaths_by_turn_8_games += 1
 	for r in results:
 		s.turn_cap = maxi(s.turn_cap, int(r.get("turn_cap", 0)))
 		all_lengths.append(int(r.turns))
@@ -466,6 +533,8 @@ static func summarize(results: Array) -> Dictionary:
 	s.policy_stats = policy_stats
 	s.patterns = {"games_without_battles": no_battle_games, "first_battle_turn": stats_of(first_battle),
 		"longest_quiet_streak": stats_of(quiet)}
+	s.builds = by_build
+	s.rulers = rulers
 	return s
 
 
@@ -481,6 +550,12 @@ static func stats_of(values: Array) -> Dictionary:
 		total += float(v)
 	var median: float = float(sorted[n / 2]) if n % 2 == 1 else (float(sorted[n / 2 - 1]) + float(sorted[n / 2])) / 2.0
 	return {"n": n, "min": sorted[0], "median": median, "mean": total / n, "max": sorted[n - 1]}
+
+
+## Display name of a build preset id from data/build_presets.gd (the id itself when unknown).
+static func build_name(preset_id: String) -> String:
+	var p := RulerRules.preset_data(preset_id)
+	return str(p.get("name", preset_id)) if not p.is_empty() else preset_id
 
 
 ## Display name of a faction id from data/factions.gd.
@@ -553,6 +628,19 @@ static func to_markdown(s: Dictionary) -> String:
 		ps.append("%s %s" % [seat, _counts(s.policy_stats[seat])])
 	if not ps.is_empty():
 		L.append("- **Policy counters:** %s." % "; ".join(ps))
+	var bl: Dictionary = s.get("builds", {})
+	if not bl.is_empty():
+		var ids: Array = bl.keys()
+		ids.sort_custom(func(a, b): return str(bl[a].faction) + str(a) < str(bl[b].faction) + str(b))
+		var parts := []
+		for pid in ids:
+			var e: Dictionary = bl[pid]
+			parts.append("%s %d (won %d of %d decisive, %s)" % [build_name(str(pid)), e.games, e.wins, e.decisive, _pct(e.wins, e.decisive)])
+		L.append("- **Builds (games played; wins of decisive games):** %s." % ", ".join(parts))
+		var ru: Dictionary = s.rulers
+		L.append("- **Rulers:** %d sacrifices in %d of %d games (%s); %d ruler deaths in %d games (%s of the %d games that reached turn 8 had one); %d successors crowned." % [
+			ru.sacrifices, ru.games_with_sacrifice, ru.games, _pct(ru.games_with_sacrifice, ru.games), ru.deaths, ru.games_with_death,
+			_pct(ru.deaths_by_turn_8_games, ru.games_to_turn_8), ru.games_to_turn_8, ru.arrivals])
 	var v: Dictionary = s.violations
 	if v.count == 0:
 		L.append("- **Invariant violations:** 0.")
@@ -587,35 +675,29 @@ static func game_lines(results: Array) -> String:
 		for fid in r.final_gold:
 			gold.append("%s %d" % [faction_name(fid), r.final_gold[fid]])
 		var problems: int = r.violations.size() + r.errors.size() + r.get("script_errors", []).size()
-		L.append("| %d | %s | %d | %d | %d | %s | %d |" % [r.seed, outcome, r.turns, r.battles.size(), r.captures, ", ".join(gold), problems])
+		var row := "| %d | %s | %d | %d | %d | %s | %d |" % [r.seed, outcome, r.turns, r.battles.size(), r.captures, ", ".join(gold), problems]
+		if not r.get("builds", {}).is_empty():
+			var names := []
+			for fid in r.seats:
+				names.append(build_name(str(r.builds.get(fid, ""))))
+			row += " %s |" % " vs ".join(names)
+		L.append(row)
 	return "\n".join(L)
 
 
 # --- internals ------------------------------------------------------------------------------------
 
-## Queues `orders` for `fid` through the session; counts each refusal under its rules code.
+## Queues `orders` for `fid` through the session; counts each refusal under its rules code (the code
+## OrderBook.check_order gives it against the orders accepted so far, sacrifices included).
 static func _queue(session: GameSession, view: GameState, fid: String, orders: Array, result: Dictionary) -> void:
-	var moved := {}
-	var recruits := []
+	var accepted := []
 	for order in orders:
 		result.orders += 1
 		var why := session.queue_order(order)
 		if why.is_empty():
-			if order is MoveOrder:
-				moved[order.army_id] = true
-			elif order is RecruitOrder:
-				recruits.append(order)
+			accepted.append(order)
 			continue
-		var code := "unclassified"
-		if order is MoveOrder:
-			code = str(TurnResolver.check_move(view, fid, order, moved).get("code", "unclassified"))
-		elif order is RecruitOrder:
-			var trial := recruits.duplicate()
-			trial.append(order)
-			code = str(TurnResolver.price_recruits(view, fid, trial).results.back().get("code", "unclassified"))
-		else:
-			code = "unknown_order"
-		_bump(result.rejections, code)
+		_bump(result.rejections, str(OrderBook.check_order(view, fid, order, accepted).get("code", "unclassified")))
 
 
 static func _battle_record(turn: int, e: Dictionary) -> Dictionary:

@@ -20,6 +20,9 @@ extends RefCounted
 ##   ai      the computer opponent, AIPlayer (ai/ai_player.gd) at "normal": guards its capital against
 ##           anything that can reach it, masses armies, attacks on good odds, expands when it is safe.
 ##   ai_easy AIPlayer at "easy": sometimes lets good moves pass and recruits at random.
+## In a game with rulers (autoplay --rulers) every policy plays the build the simulator gave its seat;
+## only ai and ai_easy know what a ruler, a road move or a sacrifice is (AIPlayer, M2-7). The others
+## move the ruler's army like any other army.
 ##
 ##   var policy = Policies.make("greedy")
 ##   var orders: Array = policy.orders(state, "kingdom", SeededRNG.new(7))
@@ -437,21 +440,20 @@ class AIPolicy extends Base:
 		var planned: Array = ai.plan_orders(state, faction_id, rng, difficulty)
 		var st: Dictionary = ai.last_plan_stats()
 		for key in ["odds_calls", "odds_cached", "odds_skipped", "attacks", "held_back", "captures", "recalls",
-				"retreats", "dropped_invalid"]:
+				"retreats", "dropped_invalid", "sacrifices", "road_moves", "field_recruits", "ruler_moves"]:
 			if int(st.get(key, 0)) > 0:
 				bump(key, int(st.get(key, 0)))
 		bump("plans")
 		bump("plan_ms_total", int(st.get("usec", 0)) / 1000)
 		slowest_usec = maxi(slowest_usec, int(st.get("usec", 0)))
 		stats["plan_ms_max"] = slowest_usec / 1000
-		# AIPlayer pre-checks every order; check the moves again the way the other policies do.
-		var plan := {}
+		# AIPlayer pre-checks every order; check them again, in order, exactly as GameSession's OrderBook
+		# will (a Sacrifice first, then moves, road moves included, and recruits, Warband Muster included,
+		# against the state with the sacrifice applied).
 		var out := []
 		for o in planned:
-			if o is MoveOrder:
-				plan[o.army_id] = o.to
-		out.append_array(checked_moves(state, faction_id, plan))
-		for o in planned:
-			if o is RecruitOrder:
+			if OrderBook.check_order(state, faction_id, o, out).is_empty():
 				out.append(o)
+			else:
+				bump("dropped_invalid")
 		return out
