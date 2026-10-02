@@ -353,7 +353,7 @@ const ENTRIES := {
 	},
 	"mandate_muster_grounds": {
 		"title": "Muster Grounds",
-		"text": "Shared mandate, 4 power. Every recruit, commanders included, costs a fifth less: a fifth of its price, rounded down, comes off. Aurel Crown: Spearmen 7, Crossbowmen 8, Knights 16, Knight Captain 28. Thornmane Clans: Tuskers 10, Fangthrowers 8, War Bear 20, Warchief 32. It counts at the capital and for recruits made with Warband Muster, and every price on screen already includes it.",
+		"text": "Shared mandate, 4 power. Every recruit, commanders included, costs a fifth less: a fifth of its price, rounded down, comes off. Aurel Crown: Spearmen 7, Crossbowmen 8, Knights 16, Knight Captain 28. Thornmane Clans: Tuskers 9, Fangthrowers 7, War Bear 18, Warchief 28. It counts at the capital and for recruits made with Warband Muster, and every price on screen already includes it.",
 	},
 	"mandate_sworn_vassals": {
 		"title": "Sworn Vassals",
