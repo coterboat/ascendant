@@ -240,7 +240,7 @@ const ENTRIES := {
 	},
 	"ruler_healing": {
 		"title": "Ruler healing",
-		"text": "At the end of every turn a living ruler heals a quarter of its maximum hit points, rounded up: a King with 46 maximum hit points heals 12. Regular units and commanders do not heal on their own; only Mending Light and Feast of Victory heal them.",
+		"text": "At the end of every turn a living ruler heals a quarter of its maximum hit points, rounded up, wherever it is, even after a battle that turn: a King with 46 maximum hit points heals 12. This happens in the rulers phase, the last step of the turn after income: first Mending Light heals, then rulers heal, then successors who are due arrive. Regular units and commanders do not heal on their own; only Mending Light and Feast of Victory heal them.",
 	},
 	"ruler_army": {
 		"title": "The ruler's army",
@@ -248,23 +248,23 @@ const ENTRIES := {
 	},
 	"ruler_death": {
 		"title": "When a ruler dies",
-		"text": "A ruler dies when its hit points reach 0, or when it is on the losing side of a battle: a ruler on a losing side is lost with its army; there are no retreats yet. While a faction has no ruler it has no province ability, no ruler in battle and cannot sacrifice, but its mandates stay. What comes next depends on the kind of ruler: see Succession. A ruler's death never ends the game; only the capital decides that.",
+		"text": "A ruler dies when its hit points reach 0, even if its side wins the battle, or when it is on the losing side of a battle: a ruler on a losing side is lost with its army; there are no retreats yet. The death is recorded right after that battle, and the turn report says who succeeds, where, when and with how much kept power. While a faction has no ruler it has no province ability, no ruler in battle and cannot sacrifice, but its mandates stay. What comes next depends on the kind of ruler: see Succession. A ruler's death never ends the game; only the capital decides that.",
 	},
 	"succession": {
 		"title": "Succession",
-		"text": "When a ruler dies, a successor arrives at your capital at the end of a later turn, at full hit points, in a new ruler's army. How long that takes and how much kept power the successor has depend on the kind of ruler. A mortal line crowns an heir 2 turns later with half the kept power, rounded down. The undying Ever-Regent re-forms 4 turns later with all of it. The Great Thornmane takes a new body 1 turn later with 3 less kept power, for good. Mandates always stay. If you don't hold your capital when the successor is due, it waits until you do.",
+		"text": "When a ruler dies during a turn, a successor arrives at your capital at the end of a later turn, in the rulers phase, at full hit points, in a new ruler's army of its own, and can take orders from the next turn. How long that takes and how much kept power the successor has depend on the kind of ruler, and the kept power at the moment of death decides it. A mortal line crowns an heir 2 turns later with half the kept power, rounded down. The undying Ever-Regent re-forms 4 turns later with all of it. The Great Thornmane takes a new body 1 turn later with 3 less kept power, for good, never below 0. Each successor is the next generation of the line, and mandates always stay. If you don't hold your capital when the successor is due, it waits and arrives at the end of the first turn you hold it again.",
 	},
 	"succession_mortal": {
 		"title": "Succession: mortal line",
-		"text": "King Corvane and the Ninth Fang are mortal lines. When one dies during a turn, the heir is crowned at your capital at the end of the turn 2 turns later, with half the dead ruler's kept power, rounded down: 10 kept power becomes 5, and 7 becomes 3. The heir is the next of the line: Corvane II after King Corvane I, the Tenth Fang after the Ninth.",
+		"text": "King Corvane and the Ninth Fang are mortal lines. When one dies during turn 4, the heir is crowned at your capital at the end of turn 6, 2 turns later, and can take orders from turn 7. The heir has half the dead ruler's kept power, rounded down: 10 kept power becomes 5, and 7 becomes 3. The heir is the next of the line: Corvane II after King Corvane I (crowned as King Corvane II), the Tenth Fang after the Ninth.",
 	},
 	"succession_undying": {
 		"title": "Succession: undying",
-		"text": "The Ever-Regent is bound to the sunstone in Crownkeep and cannot truly die. When he is destroyed during a turn, he re-forms at your capital at the end of the turn 4 turns later, with the same kept power he had.",
+		"text": "The Ever-Regent is bound to the sunstone in Crownkeep and cannot truly die. When he is destroyed during turn 4, he re-forms at your capital at the end of turn 8, 4 turns later, with the same kept power he had, and can take orders from turn 9.",
 	},
 	"succession_god": {
 		"title": "Succession: god",
-		"text": "The Great Thornmane is a god walking in a body of briar and fur. When the body is slain during a turn, the god takes a new one at your capital at the end of the next turn, with 3 less kept power for good, never below 0: 10 becomes 7, and 2 becomes 0.",
+		"text": "The Great Thornmane is a god walking in a body of briar and fur. When the body is slain during turn 4, the god takes a new one at your capital at the end of turn 5, 1 turn later, and can take orders from turn 6. The new body has 3 less kept power for good, never below 0: 10 becomes 7, and 2 becomes 0.",
 	},
 	"mandates": {
 		"title": "Mandates",
@@ -304,7 +304,7 @@ const ENTRIES := {
 	},
 	"ability_royal_court": {
 		"title": "Royal Court",
-		"text": "King Corvane's province ability. In the income phase, the province the King is in earns more gold, if you own it: 2 more at ability rank 1, 3 at rank 2, 4 at rank 3 and 5 at rank 4. It shows in that province's income.",
+		"text": "King Corvane's province ability. In the income phase, the province the King is in earns more gold, if you own it: 2 more at ability rank 1, 3 at rank 2, 4 at rank 3 and 5 at rank 4. It follows him: it counts where he ends the turn, after movement and battles. While he is dead there is no Royal Court. It shows in that province's income and in your gold.",
 	},
 	"ability_mending_light": {
 		"title": "Mending Light",
@@ -316,7 +316,7 @@ const ENTRIES := {
 	},
 	"ability_warband_muster": {
 		"title": "Warband Muster",
-		"text": "The Ninth Fang's province ability. Each turn you may recruit regular units with the Fang: 1 at ability rank 1, 2 at rank 2, 3 at rank 3 and 4 at rank 4, at the usual prices. They appear where the Fang is after movement and battles, if you own that province then. Commanders still come only from the capital.",
+		"text": "The Ninth Fang's province ability. Each turn you may recruit regular units with the Fang: 1 at ability rank 1, 2 at rank 2, 3 at rank 3 and 4 at rank 4, at the usual prices (Muster Grounds included). Select the Fang's province to find the Recruit with the Ninth Fang buttons. The recruits appear where the Fang is after movement and battles, if you own that province then; if the Fang has fallen or its province isn't yours, they are cancelled and cost nothing. They are paid from the same gold as capital recruits, in the order you gave them. Commanders still come only from the capital.",
 	},
 	"mandate_iron_discipline": {
 		"title": "Iron Discipline",
@@ -332,15 +332,15 @@ const ENTRIES := {
 	},
 	"mandate_heavy_tithes": {
 		"title": "Heavy Tithes",
-		"text": "Shared mandate, 4 power. In the income phase, every province you own earns 1 more gold, the capital included. It shows in each province's income.",
+		"text": "Shared mandate, 4 power. In the income phase, every province you own earns 1 more gold, the capital included. It shows in each province's income and in your gold.",
 	},
 	"mandate_muster_grounds": {
 		"title": "Muster Grounds",
-		"text": "Shared mandate, 4 power. Every recruit, commanders included, costs a fifth less: a fifth of its price, rounded down, comes off. It counts at the capital and for recruits made with Warband Muster.",
+		"text": "Shared mandate, 4 power. Every recruit, commanders included, costs a fifth less: a fifth of its price, rounded down, comes off. Aurel Crown: Spearmen 7, Crossbowmen 8, Knights 16, Knight Captain 28. Thornmane Clans: Tuskers 10, Fangthrowers 8, War Bear 20, Warchief 32. It counts at the capital and for recruits made with Warband Muster, and every price on screen already includes it.",
 	},
 	"mandate_sworn_vassals": {
 		"title": "Sworn Vassals",
-		"text": "Shared mandate, 4 power. Each turn, in the capture phase after armies have captured provinces, one neutral province next to your land swears fealty and joins you: of the provinces with no owner and no army in them that border one you own, the one with the highest income. If another faction's Sworn Vassals picks the same province that turn, neither gets it. At most one province joins you per turn, and no gold changes hands.",
+		"text": "Shared mandate, 4 power. Each turn, in the capture phase after armies have captured provinces, one neutral province next to your land swears fealty and joins you: of the provinces with no owner and no army in them that border one you own, the one with the highest income (a tie goes to the one first in alphabetical order). If another faction's Sworn Vassals picks the same province that turn, neither gets it, and neither picks another. At most one province joins you per turn, and no gold changes hands. The map marks the province that will join with a pennant in its new owner's colour (slate when two factions want it); its forecast counts your queued moves and assumes every other army stays put.",
 	},
 	"mandate_royal_armories": {
 		"title": "Royal Armories",
@@ -348,7 +348,7 @@ const ENTRIES := {
 	},
 	"mandate_kings_roads": {
 		"title": "King's Roads",
-		"text": "Aurel Crown mandate, 2 power. Armies can move two provinces in one turn inside your own territory, through a province next to them to one next to that, when you owned both at the start of the turn. A road move never fights on a border and never stops halfway.",
+		"text": "Aurel Crown mandate, 2 power. Armies can move two provinces in one turn inside your own territory, through a province next to them to one next to that, when you owned both at the start of the turn. Select an army: the provinces it can reach by road get a dashed gilt ring, and clicking one orders the road move, with an arrow that bends through the province it goes through. A road move never fights on a border and never stops halfway. If an enemy army moves into the same province, you fight there, and nobody defends unless one of your armies held it.",
 	},
 	"mandate_blood_frenzy": {
 		"title": "Blood Frenzy",
@@ -360,11 +360,11 @@ const ENTRIES := {
 	},
 	"road_move": {
 		"title": "Road moves",
-		"text": "With King's Roads, a move order can name a province to go through: from A through B to C, where B is next to A, C is next to B, C is not A, and you owned both B and C at the start of the turn. The army moves straight from A to C during movement. It never fights a border battle and never stops in B. If enemies are in C after movement, there is a battle there as usual. The forecast says which way it goes and when it arrives.",
+		"text": "With King's Roads, a move order can name a province to go through: from A through B to C, where B is next to A, C is next to B, C is not A, and you owned both B and C at the start of the turn. The army moves straight from A to C during movement. It never fights a border battle and never stops in B. If enemies are in C after movement, there is a battle there as usual: an enemy army that arrived too fights you with nobody defending. When two ways through are open, the order line has a button to take the other one; it arrives at the same time either way. The forecast says which way it goes and when it arrives.",
 	},
 	"field_recruit": {
 		"title": "Recruiting in the field",
-		"text": "With Warband Muster, the Ninth Fang can recruit regular units where it stands, not only at the capital: up to its ability rank each turn, at the usual prices. They appear where the Fang is after movement and battles, if you own that province then; if not, they are cancelled and you keep the gold. Commanders still come only from the capital.",
+		"text": "With Warband Muster, the Ninth Fang can recruit regular units where it stands, not only at the capital: up to its ability rank each turn, at the usual prices. Select the Fang's province to recruit with it. They appear where the Fang is after movement and battles, joining your first army there that isn't the Fang's own, or forming a new one, if you own that province then; if not, or if the Fang has fallen, they are cancelled and you keep the gold. Commanders still come only from the capital.",
 	},
 }
 

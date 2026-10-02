@@ -43,8 +43,9 @@ extends RefCounted
 enum Phase { ORDERS, HANDOFF, GAME_OVER, INVALID }
 
 const PHASE_NAMES := ["orders", "handoff", "game_over", "invalid"]
-## Report phases in display order: the resolver's phases, then the victory event.
-const REPORT_PHASES := ["orders", "movement", "battles", "capture", "recruitment", "income", "victory"]
+## Report phases in display order: the resolver's phases, then the victory event. "rulers" (M2) only
+## has events in a game with rulers: healing and successors (TurnResolver._rulers_phase).
+const REPORT_PHASES := ["orders", "movement", "battles", "capture", "recruitment", "income", "rulers", "victory"]
 const BATTLE_TYPES := ["battle", "border_battle"]
 ## RulesCodex entries this flow links to (handoff screen, victory screen, final report).
 const CODEX_KEYS := ["hotseat", "handoff", "victory", "simultaneous_capture", "computer_opponent"]
@@ -203,13 +204,20 @@ func describe_order(faction_id: String, order) -> String:
 	if order is MoveOrder:
 		var army := _state.find_army(order.army_id)
 		var who := "the %s" % TurnResolver.army_label(_state, army) if army else "an army that no longer exists"
+		if order.is_road_move():  # King's Roads (M2-4)
+			return "Move %s to %s by the King's Roads through %s." % [who, TurnResolver._province_name(_state, order.to),
+				TurnResolver._province_name(_state, order.via)]
 		return "Move %s to %s." % [who, TurnResolver._province_name(_state, order.to)]
 	if order is RecruitOrder:
 		var faction := _state.find_faction(faction_id)
 		var ut: UnitType = TurnResolver.recruitable_type(faction, order.unit_type_id) if faction else null
 		if ut == null:
 			return "Recruit %s." % TurnResolver._unit_type_name(_state, order.unit_type_id)
-		return "Recruit %s at %s for %d gold." % [ut.name, TurnResolver._province_name(_state, faction.capital), ut.cost]
+		# The price the recruitment phase charges (Muster Grounds included, M2-4).
+		var price := TurnResolver.recruit_cost(_state, faction_id, ut.id)
+		if order.is_with_ruler():  # Warband Muster (M2-4)
+			return "Recruit %s with %s for %d gold." % [ut.name, RulerRules.current_name(_state, faction_id), price]
+		return "Recruit %s at %s for %d gold." % [ut.name, TurnResolver._province_name(_state, faction.capital), price]
 	return "An order this game does not know."
 
 

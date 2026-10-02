@@ -9,23 +9,30 @@ class_name Breakdown
 ## never redone here, and the descriptions come from the model describe() strings and RulesCodex.
 
 
-## Income a province earns its owner each turn: base income plus modifiers (none exist in M1).
+## Income a province earns its owner each turn: base income plus modifiers. In M1 there are none. With
+## rulers (M2), the owner's Heavy Tithes (+1) and Royal Court (the King is here) each get a line, from
+## RulerRules.province_income_parts, the same parts the income phase pays (§7.1).
 static func province_income(state: GameState, province_id: String) -> Dictionary:
 	var p := state.find_province(province_id)
 	if p == null:
 		return _make("Income", "This place is not on the map.", [], "Income per turn", 0)
-	var lines := [
-		_line("Base income of %s" % p.name, p.income, "set by the map"),
-		_line("Modifiers", 0, "none yet: terrain, forts and capitals do not change income in this milestone"),
-	]
+	var parts := RulerRules.province_income_parts(state, p.id)
+	var lines := [_line("Base income of %s" % p.name, p.income, "set by the map")]
+	if parts.mods.is_empty():
+		lines.append(_line("Modifiers", 0, "none yet: terrain, forts and capitals do not change income in this milestone"))
+	for m in parts.mods:
+		lines.append(_line(String(m.name), int(m.value), String(m.note)))
 	var owner_text := "Nobody owns it, so nobody earns this gold." if p.owner.is_empty() \
 		else "%s earns this gold at the end of each turn." % _faction_name(state, p.owner)
 	var desc := "%s %s %s" % [Province.describe("income"), owner_text, RulesCodex.text("income")]
-	return _make("Income of %s" % p.name, desc, lines, "Income per turn", p.income)
+	for m in parts.mods:
+		desc += " %s" % _modifier_rule(m.key)
+	return _make("Income of %s" % p.name, desc, lines, "Income per turn", int(parts.total))
 
 
 ## A faction's gold now, plus the income of each province it owns, giving its gold next turn
-## before any recruits are paid for. Province lines use TurnResolver.income_of (same as the resolver).
+## before any recruits are paid for. Province lines use TurnResolver.income_of (same as the resolver),
+## so each one includes Heavy Tithes and Royal Court (M2), named in its note.
 static func gold(state: GameState, faction_id: String) -> Dictionary:
 	var f := state.find_faction(faction_id)
 	if f == null:
@@ -35,10 +42,29 @@ static func gold(state: GameState, faction_id: String) -> Dictionary:
 	var ids: Array = income.by_province.keys()
 	ids.sort()
 	for pid in ids:
-		lines.append(_line("Income from %s" % _province_name(state, pid), income.by_province[pid], "a province you own"))
+		var parts := RulerRules.province_income_parts(state, pid)
+		var note := "a province you own"
+		if not parts.mods.is_empty():
+			var bits := ["%d base" % int(parts.base)]
+			for m in parts.mods:
+				bits.append("%s %d" % [m.name, int(m.value)])
+			note = " + ".join(bits)
+		lines.append(_line("Income from %s" % _province_name(state, pid), income.by_province[pid], note))
 	var desc := "%s Gold next turn assumes you recruit nothing and no provinces change hands. %s" % [
 		Faction.describe("gold"), RulesCodex.text("income")]
+	if not income.modifiers.is_empty():
+		desc += " %s" % TurnResolver.income_modifiers_text(state, faction_id, income, "is now")
 	return _make("Gold of %s" % f.faction_name, desc, lines, "Gold next turn (before recruits)", f.gold + income.total)
+
+
+## The one-sentence rule behind an income modifier (RulerRules.province_income_parts' "key").
+static func _modifier_rule(key: String) -> String:
+	match key:
+		RulerRules.HEAVY_TITHES:
+			return "Heavy Tithes: every province you own earns %d more gold." % RulerRules.TITHE_GOLD
+		RulerRules.ROYAL_COURT:
+			return "Royal Court: the province the King is in earns more gold, if you own it, so it follows him when he moves."
+	return ""
 
 
 ## How many units an army has, by unit type. The commander leads the army but is not counted,
@@ -94,16 +120,18 @@ static func unit_count(state: GameState, army_id: String, unit_type_name: String
 			ut = u.type
 	var desc := "How many %s this army has." % unit_type_name
 	if ut:
-		desc += " " + unit_type_description(ut)
+		desc += " " + unit_type_description(ut, RulerRules.price_text(state, army.owner, ut))
 	return _make(unit_type_name, desc, [_line("%s in this army" % unit_type_name, count, "")], unit_type_name, count)
 
 
-## Plain description of a unit type's stats, using the UnitType describe() strings.
-static func unit_type_description(ut: UnitType) -> String:
-	return "%s: hit points %d (%s) Attack %d (%s) Defense %d (%s) Morale %d (%s) Recruit cost %d gold. Trait %s: %s" % [
+## Plain description of a unit type's stats, using the UnitType describe() strings. `price` is what its
+## faction pays for one, as RulerRules.price_text gives it ("16 gold (20 - Muster Grounds 4)"); without
+## it, the type's own cost.
+static func unit_type_description(ut: UnitType, price: String = "") -> String:
+	return "%s: hit points %d (%s) Attack %d (%s) Defense %d (%s) Morale %d (%s) Recruit cost %s. Trait %s: %s" % [
 		ut.name, ut.hp, UnitType.describe("hp"), ut.attack, UnitType.describe("attack"),
 		ut.defense, UnitType.describe("defense"), ut.morale, UnitType.describe("morale"),
-		ut.cost, ut.trait_id, ut.get_trait_desc()]
+		price if not price.is_empty() else "%d gold" % ut.cost, ut.trait_id, ut.get_trait_desc()]
 
 
 ## The turn being ordered, 1-based like every turn number players see (GameSession.turn_number()):
