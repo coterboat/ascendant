@@ -202,6 +202,160 @@ const ENTRIES := {
 		"title": "Both capitals fall in the same turn",
 		"text": "Turns resolve at the same time for everyone, so both sides can capture each other's capital in the same turn. If that happens, nobody wins: the game ends in a draw.",
 	},
+	# --- the ruler (M2, #29): rulers, succession, mandates, builds. Rules: RulerRules; numbers: data/rulers.gd,
+	# data/mandates.gd, data/build_presets.gd. The M2 ticket that ships a mechanic finishes its entry. ---
+	"ruler": {
+		"title": "Ruler",
+		"text": "Every faction is led by a ruler, chosen before the game: the Aurel Crown picks King Corvane or the Ever-Regent, the Thornmane Clans pick the Great Thornmane or the Ninth Fang. Each ruler has a power pool of 10. Power the ruler keeps makes it strong in person: its hit points, attack, defense and the rank of its province ability. Power it spends buys mandates, faction-wide traits that last the whole game. The ruler travels as its own army and fights in battles. Its death never ends the game: capturing the enemy capital does.",
+	},
+	"ruler_power": {
+		"title": "Ruler power",
+		"text": "Every ruler has a pool of 10 power. Before the game you split it: power spent buys mandates for your whole faction, and power kept makes the ruler strong in person. Mandates cost 2 to 4 power each, and taking all of them would cost far more than 10, so every build is a choice. Later in the game a living ruler can give up more power for a new mandate by sacrifice.",
+	},
+	"kept_power": {
+		"title": "Kept power",
+		"text": "Kept power is the ruler power you did not spend: 10, minus the mandates chosen before the game, minus sacrifices, minus what a succession costs. It is a whole number from 0 to 10 and never goes up. It sets the ruler's hit points, attack and defense, and its ability rank. A ruler with little kept power is easier to kill.",
+	},
+	"ability_rank": {
+		"title": "Ability rank",
+		"text": "Each ruler has one province ability, which works in the province the ruler is in. Its strength is the ability rank: 1, plus 1 for every 3 kept power, rounded down. That is rank 1 with 0 to 2 kept power, rank 2 with 3 to 5, rank 3 with 6 to 8 and rank 4 with 9 or 10.",
+	},
+	"ruler_rank": {
+		"title": "Where a ruler fights",
+		"text": "King Corvane, the Great Thornmane and the Ninth Fang fight in the front rank, with the other units, so enemies can attack them from the first round. The Ever-Regent fights in the second rank, with the crossbowmen: enemies reach him only once every front-rank fighter on his side has fallen. Commanders still stand behind everyone.",
+	},
+	"ruler_in_battle": {
+		"title": "Rulers in battle",
+		"text": "A ruler fights beside every army of yours in the same battle, with the hit points, attack and defense its kept power gives it. While it stands, its side gets +2 morale, on top of a commander's +2. If no regular units fight on its side, the side's morale is the highest morale among its commanders and its ruler. Rulers are not units: mandates and traits that name units, such as Royal Armories or Pack Leader, skip them.",
+	},
+	"ruler_healing": {
+		"title": "Ruler healing",
+		"text": "At the end of every turn a living ruler heals a quarter of its maximum hit points, rounded up: a King with 46 maximum hit points heals 12. Regular units and commanders do not heal on their own; only Mending Light and Feast of Victory heal them.",
+	},
+	"ruler_army": {
+		"title": "The ruler's army",
+		"text": "A ruler travels alone, as its own army: no units and no commander. It moves one province per turn and captures provinces like any army, and it fights together with every other army of yours in the same province or on the same border. Recruits never join the ruler's army, so it can always move on its own. At the start of the game each capital holds the starting army and the ruler's army.",
+	},
+	"ruler_death": {
+		"title": "When a ruler dies",
+		"text": "A ruler dies when its hit points reach 0, or when it is on the losing side of a battle: a ruler on a losing side is lost with its army; there are no retreats yet. While a faction has no ruler it has no province ability, no ruler in battle and cannot sacrifice, but its mandates stay. What comes next depends on the kind of ruler: see Succession. A ruler's death never ends the game; only the capital decides that.",
+	},
+	"succession": {
+		"title": "Succession",
+		"text": "When a ruler dies, a successor arrives at your capital at the end of a later turn, at full hit points, in a new ruler's army. How long that takes and how much kept power the successor has depend on the kind of ruler. A mortal line crowns an heir 2 turns later with half the kept power, rounded down. The undying Ever-Regent re-forms 4 turns later with all of it. The Great Thornmane takes a new body 1 turn later with 3 less kept power, for good. Mandates always stay. If you don't hold your capital when the successor is due, it waits until you do.",
+	},
+	"succession_mortal": {
+		"title": "Succession: mortal line",
+		"text": "King Corvane and the Ninth Fang are mortal lines. When one dies during a turn, the heir is crowned at your capital at the end of the turn 2 turns later, with half the dead ruler's kept power, rounded down: 10 kept power becomes 5, and 7 becomes 3. The heir is the next of the line: Corvane II after King Corvane I, the Tenth Fang after the Ninth.",
+	},
+	"succession_undying": {
+		"title": "Succession: undying",
+		"text": "The Ever-Regent is bound to the sunstone in Crownkeep and cannot truly die. When he is destroyed during a turn, he re-forms at your capital at the end of the turn 4 turns later, with the same kept power he had.",
+	},
+	"succession_god": {
+		"title": "Succession: god",
+		"text": "The Great Thornmane is a god walking in a body of briar and fur. When the body is slain during a turn, the god takes a new one at your capital at the end of the next turn, with 3 less kept power for good, never below 0: 10 becomes 7, and 2 becomes 0.",
+	},
+	"mandates": {
+		"title": "Mandates",
+		"text": "Mandates are faction-wide traits bought with ruler power. Each faction can take the six shared mandates (Iron Discipline, Drilled Ranks, Veteran Levies, Heavy Tithes, Muster Grounds and Sworn Vassals) and two of its own: Royal Armories and King's Roads for the Aurel Crown, Blood Frenzy and Feast of Victory for the Thornmane Clans. They cost 2 to 4 power, each can be taken once, and together they must fit in the pool of 10. Mandates work from turn 1 and never go away, even when the ruler dies. Regular units means a faction's roster units, not commanders or rulers; fighters means units, commanders and the ruler.",
+	},
+	"sacrifice": {
+		"title": "Sacrifice",
+		"text": "During the game a living ruler can give up kept power for a new mandate with a Sacrifice order. It costs the mandate's price plus 1, at most one per turn, and needs that much kept power left. It happens first in the turn, so it already counts in that turn's moves, battles, recruits and income, and the ruler's stats and ability rank drop at once. The order shows everything it changes before you confirm, and the other player learns of it from the turn report.",
+	},
+	"build": {
+		"title": "Builds",
+		"text": "Before the game each player picks a build: one of their faction's two rulers and the mandates it buys. Whatever the mandates don't cost is the ruler's kept power, so a build with no mandates keeps all 10. A build is illegal if it costs more than 10, takes a mandate twice, or takes a mandate only another faction can have. Builds are picked in secret but are public from turn 1, so battle odds can count the enemy's mandates.",
+	},
+	"build_presets": {
+		"title": "Build presets",
+		"text": "Each faction has three ready-made builds: one keeps all its power, one spends it all, and one is balanced. Aurel Crown: Warrior King (King Corvane, no mandates), Iron Crown (King Corvane with Royal Armories, Heavy Tithes and Veteran Levies) and Regent's Court (the Ever-Regent with Royal Armories and King's Roads, keeping 4). Thornmane Clans: Beast-God Unbound (the Great Thornmane, no mandates), Clan Moot (the Ninth Fang with Iron Discipline, Blood Frenzy and Sworn Vassals) and Blood of the Fang (the Ninth Fang with Iron Discipline and Drilled Ranks, keeping 5). A game with rulers gives a faction its balanced build unless another is chosen. AI seats pick one of the three.",
+	},
+	"ai_seat": {
+		"title": "AI seats",
+		"text": "A seat can be played by the computer. An AI seat picks one of its faction's three build presets with a seeded roll, so the same seed always gives the same build. It gives its orders through the same rules as a player, from the state at the start of the turn, and never sees the other player's orders. Its orders are recorded like anyone's, so the game can be replayed.",
+	},
+	"ruler_aurel_king": {
+		"title": "King Corvane",
+		"text": "Ruler of the Aurel Crown, a mortal line. An ordinary man of the Aurel line: spend his power and he governs the best-equipped kingdom in the land; keep it and he rides to war as a paladin. He fights in the front rank. Hit points 16, plus 3 for every kept power; attack 9 and defense 8, each plus 1 for every 2 kept power, rounded down; morale 10. With all 10 kept: 46 hit points, attack 14, defense 13. Province ability: Royal Court. When he dies, his heir is crowned 2 turns later with half his kept power.",
+	},
+	"ruler_ever_regent": {
+		"title": "The Ever-Regent",
+		"text": "Ruler of the Aurel Crown, undying. An archmage who bound his life to the sunstone in Crownkeep: he cannot die, only be broken, and he re-forms slowly. His spells count as attacks until magic comes to the game. He fights in the second rank. Hit points 14, plus 2 for every kept power; attack 10, plus 1 for every kept power; defense 6, plus 1 for every 2 kept power, rounded down; morale 10. With all 10 kept: 34 hit points, attack 20, defense 11. Province ability: Mending Light. When he is destroyed, he re-forms 4 turns later with all his kept power.",
+	},
+	"ruler_thornmane_avatar": {
+		"title": "The Great Thornmane",
+		"text": "Ruler of the Thornmane Clans, a god. The clans' beast-god, walking among them in a body of briar and fur: when the body is slain, the god takes a new one, a little less of itself each time. It fights in the front rank. Hit points 26, plus 4 for every kept power; attack 10, plus 1 for every kept power; defense 9, plus 1 for every 2 kept power, rounded down; morale 14. With all 10 kept: 66 hit points, attack 20, defense 14. Province ability: Dread. When its body is slain, the god returns 1 turn later with 3 less kept power, for good.",
+	},
+	"ruler_fang_chieftain": {
+		"title": "The Ninth Fang",
+		"text": "Ruler of the Thornmane Clans, a mortal line. The high chieftain of the old fang bloodline: when one Fang falls, the next of the blood takes the mantle. The Fang fights in the front rank. Hit points 20, plus 3 for every kept power; attack 11, plus 1 for every kept power; defense 7, plus 1 for every 2 kept power, rounded down; morale 12. With all 10 kept: 50 hit points, attack 21, defense 12. Province ability: Warband Muster. When the Fang dies, the next Fang is crowned 2 turns later with half the kept power.",
+	},
+	"ability_royal_court": {
+		"title": "Royal Court",
+		"text": "King Corvane's province ability. In the income phase, the province the King is in earns more gold, if you own it: 2 more at ability rank 1, 3 at rank 2, 4 at rank 3 and 5 at rank 4. It shows in that province's income.",
+	},
+	"ability_mending_light": {
+		"title": "Mending Light",
+		"text": "The Ever-Regent's province ability. At the end of each turn, each of your wounded units and commanders in the Regent's province heals 3 hit points at ability rank 1, 6 at rank 2, 9 at rank 3 or 12 at rank 4, up to its maximum. It doesn't heal rulers; they heal on their own.",
+	},
+	"ability_dread": {
+		"title": "Dread",
+		"text": "The Great Thornmane's province ability. Every enemy side in a province battle the avatar fights in has 1 less morale at ability rank 1 or 2, and 2 less at rank 3 or 4, so it breaks sooner. It doesn't work in border battles. It adds to a War Bear's Fury.",
+	},
+	"ability_warband_muster": {
+		"title": "Warband Muster",
+		"text": "The Ninth Fang's province ability. Each turn you may recruit regular units with the Fang: 1 at ability rank 1, 2 at rank 2, 3 at rank 3 and 4 at rank 4, at the usual prices. They appear where the Fang is after movement and battles, if you own that province then. Commanders still come only from the capital.",
+	},
+	"mandate_iron_discipline": {
+		"title": "Iron Discipline",
+		"text": "Shared mandate, 3 power. Your side never breaks (routs) while one of your commanders in that battle stands. Rulers don't count: it needs a commander. Once the last commander falls, the usual morale check applies from the end of that round. It is worth more to the Thornmane Clans, whose morale is lower.",
+	},
+	"mandate_drilled_ranks": {
+		"title": "Drilled Ranks",
+		"text": "Shared mandate, 2 power. Your fighters' base hit chance is 70% instead of 60%: every attack your units, commanders and ruler make hits 70% of the time, plus 4% for every point of attack above the target's defense (or minus 4% for every point below), never lower than 30% or higher than 90%.",
+	},
+	"mandate_veteran_levies": {
+		"title": "Veteran Levies",
+		"text": "Shared mandate, 2 power. Each of your regular units has 2 more maximum hit points than its type, and new recruits arrive at the new maximum. Bought by sacrifice, your regular units already on the map gain 2 maximum and 2 current hit points at once.",
+	},
+	"mandate_heavy_tithes": {
+		"title": "Heavy Tithes",
+		"text": "Shared mandate, 4 power. In the income phase, every province you own earns 1 more gold, the capital included. It shows in each province's income.",
+	},
+	"mandate_muster_grounds": {
+		"title": "Muster Grounds",
+		"text": "Shared mandate, 4 power. Every recruit, commanders included, costs a fifth less: a fifth of its price, rounded down, comes off. It counts at the capital and for recruits made with Warband Muster.",
+	},
+	"mandate_sworn_vassals": {
+		"title": "Sworn Vassals",
+		"text": "Shared mandate, 4 power. Each turn, in the capture phase after armies have captured provinces, one neutral province next to your land swears fealty and joins you: of the provinces with no owner and no army in them that border one you own, the one with the highest income. If another faction's Sworn Vassals picks the same province that turn, neither gets it. At most one province joins you per turn, and no gold changes hands.",
+	},
+	"mandate_royal_armories": {
+		"title": "Royal Armories",
+		"text": "Aurel Crown mandate, 4 power. Your regular units have +1 attack and +1 defense: the starting army, every recruit, and the units you already have when it is bought by sacrifice.",
+	},
+	"mandate_kings_roads": {
+		"title": "King's Roads",
+		"text": "Aurel Crown mandate, 2 power. Armies can move two provinces in one turn inside your own territory, through a province next to them to one next to that, when you owned both at the start of the turn. A road move never fights on a border and never stops halfway.",
+	},
+	"mandate_blood_frenzy": {
+		"title": "Blood Frenzy",
+		"text": "Thornmane Clans mandate, 3 power. Each of your fighters below its full hit points has +3 attack: units, commanders and the ruler. A Tusker's Berserk adds to it, for +6. Wounds carry over between battles, so a wounded army starts its next battle in a frenzy.",
+	},
+	"mandate_feast_of_victory": {
+		"title": "Feast of Victory",
+		"text": "Thornmane Clans mandate, 3 power. After each battle you win, every fighter of yours still standing in it heals to its full hit points: units, commanders and the ruler. It works against Blood Frenzy, which wants wounds.",
+	},
+	"road_move": {
+		"title": "Road moves",
+		"text": "With King's Roads, a move order can name a province to go through: from A through B to C, where B is next to A, C is next to B, C is not A, and you owned both B and C at the start of the turn. The army moves straight from A to C during movement. It never fights a border battle and never stops in B. If enemies are in C after movement, there is a battle there as usual. The forecast says which way it goes and when it arrives.",
+	},
+	"field_recruit": {
+		"title": "Recruiting in the field",
+		"text": "With Warband Muster, the Ninth Fang can recruit regular units where it stands, not only at the capital: up to its ability rank each turn, at the usual prices. They appear where the Fang is after movement and battles, if you own that province then; if not, they are cancelled and you keep the gold. Commanders still come only from the capital.",
+	},
 }
 
 

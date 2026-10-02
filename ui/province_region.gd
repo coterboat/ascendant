@@ -136,10 +136,16 @@ func _army_badge(state: GameState, a: Army, seats: Array) -> Button:
 	emblem.offset_top = -BADGE_EMBLEM_SIZE / 2.0
 	emblem.offset_bottom = BADGE_EMBLEM_SIZE / 2.0
 	b.add_child(emblem)
-	var units := Breakdown.army_units(state, a.id)
 	var whose := "" if seat < 0 else "Player %d's army (%s badge, %s emblem). " % [seat + 1, UiPalette.seat_color_name(seat), SeatEmblem.shape_of(seat)]
-	b.tooltip_text = TooltipText.from_breakdown(units) + "\n\n" + TooltipText.wrap_text(whose + "Click to select this army.")
-	CodexLink.attach(b, TooltipText.codex_for("army_units", units), codex_requested.emit)
+	if a.ruler != null:
+		# A ruler's army holds only its ruler (M2): name it and show the ruler's numbers (RulerPanel).
+		b.text = RulerPanel.badge_text(a)
+		b.tooltip_text = RulerPanel.summary(state, a) + "\n\n" + TooltipText.wrap_text(whose + "Click to select this army.")
+		CodexLink.attach(b, "ruler_army", codex_requested.emit)
+	else:
+		var units := Breakdown.army_units(state, a.id)
+		b.tooltip_text = TooltipText.from_breakdown(units) + "\n\n" + TooltipText.wrap_text(whose + "Click to select this army.")
+		CodexLink.attach(b, TooltipText.codex_for("army_units", units), codex_requested.emit)
 	b.pressed.connect(func(): army_pressed.emit(a.id))
 	return b
 
