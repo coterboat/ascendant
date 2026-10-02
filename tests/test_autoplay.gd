@@ -44,6 +44,7 @@ func _checks(found: Array) -> Array:
 # --- whole games ----------------------------------------------------------------------------------
 
 func test_greedy_games_finish_or_hit_the_cap_without_violations() -> void:
+	var battles := 0
 	for game_seed in [1, 2, 3]:
 		var r := Simulator.play_game(game_seed, SEATS, ["greedy", "greedy"], 30)
 		var where := "seed %d" % game_seed
@@ -54,7 +55,10 @@ func test_greedy_games_finish_or_hit_the_cap_without_violations() -> void:
 		if r.finished:
 			assert_true(r.draw or SEATS.has(r.winner), "%s has a winner or is a draw" % where)
 			assert_eq(r.winner_seat, SEATS.find(r.winner) + 1, where)
-		assert_false(r.battles.is_empty(), "%s: the armies meet at least once" % where)
+		battles += r.battles.size()
+	# Greedy skips attacks its odds call a likely loss, so with even armies and a defender's edge
+	# (#4 balance pass) one greedy mirror can stall without a battle until the cap; the games still fight.
+	assert_true(battles > 0, "the armies meet in these games")
 
 
 func test_same_seed_gives_the_same_game() -> void:
@@ -207,9 +211,26 @@ func test_best_recruits_spends_on_the_strongest_affordable_mix() -> void:
 		var ut := TurnResolver.recruitable_type(s.find_faction("kingdom"), o.unit_type_id)
 		cost += ut.cost
 		value += ut.hp * ut.attack
-	assert_true(cost <= 50, "affordable: %d" % cost)
-	assert_eq(value, 432, "2 Knights and 1 Crossbowmen (hp x attack 180 + 180 + 72) is the best mix for 50 gold")
-	assert_eq(Policies.Base.best_recruits(s, "kingdom", 50), [], "a reserve of all the gold buys nothing")
+	var gold: int = s.find_faction("kingdom").gold
+	assert_true(cost <= gold, "affordable: %d of %d" % [cost, gold])
+	# The best hp x attack mix for the starting gold, found by trying every mix of the roster (any number
+	# of each unit type, at most one commander), so the check follows the unit data.
+	var f := s.find_faction("kingdom")
+	var best := 0
+	for cmd in [0, 1]:
+		var left: int = gold - cmd * f.commander_type.cost
+		if left < 0:
+			continue
+		var base: int = cmd * f.commander_type.hp * f.commander_type.attack
+		var a: UnitType = f.unit_types[0]
+		var b: UnitType = f.unit_types[1]
+		var c: UnitType = f.unit_types[2]
+		for na in range(0, left / a.cost + 1):
+			for nb in range(0, (left - na * a.cost) / b.cost + 1):
+				var nc: int = (left - na * a.cost - nb * b.cost) / c.cost
+				best = maxi(best, base + na * a.hp * a.attack + nb * b.hp * b.attack + nc * c.hp * c.attack)
+	assert_eq(value, best, "the strongest affordable mix for %d gold" % gold)
+	assert_eq(Policies.Base.best_recruits(s, "kingdom", gold), [], "a reserve of all the gold buys nothing")
 	var priced := TurnResolver.price_recruits(s, "kingdom", orders)
 	for r in priced.results:
 		assert_true(r.ok, "every recruit passes price_recruits")

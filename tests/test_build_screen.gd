@@ -40,6 +40,18 @@ func _builder(config: Dictionary) -> BuildScreen:
 	return b
 
 
+## A unit's (or commander's) base stat from the faction data, before any mandate.
+func _base_stat(faction_id: String, unit_id: String, stat: String) -> int:
+	var f := GameState.new(SEED).find_faction(faction_id)
+	if f.commander_type != null and f.commander_type.id == unit_id:
+		return int(f.commander_type.get(stat))
+	for ut in f.unit_types:
+		if ut.id == unit_id:
+			return int(ut.get(stat))
+	assert_true(false, "unknown unit %s" % unit_id)
+	return -1
+
+
 func _strip_flavour(text: String) -> String:
 	# King Corvane's flavour line says "kingdom", the word, which is also the faction's raw id.
 	var out := text
@@ -340,16 +352,18 @@ func test_the_numbers_are_the_specs() -> void:
 	assert_eq(b._grid_labels.hp[1].text, "14", "spend all")
 	assert_eq(b._grid_labels.hp[2].text, "34", "keep all")
 	assert_eq(b._grid_labels.attack[0].get_meta(BuildScreen.BREAKDOWN), Breakdown.ruler_stat_at("ever_regent", "attack", 4))
-	# Royal Armories: Spearmen attack 6 -> 7, marked with the old value.
+	# Royal Armories: Spearmen attack +1, marked with the old value (base stats read from data, so a balance pass
+	# doesn't break this test).
+	var spear_attack := _base_stat("kingdom", "spearmen", "attack")
 	var cells: Array = b._roster_cells["spearmen"]["attack"]
-	assert_eq(cells[0].text, "7")
+	assert_eq(cells[0].text, str(spear_attack + 1))
 	assert_true(cells[2].visible and cells[2].up, "an up arrow")
 	assert_true(cells[1].visible)
-	assert_eq(cells[1].text, "was 6")
+	assert_eq(cells[1].text, "was %d" % spear_attack)
 	assert_false(b._roster_cells["spearmen"]["hp"][2].visible, "no arrow on an unchanged number")
 	assert_eq(cells[0].get_meta(BuildScreen.BREAKDOWN).lines[1].label, "Royal Armories")
 	assert_false(b._roster_cells["knight_captain"]["attack"][1].visible, "commanders don't get Royal Armories")
-	assert_eq(b._roster_cells["knight_captain"]["attack"][0].text, "14")
+	assert_eq(b._roster_cells["knight_captain"]["attack"][0].text, str(_base_stat("kingdom", "knight_captain", "attack")))
 	# The King at 4 kept power: attack 11 = 9 + 2 (§1.3, §7.1).
 	b.select_ruler("aurel_king")
 	assert_eq(b._grid_labels.attack[0].text, "11")
@@ -371,7 +385,8 @@ func test_the_numbers_are_the_specs() -> void:
 	assert_eq(b._economy.income.text, "Income on turn 1: 16 from Crownkeep")
 	var income: Dictionary = b._economy.income.get_meta(BuildScreen.BREAKDOWN)
 	assert_eq(income.lines.map(func(l): return [l.label, l.value]), [["Base income of Crownkeep", 12], ["Royal Court", 4]])
-	assert_eq(b._economy.gold.text, "Gold: 50 to start, 66 on turn 2 before recruits")
+	var start_gold := GameState.new(SEED).find_faction("kingdom").gold
+	assert_eq(b._economy.gold.text, "Gold: %d to start, %d on turn 2 before recruits" % [start_gold, start_gold + 16])
 	assert_true(b.set_mandate("heavy_tithes", true))
 	assert_eq(b._economy.income.text, "Income on turn 1: 15 from Crownkeep", "Heavy Tithes +1, but with 2 kept power Royal Court drops to rank 1 (+2)")
 	assert_true(b.set_mandate("heavy_tithes", false))

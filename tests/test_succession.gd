@@ -449,9 +449,9 @@ func test_rulers_heal_a_quarter_of_their_maximum_hp_rounded_up() -> void:
 func test_mending_light_heals_wounded_units_and_commanders_in_the_regents_province() -> void:
 	var s := _rulers({}, 3)  # the Ever-Regent at 4 kept power: ability rank 2, heal 6
 	var army1 := s.find_army("kingdom-1")
-	army1.units[0].current_hp = 3  # Spearmen 3 of 10
+	army1.units[0].current_hp = 3  # Spearmen 3 of 8
 	army1.units[1].current_hp = 7  # Crossbowmen 7 of 8
-	army1.commander.current_hp = 20  # Knight Captain 20 of 25
+	army1.commander.current_hp = 20  # Knight Captain 20 of 26
 	var second := _army(s, "kingdom-20", "kingdom", "crownkeep", ["spearmen"])
 	second.units[0].current_hp = 5
 	var away := _army(s, "kingdom-21", "kingdom", "westwatch", ["spearmen"])
@@ -460,16 +460,16 @@ func test_mending_light_heals_wounded_units_and_commanders_in_the_regents_provin
 	var r := _resolve(s)
 	var after: GameState = r.new_state
 	var a1 := after.find_army("kingdom-1")
-	assert_eq([a1.units[0].current_hp, a1.units[1].current_hp, a1.units[2].current_hp, a1.commander.current_hp], [9, 8, 15, 25])
-	assert_eq(after.find_army("kingdom-20").units[0].current_hp, 10, "every army of the faction in the Regent's province")
+	assert_eq([a1.units[0].current_hp, a1.units[1].current_hp, a1.units[2].current_hp, a1.commander.current_hp], [8, 8, 18, 26])
+	assert_eq(after.find_army("kingdom-20").units[0].current_hp, 8, "every army of the faction in the Regent's province")
 	assert_eq(after.find_army("kingdom-21").units[0].current_hp, 2, "not elsewhere")
 	assert_eq(RulerRules.ruler_unit(after, "kingdom").current_hp, 16, "the Regent heals only his own quarter: 10 + 6")
 	var types: Array = r.events.map(func(e): return e.type)
 	assert_true(types.find("mending") < types.find("ruler_healed"), "Mending Light heals first: %s" % str(types))
 	var e: Dictionary = _events_of(r.events, "mending")[0]
 	assert_eq([e.phase, e.codex, e.provinces, e.armies], ["rulers", "ability_mending_light", ["crownkeep"], ["kingdom-1", "kingdom-20"]])
-	assert_eq([e.numbers.rank, e.numbers.amount, e.numbers.total], [2, 6, 17])
-	assert_eq(e.text, "Mending Light (rank 2, heal 6): the Ever-Regent healed 4 wounded fighters of the Aurel Crown at Crownkeep, 17 hit points in all (2 Spearmen +11, Crossbowmen +1, Knight Captain +5).")
+	assert_eq([e.numbers.rank, e.numbers.amount, e.numbers.total], [2, 6, 15])
+	assert_eq(e.text, "Mending Light (rank 2, heal 6): the Ever-Regent healed 4 wounded fighters of the Aurel Crown at Crownkeep, 15 hit points in all (2 Spearmen +8, Crossbowmen +1, Knight Captain +6).")
 	_assert_plain(r.events)
 	# Rank 4 at 10 kept power heals 12; a dead Regent and other rulers heal nobody.
 	var strong := _ruler_at("kingdom", "ever_regent", 10, 2)

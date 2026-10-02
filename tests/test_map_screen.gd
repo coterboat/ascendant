@@ -150,10 +150,10 @@ func test_every_number_on_screen_has_a_breakdown_tooltip() -> void:
 func test_top_bar_shows_gold_with_breakdown_and_turn() -> void:
 	var s := GameState.new()
 	var screen := _open(s)
-	assert_eq(screen.gold_label.text, "Gold 50   (+12 per turn)")
-	assert_true(screen.gold_label.tooltip_text.contains("Gold now: 50"), "gold tooltip shows gold now")
+	assert_eq(screen.gold_label.text, "Gold 45   (+12 per turn)")
+	assert_true(screen.gold_label.tooltip_text.contains("Gold now: 45"), "gold tooltip shows gold now")
 	assert_true(screen.gold_label.tooltip_text.contains("Income from Crownkeep: +12"), "gold tooltip lists province income")
-	assert_true(screen.gold_label.tooltip_text.contains("Gold next turn (before recruits): 62"), "gold tooltip shows next turn")
+	assert_true(screen.gold_label.tooltip_text.contains("Gold next turn (before recruits): 57"), "gold tooltip shows next turn")
 	assert_eq(screen.turn_label.text, "Turn 1", "turns are 1-based, like the tooltip")
 	assert_eq(screen.faction_label.text, "Aurel Crown")
 

@@ -107,8 +107,8 @@ func test_three_scripted_turns_through_the_flow() -> void:
 	assert_eq(s.find_province("ebonpeak").owner, "beasts")
 	assert_true(_army_at(s, "kingdom", "crownkeep") != null, "kingdom recruit formed an army at home")
 	assert_true(_army_at(s, "beasts", "fangridge") != null, "beasts recruit formed an army at home")
-	assert_eq(_gold(session, "kingdom"), 50 - 8 + 12 + 6)  # 60
-	assert_eq(_gold(session, "beasts"), 40 - 12 + 12 + 6)  # 46
+	assert_eq(_gold(session, "kingdom"), 45 - 8 + 12 + 6)  # 55
+	assert_eq(_gold(session, "beasts"), 45 - 11 + 12 + 6)  # 52 (both start with 45 gold; Tuskers cost 11)
 	var r1 := session.turn_report()
 	assert_eq(r1.header, "Turn 1 results")
 	assert_eq(r1.turn, 1)
@@ -126,26 +126,28 @@ func test_three_scripted_turns_through_the_flow() -> void:
 	s = session.state()
 	assert_eq(s.find_army("kingdom-1").location, "stonegate")
 	assert_eq(s.find_army("beasts-2").location, "blackwood")
-	assert_eq(_gold(session, "kingdom"), 60 + 12 + 6 + 8)  # 86
-	assert_eq(_gold(session, "beasts"), 46 + 12 + 6 + 8)  # 72
+	assert_eq(_gold(session, "kingdom"), 55 + 12 + 6 + 8)  # 81
+	assert_eq(_gold(session, "beasts"), 52 + 12 + 6 + 8)  # 78
 	assert_eq(session.turn_report().header, "Turn 2 results")
 	assert_eq(_types(session.turn_report().events).count("captured"), 2)
 	assert_eq(session.acknowledge_handoff(), "")
 
-	# Turn 3: kingdom attacks Blackwood, where the beasts army holds (80 beats 69); beasts recruit.
+	# Turn 3: kingdom attacks Blackwood, where the beasts army holds; beasts recruit. The stub battle
+	# compares attack + defense totals: since the #4 balance pass the kingdom's starting army has 82 and
+	# the beasts' 76, so the attacker wins and the holder is destroyed.
 	_play_turn(session, [MoveOrder.new("kingdom-1", "blackwood")], [RecruitOrder.new("war_bear")])
 	assert_eq(session.phase(), GameSession.Phase.HANDOFF)
 	assert_eq(session.turn_number(), 4)
 	s = session.state()
-	assert_eq(s.find_army("kingdom-1"), null, "the attacking army was destroyed")
-	assert_eq(s.find_army("beasts-2").location, "blackwood")
-	assert_eq(s.find_province("blackwood").owner, "beasts")
-	assert_eq(_gold(session, "kingdom"), 86 + 12 + 6 + 8)  # 112
-	assert_eq(_gold(session, "beasts"), 72 - 25 + 12 + 6 + 8)  # 73
+	assert_eq(s.find_army("beasts-2"), null, "the holding army was destroyed")
+	assert_eq(s.find_army("kingdom-1").location, "blackwood")
+	assert_eq(s.find_province("blackwood").owner, "kingdom", "the winner captures Blackwood")
+	assert_eq(_gold(session, "kingdom"), 81 + 12 + 6 + 8 + 8)  # 115, with Blackwood's income
+	assert_eq(_gold(session, "beasts"), 78 - 22 + 12 + 6)  # 74: War Bear costs 22, Blackwood is lost
 	var battles := session.battle_events()
 	assert_eq(battles.size(), 1)
 	assert_eq(battles[0].provinces, ["blackwood"])
-	assert_eq(battles[0].numbers.winner, "beasts")
+	assert_eq(battles[0].numbers.winner, "kingdom")
 	assert_eq(session.turn_report().header, "Turn 3 results")
 	_assert_report_shape(session.turn_report())
 	assert_eq(session.turns_played(), 3)
@@ -162,7 +164,7 @@ func test_same_seed_and_orders_give_identical_games_and_replay_matches() -> void
 		session.acknowledge_handoff()
 		_play_turn(session, [MoveOrder.new("kingdom-1", "thornvale")], [MoveOrder.new("beasts-2", "wildmoor")])
 		session.acknowledge_handoff()
-		# They swap Thornvale <-> Wildmoor: a border battle the beasts army wins (80 beats 69).
+		# They swap Thornvale <-> Wildmoor: a border battle the kingdom army wins (82 beats 76).
 		_play_turn(session, [MoveOrder.new("kingdom-1", "wildmoor")], [MoveOrder.new("beasts-2", "thornvale")])
 	assert_eq(var_to_str(a.state().to_dict()), var_to_str(b.state().to_dict()))
 	assert_eq(a.turn_report().events.map(func(e): return e.text), b.turn_report().events.map(func(e): return e.text))
@@ -222,7 +224,7 @@ func test_queue_and_cancel_go_through_order_validation() -> void:
 	assert_true(session.queue_recruit("war_bear").contains("Thornmane Clans"), "not in roster")
 	assert_eq(session.queue_recruit("knights"), "")
 	assert_eq(session.queue_recruit("knights"), "")
-	assert_true(session.queue_recruit("knights").contains("only have 10 gold"), "third knights is too expensive")
+	assert_true(session.queue_recruit("knights").contains("only have 5 gold"), "third knights is too expensive")
 	assert_eq(session.current_orders().size(), 2)
 	assert_eq(session.cancel_order(1), "")
 	assert_eq(session.current_orders().size(), 1)

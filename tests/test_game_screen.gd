@@ -159,9 +159,9 @@ func test_three_scripted_turns_through_the_game_screen() -> void:
 	var s := session.state()
 	assert_eq(s.find_army("kingdom-1").location, "westwatch")
 	assert_eq(s.find_army("beasts-2").location, "ebonpeak")
-	assert_eq(s.find_faction("kingdom").gold, 50 - 8 + 12 + 6)  # 60
-	assert_eq(s.find_faction("beasts").gold, 40 - 12 + 12 + 6)  # 46
-	assert_true(game.map.gold_label.text.begins_with("Gold 60"), game.map.gold_label.text)
+	assert_eq(s.find_faction("kingdom").gold, 45 - 8 + 12 + 6)  # 55
+	assert_eq(s.find_faction("beasts").gold, 45 - 11 + 12 + 6)  # 52 (both start with 45 gold; Tuskers cost 11)
+	assert_true(game.map.gold_label.text.begins_with("Gold 55"), game.map.gold_label.text)
 	assert_eq(_order_rows(game).size(), 0, "the new turn starts with no orders")
 	# Clicking a report line closes the report and shows its province on the map.
 	var events: Array = session.turn_report().events
@@ -193,8 +193,8 @@ func test_three_scripted_turns_through_the_game_screen() -> void:
 	s = session.state()
 	assert_eq(s.find_army("kingdom-1").location, "stonegate")
 	assert_eq(s.find_army("beasts-2").location, "blackwood")
-	assert_eq(s.find_faction("kingdom").gold, 60 + 12 + 6 + 8)  # 86
-	assert_eq(s.find_faction("beasts").gold, 46 + 12 + 6 + 8)  # 72
+	assert_eq(s.find_faction("kingdom").gold, 55 + 12 + 6 + 8)  # 81
+	assert_eq(s.find_faction("beasts").gold, 52 + 12 + 6 + 8)  # 78
 
 	# Turn 3: Aurel Crown attacks Blackwood, which the Thornmane army holds; Thornmane recruits.
 	_play_turn(game, [["kingdom-1", "blackwood"]], [["war_bear"]])
