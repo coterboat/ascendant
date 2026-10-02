@@ -53,3 +53,10 @@ theme_override_colors/font_color = Color(0.701961, 0.662745, 0.576471, 1)
 theme_override_font_sizes/font_size = 14
 text = "Placeholder title screen. New game arrives in a later milestone-1 ticket."
 horizontal_alignment = 1
+
+[node name="MapPreviewButton" type="Button" parent="Center/Box"]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+tooltip_text = "Open the map screen with a fresh milestone-1 game, to look around. Nothing is saved."
+text = "Map preview"
