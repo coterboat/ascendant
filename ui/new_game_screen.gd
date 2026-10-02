@@ -14,11 +14,16 @@ extends Control
 ## problem is explained in plain words and disables Start. Never changes rules state.
 ## Player colours follow the seat (UiPalette.seat_color): Player 1 is Vermilion, Player 2 Cobalt, so the
 ## faction picked for a seat is shown in that seat's colour and swapping seats swaps the colours.
+## Rulers (M2-5, #33): the "Rulers (M2 preview)" box, off by default, so the M1 flow and Quick start
+## are unchanged (launching with `-- --rulers` ticks it). Ticked, config() adds "rulers": true and Start
+## opens the BuildScreen on top of this screen: every human seat picks a ruler and mandates in secret,
+## computer seats get a seeded preset, and only then is start_requested emitted, with the config plus
+## "builds" ({faction id: build}). Back on the build screen returns here and drops those builds.
 ## Builds its children in code, so it works before it is in the tree (headless tests).
 ##
 ## API:
-##   config() -> Dictionary          {"players", "seed"}, plus "ai" for computer seats; only meaningful
-##                                   when is_valid()
+##   config() -> Dictionary          {"players", "seed"}, plus "ai" for computer seats and "rulers": true
+##                                   while the rulers box is ticked; only meaningful when is_valid()
 ##   is_valid() -> bool
 ##   error_text() -> String          every problem in plain words, "" when valid
 ##   set_seed(value: int)            new_seed(avoid) -> int picks a random one (the "New seed" button),
@@ -29,11 +34,16 @@ extends Control
 ##   set_seat_level(seat, level) -> bool  the computer's level, "easy" or "normal"; seat_level(seat)
 ##   select_faction(seat, faction_id) -> bool   seat is 1-based; false for an unknown seat or faction
 ##   set_seats(players) -> bool      every seat at once: faction ids in seat order
-##   prefill(last_game)              a rematch of last_game ({"players", "seed", "ai"}): the same seating,
-##                                   the same human and computer seats at the same levels, and a new
-##                                   seed (the victory screen's New game)
+##   prefill(last_game)              a rematch of last_game ({"players", "seed", "ai", "rulers", "builds"}):
+##                                   the same seating, the same human and computer seats at the same
+##                                   levels, the rulers box as it was, each human seat's last build as
+##                                   its starting build, and a new seed (the victory screen's New game)
+##   set_rulers(on), rulers_on()     the "Rulers (M2 preview)" box
+##   build_screen                    the BuildScreen Start opens while rulers are on (null until then);
+##                                   build_screen_open() -> bool
 ##   seat_faction(seat) -> String, faction_ids() -> Array[String]
-##   start() -> bool                 emits start_requested when valid (the Start button, Enter in the seed)
+##   start() -> bool                 emits start_requested when valid (the Start button, Enter in the seed);
+##                                   with rulers on, opens the build screen instead, which emits it later
 ##   back()                          emits back_requested (the Back button, Esc)
 
 signal start_requested(config: Dictionary)
@@ -65,6 +75,10 @@ var swap_button: Button
 var error_label: Label
 var start_button: Button
 var back_button: Button
+var rulers_toggle: CheckBox  # "Rulers (M2 preview)": off by default
+var rulers_label: Label  # what the box does, shown while it is ticked
+var build_screen: BuildScreen = null  # opened by Start while rulers are on; built on first use
+var _last_builds := {}  # faction id -> the last game's build of a human seat (rematch)
 var _model: GameState
 var _rng := RandomNumberGenerator.new()
 var _digits := RegEx.create_from_string("^[0-9]+$")
@@ -86,6 +100,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if visible and event.is_action_pressed("ui_cancel"):
 		if is_inside_tree():
 			get_viewport().set_input_as_handled()
+		# The build screen sits on top of this one: Esc is its Back (or closes its codex).
+		if build_screen_open():
+			build_screen.handle_cancel()
+			return
 		back()
 
 
@@ -100,6 +118,8 @@ func config() -> Dictionary:
 			ai[ids[i]] = seat_level(i + 1)
 	if not ai.is_empty():
 		out["ai"] = ai
+	if rulers_on():
+		out["rulers"] = true
 	return out
 
 
@@ -142,16 +162,29 @@ func set_seats(players: Array) -> bool:
 
 ## A rematch of `last_game` ({"players", "seed"}, GameScreen.config): the same factions in the same
 ## seats, and a new random seed so the dice fall differently. An unusable seating is left as it is.
+## A game with rulers ("rulers" or "builds") ticks the rulers box again, and each human seat's build
+## becomes its starting build on the build screen (a computer seat rolls its preset again from the new
+## seed). Builds are public once a game starts, so this shows nobody anything new.
 func prefill(last_game: Dictionary) -> void:
+	_close_builds()
 	var players := Array(last_game.get("players", []))
+	var ai: Dictionary = last_game.get("ai", {}) if last_game.get("ai") is Dictionary else {}
 	rematch_label.visible = set_seats(players)
 	if rematch_label.visible:
-		var ai: Dictionary = last_game.get("ai", {}) if last_game.get("ai") is Dictionary else {}
 		for i in players.size():
 			var fid := String(players[i])
 			set_seat_kind(i + 1, "computer" if ai.has(fid) else "human")
 			if ai.has(fid):
 				set_seat_level(i + 1, String(ai[fid]))
+	var builds: Dictionary = last_game.get("builds", {}) if last_game.get("builds") is Dictionary else {}
+	_last_builds = {}
+	for fid in builds:
+		if not ai.has(String(fid)):
+			_last_builds[String(fid)] = builds[fid]
+	if last_game.get("rulers", false) == true or not builds.is_empty():
+		set_rulers(true)
+	elif last_game.has("players"):
+		set_rulers(_rulers_by_default())
 	new_seed(int(last_game.get("seed", -1)))
 
 
@@ -223,17 +256,67 @@ func faction_ids() -> Array[String]:
 	return out
 
 
-## Emits start_requested(config()) when the setup is valid. Returns whether it did.
+## Emits start_requested(config()) when the setup is valid. Returns whether it did. With rulers on, it
+## opens the build screen instead (returning true), and start_requested follows once every human seat
+## has locked in a build; with no human seat that is at once.
 func start() -> bool:
 	_refresh()
 	if not is_valid():
 		return false
+	if rulers_on():
+		_open_builds()
+		return true
 	start_requested.emit(config())
 	return true
 
 
 func back() -> void:
+	_close_builds()
 	back_requested.emit()
+
+
+## Ticks or clears the "Rulers (M2 preview)" box.
+func set_rulers(on: bool) -> void:
+	rulers_toggle.set_pressed_no_signal(on)
+	_refresh()
+
+
+func rulers_on() -> bool:
+	return rulers_toggle.button_pressed
+
+
+func build_screen_open() -> bool:
+	return build_screen != null and build_screen.visible
+
+
+## Rulers start ticked when the game was launched with `-- --rulers` (GameScreen.starting_state).
+static func _rulers_by_default() -> bool:
+	return OS.get_cmdline_user_args().has("--rulers")
+
+
+func _open_builds() -> void:
+	if build_screen == null:
+		build_screen = load(BuildScreen.SCENE).instantiate() as BuildScreen
+		build_screen.finished.connect(_on_builds_finished)
+		build_screen.back_requested.connect(_on_builds_back)
+		add_child(build_screen)
+	move_child(build_screen, get_child_count() - 1)
+	build_screen.begin(config(), _last_builds)
+
+
+func _close_builds() -> void:
+	if build_screen_open():
+		build_screen.back()
+
+
+## Every human seat locked in: the game starts with the builds.
+func _on_builds_finished(game_config: Dictionary) -> void:
+	start_requested.emit(game_config)
+
+
+func _on_builds_back() -> void:
+	if is_inside_tree():
+		start_button.grab_focus.call_deferred()
 
 
 # --- checks ---------------------------------------------------------------------------------------
@@ -284,6 +367,16 @@ func _refresh() -> void:
 	start_button.disabled = not problems.is_empty()
 	start_button.tooltip_text = "Start the game with these players and this seed. Player 1 gives orders first." if problems.is_empty() \
 		else "You can't start yet:\n%s" % "\n".join(problems)
+	var humans := 0
+	for i in kind_pickers.size():
+		if seat_kind(i + 1) == "human":
+			humans += 1
+	var to_builds := rulers_on() and humans > 0
+	start_button.text = "Choose builds" if to_builds else "Start"
+	if to_builds and problems.is_empty():
+		start_button.tooltip_text = "Go on to the build screen: each player picks a ruler and mandates in secret%s, and the game starts once every build is locked in. Player 1 gives orders first." % (
+			", passing the computer between them" if humans > 1 else "")
+	rulers_label.visible = rulers_on()
 	var computers := 0
 	for i in kind_pickers.size():
 		var is_computer := seat_kind(i + 1) == "computer"
@@ -305,6 +398,10 @@ func _refresh() -> void:
 		faction_labels[i].text = "Plays in %s. %s" % [UiPalette.seat_color_name(i), _faction_summary(f)] if f else ""
 		if f and seat_kind(i + 1) == "computer":
 			faction_labels[i].text += " The computer plays this seat at the %s level." % AISeat.level_name(seat_level(i + 1))
+			if rulers_on():
+				faction_labels[i].text += " Its build: one of its three presets, picked at random from the seed."
+		elif f and rulers_on():
+			faction_labels[i].text += " Picks a ruler and mandates on the build screen."
 		faction_labels[i].tooltip_text = _faction_tooltip(f) if f else ""
 		seat_pickers[i].tooltip_text = "Player %d plays %s.\n\n%s" % [i + 1, f.faction_name, _faction_tooltip(f)] if f \
 			else "Pick the faction Player %d plays." % (i + 1)
@@ -482,6 +579,27 @@ func _build() -> void:
 	new_seed_button.tooltip_text = "Pick a new random seed."
 	new_seed_button.pressed.connect(new_seed)
 	seed_row.add_child(new_seed_button)
+
+	var rulers_row := HBoxContainer.new()
+	rulers_row.name = "RulersRow"
+	rulers_row.add_theme_constant_override("separation", 14)
+	box.add_child(rulers_row)
+	rulers_toggle = CheckBox.new()
+	rulers_toggle.name = "RulersToggle"
+	rulers_toggle.text = "Rulers (M2 preview)"
+	rulers_toggle.add_theme_font_size_override("font_size", 20)
+	rulers_toggle.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	rulers_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Rulers (preview)",
+		"A preview of the next milestone, the ruler: before the game each player picks a ruler and how much of its power to keep, and spends the rest on mandates for the whole nation. Rulers are still being built, so some of their effects may not be in play yet. %s" % RulesCodex.text("build_screen")), "build_screen")
+	rulers_toggle.set_pressed_no_signal(_rulers_by_default())
+	rulers_toggle.toggled.connect(func(_on: bool): _refresh())
+	rulers_row.add_child(rulers_toggle)
+	rulers_label = _label("RulersLabel", "Each player picks a ruler and mandates on the next screen, in secret. Builds are public once the game starts.", 17, UiPalette.TEXT_SECONDARY)
+	rulers_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rulers_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_tooltip(rulers_label, CodexLink.with_link(TooltipText.plain(String(RulesCodex.entry("build").get("title", "")), RulesCodex.text("build")), "build"))
+	rulers_label.visible = false
+	rulers_row.add_child(rulers_label)
 
 	error_label = _label("ErrorLabel", "", 19, NEGATIVE)
 	error_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

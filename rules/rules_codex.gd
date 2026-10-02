@@ -82,6 +82,11 @@ const ENTRIES := {
 		"title": "Playing against the computer",
 		"text": "Any seat can be played by the computer instead of a person. The computer plays by exactly the same rules as you: it sees the same map, it gets the same gold and units, and its orders are checked the same way. It gives its orders at the same time as you, from the map as it stood at the start of the turn, so it never sees the orders you give. After the turn resolves, the turn report shows what it was thinking. Easy makes more mistakes than Normal: it passes up about one in three of its good attacks and captures, recruits at random instead of picking the best mix, works out the odds of fewer battles before it fights, and settles for a thinner guard on its capital. Neither level cheats.",
 	},
+	# --- the pre-game build screen (M2-5, #33): BuildScreen. The rules it shows are in the ruler block below. ---
+	"build_screen": {
+		"title": "Choosing builds",
+		"text": "In a game with rulers, each player picks a build before the first turn: one of their faction's two rulers, and the mandates it buys with its power. Tick mandates to spend power, or press a preset for a ready-made build; the balanced preset is picked to start with. The power bar shows how much you spend and how much your ruler keeps, and the previews show what your ruler and your nation get with this build. Hover any number to see where it comes from. With two players on one computer, the screen is covered between builders, so neither sees the other's build until the game starts. A computer player picks one of its faction's presets in secret, decided by the seed. Builds are public from the first turn.",
+	},
 	"phase_order": {
 		"title": "How a turn resolves",
 		"text": "Everyone gives orders first. Then the whole turn resolves at once, always in this order: 1. orders are checked, 2. movement, 3. battles, 4. capture, 5. recruitment, 6. income. The same orders and seed always give the same result.",
