@@ -16,9 +16,11 @@ class_name TurnResolver
 ##   movement     all valid moves happen at once. Hostile armies swapping provinces stop on the border.
 ##   battles      border battles first (sorted by border), then province battles (sorted by province),
 ##                each decided by the BattleResolver (AutoBattleResolver unless one is passed in).
+##                After each battle, the death of any ruler that fought in it is recorded (M2).
 ##   capture      a province occupied by armies of exactly one faction becomes that faction's.
 ##   recruitment  recruit orders are checked and paid in the order given, at the faction's capital.
 ##   income       every faction earns the income of the provinces it owns.
+##   rulers       (games with rulers, M2) Mending Light heals, rulers heal, due successors arrive.
 ##
 ## Mandates and abilities on the map (M2-4, design/M2_RULER.md §1.4, §2.3; rules in RulerRules; only
 ## in a game with rulers, so an M1 game resolves exactly as before):
@@ -62,7 +64,7 @@ class_name TurnResolver
 ## Ids stay in the structured fields. `text` and rejection reasons only use player-facing names:
 ## faction and province display names, and armies as army_label() describes them.
 
-const PHASES := ["orders", "movement", "battles", "capture", "recruitment", "income"]
+const PHASES := ["orders", "movement", "battles", "capture", "recruitment", "income", "rulers"]
 
 
 static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: int, battle_resolver: BattleResolver = null) -> Dictionary:
@@ -90,6 +92,7 @@ static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: 
 	_capture(s, battle_sites, events)
 	_recruitment(s, recruits, events)
 	_income(s, events)
+	_rulers_phase(s, events)
 
 	s.current_turn += 1
 	return {"new_state": s, "events": events}
@@ -424,10 +427,12 @@ static func _province_battles(s: GameState, resolver: BattleResolver, rng: Seede
 		battle_sites[p.id] = true
 
 
-## Runs one battle, destroys the losing armies, records the event. Returns the winner's faction id.
+## Runs one battle, destroys the losing armies, records the event and any ruler deaths (M2). Returns
+## the winner's faction id.
 static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind: String, province_ids: Array, sides: Dictionary, defender: String, events: Array) -> String:
 	var fids: Array = sides.keys()
 	fids.sort()
+	var rulers_in := _rulers_in_battle(sides)  # M2: whose rulers fight here, to record deaths after
 	var side_list := []
 	for fid in fids:
 		side_list.append({"faction": fid, "armies": sides[fid]})
@@ -514,6 +519,7 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 			"roll": result.get("roll", 0), "armies_destroyed": destroyed.size(), "units_lost": units_lost,
 			"destroyed": destroyed, "why": result.get("why", ""), "report": report},
 		text, codex))
+	_record_ruler_deaths(s, rulers_in, winner, kind, province_ids, events)
 	return winner
 
 
@@ -550,6 +556,106 @@ static func _aftermath(s: GameState, report: Dictionary, winner: String, fids: A
 		sentences.append("%s won, but %s lost every fighter and %s gone too." % [_faction_name(s, winner),
 			"one of its armies" if winner_wiped == 1 else "%d of its armies" % winner_wiped, "is" if winner_wiped == 1 else "are"])
 	return " ".join(sentences)
+
+
+# --- ruler deaths and the rulers phase (M2-3, #31; design/M2_RULER.md §3, §5, §1.4, §1.7) ----------
+# Games with rulers only (GameState.with_rulers): in an M1 game no army holds a ruler, so none of this
+# adds an event. The rules and sentences are RulerRules'; these functions make the events:
+#   ruler_died          battles   a ruler fell while its side won, or was lost with its side. Codex "ruler_death".
+#   mending             rulers    Mending Light healed wounded units and commanders. Codex "ability_mending_light".
+#   ruler_healed        rulers    a living ruler healed a quarter of its maximum hp. Codex "ruler_healing".
+#   ruler_arrived       rulers    a successor took over at the capital. Codex: the kind's "succession_*".
+#   succession_waiting  rulers    a successor is due but the faction doesn't hold its capital. Codex "succession".
+# Death is read from the state after the battle, never from the battle report: a ruler is dead when
+# its army is gone or no longer holds it, so any battle resolver works.
+
+## The rulers fighting in one battle, before it is fought: [{"faction", "army"}], in faction id order.
+static func _rulers_in_battle(sides: Dictionary) -> Array:
+	var out := []
+	var fids: Array = sides.keys()
+	fids.sort()
+	for fid in fids:
+		for a in sides[fid]:
+			if a != null and a.ruler != null:
+				out.append({"faction": fid, "army": a.id})
+	return out
+
+
+## After a battle (§5.1): every ruler that fought in it and whose army is gone, or no longer holds it,
+## is dead. Records the death (its successor falls due) and adds a ruler_died event in phase "battles".
+static func _record_ruler_deaths(s: GameState, rulers_in: Array, winner: String, kind: String, province_ids: Array, events: Array) -> void:
+	for r in rulers_in:
+		var army := s.find_army(r.army)
+		if army != null and army.ruler != null:
+			continue  # it still stands
+		if army != null and army.units.is_empty() and army.commander == null:
+			s.armies.erase(army)  # the ruler's army goes with its ruler (§5.1)
+		var info := RulerRules.record_death(s, r.faction, s.current_turn + 1)
+		if info.is_empty():
+			continue
+		var fell: bool = r.faction == winner  # it fell although its side won; otherwise it was lost with its side
+		var place: String
+		if kind == "border":
+			place = "on the border between %s and %s" % [_province_name(s, province_ids[0]), _province_name(s, province_ids[1])]
+		else:
+			place = "at %s" % _province_name(s, province_ids[0])
+		var numbers := info.duplicate()
+		numbers["succession_codex"] = numbers.codex  # the event links "ruler_death"; this is the kind's entry
+		numbers.erase("codex")
+		numbers["won"] = fell
+		numbers["winner"] = winner
+		numbers["army"] = r.army
+		events.append(_event("ruler_died", "battles", province_ids.duplicate(), [r.faction], [r.army],
+			"fell_while_winning" if fell else "lost_with_side", numbers,
+			RulerRules.death_text(s, r.faction, info, fell, place), "ruler_death"))
+
+
+## The rulers phase, last in the turn (§3 step 8): Mending Light heals, then every living ruler heals
+## a quarter of its maximum hp, then every successor that is due arrives at its capital, or waits for
+## it. Each step goes through the factions in id order. No events in a game without rulers.
+static func _rulers_phase(s: GameState, events: Array) -> void:
+	if not RulerRules.has_rulers(s):
+		return
+	var turn := s.current_turn + 1  # the turn being resolved, as players count it
+	var fids := _faction_ids(s)
+	for fid in fids:
+		var mend := RulerRules.apply_mending_light(s, fid)
+		if mend.healed.is_empty():
+			continue
+		var armies := []
+		for h in mend.healed:
+			if not armies.has(h.army):
+				armies.append(h.army)
+		events.append(_event("mending", "rulers", [mend.province], [fid], armies, "mending_light",
+			{"rank": mend.rank, "amount": mend.amount, "total": mend.total, "healed": mend.healed.duplicate(true)},
+			RulerRules.mending_text(s, fid, mend, _province_name(s, mend.province)), "ability_mending_light"))
+	for fid in fids:
+		var heal := RulerRules.heal_ruler(s, fid)
+		if int(heal.healed) <= 0:
+			continue
+		events.append(_event("ruler_healed", "rulers", [heal.province], [fid], [heal.army], "ruler_healing",
+			{"healed": heal.healed, "hp_before": heal.hp_before, "hp_after": heal.hp_after, "max_hp": heal.max_hp,
+				"share": heal.share},
+			RulerRules.healed_text(heal, _province_name(s, heal.province)), "ruler_healing"))
+	for fid in fids:
+		if not RulerRules.successor_due(s, fid, turn):
+			continue
+		var info := RulerRules.succession_info(s, fid)
+		var army := RulerRules.crown_successor(s, fid, turn)
+		if army == null:
+			events.append(_event("succession_waiting", "rulers", [info.capital], [fid], [], "capital_not_held",
+				{"successor_turn": info.successor_turn, "successor_power": info.successor_power,
+					"successor_generation": info.successor_generation},
+				RulerRules.waiting_text(s, fid), "succession"))
+			continue
+		var f := s.find_faction(fid)
+		var stats := RulerRules.ruler_stats(f.ruler_type, f.kept_power, f.ruler_generation)
+		events.append(_event("ruler_arrived", "rulers", [army.location], [fid], [army.id], "succession",
+			{"ruler": f.ruler_type, "kind": info.kind, "name": stats.name, "generation": f.ruler_generation,
+				"kept_power": f.kept_power, "kept_power_before": info.kept_power, "hp": army.ruler.current_hp,
+				"max_hp": stats.hp, "attack": stats.attack, "defense": stats.defense, "ability_rank": stats.ability_rank,
+				"due_turn": info.successor_turn},
+			RulerRules.arrival_text(s, fid, int(info.kept_power), turn + 1), String(info.codex)))
 
 
 static func _capture(s: GameState, battle_sites: Dictionary, events: Array) -> void:

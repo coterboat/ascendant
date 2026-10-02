@@ -43,8 +43,9 @@ extends RefCounted
 enum Phase { ORDERS, HANDOFF, GAME_OVER, INVALID }
 
 const PHASE_NAMES := ["orders", "handoff", "game_over", "invalid"]
-## Report phases in display order: the resolver's phases, then the victory event.
-const REPORT_PHASES := ["orders", "movement", "battles", "capture", "recruitment", "income", "victory"]
+## Report phases in display order: the resolver's phases, then the victory event. "rulers" (M2) only
+## has events in a game with rulers: healing and successors (TurnResolver._rulers_phase).
+const REPORT_PHASES := ["orders", "movement", "battles", "capture", "recruitment", "income", "rulers", "victory"]
 const BATTLE_TYPES := ["battle", "border_battle"]
 ## RulesCodex entries this flow links to (handoff screen, victory screen, final report).
 const CODEX_KEYS := ["hotseat", "handoff", "victory", "simultaneous_capture", "computer_opponent"]
