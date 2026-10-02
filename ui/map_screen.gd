@@ -10,10 +10,21 @@ extends Control
 ##   select_province(id)                   select a province and fill the side panel
 ##   select_army(id)                       select an army (and its province)
 ##   focus_province(id)                    select a province and flash it to draw the eye
-##   signal province_selected(id), signal army_selected(id)
+##   preview_move(id)                      hover preview: what clicking `id` would order for the selected army
+##   signal province_selected(id), signal army_selected(id), signal orders_changed
+##
+## Hooks for the game screen (#7), which hosts this screen for the player at the controls:
+##   session                    set it before set_state(): orders then go through GameSession's books
+##   intercept_back             true: the back button emits back_requested instead of leaving
+##   add_top_bar_control(c)     puts a HUD control in the top bar, just before the back button
+##   set_hint(text)             the short help text in the top bar
 
 signal province_selected(province_id: String)
 signal army_selected(army_id: String)
+## The viewing player's queued orders changed (queued, refused or cancelled).
+signal orders_changed
+## The back button was pressed while intercept_back is on.
+signal back_requested
 
 const SIDE_PANEL_WIDTH := 400
 const TITLE_SCENE := "res://ui/title_screen.tscn"
@@ -24,8 +35,12 @@ var selected_province_id := ""
 var selected_army_id := ""
 var regions := {}  # province id -> ProvinceRegion
 var orders: OrdersController = null  # issue #6: the viewing faction's orders this turn
+var session: GameSession = null  # game screen (#7): when set, orders live in the session's books
+var intercept_back := false  # game screen (#7): the host confirms before leaving
 var status_text := ""  # last order result: the rules' reason when an order was refused
 var arrow_layer: Control  # drawn above the regions: one arrow per queued move
+var hover_panel: PanelContainer  # hover preview bar at the bottom of the map
+var hover_label: Label
 
 # Scene nodes, looked up by _bind() rather than @onready so the screen also works before it is in
 # the tree (tests build it headless, and callers may set_state() before adding it).
@@ -35,6 +50,7 @@ var details: VBoxContainer
 var faction_label: Label
 var gold_label: Label
 var turn_label: Label
+var hint_label: Label
 var back_button: Button
 
 
@@ -50,8 +66,8 @@ func _ready() -> void:
 
 ## Shows `new_state` as seen by `faction_id`. Rebuilds every region; the state is only read.
 func set_state(new_state: GameState, faction_id: String) -> void:
-	if orders == null or orders.state != new_state or orders.faction_id != faction_id:
-		orders = OrdersController.new(new_state, faction_id)
+	if orders == null or orders.state != new_state or orders.faction_id != faction_id or orders.session != session:
+		orders = OrdersController.new(new_state, faction_id, session)
 		status_text = ""
 	state = new_state
 	viewing_faction_id = faction_id
@@ -68,10 +84,13 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 		region.setup(state, p, MapLayout.position_of(p.id))
 		region.pressed.connect(select_province)
 		region.army_pressed.connect(select_army)
+		region.mouse_entered.connect(preview_move.bind(p.id))
+		region.mouse_exited.connect(clear_preview)
 		map_canvas.add_child(region)
 		regions[p.id] = region
 	map_canvas.queue_redraw()
 	arrow_layer.queue_redraw()
+	clear_preview()
 	_update_top_bar()
 	if state.find_province(selected_province_id) == null:
 		selected_province_id = ""
@@ -91,6 +110,7 @@ func select_province(province_id: String) -> void:
 		# Refused: the reason stays in the status line and the click selects the province as usual.
 	else:
 		status_text = ""
+	clear_preview()
 	selected_province_id = province_id
 	var army := state.find_army(selected_army_id)
 	if army == null or army.location != province_id:
@@ -108,6 +128,41 @@ func select_army(army_id: String) -> void:
 	selected_army_id = army_id
 	select_province(army.location)
 	army_selected.emit(army_id)
+
+
+## Hover preview (#6): with one of your armies selected, shows what clicking `province_id` would
+## order (arrival forecast and battle odds, or the rules' reason it can't be ordered) in a bar over the
+## map, before you click. Returns the text shown, "" when there is nothing to preview.
+func preview_move(province_id: String) -> String:
+	_bind()
+	var text := ""
+	var army: Army = state.find_army(selected_army_id) if state else null
+	if orders and army and army.owner == viewing_faction_id and army.location != province_id \
+			and state.find_province(province_id) != null:
+		text = orders.move_preview(army.id, province_id).text
+	hover_label.text = text
+	hover_panel.visible = not text.is_empty()
+	return text
+
+
+func clear_preview() -> void:
+	if hover_panel:
+		hover_label.text = ""
+		hover_panel.visible = false
+
+
+## Game screen hook: adds a HUD control to the top bar, just before the back button.
+func add_top_bar_control(control: Control) -> void:
+	_bind()
+	var row := back_button.get_parent()
+	row.add_child(control)
+	row.move_child(control, back_button.get_index())
+
+
+func set_hint(text: String) -> void:
+	_bind()
+	hint_label.text = text
+	hint_label.tooltip_text = TooltipText.wrap_text(text)
 
 
 ## Selects a province and flashes its region so the eye finds it (e.g. from a turn report line).
@@ -131,6 +186,7 @@ func _bind() -> void:
 	faction_label = %FactionLabel
 	gold_label = %GoldLabel
 	turn_label = %TurnLabel
+	hint_label = get_node("Layout/TopBar/Row/Hint")
 	back_button = %BackButton
 	map_view.resized.connect(_fit_map)
 	map_canvas.draw.connect(_draw_links)
@@ -142,6 +198,35 @@ func _bind() -> void:
 	arrow_layer.size = MapLayout.SIZE
 	arrow_layer.draw.connect(_draw_order_arrows)
 	map_view.add_child(arrow_layer)
+	# Hover preview bar along the bottom of the map; grows upwards with its text.
+	hover_panel = PanelContainer.new()
+	hover_panel.name = "HoverPreview"
+	hover_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hover_panel.visible = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(UiPalette.PANEL_BG, 0.94)
+	style.border_color = UiPalette.GILT
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(10)
+	hover_panel.add_theme_stylebox_override("panel", style)
+	hover_panel.anchor_left = 0.0
+	hover_panel.anchor_right = 1.0
+	hover_panel.anchor_top = 1.0
+	hover_panel.anchor_bottom = 1.0
+	hover_panel.offset_left = 16
+	hover_panel.offset_right = -16
+	hover_panel.offset_top = -16
+	hover_panel.offset_bottom = -16
+	hover_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	map_view.add_child(hover_panel)
+	hover_label = Label.new()
+	hover_label.name = "HoverLabel"
+	hover_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hover_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hover_label.add_theme_font_size_override("font_size", 17)
+	hover_label.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
+	hover_panel.add_child(hover_label)
 
 
 ## Scales the design-space canvas to fit the map view, centred, keeping its aspect ratio.
@@ -211,15 +296,17 @@ func queue_recruit(unit_type_id: String) -> String:
 
 
 func cancel_order(index: int) -> void:
-	orders.cancel(index)
-	status_text = "Order cancelled."
+	var reason := orders.cancel(index)
+	status_text = reason if not reason.is_empty() else "Order cancelled."
 	_orders_changed()
 
 
 func _orders_changed() -> void:
 	if arrow_layer:
 		arrow_layer.queue_redraw()
+	clear_preview()
 	_show_details()
+	orders_changed.emit()
 
 
 ## One arrow per queued move, from the army's province to its destination.
@@ -420,4 +507,7 @@ func _add_text(text: String, tooltip: String, color: Color = UiPalette.TEXT_PRIM
 
 
 func _on_back_pressed() -> void:
+	if intercept_back:
+		back_requested.emit()
+		return
 	get_tree().change_scene_to_file(TITLE_SCENE)

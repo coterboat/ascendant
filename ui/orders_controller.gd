@@ -1,38 +1,61 @@
 class_name OrdersController
 extends RefCounted
-## The orders UI's side of issue #6: wraps an OrderBook for the faction at the controls.
+## The orders UI's side of issue #6: the orders of the faction at the controls.
 ## Holds no rules math. Whether an order is allowed comes from OrderBook.submit (the resolver's own
 ## checks, with their plain-language reasons) and every forecast number comes from Forecast.
 ## Only reads the GameState, never changes it.
+##
+## Two modes:
+##   standalone      (map preview, tests) the orders live in this controller's own OrderBook.
+##   session-backed  (the game screen, #7) pass a GameSession: the orders live in the session's books,
+##                   the single source of truth, so they survive map rebuilds and resolve with the
+##                   turn. orders() is empty unless `faction_id` is the session's current player, so
+##                   one player's orders can never show up on another player's map.
 
-const ODDS_PENDING := "Battle odds: odds not available yet."
+## Shown instead of battle odds when no enemy army is in the destination (M1 has no fog of war).
+const NO_ENEMY_TEXT := "No enemy army there now; enemies may still move in."
 
 var state: GameState
 var faction_id := ""
 var book := OrderBook.new()
+var session: GameSession = null
+var _odds_cache := {}  # "army ids>province" -> move_odds() result; the state never changes under us
 
 
-func _init(p_state: GameState = null, p_faction_id: String = "") -> void:
+func _init(p_state: GameState = null, p_faction_id: String = "", p_session: GameSession = null) -> void:
 	state = p_state
 	faction_id = p_faction_id
+	session = p_session
 
 
 ## Queues a move. Returns "" when accepted, otherwise the rules' reason it was refused.
 func queue_move(army_id: String, to_province: String) -> String:
+	if session != null:
+		var why := _not_my_turn()
+		return why if not why.is_empty() else session.queue_move(army_id, to_province)
 	return book.submit(state, faction_id, MoveOrder.new(army_id, to_province))
 
 
 ## Queues one recruit at the capital. Returns "" when accepted, otherwise the rules' reason.
 func queue_recruit(unit_type_id: String) -> String:
+	if session != null:
+		var why := _not_my_turn()
+		return why if not why.is_empty() else session.queue_recruit(unit_type_id)
 	return book.submit(state, faction_id, RecruitOrder.new(unit_type_id))
 
 
-## Withdraws the order at `index` (as listed by orders()).
-func cancel(index: int) -> void:
+## Withdraws the order at `index` (as listed by orders()). Returns "" or why it could not.
+func cancel(index: int) -> String:
+	if session != null:
+		var why := _not_my_turn()
+		return why if not why.is_empty() else session.cancel_order(index)
 	book.remove(faction_id, index)
+	return ""
 
 
 func orders() -> Array:
+	if session != null:
+		return session.current_orders() if session.current_player() == faction_id else []
 	return book.orders_for(faction_id)
 
 
@@ -49,6 +72,39 @@ func move_forecast(army_id: String, to: String) -> Dictionary:
 	return Forecast.move(state, faction_id, MoveOrder.new(army_id, to), orders())
 
 
+## Battle odds for moving `army_id` to `to`, counting every army you have already ordered there.
+## Returns {"enemy_present", "odds" (Forecast.battle_odds result, {} when no enemy is there),
+## "line" (verdict and main reasons, for the forecast line), "text" (the full odds text, for tooltips)}.
+func move_odds(army_id: String, to: String) -> Dictionary:
+	var ids := [army_id]
+	for o in orders():
+		if o is MoveOrder and o.to == to and not ids.has(o.army_id):
+			ids.append(o.army_id)
+	ids.sort()
+	var key := "%s>%s" % [",".join(ids), to]
+	if _odds_cache.has(key):
+		return _odds_cache[key]
+	# Forecast.battle_odds checks for enemy armies there itself (M1 has no fog: all are visible).
+	var odds := Forecast.battle_odds(state, faction_id, ids, to)
+	var out := {"enemy_present": false, "odds": {}, "line": NO_ENEMY_TEXT, "text": NO_ENEMY_TEXT}
+	if odds.get("ok", false):
+		var line := "Battle odds: %s (you won %d of %d test battles)." % [odds.label, odds.wins, odds.samples]
+		if not odds.reasons.is_empty():
+			line += " Main reasons: %s." % "; ".join(odds.reasons)
+		out = {"enemy_present": true, "odds": odds, "line": line, "text": odds.text}
+	_odds_cache[key] = out
+	return out
+
+
+## What clicking `to` with `army_id` selected would do, before the click (the map's hover preview):
+## {"ok", "text"}. When the move is allowed, the text has the arrival forecast and the battle odds.
+func move_preview(army_id: String, to: String) -> Dictionary:
+	var f := move_forecast(army_id, to)
+	if not f.ok:
+		return {"ok": false, "text": "This move can't be ordered: %s" % f.reason}
+	return {"ok": true, "text": "Click to order this move. %s %s" % [f.text, move_odds(army_id, to).line]}
+
+
 func gold_after_recruits() -> Dictionary:
 	return Forecast.gold_after_recruits(state, faction_id, recruit_orders())
 
@@ -61,10 +117,6 @@ func recruit_cost(unit_type_id: String) -> int:
 func recruitable_types() -> Array:
 	var f := state.find_faction(faction_id)
 	return f.unit_types.duplicate() if f else []
-
-
-func odds_text() -> String:
-	return ODDS_PENDING
 
 
 ## One plain-language line per queued order (names, never ids), with its forecast.
@@ -82,7 +134,7 @@ func order_text(index: int) -> String:
 	var o = list[index]
 	if o is MoveOrder:
 		var f := _move_forecast_at(index)
-		return "%s %s" % [f.text, ODDS_PENDING] if f.ok else f.reason
+		return "%s %s" % [f.text, move_odds(o.army_id, o.to).line] if f.ok else f.reason
 	var r := _recruit_result_at(index)
 	if not r.ok:
 		return "Not recruited: %s" % r.reason
@@ -96,7 +148,9 @@ func order_breakdown(index: int) -> Dictionary:
 		var f := _move_forecast_at(index)
 		if not f.ok:
 			return _bd("Move order", f.reason, [], "Arrives at the start of turn", 0)
-		return _bd("Move forecast", "%s %s %s" % [f.text, ODDS_PENDING, RulesCodex.text("move")],
+		var odds := move_odds(o.army_id, o.to)
+		var odds_desc: String = "%s %s" % [odds.text, RulesCodex.text("battle_odds")] if odds.enemy_present else odds.text
+		return _bd("Move forecast", "%s %s %s" % [f.text, odds_desc, RulesCodex.text("move")],
 			[_line("Turn now", state.current_turn, ""), _line("Moving one province", 1, "armies move one neighboring province per turn")],
 			"Arrives at the start of turn", f.arrival_turn)
 	var r := _recruit_result_at(index)
@@ -126,6 +180,13 @@ func recruit_breakdown(unit_type_id: String) -> Dictionary:
 
 
 # --- helpers --------------------------------------------------------------------------------------
+
+func _not_my_turn() -> String:
+	if session.current_player() == faction_id:
+		return ""
+	var f: Faction = state.find_faction(faction_id) if state else null
+	return "It is not %s's turn, so these orders can't be changed now." % (f.faction_name if f else "this player")
+
 
 func _move_forecast_at(index: int) -> Dictionary:
 	var list := orders()

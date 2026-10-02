@@ -1,0 +1,25 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://ui/game_screen.gd" id="1_game"]
+[ext_resource type="PackedScene" path="res://ui/map_screen.tscn" id="2_map"]
+[ext_resource type="PackedScene" path="res://ui/handoff_screen.tscn" id="3_handoff"]
+
+[node name="GameScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_game")
+
+[node name="Map" parent="." instance=ExtResource("2_map")]
+layout_mode = 1
+
+[node name="Overlays" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="HandoffLayer" type="CanvasLayer" parent="."]
+layer = 20
+
+[node name="Handoff" parent="HandoffLayer" instance=ExtResource("3_handoff")]

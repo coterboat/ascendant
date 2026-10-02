@@ -3,10 +3,13 @@ extends PanelContainer
 ## The last resolved turn's report (#7): a header, then one row per event in resolver order, grouped
 ## under plain-language phase headings. A game-over event is pulled to the top and highlighted.
 ## Clicking a row asks the map to focus its first province; battle rows get a "Battle report" button.
+## Rows whose event names a RulesCodex entry get a small "?" button that asks for that entry
+## (codex_requested), so the host can open the codex panel there.
 ## Reads the session only and never changes rules state. Builds its children in code.
 
 signal province_focus_requested(province_id: String)
 signal battle_report_requested(event: Dictionary)
+signal codex_requested(key: String)
 
 const PHASE_TITLES := {
 	"orders": "Orders",
@@ -27,6 +30,7 @@ var rows_box: VBoxContainer
 var scroll: ScrollContainer
 var _event_rows: Array[Button] = []
 var _battle_buttons: Array[Button] = []
+var _codex_buttons: Array[Button] = []
 
 
 func _init() -> void:
@@ -75,6 +79,11 @@ func battle_buttons() -> Array[Button]:
 	return _battle_buttons
 
 
+## The "?" buttons, in display order. Each has meta "codex_key" naming its RulesCodex entry.
+func codex_buttons() -> Array[Button]:
+	return _codex_buttons
+
+
 static func phase_title(phase: String) -> String:
 	return PHASE_TITLES.get(phase, phase.capitalize())
 
@@ -92,9 +101,15 @@ func _phase_heading(phase: String) -> Label:
 	return l
 
 
+## One event: [the event text button, its "Battle report" button] in an inner box, then the "?".
 func _event_row(e: Dictionary) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
+	var content := HBoxContainer.new()
+	content.name = "Event"
+	content.add_theme_constant_override("separation", 12)
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(content)
 	var provinces: Array = e.get("provinces", [])
 
 	var b := Button.new()
@@ -110,7 +125,7 @@ func _event_row(e: Dictionary) -> HBoxContainer:
 	b.tooltip_text = tip
 	b.set_meta("event", e)
 	b.pressed.connect(_on_row_pressed.bind(e))
-	row.add_child(b)
+	content.add_child(b)
 	_event_rows.append(b)
 
 	if GameSession.BATTLE_TYPES.has(e.get("type", "")):
@@ -119,9 +134,27 @@ func _event_row(e: Dictionary) -> HBoxContainer:
 		battle.tooltip_text = "Open the full report for this battle: who fought, the odds, and the losses."
 		battle.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		battle.pressed.connect(_on_battle_pressed.bind(e))
-		row.add_child(battle)
+		content.add_child(battle)
 		_battle_buttons.append(battle)
+
+	var key := str(e.get("codex", ""))
+	if RulesCodex.ENTRIES.has(key):
+		row.add_child(_codex_button(key))
 	return row
+
+
+func _codex_button(key: String) -> Button:
+	var q := Button.new()
+	q.name = "CodexButton"
+	q.text = "?"
+	q.custom_minimum_size = Vector2(36, 36)
+	q.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	q.add_theme_font_size_override("font_size", 18)
+	q.tooltip_text = "Explain this: opens the codex entry \"%s\"." % String(RulesCodex.entry(key).get("title", ""))
+	q.set_meta("codex_key", key)
+	q.pressed.connect(_on_codex_pressed.bind(key))
+	_codex_buttons.append(q)
+	return q
 
 
 func _on_row_pressed(e: Dictionary) -> void:
@@ -134,9 +167,14 @@ func _on_battle_pressed(e: Dictionary) -> void:
 	battle_report_requested.emit(e.duplicate(true))
 
 
+func _on_codex_pressed(key: String) -> void:
+	codex_requested.emit(key)
+
+
 func _clear_rows() -> void:
 	_event_rows.clear()
 	_battle_buttons.clear()
+	_codex_buttons.clear()
 	for c in rows_box.get_children():
 		rows_box.remove_child(c)
 		c.queue_free()
