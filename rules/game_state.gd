@@ -3,6 +3,10 @@ class_name GameState
 ## to_dict() survives a JSON round-trip exactly: 64-bit values (seed, RNG state) are stored as strings
 ## and every number is read back as an int on load (see Serial). from_dict() validates owners,
 ## neighbors and capitals and fails with a plain-language error.
+##
+## Rulers (M2, #29) are opt-in at setup until battles and succession handle them (director's note on
+## #29): GameState.new(seed) is exactly the M1 game, and GameState.with_rulers(seed, builds) is the M1
+## game plus a ruler, kept power and mandates for every faction, with each ruler's army at its capital.
 
 var provinces: Array[Province] = []
 var factions: Array[Faction] = []
@@ -46,6 +50,40 @@ func place_starting_armies(errors = null) -> bool:
 			army.commander = Unit.new(f.commander_type, f.id)
 		armies.append(army)
 	return ok
+
+## The M1 starting state plus a ruler for every faction (design/M2_RULER.md §1.5). `builds` maps a
+## faction id to its build, {"ruler": ruler id, "mandates": [mandate ids]}, or to a preset id
+## (BuildPresetData); a faction with no build gets its balanced preset. Returns null when a build is
+## illegal, with the plain-language reasons appended to `errors` (or push_error when it isn't an Array).
+static func with_rulers(map_seed: int = 12345, builds: Dictionary = {}, errors = null) -> GameState:
+	var state := GameState.new(map_seed)
+	if not state.setup_rulers(builds, errors):
+		return null
+	return state
+
+
+## Gives every faction its ruler and mandates before turn 1 (see with_rulers). All or nothing: if any
+## build is illegal, nothing changes and the reasons go to `errors`. Each ruler's army is placed at its
+## capital after every starting army (army 1 there, the ruler's army 2), in faction order, so the M1
+## starting armies keep their ids: kingdom-1, beasts-2, then kingdom-3 and beasts-4 for the rulers.
+func setup_rulers(builds: Dictionary = {}, errors = null) -> bool:
+	var problems := []
+	for key in builds:
+		if find_faction(str(key)) == null:
+			problems.append("A build was given for a faction that is not in this game.")
+	if current_turn != 0:
+		problems.append("Rulers and their builds are chosen before the game starts.")
+	var chosen := {}
+	for f in factions:
+		chosen[f.id] = builds.get(f.id, RulerRules.balanced_preset(f.id))
+		problems.append_array(RulerRules.build_errors(f.id, chosen[f.id]))
+	if problems.is_empty():
+		for f in factions:
+			problems.append_array(RulerRules.apply_build(self, f.id, chosen[f.id]))
+	for msg in problems:
+		_report(errors, msg)
+	return problems.is_empty() and validate(errors)
+
 
 ## Hands out the next unique army id, e.g. "kingdom-3", skipping ids already in use.
 func new_army_id(faction_id: String) -> String:
@@ -133,6 +171,9 @@ func validate(errors = null) -> bool:
 		if not faction_by_id.has(a.owner):
 			_report(errors, "Army '%s' belongs to '%s', which is not a faction in this game." % [a.id, a.owner])
 			ok = false
+	# Rulers, kept power, mandates and ruler armies (M2): RulerRules owns those rules.
+	if not RulerRules.validate(self, errors):
+		ok = false
 	return ok
 
 func to_dict() -> Dictionary:
@@ -182,6 +223,18 @@ static func from_dict(data: Dictionary, errors = null) -> GameState:
 			all_unit_types[ut.id] = ut
 		if f.commander_type:
 			all_unit_types[f.commander_type.id] = f.commander_type
+	# A ruler's stats are not saved: they are rebuilt from its ruler and kept power (RulerRules).
+	for f in state.factions:
+		if not f.has_ruler():
+			continue
+		if RulerRules.ruler_data(f.ruler_type).is_empty():
+			_report(errors, "%s is led by '%s', which is not a ruler in this game." % [
+				f.faction_name if not f.faction_name.is_empty() else "A faction", f.ruler_type])
+			return null
+		RulerRules.refresh_ruler_type(f)
+		all_unit_types[f.ruler_unit_type.id] = f.ruler_unit_type
+	if not RulerRules.validate_factions(state, errors):
+		return null
 
 	# Build province_ids lookup
 	var province_ids := {}

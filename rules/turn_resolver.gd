@@ -329,8 +329,8 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 				units_lost += n
 				var lost: Dictionary = lost_by_faction.get(fid, {"armies": 0, "units": 0})
 				lost_by_faction[fid] = {"armies": lost.armies + 1, "units": lost.units + n}
-			elif a.units.is_empty() and a.commander == null:
-				destroyed.append(a.id)  # every unit of this winning army fell in the battle
+			elif a.units.is_empty() and a.commander == null and a.ruler == null:
+				destroyed.append(a.id)  # every unit of this winning army fell (a ruler's army holds only its ruler)
 				winner_wiped += 1
 	var survivors: Array[Army] = []
 	for a in s.armies:
@@ -499,13 +499,14 @@ static func _recruitment(s: GameState, recruits: Dictionary, events: Array) -> v
 
 
 ## Puts a new unit into the faction's first army (by id) at its capital, or a new army there.
-## A commander goes to the first army at the capital without one.
+## A commander goes to the first army at the capital without one. Recruits never join a ruler's army:
+## a ruler travels alone (RulesCodex "ruler_army").
 ## Returns {"army": the army it joined, "created": true if that army was formed by this recruit}.
 static func _add_recruit(s: GameState, faction: Faction, ut: UnitType) -> Dictionary:
 	var army: Army = null
 	var created := false
 	for a in _sorted_armies(s):
-		if a.owner == faction.id and a.location == faction.capital and (not ut.is_commander or a.commander == null):
+		if a.owner == faction.id and a.location == faction.capital and a.ruler == null and (not ut.is_commander or a.commander == null):
 			army = a
 			break
 	if army == null:
@@ -588,11 +589,15 @@ static func _moved_event(s: GameState, m: Dictionary, cause: String) -> Dictiona
 ## Player-facing name for an army, used in every event text and reason instead of its id:
 ##   "Aurel Crown army at Crownkeep (3 units, led by Knight Captain)"
 ##   "Thornmane Clans army at Wildmoor (1 unit, no commander)"
+##   "Aurel Crown ruler King Corvane I at Crownkeep"   (a ruler's army: it holds only the ruler, M2)
 ## The unit count excludes the commander. Only when another army of the same faction in the same
 ## province would get exactly the same label, an ordinal is put in front ("first ...", "second ..."),
 ## counting those look-alike armies in order of creation (natural sort of their ids), so the label is
 ## deterministic. Callers add the article: "The %s moved to ...".
 static func army_label(s: GameState, army: Army) -> String:
+	if army.ruler != null:
+		# A faction has at most one ruler, so this label is never shared (RulesCodex "ruler_army").
+		return "%s ruler %s at %s" % [_faction_name(s, army.owner), army.ruler.type.name, _province_name(s, army.location)]
 	var detail := _army_detail(army)
 	var twins := []
 	for a in s.armies:
@@ -606,6 +611,8 @@ static func army_label(s: GameState, army: Army) -> String:
 
 
 static func _army_detail(army: Army) -> String:
+	if army.ruler != null:
+		return "ruler %s" % army.ruler.type.name
 	var n := army.units.size()
 	var detail := "%d %s" % [n, "unit" if n == 1 else "units"]
 	return detail + (", led by %s" % army.commander.type.name if army.commander else ", no commander")
