@@ -100,9 +100,15 @@ func _army_badge(state: GameState, a: Army, seats: Array) -> Button:
 		b.add_theme_stylebox_override(s, style)
 	b.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
 	b.add_theme_color_override("font_hover_color", UiPalette.TEXT_PRIMARY)
-	var units := Breakdown.army_units(state, a.id)
-	b.tooltip_text = TooltipText.from_breakdown(units) + "\n\nClick to select this army."
-	CodexLink.attach(b, TooltipText.codex_for("army_units", units), codex_requested.emit)
+	if a.ruler != null:
+		# A ruler's army holds only its ruler (M2): name it and show the ruler's numbers (RulerPanel).
+		b.text = RulerPanel.badge_text(a)
+		b.tooltip_text = RulerPanel.summary(state, a) + "\n\nClick to select this army."
+		CodexLink.attach(b, "ruler_army", codex_requested.emit)
+	else:
+		var units := Breakdown.army_units(state, a.id)
+		b.tooltip_text = TooltipText.from_breakdown(units) + "\n\nClick to select this army."
+		CodexLink.attach(b, TooltipText.codex_for("army_units", units), codex_requested.emit)
 	b.pressed.connect(func(): army_pressed.emit(a.id))
 	return b
 

@@ -537,6 +537,12 @@ func _add_army(a: Army) -> void:
 	_link(header, "army_units")
 	header.pressed.connect(select_army.bind(a.id))
 	box.add_child(header)
+	if a.ruler != null:
+		# A ruler's army holds only its ruler (M2): show the ruler's numbers instead of units (RulerPanel).
+		header.tooltip_text = RulerPanel.summary(state, a) + "\n\nClick to select this army."
+		CodexLink.attach(header, "ruler_army", request_codex)
+		RulerPanel.fill(box, state, a, request_codex)
+		return
 
 	var unit_breakdown := Breakdown.army_units(state, a.id)
 	var units := _add_text("Units: %d" % a.units.size(), TooltipText.from_breakdown(unit_breakdown), UiPalette.TEXT_PRIMARY, box)
