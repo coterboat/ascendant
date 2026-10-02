@@ -298,7 +298,8 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 	var side_list := []
 	for fid in fids:
 		side_list.append({"faction": fid, "armies": sides[fid]})
-	var battle := {"kind": kind, "provinces": province_ids, "defender": defender, "sides": side_list}
+	# "state" is read-only context for names and terrain (AutoBattleResolver); resolvers must not change it.
+	var battle := {"kind": kind, "provinces": province_ids, "defender": defender, "sides": side_list, "state": s}
 	var result := resolver.resolve_battle(battle, rng)
 	if not fids.has(result.get("winner", "")):
 		result = StubBattleResolver.new().resolve_battle(battle, rng)
@@ -313,6 +314,8 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 			if fid != winner:
 				destroyed.append(a.id)
 				units_lost += a.units.size() + (1 if a.commander else 0)
+			elif a.units.is_empty() and a.commander == null:
+				destroyed.append(a.id)  # every unit of this winning army fell in the battle
 	var survivors: Array[Army] = []
 	for a in s.armies:
 		if not destroyed.has(a.id):
@@ -320,9 +323,15 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 	s.armies = survivors
 
 	var strengths: Dictionary = result.get("strengths", {})
+	var report: Dictionary = result.get("report", {})
 	var parts := []
 	for fid in fids:
-		parts.append("%s (strength %d)" % [_faction_name(s, fid), strengths.get(fid, 0)])
+		if report.is_empty():
+			parts.append("%s (strength %d)" % [_faction_name(s, fid), strengths.get(fid, 0)])
+		else:
+			for sr in report.sides:
+				if sr.faction == fid:
+					parts.append("%s (%d %s)" % [_faction_name(s, fid), sr.fighters_start, "fighter" if sr.fighters_start == 1 else "fighters"])
 	var where: String
 	var cause: String
 	var codex: String
@@ -351,11 +360,14 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 	var text := "%s %s won: %s. %s lost %d %s (%d %s)." % [where, _faction_name(s, winner), result.get("why", ""),
 		" and ".join(losers), destroyed.size(), "army" if destroyed.size() == 1 else "armies",
 		units_lost, "unit" if units_lost == 1 else "units"]
+	if not report.is_empty():
+		# One line with the result and the "why"; the full report rides along in numbers.report (#7).
+		text = "%s %s" % [where, report.summary]
 
 	events.append(_event("border_battle" if kind == "border" else "battle", "battles", province_ids, fids, army_ids, cause,
 		{"strengths": strengths, "winner": winner, "defender": defender, "tie_break": result.get("tie_break", "none"),
 			"roll": result.get("roll", 0), "armies_destroyed": destroyed.size(), "units_lost": units_lost,
-			"destroyed": destroyed},
+			"destroyed": destroyed, "why": result.get("why", ""), "report": report},
 		text, codex))
 	return winner
 
