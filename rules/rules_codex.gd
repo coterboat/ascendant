@@ -6,6 +6,77 @@ class_name RulesCodex
 ## stand-in and has no entry: players never see its rules.
 
 const ENTRIES := {
+	# --- the basic terms (#8): the map, gold, armies, units and their stats. The map's tooltips link here
+	# (TooltipText.CODEX). The terrain and fort numbers match AutoBattleResolver.TERRAIN and FORT_DEFENSE;
+	# tests/test_codex_terms.gd checks them. Plain text only (no [url] links): tooltips quote these too.
+	"province": {
+		"title": "Province",
+		"text": "The map is made of provinces. Each has a terrain (plains, forest or hills), an income in gold per turn and an owner: a faction, or nobody if it is neutral. Some have a fort, and each faction has a capital. Provinces joined by a road are neighbors, and armies move from a province to a neighbor. A province becomes yours when your armies are the only ones in it after a turn's battles. It stays yours, paying you its income every turn, until someone else captures it.",
+	},
+	"neutral": {
+		"title": "Neutral provinces",
+		"text": "A neutral province belongs to nobody, so its income goes to nobody. At the start every province except the capitals is neutral. On the map it has a slate-grey ring and a shield emblem. There are no neutral armies, so an army that moves into a neutral province captures it without a fight, unless an enemy army arrives there in the same turn.",
+	},
+	"capital": {
+		"title": "Capital",
+		"text": "Each faction starts in its capital, marked with a crown on the map. Your capital is the only place you can recruit, and only while you hold it. Capture the enemy capital to win the game: it is captured like any other province. If both capitals fall in the same turn, the game is a draw.",
+	},
+	"fort": {
+		"title": "Fort",
+		"text": "Some provinces have a fort, drawn as a small tower on the map. An army holding a province with a fort gets +2 defense in battles there, on top of the terrain. Only the defender gets it, never armies that just arrived, and Fangthrowers' Skirmish does not ignore it. A fort does not change income.",
+	},
+	"terrain_plains": {
+		"title": "Plains",
+		"text": "Open flat land. Plains give no bonus in battle to either side, and Knights charge at full strength here. Like all terrain, plains do not change movement or income.",
+	},
+	"terrain_forest": {
+		"title": "Forest",
+		"text": "Dense woodland. An army holding a forest province gets +2 defense in battles there; armies that just arrived get nothing. Knights' charge is weaker in a forest, and Fangthrowers' Skirmish ignores the forest's defense bonus. Terrain does not change movement or income.",
+	},
+	"terrain_hills": {
+		"title": "Hills",
+		"text": "Rugged high ground. An army holding a hills province gets +1 defense and +1 attack in battles there; armies that just arrived get nothing. Fangthrowers' Skirmish ignores the hills' defense bonus, but not their attack bonus. Terrain does not change movement or income.",
+	},
+	"gold": {
+		"title": "Gold",
+		"text": "Your treasury, shown in the top bar with your income per turn. You spend gold to recruit units at your capital, and you earn more at the end of every turn from the provinces you own. Recruits are paid when the turn resolves, from the gold you had before that turn's income. Gold never goes below zero: a recruit you can't afford is cancelled, and the turn report says why.",
+	},
+	"army": {
+		"title": "Army",
+		"text": "A group of units in one province, usually led by a commander. Orders go to whole armies: each can move once per turn to a neighboring province, or hold where it is. Its badge on the map counts its units, not its commander. All your armies in a province fight a battle there together, on one side. New recruits join an army at your capital, or form a new one. An army is destroyed when its side loses a battle (there are no retreats yet), or when every fighter in it has fallen.",
+	},
+	"commander": {
+		"title": "Commander",
+		"text": "The leader of an army: the Knight Captain for the Aurel Crown, the Warchief for the Thornmane Clans. An army has at most one, and it is not counted among the army's units. In battle it fights from the back line, so enemies reach it only after every unit in front of it has fallen. While it stands, its side gets extra morale and the commander's own trait: Inspire or Pack Leader.",
+	},
+	"units": {
+		"title": "Units",
+		"text": "The fighters in an army. The Aurel Crown has Spearmen, Crossbowmen and Knights; the Thornmane Clans have Tuskers, Fangthrowers and War Bears. Every kind of unit has hit points, attack, defense, morale and a recruit cost, plus one trait. Hover a unit's line in the side panel, or a recruit button, to see its numbers. Wounds carry over between battles, and a unit that falls is gone for good.",
+	},
+	"stat_hit_points": {
+		"title": "Hit points",
+		"text": "How much damage a unit can take. Every hit in battle takes some away, and a unit at 0 falls and is gone for good. Units do not heal yet: a wounded unit starts its next battle wounded. A side breaks once it has lost a large enough share of the hit points it started the battle with (see Morale and routs).",
+	},
+	"stat_attack": {
+		"title": "Attack",
+		"text": "How dangerous a unit's strikes are. Each round of a battle every unit attacks once. The further its attack is above the target's defense, the more likely it is to hit, and a higher attack deals more damage with every hit. A defender on hills, Berserk and Pack Leader add attack in battle. Hit chance and damage has the exact numbers.",
+	},
+	"stat_defense": {
+		"title": "Defense",
+		"text": "How hard a unit is to hurt. The further its defense is above the attacker's attack, the less likely an attack is to hit it, and every hit that lands deals less damage. A defender's terrain and fort, and Shield Wall, add defense in battle. Hit chance and damage has the exact numbers.",
+	},
+	"stat_morale": {
+		"title": "Morale",
+		"text": "Courage: how much a side can lose before it breaks and flees. In battle a side's morale is the average morale of its units, raised while its commander stands (more with Inspire) and lowered by enemy War Bears' Fury. The higher it is, the larger the share of its starting hit points a side can lose before it routs, and a side that routs loses the battle. Morale and routs has the exact numbers.",
+	},
+	"stat_cost": {
+		"title": "Cost",
+		"text": "The gold it takes to recruit one unit at your capital; each recruit button shows it. Recruits are paid when the turn resolves, in the order you gave them, from the gold you had before that turn's income. One you can no longer afford by then is cancelled and costs nothing. Cost plays no part in battle.",
+	},
+	"unit_traits": {
+		"title": "Unit traits",
+		"text": "Every kind of unit and every commander has one trait: a special rule for how it fights, such as Shield Wall or Charge. Traits only work in battle. Each trait has its own codex entry, and the battle report points out when one made a difference.",
+	},
 	"phase_order": {
 		"title": "How a turn resolves",
 		"text": "Everyone gives orders first. Then the whole turn resolves at once, always in this order: 1. orders are checked, 2. movement, 3. battles, 4. capture, 5. recruitment, 6. income. The same orders and seed always give the same result.",

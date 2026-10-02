@@ -54,9 +54,13 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_top")
 
 [node name="Row" type="HBoxContainer" parent="Layout/TopBar"]
 layout_mode = 2
-theme_override_constants/separation = 32
+theme_override_constants/separation = 20
 
-[node name="FactionLabel" type="Label" parent="Layout/TopBar/Row"]
+[node name="FactionGroup" type="HBoxContainer" parent="Layout/TopBar/Row"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="FactionLabel" type="Label" parent="Layout/TopBar/Row/FactionGroup"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 1
@@ -82,11 +86,13 @@ text = "Turn"
 [node name="Hint" type="Label" parent="Layout/TopBar/Row"]
 layout_mode = 2
 size_flags_horizontal = 3
+mouse_filter = 1
 theme_override_colors/font_color = Color(0.741176, 0.713725, 0.811765, 1)
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 14
 text = "Map preview: click a province for details, hover any number to see where it comes from."
-horizontal_alignment = 2
-text_overrun_behavior = 3
+vertical_alignment = 1
+autowrap_mode = 3
+max_lines_visible = 2
 
 [node name="BackButton" type="Button" parent="Layout/TopBar/Row"]
 unique_name_in_owner = true

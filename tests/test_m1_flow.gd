@@ -149,10 +149,10 @@ func test_a_whole_game_from_the_title_screen_to_the_victory_screen() -> void:
 
 	# The codex from a right-click on a number: the gold in the top bar.
 	game.close_turn_report()
-	assert_true(game.map.gold_label.tooltip_text.contains("Codex: Income (right-click or F1 to open)"), game.map.gold_label.tooltip_text)
+	assert_true(game.map.gold_label.tooltip_text.contains("Codex: Gold (right-click or F1 to open)"), game.map.gold_label.tooltip_text)
 	game.map.gold_label.gui_input.emit(CodexLink.right_click())
 	assert_true(game.codex.visible, "right-clicking the gold opens the codex")
-	assert_eq(game.codex.current_key(), "income")
+	assert_eq(game.codex.current_key(), "gold")
 	game.codex.close()
 
 	# The battle's winner marches on the enemy capital; the loser has no army left to stop it.
@@ -207,6 +207,9 @@ func test_a_whole_game_from_the_title_screen_to_the_victory_screen() -> void:
 	assert_true(title != null, "New game switches to the title scene")
 	if title:
 		assert_true(title.new_game_screen != null and title.new_game_screen.visible, "with the new game screen open")
+		if title.new_game_screen:
+			assert_eq(title.new_game_screen.config().players, SWAPPED, "set up as a rematch: the same seats")
+			assert_ne(title.new_game_screen.config().seed, SEED, "with a new seed")
 		title.free()
 	game.free()
 

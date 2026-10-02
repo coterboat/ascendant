@@ -154,6 +154,91 @@ func test_no_listed_entry_describes_placeholder_battles() -> void:
 	_free(panel)
 
 
+## Esc closes the codex in one press while the search box has focus. The panel takes Esc in _input,
+## which the viewport runs before it hands a key to the focused control, so the search box can't use
+## the first Esc to stop editing. No host needs Esc code of its own.
+func test_esc_closes_the_codex_from_the_search_box() -> void:
+	var panel = _make_panel()
+	var hits := [0]
+	panel.closed.connect(func(): hits[0] += 1)
+	panel.open("army")
+	var search: LineEdit = panel.get_node("%Search")
+	search.text = "cap"  # the player is typing in the search box
+	search.text_changed.emit(search.text)
+	assert_true(panel.visible)
+	panel._input(_esc())
+	assert_false(panel.visible, "one Esc from the search box closes the codex")
+	assert_eq(hits[0], 1, "and tells the host, which shows what was under it")
+	assert_false(panel.handle_cancel(_esc()), "Esc on a closed codex does nothing")
+	var methods: Array = panel.get_script().get_script_method_list().map(func(m): return String(m.name))
+	assert_true(methods.has("_input"), "Esc is taken in _input, ahead of the focused search box")
+	assert_false(methods.has("_unhandled_input"), "not in _unhandled_input, which only sees what the search box lets through")
+	# Other keys and a released Esc are left alone.
+	panel.open()
+	var released := _esc()
+	released.pressed = false
+	assert_false(panel.handle_cancel(released))
+	var key := InputEventKey.new()
+	key.keycode = KEY_A
+	key.pressed = true
+	panel._input(key)
+	assert_true(panel.visible, "typing keeps the codex open")
+	_free(panel)
+
+
+## With another overlay open above it, Esc belongs to that overlay; once it closes, Esc closes the codex.
+func test_esc_skips_the_codex_when_something_is_above_it() -> void:
+	var panel = _make_panel()
+	panel.open()
+	var above := Control.new()
+	panel.get_parent().add_child(above)
+	assert_false(panel.is_on_top())
+	assert_false(panel.handle_cancel(_esc()))
+	assert_true(panel.visible)
+	above.visible = false
+	assert_true(panel.is_on_top())
+	assert_true(panel.handle_cancel(_esc()))
+	assert_false(panel.visible)
+	above.get_parent().remove_child(above)
+	above.free()
+	_free(panel)
+
+
+## The hosts rely on the panel: on the title screen and in a game (codex over a turn report), one Esc
+## closes the codex and nothing else; in the game the next Esc closes the report.
+func test_esc_in_the_title_and_game_screens() -> void:
+	var title := load("res://ui/title_screen.tscn").instantiate() as TitleScreen
+	title._ready()
+	title.open_codex("capital")
+	title.codex._input(_esc())
+	assert_false(title.codex.visible, "Esc closes the codex over the title")
+	assert_true(title.new_game_screen == null or not title.new_game_screen.visible, "and opens nothing else")
+	title.free()
+
+	var game := load("res://ui/game_screen.tscn").instantiate() as GameScreen
+	game.start_game({"players": ["kingdom", "beasts"], "seed": 3})
+	game.end_turn()
+	game.handoff.ready_button.pressed.emit()
+	game.end_turn()
+	game.handoff.ready_button.pressed.emit()
+	assert_true(game.report_overlay.visible, "the turn report is open")
+	game.report_panel.codex_buttons()[0].pressed.emit()
+	assert_true(game.codex.visible and game.codex.is_on_top(), "the codex opens above the report")
+	game.codex._input(_esc())
+	assert_false(game.codex.visible, "Esc #1 closes the codex")
+	assert_true(game.report_overlay.visible, "and leaves the report")
+	game._unhandled_input(_esc())
+	assert_false(game.report_overlay.visible, "Esc #2 closes the report")
+	game.free()
+
+
+func _esc() -> InputEventAction:
+	var esc := InputEventAction.new()
+	esc.action = "ui_cancel"
+	esc.pressed = true
+	return esc
+
+
 func test_close_button_emits_closed() -> void:
 	var panel = _make_panel()
 	var hits := [0]

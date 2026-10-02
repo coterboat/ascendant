@@ -46,14 +46,17 @@ func _bind() -> void:
 		new_game_button.grab_focus.call_deferred()
 
 
-## Shows the new game screen over the title.
-func open_new_game() -> void:
+## Shows the new game screen over the title. `last_game` ({"players", "seed"} of the game just played,
+## from the victory screen's New game) pre-fills it for a rematch: same seating, new seed.
+func open_new_game(last_game: Dictionary = {}) -> void:
 	_bind()
 	if new_game_screen == null:
 		new_game_screen = NewGameScreen.new()
 		new_game_screen.start_requested.connect(start_game)
 		new_game_screen.back_requested.connect(close_new_game)
 		add_child(new_game_screen)
+	if not last_game.is_empty():
+		new_game_screen.prefill(last_game)
 	_raise(new_game_screen)
 	if new_game_screen.is_inside_tree():
 		new_game_screen.start_button.grab_focus.call_deferred()
@@ -93,13 +96,6 @@ func open_codex(key: String = "") -> void:
 		add_child(codex)
 	_raise(codex)
 	codex.open(key)
-
-
-## Esc closes the codex in one press (its search box would otherwise take the first Esc).
-func _input(event: InputEvent) -> void:
-	if codex != null and codex.visible and event.is_action_pressed("ui_cancel"):
-		get_viewport().set_input_as_handled()
-		codex.close()
 
 
 ## Opens the map screen on a fresh default game (a developer preview, no turns).
