@@ -98,7 +98,66 @@ Budget: 50 Ludo credits for the milestone (4 portraits plus re-rolls).
 
 ---
 
+## milestone 3: battles worth watching
+Status: **PROPOSED by the director (Claude session, 2026-10-02). Not yet approved by Alex; nothing will be built until Alex has played M1/M2 and approves.**
+
+Full spec, with every number, schema and acceptance criterion: `design/M3_BATTLES.md`. Its §12 lists the director's calls to review first.
+
+### goal
+Any battle from the turn report can be watched as an animated playback of exactly what the rules decided. While it plays, you can always tell who is winning and why. The battle rules don't change. This milestone proves pillar 3: battles are worth watching, and watching makes the report's "why" visible.
+
+### what's in
+- **A battle event log:**
+  - the resolver records every attack (attacker, target, rolls against chances, damage and its parts), wound, death, morale check, rout, and every trait, mandate and ruler effect, round by round
+  - it is deterministic and verified against the seed
+  - it is kept with the last turn's report and regenerated from the game record when needed
+- **Playback that never changes the outcome:** a pure function of the log, tested at the rules, UI and code level.
+- **A battle screen:**
+  - ranks as the rules have them (front, second, back), with the defender on the right
+  - a terrain backdrop and the fort
+  - strength bars with a break notch, a "why" caption after every round, and a result card
+  - battles of up to 280 fighters (the largest AI battles measured in M2 games), every fighter its own figure
+- **Placeholders first:** portrait cards in player colour plus emblem. Sprite animation (idle, move, attack, hit, death), projectiles for Volley, Skirmish and the Ever-Regent, impacts, dust, rule-bound screen shake and aura markers swap in as the art lands.
+- **Controls:**
+  - 1×, 2× and 4× speed, pause and skip to the end
+  - jumps to the first to fall, the charge, a ruler's fall, the turning point and the rout
+  - a round scrubber
+  - hover any fighter for its target, hit chance and damage breakdown, from the same numbers the rules used
+- **Entry points:** Watch on every battle row and in the battle report viewer, and "Watch your battles (N)" at the top of the turn report. Auto-watch at turn start is a setting, off by default. The AI's battles are watchable.
+- **Explanations for all of it:**
+  - a legend for every visual
+  - a "why did that happen" panel synced with the playback
+  - new codex entries
+  - colour plus shape, a flash limiter and a reduced-motion setting
+- **Performance budgets** for integrated graphics in the GL Compatibility renderer.
+- **An art batch:** 12 animated figures (8 units and 4 rulers), 7 effects, 3 horizon bands and a fort.
+
+### what's out (later milestones)
+Spells and magic effects (M5), direct control and pre-battle formation orders, 3D and camera control, replay sharing, watching earlier turns' battles in the game, sound, battles with more than two sides, new rules or balance changes, and save/load.
+
+### what to play and what to feel for (at the end)
+Play a game against the AI with rulers, and watch every battle for the first few turns, then only the ones you care about. Feel for four things:
+- From the bars alone, you can tell who is winning at any moment.
+- After a battle, you can say why it went that way from what you watched, and the report agrees.
+- Hovering a surprising hit explains it.
+- You choose to watch the next battle because you want to, not because you have to.
+
+### tickets (github issues to be cut; M3-n are placeholders)
+After M3-1, tickets 2 and 3 run in parallel; after 3, tickets 5 and 6 run in parallel, and 4 joins once 2 is in. M3-8 can start as soon as the scope is approved.
+1. M3-1 `code` `hard` Battle event log: recording in the resolver, `numbers.log`, `BattleLog` (validate, verify_draws, regenerate), `BattleTimeline`, the dump tool and fixtures, outcome-unchanged and determinism tests. (needs M2)
+2. M3-2 `code` Key moments, round captions and hover explanations, and the new codex entries. (needs 1)
+3. M3-3 `code` `hard` Battle screen with placeholder visuals: layout, backdrop, beats at 1×/2×/4×, strength bars, result card, "playback never changes the outcome" tests. (needs 1)
+4. M3-4 `code` Controls, scrubber, key-moment jumps, hover, the why panel and the legend. (needs 2, 3)
+5. M3-5 `code` Entry points: Watch buttons, "Watch your battles", auto-watch and the settings file. (needs 3)
+6. M3-6 `code` Sprite animation, projectiles, impacts, auras, screen shake, the flash limiter and reduced motion, with per-figure fallback. (needs 3; art from 9)
+7. M3-7 `code` Big battles and performance: massed layout, pools, preload, the `--perf` report against the budgets. (needs 4, 5, 6)
+8. M3-8 `design` Art lead: M3 manifest rows and the bible's backdrop and prop classes. (no code dependencies)
+9. M3-9 `asset` Asset builder: M3 batch from the manifest, within the Ludo budget. (needs 8)
+
+Budget: 500 Ludo credits for the milestone (321 planned, 482 with the re-roll reserve).
+
+---
+
 ## later milestones (outline, not approved)
-- **M3: battles worth watching.** Animated sprite playback of autobattles, spell and impact effects, and playback controls.
 - **M4: paths of ascension.** Research paths, a first lock-in fork, and one transformation per faction.
 - **M5: magic.** Magic schools, rituals, battle spells, and fog of war.
