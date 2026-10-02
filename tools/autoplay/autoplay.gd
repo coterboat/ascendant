@@ -7,7 +7,7 @@ extends SceneTree
 ## Options (all optional):
 ##   --games N        games to play (default 50), on seeds S, S+1, ... S+N-1
 ##   --seed S         first game seed (default 1)
-##   --p1 / --p2      policy of seat 1 / seat 2: greedy, random or turtle (default greedy)
+##   --p1 / --p2      policy of seat 1 / seat 2: greedy, random, turtle, ai or ai_easy (default greedy)
 ##   --seat1 FACTION  faction in seat 1: kingdom (Aurel Crown, default) or beasts (Thornmane Clans);
 ##                    seat 2 gets the other one
 ##   --turn-cap T     turns before a game counts as unfinished (default 60)
