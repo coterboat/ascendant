@@ -1189,7 +1189,7 @@ func _checked_recruits() -> Array:
 	if not home.names.is_empty():
 		_note("Recruiting at %s for %d gold: %s." % [_province_name(_me.capital), home.spent, _tally_text(home)])
 	if not away.names.is_empty():
-		var dest: String = _moves.get(_ruler.id, _ruler.location) if _ruler != null else ""
+		var dest: String = _ruler.location if _ruler != null else ""  # they gather where the ruler starts the turn
 		_note_top("Recruiting with %s for %d gold: %s, joining our armies at %s at the end of the turn (Warband Muster)." % [
 			RulerRules.current_name(_state, _fid), away.spent, _tally_text(away), _province_name(dest)])
 	return out
@@ -1205,7 +1205,7 @@ static func _tally_text(tally: Dictionary) -> String:
 
 ## How many of this turn's recruits go with our ruler (Warband Muster, §1.4): up to its limit while it
 ## stands in our own land, unless it is away from a capital that needs the defenders this turn. The
-## recruits appear wherever it ends the turn; at the capital they are the same as capital recruits.
+## recruits gather where it starts the turn; at the capital they are the same as capital recruits.
 func _field_recruit_count() -> int:
 	if _ruler == null:
 		return 0

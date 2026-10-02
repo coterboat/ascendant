@@ -494,7 +494,7 @@ func test_warband_muster_recruits_with_the_fang_up_to_its_rank() -> void:
 	assert_true(commander.contains("Commanders come only from your capital"), commander)
 	_assert_no_raw_ids(commander, "commander reason")
 	assert_eq(c.ruler_recruit_info().left, 0)
-	assert_eq(c.order_texts()[0], "Recruit one Tuskers with the Ninth Fang for 11 gold, leaving 34 gold. It joins the Ninth Fang where it ends this turn (now Ebonpeak), if you own that province then; if not, it is cancelled and costs nothing.")
+	assert_eq(c.order_texts()[0], "Recruit one Tuskers with the Ninth Fang for 11 gold, leaving 34 gold. It gathers at Ebonpeak, where the Ninth Fang starts this turn, and joins your armies there at the end of the turn, if you still own Ebonpeak then and the Ninth Fang stands; if not, it is cancelled and costs nothing.")
 	assert_eq(c.order_codex_kind(0), "field_recruit")
 	var g := c.gold_after_recruits()
 	assert_eq(g.gold_after, 45 - 11 - 8)
@@ -505,7 +505,7 @@ func test_warband_muster_recruits_with_the_fang_up_to_its_rank() -> void:
 	var after: GameState = result.new_state
 	var recruited := _of_type(result.events, "recruited")
 	assert_eq(recruited.size(), 2)
-	assert_eq(recruited[0].text, "Thornmane Clans recruited Tuskers with the Ninth Fang at Ebonpeak for 11 gold (34 gold left). They form a new army: the Thornmane Clans army at Ebonpeak (1 unit, no commander).")
+	assert_eq(recruited[0].text, "Thornmane Clans recruited Tuskers with the Ninth Fang at Ebonpeak, where it started the turn, for 11 gold (34 gold left). They form a new army: the Thornmane Clans army at Ebonpeak (1 unit, no commander).")
 	assert_eq(recruited[0].codex, "field_recruit")
 	assert_eq(recruited[1].provinces, ["ebonpeak"])
 	assert_eq(recruited[1].numbers.gold_after, g.gold_after, "gold after recruits equals the forecast")
@@ -520,6 +520,51 @@ func test_warband_muster_recruits_with_the_fang_up_to_its_rank() -> void:
 	rec = JSON.parse_string(JSON.stringify(rec))
 	assert_eq(rec.history[0].orders.beasts[0].at, "ruler")
 	assert_eq(GameSession.replay(rec, StubBattleResolver.new()).state.to_dict(), after.to_dict())
+
+
+func test_recruits_with_the_fang_gather_where_it_started_the_turn() -> void:
+	# Follow-up to #36: recruits made with the Fang gather where it stands at the start of the turn and
+	# join the armies there at the end of it, even when the Fang marches on, so they never reinforce the
+	# army it moves up with in the same turn. The forecast names that province and equals the result.
+	var s := _fang_state()
+	_own(s, "beasts", ["blackwood"])
+	var fang := RulerRules.ruler_army(s, "beasts")
+	var c := OrdersController.new(s, "beasts")
+	assert_eq(c.queue_recruit_with_ruler("tuskers"), "")
+	assert_eq(c.queue_move(fang.id, "blackwood"), "")
+	var info := c.ruler_recruit_info()
+	assert_true(String(info.text).contains("They gather at Ebonpeak, where the Ninth Fang starts this turn, and join your armies there at the end of the turn, even if the Ninth Fang marches on"), info.text)
+	_assert_no_raw_ids(info.text, "the recruit panel's Warband Muster text")
+	var g := c.gold_after_recruits()
+	assert_eq(g.results[0].province, "ebonpeak", "the forecast: where the Fang starts the turn")
+	var result := TurnResolver.resolve(s, {"beasts": c.orders()}, 53, StubBattleResolver.new())
+	var after: GameState = result.new_state
+	assert_eq(RulerRules.ruler_army(after, "beasts").location, "blackwood", "the Fang marched on")
+	var recruited := _of_type(result.events, "recruited")
+	assert_eq(recruited.size(), 1)
+	assert_eq(recruited[0].provinces, [g.results[0].province], "the result: where the forecast said")
+	var band := after.find_army(recruited[0].armies[0])
+	assert_eq([band.location, band.units.size(), band.ruler], ["ebonpeak", 1, null], "a new army at Ebonpeak, not with the Fang")
+	assert_eq(after.find_faction("beasts").gold, g.gold_next_turn, "gold as forecast")
+	for key in ["ability_warband_muster", "field_recruit"]:
+		assert_true(RulesCodex.text(key).contains("gather where the Fang starts the turn"), "%s explains where they gather" % key)
+	assert_true(String(RulerData.ABILITIES.warband_muster.effect).contains("gather where {ruler} starts the turn"))
+	# Lost by the end of the turn: an enemy army takes Ebonpeak behind the Fang, so the recruit is cancelled
+	# at no cost.
+	var s2 := _fang_state()
+	var host := _add_army(s2, "kingdom", "blackwood", ["knights"])
+	_own(s2, "kingdom", ["blackwood"])
+	var orders := {"beasts": [RecruitOrder.new("tuskers", RecruitOrder.AT_RULER), MoveOrder.new(RulerRules.ruler_army(s2, "beasts").id, "fangridge")],
+		"kingdom": [MoveOrder.new(host.id, "ebonpeak")]}
+	var r2 := TurnResolver.resolve(s2, orders, 54, StubBattleResolver.new())
+	assert_eq(r2.new_state.find_province("ebonpeak").owner, "kingdom", "the Crown took Ebonpeak")
+	var cancelled := _of_type(r2.events, "order_rejected").filter(func(e): return e.phase == "recruitment")
+	assert_eq(cancelled.size(), 1)
+	assert_true(String(cancelled[0].reason).contains("gather where it starts the turn, at Ebonpeak, which is not yours"), cancelled[0].reason)
+	assert_true(String(cancelled[0].reason).contains("no gold is spent"), cancelled[0].reason)
+	assert_eq(_of_type(r2.events, "recruited"), [])
+	var income: Dictionary = _of_type(r2.events, "income").filter(func(e): return e.factions == ["beasts"])[0]
+	assert_eq(income.numbers.gold_before, 45, "it cost nothing")
 
 
 func test_recruits_with_the_fang_are_cancelled_at_no_cost_when_it_falls() -> void:
@@ -572,7 +617,7 @@ func test_recruit_panel_has_a_section_for_the_fang() -> void:
 	assert_eq(heading.text, "Recruit with the Ninth Fang")
 	assert_true(screen.details.find_child("Recruit_tuskers", true, false) == null, "no capital buttons away from the capital")
 	var left: Label = screen.details.find_child("RulerRecruitLeft", true, false)
-	assert_eq(left.text, "2 of 2 left this turn (Warband Muster)")
+	assert_eq(left.text, "2 of 2 left this turn (Warband Muster). They join your armies here at the end of the turn, even if the Ninth Fang moves on.")
 	assert_eq(CodexLink.key_at(left), "field_recruit")
 	var button: Button = screen.details.find_child("RecruitWithRuler_tuskers", true, false)
 	assert_eq(button.text, "Recruit Tuskers with the Ninth Fang (11 gold)")
@@ -586,7 +631,7 @@ func test_recruit_panel_has_a_section_for_the_fang() -> void:
 	button = screen.details.find_child("RecruitWithRuler_tuskers", true, false)
 	assert_true(button.disabled, "the limit is reached")
 	left = screen.details.find_child("RulerRecruitLeft", true, false)
-	assert_eq(left.text, "0 of 2 left this turn (Warband Muster)")
+	assert_true(left.text.begins_with("0 of 2 left this turn (Warband Muster)."), left.text)
 	screen.free()
 	# With the Fang at the capital, both sections show.
 	var home := _game({"beasts": "blood_of_the_fang"})

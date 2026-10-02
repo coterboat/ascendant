@@ -672,7 +672,8 @@ func _add_ruler_recruit_section() -> void:
 		return
 	var heading := _add_heading("Recruit with %s" % info.ruler, 18)
 	heading.name = "RulerRecruitHeading"
-	var left := _add_text("%d of %d left this turn (Warband Muster)" % [info.left, info.limit],
+	var left := _add_text("%d of %d left this turn (Warband Muster). They join your armies here at the end of the turn, even if %s moves on." % [
+		info.left, info.limit, info.ruler],
 		TooltipText.plain("Recruit with %s" % info.ruler, info.text), UiPalette.TEXT_SECONDARY)
 	left.name = "RulerRecruitLeft"
 	_link(left, "field_recruit")

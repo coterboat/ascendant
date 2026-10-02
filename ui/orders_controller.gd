@@ -253,9 +253,9 @@ func ruler_recruit_info() -> Dictionary:
 	var name := RulerRules.current_name(view, faction_id)
 	var f := view.find_faction(faction_id)
 	var where := view.find_province(army.location)
-	var text := "%s can recruit %d regular %s per turn (Warband Muster at ability rank %d), at the usual prices. They appear where %s ends this turn (now %s), if you own that province then; if not, they are cancelled and cost nothing. Commanders come only from your capital." % [
-		RulerRules._cap(name), limit, "unit" if limit == 1 else "units", RulerRules.ability_rank(f.kept_power), name,
-		where.name if where else "off the map"]
+	var text := "%s can recruit %d regular %s per turn (Warband Muster at ability rank %d), at the usual prices. They gather at %s, where %s starts this turn, and join your armies there at the end of the turn, even if %s marches on; if you no longer own %s then, or %s has fallen, they are cancelled and cost nothing. Commanders come only from your capital." % [
+		RulerRules._cap(name), limit, "unit" if limit == 1 else "units", RulerRules.ability_rank(f.kept_power),
+		where.name if where else "off the map", name, name, where.name if where else "it", name]
 	return {"ok": true, "army_id": army.id, "province": army.location, "ruler": name, "limit": limit, "used": used,
 		"left": maxi(0, limit - used), "text": text}
 
@@ -302,8 +302,8 @@ func order_text(index: int) -> String:
 		return "Not recruited: %s" % r.reason
 	if r.at == RecruitOrder.AT_RULER:
 		var name := RulerRules.current_name(state, faction_id)
-		return "Recruit one %s with %s for %d gold, leaving %d gold. It joins %s where it ends this turn (now %s), if you own that province then; if not, it is cancelled and costs nothing." % [
-			_unit_name(r.unit_type), name, r.cost, r.gold_after, name, _province_name(r.province)]
+		return "Recruit one %s with %s for %d gold, leaving %d gold. It gathers at %s, where %s starts this turn, and joins your armies there at the end of the turn, if you still own %s then and %s stands; if not, it is cancelled and costs nothing." % [
+			_unit_name(r.unit_type), name, r.cost, r.gold_after, _province_name(r.province), name, _province_name(r.province), name]
 	return "Recruit one %s at %s for %d gold, leaving %d gold." % [_unit_name(r.unit_type), _capital_name(), r.cost, r.gold_after]
 
 
