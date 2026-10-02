@@ -24,8 +24,9 @@ const Policies := preload("res://tools/autoplay/policies.gd")
 const TURN_CAP := 60
 ## Every event type the M1 turn report may hold. Anything else is reported as an error.
 const EVENT_TYPES := ["order_rejected", "army_moved", "battle", "border_battle", "captured", "recruited", "income", "game_over"]
-## Event types a game with rulers adds (M2-3, #31): ruler deaths, the rulers phase's healing, successors.
-const RULER_EVENT_TYPES := ["ruler_died", "mending", "ruler_healed", "ruler_arrived", "succession_waiting"]
+## Event types a game with rulers adds: ruler deaths, the rulers phase's healing, successors (M2-3, #31),
+## and Sworn Vassals in the capture phase (M2-4, #32).
+const RULER_EVENT_TYPES := ["ruler_died", "mending", "ruler_healed", "ruler_arrived", "succession_waiting", "vassal_joined", "vassal_contested"]
 const BATTLE_TYPES := ["battle", "border_battle"]
 ## AutoBattleResolver report "end" values, in display order.
 const BATTLE_ENDS := ["rout", "destroyed", "round_cap", "mutual"]
