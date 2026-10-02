@@ -18,7 +18,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.117647, 0.105882, 0.0941176, 1)
+color = Color(0.0784314, 0.0745098, 0.121569, 1)
 
 [node name="Center" type="CenterContainer" parent="."]
 layout_mode = 1
@@ -35,36 +35,58 @@ alignment = 1
 
 [node name="Title" type="Label" parent="Center/Box"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.788235, 0.643137, 0.360784, 1)
+theme_override_colors/font_color = Color(0.901961, 0.721569, 0.305882, 1)
 theme_override_font_sizes/font_size = 72
 text = "ASCENDANT"
 horizontal_alignment = 1
 
 [node name="Subtitle" type="Label" parent="Center/Box"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.929412, 0.901961, 0.839216, 1)
+theme_override_colors/font_color = Color(0.945098, 0.92549, 0.878431, 1)
 theme_override_font_sizes/font_size = 20
 text = "A strategy game where every rule is visible."
 horizontal_alignment = 1
 
-[node name="Placeholder" type="Label" parent="Center/Box"]
+[node name="Gap" type="Control" parent="Center/Box"]
+custom_minimum_size = Vector2(0, 12)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.701961, 0.662745, 0.576471, 1)
-theme_override_font_sizes/font_size = 14
-text = "Placeholder title screen. New game arrives in a later milestone-1 ticket."
-horizontal_alignment = 1
 
-[node name="QuickStartButton" type="Button" parent="Center/Box"]
-custom_minimum_size = Vector2(260, 56)
+[node name="NewGameButton" type="Button" parent="Center/Box"]
+custom_minimum_size = Vector2(300, 64)
 layout_mode = 2
 size_flags_horizontal = 4
-theme_override_font_sizes/font_size = 26
+theme_override_colors/font_color = Color(0.901961, 0.721569, 0.305882, 1)
+theme_override_font_sizes/font_size = 30
+tooltip_text = "Set up a hotseat game on this computer: choose which player plays which faction, and a seed."
+text = "New game"
+
+[node name="QuickStartButton" type="Button" parent="Center/Box"]
+custom_minimum_size = Vector2(300, 52)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 24
 tooltip_text = "Start a hotseat game on this computer right away, with every faction in play and a random seed. Players take turns at the same screen; each player's orders stay hidden from the others."
 text = "Quick start"
+
+[node name="CodexButton" type="Button" parent="Center/Box"]
+custom_minimum_size = Vector2(300, 52)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 24
+tooltip_text = "Every rule of the game in plain language, searchable. You can also open it from inside a game."
+text = "Codex"
+
+[node name="DevGap" type="Control" parent="Center/Box"]
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
 
 [node name="MapPreviewButton" type="Button" parent="Center/Box"]
 layout_mode = 2
 size_flags_horizontal = 4
-theme_override_font_sizes/font_size = 20
-tooltip_text = "Open the map screen with a fresh milestone-1 game, to look around. Nothing is saved."
-text = "Map preview"
+focus_mode = 0
+theme_override_colors/font_color = Color(0.494118, 0.470588, 0.588235, 1)
+theme_override_colors/font_hover_color = Color(0.741176, 0.713725, 0.811765, 1)
+theme_override_font_sizes/font_size = 15
+tooltip_text = "Developer preview: the map screen on a fresh game, to look around. No turns, nothing is saved. Use New game to play."
+text = "Map preview (dev)"
+flat = true

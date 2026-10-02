@@ -1,11 +1,14 @@
 class_name ProvinceRegion
 extends Control
 ## One province on the map: a placeholder region filled with its terrain colour, ringed in its
-## owner's colour, with markers for capital and fort, its name, its income and its armies.
+## owner's seat colour (UiPalette: colours follow the seat), with markers for capital and fort, its
+## name, its income and its armies.
 ## Reads the GameState only. Clicking it emits `pressed`; clicking an army badge emits `army_pressed`.
+## The income and army badges link to their codex entries: right-clicking one emits codex_requested.
 
 signal pressed(province_id: String)
 signal army_pressed(army_id: String)
+signal codex_requested(key: String)
 
 var province_id := ""
 var selected := false:
@@ -13,9 +16,9 @@ var selected := false:
 		selected = value
 		queue_redraw()
 
+var ring_color := Color.WHITE  # the owner's seat colour (slate when unowned)
 var _polygon := PackedVector2Array()
 var _fill := Color.WHITE
-var _ring := Color.WHITE
 var _is_capital := false
 var _has_fort := false
 var _east := false
@@ -26,7 +29,9 @@ var army_box: HBoxContainer
 
 
 ## Builds the region for `province_id` from `state`. `center` is in the map canvas' design space.
-func setup(state: GameState, p: Province, center: Vector2) -> void:
+## `seats` is the seat order (faction ids, seat 1 first) that picks the player colours; empty means
+## the state's faction order (see UiPalette.owner_color).
+func setup(state: GameState, p: Province, center: Vector2, seats: Array = []) -> void:
 	province_id = p.id
 	name = "Region_%s" % p.id
 	var r := MapLayout.radius_of(p)
@@ -35,7 +40,7 @@ func setup(state: GameState, p: Province, center: Vector2) -> void:
 	custom_minimum_size = size
 	_polygon = MapLayout.region_polygon(p.id, Vector2(r, r), r)
 	_fill = UiPalette.terrain_color(p.terrain)
-	_ring = UiPalette.owner_color(state, p.owner)
+	ring_color = UiPalette.owner_color(state, p.owner, seats)
 	_is_capital = p.is_capital
 	_has_fort = p.has_fort
 	_east = MapLayout.is_east(p.id)
@@ -61,7 +66,9 @@ func setup(state: GameState, p: Province, center: Vector2) -> void:
 	income_label = _label("%d gold" % p.income, 14, UiPalette.GILT)
 	income_label.name = "IncomeLabel"
 	income_label.mouse_filter = Control.MOUSE_FILTER_PASS
-	income_label.tooltip_text = TooltipText.from_breakdown(Breakdown.province_income(state, p.id))
+	var income := Breakdown.province_income(state, p.id)
+	income_label.tooltip_text = TooltipText.from_breakdown(income)
+	CodexLink.attach(income_label, TooltipText.codex_for("province_income", income), codex_requested.emit)
 	box.add_child(income_label)
 
 	army_box = HBoxContainer.new()
@@ -71,19 +78,19 @@ func setup(state: GameState, p: Province, center: Vector2) -> void:
 	box.add_child(army_box)
 	for a in state.armies:
 		if a.location == p.id:
-			army_box.add_child(_army_badge(state, a))
+			army_box.add_child(_army_badge(state, a, seats))
 	queue_redraw()
 
 
-func _army_badge(state: GameState, a: Army) -> Button:
+func _army_badge(state: GameState, a: Army, seats: Array) -> Button:
 	var b := Button.new()
 	b.name = "Army_%s" % a.id.validate_node_name()
-	b.text = "%d units" % a.units.size()
+	b.text = TooltipText.count(a.units.size(), "unit")
 	b.flat = false
 	b.focus_mode = Control.FOCUS_NONE
 	b.add_theme_font_size_override("font_size", 13)
 	var style := StyleBoxFlat.new()
-	style.bg_color = UiPalette.owner_color(state, a.owner)
+	style.bg_color = UiPalette.owner_color(state, a.owner, seats)
 	style.border_color = UiPalette.KEYLINE_INK
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(6)
@@ -93,7 +100,9 @@ func _army_badge(state: GameState, a: Army) -> Button:
 		b.add_theme_stylebox_override(s, style)
 	b.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
 	b.add_theme_color_override("font_hover_color", UiPalette.TEXT_PRIMARY)
-	b.tooltip_text = TooltipText.from_breakdown(Breakdown.army_units(state, a.id))
+	var units := Breakdown.army_units(state, a.id)
+	b.tooltip_text = TooltipText.from_breakdown(units) + "\n\nClick to select this army."
+	CodexLink.attach(b, TooltipText.codex_for("army_units", units), codex_requested.emit)
 	b.pressed.connect(func(): army_pressed.emit(a.id))
 	return b
 
@@ -127,7 +136,7 @@ func _draw() -> void:
 	closed.append(_polygon[0])
 	# Owner ring with the bible's keylines: ink inside, halo outside, so the colour reads on any terrain.
 	draw_polyline(closed, UiPalette.KEYLINE_HALO, 9.0, true)
-	draw_polyline(closed, _ring, 6.0, true)
+	draw_polyline(closed, ring_color, 6.0, true)
 	draw_polyline(closed, UiPalette.KEYLINE_INK, 1.5, true)
 	if selected:
 		draw_polyline(closed, UiPalette.SELECTION, 3.0, true)

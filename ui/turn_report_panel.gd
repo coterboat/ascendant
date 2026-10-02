@@ -21,6 +21,7 @@ const PHASE_TITLES := {
 	"victory": "Victory",
 }
 const GAME_OVER_TYPE := "game_over"
+const BACKGROUND := Color(0.1, 0.11, 0.14, 1.0)
 
 var header_label: Label
 var empty_label: Label
@@ -182,7 +183,7 @@ func _clear_rows() -> void:
 
 func _build() -> void:
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.1, 0.11, 0.14, 0.97)
+	style.bg_color = BACKGROUND  # opaque: nothing under the report (map, victory screen) shows through its text
 	style.set_content_margin_all(24)
 	add_theme_stylebox_override("panel", style)
 
