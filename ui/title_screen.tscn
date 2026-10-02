@@ -54,6 +54,14 @@ theme_override_font_sizes/font_size = 14
 text = "Placeholder title screen. New game arrives in a later milestone-1 ticket."
 horizontal_alignment = 1
 
+[node name="QuickStartButton" type="Button" parent="Center/Box"]
+custom_minimum_size = Vector2(260, 56)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 26
+tooltip_text = "Start a hotseat game on this computer right away, with every faction in play and a random seed. Players take turns at the same screen; each player's orders stay hidden from the others."
+text = "Quick start"
+
 [node name="MapPreviewButton" type="Button" parent="Center/Box"]
 layout_mode = 2
 size_flags_horizontal = 4
