@@ -391,3 +391,10 @@ func test_every_codex_entry_the_flow_links_exists() -> void:
 		assert_false(String(e.get("text", "")).is_empty(), "codex %s has text" % key)
 	assert_true(RulesCodex.text("simultaneous_capture").contains("draw"))
 	assert_true(RulesCodex.text("victory").contains("capital"))
+
+
+func test_report_phases_follow_the_resolver_phases() -> void:
+	# REPORT_PHASES is TurnResolver.PHASES plus the victory event's phase; keep them in sync.
+	assert_eq(GameSession.REPORT_PHASES.slice(0, TurnResolver.PHASES.size()), TurnResolver.PHASES)
+	assert_eq(GameSession.REPORT_PHASES.back(), "victory")
+	assert_eq(GameSession.REPORT_PHASES.size(), TurnResolver.PHASES.size() + 1)
