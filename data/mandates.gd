@@ -26,7 +26,7 @@ const SACRIFICE_PREMIUM := 1
 const MANDATES: Array[Dictionary] = [
 	{
 		"id": "iron_discipline", "name": "Iron Discipline", "faction": "", "cost": 3, "area": "battle",
-		"effect": "Your side never breaks (routs) while one of your commanders in that battle stands.",
+		"effect": "Your side never breaks (routs) while one of your commanders in that battle stands, except at the end of the last round.",
 		"codex": "mandate_iron_discipline",
 	},
 	{
@@ -36,14 +36,14 @@ const MANDATES: Array[Dictionary] = [
 		"base_hit": 70,
 	},
 	{
-		"id": "veteran_levies", "name": "Veteran Levies", "faction": "", "cost": 2, "area": "units",
+		"id": "veteran_levies", "name": "Veteran Levies", "faction": "", "cost": 3, "area": "units",
 		"effect": "Your regular units have +2 maximum hit points.",
 		"codex": "mandate_veteran_levies",
 		"units": {"hp": 2},
 	},
 	{
 		"id": "heavy_tithes", "name": "Heavy Tithes", "faction": "", "cost": 4, "area": "economy",
-		"effect": "Every province you own earns +1 gold per turn.",
+		"effect": "Every province you own earns +2 gold per turn.",
 		"codex": "mandate_heavy_tithes",
 	},
 	{
@@ -58,10 +58,10 @@ const MANDATES: Array[Dictionary] = [
 		"codex": "mandate_sworn_vassals",
 	},
 	{
-		"id": "royal_armories", "name": "Royal Armories", "faction": "kingdom", "cost": 4, "area": "units",
-		"effect": "Your regular units have +1 attack and +1 defense.",
+		"id": "royal_armories", "name": "Royal Armories", "faction": "kingdom", "cost": 3, "area": "units",
+		"effect": "Your regular units have +1 attack.",
 		"codex": "mandate_royal_armories",
-		"units": {"attack": 1, "defense": 1},
+		"units": {"attack": 1},
 	},
 	{
 		"id": "kings_roads", "name": "King's Roads", "faction": "kingdom", "cost": 2, "area": "map",

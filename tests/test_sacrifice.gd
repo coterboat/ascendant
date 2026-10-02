@@ -161,31 +161,31 @@ func test_a_sacrifice_resolves_first_with_the_spec_numbers() -> void:
 	assert_eq(e.factions, ["kingdom"])
 	assert_eq(e.provinces, ["crownkeep"])
 	assert_eq(e.armies, ["kingdom-3"], "the ruler's army")
-	assert_eq(e.text, "King Corvane I gave up 5 power for Royal Armories (4, +1 for a mid-game sacrifice). Kept power 10 → 5: hit points 46 of 46 → 31 of 31, attack 14 → 11, defense 13 → 10, Royal Court rank 4 → 2 (+3 gold). Every regular unit of the Aurel Crown now has +1 attack and +1 defense.")
-	assert_eq([e.numbers.kept_before, e.numbers.kept_after, e.numbers.cost, e.numbers.price, e.numbers.premium], [10, 5, 5, 4, 1])
+	assert_eq(e.text, "King Corvane I gave up 4 power for Royal Armories (3, +1 for a mid-game sacrifice). Kept power 10 → 6: hit points 38 of 38 → 30 of 30, attack 14 → 12, defense 13 → 11, Royal Court rank 4 → 3 (+4 gold). Every regular unit of the Aurel Crown now has +1 attack.")
+	assert_eq([e.numbers.kept_before, e.numbers.kept_after, e.numbers.cost, e.numbers.price, e.numbers.premium], [10, 6, 4, 3, 1])
 	var k: Faction = result.new_state.find_faction("kingdom")
-	assert_eq(k.kept_power, 5)
+	assert_eq(k.kept_power, 6)
 	assert_eq(k.mandates, ["royal_armories"])
-	assert_eq(k.sacrifices, [{"turn": 1, "mandate": "royal_armories", "cost": 5}], "recorded with the turn")
+	assert_eq(k.sacrifices, [{"turn": 1, "mandate": "royal_armories", "cost": 4}], "recorded with the turn")
 	var ruler := RulerRules.ruler_unit(result.new_state, "kingdom")
-	assert_eq([ruler.type.hp, ruler.type.attack, ruler.type.defense], [31, 11, 10], "the §1.3 table at 5 kept")
-	assert_eq(ruler.current_hp, 31, "hp dropped by as much as the maximum (and the end-of-turn heal is capped there)")
+	assert_eq([ruler.type.hp, ruler.type.attack, ruler.type.defense], [30, 12, 11], "the §1.3 table at 6 kept")
+	assert_eq(ruler.current_hp, 30, "hp dropped by as much as the maximum (and the end-of-turn heal is capped there)")
 	# The kept power breakdown now has the sacrifice line, and the state is valid and saves.
 	var b := Breakdown.kept_power(result.new_state, "kingdom")
-	assert_eq(b.lines.map(func(l): return [l.label, l.value]), [["Power pool", 10], ["Royal Armories, sacrificed on turn 1", -5]])
+	assert_eq(b.lines.map(func(l): return [l.label, l.value]), [["Power pool", 10], ["Royal Armories, sacrificed on turn 1", -4]])
 	assert_true(result.new_state.validate([]))
 	assert_eq(GameState.from_dict(JSON.parse_string(JSON.stringify(result.new_state.to_dict()))).find_faction("kingdom").sacrifices,
 		k.sacrifices, "the record survives JSON")
 
 
 func test_the_ruler_loses_as_much_hp_as_its_maximum_never_below_1() -> void:
-	for case in [[46, 31], [30, 15], [16, 1], [3, 1]]:
+	for case in [[38, 30], [30, 22], [9, 1], [3, 1]]:
 		var s := _king_keeps_all()
 		RulerRules.ruler_unit(s, "kingdom").current_hp = case[0]
 		var info := RulerRules.apply_sacrifice(s, "kingdom", "royal_armories", 1)
 		assert_true(info.ok)
-		assert_eq(RulerRules.ruler_unit(s, "kingdom").current_hp, case[1], "%d of 46 hp drops by 15 to %d" % case)
-		assert_eq([info.hp_before, info.hp_after, info.max_hp_before, info.max_hp_after], [case[0], case[1], 46, 31])
+		assert_eq(RulerRules.ruler_unit(s, "kingdom").current_hp, case[1], "%d of 38 hp drops by 8 to %d" % case)
+		assert_eq([info.hp_before, info.hp_after, info.max_hp_before, info.max_hp_after], [case[0], case[1], 38, 30])
 	# The other rulers follow their own tables: the Great Thornmane keeping 10 gives up 4 + 1 for Iron Discipline.
 	var god := _game({"beasts": "beast_god_unbound"})
 	var info := RulerRules.apply_sacrifice(god, "beasts", "iron_discipline", 1)
@@ -381,19 +381,22 @@ func test_the_preview_equals_the_resolved_result() -> void:
 	_assert_preview_is_the_result(_game({"kingdom": "regents_court"}), "kingdom", "drilled_ranks")
 	_assert_preview_is_the_result(_game({"beasts": "blood_of_the_fang"}), "beasts", "veteran_levies")
 	_assert_preview_is_the_result(_game({"beasts": "beast_god_unbound"}), "beasts", "feast_of_victory")
-	# Royal Armories: the row for every regular unit says +1 attack and +1 defense, from the rules.
+	# Royal Armories: the row for every regular unit says +1 attack, from the rules.
 	var ra := _assert_preview_is_the_result(_king_keeps_all(), "kingdom", "royal_armories")
 	var s := _king_keeps_all()
 	for ut in s.find_faction("kingdom").unit_types:
 		var row: Array = ra.preview.rows.filter(func(r): return r.key == "unit_" + ut.id)
 		assert_eq(row.size(), 1, "%s has a row" % ut.name)
-		assert_eq([row[0].before, row[0].after], ["attack %d, defense %d" % [ut.attack, ut.defense],
-			"attack %d, defense %d" % [ut.attack + 1, ut.defense + 1]])
+		assert_eq([row[0].before, row[0].after], ["attack %d" % ut.attack, "attack %d" % (ut.attack + 1)])
 	assert_true(ra.preview.rows.filter(func(r): return r.key == "unit_knight_captain").is_empty(), "commanders don't get it")
 	# Heavy Tithes and Royal Court: the income row is the income the turn pays.
 	var ht := _assert_preview_is_the_result(_king_keeps_all(), "kingdom", "heavy_tithes")
 	var income_row: Array = ht.preview.rows.filter(func(r): return r.key == "income")
-	assert_eq(income_row[0].after, "+%d gold" % ht.preview.after.income)
+	if income_row.is_empty():
+		# Heavy Tithes' +2 at Crownkeep exactly makes up for Royal Court dropping from rank 4 to rank 2.
+		assert_eq(ht.preview.before.income, ht.preview.after.income, "no income row when the income doesn't change")
+	else:
+		assert_eq(income_row[0].after, "+%d gold" % ht.preview.after.income)
 	var base := s.find_province("crownkeep").income
 	assert_eq(ht.preview.before.income, base + RulerRules.ability_value("aurel_king", 4), "Crownkeep + Royal Court at rank 4")
 	assert_eq(ht.preview.after.income, base + RulerRules.TITHE_GOLD + RulerRules.ability_value("aurel_king", 2),
@@ -454,9 +457,9 @@ func test_a_game_with_a_sacrifice_replays_from_its_record() -> void:
 	var rec := session.record()
 	assert_eq(rec.history[0].orders.kingdom[0], {"type": "sacrifice", "mandate": "kings_roads"}, "the record keeps the order")
 	var final := session.state()
-	assert_eq(final.find_faction("kingdom").kept_power, 10 - 3 - 5)
+	assert_eq(final.find_faction("kingdom").kept_power, 10 - 3 - 4)
 	assert_eq(final.find_faction("kingdom").sacrifices, [{"turn": 1, "mandate": "kings_roads", "cost": 3},
-		{"turn": 2, "mandate": "royal_armories", "cost": 5}])
+		{"turn": 2, "mandate": "royal_armories", "cost": 4}])
 	for r in [rec, JSON.parse_string(JSON.stringify(rec))]:
 		var replay := GameSession.replay(r, StubBattleResolver.new())
 		assert_eq(replay.errors, [])

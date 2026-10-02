@@ -311,12 +311,12 @@ func test_dread_works_only_in_the_avatars_province_battles_while_it_stands() -> 
 	var s := _game({"beasts": {"ruler": "thornmane_avatar", "mandates": []}})
 	_army(s, "kingdom-1", "kingdom", "rivermarch", ["spearmen", "spearmen", "spearmen"])
 	_army(s, "beasts-2", "beasts", "rivermarch", ["tuskers"])
-	_ruler(s, "beasts", "rivermarch", 7)  # ability rank 3: Dread 2
+	_ruler(s, "beasts", "rivermarch", 7)  # ability rank 3: Dread 1 (M2-8: 1 at every rank)
 	var dread := RulerRules.ability_value("thornmane_avatar", RulerRules.ability_rank(7))
-	assert_eq(dread, 2)
+	assert_eq(dread, 1)
 	assert_eq(RulerRules.dread_value(s, "beasts"), dread)
 	var sides := _built(s, "rivermarch")
-	assert_eq(AutoBattleResolver._morale(sides, 1, [0, 1]).parts.get("Dread", 0), -dread, "the Crown loses 2 morale")
+	assert_eq(AutoBattleResolver._morale(sides, 1, [0, 1]).parts.get("Dread", 0), -dread, "the Crown loses 1 morale")
 	assert_false(AutoBattleResolver._morale(sides, 0, [0, 1]).parts.has("Dread"), "never the avatar's own side")
 	_ruler_fighter(sides[0]).alive = false
 	assert_false(AutoBattleResolver._morale(sides, 1, [0, 1]).parts.has("Dread"), "not once the avatar has fallen")
@@ -436,12 +436,13 @@ func test_iron_discipline_holds_only_while_a_commander_stands() -> void:
 				assert_false(e.has("held_by"), "seed %d: nothing to hold in round %d" % [sd, e.round])
 				continue
 			var chief_standing: bool = chief_fell == 0 or e.round < chief_fell
-			if chief_standing:
+			# M2-8 (#36): it holds through every round but the last; the round cap is not a way to win.
+			if chief_standing and e.round < AutoBattleResolver.ROUND_CAP:
 				held_any = true
 				assert_eq(e.get("held_by", ""), "Warchief", "seed %d: held in round %d while the Warchief stood" % [sd, e.round])
 				assert_false(clans.routed and clans.out_round == e.round, "seed %d: no rout in round %d" % [sd, e.round])
 			else:
-				assert_false(e.has("held_by"), "seed %d: the usual check once the Warchief fell" % sd)
+				assert_false(e.has("held_by"), "seed %d: the usual check once the Warchief fell, or in the last round" % sd)
 				assert_true(clans.routed and clans.out_round == e.round, "seed %d: it broke in round %d" % [sd, e.round])
 				break
 	assert_true(held_any, "Iron Discipline held a line on some seed")
@@ -456,6 +457,46 @@ func test_iron_discipline_holds_only_while_a_commander_stands() -> void:
 	for sd in range(1, 30):
 		for e in _side(_fight(s2, "rivermarch", sd).report, "beasts").morale_log:
 			assert_false(e.has("held_by"), "seed %d: no commander, no hold" % sd)
+
+
+func test_iron_discipline_does_not_hold_a_defender_through_the_round_cap() -> void:
+	# M2-8 (#36): a defender held past its break point by Iron Discipline used to win every battle that
+	# reached the round cap (the defender holds there). Now the usual check applies at the end of the
+	# last round, so such a line breaks and the attacker wins.
+	var found := 0
+	for sd in range(1, 400):
+		var s := _game({"beasts": {"ruler": "fang_chieftain", "mandates": ["iron_discipline"]}})
+		_army(s, "kingdom-1", "kingdom", "fangridge", ["spearmen", "spearmen", "spearmen", "crossbowmen", "crossbowmen", "knights", "knight_captain"])
+		_army(s, "beasts-2", "beasts", "fangridge", ["tuskers", "tuskers", "tuskers", "fangthrowers", "fangthrowers", "fangthrowers", "warchief"])
+		var r := _fight(s, "fangridge", sd, "beasts")
+		var clans := _side(r.report, "beasts")
+		if clans.morale_log.size() < AutoBattleResolver.ROUND_CAP:
+			continue
+		var last: Dictionary = clans.morale_log.back()
+		if last.round != AutoBattleResolver.ROUND_CAP or last.lost_pct < last.break_pct:
+			continue
+		var chief_up := true
+		for round_data in r.report.rounds:
+			for h in round_data.highlights:
+				if String(h) == "Thornmane Clans' Warchief fell.":
+					chief_up = false
+		if not chief_up:
+			continue
+		assert_false(last.has("held_by"), "seed %d: not held in the last round" % sd)
+		if r.report.end == "mutual":
+			continue  # both lines broke in the last round: the larger share left keeps the field, as in M1
+		found += 1
+		assert_true(clans.routed, "seed %d: the line broke at the end of round %d" % [sd, AutoBattleResolver.ROUND_CAP])
+		assert_eq(r.winner, "kingdom", "seed %d: the attacker wins instead of the round cap holding" % sd)
+		assert_ne(r.report.end, "round_cap", "seed %d: it was not decided by the round cap" % sd)
+		var said := false
+		for h in r.report.rounds.back().highlights:
+			said = said or String(h).contains("only until the last round")
+		assert_true(said, "seed %d: the last round says why the line broke" % sd)
+		var earlier: Array = clans.morale_log.filter(func(e): return e.round < AutoBattleResolver.ROUND_CAP and e.lost_pct >= e.break_pct)
+		for e in earlier:
+			assert_eq(e.get("held_by", ""), "Warchief", "seed %d: held in round %d" % [sd, e.round])
+	assert_true(found > 0, "some battle reached the last round with the line held past its break point")
 
 
 func test_drilled_ranks_makes_the_base_hit_chance_70() -> void:
@@ -532,7 +573,7 @@ func test_royal_armories_adds_its_parts_from_unit_stats_to_units_only() -> void:
 		assert_eq(atk.parts.get("mandate_royal_armories", 0), 1, "%s +1 attack" % name)
 		assert_eq(atk.value, us.attack, "%s attacks with unit_stats' number" % name)
 		var dfn := AutoBattleResolver._defense(f, sides[1], tusker, env)
-		assert_eq(dfn.parts.get("mandate_royal_armories", 0), 1, "%s +1 defense" % name)
+		assert_false(dfn.parts.has("mandate_royal_armories"), "%s: Royal Armories adds no defense (M2-8, breakpoint-safe)" % name)
 		assert_eq(dfn.value - int(dfn.parts.get("Shield Wall", 0)), us.defense, "%s defends with unit_stats' number" % name)
 	for f in [_fighter_named(sides[1], "Knight Captain"), _ruler_fighter(sides[1])]:
 		assert_false(AutoBattleResolver._attack(f, sides[1], env).parts.has("mandate_royal_armories"), "%s doesn't get it" % f.name)
@@ -648,12 +689,17 @@ func test_a_constructed_battle_names_a_mandate_as_its_top_why() -> void:
 	var ra := _game({"kingdom": {"ruler": "aurel_king", "mandates": ["royal_armories"]}})
 	_army(ra, "kingdom-1", "kingdom", "rivermarch", ["crossbowmen", "crossbowmen", "crossbowmen", "crossbowmen", "spearmen", "crossbowmen"])
 	_army(ra, "beasts-2", "beasts", "rivermarch", ["tuskers", "tuskers", "fangthrowers", "tuskers", "tuskers"])
-	var rs := _seed_with_top(ra, "rivermarch", "mandate_royal_armories", 60)
-	assert_true(rs > 0, "Royal Armories tops the why on some seed")
+	# M2-8: as +1 attack only (a 4% better hit chance, no damage step) it is named in the why rather than
+	# leading it; Iron Discipline and Blood Frenzy above still lead theirs.
+	var rs := -1
+	for ra_seed in range(1, 61):
+		if String(_fight(ra, "rivermarch", ra_seed).report.why).contains("Royal Armories gave every Aurel Crown unit +1 attack, worth about "):
+			rs = ra_seed
+			break
+	assert_true(rs > 0, "Royal Armories is named in the why on some seed")
 	if rs > 0:
 		var r := _fight(ra, "rivermarch", rs)
-		assert_true(String(r.report.why).begins_with("Royal Armories gave every Aurel Crown unit +1 attack and +1 defense, worth about "), r.report.why)
-		assert_eq(r.report.factors[0].faction, "kingdom")
+		assert_true(r.report.factors.any(func(f): return f.id == "mandate_royal_armories" and f.faction == "kingdom"), "its factor is the Crown's")
 
 
 func test_another_constructed_battle_names_the_ruler() -> void:
@@ -703,7 +749,7 @@ func test_report_carries_the_ruler_and_the_mandates() -> void:
 	assert_false(_side(r.report, "beasts").has("ruler"), "the Clans fielded no ruler")
 	assert_false(_side(r.report, "beasts").has("mandates"), "and have no battle mandates")
 	assert_eq(crown.fighters_start, 4, "two Spearmen, the Knight Captain and the King")
-	assert_eq(RulerRules.mandate_battle_text("royal_armories"), "+1 attack and +1 defense for every regular unit")
+	assert_eq(RulerRules.mandate_battle_text("royal_armories"), "+1 attack for every regular unit")
 	assert_eq(RulerRules.mandate_battle_text("drilled_ranks"), "base hit chance 70% instead of 60%")
 
 
@@ -793,9 +839,9 @@ func test_the_viewer_shows_the_ruler_and_the_mandates_in_who_fought() -> void:
 	assert_true(joined.contains("Ruler: King Corvane I, in the front rank: 22 hit points, attack 10, defense 9 (2 kept power), +2 morale to its side while it stands"), joined)
 	assert_true(joined.contains("Ruler: The Great Thornmane, in the front rank:"), joined)
 	assert_true(joined.contains("Mandates in play: Royal Armories, Drilled Ranks"), joined)
-	assert_true(joined.contains("  Royal Armories: +1 attack and +1 defense for every regular unit"), joined)
+	assert_true(joined.contains("  Royal Armories: +1 attack for every regular unit"), joined)
 	assert_true(joined.contains("Mandates in play: Iron Discipline"), joined)
-	assert_true(joined.contains("Dread: every enemy side had 2 less morale while the Great Thornmane stood."), joined)
+	assert_true(joined.contains("Dread: every enemy side had 1 less morale while the Great Thornmane stood."), joined)
 	assert_true(joined.contains("Roster: Spearmen (2), Crossbowmen, led by Knight Captain, with King Corvane I"), joined)
 	for l in _labels(sides):
 		if String(l.name) in ["RulerLine", "MandatesLine", "DreadLine", "RulerEnding"]:

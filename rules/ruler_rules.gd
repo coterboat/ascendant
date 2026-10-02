@@ -931,7 +931,7 @@ static func battle_effects(state: GameState, faction_id: String) -> Dictionary:
 
 
 ## What a battle mandate does, in a few words that read for either side, from data/mandates.gd (the
-## battle report's "Mandates in play"): "+1 attack and +1 defense for every regular unit", "base hit
+## battle report's "Mandates in play"): "+1 attack for every regular unit", "base hit
 ## chance 70% instead of 60%", "+3 attack for every fighter below its full hit points". Other mandates
 ## give their one-line effect.
 static func mandate_battle_text(mandate_id: String) -> String:
@@ -944,7 +944,7 @@ static func mandate_battle_text(mandate_id: String) -> String:
 		return "%s for every regular unit" % units_bonus_text(mandate_id)
 	match mandate_id:
 		IRON_DISCIPLINE:
-			return "its side never breaks while one of its commanders stands"
+			return "its side never breaks while one of its commanders stands, except at the end of the last round"
 		FEAST_OF_VICTORY:
 			return "after a battle its side wins, its fighters still standing heal to full"
 	return String(md.get("effect", ""))
@@ -978,7 +978,7 @@ const HEAVY_TITHES := "heavy_tithes"
 const ROYAL_COURT := "royal_court"
 const WARBAND_MUSTER := "warband_muster"
 ## Gold Heavy Tithes adds to every province its owner holds (§2.3).
-const TITHE_GOLD := 1
+const TITHE_GOLD := 2
 
 
 ## The price cuts `faction_id`'s mandates make on `ut` (Muster Grounds: cost / 5, rounded down, comes
@@ -1190,10 +1190,10 @@ static func field_recruit_limit(state: GameState, faction_id: String) -> int:
 ## the faction's name; {units} the regular units' bonus from data/mandates.gd; {gained} what the units
 ## already on the map gained (Veteran Levies).
 const SACRIFICE_NOW := {
-	"iron_discipline": "From now on a side of the {faction} never breaks while one of its commanders in that battle stands.",
+	"iron_discipline": "From now on a side of the {faction} never breaks while one of its commanders in that battle stands, except at the end of the last round.",
 	"drilled_ranks": "From now on every fighter of the {faction} hits 70% of the time at base, instead of 60%.",
 	"veteran_levies": "Every regular unit of the {faction} now has {units}{gained}.",
-	"heavy_tithes": "Every province the {faction} owns now earns 1 more gold per turn, starting with this turn's income.",
+	"heavy_tithes": "Every province the {faction} owns now earns 2 more gold per turn, starting with this turn's income.",
 	"muster_grounds": "Every recruit of the {faction} now costs a fifth less, starting with this turn's recruits.",
 	"sworn_vassals": "From this turn on, one neutral province next to the land of the {faction} swears fealty to it each turn.",
 	"royal_armories": "Every regular unit of the {faction} now has {units}.",
@@ -1327,7 +1327,7 @@ static func with_sacrifice(state: GameState, faction_id: String, mandate_id: Str
 ## The sacrificed sentence for the turn report (§2.4), from apply_sacrifice's result `info`: "King
 ## Corvane I gave up 5 power for Royal Armories (4, +1 for a mid-game sacrifice). Kept power 10 → 5: hit
 ## points 46 of 46 → 31 of 31, attack 14 → 11, defense 13 → 10, Royal Court rank 4 → 2 (+3 gold). Every
-## regular unit of the Aurel Crown now has +1 attack and +1 defense."
+## regular unit of the Aurel Crown now has +1 attack."
 static func sacrifice_text(state: GameState, faction_id: String, info: Dictionary) -> String:
 	var f := state.find_faction(faction_id)
 	var rid := f.ruler_type if f else ""
@@ -1360,7 +1360,7 @@ static func sacrifice_now_text(state: GameState, faction_id: String, mandate_id:
 	return template.format({"faction": _faction_name(state, faction_id), "units": units_bonus_text(mandate_id), "gained": gained})
 
 
-## A mandate's bonus to regular units in words, from data/mandates.gd: "+1 attack and +1 defense",
+## A mandate's bonus to regular units in words, from data/mandates.gd: "+1 attack",
 ## "+2 maximum hit points"; "" for a mandate without one.
 static func units_bonus_text(mandate_id: String) -> String:
 	var bonus: Dictionary = mandate_data(mandate_id).get("units", {})

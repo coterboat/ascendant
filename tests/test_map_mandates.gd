@@ -373,21 +373,21 @@ func test_heavy_tithes_and_royal_court_in_income_and_breakdowns() -> void:
 	# King Corvane keeps 6 (Heavy Tithes costs 4): ability rank 3, so Royal Court is +4 where he is.
 	var s := _game({"kingdom": {"ruler": "aurel_king", "mandates": ["heavy_tithes"]}})
 	var b := Breakdown.province_income(s, "crownkeep")
-	assert_eq(b.lines.map(func(l): return [l.label, l.value]), [["Base income of Crownkeep", 12], ["Heavy Tithes", 1], ["Royal Court", 4]])
-	assert_eq(int(b.total), 17)
-	assert_eq(Breakdown.sum_of_lines(b), 17)
+	assert_eq(b.lines.map(func(l): return [l.label, l.value]), [["Base income of Crownkeep", 12], ["Heavy Tithes", 2], ["Royal Court", 4]])
+	assert_eq(int(b.total), 18)
+	assert_eq(Breakdown.sum_of_lines(b), 18)
 	assert_true(String(b.lines[2].note).contains("King Corvane I is here, ability rank 3"), b.lines[2].note)
 	var gold := Breakdown.gold(s, "kingdom")
-	assert_eq(int(gold.total), 45 + 17)
+	assert_eq(int(gold.total), 45 + 18)
 	assert_eq(Breakdown.sum_of_lines(gold), int(gold.total))
-	assert_true(String(gold.lines[1].note).contains("Heavy Tithes 1") and String(gold.lines[1].note).contains("Royal Court 4"), gold.lines[1].note)
+	assert_true(String(gold.lines[1].note).contains("Heavy Tithes 2") and String(gold.lines[1].note).contains("Royal Court 4"), gold.lines[1].note)
 	var forecast := Forecast.gold_after_recruits(s, "kingdom", [])
-	assert_eq(forecast.gold_next_turn, 62)
+	assert_eq(forecast.gold_next_turn, 63)
 	var result := TurnResolver.resolve(s, {}, 31, StubBattleResolver.new())
 	assert_eq(result.new_state.find_faction("kingdom").gold, forecast.gold_next_turn, "the forecast equals the result")
 	var income: Dictionary = _of_type(result.events, "income").filter(func(e): return e.factions == ["kingdom"])[0]
 	assert_eq(income.numbers.by_province.crownkeep, int(b.total), "the breakdown equals the province's income")
-	assert_eq(income.text, "Aurel Crown earned 17 gold from 1 province (Crownkeep 17). Gold: 45 -> 62. That includes Heavy Tithes +1 (1 for each province) and Royal Court +4 at Crownkeep, where King Corvane I was.")
+	assert_eq(income.text, "Aurel Crown earned 18 gold from 1 province (Crownkeep 18). Gold: 45 -> 63. That includes Heavy Tithes +2 (2 for each province) and Royal Court +4 at Crownkeep, where King Corvane I was.")
 	# The beasts have neither: their income is the map's.
 	assert_eq(Breakdown.province_income(s, "fangridge").lines[1].label, "Modifiers")
 
@@ -398,28 +398,28 @@ func test_royal_court_follows_the_king_and_needs_him_alive() -> void:
 	var king := RulerRules.ruler_army(s, "kingdom")
 	var ride := [MoveOrder.new(king.id, "westwatch")]
 	var forecast := Forecast.gold_after_recruits(s, "kingdom", [], ride)
-	assert_eq(forecast.income, 13 + 11, "Crownkeep 12 + 1, Westwatch 6 + 1 + Royal Court 4 where he ends the turn")
+	assert_eq(forecast.income, 14 + 12, "Crownkeep 12 + 2, Westwatch 6 + 2 + Royal Court 4 where he ends the turn")
 	assert_true(forecast.text.contains("Royal Court +4 at Westwatch, where King Corvane I ends the turn"), forecast.text)
 	var result := TurnResolver.resolve(s, {"kingdom": ride}, 32, StubBattleResolver.new())
 	assert_eq(result.new_state.find_faction("kingdom").gold, forecast.gold_next_turn, "the forecast equals the result")
 	# Without the King on the map (fallen), there is no Royal Court.
 	var s2 := _game({"kingdom": {"ruler": "aurel_king", "mandates": ["heavy_tithes"]}})
 	s2.armies.erase(RulerRules.ruler_army(s2, "kingdom"))
-	assert_eq(TurnResolver.income_of(s2, "kingdom").total, 13)
+	assert_eq(TurnResolver.income_of(s2, "kingdom").total, 14)
 	assert_eq(Breakdown.province_income(s2, "crownkeep").lines.size(), 2)
 
 
 func test_the_top_bar_and_regions_show_income_with_modifiers() -> void:
 	var s := _game({"kingdom": {"ruler": "aurel_king", "mandates": ["heavy_tithes"]}})
 	var screen := _screen(s, "kingdom")
-	assert_eq(screen.gold_label.text, "Gold 45   (+17 per turn)")
-	assert_true(screen.gold_label.tooltip_text.contains("Income from Crownkeep: +17"), screen.gold_label.tooltip_text)
+	assert_eq(screen.gold_label.text, "Gold 45   (+18 per turn)")
+	assert_true(screen.gold_label.tooltip_text.contains("Income from Crownkeep: +18"), screen.gold_label.tooltip_text)
 	assert_true(screen.gold_label.tooltip_text.contains("Royal Court"), "the gold tooltip names Royal Court")
-	assert_eq(screen.regions["crownkeep"].income_label.text, "17 gold")
-	assert_true(screen.regions["crownkeep"].income_label.tooltip_text.contains("Heavy Tithes: +1"), screen.regions["crownkeep"].income_label.tooltip_text)
+	assert_eq(screen.regions["crownkeep"].income_label.text, "18 gold")
+	assert_true(screen.regions["crownkeep"].income_label.tooltip_text.contains("Heavy Tithes: +2"), screen.regions["crownkeep"].income_label.tooltip_text)
 	screen.select_province("crownkeep")
 	var label: Label = screen.details.find_child("IncomeLabel", true, false)
-	assert_eq(label.text, "Income: 17 gold per turn")
+	assert_eq(label.text, "Income: 18 gold per turn")
 	screen.free()
 
 
@@ -600,7 +600,7 @@ func test_codex_entries_match_the_code() -> void:
 	var court := RulesCodex.text("ability_royal_court")
 	for rank in range(1, 5):
 		assert_true(court.contains("%d" % RulerRules.ability_value("aurel_king", rank)), "Royal Court rank %d value" % rank)
-	assert_true(RulesCodex.text("mandate_heavy_tithes").contains("1 more gold"))
+	assert_true(RulesCodex.text("mandate_heavy_tithes").contains("%d more gold" % RulerRules.TITHE_GOLD))
 	var muster := RulesCodex.text("mandate_muster_grounds")
 	var s := _game({"kingdom": {"ruler": "aurel_king", "mandates": ["muster_grounds"]},
 		"beasts": {"ruler": "fang_chieftain", "mandates": ["muster_grounds"]}})

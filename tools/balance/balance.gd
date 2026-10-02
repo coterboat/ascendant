@@ -63,6 +63,22 @@ static func new_state_with(mandates: Dictionary, rulers: Dictionary = {}, errors
 	return s
 
 
+## A fresh state where each faction plays a build preset (M2-8): {CROWN: preset id, CLANS: preset id}.
+## Its mandates count, and its ruler at the preset's kept power fights beside its army when batch() gets
+## both factions in `ruler_fids`. Null (reasons in `errors`) for an unknown preset or the wrong faction.
+static func new_state_presets(presets: Dictionary, errors: Array = []) -> GameState:
+	var mandates := {}
+	var rulers := {}
+	for fid in presets:
+		var p := RulerRules.preset_data(str(presets[fid]))
+		if p.is_empty() or str(p.faction) != str(fid):
+			errors.append("%s is not a preset of %s." % [presets[fid], fid])
+			return null
+		mandates[fid] = p.mandates.duplicate()
+		rulers[fid] = [str(p.ruler), RulerRules.kept_after(p)]
+	return new_state_with(mandates, rulers, errors)
+
+
 ## The ruler's army of `owner` at full hp (state with rulers), or null without one.
 static func ruler_army(state: GameState, owner: String, id := "") -> Army:
 	var f := state.find_faction(owner)

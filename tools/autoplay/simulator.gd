@@ -87,6 +87,9 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 		"rejections": {}, "resolution_rejections": {}, "violations": [], "errors": [], "script_errors": [], "repro": {},
 		"policy_stats": [], "first_battle_turn": 0, "quiet_streak": 0, "final_state": {},
 		"builds": {}, "ruler": {"sacrifices": {}, "deaths": {}, "arrivals": {}},
+		# M2-8: when each ruler died (and when its successor was due), arrived, and what was sacrificed.
+		"ruler_log": {"deaths": [], "arrivals": [], "sacrifices": [], "mandates": {}}, "successors_due": 0,
+		"replay": "",
 	}
 	if seat_factions.size() != policy_names.size():
 		_error(result, 0, "There are %d seats but %d policies." % [seat_factions.size(), policy_names.size()])
@@ -108,9 +111,17 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 		for i in seat_factions.size():
 			var fid := str(seat_factions[i])
 			var rolled := AIPlayer.choose_build(null, fid, rngs[i])  # the seat RNG's first draw, as in AISeat
-			var pick: String = str(forced[i]) if i < forced.size() else ""
-			builds[fid] = RulerRules.preset_build(pick) if not pick.is_empty() else rolled
-			result.builds[fid] = str(builds[fid].get("preset", ""))
+			var pick = forced[i] if i < forced.size() else ""
+			if (pick is String and pick.is_empty()) or pick == null:
+				builds[fid] = rolled
+				result.builds[fid] = str(rolled.get("preset", ""))
+				continue
+			var parsed := parse_build(pick, fid)  # a preset id or an explicit build (M2-8)
+			if parsed.has("error"):
+				_error(result, 0, "setup: seat %d: %s" % [i + 1, parsed.error])
+				return result
+			builds[fid] = {"preset": parsed.preset, "ruler": parsed.ruler, "mandates": parsed.mandates}
+			result.builds[fid] = str(parsed.id)
 		var build_errors := []
 		start = GameState.with_rulers(game_seed, builds, build_errors)
 		if start == null:
@@ -173,6 +184,12 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 				var bucket: Dictionary = result.ruler[{"sacrificed": "sacrifices", "ruler_died": "deaths", "ruler_arrived": "arrivals"}[type]]
 				for fid in e.get("factions", []):
 					_bump(bucket, str(fid))
+					if type == "ruler_died":
+						var dead := state.find_faction(str(fid))
+						result.ruler_log.deaths.append({"faction": str(fid), "turn": turn,
+							"due": dead.successor_turn if dead != null else 0})
+					elif type == "ruler_arrived":
+						result.ruler_log.arrivals.append({"faction": str(fid), "turn": turn})
 		if fought and result.first_battle_turn == 0:
 			result.first_battle_turn = turn
 		quiet = 0 if fought else quiet + 1
@@ -200,7 +217,79 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 	for p in policies:
 		result.policy_stats.append(p.stats.duplicate())
 	result.final_state = final_state.to_dict()
+	_log_rulers(result, final_state)
+	if options.get("replay_check", false):
+		result.replay = replay_check(session)
 	return result
+
+
+## M2-8: the sacrifices and mandates of every faction with a ruler, and how many successors fell due
+## while the game ran: a ruler that died with its successor due at the end of turn T counts when the game
+## went past turn T, or ended on turn T with the faction still holding its capital (succession waits for
+## the capital, M2_RULER.md §5.2). Every one of them must have arrived (band D).
+static func _log_rulers(result: Dictionary, final_state: GameState) -> void:
+	for f in final_state.factions:
+		if not f.has_ruler():
+			continue
+		result.ruler_log.mandates[f.id] = f.mandates.duplicate()
+		for sac in f.sacrifices:
+			result.ruler_log.sacrifices.append({"faction": f.id, "mandate": str(sac.get("mandate", "")), "turn": int(sac.get("turn", 0))})
+	var due := 0
+	for d in result.ruler_log.deaths:
+		var t := int(d.due)
+		if t <= 0 or t > final_state.current_turn:
+			continue
+		if t < final_state.current_turn or RulerRules.holds_capital(final_state, str(d.faction)):
+			due += 1
+	result.successors_due = due
+
+
+## Replays the session's record after a JSON round trip (GameSession.replay, which never runs the AI)
+## and compares the final state with the one the game reached: "identical", or "differs: <why>".
+static func replay_check(session: GameSession) -> String:
+	var text := JSON.stringify(session.record())
+	var rec = JSON.parse_string(text)
+	if not (rec is Dictionary):
+		return "differs: the game record did not survive a JSON round trip"
+	var replayed := GameSession.replay(rec, AutoBattleResolver.new())
+	if replayed.state == null:
+		return "differs: the replay failed (%s)" % " ".join(replayed.errors)
+	var a := JSON.stringify(session.state().to_dict())
+	var b := JSON.stringify(replayed.state.to_dict())
+	if a == b:
+		return "identical"
+	return "differs: the replayed final state is not the one the game reached (%d vs %d characters)" % [b.length(), a.length()]
+
+
+## A seat's build from an autoplay --builds value or a matrix cell (M2-8): a preset id from
+## data/build_presets.gd ("iron_crown"), an explicit build "RULER" or "RULER+MANDATE+MANDATE"
+## ("ever_regent" keeps all 10 power; "fang_chieftain+iron_discipline+blood_frenzy+sworn_vassals"), or a
+## build Dictionary {"ruler", "mandates"}. Returns {"id", "preset", "ruler", "mandates"} ("id" names the
+## build in reports: the preset id, or the explicit text) or {"error": plain-language reason}.
+static func parse_build(arg, faction_id: String) -> Dictionary:
+	var build := {}
+	var id := ""
+	if arg is Dictionary:
+		build = RulerRules.normalize_build(arg)
+		id = "+".join([build.ruler] + build.mandates)
+	else:
+		var text := str(arg).strip_edges()
+		var preset := RulerRules.preset_build(text)
+		if not preset.is_empty():
+			build = preset
+			id = text
+		else:
+			var parts := Array(text.split("+", false)).map(func(p): return str(p).strip_edges())
+			if parts.is_empty() or RulerRules.ruler_data(str(parts[0])).is_empty():
+				var presets := RulerRules.presets_for(faction_id).map(func(p): return str(p.id))
+				return {"error": "'%s' is neither a preset (%s) nor a ruler id followed by mandate ids, like %s+royal_armories." % [
+					text, ", ".join(presets), RulerRules.rulers_for(faction_id)[0] if not RulerRules.rulers_for(faction_id).is_empty() else "ruler"]}
+			build = {"preset": "", "ruler": str(parts[0]), "mandates": parts.slice(1)}
+			id = "+".join(parts)
+	var errors := RulerRules.build_errors(faction_id, build)
+	if not errors.is_empty():
+		return {"error": " ".join(errors)}
+	return {"id": id, "preset": str(build.get("preset", "")), "ruler": str(build.ruler), "mandates": build.mandates.duplicate()}
 
 
 ## Problems with the state after a turn, as [{"check", "detail"}]. Empty when everything holds.
@@ -403,11 +492,26 @@ static func summarize(results: Array) -> Dictionary:
 	var no_battle_games := 0
 	var by_build := {}  # preset id -> {"games", "wins", "decisive", "faction"}
 	var rulers := {"games": 0, "sacrifices": 0, "games_with_sacrifice": 0, "deaths": 0, "games_with_death": 0,
-		"arrivals": 0, "games_to_turn_8": 0, "deaths_by_turn_8_games": 0}
+		"arrivals": 0, "games_to_turn_8": 0, "deaths_by_turn_8_games": 0, "successors_due": 0,
+		"death_turns": [], "pregame_mandates": {}, "sacrificed_mandates": {}, "sacrifice_turns": []}
 	for r in results:
 		var rb: Dictionary = r.get("builds", {})
 		if not rb.is_empty():
 			rulers.games += 1
+			var rlog: Dictionary = r.get("ruler_log", {})
+			rulers.successors_due += int(r.get("successors_due", 0))
+			for d in rlog.get("deaths", []):
+				rulers.death_turns.append(int(d.turn))
+			var bought := {}
+			for sac in rlog.get("sacrifices", []):
+				_bump(rulers.sacrificed_mandates, str(sac.mandate))
+				rulers.sacrifice_turns.append(int(sac.turn))
+				bought["%s|%s" % [sac.faction, sac.mandate]] = true
+			var held_mandates: Dictionary = rlog.get("mandates", {})
+			for fid in held_mandates:
+				for mid in held_mandates[fid]:
+					if not bought.has("%s|%s" % [fid, mid]):
+						_bump(rulers.pregame_mandates, str(mid))
 			var decisive: bool = r.finished and not r.draw and not str(r.winner).is_empty()
 			for fid in rb:
 				var pid := str(rb[fid])
@@ -552,10 +656,22 @@ static func stats_of(values: Array) -> Dictionary:
 	return {"n": n, "min": sorted[0], "median": median, "mean": total / n, "max": sorted[n - 1]}
 
 
-## Display name of a build preset id from data/build_presets.gd (the id itself when unknown).
+## Display name of a build: a preset id from data/build_presets.gd ("Iron Crown"), or an explicit build
+## id from parse_build ("the Ever-Regent, keeps 10" or "the Ever-Regent: Royal Armories, Heavy Tithes,
+## Veteran Levies, keeps 0"). The id itself when unknown.
 static func build_name(preset_id: String) -> String:
 	var p := RulerRules.preset_data(preset_id)
-	return str(p.get("name", preset_id)) if not p.is_empty() else preset_id
+	if not p.is_empty():
+		return str(p.get("name", preset_id))
+	var parts := preset_id.split("+", false)
+	if parts.is_empty() or RulerRules.ruler_data(parts[0]).is_empty():
+		return preset_id
+	var mandates := Array(parts.slice(1))
+	var kept := RulerRules.kept_after({"ruler": parts[0], "mandates": mandates})
+	var who := RulerRules.ruler_name(parts[0])
+	if mandates.is_empty():
+		return "%s, keeps %d" % [who, kept]
+	return "%s: %s, keeps %d" % [who, ", ".join(mandates.map(func(m): return RulerRules.mandate_name(str(m)))), kept]
 
 
 ## Display name of a faction id from data/factions.gd.
@@ -641,6 +757,13 @@ static func to_markdown(s: Dictionary) -> String:
 		L.append("- **Rulers:** %d sacrifices in %d of %d games (%s); %d ruler deaths in %d games (%s of the %d games that reached turn 8 had one); %d successors crowned." % [
 			ru.sacrifices, ru.games_with_sacrifice, ru.games, _pct(ru.games_with_sacrifice, ru.games), ru.deaths, ru.games_with_death,
 			_pct(ru.deaths_by_turn_8_games, ru.games_to_turn_8), ru.games_to_turn_8, ru.arrivals])
+		var dt := stats_of(ru.death_turns)
+		L.append("- **Deaths and successions:** %d successors fell due while their game ran and %d were crowned%s; deaths on turn %s (median, %d-%d)." % [
+			ru.successors_due, ru.arrivals, "" if ru.arrivals >= ru.successors_due else " (**%d missing**)" % (ru.successors_due - ru.arrivals),
+			_num(dt.median), dt.min, dt.max])
+		var st := stats_of(ru.sacrifice_turns)
+		L.append("- **Mandate picks:** before the game %s; by sacrifice %s%s." % [_mandate_counts(ru.pregame_mandates),
+			_mandate_counts(ru.sacrificed_mandates), "" if st.n == 0 else " (turn %s median, %d-%d)" % [_num(st.median), st.min, st.max]])
 	var v: Dictionary = s.violations
 	if v.count == 0:
 		L.append("- **Invariant violations:** 0.")
@@ -812,6 +935,15 @@ static func _pct(n, total) -> String:
 static func _num(v) -> String:
 	var f := float(v)
 	return str(int(f)) if is_equal_approx(f, roundf(f)) else "%.1f" % f
+
+
+## "Royal Armories 12, Heavy Tithes 8" (most taken first), or "none".
+static func _mandate_counts(counts: Dictionary) -> String:
+	if counts.is_empty():
+		return "none"
+	var keys: Array = counts.keys()
+	keys.sort_custom(func(a, b): return counts[a] > counts[b] if counts[a] != counts[b] else str(a) < str(b))
+	return ", ".join(keys.map(func(k): return "%s %d" % [RulerRules.mandate_name(str(k)), counts[k]]))
 
 
 static func _counts(counts: Dictionary) -> String:

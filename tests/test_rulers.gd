@@ -7,23 +7,23 @@ extends "res://tests/test_case.gd"
 ## design/M2_RULER.md §1.3, "Full table (builders test against this)": [hp, attack, defense] rows.
 const SPEC_TABLE := {
 	"aurel_king": [
-		[16, 19, 22, 25, 28, 31, 34, 37, 40, 43, 46],
+		[18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38],
 		[9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14],
 		[8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13],
 	],
 	"ever_regent": [
-		[14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34],
-		[10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+		[14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
+		[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
 		[6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11],
 	],
 	"thornmane_avatar": [
-		[26, 30, 34, 38, 42, 46, 50, 54, 58, 62, 66],
-		[10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
-		[9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14],
+		[24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54],
+		[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+		[7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12],
 	],
 	"fang_chieftain": [
-		[20, 23, 26, 29, 32, 35, 38, 41, 44, 47, 50],
-		[11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+		[20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40],
+		[9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
 		[7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12],
 	],
 }
@@ -32,7 +32,7 @@ const SPEC_ABILITY_RANK := [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4]
 const SPEC_RULERS := {
 	"aurel_king": ["kingdom", "mortal", "front", 10, "royal_court", [2, 3, 4, 5]],
 	"ever_regent": ["kingdom", "undying", "second", 10, "mending_light", [3, 6, 9, 12]],
-	"thornmane_avatar": ["beasts", "god", "front", 14, "dread", [1, 1, 2, 2]],
+	"thornmane_avatar": ["beasts", "god", "front", 14, "dread", [1, 1, 1, 1]],
 	"fang_chieftain": ["beasts", "mortal", "front", 12, "warband_muster", [1, 2, 3, 4]],
 }
 ## Every new term in design/M2_RULER.md §7.2.
@@ -234,7 +234,7 @@ func test_each_capital_starts_with_army_1_and_the_ruler_army_when_rulers_are_on(
 	var s := _with_rulers(7)
 	assert_true(RulerRules.has_rulers(s))
 	assert_eq(s.armies.size(), 4, "army 1 and the ruler's army for each faction")
-	var expected := {"kingdom": ["kingdom-1", "kingdom-3", "ever_regent", 4, ["royal_armories", "kings_roads"]],
+	var expected := {"kingdom": ["kingdom-1", "kingdom-3", "ever_regent", 5, ["royal_armories", "kings_roads"]],
 		"beasts": ["beasts-2", "beasts-4", "fang_chieftain", 5, ["iron_discipline", "drilled_ranks"]]}
 	for fid in expected:
 		var f := s.find_faction(fid)
@@ -275,13 +275,13 @@ func test_builds_given_at_setup_set_the_ruler_from_kept_power() -> void:
 	var s := _with_rulers(11, {"kingdom": {"ruler": "aurel_king", "mandates": ["royal_armories", "heavy_tithes"]},
 		"beasts": "beast_god_unbound"})
 	var k := s.find_faction("kingdom")
-	assert_eq(k.kept_power, 2, "10 - 4 - 4")
-	assert_eq(RulerRules.ruler_unit(s, "kingdom").type.hp, 22, "King Corvane at 2 kept: 16 + 6")
+	assert_eq(k.kept_power, 3, "10 - 3 - 4")
+	assert_eq(RulerRules.ruler_unit(s, "kingdom").type.hp, 24, "King Corvane at 3 kept: 18 + 6")
 	assert_eq(RulerRules.ruler_unit(s, "kingdom").type.name, "King Corvane I")
 	var b := s.find_faction("beasts")
 	assert_eq(b.ruler_type, "thornmane_avatar")
 	assert_eq(b.kept_power, 10, "a preset with no mandates keeps 10")
-	assert_eq(RulerRules.ruler_unit(s, "beasts").current_hp, 66)
+	assert_eq(RulerRules.ruler_unit(s, "beasts").current_hp, 54)
 	# An illegal build sets nothing up.
 	var errors := []
 	assert_eq(GameState.with_rulers(11, {"kingdom": {"ruler": "aurel_king", "mandates": ["blood_frenzy"]}}, errors), null)
@@ -344,7 +344,7 @@ func test_round_trips_keep_every_new_field() -> void:
 		assert_eq(king.ruler.current_hp, 11)
 		assert_eq(king.ruler.type, k.ruler_unit_type, "the ruler's type is rebuilt on load")
 		assert_eq([king.ruler.type.name, king.ruler.type.hp, king.ruler.type.attack, king.ruler.type.defense],
-			["King Corvane II", 19, 9, 8], "from kept power 1 and generation 2")
+			["King Corvane II", 20, 9, 8], "from kept power 1 and generation 2")
 	# The copy is independent.
 	var c := s.deep_copy()
 	c.find_faction("kingdom").mandates.append("veteran_levies")
@@ -494,9 +494,9 @@ func test_ruler_breakdowns_explain_every_number() -> void:
 	assert_eq(rank.lines.map(func(l): return l.value), [1, 1])
 	assert_true(String(rank.description).begins_with("Mending Light at rank 2: "), rank.description)
 	assert_true(String(rank.description).contains("heals 6 hit points"), rank.description)
-	# Kept power: "Kept power 4 = pool 10 - Royal Armories 4 - King's Roads 2".
+	# Kept power: "Kept power 5 = pool 10 - Royal Armories 3 - King's Roads 2".
 	var kept := Breakdown.kept_power(s, "kingdom")
-	assert_eq(kept.lines.map(func(l): return [l.label, l.value]), [["Power pool", 10], ["Royal Armories", -4], ["King's Roads", -2]])
+	assert_eq(kept.lines.map(func(l): return [l.label, l.value]), [["Power pool", 10], ["Royal Armories", -3], ["King's Roads", -2]])
 	# A game without rulers explains that instead.
 	var none := Breakdown.kept_power(GameState.new(4), "kingdom")
 	assert_eq(int(none.total), 0)
@@ -534,8 +534,8 @@ func test_ruler_army_on_the_map_reads_plainly_and_explains_every_number() -> voi
 			numbers += 1
 			assert_true(l.tooltip_text.contains("= "), "%s's tooltip shows a breakdown total: %s" % [node_name, l.tooltip_text])
 	assert_true(numbers >= 6, "hit points, attack, defense, morale, kept power and ability rank (%d)" % numbers)
-	assert_eq((panel.find_child("RulerHpLabel", true, false) as Label).text, "Hit points: 22 of 22")
-	assert_eq((panel.find_child("KeptPowerLabel", true, false) as Label).text, "Kept power: 4 of 10")
+	assert_eq((panel.find_child("RulerHpLabel", true, false) as Label).text, "Hit points: 19 of 19")
+	assert_eq((panel.find_child("KeptPowerLabel", true, false) as Label).text, "Kept power: 5 of 10")
 	assert_eq((panel.find_child("AbilityLabel", true, false) as Label).text, "Ability: Mending Light, rank 2 (heal 6)")
 	assert_eq((panel.find_child("MandatesLabel", true, false) as Label).text, "Mandates: Royal Armories, King's Roads")
 	_assert_no_raw_ids(header.tooltip_text, "the ruler's summary")
@@ -545,7 +545,7 @@ func test_ruler_army_on_the_map_reads_plainly_and_explains_every_number() -> voi
 	var ruler_badge: Button = badges.filter(func(b): return b.text == "Ruler")[0]
 	assert_eq(String(ruler_badge.get_meta(CodexLink.META)), "ruler_army")
 	assert_true(ruler_badge.tooltip_text.contains("Aurel Crown ruler the Ever-Regent at Crownkeep"), ruler_badge.tooltip_text)
-	assert_true(ruler_badge.tooltip_text.contains("Hit points 22 of 22, attack 14, defense 8"), ruler_badge.tooltip_text)
+	assert_true(ruler_badge.tooltip_text.contains("Hit points 19 of 19, attack 13, defense 8"), ruler_badge.tooltip_text)
 	# Right-clicking a ruler number opens the codex there.
 	var kept_label := panel.find_child("KeptPowerLabel", true, false) as Label
 	kept_label.gui_input.emit(CodexLink.right_click())
