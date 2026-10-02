@@ -114,6 +114,23 @@ const ENTRIES := {
 		"title": "Income",
 		"text": "At the end of the turn, each faction earns the income of every province it owns, after this turn's captures and recruits.",
 	},
+	# --- game flow and winning (#7, #8): GameSession and VictoryCheck ---
+	"hotseat": {
+		"title": "Taking turns on one computer",
+		"text": "Players share one computer and give orders in seat order: player 1 first, then player 2. Your orders stay hidden from the other player. Nothing happens until the last player ends their turn. Then all orders resolve together, and the turn report shows everyone what happened.",
+	},
+	"handoff": {
+		"title": "Passing the computer",
+		"text": "When you end your turn, the screen hides the map and your orders and asks you to pass the computer to the next player. The game continues only when they say they are ready, so nobody sees the other side's orders.",
+	},
+	"victory": {
+		"title": "Winning the game",
+		"text": "Capture the enemy capital to win. A capital is captured like any other province: after battles, if only your armies are in it, it becomes yours. The game ends when that turn finishes resolving, and the victory screen shows the turns played, the battles fought and how many provinces each side holds.",
+	},
+	"simultaneous_capture": {
+		"title": "Both capitals fall in the same turn",
+		"text": "Turns resolve at the same time for everyone, so both sides can capture each other's capital in the same turn. If that happens, nobody wins: the game ends in a draw.",
+	},
 }
 
 
