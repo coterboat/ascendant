@@ -15,21 +15,25 @@ extends Control
 ## Builds its children in code, so it works before it is in the tree (headless tests).
 ##
 ## API:
-##   show_event(event, state = null) -> bool   a battle event from the turn report. Returns false and
-##                                             shows "No detailed report for this battle." when the
-##                                             event carries no report (e.g. StubBattleResolver).
-##   show_report(report, state = null) -> bool an AutoBattleResolver report dictionary
+##   show_event(event, state = null, seats = []) -> bool   a battle event from the turn report. Returns
+##                                             false and shows "No detailed report for this battle."
+##                                             when the event carries no report (e.g. StubBattleResolver).
+##   show_report(report, state = null, seats = []) -> bool an AutoBattleResolver report dictionary
 ##   close()                                   hides the viewer and emits `closed` (Close button, Esc)
 ##   section_names() -> Array[String]          the sections shown, in display order
 ##   section(name) -> Control                  one section's node, or null
-## `state` is optional: it only picks the player colours, the same way the map does
-## (UiPalette.owner_color). Without it, colours follow the faction order of a new game.
+##   side_color(faction_id) -> Color           the colour a side is drawn in
+##   signal codex_requested(key)               a section heading or the "why" was right-clicked (or F1)
+## `seats` is the seat order (GameSession.players()): player colours follow the seat, the same way the
+## map draws them (UiPalette.faction_color). Without it, the state's faction order stands in.
 
 signal closed
+## A linked heading or the "why" was right-clicked: open the codex at `key` (the host does).
+signal codex_requested(key: String)
 
 const SECTION_ORDER := ["why", "sides", "terrain", "rounds", "casualties", "routs", "hits", "round_cap"]
 const NO_REPORT_TEXT := "No detailed report for this battle."
-const NEGATIVE := Color("#F06A64")  # design/STYLE_BIBLE.md 1.3 "negative"; not in UiPalette yet
+const NEGATIVE := UiPalette.NEGATIVE  # design/STYLE_BIBLE.md 1.3 "negative"
 
 ## RulesCodex entry that explains each deciding factor of the "why" (factor ids from the report).
 const FACTOR_ENTRIES := {
@@ -59,6 +63,7 @@ var _sections := {}  # section name -> Control, for the report on screen
 var _report := {}
 var _event := {}
 var _state: GameState = null
+var _seats: Array = []
 
 
 func _init() -> void:
@@ -78,8 +83,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## Shows the report a battle event carries. Returns false, showing a plain message instead, when the
 ## event has no detailed report.
-func show_event(event: Dictionary, state: GameState = null) -> bool:
+func show_event(event: Dictionary, state: GameState = null, seats: Array = []) -> bool:
 	_event = event.duplicate(true)
+	_seats = seats.duplicate()
 	var numbers: Dictionary = event.get("numbers", {})
 	var report: Dictionary = numbers.get("report", {})
 	if report.is_empty():
@@ -90,8 +96,9 @@ func show_event(event: Dictionary, state: GameState = null) -> bool:
 
 
 ## Shows an AutoBattleResolver report dictionary (the "report" of a battle result).
-func show_report(report: Dictionary, state: GameState = null) -> bool:
+func show_report(report: Dictionary, state: GameState = null, seats: Array = []) -> bool:
 	_event = {}
+	_seats = seats.duplicate()
 	if report.is_empty():
 		_state = state
 		_show_no_report("")
@@ -177,15 +184,18 @@ func _add_why() -> void:
 
 	var result := _text(inner, _result_sentence(), _tip("How a battle ends", RulesCodex.text("battle_rounds")), 30, UiPalette.GILT)
 	result.name = "ResultLabel"
+	CodexLink.attach(result, "battle_rounds", codex_requested.emit)
 	var why := String(_report.get("why", ""))
 	var why_text := "Why: %s." % _cap(why) if not why.is_empty() else "Why: the report gives no single reason."
 	var why_label := _text(inner, why_text, _why_tooltip(), 24, UiPalette.TEXT_PRIMARY)
 	why_label.name = "WhyLabel"
+	CodexLink.attach(why_label, _why_entry(), codex_requested.emit)
 
 
 func _add_sides() -> void:
 	var box := _section("sides", "Who fought",
-		_tip("Who fought", "Each side's armies as they stood when the battle began. Fighters are units and commanders. %s" % RulesCodex.text("battle_commanders")))
+		_tip("Who fought", "Each side's armies as they stood when the battle began. Fighters are units and commanders. %s" % RulesCodex.text("battle_commanders")),
+		"battle_commanders")
 	var row := HBoxContainer.new()
 	row.name = "SideCards"
 	row.add_theme_constant_override("separation", 16)
@@ -216,7 +226,7 @@ func _add_sides() -> void:
 
 func _add_terrain() -> void:
 	var tip := _tip("Terrain in battle", RulesCodex.text("battle_terrain"))
-	var box := _section("terrain", "Terrain and fort", tip)
+	var box := _section("terrain", "Terrain and fort", tip, "battle_terrain")
 	var terrain := String(_report.get("terrain", ""))
 	var defender := _defender_side()
 	if _report.get("kind", "province") == "border":
@@ -259,7 +269,7 @@ func _add_terrain() -> void:
 
 
 func _add_rounds() -> void:
-	var box := _section("rounds", "Round by round", _tip("Battles", RulesCodex.text("battle_rounds")))
+	var box := _section("rounds", "Round by round", _tip("Battles", RulesCodex.text("battle_rounds")), "battle_rounds")
 	var sides := _sides()
 	var cap := int(_report.get("round_cap", AutoBattleResolver.ROUND_CAP))
 	for r in _report.get("rounds", []):
@@ -289,7 +299,7 @@ func _add_rounds() -> void:
 
 func _add_casualties() -> void:
 	var tip := _tip("Casualties", "Fighters are units and commanders. A fighter that falls is gone for good. %s" % RulesCodex.text("battle_rounds"))
-	var box := _section("casualties", "Casualties", tip)
+	var box := _section("casualties", "Casualties", tip, "battle_rounds")
 	var winner := String(_report.get("winner", ""))
 	for sr in _sides():
 		var lost: Array = sr.get("lost", [])
@@ -310,7 +320,7 @@ func _add_casualties() -> void:
 
 
 func _add_routs() -> void:
-	var box := _section("routs", "Morale and routs", _tip("Morale and routs", RulesCodex.text("battle_morale")))
+	var box := _section("routs", "Morale and routs", _tip("Morale and routs", RulesCodex.text("battle_morale")), "battle_morale")
 	var winner := String(_report.get("winner", ""))
 	for sr in _sides():
 		var checks: Array = sr.get("morale_log", [])
@@ -340,7 +350,7 @@ func _add_routs() -> void:
 
 func _add_hits() -> void:
 	var tip := _tip("Hit chance and damage", RulesCodex.text("battle_hit_chance"))
-	var box := _section("hits", "Hit rates and luck", tip)
+	var box := _section("hits", "Hit rates and luck", tip, "battle_hit_chance")
 	for sr in _sides():
 		var attacks := int(sr.get("attacks", 0))
 		var who := String(sr.get("name", ""))
@@ -352,7 +362,7 @@ func _add_hits() -> void:
 		var span: Array = sr.get("hit_chance_range", [0, 0])
 		var lo := int(span[0]) if span.size() > 0 else 0
 		var hi := int(span[1]) if span.size() > 1 else lo
-		_text(box, "%s hit %d%% of the time (%d of %d attacks)." % [who, rate, int(sr.get("hits", 0)), attacks], tip, 18)
+		_text(box, "%s hit %d%% of the time (%d of %s)." % [who, rate, int(sr.get("hits", 0)), TooltipText.count(attacks, "attack")], tip, 18)
 		var chance := "Each attack had a %d%% chance to hit." % lo if lo == hi \
 			else "Each attack had a %d-%d%% chance to hit, about %d%% on average." % [lo, hi, expected]
 		_text(box, chance, tip, 17, UiPalette.TEXT_SECONDARY)
@@ -371,9 +381,9 @@ func _add_hits() -> void:
 
 func _add_round_cap() -> void:
 	var tip := _tip(String(RulesCodex.entry("battle_round_cap").get("title", "Round limit")), RulesCodex.text("battle_round_cap"))
-	var box := _section("round_cap", "Round limit reached", tip)
+	var box := _section("round_cap", "Round limit reached", tip, "battle_round_cap")
 	var cap := int(_report.get("round_cap", AutoBattleResolver.ROUND_CAP))
-	_text(box, "Nobody had won after %d rounds, so the battle stopped there." % cap, tip, 18)
+	_text(box, "Nobody had won after %s, so the battle stopped there." % TooltipText.count(cap, "round"), tip, 18)
 	var winner := _winner_side()
 	var who := String(winner.get("name", _report.get("winner_name", "")))
 	if winner.get("defender", false):
@@ -457,6 +467,15 @@ func _morale_tooltip(sr: Dictionary, e: Dictionary) -> String:
 	return TooltipText.from_breakdown(b)
 
 
+## The codex entry of the biggest reason in the "why" (battles in general when there is none).
+func _why_entry() -> String:
+	for f in _report.get("factors", []):
+		var key := _factor_entry(String(f.get("id", "")))
+		if RulesCodex.ENTRIES.has(key):
+			return key
+	return "battle_rounds"
+
+
 static func _factor_entry(factor_id: String) -> String:
 	if FACTOR_ENTRIES.has(factor_id):
 		return FACTOR_ENTRIES[factor_id]
@@ -508,18 +527,18 @@ func _winner_side() -> Dictionary:
 
 
 func _side_color(sr: Dictionary) -> Color:
-	var fid := String(sr.get("faction", ""))
-	if _state != null:
-		return UiPalette.owner_color(_state, fid)
-	for i in FactionData.FACTIONS.size():
-		if FactionData.FACTIONS[i].id == fid:
-			return UiPalette.PLAYER_COLORS[i % UiPalette.PLAYER_COLORS.size()]
-	return UiPalette.NEUTRAL
+	return side_color(String(sr.get("faction", "")))
+
+
+## The seat colour a side is drawn in: by `seats` when given, otherwise the state's faction order,
+## otherwise the faction data order (UiPalette.seat_order).
+func side_color(faction_id: String) -> Color:
+	return UiPalette.faction_color(_seats if not _seats.is_empty() else UiPalette.seat_order(_state), faction_id)
 
 
 # --- nodes ----------------------------------------------------------------------------------------
 
-func _section(key: String, heading: String, tooltip: String) -> VBoxContainer:
+func _section(key: String, heading: String, tooltip: String, codex_key: String = "") -> VBoxContainer:
 	var box := VBoxContainer.new()
 	box.name = "Section_%s" % key
 	box.set_meta("section", key)
@@ -530,6 +549,7 @@ func _section(key: String, heading: String, tooltip: String) -> VBoxContainer:
 	if not heading.is_empty():
 		var h := _text(box, heading, tooltip, 26, UiPalette.GILT)
 		h.name = "Heading"
+		CodexLink.attach(h, codex_key, codex_requested.emit)
 	return box
 
 

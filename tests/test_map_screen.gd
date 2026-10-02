@@ -103,7 +103,10 @@ func test_select_province_fills_the_side_panel() -> void:
 	assert_eq(_find(screen, "UnitsLabel").text, "Units: 3", "the starting army has three units")
 	assert_eq(_find(screen, "CommanderLabel").text, "Commander: Knight Captain")
 	var strength := StubBattleResolver.army_strength(screen.state.armies[0])
-	assert_eq(_find(screen, "StrengthLabel").text, "Strength: %d" % strength)
+	var strength_label := _find(screen, "StrengthLabel")
+	assert_eq(strength_label.text, "Rough strength: %d" % strength, "labelled as a rough guide")
+	assert_true(strength_label.tooltip_text.contains("move forecast"), "the tooltip points to the forecast odds")
+	assert_eq(String(strength_label.get_meta(CodexLink.META)), "army_strength", "and links the codex entry that says it is a guide")
 
 	screen.select_province("thornvale")
 	assert_false(screen.regions["crownkeep"].selected, "the old selection is cleared")
@@ -151,7 +154,7 @@ func test_top_bar_shows_gold_with_breakdown_and_turn() -> void:
 	assert_true(screen.gold_label.tooltip_text.contains("Gold now: 50"), "gold tooltip shows gold now")
 	assert_true(screen.gold_label.tooltip_text.contains("Income from Crownkeep: +12"), "gold tooltip lists province income")
 	assert_true(screen.gold_label.tooltip_text.contains("Gold next turn (before recruits): 62"), "gold tooltip shows next turn")
-	assert_eq(screen.turn_label.text, "Turn 0")
+	assert_eq(screen.turn_label.text, "Turn 1", "turns are 1-based, like the tooltip")
 	assert_eq(screen.faction_label.text, "Aurel Crown")
 
 	var later := GameState.new()
@@ -161,7 +164,8 @@ func test_top_bar_shows_gold_with_breakdown_and_turn() -> void:
 	screen.set_state(later, "beasts")
 	assert_eq(screen.faction_label.text, "Thornmane Clans", "top bar follows the viewing faction")
 	assert_eq(screen.gold_label.text, "Gold 77   (+19 per turn)", "Fangridge 12 + Deepwood 7")
-	assert_eq(screen.turn_label.text, "Turn 3")
+	assert_eq(screen.turn_label.text, "Turn 4", "3 turns resolved: turn 4 is being ordered")
+	assert_true(screen.turn_label.tooltip_text.begins_with("Turn 4"), "the label matches its breakdown")
 	_close(screen)
 
 
@@ -186,6 +190,7 @@ func test_title_screen_has_a_map_preview_button() -> void:
 	var button := title.get_node_or_null("Center/Box/MapPreviewButton") as Button
 	assert_true(button != null, "title screen has the Map preview button")
 	if button:
-		assert_eq(button.text, "Map preview")
+		assert_eq(button.text, "Map preview (dev)", "kept, but marked as a developer preview")
+		assert_true(button.flat, "and drawn as a quiet secondary link")
 		assert_false(button.tooltip_text.is_empty(), "the button explains itself")
 	title.free()
