@@ -3,7 +3,9 @@ extends Control
 ## End-of-game screen (#8): who won (or that it is a draw), the plain-language summary, and the game in
 ## numbers: turns played, battles fought, provinces each faction holds and the capitals captured.
 ## Shows GameSession.victory() (VictoryCheck.summary) and never changes rules state. Every number has
-## a tooltip; explanations come from RulesCodex ("victory", "simultaneous_capture", "capture").
+## a tooltip; explanations come from RulesCodex ("victory", "simultaneous_capture", "capture"), and each
+## tooltip ends with its codex entry: right-click (or F1) emits codex_requested(key) for the host.
+## Seat colours come from UiPalette.seat_color: Player 1 Vermilion, Player 2 Cobalt, whatever faction.
 ## Builds its children in code, so it works before it is in the tree (headless tests).
 ##
 ## API:
@@ -16,9 +18,13 @@ extends Control
 ##                victory.provinces_held (which VictoryCheck fills in seat order).
 ##   signal new_game_requested   the "New game" button
 ##   signal title_requested      the "Back to title" button
+##   signal codex_requested(key) a linked number or line was right-clicked (or F1)
+##   add_action(name, text, tooltip) -> Button   a smaller button in a row above New game, for the
+##                               host's own actions (the game screen's "Final turn report", "View the map")
 
 signal new_game_requested
 signal title_requested
+signal codex_requested(key: String)
 
 const BACKGROUND := Color("#14131F")  # a shade under UiPalette.PANEL_BG, so the screen reads as a full page
 
@@ -34,6 +40,7 @@ var captures_box: VBoxContainer
 var captures_heading: Label
 var new_game_button: Button
 var title_button: Button
+var actions_row: HBoxContainer  # add_action() buttons; hidden while empty
 var _province_labels: Array[Label] = []
 var _capture_labels: Array[Label] = []
 
@@ -67,8 +74,10 @@ func show_victory(summary: Dictionary, state: GameState = null, players: Array =
 	var rule_tip := TooltipText.plain(String(rule.get("title", "")), String(rule.get("text", "")))
 	var turn := int(summary.get("turn", 0))
 
+	var rule_kind := "draw" if is_draw else "game_over"
 	caption_label.text = "Game over on turn %d" % turn
 	caption_label.tooltip_text = TooltipText.plain("Game over", "The game ended when turn %d finished resolving. %s" % [turn, rule.get("text", "")])
+	_link(caption_label, rule_kind)
 	var seat := seats.find(winner)
 	if is_draw:
 		headline_label.text = "It's a draw"
@@ -83,15 +92,19 @@ func show_victory(summary: Dictionary, state: GameState = null, players: Array =
 	seat_label.tooltip_text = rule_tip
 	summary_label.text = String(summary.get("text", ""))
 	summary_label.tooltip_text = TooltipText.plain("How the game ended", String(rule.get("text", "")))
+	for l in [headline_label, seat_label, summary_label]:
+		_link(l, rule_kind)
 
 	var turns := int(summary.get("turns_played", 0))
 	turns_label.text = "Turns played: %d" % turns
 	turns_label.tooltip_text = TooltipText.plain("Turns played: %d" % turns,
 		"How many turns were resolved in this game, counting the last one. A turn resolves once every player has ended theirs. %s" % RulesCodex.text("hotseat"))
+	_link(turns_label, "turns_played")
 	var battles := int(summary.get("battles", 0))
 	battles_label.text = "Battles fought: %d" % battles
 	battles_label.tooltip_text = TooltipText.plain("Battles fought: %d" % battles,
 		"Every battle in the whole game, including border battles between armies that swapped places. %s" % RulesCodex.text("battle_rounds"))
+	_link(battles_label, "battles")
 
 	_clear(provinces_box, _province_labels)
 	for i in seats.size():
@@ -100,10 +113,11 @@ func show_victory(summary: Dictionary, state: GameState = null, players: Array =
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
 		row.add_child(seat_emblem(i))
-		var l := _label("%s: %d %s" % [_faction_name(fid, state), count, "province" if count == 1 else "provinces"], 22,
+		var l := _label("%s: %s" % [_faction_name(fid, state), TooltipText.count(count, "province")], 22,
 			seat_color(i).lightened(0.3))
 		l.tooltip_text = _provinces_tooltip(fid, count, state)
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
+		_link(l, "provinces_held")
 		row.add_child(l)
 		provinces_box.add_child(row)
 		_province_labels.append(l)
@@ -116,6 +130,7 @@ func show_victory(summary: Dictionary, state: GameState = null, players: Array =
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.tooltip_text = capture_tip
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
+		_link(l, "captures")
 		captures_box.add_child(l)
 		_capture_labels.append(l)
 	captures_box.visible = not _capture_labels.is_empty()
@@ -123,6 +138,17 @@ func show_victory(summary: Dictionary, state: GameState = null, players: Array =
 	visible = true
 	if is_inside_tree():
 		new_game_button.grab_focus.call_deferred()
+
+
+## Adds a smaller button for the host's own action in a row above "New game". Returns it so the host
+## can connect `pressed`.
+func add_action(node_name: String, text: String, tooltip: String) -> Button:
+	var b := _button(node_name, text, tooltip)
+	b.custom_minimum_size = Vector2(220, 44)
+	b.add_theme_font_size_override("font_size", 20)
+	actions_row.add_child(b)
+	actions_row.visible = true
+	return b
 
 
 ## One label per faction in the provinces-held list, in row order.
@@ -182,46 +208,23 @@ static func _province_name(pid: String, state: GameState) -> String:
 	return "a province"
 
 
+## The seat's player colour (UiPalette.seat_color, the one source of player colours).
 static func seat_color(seat_index: int) -> Color:
-	if seat_index < 0:
-		return UiPalette.NEUTRAL
-	return UiPalette.PLAYER_COLORS[seat_index % UiPalette.PLAYER_COLORS.size()]
+	return UiPalette.seat_color(seat_index)
 
 
-## The seat's emblem from design/STYLE_BIBLE.md 1.1 (P1 circle, P2 square, P3 triangle, P4 diamond),
-## drawn in the seat colour with an ink keyline and a light halo.
-static func seat_emblem(seat_index: int) -> Control:
-	var c := Control.new()
-	c.name = "SeatEmblem"
-	c.custom_minimum_size = Vector2(24, 24)
-	c.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	c.draw.connect(func(): _draw_emblem(c, seat_index))
-	return c
-
-
-static func _draw_emblem(c: Control, seat_index: int) -> void:
-	var center := c.size * 0.5
-	var r := minf(c.size.x, c.size.y) * 0.5 - 2.0
-	var fill := seat_color(seat_index)
-	var layers := [[r + 2.0, UiPalette.KEYLINE_HALO], [r + 1.0, UiPalette.KEYLINE_INK], [r, fill]]
-	for layer in layers:
-		var radius: float = layer[0]
-		var color: Color = layer[1]
-		match seat_index % 4:
-			0:
-				c.draw_circle(center, radius, color)
-			1:
-				c.draw_rect(Rect2(center - Vector2(radius, radius) * 0.85, Vector2(radius, radius) * 1.7), color)
-			2:
-				c.draw_colored_polygon(PackedVector2Array([center + Vector2(0, -radius), center + Vector2(radius, radius * 0.8),
-					center + Vector2(-radius, radius * 0.8)]), color)
-			3:
-				c.draw_colored_polygon(PackedVector2Array([center + Vector2(0, -radius), center + Vector2(radius, 0),
-					center + Vector2(0, radius), center + Vector2(-radius, 0)]), color)
+## The seat's emblem from design/STYLE_BIBLE.md 1.1 (P1 circle, P2 square, ...) in the seat colour with
+## keylines. SeatEmblem draws it, the same mark the map uses.
+static func seat_emblem(seat_index: int) -> SeatEmblem:
+	return SeatEmblem.new(seat_index)
 
 
 # --- nodes ----------------------------------------------------------------------------------------
+
+## Links a label to the codex entry for its kind of number (TooltipText.CODEX).
+func _link(l: Control, kind: String) -> void:
+	CodexLink.attach(l, TooltipText.codex_for(kind), codex_requested.emit)
+
 
 func _clear(box: Container, list: Array[Label]) -> void:
 	list.clear()
@@ -325,6 +328,12 @@ func _build() -> void:
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(0, 12)
 	box.add_child(spacer)
+	actions_row = HBoxContainer.new()
+	actions_row.name = "Actions"
+	actions_row.add_theme_constant_override("separation", 16)
+	actions_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	actions_row.visible = false
+	box.add_child(actions_row)
 	var buttons := HBoxContainer.new()
 	buttons.name = "Buttons"
 	buttons.add_theme_constant_override("separation", 20)
