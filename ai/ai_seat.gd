@@ -18,6 +18,12 @@ extends RefCounted
 ## autoplay's Simulator.policy_seed and the AI build pick in design/M2_RULER.md 6.1, so the same seed
 ## and the same human orders always give the same computer orders. A save would store rng_state().
 ##
+## Builds (M2, design/M2_RULER.md 6.1): in a game with rulers, the seat's build is the first draw of its
+## RNG, AIPlayer.choose_build, made here when the seat is set up; its orders use the draws after it. The
+## build screen picks a computer seat's build with the same call on the same seed (BuildScreen.computer_build),
+## so the build in the starting state is the one rolled here, and build(faction) returns it. The brain
+## always plays the build the state holds (AIPlayer.preset_for). A game without rulers makes no draw.
+##
 ## Notes: AIPlayer.last_plan_notes() say what the computer is about to do, so they would give away its
 ## simultaneous orders. They are kept per planned turn, and report_notes(session) only ever returns the
 ## notes of the last RESOLVED turn. A computer in seat 1 has already planned the next turn when the
@@ -31,6 +37,7 @@ var _levels := {}  # faction id -> level
 var _seats := {}  # faction id -> 0-based seat
 var _brains := {}  # faction id -> AIPlayer
 var _rngs := {}  # faction id -> SeededRNG, one per seat for the whole game
+var _builds := {}  # faction id -> AIPlayer.choose_build (games with rulers only): the RNG's first draw
 var _notes := {}  # 1-based turn -> {faction id: Array of plain-language notes}
 var _stats := {}  # 1-based turn -> {faction id: AIPlayer.last_plan_stats()}
 var _rejected: Array = []  # {"turn", "faction", "order", "why"}: orders the session refused (expected: none)
@@ -43,6 +50,8 @@ func _init(session: GameSession = null, game_seed: int = 0) -> void:
 		return
 	var players := session.players()
 	var seats := session.computer_seats()
+	var state := session.state()
+	var rulers := state != null and RulerRules.has_rulers(state)
 	for fid in seats:
 		var seat := players.find(fid)
 		if seat < 0:
@@ -51,6 +60,8 @@ func _init(session: GameSession = null, game_seed: int = 0) -> void:
 		_seats[fid] = seat
 		_brains[fid] = AIPlayer.new()
 		_rngs[fid] = SeededRNG.new(seat_seed(game_seed, seat))
+		if rulers:
+			_builds[fid] = AIPlayer.choose_build(state, fid, _rngs[fid])
 
 
 ## The RNG seed of the computer in the 0-based seat `seat`.
@@ -89,6 +100,12 @@ func factions() -> Array:
 	var out := _seats.keys()
 	out.sort_custom(func(a, b): return _seats[a] < _seats[b])
 	return out
+
+
+## The build the computer seat `faction_id` rolled ({"preset", "ruler", "mandates"}), or {} in a game
+## without rulers. It is the build the build screen gave that seat (the same roll on the same seed).
+func build(faction_id: String) -> Dictionary:
+	return _builds.get(faction_id, {}).duplicate(true)
 
 
 ## The RNG state of each computer seat ({faction id: SeededRNG.to_dict()}), for a save or a test.
