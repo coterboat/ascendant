@@ -24,6 +24,8 @@ const Policies := preload("res://tools/autoplay/policies.gd")
 const TURN_CAP := 60
 ## Every event type the M1 turn report may hold. Anything else is reported as an error.
 const EVENT_TYPES := ["order_rejected", "army_moved", "battle", "border_battle", "captured", "recruited", "income", "game_over"]
+## Event types a game with rulers adds (M2-3, #31): ruler deaths, the rulers phase's healing, successors.
+const RULER_EVENT_TYPES := ["ruler_died", "mending", "ruler_healed", "ruler_arrived", "succession_waiting"]
 const BATTLE_TYPES := ["battle", "border_battle"]
 ## AutoBattleResolver report "end" values, in display order.
 const BATTLE_ENDS := ["rout", "destroyed", "round_cap", "mutual"]
@@ -171,11 +173,11 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 ## Problems with the state after a turn, as [{"check", "detail"}]. Empty when everything holds.
 ## `prev` is the state the turn started from (or null), `events` the turn report's events.
 ## Checks: GameState.validate(); gold >= 0; every army is in a known province, belongs to a known faction
-## and has a unit or a commander; every unit has 1..max hp and its army's owner; every province owner is
-## a known faction or neutral; no province holds armies of two factions; a province held by one
-## faction's armies belongs to that faction; armies a battle destroyed are gone; event types and phases
-## are known; battle reports have a known end, 1..ROUND_CAP rounds and no negative hp; the turn counter
-## went up by one; gold = gold before - recruits paid + income.
+## and has a unit, a commander or a ruler; every unit (and ruler) has 1..max hp and its army's owner; every
+## province owner is a known faction or neutral; no province holds armies of two factions; a province held
+## by one faction's armies belongs to that faction; armies a battle destroyed are gone; event types and
+## phases are known; battle reports have a known end, 1..ROUND_CAP rounds and no negative hp; the turn
+## counter went up by one; gold = gold before - recruits paid + income. With rulers, _check_rulers too.
 static func check_invariants(prev: GameState, state: GameState, events: Array) -> Array:
 	var out := []
 	if state == null:
@@ -201,11 +203,13 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 			out.append({"check": "army_location_unknown", "detail": "Army %s is at unknown province '%s'." % [a.id, a.location]})
 		if not faction_ids.has(a.owner):
 			out.append({"check": "army_owner_unknown", "detail": "Army %s belongs to unknown faction '%s'." % [a.id, a.owner]})
-		if a.units.is_empty() and a.commander == null:
+		if a.units.is_empty() and a.commander == null and a.ruler == null:  # a ruler's army holds only its ruler
 			out.append({"check": "army_empty", "detail": "Army %s at %s has no units and no commander." % [a.id, a.location]})
 		var members: Array = a.units.duplicate()
 		if a.commander != null:
 			members.append(a.commander)
+		if a.ruler != null:
+			members.append(a.ruler)
 		for u in members:
 			if u.current_hp <= 0:
 				out.append({"check": "unit_hp_not_positive", "detail": "A %s in army %s has %d hp." % [u.type.id, a.id, u.current_hp]})
@@ -229,7 +233,7 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 	var income := {}
 	for e in events:
 		var type := str(e.get("type", ""))
-		if not EVENT_TYPES.has(type):
+		if not EVENT_TYPES.has(type) and not RULER_EVENT_TYPES.has(type):
 			out.append({"check": "event_type_unknown", "detail": "The turn report has an event of unexpected type '%s'." % type})
 		if not GameSession.REPORT_PHASES.has(str(e.get("phase", ""))):
 			out.append({"check": "event_phase_unknown", "detail": "A %s event has unexpected phase '%s'." % [type, e.get("phase", "")]})
@@ -255,6 +259,64 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 			if f.gold != expected:
 				out.append({"check": "gold_accounting", "detail": "%s has %d gold, expected %d (%d - %d recruits + %d income)." % [
 					f.id, f.gold, expected, before.gold, spent.get(f.id, 0), income.get(f.id, 0)]})
+	out.append_array(_check_rulers(prev, state, events))
+	return out
+
+
+## Ruler armies and succession (M2-3, #31), for factions with a ruler; nothing in an M1 game:
+##   ruler_army_twice        a faction has more than one ruler army
+##   ruler_army_not_alone    a ruler army also holds units or a commander
+##   ruler_missing           a living ruler has no ruler army on the map
+##   dead_ruler_on_map       a dead ruler still has a ruler army
+##   successor_missing       a dead ruler has no successor due
+##   successor_overdue       a successor was due by this turn and the faction holds its capital, but none arrived
+##   ruler_events_mismatch   a ruler died or arrived this turn without its ruler_died / ruler_arrived event
+static func _check_rulers(prev: GameState, state: GameState, events: Array) -> Array:
+	var out := []
+	var ruler_armies := {}
+	for a in state.armies:
+		if a.ruler == null:
+			continue
+		if ruler_armies.has(a.owner):
+			out.append({"check": "ruler_army_twice", "detail": "%s has two ruler armies: %s and %s." % [a.owner, ruler_armies[a.owner], a.id]})
+		else:
+			ruler_armies[a.owner] = a.id
+		if not a.units.is_empty() or a.commander != null:
+			out.append({"check": "ruler_army_not_alone", "detail": "Ruler army %s also holds %d units%s." % [a.id, a.units.size(),
+				" and a commander" if a.commander != null else ""]})
+	var died := {}
+	var arrived := {}
+	for e in events:
+		var type := str(e.get("type", ""))
+		if type != "ruler_died" and type != "ruler_arrived":
+			continue
+		var counts: Dictionary = died if type == "ruler_died" else arrived
+		for fid in e.get("factions", []):
+			counts[str(fid)] = int(counts.get(str(fid), 0)) + 1
+	for f in state.factions:
+		if not f.has_ruler():
+			continue
+		var on_map := ruler_armies.has(f.id)
+		if f.ruler_status == RulerRules.ALIVE and not on_map:
+			out.append({"check": "ruler_missing", "detail": "%s's ruler is alive but has no ruler army on the map." % f.id})
+		elif f.ruler_status == RulerRules.DEAD:
+			if on_map:
+				out.append({"check": "dead_ruler_on_map", "detail": "%s's ruler is dead, but ruler army %s is on the map." % [f.id, ruler_armies[f.id]]})
+			if f.successor_turn <= 0:
+				out.append({"check": "successor_missing", "detail": "%s's ruler is dead with no successor due." % f.id})
+			elif f.successor_turn <= state.current_turn and RulerRules.holds_capital(state, f.id):
+				out.append({"check": "successor_overdue", "detail": "%s's successor was due at the end of turn %d, and %s holds its capital, but none arrived by turn %d." % [
+					f.id, f.successor_turn, f.id, state.current_turn]})
+		var before: Faction = prev.find_faction(f.id) if prev != null else null
+		if before == null or not before.has_ruler():
+			continue
+		var n_died := int(died.get(f.id, 0))
+		var n_arrived := int(arrived.get(f.id, 0))
+		var alive_now := 1 if f.ruler_status == RulerRules.ALIVE else 0
+		var alive_before := 1 if before.ruler_status == RulerRules.ALIVE else 0
+		if f.ruler_generation - before.ruler_generation != n_arrived or alive_now - alive_before != n_arrived - n_died:
+			out.append({"check": "ruler_events_mismatch", "detail": "%s's ruler went from %s (generation %d) to %s (generation %d), but the turn report has %d ruler_died and %d ruler_arrived events." % [
+				f.id, before.ruler_status, before.ruler_generation, f.ruler_status, f.ruler_generation, n_died, n_arrived]})
 	return out
 
 
