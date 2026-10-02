@@ -299,7 +299,7 @@ const ENTRIES := {
 	},
 	"ability_royal_court": {
 		"title": "Royal Court",
-		"text": "King Corvane's province ability. In the income phase, the province the King is in earns more gold, if you own it: 2 more at ability rank 1, 3 at rank 2, 4 at rank 3 and 5 at rank 4. It shows in that province's income.",
+		"text": "King Corvane's province ability. In the income phase, the province the King is in earns more gold, if you own it: 2 more at ability rank 1, 3 at rank 2, 4 at rank 3 and 5 at rank 4. It follows him: it counts where he ends the turn, after movement and battles. While he is dead there is no Royal Court. It shows in that province's income and in your gold.",
 	},
 	"ability_mending_light": {
 		"title": "Mending Light",
@@ -311,7 +311,7 @@ const ENTRIES := {
 	},
 	"ability_warband_muster": {
 		"title": "Warband Muster",
-		"text": "The Ninth Fang's province ability. Each turn you may recruit regular units with the Fang: 1 at ability rank 1, 2 at rank 2, 3 at rank 3 and 4 at rank 4, at the usual prices. They appear where the Fang is after movement and battles, if you own that province then. Commanders still come only from the capital.",
+		"text": "The Ninth Fang's province ability. Each turn you may recruit regular units with the Fang: 1 at ability rank 1, 2 at rank 2, 3 at rank 3 and 4 at rank 4, at the usual prices (Muster Grounds included). Select the Fang's province to find the Recruit with the Ninth Fang buttons. The recruits appear where the Fang is after movement and battles, if you own that province then; if the Fang has fallen or its province isn't yours, they are cancelled and cost nothing. They are paid from the same gold as capital recruits, in the order you gave them. Commanders still come only from the capital.",
 	},
 	"mandate_iron_discipline": {
 		"title": "Iron Discipline",
@@ -327,15 +327,15 @@ const ENTRIES := {
 	},
 	"mandate_heavy_tithes": {
 		"title": "Heavy Tithes",
-		"text": "Shared mandate, 4 power. In the income phase, every province you own earns 1 more gold, the capital included. It shows in each province's income.",
+		"text": "Shared mandate, 4 power. In the income phase, every province you own earns 1 more gold, the capital included. It shows in each province's income and in your gold.",
 	},
 	"mandate_muster_grounds": {
 		"title": "Muster Grounds",
-		"text": "Shared mandate, 4 power. Every recruit, commanders included, costs a fifth less: a fifth of its price, rounded down, comes off. It counts at the capital and for recruits made with Warband Muster.",
+		"text": "Shared mandate, 4 power. Every recruit, commanders included, costs a fifth less: a fifth of its price, rounded down, comes off. Aurel Crown: Spearmen 7, Crossbowmen 8, Knights 16, Knight Captain 28. Thornmane Clans: Tuskers 10, Fangthrowers 8, War Bear 20, Warchief 32. It counts at the capital and for recruits made with Warband Muster, and every price on screen already includes it.",
 	},
 	"mandate_sworn_vassals": {
 		"title": "Sworn Vassals",
-		"text": "Shared mandate, 4 power. Each turn, in the capture phase after armies have captured provinces, one neutral province next to your land swears fealty and joins you: of the provinces with no owner and no army in them that border one you own, the one with the highest income. If another faction's Sworn Vassals picks the same province that turn, neither gets it. At most one province joins you per turn, and no gold changes hands.",
+		"text": "Shared mandate, 4 power. Each turn, in the capture phase after armies have captured provinces, one neutral province next to your land swears fealty and joins you: of the provinces with no owner and no army in them that border one you own, the one with the highest income (a tie goes to the one first in alphabetical order). If another faction's Sworn Vassals picks the same province that turn, neither gets it, and neither picks another. At most one province joins you per turn, and no gold changes hands. The map marks the province that will join with a pennant in its new owner's colour (slate when two factions want it); its forecast counts your queued moves and assumes every other army stays put.",
 	},
 	"mandate_royal_armories": {
 		"title": "Royal Armories",
@@ -343,7 +343,7 @@ const ENTRIES := {
 	},
 	"mandate_kings_roads": {
 		"title": "King's Roads",
-		"text": "Aurel Crown mandate, 2 power. Armies can move two provinces in one turn inside your own territory, through a province next to them to one next to that, when you owned both at the start of the turn. A road move never fights on a border and never stops halfway.",
+		"text": "Aurel Crown mandate, 2 power. Armies can move two provinces in one turn inside your own territory, through a province next to them to one next to that, when you owned both at the start of the turn. Select an army: the provinces it can reach by road get a dashed gilt ring, and clicking one orders the road move, with an arrow that bends through the province it goes through. A road move never fights on a border and never stops halfway. If an enemy army moves into the same province, you fight there, and nobody defends unless one of your armies held it.",
 	},
 	"mandate_blood_frenzy": {
 		"title": "Blood Frenzy",
@@ -355,11 +355,11 @@ const ENTRIES := {
 	},
 	"road_move": {
 		"title": "Road moves",
-		"text": "With King's Roads, a move order can name a province to go through: from A through B to C, where B is next to A, C is next to B, C is not A, and you owned both B and C at the start of the turn. The army moves straight from A to C during movement. It never fights a border battle and never stops in B. If enemies are in C after movement, there is a battle there as usual. The forecast says which way it goes and when it arrives.",
+		"text": "With King's Roads, a move order can name a province to go through: from A through B to C, where B is next to A, C is next to B, C is not A, and you owned both B and C at the start of the turn. The army moves straight from A to C during movement. It never fights a border battle and never stops in B. If enemies are in C after movement, there is a battle there as usual: an enemy army that arrived too fights you with nobody defending. When two ways through are open, the order line has a button to take the other one; it arrives at the same time either way. The forecast says which way it goes and when it arrives.",
 	},
 	"field_recruit": {
 		"title": "Recruiting in the field",
-		"text": "With Warband Muster, the Ninth Fang can recruit regular units where it stands, not only at the capital: up to its ability rank each turn, at the usual prices. They appear where the Fang is after movement and battles, if you own that province then; if not, they are cancelled and you keep the gold. Commanders still come only from the capital.",
+		"text": "With Warband Muster, the Ninth Fang can recruit regular units where it stands, not only at the capital: up to its ability rank each turn, at the usual prices. Select the Fang's province to recruit with it. They appear where the Fang is after movement and battles, joining your first army there that isn't the Fang's own, or forming a new one, if you own that province then; if not, or if the Fang has fallen, they are cancelled and you keep the gold. Commanders still come only from the capital.",
 	},
 }
 
