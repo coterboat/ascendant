@@ -317,12 +317,12 @@ func test_no_raw_ids_in_any_report() -> void:
 
 
 func test_event_without_a_report_says_so() -> void:
-	# The default StubBattleResolver attaches no report.
+	# StubBattleResolver (test-only since real battles became the default) attaches no report.
 	var s := _state([
 		["kingdom-1", "kingdom", "stonegate", ["spearmen"]],
 		["beasts-2", "beasts", "blackwood", ["tuskers"]],
 	])
-	var stub_events: Array = TurnResolver.resolve(s, {"beasts": [MoveOrder.new("beasts-2", "stonegate")]}, 1).events
+	var stub_events: Array = TurnResolver.resolve(s, {"beasts": [MoveOrder.new("beasts-2", "stonegate")]}, 1, StubBattleResolver.new()).events
 	var stub: Dictionary = stub_events.filter(func(e): return e.type == "battle")[0]
 	assert_true(stub.numbers.report.is_empty())
 
