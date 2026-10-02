@@ -159,7 +159,7 @@ const ENTRIES := {
 			+ " Morale 10 breaks after losing %d%% of its hit points;" % (AutoBattleResolver.BREAK_BASE_PCT + 10 * AutoBattleResolver.MORALE_PCT_PER_POINT)
 			+ " morale 6 after %d%%." % (AutoBattleResolver.BREAK_BASE_PCT + 6 * AutoBattleResolver.MORALE_PCT_PER_POINT)
 			+ " A side that breaks flees and loses the battle, even with units still standing, and its armies are destroyed as they flee (there are no retreats yet)."
-			+ " With the Iron Discipline mandate, a side does not break while one of its commanders stands.",
+			+ " With the Iron Discipline mandate, a side does not break while one of its commanders stands, except at the end of the last round (round %d)." % AutoBattleResolver.ROUND_CAP,
 	},
 	"battle_commanders": {
 		"title": "Commanders in battle",
@@ -300,7 +300,7 @@ const ENTRIES := {
 	},
 	"sacrifice": {
 		"title": "Sacrifice",
-		"text": "During the game a living ruler can give up kept power for a new mandate with a Sacrifice order: open the ruler panel (Ruler in the top bar) and press Sacrifice for a mandate. It costs the mandate's price plus 1, so Royal Armories costs 5. The mandate must be on your faction's list and not yours yet, the ruler must be alive and keep at least that much power, and you can give one Sacrifice order per turn. It resolves first in the turn, before any other order is checked, so the new mandate already counts in that turn's moves, battles, recruits and income: King's Roads bought this way allows a road move the same turn. Kept power drops for good, and with it the ruler's hit points, attack, defense and ability rank; its current hit points drop by as much as its maximum, never below 1. Your other orders are checked as if the sacrifice had already happened. If you cancel it, any order that relied on it is removed, and your orders list says why. Before you confirm, the dialog shows every number of yours it changes, before and after, and your queued attacks fought again. The other player learns of it from the turn report.",
+		"text": "During the game a living ruler can give up kept power for a new mandate with a Sacrifice order: open the ruler panel (Ruler in the top bar) and press Sacrifice for a mandate. It costs the mandate's price plus 1, so Royal Armories costs 4. The mandate must be on your faction's list and not yours yet, the ruler must be alive and keep at least that much power, and you can give one Sacrifice order per turn. It resolves first in the turn, before any other order is checked, so the new mandate already counts in that turn's moves, battles, recruits and income: King's Roads bought this way allows a road move the same turn. Kept power drops for good, and with it the ruler's hit points, attack, defense and ability rank; its current hit points drop by as much as its maximum, never below 1. Your other orders are checked as if the sacrifice had already happened. If you cancel it, any order that relied on it is removed, and your orders list says why. Before you confirm, the dialog shows every number of yours it changes, before and after, and your queued attacks fought again. The other player learns of it from the turn report.",
 	},
 	"build": {
 		"title": "Builds",
@@ -308,7 +308,7 @@ const ENTRIES := {
 	},
 	"build_presets": {
 		"title": "Build presets",
-		"text": "Each faction has three ready-made builds: one keeps all its power, one spends it all, and one is balanced. Aurel Crown: Warrior King (King Corvane, no mandates), Iron Crown (King Corvane with Royal Armories, Heavy Tithes and Veteran Levies) and Regent's Court (the Ever-Regent with Royal Armories and King's Roads, keeping 4). Thornmane Clans: Beast-God Unbound (the Great Thornmane, no mandates), Clan Moot (the Ninth Fang with Iron Discipline, Blood Frenzy and Sworn Vassals) and Blood of the Fang (the Ninth Fang with Iron Discipline and Drilled Ranks, keeping 5). A game with rulers gives a faction its balanced build unless another is chosen. AI seats pick one of the three.",
+		"text": "Each faction has three ready-made builds: one keeps all its power, one spends it all, and one is balanced. Aurel Crown: Warrior King (King Corvane, no mandates), Iron Crown (King Corvane with Royal Armories, Heavy Tithes and Veteran Levies) and Regent's Court (the Ever-Regent with Royal Armories and King's Roads, keeping 5). Thornmane Clans: Beast-God Unbound (the Great Thornmane, no mandates), Clan Moot (the Ninth Fang with Iron Discipline, Blood Frenzy and Sworn Vassals) and Blood of the Fang (the Ninth Fang with Iron Discipline and Drilled Ranks, keeping 5). A game with rulers gives a faction its balanced build unless another is chosen. AI seats pick one of the three.",
 	},
 	"ai_seat": {
 		"title": "AI seats",
@@ -316,19 +316,19 @@ const ENTRIES := {
 	},
 	"ruler_aurel_king": {
 		"title": "King Corvane",
-		"text": "Ruler of the Aurel Crown, a mortal line. An ordinary man of the Aurel line: spend his power and he governs the best-equipped kingdom in the land; keep it and he rides to war as a paladin. He fights in the front rank. Hit points 16, plus 3 for every kept power; attack 9 and defense 8, each plus 1 for every 2 kept power, rounded down; morale 10. With all 10 kept: 46 hit points, attack 14, defense 13. Province ability: Royal Court. When he dies, his heir is crowned 2 turns later with half his kept power.",
+		"text": "Ruler of the Aurel Crown, a mortal line. An ordinary man of the Aurel line: spend his power and he governs the best-equipped kingdom in the land; keep it and he rides to war as a paladin. He fights in the front rank. Hit points 18, plus 2 for every kept power; attack 9 and defense 8, each plus 1 for every 2 kept power, rounded down; morale 10. With all 10 kept: 38 hit points, attack 14, defense 13. Province ability: Royal Court. When he dies, his heir is crowned 2 turns later with half his kept power.",
 	},
 	"ruler_ever_regent": {
 		"title": "The Ever-Regent",
-		"text": "Ruler of the Aurel Crown, undying. An archmage who bound his life to the sunstone in Crownkeep: he cannot die, only be broken, and he re-forms slowly. His spells count as attacks until magic comes to the game. He fights in the second rank. Hit points 14, plus 2 for every kept power; attack 10, plus 1 for every kept power; defense 6, plus 1 for every 2 kept power, rounded down; morale 10. With all 10 kept: 34 hit points, attack 20, defense 11. Province ability: Mending Light. When he is destroyed, he re-forms 4 turns later with all his kept power.",
+		"text": "Ruler of the Aurel Crown, undying. An archmage who bound his life to the sunstone in Crownkeep: he cannot die, only be broken, and he re-forms slowly. His spells count as attacks until magic comes to the game. He fights in the second rank. Hit points 14, plus 1 for every kept power; attack 8, plus 1 for every kept power; defense 6, plus 1 for every 2 kept power, rounded down; morale 10. With all 10 kept: 24 hit points, attack 18, defense 11. Province ability: Mending Light. When he is destroyed, he re-forms 4 turns later with all his kept power.",
 	},
 	"ruler_thornmane_avatar": {
 		"title": "The Great Thornmane",
-		"text": "Ruler of the Thornmane Clans, a god. The clans' beast-god, walking among them in a body of briar and fur: when the body is slain, the god takes a new one, a little less of itself each time. It fights in the front rank. Hit points 26, plus 4 for every kept power; attack 10, plus 1 for every kept power; defense 9, plus 1 for every 2 kept power, rounded down; morale 14. With all 10 kept: 66 hit points, attack 20, defense 14. Province ability: Dread. When its body is slain, the god returns 1 turn later with 3 less kept power, for good.",
+		"text": "Ruler of the Thornmane Clans, a god. The clans' beast-god, walking among them in a body of briar and fur: when the body is slain, the god takes a new one, a little less of itself each time. It fights in the front rank. Hit points 24, plus 3 for every kept power; attack 8, plus 1 for every kept power; defense 7, plus 1 for every 2 kept power, rounded down; morale 14. With all 10 kept: 54 hit points, attack 18, defense 12. Province ability: Dread. When its body is slain, the god returns 1 turn later with 3 less kept power, for good.",
 	},
 	"ruler_fang_chieftain": {
 		"title": "The Ninth Fang",
-		"text": "Ruler of the Thornmane Clans, a mortal line. The high chieftain of the old fang bloodline: when one Fang falls, the next of the blood takes the mantle. The Fang fights in the front rank. Hit points 20, plus 3 for every kept power; attack 11, plus 1 for every kept power; defense 7, plus 1 for every 2 kept power, rounded down; morale 12. With all 10 kept: 50 hit points, attack 21, defense 12. Province ability: Warband Muster. When the Fang dies, the next Fang is crowned 2 turns later with half the kept power.",
+		"text": "Ruler of the Thornmane Clans, a mortal line. The high chieftain of the old fang bloodline: when one Fang falls, the next of the blood takes the mantle. The Fang fights in the front rank. Hit points 20, plus 2 for every kept power; attack 9, plus 1 for every kept power; defense 7, plus 1 for every 2 kept power, rounded down; morale 12. With all 10 kept: 40 hit points, attack 19, defense 12. Province ability: Warband Muster. When the Fang dies, the next Fang is crowned 2 turns later with half the kept power.",
 	},
 	"ability_royal_court": {
 		"title": "Royal Court",
@@ -340,7 +340,7 @@ const ENTRIES := {
 	},
 	"ability_dread": {
 		"title": "Dread",
-		"text": "The Great Thornmane's province ability. Every enemy side in a province battle the avatar fights in has 1 less morale at ability rank 1 or 2, and 2 less at rank 3 or 4, while the avatar stands, so it breaks sooner. It doesn't work in border battles. It adds to a War Bear's Fury.",
+		"text": "The Great Thornmane's province ability. Every enemy side in a province battle the avatar fights in has 1 less morale at every ability rank, while the avatar stands, so it breaks sooner. It doesn't work in border battles. It adds to a War Bear's Fury.",
 	},
 	"ability_warband_muster": {
 		"title": "Warband Muster",
@@ -348,7 +348,7 @@ const ENTRIES := {
 	},
 	"mandate_iron_discipline": {
 		"title": "Iron Discipline",
-		"text": "Shared mandate, 3 power. Your side never breaks (routs) while one of your commanders in that battle stands. Rulers don't count: it needs a commander. Once the last commander falls, the usual morale check applies from the end of that round. It is worth more to the Thornmane Clans, whose morale is lower.",
+		"text": "Shared mandate, 3 power. Your side never breaks (routs) while one of your commanders in that battle stands, except at the end of the last round (round %d): there the usual morale check applies, so a line it holds past its breaking point can't win by lasting out the round cap. Rulers don't count: it needs a commander. Once the last commander falls, the usual morale check applies from the end of that round. It is worth more to the Thornmane Clans, whose morale is lower." % AutoBattleResolver.ROUND_CAP,
 	},
 	"mandate_drilled_ranks": {
 		"title": "Drilled Ranks",
@@ -356,11 +356,11 @@ const ENTRIES := {
 	},
 	"mandate_veteran_levies": {
 		"title": "Veteran Levies",
-		"text": "Shared mandate, 2 power. Each of your regular units has 2 more maximum hit points than its type, and new recruits, the starting army included, arrive at the new maximum. Bought by sacrifice, your regular units already on the map gain 2 maximum and 2 current hit points at once.",
+		"text": "Shared mandate, 3 power. Each of your regular units has 2 more maximum hit points than its type, and new recruits, the starting army included, arrive at the new maximum. Bought by sacrifice, your regular units already on the map gain 2 maximum and 2 current hit points at once.",
 	},
 	"mandate_heavy_tithes": {
 		"title": "Heavy Tithes",
-		"text": "Shared mandate, 4 power. In the income phase, every province you own earns 1 more gold, the capital included. It shows in each province's income and in your gold.",
+		"text": "Shared mandate, 4 power. In the income phase, every province you own earns 2 more gold, the capital included. It shows in each province's income and in your gold.",
 	},
 	"mandate_muster_grounds": {
 		"title": "Muster Grounds",
@@ -372,7 +372,7 @@ const ENTRIES := {
 	},
 	"mandate_royal_armories": {
 		"title": "Royal Armories",
-		"text": "Aurel Crown mandate, 4 power. Your regular units have +1 attack and +1 defense: the starting army, every recruit, and the units you already have when it is bought by sacrifice.",
+		"text": "Aurel Crown mandate, 3 power. Your regular units have +1 attack: the starting army, every recruit, and the units you already have when it is bought by sacrifice.",
 	},
 	"mandate_kings_roads": {
 		"title": "King's Roads",

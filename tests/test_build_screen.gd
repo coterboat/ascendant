@@ -333,25 +333,25 @@ func test_every_number_has_the_rules_breakdown() -> void:
 
 
 func test_the_numbers_are_the_specs() -> void:
-	# Regent's Court: the Ever-Regent with Royal Armories and King's Roads keeps 4 (§6.1, §1.3).
+	# Regent's Court: the Ever-Regent with Royal Armories and King's Roads keeps 5 (§6.1, §1.3).
 	var b := _builder(VS_COMPUTER)
-	assert_eq(b.meter_label.text, "Power pool 10  ·  spent 6  ·  kept 4")
+	assert_eq(b.meter_label.text, "Power pool 10  ·  spent 5  ·  kept 5")
 	assert_eq(b.meter_label.get_meta(BuildScreen.BREAKDOWN), Breakdown.build_kept_power(b.current_build()))
 	var gilt := 0
 	for pip in b.meter_pips:
 		if (pip.get_theme_stylebox("panel") as StyleBoxFlat).bg_color == UiPalette.GILT:
 			gilt += 1
-	assert_eq(gilt, 4, "4 kept pips are gilt")
-	assert_eq((b.meter_pips[4].get_theme_stylebox("panel") as StyleBoxFlat).bg_color, BuildScreen.AREA_COLORS.units, "Royal Armories' pips")
+	assert_eq(gilt, 5, "5 kept pips are gilt")
+	assert_eq((b.meter_pips[5].get_theme_stylebox("panel") as StyleBoxFlat).bg_color, BuildScreen.AREA_COLORS.units, "Royal Armories' pips")
 	assert_eq((b.meter_pips[8].get_theme_stylebox("panel") as StyleBoxFlat).bg_color, BuildScreen.AREA_COLORS.map, "King's Roads' pips")
 	assert_true(b.meter_sentence.text.contains("Power you keep makes the Ever-Regent stronger in person"), b.meter_sentence.text)
-	assert_eq(b._grid_labels.hp[0].text, "22", "Regent hp at 4 kept: 14 + 2 x 4")
-	assert_eq(b._grid_labels.attack[0].text, "14")
+	assert_eq(b._grid_labels.hp[0].text, "19", "Regent hp at 5 kept: 14 + 1 x 5")
+	assert_eq(b._grid_labels.attack[0].text, "13")
 	assert_eq(b._grid_labels.defense[0].text, "8")
 	assert_eq(b._grid_labels.rank[0].text, "2")
 	assert_eq(b._grid_labels.hp[1].text, "14", "spend all")
-	assert_eq(b._grid_labels.hp[2].text, "34", "keep all")
-	assert_eq(b._grid_labels.attack[0].get_meta(BuildScreen.BREAKDOWN), Breakdown.ruler_stat_at("ever_regent", "attack", 4))
+	assert_eq(b._grid_labels.hp[2].text, "24", "keep all")
+	assert_eq(b._grid_labels.attack[0].get_meta(BuildScreen.BREAKDOWN), Breakdown.ruler_stat_at("ever_regent", "attack", 5))
 	# Royal Armories: Spearmen attack +1, marked with the old value (base stats read from data, so a balance pass
 	# doesn't break this test).
 	var spear_attack := _base_stat("kingdom", "spearmen", "attack")
@@ -364,12 +364,12 @@ func test_the_numbers_are_the_specs() -> void:
 	assert_eq(cells[0].get_meta(BuildScreen.BREAKDOWN).lines[1].label, "Royal Armories")
 	assert_false(b._roster_cells["knight_captain"]["attack"][1].visible, "commanders don't get Royal Armories")
 	assert_eq(b._roster_cells["knight_captain"]["attack"][0].text, str(_base_stat("kingdom", "knight_captain", "attack")))
-	# The King at 4 kept power: attack 11 = 9 + 2 (§1.3, §7.1).
+	# The King at 5 kept power: attack 11 = 9 + 2 (§1.3, §7.1).
 	b.select_ruler("aurel_king")
 	assert_eq(b._grid_labels.attack[0].text, "11")
 	assert_eq(int(b._grid_labels.attack[0].get_meta(BuildScreen.BREAKDOWN).lines[1].value), 2)
 	assert_true(b._ruler_lines.succession.text.contains("Corvane II is crowned at Crownkeep 2 turns later"), b._ruler_lines.succession.text)
-	assert_true(b._ruler_lines.succession.text.contains("(now 4, so 2)"), b._ruler_lines.succession.text)
+	assert_true(b._ruler_lines.succession.text.contains("(now 5, so 2)"), b._ruler_lines.succession.text)
 	assert_eq(int(b._ruler_lines.succession.get_meta(BuildScreen.BREAKDOWN).total), 2)
 	# Muster Grounds: Knights 20 -> 16 gold, a fifth off; cheaper is marked as good.
 	b.apply_preset("warrior_king")
@@ -388,7 +388,7 @@ func test_the_numbers_are_the_specs() -> void:
 	var start_gold := GameState.new(SEED).find_faction("kingdom").gold
 	assert_eq(b._economy.gold.text, "Gold: %d to start, %d on turn 2 before recruits" % [start_gold, start_gold + 16])
 	assert_true(b.set_mandate("heavy_tithes", true))
-	assert_eq(b._economy.income.text, "Income on turn 1: 15 from Crownkeep", "Heavy Tithes +1, but with 2 kept power Royal Court drops to rank 1 (+2)")
+	assert_eq(b._economy.income.text, "Income on turn 1: 16 from Crownkeep", "Heavy Tithes +2, but with 2 kept power Royal Court drops to rank 1 (+2)")
 	assert_true(b.set_mandate("heavy_tithes", false))
 	# Other effects: one line per mandate that is not a number.
 	# Sworn Vassals names the province it would take on turn 1 (Forecast.vassal, the capture phase's pick).
@@ -411,9 +411,9 @@ func test_the_numbers_are_the_specs() -> void:
 func test_an_unaffordable_mandate_is_disabled_with_its_reason() -> void:
 	var b := _builder(VS_COMPUTER)
 	assert_true(b.apply_preset("regents_court"))
-	assert_true(b.set_mandate("drilled_ranks", true))  # 4 + 2 + 2: 2 power left
+	assert_true(b.set_mandate("drilled_ranks", true))  # 3 + 2 + 2: 3 power left
 	var kept := RulerRules.kept_after(b.current_build())
-	assert_eq(kept, 2)
+	assert_eq(kept, 3)
 	for mid in RulerRules.available_mandates("kingdom"):
 		var check: CheckBox = b.mandate_checks[mid]
 		var reason: Label = b.mandate_reasons[mid]

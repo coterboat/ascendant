@@ -43,7 +43,7 @@ const RULERS: Array[Dictionary] = [
 		"battle_rank": "front",
 		"morale": 10,
 		"stats": {
-			"hp": {"base": 16, "gain": 3, "per": 1},
+			"hp": {"base": 18, "gain": 2, "per": 1},
 			"attack": {"base": 9, "gain": 1, "per": 2},
 			"defense": {"base": 8, "gain": 1, "per": 2},
 		},
@@ -60,8 +60,8 @@ const RULERS: Array[Dictionary] = [
 		"battle_rank": "second",
 		"morale": 10,
 		"stats": {
-			"hp": {"base": 14, "gain": 2, "per": 1},
-			"attack": {"base": 10, "gain": 1, "per": 1},
+			"hp": {"base": 14, "gain": 1, "per": 1},
+			"attack": {"base": 8, "gain": 1, "per": 1},
 			"defense": {"base": 6, "gain": 1, "per": 2},
 		},
 		"ability": "mending_light",
@@ -77,9 +77,9 @@ const RULERS: Array[Dictionary] = [
 		"battle_rank": "front",
 		"morale": 14,
 		"stats": {
-			"hp": {"base": 26, "gain": 4, "per": 1},
-			"attack": {"base": 10, "gain": 1, "per": 1},
-			"defense": {"base": 9, "gain": 1, "per": 2},
+			"hp": {"base": 24, "gain": 3, "per": 1},
+			"attack": {"base": 8, "gain": 1, "per": 1},
+			"defense": {"base": 7, "gain": 1, "per": 2},
 		},
 		"ability": "dread",
 		"succession": {"delay": 1, "power": "minus", "minus": 3},
@@ -94,8 +94,8 @@ const RULERS: Array[Dictionary] = [
 		"battle_rank": "front",
 		"morale": 12,
 		"stats": {
-			"hp": {"base": 20, "gain": 3, "per": 1},
-			"attack": {"base": 11, "gain": 1, "per": 1},
+			"hp": {"base": 20, "gain": 2, "per": 1},
+			"attack": {"base": 9, "gain": 1, "per": 1},
 			"defense": {"base": 7, "gain": 1, "per": 2},
 		},
 		"ability": "warband_muster",
@@ -121,7 +121,7 @@ const ABILITIES := {
 	},
 	"dread": {
 		"name": "Dread",
-		"values": [1, 1, 2, 2],
+		"values": [1, 1, 1, 1],
 		"short": "-{value} enemy morale",
 		"effect": "Every enemy side in a province battle {ruler} fights in has {value} less morale. Not in border battles. It adds to a War Bear's Fury.",
 	},

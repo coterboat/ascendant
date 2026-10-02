@@ -357,14 +357,14 @@ func test_the_successor_arrives_at_full_hp_in_a_new_army_at_the_capital() -> voi
 	assert_false(["kingdom-1", "kingdom-3"].has(army.id), "in a new army (%s)" % army.id)
 	assert_eq(army.location, "crownkeep")
 	assert_true(army.units.is_empty() and army.commander == null, "a ruler's army holds only the ruler")
-	assert_eq(army.ruler.current_hp, 31, "King Corvane II at 5 kept power, at his full 31 hp")
+	assert_eq(army.ruler.current_hp, 28, "King Corvane II at 5 kept power, at his full 28 hp")
 	assert_eq(army.ruler.current_hp, army.ruler.type.hp)
 	assert_eq(army.ruler.type.name, "King Corvane II")
 	assert_eq(state.find_army("kingdom-1").to_dict(), army1_before, "the starting army at the capital is untouched")
 	assert_eq(TurnResolver.army_label(state, army), "Aurel Crown ruler King Corvane II at Crownkeep")
 	var e: Dictionary = _events_of(r.events, "ruler_arrived")[0]
 	assert_eq([e.phase, e.cause, e.codex, e.provinces, e.armies], ["rulers", "succession", "succession_mortal", ["crownkeep"], [army.id]])
-	assert_eq(e.text, "Corvane II was crowned at Crownkeep as King Corvane II with 5 kept power: 31 hit points, attack 11, defense 10, Royal Court +3 gold (ability rank 2). The new ruler's army stands at Crownkeep, ready for orders on turn 7.")
+	assert_eq(e.text, "Corvane II was crowned at Crownkeep as King Corvane II with 5 kept power: 28 hit points, attack 11, defense 10, Royal Court +3 gold (ability rank 2). The new ruler's army stands at Crownkeep, ready for orders on turn 7.")
 	assert_eq(f.ruler_generation, 2)
 	assert_true(state.validate([]))
 	_assert_plain(r.events)
@@ -426,28 +426,28 @@ func test_rulers_heal_a_quarter_of_their_maximum_hp_rounded_up() -> void:
 	assert_eq(healed.size(), 1, "only the wounded King heals; the Thornmane is at full hp")
 	var e: Dictionary = healed[0]
 	assert_eq([e.phase, e.codex, e.factions, e.provinces], ["rulers", "ruler_healing", ["kingdom"], ["crownkeep"]])
-	assert_eq([e.numbers.healed, e.numbers.hp_before, e.numbers.hp_after, e.numbers.max_hp], [12, 10, 22, 46])
-	assert_eq(e.text, "King Corvane I healed 12 hit points at Crownkeep (a living ruler heals a quarter of its maximum, rounded up, at the end of every turn): now 22 of 46.")
-	assert_eq(RulerRules.ruler_unit(r.new_state, "kingdom").current_hp, 22)
+	assert_eq([e.numbers.healed, e.numbers.hp_before, e.numbers.hp_after, e.numbers.max_hp], [10, 10, 20, 38])
+	assert_eq(e.text, "King Corvane I healed 10 hit points at Crownkeep (a living ruler heals a quarter of its maximum, rounded up, at the end of every turn): now 20 of 38.")
+	assert_eq(RulerRules.ruler_unit(r.new_state, "kingdom").current_hp, 20)
 	assert_eq(r.events.back(), e, "the rulers phase comes last")
 	_assert_plain(r.events)
 	# Never above the maximum.
 	var s2: GameState = r.new_state
-	RulerRules.ruler_unit(s2, "kingdom").current_hp = 40
-	RulerRules.ruler_unit(s2, "beasts").current_hp = 60
+	RulerRules.ruler_unit(s2, "kingdom").current_hp = 32
+	RulerRules.ruler_unit(s2, "beasts").current_hp = 48
 	var r2 := _resolve(s2)
-	assert_eq(RulerRules.ruler_unit(r2.new_state, "kingdom").current_hp, 46)
-	assert_eq(RulerRules.ruler_unit(r2.new_state, "beasts").current_hp, 66)
+	assert_eq(RulerRules.ruler_unit(r2.new_state, "kingdom").current_hp, 38)
+	assert_eq(RulerRules.ruler_unit(r2.new_state, "beasts").current_hp, 54)
 	assert_eq(_events_of(r2.events, "ruler_healed").map(func(x): return x.numbers.healed), [6, 6], "factions in id order: beasts, kingdom")
 	assert_eq(_events_of(r2.events, "ruler_healed").map(func(x): return x.factions[0]), ["beasts", "kingdom"])
-	# The Ninth Fang at 5 kept power: 35 maximum, heals 9.
+	# The Ninth Fang at 5 kept power: 30 maximum, heals 8.
 	var s3 := _rulers({"beasts": "blood_of_the_fang"}, 2)
 	RulerRules.ruler_unit(s3, "beasts").current_hp = 1
-	assert_eq(RulerRules.ruler_unit(_resolve(s3).new_state, "beasts").current_hp, 10)
+	assert_eq(RulerRules.ruler_unit(_resolve(s3).new_state, "beasts").current_hp, 9)
 
 
 func test_mending_light_heals_wounded_units_and_commanders_in_the_regents_province() -> void:
-	var s := _rulers({}, 3)  # the Ever-Regent at 4 kept power: ability rank 2, heal 6
+	var s := _rulers({}, 3)  # the Ever-Regent at 5 kept power: ability rank 2, heal 6
 	var army1 := s.find_army("kingdom-1")
 	army1.units[0].current_hp = 3  # Spearmen 3 of 8
 	army1.units[1].current_hp = 7  # Crossbowmen 7 of 8
@@ -463,7 +463,7 @@ func test_mending_light_heals_wounded_units_and_commanders_in_the_regents_provin
 	assert_eq([a1.units[0].current_hp, a1.units[1].current_hp, a1.units[2].current_hp, a1.commander.current_hp], [8, 8, 18, 26])
 	assert_eq(after.find_army("kingdom-20").units[0].current_hp, 8, "every army of the faction in the Regent's province")
 	assert_eq(after.find_army("kingdom-21").units[0].current_hp, 2, "not elsewhere")
-	assert_eq(RulerRules.ruler_unit(after, "kingdom").current_hp, 16, "the Regent heals only his own quarter: 10 + 6")
+	assert_eq(RulerRules.ruler_unit(after, "kingdom").current_hp, 15, "the Regent heals only his own quarter: 10 + 5")
 	var types: Array = r.events.map(func(e): return e.type)
 	assert_true(types.find("mending") < types.find("ruler_healed"), "Mending Light heals first: %s" % str(types))
 	var e: Dictionary = _events_of(r.events, "mending")[0]
@@ -524,8 +524,8 @@ func test_every_new_event_type_carries_an_existing_codex_entry_and_plain_text() 
 		assert_true(seen.has(key), "the scenarios produced %s" % key)
 	_assert_plain(all_events)
 	var texts := all_events.filter(func(e): return NEW_EVENTS.has(e.type)).map(func(e): return e.text)
-	assert_true(texts.has("The Great Thornmane took a new body at Fangridge with 2 kept power, 3 less than before, for good: 34 hit points, attack 12, defense 10, Dread 1 less enemy morale (ability rank 1). The new ruler's army stands at Fangridge, ready for orders on turn 4."), "\n".join(texts))
-	assert_true(texts.has("The Tenth Fang was crowned at Fangridge with 0 kept power: 20 hit points, attack 11, defense 7, Warband Muster 1 recruit in the field (ability rank 1). The new ruler's army stands at Fangridge, ready for orders on turn 5."), "\n".join(texts))
+	assert_true(texts.has("The Great Thornmane took a new body at Fangridge with 2 kept power, 3 less than before, for good: 30 hit points, attack 10, defense 8, Dread 1 less enemy morale (ability rank 1). The new ruler's army stands at Fangridge, ready for orders on turn 4."), "\n".join(texts))
+	assert_true(texts.has("The Tenth Fang was crowned at Fangridge with 0 kept power: 20 hit points, attack 9, defense 7, Warband Muster 1 recruit in the field (ability rank 1). The new ruler's army stands at Fangridge, ready for orders on turn 5."), "\n".join(texts))
 
 
 func test_the_turn_report_shows_ruler_events_with_their_codex_links() -> void:
@@ -683,7 +683,7 @@ func test_a_session_with_rulers_ends_with_the_builds_on_the_victory_screen_text(
 	assert_eq(session.end_turn(), "")
 	assert_true(session.is_over(), "Fangridge fell")
 	var v := session.victory()
-	assert_true(String(v.text).contains("Builds: Aurel Crown, the Ever-Regent (alive), 4 kept power, mandates: Royal Armories and King's Roads."), v.text)
+	assert_true(String(v.text).contains("Builds: Aurel Crown, the Ever-Regent (alive), 5 kept power, mandates: Royal Armories and King's Roads."), v.text)
 	assert_eq(session.turn_report().events.back().text, v.text)
 
 

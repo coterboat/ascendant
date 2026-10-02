@@ -5,15 +5,15 @@ extends "res://tests/test_case.gd"
 
 ## design/M2_RULER.md §2.2: id -> [cost, faction ("" = shared)].
 const SPEC_MANDATES := {
-	"iron_discipline": [3, ""], "drilled_ranks": [2, ""], "veteran_levies": [2, ""], "heavy_tithes": [4, ""],
-	"muster_grounds": [4, ""], "sworn_vassals": [4, ""], "royal_armories": [4, "kingdom"], "kings_roads": [2, "kingdom"],
+	"iron_discipline": [3, ""], "drilled_ranks": [2, ""], "veteran_levies": [3, ""], "heavy_tithes": [4, ""],
+	"muster_grounds": [4, ""], "sworn_vassals": [4, ""], "royal_armories": [3, "kingdom"], "kings_roads": [2, "kingdom"],
 	"blood_frenzy": [3, "beasts"], "feast_of_victory": [3, "beasts"],
 }
 ## §6.1: preset id -> [faction, ruler, mandates, kept].
 const SPEC_PRESETS := {
 	"warrior_king": ["kingdom", "aurel_king", [], 10],
 	"iron_crown": ["kingdom", "aurel_king", ["royal_armories", "heavy_tithes", "veteran_levies"], 0],
-	"regents_court": ["kingdom", "ever_regent", ["royal_armories", "kings_roads"], 4],
+	"regents_court": ["kingdom", "ever_regent", ["royal_armories", "kings_roads"], 5],
 	"beast_god_unbound": ["beasts", "thornmane_avatar", [], 10],
 	"clan_moot": ["beasts", "fang_chieftain", ["iron_discipline", "blood_frenzy", "sworn_vassals"], 0],
 	"blood_of_the_fang": ["beasts", "fang_chieftain", ["iron_discipline", "drilled_ranks"], 5],
@@ -52,7 +52,7 @@ func test_the_mandate_list_matches_the_spec() -> void:
 		assert_false(String(m.effect).contains("_"), "%s's effect has no raw ids" % m.id)
 		if String(m.faction).is_empty():
 			shared_cost += int(m.cost)
-	assert_eq(shared_cost, 19, "the shared six cost 19 (§2.2)")
+	assert_eq(shared_cost, 20, "the shared six cost 20 (§2.2)")
 	assert_eq(MandateData.SACRIFICE_PREMIUM, 1)
 	assert_eq(RulerRules.available_mandates("kingdom"), ["iron_discipline", "drilled_ranks", "veteran_levies",
 		"heavy_tithes", "muster_grounds", "sworn_vassals", "royal_armories", "kings_roads"])
@@ -60,7 +60,8 @@ func test_the_mandate_list_matches_the_spec() -> void:
 		"heavy_tithes", "muster_grounds", "sworn_vassals", "blood_frenzy", "feast_of_victory"])
 	for fid in ["kingdom", "beasts"]:
 		var everything := {"ruler": RulerRules.rulers_for(fid)[0], "mandates": RulerRules.available_mandates(fid)}
-		assert_eq(RulerRules.build_cost(everything), 25, "buying everything costs 25 (§2.2)")
+		var want: int = {"kingdom": 25, "beasts": 26}[fid]
+		assert_eq(RulerRules.build_cost(everything), want, "buying everything costs %d (§2.2), far over the pool" % want)
 
 
 func test_presets_match_the_spec_and_are_legal() -> void:
@@ -89,7 +90,7 @@ func test_presets_match_the_spec_and_are_legal() -> void:
 
 func test_illegal_builds_are_rejected_with_plain_reasons() -> void:
 	var over := _only_reason("kingdom", {"ruler": "aurel_king", "mandates": ["royal_armories", "heavy_tithes", "muster_grounds"]}, "over the pool")
-	assert_eq(over, "These mandates cost 12 power (Royal Armories 4 + Heavy Tithes 4 + Muster Grounds 4), but the power pool is only 10. Drop mandates worth at least 2 power.")
+	assert_eq(over, "These mandates cost 11 power (Royal Armories 3 + Heavy Tithes 4 + Muster Grounds 4), but the power pool is only 10. Drop mandates worth at least 1 power.")
 	var twice := _only_reason("beasts", {"ruler": "fang_chieftain", "mandates": ["drilled_ranks", "drilled_ranks"]}, "a duplicate")
 	assert_eq(twice, "Drilled Ranks is in the build twice. Each mandate can be taken only once.")
 	var foreign := _only_reason("kingdom", {"ruler": "ever_regent", "mandates": ["blood_frenzy"]}, "another faction's exclusive")
@@ -143,12 +144,12 @@ func test_an_empty_build_keeps_all_ten() -> void:
 	assert_true(s != null)
 	assert_eq(s.find_faction("kingdom").kept_power, 10)
 	assert_eq(s.find_faction("kingdom").mandates, [])
-	assert_eq(RulerRules.ruler_unit(s, "kingdom").type.hp, 46, "King Corvane with 10 kept")
-	assert_eq(RulerRules.ruler_unit(s, "beasts").type.attack, 20, "the Great Thornmane with 10 kept")
+	assert_eq(RulerRules.ruler_unit(s, "kingdom").type.hp, 38, "King Corvane with 10 kept")
+	assert_eq(RulerRules.ruler_unit(s, "beasts").type.attack, 18, "the Great Thornmane with 10 kept")
 	# A build applied before turn 1 can be changed again then; after turn 1 it can't.
 	assert_eq(RulerRules.apply_build(s, "kingdom", "iron_crown"), [])
 	assert_eq(s.find_faction("kingdom").kept_power, 0)
-	assert_eq(RulerRules.ruler_unit(s, "kingdom").type.hp, 16)
+	assert_eq(RulerRules.ruler_unit(s, "kingdom").type.hp, 18)
 	assert_eq(s.armies.size(), 4, "the same ruler's army, re-equipped")
 	s.current_turn = 1
 	var late := RulerRules.apply_build(s, "kingdom", "warrior_king")
@@ -158,9 +159,9 @@ func test_an_empty_build_keeps_all_ten() -> void:
 
 func test_build_kept_power_breakdown() -> void:
 	var b := Breakdown.build_kept_power({"ruler": "ever_regent", "mandates": ["royal_armories", "kings_roads"]})
-	assert_eq(b.lines.map(func(l): return [l.label, l.value]), [["Power pool", 10], ["Royal Armories", -4], ["King's Roads", -2]])
-	assert_eq(int(b.total), 4)
-	assert_eq(Breakdown.sum_of_lines(b), 4)
+	assert_eq(b.lines.map(func(l): return [l.label, l.value]), [["Power pool", 10], ["Royal Armories", -3], ["King's Roads", -2]])
+	assert_eq(int(b.total), 5)
+	assert_eq(Breakdown.sum_of_lines(b), 5)
 	assert_eq(String(b.codex), "kept_power")
 	assert_eq(int(Breakdown.build_kept_power("clan_moot").total), 0)
 
@@ -170,19 +171,19 @@ func test_kept_power_breakdown_counts_sacrifices_and_successions() -> void:
 	var k := s.find_faction("kingdom")
 	k.mandates.append("drilled_ranks")
 	k.sacrifices = [{"turn": 3, "mandate": "drilled_ranks", "cost": 3}]
-	k.kept_power = 1
+	k.kept_power = 2
 	RulerRules.refresh_ruler(s, "kingdom")
 	assert_true(s.validate([]))
 	var b := Breakdown.kept_power(s, "kingdom")
-	assert_eq(b.lines.map(func(l): return l.value), [10, -4, -2, -3])
+	assert_eq(b.lines.map(func(l): return l.value), [10, -3, -2, -3])
 	assert_eq(b.lines[3].label, "Drilled Ranks, sacrificed on turn 3")
-	assert_eq(int(b.total), 1)
+	assert_eq(int(b.total), 2)
 	# After a succession took the last point, a line says so and the lines still sum to the total.
 	k.kept_power = 0
 	RulerRules.refresh_ruler(s, "kingdom")
 	b = Breakdown.kept_power(s, "kingdom")
 	assert_eq(b.lines.back().label, "Successions")
-	assert_eq(b.lines.back().value, -1)
+	assert_eq(b.lines.back().value, -2)
 	assert_eq(Breakdown.sum_of_lines(b), 0)
 	assert_eq(RulerRules.ruler_unit(s, "kingdom").type.hp, 14, "the Regent's stats follow kept power")
 
@@ -196,7 +197,7 @@ func test_unit_stats_apply_the_mandates_numbers() -> void:
 		var us := RulerRules.unit_stats(s, "kingdom", ut.id)
 		assert_true(us.ok)
 		assert_eq(us.attack, ut.attack + 1, "%s attack with Royal Armories" % ut.name)
-		assert_eq(us.defense, ut.defense + 1, "%s defense with Royal Armories" % ut.name)
+		assert_eq(us.defense, ut.defense, "%s defense: Royal Armories adds attack only (M2-8, breakpoint-safe)" % ut.name)
 		assert_eq(us.hp, ut.hp + 2, "%s max hp with Veteran Levies" % ut.name)
 		assert_eq(us.cost, ut.cost - floori(ut.cost / 5.0), "%s price with Muster Grounds" % ut.name)
 		for stat in ["hp", "attack", "defense", "cost"]:
@@ -210,8 +211,8 @@ func test_unit_stats_apply_the_mandates_numbers() -> void:
 	assert_eq(cap.cost, k.commander_type.cost - floori(k.commander_type.cost / 5.0))
 	assert_false(RulerRules.unit_stats(s, "kingdom", "aurel_king").ok, "rulers have no unit stats")
 	assert_false(RulerRules.unit_stats(s, "kingdom", "tuskers").ok, "not this faction's unit")
-	# §7.1's wording: "Defense 6 = Spearmen 5 + Royal Armories 1".
-	var spear := Breakdown.unit_stat(s, "kingdom", "spearmen", "defense")
+	# §7.1's wording: "Attack 10 = Spearmen 9 + Royal Armories 1".
+	var spear := Breakdown.unit_stat(s, "kingdom", "spearmen", "attack")
 	assert_eq(spear.lines[1].label, "Royal Armories")
 	assert_eq(spear.lines[1].value, 1)
 	# Without mandates (or without rulers) the numbers are the unit type's own.

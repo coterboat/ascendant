@@ -415,7 +415,7 @@ func test_sacrifices_when_the_capital_is_threatened_and_the_odds_are_bad() -> vo
 	assert_eq(orders.filter(func(o): return o is SacrificeOrder).size(), 1, "one sacrifice per turn")
 	_assert_valid(s, "kingdom", orders, "threatened capital")
 	var notes := " ".join(ai.last_plan_notes())
-	assert_true(notes.contains("Sacrificing 5 of King Corvane I's power for Royal Armories"), notes)
+	assert_true(notes.contains("Sacrificing 4 of King Corvane I's power for Royal Armories"), notes)
 	assert_true(notes.contains("threatens Crownkeep"), notes)
 	assert_eq(int(ai.last_plan_stats().sacrifices), 1)
 	# Already owned: the next pick. Not enough power, a dead ruler or a preset with no picks: none.

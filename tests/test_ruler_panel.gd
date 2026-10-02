@@ -124,7 +124,7 @@ func test_every_number_in_the_ruler_panel_is_its_breakdown_with_a_codex_link() -
 	var own := panel.columns.find_child("Column_kingdom", false, false)
 	var enemy := panel.columns.find_child("Column_beasts", false, false)
 	assert_eq((own.find_child("KeptPowerLabel", true, false) as Label).text, "Kept power: 10 of 10")
-	assert_eq((own.find_child("HpLabel", true, false) as Label).text, "Hit points: 46 of 46")
+	assert_eq((own.find_child("HpLabel", true, false) as Label).text, "Hit points: 38 of 38")
 	assert_eq((enemy.find_child("AbilityLabel", true, false) as Label).text, "Ability: Warband Muster, rank 2 (2 recruits in the field)")
 	assert_true(own.find_child("SacrificeButton", true, false) != null, "your column can sacrifice")
 	assert_true(enemy.find_child("SacrificeButton", true, false) == null, "the enemy's is read-only")
@@ -134,7 +134,7 @@ func test_every_number_in_the_ruler_panel_is_its_breakdown_with_a_codex_link() -
 	assert_true(row != null, "the enemy's mandates are listed")
 	assert_eq(row.text, "Iron Discipline (3 power, chosen before the game)")
 	assert_eq(String(row.get_meta(CodexLink.META)), "mandate_iron_discipline")
-	assert_true(row.tooltip_text.contains("For the Thornmane Clans now"), row.tooltip_text)
+	assert_true(row.tooltip_text.replace("\n", " ").contains("For the Thornmane Clans now"), row.tooltip_text)
 	# Right-clicking a number opens the codex there.
 	(own.find_child("KeptPowerLabel", true, false) as Label).gui_input.emit(CodexLink.right_click())
 	assert_true(game.codex.visible)
@@ -158,8 +158,8 @@ func test_the_dialog_previews_what_the_forecast_says_and_confirm_queues_the_orde
 	var forecast := Forecast.sacrifice(game.map.state, "kingdom", "royal_armories", game.session.current_orders())
 	var expected: Array = forecast.rows.map(func(r): return {"label": r.label, "before": r.before, "after": r.after})
 	assert_eq(dialog.shown_rows(), expected, "the dialog shows the forecast's rows, before and after")
-	assert_eq(dialog.shown_rows()[0], {"label": "Kept power", "before": "10", "after": "5"})
-	assert_eq(dialog.shown_rows()[1], {"label": "Hit points", "before": "46 of 46", "after": "31 of 31"})
+	assert_eq(dialog.shown_rows()[0], {"label": "Kept power", "before": "10", "after": "6"})
+	assert_eq(dialog.shown_rows()[1], {"label": "Hit points", "before": "38 of 38", "after": "30 of 30"})
 	for cell in dialog.rows_grid.get_children():
 		var l := cell as Label
 		if l.mouse_filter == Control.MOUSE_FILTER_PASS:
@@ -175,18 +175,19 @@ func test_the_dialog_previews_what_the_forecast_says_and_confirm_queues_the_orde
 	assert_true(game.map.status_text.begins_with("Sacrifice ordered: Royal Armories."), game.map.status_text)
 	# The orders list shows it, linked to the codex; the panel shows it queued, and one per turn.
 	var line := game.map.details.find_child("Order_0", true, false).find_child("OrderLine", true, false) as Label
-	assert_true(line.text.begins_with("Sacrifice for Royal Armories: King Corvane I gives up 5 power (4, +1 for a mid-game sacrifice), keeping 5."), line.text)
+	assert_true(line.text.begins_with("Sacrifice for Royal Armories: King Corvane I gives up 4 power (3, +1 for a mid-game sacrifice), keeping 6."), line.text)
 	assert_eq(String(line.get_meta(CodexLink.META)), "sacrifice")
-	assert_true(line.tooltip_text.contains("= Kept power after: 5"), line.tooltip_text)
+	assert_true(line.tooltip_text.contains("= Kept power after: 6"), line.tooltip_text)
 	var own := panel.columns.find_child("Column_kingdom", false, false)
-	assert_true((own.find_child("QueuedSacrificeLabel", true, false) as Label).text.begins_with("Queued this turn: Royal Armories for 5 power. Kept power 10 → 5"))
+	assert_true((own.find_child("QueuedSacrificeLabel", true, false) as Label).text.begins_with("Queued this turn: Royal Armories for 4 power. Kept power 10 → 6"))
 	assert_true(panel.sacrifice_button.disabled, "one sacrifice per turn")
 	assert_true(game.end_turn_button.text.contains("1 order"), game.end_turn_button.text)
 	game.free()
 
 
 func test_the_dialog_disables_mandates_you_cannot_take_and_says_why() -> void:
-	var s := _rulers({"kingdom": "regents_court"})  # the Ever-Regent keeping 4, with Royal Armories and King's Roads
+	# The Ever-Regent keeping 4, with Royal Armories and Veteran Levies (3 + 3 power).
+	var s := _rulers({"kingdom": {"ruler": "ever_regent", "mandates": ["royal_armories", "veteran_levies"]}})
 	var map := _screen(s, "kingdom")
 	map.open_ruler_panel()
 	map.ruler_panel.sacrifice_button.pressed.emit()
@@ -295,7 +296,7 @@ func test_the_enemy_column_reads_its_mandates_in_the_third_person() -> void:
 	var map := _screen(_rulers({"kingdom": "warrior_king", "beasts": "clan_moot"}), "kingdom")
 	map.open_ruler_panel()
 	var enemy := map.ruler_panel.columns.find_child("Column_beasts", false, false)
-	var expected := {"iron_discipline": "Its side never breaks (routs) while one of its commanders in that battle stands.",
+	var expected := {"iron_discipline": "Its side never breaks (routs) while one of its commanders in that battle stands, except at the end of the last round.",
 		"blood_frenzy": "Its fighters below full hit points have +3 attack. A Tusker's Berserk adds to it, for +6.",
 		"sworn_vassals": "Each turn, one neutral province next to its land swears fealty and joins it."}
 	for mid in expected:
@@ -331,9 +332,9 @@ func test_the_panel_says_when_no_mandate_fits_and_explains_a_sacrificed_mandate(
 	map.open_ruler_panel()
 	var col := map.ruler_panel.columns.find_child("Column_kingdom", false, false)
 	var row := col.find_child("Mandate_royal_armories", true, false) as Label
-	assert_eq(row.text, "Royal Armories (5 power, sacrificed for on turn 1)")
+	assert_eq(row.text, "Royal Armories (4 power, sacrificed for on turn 1)")
 	assert_true(row.tooltip_text.begins_with(TooltipText.from_breakdown(Breakdown.sacrifice_cost("royal_armories"))), row.tooltip_text)
 	var kept := col.find_child("KeptPowerLabel", true, false) as Label
-	assert_eq(kept.text, "Kept power: 5 of 10")
-	assert_true(kept.tooltip_text.contains("Royal Armories, sacrificed on turn 1: -5"), kept.tooltip_text)
+	assert_eq(kept.text, "Kept power: 6 of 10")
+	assert_true(kept.tooltip_text.contains("Royal Armories, sacrificed on turn 1: -4"), kept.tooltip_text)
 	map.free()

@@ -19,6 +19,9 @@ extends SceneTree
 ##                  battle (e.g. aurel_king:10); --clans-ruler the same for the Thornmane Clans
 ##                  Mandates and rulers move units off the breakpoint-safe stats of #41, so this is how
 ##                  to see what they shift. Without them every number is the M1 battle's.
+##   --crown-preset ID  fight with a build preset (data/build_presets.gd, M2-8): its mandates, and its
+##                  ruler at the preset's kept power beside the army; --clans-preset the same
+##                  (e.g. --crown-preset iron_crown --clans-preset blood_of_the_fang)
 ##
 ## Matchups (tools/balance/balance.gd, built from the current costs in data/factions.gd): the starting
 ## armies (with and without commanders), equal-gold pure-unit fights for every cross-faction pair at
@@ -306,6 +309,15 @@ func _parse(args: PackedStringArray) -> Dictionary:
 						return {"error": "unknown mandate %s" % mid}
 					ids.append(mid)
 				opts.mandates[fid] = ids
+				opts.m2_args += " %s %s" % [key, value]
+			"--crown-preset", "--clans-preset":
+				# A build preset (M2-8): its mandates, and its ruler at the preset's kept power.
+				var fid: String = Balance.CROWN if key == "--crown-preset" else Balance.CLANS
+				var p := RulerRules.preset_data(value)
+				if p.is_empty() or str(p.faction) != fid:
+					return {"error": "%s needs one of %s" % [key, ", ".join(RulerRules.presets_for(fid).map(func(x): return str(x.id)))]}
+				opts.mandates[fid] = p.mandates.duplicate()
+				opts.rulers[fid] = [str(p.ruler), RulerRules.kept_after(p)]
 				opts.m2_args += " %s %s" % [key, value]
 			"--crown-ruler", "--clans-ruler":
 				var fid: String = Balance.CROWN if key == "--crown-ruler" else Balance.CLANS

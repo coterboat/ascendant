@@ -61,7 +61,8 @@ extends BattleResolver
 ##                army no longer holds it (army.ruler = null) and TurnResolver records the death.
 ##   Dread        the Great Thornmane: every enemy side in a province battle (not a border battle) has
 ##                its ability value less morale while the avatar stands. Adds to Fury.
-##   Iron Discipline   a side that would break does not while one of its commanders stands.
+##   Iron Discipline   a side that would break does not while one of its commanders stands, except at
+##                     the end of the last round (ROUND_CAP), where the usual check applies (M2-8).
 ##   Drilled Ranks     the side's base hit chance is the mandate's base_hit (70) instead of BASE_HIT.
 ##   Veteran Levies    regular units have more maximum hp (RulerRules.unit_max_hp).
 ##   Royal Armories    regular units have more attack and defense (RulerRules.unit_stats), as named parts.
@@ -648,7 +649,12 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			side.out_round = round_no
 			highlights.append("%s had no one left standing." % side.name)
 		elif checks[si].lost_pct >= checks[si].break_pct:
-			var holder := _iron_holder(side)
+			# Iron Discipline holds through every round but the last (M2-8, #36): at the end of round
+			# ROUND_CAP the usual check applies, so a line it holds past its break point can't win by
+			# stalling the attackers until the round cap.
+			var holder := _iron_holder(side) if round_no < ROUND_CAP else ""
+			if side.iron and holder.is_empty() and round_no >= ROUND_CAP and not _iron_holder(side).is_empty():
+				highlights.append("%s holds a line only until the last round." % RulerRules.mandate_name(RulerRules.IRON_DISCIPLINE))
 			if not holder.is_empty():
 				# Iron Discipline: the side would break, but one of its commanders still stands (§2.3).
 				checks[si]["held_by"] = holder
