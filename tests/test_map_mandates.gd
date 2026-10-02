@@ -92,7 +92,7 @@ func test_the_m1_default_game_is_unchanged() -> void:
 		StubBattleResolver.new())
 	var texts: Array = result.events.map(func(e): return e.text)
 	assert_true(texts.has("The Aurel Crown army at Crownkeep (3 units, led by Knight Captain) moved to Westwatch."), str(texts))
-	assert_true(texts.has("Aurel Crown recruited Spearmen at Crownkeep for 8 gold (42 gold left). They form a new army: the Aurel Crown army at Crownkeep (1 unit, no commander)."), str(texts))
+	assert_true(texts.has("Aurel Crown recruited Spearmen at Crownkeep for 8 gold (37 gold left). They form a new army: the Aurel Crown army at Crownkeep (1 unit, no commander)."), str(texts))
 	for e in result.events:
 		assert_false(String(e.text).contains("That includes"), "no income modifiers in M1: %s" % e.text)
 		assert_false(String(e.type).begins_with("vassal"), "no Sworn Vassals in M1")
@@ -378,16 +378,16 @@ func test_heavy_tithes_and_royal_court_in_income_and_breakdowns() -> void:
 	assert_eq(Breakdown.sum_of_lines(b), 17)
 	assert_true(String(b.lines[2].note).contains("King Corvane I is here, ability rank 3"), b.lines[2].note)
 	var gold := Breakdown.gold(s, "kingdom")
-	assert_eq(int(gold.total), 50 + 17)
+	assert_eq(int(gold.total), 45 + 17)
 	assert_eq(Breakdown.sum_of_lines(gold), int(gold.total))
 	assert_true(String(gold.lines[1].note).contains("Heavy Tithes 1") and String(gold.lines[1].note).contains("Royal Court 4"), gold.lines[1].note)
 	var forecast := Forecast.gold_after_recruits(s, "kingdom", [])
-	assert_eq(forecast.gold_next_turn, 67)
+	assert_eq(forecast.gold_next_turn, 62)
 	var result := TurnResolver.resolve(s, {}, 31, StubBattleResolver.new())
 	assert_eq(result.new_state.find_faction("kingdom").gold, forecast.gold_next_turn, "the forecast equals the result")
 	var income: Dictionary = _of_type(result.events, "income").filter(func(e): return e.factions == ["kingdom"])[0]
 	assert_eq(income.numbers.by_province.crownkeep, int(b.total), "the breakdown equals the province's income")
-	assert_eq(income.text, "Aurel Crown earned 17 gold from 1 province (Crownkeep 17). Gold: 50 -> 67. That includes Heavy Tithes +1 (1 for each province) and Royal Court +4 at Crownkeep, where King Corvane I was.")
+	assert_eq(income.text, "Aurel Crown earned 17 gold from 1 province (Crownkeep 17). Gold: 45 -> 62. That includes Heavy Tithes +1 (1 for each province) and Royal Court +4 at Crownkeep, where King Corvane I was.")
 	# The beasts have neither: their income is the map's.
 	assert_eq(Breakdown.province_income(s, "fangridge").lines[1].label, "Modifiers")
 
@@ -412,7 +412,7 @@ func test_royal_court_follows_the_king_and_needs_him_alive() -> void:
 func test_the_top_bar_and_regions_show_income_with_modifiers() -> void:
 	var s := _game({"kingdom": {"ruler": "aurel_king", "mandates": ["heavy_tithes"]}})
 	var screen := _screen(s, "kingdom")
-	assert_eq(screen.gold_label.text, "Gold 50   (+17 per turn)")
+	assert_eq(screen.gold_label.text, "Gold 45   (+17 per turn)")
 	assert_true(screen.gold_label.tooltip_text.contains("Income from Crownkeep: +17"), screen.gold_label.tooltip_text)
 	assert_true(screen.gold_label.tooltip_text.contains("Royal Court"), "the gold tooltip names Royal Court")
 	assert_eq(screen.regions["crownkeep"].income_label.text, "17 gold")
@@ -428,8 +428,9 @@ func test_the_top_bar_and_regions_show_income_with_modifiers() -> void:
 func test_muster_grounds_prices_match_the_spec_everywhere() -> void:
 	var s := _game({"kingdom": {"ruler": "aurel_king", "mandates": ["muster_grounds"]},
 		"beasts": {"ruler": "fang_chieftain", "mandates": ["muster_grounds"]}})
+	# The §2.3 rule, cost minus a fifth of it rounded down, on the #4 balance-pass costs.
 	var spec := {"spearmen": 7, "crossbowmen": 8, "knights": 16, "knight_captain": 28,
-		"tuskers": 10, "fangthrowers": 8, "war_bear": 20, "warchief": 32}
+		"tuskers": 9, "fangthrowers": 7, "war_bear": 18, "warchief": 28}
 	for uid in spec:
 		var fid := "kingdom" if ["spearmen", "crossbowmen", "knights", "knight_captain"].has(uid) else "beasts"
 		assert_eq(TurnResolver.recruit_cost(s, fid, uid), spec[uid], "%s price (§2.3)" % uid)
@@ -490,10 +491,10 @@ func test_warband_muster_recruits_with_the_fang_up_to_its_rank() -> void:
 	assert_true(commander.contains("Commanders come only from your capital"), commander)
 	_assert_no_raw_ids(commander, "commander reason")
 	assert_eq(c.ruler_recruit_info().left, 0)
-	assert_eq(c.order_texts()[0], "Recruit one Tuskers with the Ninth Fang for 12 gold, leaving 28 gold. It joins the Ninth Fang where it ends this turn (now Ebonpeak), if you own that province then; if not, it is cancelled and costs nothing.")
+	assert_eq(c.order_texts()[0], "Recruit one Tuskers with the Ninth Fang for 11 gold, leaving 34 gold. It joins the Ninth Fang where it ends this turn (now Ebonpeak), if you own that province then; if not, it is cancelled and costs nothing.")
 	assert_eq(c.order_codex_kind(0), "field_recruit")
 	var g := c.gold_after_recruits()
-	assert_eq(g.gold_after, 40 - 12 - 9)
+	assert_eq(g.gold_after, 45 - 11 - 8)
 	var kingdom_ruler := TurnResolver.check_recruit(s, "kingdom", RecruitOrder.new("spearmen", RecruitOrder.AT_RULER), 99)
 	assert_eq(kingdom_ruler.code, "no_field_recruits")
 	_assert_no_raw_ids(kingdom_ruler.reason, "no Warband Muster")
@@ -501,7 +502,7 @@ func test_warband_muster_recruits_with_the_fang_up_to_its_rank() -> void:
 	var after: GameState = result.new_state
 	var recruited := _of_type(result.events, "recruited")
 	assert_eq(recruited.size(), 2)
-	assert_eq(recruited[0].text, "Thornmane Clans recruited Tuskers with the Ninth Fang at Ebonpeak for 12 gold (28 gold left). They form a new army: the Thornmane Clans army at Ebonpeak (1 unit, no commander).")
+	assert_eq(recruited[0].text, "Thornmane Clans recruited Tuskers with the Ninth Fang at Ebonpeak for 11 gold (34 gold left). They form a new army: the Thornmane Clans army at Ebonpeak (1 unit, no commander).")
 	assert_eq(recruited[0].codex, "field_recruit")
 	assert_eq(recruited[1].provinces, ["ebonpeak"])
 	assert_eq(recruited[1].numbers.gold_after, g.gold_after, "gold after recruits equals the forecast")
@@ -524,7 +525,7 @@ func test_recruits_with_the_fang_are_cancelled_at_no_cost_when_it_falls() -> voi
 	_own(s, "kingdom", ["blackwood"])
 	var orders := {"beasts": [RecruitOrder.new("tuskers", RecruitOrder.AT_RULER), RecruitOrder.new("fangthrowers", RecruitOrder.AT_RULER)],
 		"kingdom": [MoveOrder.new(host.id, "ebonpeak")]}
-	assert_eq(Forecast.gold_after_recruits(s, "beasts", orders.beasts).gold_after, 19, "both forecast while the Fang stands")
+	assert_eq(Forecast.gold_after_recruits(s, "beasts", orders.beasts).gold_after, 45 - 11 - 8, "both forecast while the Fang stands")
 	var result := TurnResolver.resolve(s, orders, 52, StubBattleResolver.new())
 	var after: GameState = result.new_state
 	assert_eq(RulerRules.ruler_army(after, "beasts"), null, "the Fang fell at Ebonpeak")
@@ -536,7 +537,7 @@ func test_recruits_with_the_fang_are_cancelled_at_no_cost_when_it_falls() -> voi
 		_assert_no_raw_ids(e.text, "cancelled recruit")
 	assert_eq(_of_type(result.events, "recruited"), [])
 	var income: Dictionary = _of_type(result.events, "income").filter(func(e): return e.factions == ["beasts"])[0]
-	assert_eq(income.numbers.gold_before, 40, "they cost nothing")
+	assert_eq(income.numbers.gold_before, 45, "they cost nothing")
 
 
 func test_recruits_with_the_fang_are_cancelled_at_no_cost_when_its_province_is_not_yours() -> void:
@@ -571,7 +572,7 @@ func test_recruit_panel_has_a_section_for_the_fang() -> void:
 	assert_eq(left.text, "2 of 2 left this turn (Warband Muster)")
 	assert_eq(CodexLink.key_at(left), "field_recruit")
 	var button: Button = screen.details.find_child("RecruitWithRuler_tuskers", true, false)
-	assert_eq(button.text, "Recruit Tuskers with the Ninth Fang (12 gold)")
+	assert_eq(button.text, "Recruit Tuskers with the Ninth Fang (11 gold)")
 	assert_true(String(screen.orders.recruit_breakdown("tuskers", RecruitOrder.AT_RULER).description).contains("Warband Muster at ability rank 2"))
 	assert_true(button.tooltip_text.begins_with("Recruit Tuskers with the Ninth Fang"), button.tooltip_text)
 	button.pressed.emit()

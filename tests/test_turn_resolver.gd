@@ -6,9 +6,9 @@ extends "res://tests/test_case.gd"
 ## (higher attack + defense wins, the winner takes no losses, ties go to the holder). The game itself
 ## uses the real AutoBattleResolver by default: see tests/test_real_battles.gd.
 ##
-## Unit strengths used below (attack + defense, see StubBattleResolver):
-##   kingdom: spearmen 11, crossbowmen 12, knights 20, knight_captain 26
-##   beasts:  tuskers 17, fangthrowers 12, war_bear 25, warchief 26
+## Unit strengths used below (attack + defense, see StubBattleResolver), from the #4 balance pass:
+##   kingdom: spearmen 16, crossbowmen 20, knights 20, knight_captain 26
+##   beasts:  tuskers 15, fangthrowers 16, war_bear 21, warchief 24
 
 
 # --- fixtures -------------------------------------------------------------------------------------
@@ -110,7 +110,7 @@ func test_plain_move_arrives_and_leaves_input_untouched() -> void:
 
 
 func test_same_province_collision_fights_with_no_defender() -> void:
-	# Kingdom knights (20) and beasts fangthrowers (12) both move into Thornvale.
+	# Kingdom knights (20) and beasts fangthrowers (16) both move into Thornvale.
 	var s := _state([
 		["kingdom-1", "kingdom", "highcrag", ["knights"]],
 		["beasts-2", "beasts", "wildmoor", ["fangthrowers"]],
@@ -125,7 +125,7 @@ func test_same_province_collision_fights_with_no_defender() -> void:
 	assert_eq(b.cause, "arrived_together")
 	assert_eq(b.numbers.defender, "")
 	assert_eq(b.numbers.winner, "kingdom")
-	assert_eq(b.numbers.strengths, {"beasts": 12, "kingdom": 20})
+	assert_eq(b.numbers.strengths, {"beasts": 16, "kingdom": 20})
 	assert_eq(b.numbers.units_lost, 1)
 	assert_eq(ns.find_army("beasts-2"), null, "loser destroyed")
 	assert_eq(ns.find_army("kingdom-1").location, "thornvale")
@@ -136,9 +136,9 @@ func test_same_province_collision_fights_with_no_defender() -> void:
 
 
 func test_same_province_tie_with_no_defender_uses_seeded_roll() -> void:
-	# Crossbowmen (12) vs fangthrowers (12), both arriving: the seeded roll decides.
+	# Spearmen (16) vs fangthrowers (16), both arriving: the seeded roll decides.
 	var s := _state([
-		["kingdom-1", "kingdom", "highcrag", ["crossbowmen"]],
+		["kingdom-1", "kingdom", "highcrag", ["spearmen"]],
 		["beasts-2", "beasts", "wildmoor", ["fangthrowers"]],
 	])
 	var orders := {"kingdom": [MoveOrder.new("kingdom-1", "thornvale")], "beasts": [MoveOrder.new("beasts-2", "thornvale")]}
@@ -153,7 +153,7 @@ func test_same_province_tie_with_no_defender_uses_seeded_roll() -> void:
 
 
 func test_swap_fights_on_the_border() -> void:
-	# Kingdom spearmen (11) Thornvale -> Wildmoor while beasts war bear (25) Wildmoor -> Thornvale.
+	# Kingdom spearmen (16) Thornvale -> Wildmoor while beasts war bear (21) Wildmoor -> Thornvale.
 	var s := _state([
 		["kingdom-1", "kingdom", "thornvale", ["spearmen"]],
 		["beasts-2", "beasts", "wildmoor", ["war_bear"]],
@@ -179,8 +179,8 @@ func test_swap_fights_on_the_border() -> void:
 
 
 func test_swap_winner_then_fights_the_holder_of_its_destination() -> void:
-	# Kingdom knights + Knight Captain (46) Thornvale -> Wildmoor swap with beasts fangthrowers (12)
-	# Wildmoor -> Thornvale, while a beasts war bear (25) holds Wildmoor. Border battle first, then the
+	# Kingdom knights + Knight Captain (46) Thornvale -> Wildmoor swap with beasts fangthrowers (16)
+	# Wildmoor -> Thornvale, while a beasts war bear (21) holds Wildmoor. Border battle first, then the
 	# winner meets the holder in Wildmoor, and the holder defends.
 	var s := _state([
 		["kingdom-1", "kingdom", "thornvale", ["knights", "knight_captain"]],
@@ -196,7 +196,7 @@ func test_swap_winner_then_fights_the_holder_of_its_destination() -> void:
 	assert_eq(border.armies, ["beasts-2", "kingdom-1"], "only the swapping armies fight on the border")
 	assert_eq(border.numbers.defender, "")
 	assert_eq(border.numbers.winner, "kingdom")
-	assert_eq(border.numbers.strengths, {"beasts": 12, "kingdom": 46})
+	assert_eq(border.numbers.strengths, {"beasts": 16, "kingdom": 46})
 	assert_eq(border.numbers.destroyed, ["beasts-2"])
 	assert_eq(r.events[1].cause, "won_border_battle")
 	var b: Dictionary = r.events[2]
@@ -204,7 +204,7 @@ func test_swap_winner_then_fights_the_holder_of_its_destination() -> void:
 	assert_eq(b.cause, "held_vs_arrival")
 	assert_eq(b.numbers.defender, "beasts", "the war bear held Wildmoor")
 	assert_eq(b.armies, ["beasts-3", "kingdom-1"])
-	assert_eq(b.numbers.strengths, {"beasts": 25, "kingdom": 46})
+	assert_eq(b.numbers.strengths, {"beasts": 21, "kingdom": 46})
 	assert_eq(b.numbers.winner, "kingdom")
 	assert_eq(b.numbers.destroyed, ["beasts-3"])
 	assert_true(b.text.contains("In Wildmoor, Thornmane Clans held against Aurel Crown"), b.text)
@@ -260,7 +260,7 @@ func test_move_into_undefended_neutral_province_captures_it() -> void:
 
 
 func test_move_into_defended_province_holder_defends() -> void:
-	# Beasts war bear (25) holds Wildmoor; kingdom spearmen (11) move in and lose.
+	# Beasts war bear (21) holds Wildmoor; kingdom spearmen (16) move in and lose.
 	var s := _state([
 		["kingdom-1", "kingdom", "thornvale", ["spearmen"]],
 		["beasts-2", "beasts", "wildmoor", ["war_bear"]],
@@ -279,9 +279,9 @@ func test_move_into_defended_province_holder_defends() -> void:
 
 
 func test_holding_army_wins_ties() -> void:
-	# Kingdom crossbowmen (12) hold Thornvale; beasts fangthrowers (12) move in. Tie goes to the holder.
+	# Kingdom spearmen (16) hold Thornvale; beasts fangthrowers (16) move in. Tie goes to the holder.
 	var s := _state([
-		["kingdom-1", "kingdom", "thornvale", ["crossbowmen"]],
+		["kingdom-1", "kingdom", "thornvale", ["spearmen"]],
 		["beasts-2", "beasts", "wildmoor", ["fangthrowers"]],
 	], {"thornvale": "kingdom"})
 	for turn_seed in [1, 2, 3, 4, 5]:
@@ -307,13 +307,13 @@ func test_moving_into_a_province_the_enemy_just_left_is_not_a_battle() -> void:
 # --- recruitment and income -----------------------------------------------------------------------
 
 func test_recruitment_pays_in_order_and_joins_capital_army() -> void:
-	var s := _state([["kingdom-1", "kingdom", "crownkeep", ["spearmen"]]])  # kingdom has 50 gold
+	var s := _state([["kingdom-1", "kingdom", "crownkeep", ["spearmen"]]])  # kingdom has 45 gold
 	var r := _resolve(s, {"kingdom": [RecruitOrder.new("knights"), RecruitOrder.new("spearmen")]})
 	var ns: GameState = r.new_state
 	var rec := _events_of(r.events, "recruited")
 	assert_eq(rec.size(), 2)
-	assert_eq(rec[0].numbers, {"cost": 20, "gold_after": 30, "new_army": false})
-	assert_eq(rec[1].numbers, {"cost": 8, "gold_after": 22, "new_army": false})
+	assert_eq(rec[0].numbers, {"cost": 20, "gold_after": 25, "new_army": false})
+	assert_eq(rec[1].numbers, {"cost": 8, "gold_after": 17, "new_army": false})
 	# Both join the army that was already at the capital, and say so.
 	assert_eq(rec[0].armies, ["kingdom-1"])
 	assert_eq(rec[1].armies, ["kingdom-1"])
@@ -323,8 +323,8 @@ func test_recruitment_pays_in_order_and_joins_capital_army() -> void:
 	assert_eq(ns.armies.size(), 1, "no new army")
 	assert_eq(ns.find_army("kingdom-1").units.size(), 3)
 	assert_eq(ns.find_army("kingdom-1").units[1].type.id, "knights")
-	# Recruitment comes before income: 50 - 28 + 12 (Crownkeep).
-	assert_eq(_gold(ns, "kingdom"), 34)
+	# Recruitment comes before income: 45 - 28 + 12 (Crownkeep).
+	assert_eq(_gold(ns, "kingdom"), 29)
 	var phases: Array = r.events.map(func(e): return e.phase)
 	assert_true(phases.find("recruitment") < phases.find("income"), "recruitment before income")
 
@@ -362,10 +362,10 @@ func test_recruit_text_forms_then_joins_new_army() -> void:
 	assert_true(new_id.begins_with("kingdom-"), new_id)
 	assert_eq(s.find_army(new_id), null, "the army did not exist before the turn")
 	assert_eq(rec[0].numbers.new_army, true)
-	assert_eq(rec[0].text, "Aurel Crown recruited Spearmen at Crownkeep for 8 gold (42 gold left). They form a new army: the Aurel Crown army at Crownkeep (1 unit, no commander).")
+	assert_eq(rec[0].text, "Aurel Crown recruited Spearmen at Crownkeep for 8 gold (37 gold left). They form a new army: the Aurel Crown army at Crownkeep (1 unit, no commander).")
 	assert_eq(rec[1].armies, [new_id], "second recruit joins the army the first one formed")
 	assert_eq(rec[1].numbers.new_army, false)
-	assert_eq(rec[1].text, "Aurel Crown recruited Spearmen at Crownkeep for 8 gold (34 gold left). They joined the Aurel Crown army at Crownkeep (2 units, no commander).")
+	assert_eq(rec[1].text, "Aurel Crown recruited Spearmen at Crownkeep for 8 gold (29 gold left). They joined the Aurel Crown army at Crownkeep (2 units, no commander).")
 	var a := ns.find_army(new_id)
 	assert_eq(a.location, "crownkeep")
 	assert_eq(a.units.size(), 2)
@@ -380,9 +380,9 @@ func test_recruit_not_enough_gold_is_rejected() -> void:
 	assert_eq(rej.size(), 1)
 	assert_eq(rej[0].cause, "not_enough_gold")
 	assert_eq(rej[0].phase, "recruitment")
-	assert_eq(rej[0].reason, "Knights cost 20 gold, but you only have 10 gold left.")
+	assert_eq(rej[0].reason, "Knights cost 20 gold, but you only have 5 gold left.")
 	assert_eq(_events_of(r.events, "recruited").size(), 2)
-	assert_eq(_gold(r.new_state, "kingdom"), 10 + 12)
+	assert_eq(_gold(r.new_state, "kingdom"), 5 + 12)
 
 
 func test_recruit_without_holding_capital_is_rejected() -> void:
@@ -391,7 +391,7 @@ func test_recruit_without_holding_capital_is_rejected() -> void:
 	var rej := _events_of(r.events, "order_rejected")
 	assert_eq(rej[0].cause, "capital_not_held")
 	assert_true(rej[0].reason.contains("Crownkeep"), rej[0].reason)
-	assert_eq(_gold(r.new_state, "kingdom"), 50, "no gold spent")
+	assert_eq(_gold(r.new_state, "kingdom"), 45, "no gold spent")
 
 
 func test_capital_captured_this_turn_cancels_recruits() -> void:
@@ -403,7 +403,7 @@ func test_capital_captured_this_turn_cancels_recruits() -> void:
 	assert_true(cap.numbers.is_capital)
 	assert_true(cap.text.contains("capital"), cap.text)
 	assert_eq(_events_of(r.events, "order_rejected")[0].cause, "capital_not_held")
-	assert_eq(_gold(ns, "kingdom"), 50, "kept gold, and no income from provinces")
+	assert_eq(_gold(ns, "kingdom"), 45, "kept gold, and no income from provinces")
 
 
 func test_income_from_owned_provinces() -> void:
@@ -414,10 +414,10 @@ func test_income_from_owned_provinces() -> void:
 	assert_eq(inc.size(), 2)
 	assert_eq(inc[0].factions, ["beasts"], "factions in sorted id order")
 	assert_eq(inc[0].numbers.income, 12 + 9 + 5)  # Fangridge, Bloodfen, Ironspike
-	assert_eq(inc[1].numbers, {"income": 21, "gold_before": 50, "gold_after": 71, "by_province": {"crownkeep": 12, "rivermarch": 9}})
-	assert_eq(_gold(ns, "kingdom"), 71)
-	assert_eq(_gold(ns, "beasts"), 66)
-	assert_true(inc[1].text.contains("Crownkeep 12") and inc[1].text.contains("50 -> 71"), inc[1].text)
+	assert_eq(inc[1].numbers, {"income": 21, "gold_before": 45, "gold_after": 66, "by_province": {"crownkeep": 12, "rivermarch": 9}})
+	assert_eq(_gold(ns, "kingdom"), 66)
+	assert_eq(_gold(ns, "beasts"), 45 + 26)
+	assert_true(inc[1].text.contains("Crownkeep 12") and inc[1].text.contains("45 -> 66"), inc[1].text)
 
 
 # --- invalid orders -------------------------------------------------------------------------------
@@ -455,10 +455,10 @@ func test_invalid_orders_are_rejected_with_reasons() -> void:
 	assert_eq(book.submit(s, "kingdom", MoveOrder.new("kingdom-1", "westwatch")), "")
 	assert_true(book.submit(s, "kingdom", MoveOrder.new("kingdom-1", "highcrag")).contains("already has a move order"))
 	assert_true(book.submit(s, "kingdom", "attack!").contains("not an order"))
-	# OrderBook tracks gold across recruits: 50 gold buys two knights, not three.
+	# OrderBook tracks gold across recruits: 45 gold buys two knights, not three.
 	assert_eq(book.submit(s, "kingdom", RecruitOrder.new("knights")), "")
 	assert_eq(book.submit(s, "kingdom", RecruitOrder.new("knights")), "")
-	assert_eq(book.submit(s, "kingdom", RecruitOrder.new("knights")), "Knights cost 20 gold, but you only have 10 gold left.")
+	assert_eq(book.submit(s, "kingdom", RecruitOrder.new("knights")), "Knights cost 20 gold, but you only have 5 gold left.")
 	assert_eq(book.orders_for("kingdom").size(), 3)
 
 	# The resolver rejects the same things itself, without engine errors, and ignores them.
@@ -581,17 +581,18 @@ func test_forecasts_match_resolution() -> void:
 
 	assert_eq(Forecast.recruit_cost(s, "kingdom", "knights"), 20)
 	assert_eq(Forecast.recruit_cost(s, "kingdom", "tuskers"), -1)
-	assert_eq(Forecast.recruit_cost(s, "beasts", "warchief"), 40)
+	assert_eq(Forecast.recruit_cost(s, "beasts", "warchief"), 35)
 
-	var recruits := [RecruitOrder.new("knights"), RecruitOrder.new("crossbowmen"), RecruitOrder.new("knights"), RecruitOrder.new("knights")]
+	# 45 gold: a Knight Captain (35) and Crossbowmen (10) spend it exactly; the Knights after them can't be paid.
+	var recruits := [RecruitOrder.new("knight_captain"), RecruitOrder.new("crossbowmen"), RecruitOrder.new("knights")]
 	var g := Forecast.gold_after_recruits(s, "kingdom", recruits)
-	assert_eq(g.gold_now, 50)
-	assert_eq(g.spent, 50)
+	assert_eq(g.gold_now, 45)
+	assert_eq(g.spent, 45)
 	assert_eq(g.gold_after, 0)
 	assert_eq(g.income, 12)
 	assert_eq(g.gold_next_turn, 12)
-	assert_true(g.results[2].ok, "exactly enough gold is enough")
-	assert_false(g.results[3].ok)
+	assert_true(g.results[1].ok, "exactly enough gold is enough")
+	assert_false(g.results[2].ok)
 	assert_true(g.text.contains("Not recruited: Knights cost 20 gold, but you only have 0 gold left."), g.text)
 	var r := _resolve(s, {"kingdom": recruits})
 	assert_eq(_events_of(r.events, "recruited").back().numbers.gold_after, g.gold_after, "forecast gold matches resolution")
@@ -618,7 +619,7 @@ func test_scripted_turn_reads_sensibly() -> void:
 	assert_eq(types.count("income"), 2)
 	var blackwood: Dictionary = _events_of(r.events, "battle")[0]
 	assert_eq(blackwood.provinces, ["blackwood"])
-	assert_eq(blackwood.numbers.winner, "kingdom", "knights (20) beat tuskers (17)")
+	assert_eq(blackwood.numbers.winner, "kingdom", "knights (20) beat tuskers (15)")
 	# Both capitals are empty at recruitment: the first recruit forms an army, the next joins it.
 	# Factions recruit in id order, so the beasts' tuskers come first.
 	var rec := _events_of(r.events, "recruited")
@@ -713,7 +714,7 @@ func test_result_ignores_order_list_and_army_array_order() -> void:
 	assert_true(types.count("captured") >= 3)
 	var battle: Dictionary = _events_of(base.events, "battle")[0]
 	assert_eq(battle.armies, ["beasts-6", "beasts-7", "kingdom-3", "kingdom-8"])
-	assert_eq(battle.numbers.winner, "kingdom", "knights x2 (40) beat fangthrowers + tuskers (29)")
+	assert_eq(battle.numbers.winner, "kingdom", "knights x2 (40) beat fangthrowers + tuskers (31)")
 	var thornvale: Dictionary = _events_of(base.events, "captured").filter(func(e): return e.provinces == ["thornvale"])[0]
 	assert_eq(thornvale.armies, ["kingdom-3", "kingdom-8"])
 	var rec := _events_of(base.events, "recruited").filter(func(e): return e.factions == ["kingdom"])
