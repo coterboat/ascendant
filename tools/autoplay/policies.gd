@@ -452,7 +452,7 @@ class AIPolicy extends Base:
 		var st: Dictionary = ai.last_plan_stats()
 		for key in ["odds_calls", "odds_cached", "odds_skipped", "attacks", "held_back", "captures", "recalls",
 				"retreats", "dropped_invalid", "sacrifices", "road_moves", "field_recruits", "ruler_moves",
-				"research_orders", "path_recruits"]:
+				"research_orders", "path_recruits", "standoff", "hunts", "sieges", "raids"]:
 			if int(st.get(key, 0)) > 0:
 				bump(key, int(st.get(key, 0)))
 		bump("plans")

@@ -188,7 +188,7 @@ func test_battle_report_headings_link_to_the_codex() -> void:
 	var game := _game()
 	var viewer := game.battle_viewer
 	var s := game.session.state()
-	var sides := [{"faction": "beasts", "armies": [s.find_army("beasts-2")]}, {"faction": "kingdom", "armies": [s.find_army("kingdom-1")]}]
+	var sides := [{"faction": "beasts", "armies": [s.find_army("beasts-1")]}, {"faction": "kingdom", "armies": [s.find_army("kingdom-1")]}]
 	var province := s.find_province("thornvale")
 	var ctx := {"kind": "province", "defender": "", "province": province, "province_ids": ["thornvale"], "state": s}
 	var fought := AutoBattleResolver.fight(sides, ctx, SeededRNG.new(5))

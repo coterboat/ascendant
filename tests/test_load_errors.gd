@@ -28,7 +28,7 @@ class RulerFallsResolver extends BattleResolver:
 
 # --- fixtures -------------------------------------------------------------------------------------
 
-## A saved game with rulers: armies kingdom-1 and beasts-2, then the rulers' kingdom-3 and beasts-4.
+## A saved game with rulers: armies kingdom-1 and beasts-1, then the rulers' kingdom-2 and beasts-2.
 func _rulers() -> Dictionary:
 	return GameState.with_rulers(5, {"kingdom": "regents_court", "beasts": "clan_moot"}, []).to_dict()
 
@@ -93,8 +93,8 @@ func test_army_commander_that_is_not_a_unit() -> void:
 	_by_id(d.armies, "kingdom-1")["commander"] = "x"
 	_assert_rejected(d, "The 'commander' field of army 'kingdom-1' should be a group of named values, but the saved data has text there.", "commander = \"x\"")
 	d = _rulers()
-	_by_id(d.armies, "beasts-2")["commander"] = 7
-	_assert_rejected(d, "The 'commander' field of army 'beasts-2' should be a group of named values, but the saved data has a number there.", "commander = 7")
+	_by_id(d.armies, "beasts-1")["commander"] = 7
+	_assert_rejected(d, "The 'commander' field of army 'beasts-1' should be a group of named values, but the saved data has a number there.", "commander = 7")
 
 
 func test_faction_unit_types_that_are_not_a_list_of_unit_types() -> void:
@@ -161,8 +161,8 @@ func test_rng_that_is_not_a_group() -> void:
 func test_ruler_fields_of_the_wrong_type() -> void:
 	# The review found these loaded as empty without a crash; they now fail like every other field.
 	var d := _rulers()
-	_by_id(d.armies, "kingdom-3")["ruler"] = "x"
-	_assert_rejected(d, "The 'ruler' field of army 'kingdom-3' should be a group of named values, but the saved data has text there.", "ruler = \"x\"")
+	_by_id(d.armies, "kingdom-2")["ruler"] = "x"
+	_assert_rejected(d, "The 'ruler' field of army 'kingdom-2' should be a group of named values, but the saved data has text there.", "ruler = \"x\"")
 	d = _rulers()
 	_by_id(d.factions, "kingdom")["mandates"] = "royal_armories"
 	_assert_rejected(d, "The 'mandates' field of faction 'kingdom' should be a list, but the saved data has text there.", "mandates = \"royal_armories\"")

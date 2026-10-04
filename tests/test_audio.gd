@@ -370,7 +370,7 @@ func _assert_same_game(on: GameScreen, off: GameScreen, what: String) -> void:
 func test_sound_never_changes_a_hotseat_game_to_the_capital() -> void:
 	var script := func(game: GameScreen) -> void:
 		for step in [["westwatch", "bloodfen"], ["stonegate", "deepwood"], ["blackwood", "greenglade"], ["ebonpeak", "rivermarch"]]:
-			_hotseat_turn(game, [["kingdom-1", step[0]]], [["beasts-2", step[1]]])
+			_hotseat_turn(game, [["kingdom-1", step[0]]], [["beasts-1", step[1]]])
 		_hotseat_turn(game, [["kingdom-1", "fangridge"]], [])
 	var a := _audio()
 	var on := _play(HOTSEAT, a, script)
@@ -391,8 +391,8 @@ func test_sound_never_changes_a_hotseat_game_to_the_capital() -> void:
 
 func test_sound_never_changes_a_game_with_a_battle_and_its_report() -> void:
 	var script := func(game: GameScreen) -> void:
-		_hotseat_turn(game, [["beasts-2", "ebonpeak"], ["tuskers"]], [["kingdom-1", "westwatch"], ["spearmen"]])
-		_hotseat_turn(game, [["beasts-2", "blackwood"]], [["kingdom-1", "stonegate"]])
+		_hotseat_turn(game, [["beasts-1", "ebonpeak"], ["tuskers"]], [["kingdom-1", "westwatch"], ["spearmen"]])
+		_hotseat_turn(game, [["beasts-1", "blackwood"]], [["kingdom-1", "stonegate"]])
 		_order(game, [])
 		game.end_turn_button.pressed.emit()
 		game.handoff.ready_button.pressed.emit()

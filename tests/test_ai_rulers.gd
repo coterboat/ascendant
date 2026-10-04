@@ -241,7 +241,7 @@ func test_the_computers_orders_do_not_depend_on_what_the_human_queued() -> void:
 	var options := [
 		[],
 		[SacrificeOrder.new("royal_armories"), RecruitOrder.new("knights"), MoveOrder.new("kingdom-1", "westwatch")],
-		[SacrificeOrder.new("veteran_levies"), RecruitOrder.new("spearmen"), RecruitOrder.new("spearmen"), MoveOrder.new("kingdom-3", "rivermarch")],
+		[SacrificeOrder.new("veteran_levies"), RecruitOrder.new("spearmen"), RecruitOrder.new("spearmen"), MoveOrder.new("kingdom-2", "rivermarch")],
 	]
 	var seen := []
 	for orders in options:

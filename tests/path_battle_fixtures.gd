@@ -16,6 +16,13 @@ static func game(mandates: Dictionary = {}) -> GameState:
 		if a.ruler != null:
 			keep.append(a)
 	s.armies = keep
+	# The rulers' armies keep the ids these battles were written with (kingdom-3, beasts-4: from before each
+	# faction counted its own armies, #94), so the ids the tests give their own armies never clash with them.
+	for i in s.factions.size():
+		var ruler := RulerRules.ruler_army(s, s.factions[i].id)
+		if ruler != null:
+			ruler.id = "%s-%d" % [s.factions[i].id, s.factions.size() + i + 1]
+			s.next_army_ids[s.factions[i].id] = s.factions.size() + i + 2
 	for f in s.factions:
 		f.mandates = mandates.get(f.id, []).duplicate()
 	return s

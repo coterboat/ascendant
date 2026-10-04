@@ -45,7 +45,7 @@ const M2_CODEX_KEYS := ["ruler", "ruler_power", "kept_power", "ability_rank", "r
 	"mandate_sworn_vassals", "mandate_royal_armories", "mandate_kings_roads", "mandate_blood_frenzy",
 	"mandate_feast_of_victory", "road_move", "field_recruit"]
 ## The M1 save format, which a game without rulers must keep exactly.
-const M1_STATE_KEYS := ["armies", "current_turn", "factions", "next_army_id", "provinces", "rng", "seed_value"]
+const M1_STATE_KEYS := ["armies", "current_turn", "factions", "next_army_ids", "provinces", "rng", "seed_value"]
 const M1_FACTION_KEYS := ["capital", "commander_type", "gold", "id", "name", "unit_types"]
 const M1_ARMY_KEYS := ["commander", "id", "location", "owner", "units"]
 const M1_UNIT_TYPE_KEYS := ["attack", "cost", "defense", "hp", "id", "is_commander", "morale", "name", "trait", "trait_description"]
@@ -186,7 +186,7 @@ func test_default_setup_is_the_m1_setup() -> void:
 	var s := GameState.new(7)
 	assert_false(RulerRules.has_rulers(s), "no rulers unless asked for")
 	assert_eq(s.armies.size(), 2, "one starting army per faction, as in M1")
-	assert_eq(s.next_army_id, 3)
+	assert_eq(s.next_army_ids, {"kingdom": 2, "beasts": 2}, "each faction counts its own armies (#94)")
 	for f in s.factions:
 		assert_false(f.has_ruler(), "%s has no ruler" % f.faction_name)
 		assert_eq(f.mandates, [])
@@ -197,7 +197,7 @@ func test_default_setup_is_the_m1_setup() -> void:
 		assert_eq(here[0].units.size(), f.unit_types.size(), "one of each unit")
 		assert_true(here[0].commander != null and here[0].ruler == null)
 	assert_eq(s.find_army("kingdom-1").location, "crownkeep")
-	assert_eq(s.find_army("beasts-2").location, "fangridge")
+	assert_eq(s.find_army("beasts-1").location, "fangridge")
 	# The save format is exactly M1's: no ruler key anywhere.
 	var d := s.to_dict()
 	var keys: Array = d.keys()
@@ -234,8 +234,8 @@ func test_each_capital_starts_with_army_1_and_the_ruler_army_when_rulers_are_on(
 	var s := _with_rulers(7)
 	assert_true(RulerRules.has_rulers(s))
 	assert_eq(s.armies.size(), 4, "army 1 and the ruler's army for each faction")
-	var expected := {"kingdom": ["kingdom-1", "kingdom-3", "ever_regent", 5, ["royal_armories", "kings_roads"]],
-		"beasts": ["beasts-2", "beasts-4", "fang_chieftain", 5, ["iron_discipline", "drilled_ranks"]]}
+	var expected := {"kingdom": ["kingdom-1", "kingdom-2", "ever_regent", 5, ["royal_armories", "kings_roads"]],
+		"beasts": ["beasts-1", "beasts-2", "fang_chieftain", 5, ["iron_discipline", "drilled_ranks"]]}
 	for fid in expected:
 		var f := s.find_faction(fid)
 		var e: Array = expected[fid]
@@ -358,10 +358,10 @@ func test_a_recorded_game_with_builds_replays_to_an_identical_state() -> void:
 	var session := GameSession.new(start, ["kingdom", "beasts"], 21, AutoBattleResolver.new())
 	assert_eq(session.setup_errors(), [])
 	var turns := [
-		[[MoveOrder.new("kingdom-1", "westwatch"), RecruitOrder.new("spearmen")], [MoveOrder.new("beasts-4", "ebonpeak")]],
-		[[MoveOrder.new("kingdom-3", "highcrag")], [MoveOrder.new("beasts-4", "blackwood"), RecruitOrder.new("tuskers")]],
-		[[MoveOrder.new("kingdom-3", "thornvale"), MoveOrder.new("kingdom-1", "stonegate")], [MoveOrder.new("beasts-2", "ironspike")]],
-		[[], [MoveOrder.new("beasts-4", "wildmoor")]],
+		[[MoveOrder.new("kingdom-1", "westwatch"), RecruitOrder.new("spearmen")], [MoveOrder.new("beasts-2", "ebonpeak")]],
+		[[MoveOrder.new("kingdom-2", "highcrag")], [MoveOrder.new("beasts-2", "blackwood"), RecruitOrder.new("tuskers")]],
+		[[MoveOrder.new("kingdom-2", "thornvale"), MoveOrder.new("kingdom-1", "stonegate")], [MoveOrder.new("beasts-1", "ironspike")]],
+		[[], [MoveOrder.new("beasts-2", "wildmoor")]],
 	]
 	for t in turns:
 		for o in t[0]:
@@ -429,7 +429,7 @@ func test_a_ruler_army_that_wins_beside_army_1_is_not_removed_as_empty() -> void
 	for resolver in [StubBattleResolver.new(), AutoBattleResolver.new()]:
 		var s := _with_rulers(9)
 		# A lone Fangthrower attacks the Crown capital, held by army 1 and the Ever-Regent.
-		s.armies.erase(s.find_army("beasts-2"))
+		s.armies.erase(s.find_army("beasts-1"))
 		var raider := Army.new()
 		raider.id = "beasts-9"
 		raider.owner = "beasts"
@@ -509,7 +509,7 @@ func test_ruler_army_on_the_map_reads_plainly_and_explains_every_number() -> voi
 	var map := game.map
 	assert_true(RulerRules.has_rulers(map.state), "the game screen started a game with rulers")
 	map.select_province("crownkeep")
-	var panel := map.details.find_child("Army_kingdom-3", true, false)
+	var panel := map.details.find_child("Army_kingdom-2", true, false)
 	assert_true(panel != null, "the ruler's army is listed in the side panel")
 	var header := panel.find_child("ArmyHeader", true, false) as Button
 	assert_eq(header.text, "The Ever-Regent (ruler of the Aurel Crown) at Crownkeep")

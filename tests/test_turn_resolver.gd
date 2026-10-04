@@ -331,7 +331,7 @@ func test_recruitment_pays_in_order_and_joins_capital_army() -> void:
 
 func test_recruit_forms_new_army_when_capital_is_empty() -> void:
 	var s := _state([["kingdom-1", "kingdom", "westwatch", ["spearmen"]]], {"westwatch": "kingdom"})
-	s.next_army_id = 7
+	s.next_army_ids["kingdom"] = 7
 	var r := _resolve(s, {"kingdom": [RecruitOrder.new("spearmen"), RecruitOrder.new("knight_captain")]})
 	var ns: GameState = r.new_state
 	var a := ns.find_army("kingdom-7")
@@ -340,7 +340,7 @@ func test_recruit_forms_new_army_when_capital_is_empty() -> void:
 	assert_eq(a.units.size(), 1)
 	assert_eq(a.commander.type.id, "knight_captain", "commander leads the army at the capital")
 	# New ids never collide with ids already in use, even when the counter is behind.
-	s.next_army_id = 1
+	s.next_army_ids["kingdom"] = 1
 	var r2 := _resolve(s, {"kingdom": [RecruitOrder.new("spearmen")]})
 	assert_eq(r2.new_state.armies.back().id, "kingdom-2")
 	var errs := []
@@ -786,7 +786,7 @@ func test_json_roundtrip_keeps_ints_as_ints() -> void:
 	var rd := r.to_dict()
 	assert_eq(var_to_str(rd), var_to_str(d), "exact match, types included")
 	assert_eq(typeof(rd.current_turn), TYPE_INT)
-	assert_eq(typeof(rd.next_army_id), TYPE_INT)
+	assert_eq(typeof(rd.next_army_ids.kingdom), TYPE_INT)
 	assert_eq(typeof(rd.factions[0].gold), TYPE_INT)
 	assert_eq(typeof(rd.provinces[0].income), TYPE_INT)
 	assert_eq(typeof(rd.armies[0].units[0].current_hp), TYPE_INT)
