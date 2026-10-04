@@ -725,14 +725,6 @@ const HALLOWED_LAND := "hallowed_land"
 const FORGES := "forges"
 const WILD_SPREADS := "wild_spreads"
 const DREAD_LANDS := "dread_lands"
-## The new units' trait sentences until AutoBattleResolver.TRAIT_TEXT has them (M4-3 gives the traits their
-## effects in battle and owns that text; a new UnitType takes TRAIT_TEXT's sentence first).
-const NEW_TRAIT_TEXT := {
-	"Wings": "Can attack any enemy fighter, whatever its rank, and attacks a standing enemy commander first.",
-	"Iron Hide": "Every hit on it deals 1 less damage, but always at least 1.",
-	"Rooted": "+4 defense in a province battle in a forest province, whoever holds it. Not in border battles.",
-	"Lifedrinker": "At the end of each round in which it still stands, it heals half the damage its hits dealt that round, rounded up.",
-}
 const TIMES_WORDS := {1: "once", 2: "twice", 3: "three times"}
 
 
@@ -750,7 +742,7 @@ static func new_unit_type(unit_id: String) -> UnitType:
 	ut.morale = int(d.morale)
 	ut.cost = int(d.cost)
 	ut.trait_id = String(d.trait)
-	ut.trait_description = String(AutoBattleResolver.TRAIT_TEXT.get(ut.trait_id, NEW_TRAIT_TEXT.get(ut.trait_id, "")))
+	ut.trait_description = String(AutoBattleResolver.TRAIT_TEXT.get(ut.trait_id, ""))  # M4-3: the rules' own text, as data/factions.gd
 	return ut
 
 

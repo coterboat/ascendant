@@ -51,6 +51,8 @@ const CODEX := {
 	"sacrifice": "sacrifice",
 	"ruler_panel": "ruler",
 	"successor_countdown": "succession",
+	# research (M4-4): a research order in the orders list
+	"research_order": "research_order",
 	# victory screen
 	"game_over": "victory",
 	"draw": "simultaneous_capture",

@@ -30,14 +30,32 @@ class_name BattleLog
 ##   without_logs(events)     a deep copy of turn report events with every numbers.log removed
 ## MAX_EVENTS caps a log: past it recording stops and the log gets "truncated": true, while the battle
 ## is fought to the end as usual (recording is passive). No measured battle comes near it.
+##
+## Paths (M4-3, #68; design/M4_ASCENSION.md §9.6). A battle in a game with paths, or with a path trait on
+## the field, writes "paths": true at the top level and these additions to the same version-1 schema (every
+## other log is exactly M3-1's, byte for byte, so M1-M3 fixtures and records never change):
+##   side       "people" ({"id", "name"} or {}), "base_morale_parts" ({path part key: what it added to
+##              base_morale}), "dread_lands" (morale every enemy side loses here), "red_harvest" (gold per
+##              enemy fighter lost when this side wins)
+##   round      each reach entry gains "wings_tiers": the ranks Wings can reach on that side (its commanders
+##              while one stands, otherwise every rank). Wings goes only for commanders while any enemy
+##              side has one standing.
+##   attack     "reach" can be "wings" (only Wings could reach the target); "bonus" can hold "Iron Hide"
+##              (a negative damage part); attack and defense parts can hold "path_<node>" and "Rooted"
+##   heal       {n, f, from, to, dealt, trait}: Lifedrinker healing a fighter at the end of round n, after
+##              the wounds and deaths and before the morale checks ("dealt": the damage its hits dealt
+##              that round). Playback shows it as a green number.
+##   harvest    {side, fighters, gold}: Red Harvest's gold after the battle (after feast, before aftermath)
+## A reader that folds hp must apply heal events (final_hp and BattleTimeline do).
 
 const VERSION := 1
 const MAX_EVENTS := 12000
-const EVENT_TYPES := ["round", "attack", "wound", "death", "morale", "rout", "destroyed", "round_end", "end", "feast", "aftermath"]
+const EVENT_TYPES := ["round", "attack", "wound", "death", "morale", "rout", "destroyed", "round_end", "end", "feast", "aftermath",
+	"heal", "harvest"]
 ## Events without a round number.
-const UNROUNDED := ["end", "feast", "aftermath"]
+const UNROUNDED := ["end", "feast", "aftermath", "harvest"]
 const ROLES := ["unit", "commander", "ruler"]
-const REACH_WORDS := ["front", "second", "back", "skirmish"]
+const REACH_WORDS := ["front", "second", "back", "skirmish", "wings"]
 const MORALE_RESULTS := ["holds", "breaks", "held"]
 const ENDS := ["rout", "destroyed", "mutual", "round_cap"]
 const TIE_BREAKS := ["none", "defender", "roll"]
@@ -46,7 +64,9 @@ const FLOAT_KEYS := ["expected", "impact"]
 ## The report's "why" factors that are not measured in the resolver's impact accumulator (so they have no
 ## per-round worth in the log): morale and rout factors, the bigger force, luck and the round cap.
 const NON_IMPACT_FACTORS := ["rout", "Fury", "ability_dread", "morale_commander", "morale_Inspire", "morale_ruler",
-	"mandate_iron_discipline", "numbers", "luck", "round_cap"]
+	"mandate_iron_discipline", "numbers", "luck", "round_cap", "dread_lands"]
+## M4-3: path morale factors ("morale_path_<node>") are measured from the morale checks too.
+const NON_IMPACT_PREFIXES := ["morale_"]
 ## At most this many reasons from validate() and cross_check(): the first ones say what is wrong.
 const MAX_REASONS := 25
 
@@ -93,13 +113,14 @@ static func attach(battle_log: Dictionary, turn: int, index: int, winner: String
 
 # --- reading ------------------------------------------------------------------------------------------
 
-## Each fighter's hp after every event of the log (wounds, then Feast of Victory's healing), by fighter id.
+## Each fighter's hp after every event of the log (wounds, Lifedrinker's heals, then Feast of Victory's
+## healing), by fighter id.
 static func final_hp(battle_log: Dictionary) -> Array:
 	var hp := []
 	for f in battle_log.fighters:
 		hp.append(int(f.hp))
 	for e in battle_log.events:
-		if e.t == "wound":
+		if e.t == "wound" or e.t == "heal":
 			hp[int(e.f)] = int(e.to)
 		elif e.t == "feast":
 			for h in e.healed:
@@ -343,6 +364,20 @@ static func validate(battle_log) -> Array:
 				for h in e.get("healed", []):
 					if not (h is Array) or h.size() != 3 or not _in_range(h[0], nf) or int(_num(h[2], 0)) <= int(_num(h[1], 0)):
 						_add(r, "%s should list [fighter, hit points before, hit points after] for each fighter it healed." % what)
+			"heal":
+				# M4-3: Lifedrinker. Up, never past the fighter's maximum.
+				if not _in_range(e.get("f"), nf):
+					_add(r, "%s names fighter %s, but the log has %d fighters." % [what, str(e.get("f")), nf])
+				elif not _is_int(e.get("from")) or not _is_int(e.get("to")) or int(e.to) <= int(e.from) \
+						or int(e.to) > int(_num(fighters[int(e.f)].get("max_hp"), 0)):
+					_add(r, "%s should raise hit points from a number to a bigger one, no higher than the fighter's maximum." % what)
+				if not _is_int(e.get("dealt")) or int(_num(e.get("dealt"), 0)) < 1:
+					_add(r, "%s should say how much damage the fighter's hits dealt that round." % what)
+			"harvest":
+				if not _in_range(e.get("side"), ns):
+					_add(r, "%s names side %s, but the log has %d sides." % [what, str(e.get("side")), ns])
+				if not _is_int(e.get("fighters")) or not _is_int(e.get("gold")) or int(_num(e.get("gold"), -1)) < 0:
+					_add(r, "%s should give the enemy fighters lost and the gold they paid." % what)
 			"aftermath":
 				for key in ["lost", "fallen_rulers"]:
 					for fid in e.get(key, []):
@@ -522,6 +557,7 @@ static func cross_check(battle_log: Dictionary, report: Dictionary) -> Array:
 	var end_state := {}
 	var end_event := {}
 	var feast_healed := -1
+	var round_dealt := {}  # M4-3: fighter id -> damage its hits dealt this round (Lifedrinker's heal)
 	for i in events.size():
 		var e: Dictionary = events[i]
 		match e.t:
@@ -530,6 +566,7 @@ static func cross_check(battle_log: Dictionary, report: Dictionary) -> Array:
 				for entry in e.reach:
 					reach[int(entry.side)] = entry
 				pending = {}
+				round_dealt = {}
 				tally = []
 				for s in sides:
 					tally.append([0, 0, 0])
@@ -554,6 +591,7 @@ static func cross_check(battle_log: Dictionary, report: Dictionary) -> Array:
 					p.dmg += int(e.damage)
 					p.by.append(int(e.by))
 					pending[int(e.to)] = p
+					round_dealt[int(e.by)] = int(round_dealt.get(int(e.by), 0)) + int(e.damage)
 			"wound":
 				var p: Dictionary = pending.get(int(e.f), {"dmg": 0, "by": []})
 				var want := maxi(0, int(e.from) - int(p.dmg))
@@ -566,6 +604,17 @@ static func cross_check(battle_log: Dictionary, report: Dictionary) -> Array:
 				pending.erase(int(e.f))
 			"death":
 				deaths[int(fighters[int(e.f)].side)].append(String(fighters[int(e.f)].name))
+			"heal":
+				# M4-3: Lifedrinker heals a standing fighter 1/LIFEDRINK_DIVISOR of what its hits dealt this
+				# round, rounded up, up to its maximum.
+				var hf: Dictionary = fighters[int(e.f)]
+				var drunk := int(round_dealt.get(int(e.f), 0))
+				var want := mini(int(hf.max_hp), int(e.from) + ceili(float(drunk) / AutoBattleResolver.LIFEDRINK_DIVISOR))
+				if String(hf.trait) != AutoBattleResolver.LIFEDRINKER or not state.fighters[int(e.f)].alive:
+					_add(r, "Round %d: fighter %d heals, but only a standing fighter with Lifedrinker does." % [int(e.n), int(e.f)])
+				elif int(e.from) != int(state.fighters[int(e.f)].hp) or int(e.to) != want or int(e.dealt) != drunk:
+					_add(r, "Round %d: fighter %d heals from %d to %d after dealing %d, but it had %d hp and its hits dealt %d this round." % [
+						int(e.n), int(e.f), int(e.from), int(e.to), int(e.dealt), int(state.fighters[int(e.f)].hp), drunk])
 			"morale":
 				morale[int(e.side)].append(e)
 			"rout", "destroyed":
@@ -656,7 +705,7 @@ static func cross_check(battle_log: Dictionary, report: Dictionary) -> Array:
 		_check_ruler(r, battle_log, si, sr, end_state, tot.ruler_dealt)
 		# Impact: each factor measured in the resolver's accumulator equals the log's rounds plus its end.
 		for f in report.get("all_factors", []):
-			if String(f.get("faction", "")) != name or NON_IMPACT_FACTORS.has(String(f.get("id", ""))):
+			if String(f.get("faction", "")) != name or _non_impact(String(f.get("id", ""))):
 				continue
 			var got := float(impact[si].get(String(f.id), 0.0))
 			if absf(got - float(_num(f.get("impact"), 0.0))) > 0.1:
@@ -686,19 +735,41 @@ static func _check_attack(r: Array, i: int, e: Dictionary, battle_log: Dictionar
 		_add(r, "%s: the round gives no reach for the target's side." % where)
 		return
 	var skirmish: bool = a.trait == AutoBattleResolver.SKIRMISH
-	var tiers: Array = _ints(reach[int(t.side)].skirmish_tiers if skirmish else reach[int(t.side)].tiers)
+	var wings: bool = a.trait == AutoBattleResolver.WINGS
+	if wings and not reach[int(t.side)].has("wings_tiers"):
+		_add(r, "%s: the attacker has Wings, but the round gives no reach for Wings." % where)
+		return
+	# M4-3: Wings goes only for commanders while any enemy side it could reach has one standing.
+	var wings_cmd := false
+	if wings:
+		for s in battle_log.sides:
+			var si := int(s.index)
+			if si != int(a.side) and state.sides[si].out == "" and reach.has(si) and _ints(reach[si].wings_tiers) == [2]:
+				wings_cmd = true
+	var tiers: Array = _side_reach(reach[int(t.side)], skirmish, wings, wings_cmd)
 	if not tiers.has(int(t.tier)):
 		_add(r, "%s: the target stands in rank %d, which the attacker couldn't reach this round (%s)." % [where, int(t.tier), str(tiers)])
 	var ordinary: Array = _ints(reach[int(t.side)].tiers)
-	var word: String = "skirmish" if not ordinary.has(int(t.tier)) else REACH_WORDS[int(t.tier)]
+	var word: String = ("wings" if wings else "skirmish") if not ordinary.has(int(t.tier)) else REACH_WORDS[int(t.tier)]
 	if String(e.reach) != word:
 		_add(r, "%s: the attack's reach is %s, but it should be %s." % [where, e.reach, word])
+	# M4-3: Rooted only in a province battle in a forest; Iron Hide only on a fighter with it, and always
+	# unless the hit was already at the minimum.
+	var rooted: bool = String(t.trait) == AutoBattleResolver.ROOTED and battle_log.kind == "province" and battle_log.terrain == "forest"
+	if rooted != e.defense.parts.has(AutoBattleResolver.ROOTED):
+		_add(r, "%s: Rooted %s the defense, but the target %s rooted in a forest province." % [where,
+			"is in" if e.defense.parts.has(AutoBattleResolver.ROOTED) else "is not in", "is" if rooted else "is not"])
+	var hide: bool = String(t.trait) == AutoBattleResolver.IRON_HIDE
+	if e.bonus.has(AutoBattleResolver.IRON_HIDE) and not hide:
+		_add(r, "%s: the damage has Iron Hide, but the target doesn't." % where)
+	elif hide and not e.bonus.has(AutoBattleResolver.IRON_HIDE) and int(e.damage) > AutoBattleResolver.MIN_DAMAGE:
+		_add(r, "%s: the target has Iron Hide, but the damage doesn't count it." % where)
 	var pool := 0
 	for s in battle_log.sides:
 		var si := int(s.index)
 		if si == int(a.side) or state.sides[si].out != "" or not reach.has(si):
 			continue
-		var st: Array = _ints(reach[si].skirmish_tiers if skirmish else reach[si].tiers)
+		var st: Array = _side_reach(reach[si], skirmish, wings, wings_cmd)
 		for fid in s.fighters:
 			var fs: Dictionary = state.fighters[int(fid)]
 			if fs.alive and st.has(int(fighters[int(fid)].tier)):
@@ -766,6 +837,16 @@ static func _check_ruler(r: Array, battle_log: Dictionary, si: int, sr: Dictiona
 			_add(r, "%s's ruler: the report's %s is %s, the log's %s." % [battle_log.sides[si].faction, c[0], str(want), str(c[1])])
 
 
+## The ranks an attacker can reach on a side, from the round's reach entry: Skirmish's, Wings' (only the
+## commanders, and nothing on a side without one, while `wings_cmd`: an enemy commander stands) or the
+## ordinary ones.
+static func _side_reach(entry: Dictionary, skirmish: bool, wings: bool, wings_cmd: bool) -> Array:
+	if wings:
+		var wt := _ints(entry.get("wings_tiers", []))
+		return wt if not wings_cmd or wt == [2] else []
+	return _ints(entry.skirmish_tiers if skirmish else entry.tiers)
+
+
 ## The report's round `n` ({} when it has none).
 static func _report_round(report: Dictionary, n: int) -> Dictionary:
 	var rounds = report.get("rounds", [])
@@ -786,6 +867,17 @@ static func _keyed(d, key: int):
 
 
 # --- small helpers ------------------------------------------------------------------------------------
+
+## True for a "why" factor measured outside the resolver's impact accumulator (NON_IMPACT_FACTORS, and
+## every morale factor).
+static func _non_impact(factor_id: String) -> bool:
+	if NON_IMPACT_FACTORS.has(factor_id):
+		return true
+	for p in NON_IMPACT_PREFIXES:
+		if factor_id.begins_with(p):
+			return true
+	return false
+
 
 static func _add(reasons: Array, text: String) -> void:
 	if reasons.size() < MAX_REASONS:

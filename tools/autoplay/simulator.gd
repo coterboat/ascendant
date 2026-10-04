@@ -304,8 +304,8 @@ static func parse_build(arg, faction_id: String) -> Dictionary:
 ## phases are known; battle reports have a known end, 1..ROUND_CAP rounds and no negative hp; the turn
 ## counter went up by one; gold = gold before - recruits paid + income. With rulers, _check_rulers too.
 ## With paths (M4-2): research events are known, gold also counts Raiding Parties' raided gold (Blood Levy's
-## lower prices are already in the recruited costs), and _check_terrain: terrain changes only by the Wild
-## Spreads.
+## lower prices are already in the recruited costs) and Red Harvest's gold, paid to a battle's winner (M4-3,
+## the battle event's numbers.red_harvest), and _check_terrain: terrain changes only by the Wild Spreads.
 static func check_invariants(prev: GameState, state: GameState, events: Array) -> Array:
 	var out := []
 	if state == null:
@@ -360,6 +360,7 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 	var spent := {}
 	var income := {}
 	var raided := {}
+	var harvested := {}  # M4-3: Red Harvest's gold, paid to the winner in the battles phase
 	for e in events:
 		var type := str(e.get("type", ""))
 		if not EVENT_TYPES.has(type) and not RULER_EVENT_TYPES.has(type) and not (state.paths and PATH_EVENT_TYPES.has(type)):
@@ -374,6 +375,9 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 				if state.find_army(str(id)) != null:
 					out.append({"check": "destroyed_army_present", "detail": "Army %s was destroyed in a battle but is still on the map." % id})
 			out.append_array(_check_battle_report(numbers.get("report", {})))
+			if numbers.has("red_harvest"):
+				var winner := str(numbers.get("winner", ""))
+				harvested[winner] = int(harvested.get(winner, 0)) + int(numbers.red_harvest)
 		elif type == "recruited" and not fids.is_empty():
 			spent[fids[0]] = int(spent.get(fids[0], 0)) + int(numbers.get("cost", 0))
 		elif type == "income" and not fids.is_empty():
@@ -387,10 +391,11 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 			var before := prev.find_faction(f.id)
 			if before == null:
 				continue
-			var expected: int = before.gold - int(spent.get(f.id, 0)) + int(income.get(f.id, 0)) + int(raided.get(f.id, 0))
+			var expected: int = before.gold - int(spent.get(f.id, 0)) + int(income.get(f.id, 0)) + int(raided.get(f.id, 0)) \
+				+ int(harvested.get(f.id, 0))
 			if f.gold != expected:
-				out.append({"check": "gold_accounting", "detail": "%s has %d gold, expected %d (%d - %d recruits + %d income + %d raided)." % [
-					f.id, f.gold, expected, before.gold, spent.get(f.id, 0), income.get(f.id, 0), raided.get(f.id, 0)]})
+				out.append({"check": "gold_accounting", "detail": "%s has %d gold, expected %d (%d - %d recruits + %d income + %d raided + %d harvested)." % [
+					f.id, f.gold, expected, before.gold, spent.get(f.id, 0), income.get(f.id, 0), raided.get(f.id, 0), harvested.get(f.id, 0)]})
 	out.append_array(_check_rulers(prev, state, events))
 	out.append_array(_check_terrain(prev, state, events))
 	return out

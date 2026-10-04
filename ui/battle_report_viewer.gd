@@ -66,6 +66,7 @@ const MORALE_PART_NAMES := {
 	"Fury": "Fury (enemy War Bears roaring)",
 	"ruler": "Its ruler still standing",
 	"Dread": "Dread (the enemy's Great Thornmane)",
+	"Dread Lands": "Dread Lands (fighting on the Blood Pact's own land)",  # M4-4, for M4-3's morale part
 }
 
 var title_label: Label
@@ -615,7 +616,8 @@ func _morale_tooltip(sr: Dictionary, e: Dictionary) -> String:
 	var keys: Array = parts.keys()
 	keys.sort()
 	for k in keys:
-		lines.append({"label": MORALE_PART_NAMES.get(k, String(k)), "value": int(parts[k]), "note": ""})
+		var label: String = MORALE_PART_NAMES.get(k, AscensionRules.part_name(String(k).trim_prefix("morale_")) if String(k).contains(AscensionRules.PART_PREFIX) else String(k))
+		lines.append({"label": label, "value": int(parts[k]), "note": ""})
 	var b := {"title": "Morale of %s in round %d" % [sr.get("name", ""), int(e.get("round", 0))],
 		"description": "This morale holds until the side has lost %d%% of its starting hit points; it had lost %d%%. %s" % [
 			int(e.get("break_pct", 0)), int(e.get("lost_pct", 0)), RulesCodex.text("battle_morale")],
@@ -646,6 +648,8 @@ static func _factor_entry(factor_id: String) -> String:
 static func _part_name(key: String) -> String:
 	if key.begins_with(AutoBattleResolver.MANDATE_PREFIX):
 		return RulerRules.mandate_name(key.trim_prefix(AutoBattleResolver.MANDATE_PREFIX))
+	if key.begins_with(AscensionRules.PART_PREFIX):  # M4-4: a path part ("path_crown_arbalests" -> "Arbalests")
+		return AscensionRules.part_name(key)
 	return key
 
 
@@ -653,6 +657,8 @@ static func _part_name(key: String) -> String:
 static func _part_entry(key: String) -> String:
 	if key.begins_with(AutoBattleResolver.MANDATE_PREFIX):
 		return _factor_entry(key)
+	if key.begins_with(AscensionRules.PART_PREFIX):  # M4-4: the node's (or its economy rule's) codex entry
+		return AscensionRules.part_codex(key)
 	return AutoBattleResolver.codex_id_for_trait(key)
 
 

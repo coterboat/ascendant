@@ -22,6 +22,10 @@ extends SceneTree
 ##   --crown-preset ID  fight with a build preset (data/build_presets.gd, M2-8): its mandates, and its
 ##                  ruler at the preset's kept power beside the army; --clans-preset the same
 ##                  (e.g. --crown-preset iron_crown --clans-preset blood_of_the_fang)
+##   --crown-nodes ID,ID  fight in a game with paths (M4-3) where the Aurel Crown has researched these path
+##                  nodes (data/paths.gd), e.g. crown_living_iron: their stat parts, renamed units and new
+##                  unit (which joins the "pair" matchups); --clans-nodes the same for the Thornmane Clans.
+##                  Run once without and once with a transformation to read what it shifts.
 ##
 ## Matchups (tools/balance/balance.gd, built from the current costs in data/factions.gd): the starting
 ## armies (with and without commanders), equal-gold pure-unit fights for every cross-faction pair at
@@ -50,6 +54,13 @@ func _initialize() -> void:
 			printerr("matchups: %s" % " ".join(errors))
 			quit(2)
 			return
+	if not opts.nodes.is_empty():
+		var errors := []
+		state = Balance.with_path_nodes(Balance.new_state_with(opts.mandates, opts.rulers, errors), opts.nodes, errors)
+		if state == null:
+			printerr("matchups: %s" % " ".join(errors))
+			quit(2)
+			return
 	var ruler_fids: Array = opts.rulers.keys()
 	var grounds := []
 	for g in Balance.GROUNDS:
@@ -70,6 +81,12 @@ func _initialize() -> void:
 	L.append("")
 	if not opts.mandates.is_empty() or not opts.rulers.is_empty():
 		L.append(_m2_line(state, opts))
+		L.append("")
+	if not opts.nodes.is_empty():
+		var bits := []
+		for fid in opts.nodes:
+			bits.append("%s: %s" % [state.find_faction(fid).faction_name, ", ".join(opts.nodes[fid].map(func(n): return AscensionRules.node_name(n)))])
+		L.append("**With paths (M4-3):** %s." % "; ".join(bits))
 		L.append("")
 	L.append(_unit_table(state))
 	L.append("")
@@ -130,7 +147,7 @@ func _unit_table(state: GameState) -> String:
 		for ut in types:
 			var us := RulerRules.unit_stats(state, f.id, ut.id)
 			L.append("| %s | %s | %d | %d | %d | %d | %d | %s: %s |" % [ut.name, f.faction_name, us.hp, us.attack, us.defense,
-				ut.morale, us.cost, ut.trait_id, ut.trait_description])
+				us.get("morale", ut.morale), us.cost, ut.trait_id, ut.trait_description])
 	return "\n".join(L)
 
 
@@ -265,7 +282,7 @@ static func _ok(good: bool) -> String:
 
 func _parse(args: PackedStringArray) -> Dictionary:
 	var opts := {"seeds": 400, "seed": 0, "only": "", "grounds": [], "samples": 0, "compositions": 0, "out": "", "mandates": {},
-		"rulers": {}, "m2_args": ""}
+		"rulers": {}, "m2_args": "", "nodes": {}}
 	var i := 0
 	while i < args.size():
 		var key := args[i]
@@ -318,6 +335,15 @@ func _parse(args: PackedStringArray) -> Dictionary:
 					return {"error": "%s needs one of %s" % [key, ", ".join(RulerRules.presets_for(fid).map(func(x): return str(x.id)))]}
 				opts.mandates[fid] = p.mandates.duplicate()
 				opts.rulers[fid] = [str(p.ruler), RulerRules.kept_after(p)]
+				opts.m2_args += " %s %s" % [key, value]
+			"--crown-nodes", "--clans-nodes":
+				var fid: String = Balance.CROWN if key == "--crown-nodes" else Balance.CLANS
+				var ids := []
+				for nid in value.split(","):
+					if not AscensionRules.node_ids(fid).has(nid):
+						return {"error": "%s needs node ids of %s's path, e.g. %s" % [key, fid, ", ".join(AscensionRules.node_ids(fid))]}
+					ids.append(nid)
+				opts.nodes[fid] = ids
 				opts.m2_args += " %s %s" % [key, value]
 			"--crown-ruler", "--clans-ruler":
 				var fid: String = Balance.CROWN if key == "--crown-ruler" else Balance.CLANS

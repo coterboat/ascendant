@@ -28,6 +28,7 @@ const MORALE_PART_NAMES := {
 	"Fury": "Fury (enemy War Bears roaring)",
 	"ruler": "Its ruler still standing",
 	"Dread": "Dread (the enemy's Great Thornmane)",
+	"Dread Lands": "Dread Lands (the Blood Pact's own land)",
 }
 ## The RulesCodex entry behind each report factor id that isn't a trait or a mandate (the battle report
 ## viewer's FACTOR_ENTRIES; tests/test_battle_moments.gd checks the two agree).
@@ -104,6 +105,8 @@ static func explain_attack(battle_log: Dictionary, i: int) -> Dictionary:
 		var note := "round %d only" % int(e.n)
 		if String(b) == AutoBattleResolver.CHARGE:
 			note = "Charge: every hit in round 1" + (" (less in a forest)" if v == AutoBattleResolver.CHARGE_DAMAGE_FOREST and battle_log.get("terrain", "") == "forest" else "")
+		elif String(b) == AutoBattleResolver.IRON_HIDE:
+			note = "Iron Hide: every hit on it, never below %d" % AutoBattleResolver.MIN_DAMAGE  # M4-3
 		dlines.append(_line(String(b), v, note))
 		dtext += ", + %s %d" % [String(b), v]
 	var damage_bd := _make("Damage of %s on a hit" % _bare(a.name), dtext, dlines, "Damage on a hit", damage, "battle_hit_chance")
@@ -488,6 +491,8 @@ static func part_name(battle_log: Dictionary, key: String) -> String:
 		return "%s (defending)" % String(battle_log.get("terrain", "terrain"))
 	if key == "fort":
 		return "fort (defending)"
+	if key.begins_with(AutoBattleResolver.PATH_PREFIX):
+		return AscensionRules.part_name(key)  # M4-3: "Living Iron", "Arbalests"
 	return key
 
 
@@ -496,6 +501,8 @@ static func _part_note(battle_log: Dictionary, key: String) -> String:
 		return "only the defender gets the ground"
 	if key.begins_with(AutoBattleResolver.MANDATE_PREFIX):
 		return "mandate"
+	if key.begins_with(AutoBattleResolver.PATH_PREFIX):
+		return "path"
 	return "trait"
 
 
@@ -506,6 +513,11 @@ static func factor_entry(factor_id: String) -> String:
 		return FACTOR_ENTRIES[factor_id]
 	if factor_id.begins_with(AutoBattleResolver.MANDATE_PREFIX):
 		return factor_id if RulesCodex.ENTRIES.has(factor_id) else "mandates"
+	# M4-3: path parts (and their morale) and Dread Lands.
+	if factor_id.trim_prefix("morale_").begins_with(AutoBattleResolver.PATH_PREFIX):
+		return AscensionRules.part_codex(factor_id.trim_prefix("morale_"))
+	if factor_id == AutoBattleResolver.DREAD_LANDS_ID:
+		return AutoBattleResolver.DREAD_LANDS_ID
 	var trait_entry := AutoBattleResolver.codex_id_for_trait(factor_id.trim_prefix("morale_"))
 	return trait_entry if RulesCodex.ENTRIES.has(trait_entry) else ""
 
@@ -557,6 +569,7 @@ static func _reach_words(reach: String, screened: bool) -> String:
 		"second": out = "a second-rank target its front rank no longer shields"
 		"back": out = "a commander at the back, with no unit left in front of it"
 		"skirmish": out = "a second-rank target only Skirmish could reach"
+		"wings": out = "a target only Wings could reach: a commander behind its line, or a shielded second rank"
 	if screened:
 		out += ", shooting from safety: ordinary enemies couldn't reach the attacker"
 	return out
