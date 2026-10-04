@@ -647,7 +647,10 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 					siege_orders.storms[order.province] = {}
 				siege_orders.storms[order.province][fid] = true
 			else:
-				siege_orders.sallies[order.army_id] = {"faction": fid, "with": order.with_army}
+				# A tied sally remembers where its relief set out from, for the line if it never arrives (§3.6).
+				var relief_army := s.find_army(order.with_army) if not order.with_army.is_empty() else null
+				siege_orders.sallies[order.army_id] = {"faction": fid, "with": order.with_army,
+					"from": relief_army.location if relief_army != null else ""}
 
 
 ## Moves every army that isn't in a border clash. Returns the clashes, sorted by border key.
@@ -734,24 +737,35 @@ static func _province_battles(s: GameState, resolver: BattleResolver, rng: Seede
 
 
 ## The battles at a fort in a game with sieges (M3c, §3.9): SiegeRules.next_battle, asked again after each battle
-## on the armies still standing, decides whether there is one, who fights it and who defends. None at all means
-## an enemy besieges a garrison behind standing walls.
+## on the armies still standing, decides whether there is one, who fights it, who defends and who fights from
+## inside the walls; the battle's siege block goes to the battle resolver (the walls and cover parts) and to the
+## event as numbers.siege. None at all means an enemy besieges a garrison behind standing walls. First, the orders
+## that come to nothing get their report lines (SiegeRules.called_off; codex in brackets):
+##   storm_called_off     battles  no army of the storming faction stands there, or the garrison is gone [storm]
+##   sally_called_off     battles  a sally tied to a relief army that isn't outside the walls; it stays inside [sally]
+##   sally_found_nothing  battles  the garrison came out, but the besiegers had left [sally]
 static func _fort_battles(s: GameState, resolver: BattleResolver, rng: SeededRNG, p: Province, moved: Dictionary, battle_sites: Dictionary,
 		events: Array, siege_orders: Dictionary) -> void:
-	var fought := 0
+	for off in SiegeRules.called_off(s, p.id, moved, siege_orders):
+		events.append(_event(String(off.type), "battles", [p.id], [String(off.faction)], Array(off.armies), String(off.why),
+			{"why": off.why}, String(off.text), String(off.codex)))
+	var fought := []
 	while true:
 		var plan := SiegeRules.next_battle(s, p.id, moved, siege_orders, fought)
 		if plan.is_empty():
 			return
-		_fight(s, resolver, rng, "province", [p.id], plan.sides, String(plan.defender), events)
+		_fight(s, resolver, rng, "province", [p.id], plan.sides, String(plan.defender), events, plan.siege)
 		battle_sites[p.id] = true
-		fought += 1
+		fought.append(String(plan.kind))
 
 
 ## Runs one battle, destroys the losing armies, records the event and any ruler deaths (M2). Returns
 ## the winner's faction id. M3-1: when the resolver gives a battle event log (AutoBattleResolver does),
 ## the event's numbers carry it as "log", with its id "t<turn>b<index>" and the aftermath event added.
-static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind: String, province_ids: Array, sides: Dictionary, defender: String, events: Array) -> String:
+## M3c: `siege` is the battle's siege block at a fort in a game with sieges (SiegeRules.siege_block), passed to the
+## battle resolver and kept in the event's numbers.siege; {} everywhere else, so every other battle is as before.
+static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind: String, province_ids: Array, sides: Dictionary, defender: String, events: Array,
+		siege: Dictionary = {}) -> String:
 	var fids: Array = sides.keys()
 	fids.sort()
 	var rulers_in := _rulers_in_battle(sides)  # M2: whose rulers fight here, to record deaths after
@@ -765,6 +779,8 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 		side_list.append({"faction": fid, "armies": sides[fid]})
 	# "state" is read-only context for names and terrain (AutoBattleResolver); resolvers must not change it.
 	var battle := {"kind": kind, "provinces": province_ids, "defender": defender, "sides": side_list, "state": s}
+	if not siege.is_empty():
+		battle["siege"] = siege  # M3c: the walls and cover parts (AutoBattleResolver._defense)
 	var result := resolver.resolve_battle(battle, rng)
 	if not fids.has(result.get("winner", "")):
 		# A resolver that names no valid winner falls back to the real battle rules.
@@ -822,7 +838,12 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 	var where: String
 	var cause: String
 	var codex: String
-	if kind == "border":
+	if not siege.is_empty():
+		# M3c (§4.3, §9.4): a battle at a fort says which kind it was; its cause is §3.9's "why".
+		where = _siege_where(s, province_ids[0], siege, fids, parts)
+		cause = String(siege.why)
+		codex = String(SIEGE_CODEX.get(cause, "siege"))
+	elif kind == "border":
 		where = "On the border between %s and %s, %s met as they swapped places." % [
 			_province_name(s, province_ids[0]), _province_name(s, province_ids[1]), " and ".join(parts)]
 		cause = "swap"
@@ -868,6 +889,8 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 		numbers["rulers_lost"] = rulers_lost.size() + fallen.size()  # M2-2: only in games with rulers
 	if not harvest.is_empty():
 		numbers["red_harvest"] = int(harvest.get("gold", 0))  # M4-3: gold paid to the winner
+	if not siege.is_empty():
+		numbers["siege"] = siege.duplicate(true)  # M3c: what kind of battle at a fort, and what the walls did
 	var battle_log = result.get("log")
 	if battle_log is Dictionary and not battle_log.is_empty():
 		# M3-1: the battle event log rides beside the report (in memory only: never in the game record).
@@ -882,6 +905,47 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 		numbers, text, codex))
 	_record_ruler_deaths(s, rulers_in, winner, kind, province_ids, events)
 	return winner
+
+
+## The codex entry a battle at a fort links (M3c), by its "why" (§3.9's last column).
+const SIEGE_CODEX := {"storm": "storm", "sally": "sally", "gate": "sally", "relief": "relief", "relief_sally": "relief",
+	"rivals": "inside_outside", "empty": "empty_fort", "breach": "breach"}
+
+
+## The first sentence of a battle at a fort (M3c, §4.3): "At Stonegate, the Aurel Crown's garrison sallied out against
+## the Thornmane Clans' siege lines. Outside the walls nobody holds the ground." `parts` name each side's fighters.
+static func _siege_where(s: GameState, pid: String, siege: Dictionary, fids: Array, parts: Array) -> String:
+	var name := _province_name(s, pid)
+	var gi := int(siege.get("garrison", -1))
+	var owner := String(fids[gi]) if gi >= 0 and gi < fids.size() else ""
+	var others := []
+	for fid in fids:
+		if fid != owner:
+			others.append(_faction_name(s, fid))
+	var them := " and ".join(others)
+	var who := " and ".join(parts)
+	var own := RulerRules._possessive(_faction_name(s, owner)) if not owner.is_empty() else ""
+	match String(siege.why):
+		"storm":
+			return "At %s, the %s stormed the walls (%d of %d: +%d defense) held by the %s. %s." % [name, them, int(siege.walls),
+				int(siege.walls_max), int(siege.walls_defense), _faction_name(s, owner), RulerRules._cap(who)]
+		"sally":
+			return "At %s, the %s garrison sallied out against the %s siege lines. Outside the walls nobody holds the ground. %s." % [
+				name, own, RulerRules._possessive(them), RulerRules._cap(who)]
+		"gate":
+			return "At %s, the %s stormers met the sallying garrison at the gate, outside the walls. %s." % [name, RulerRules._possessive(them),
+				RulerRules._cap(who)]
+		"relief":
+			return "At %s, a relief army of the %s met the siege lines outside the walls, where nobody holds the ground. %s." % [name,
+				_faction_name(s, owner), RulerRules._cap(who)]
+		"relief_sally":
+			return "At %s, a relief army of the %s met the siege lines, and the garrison sallied to join it. Outside the walls nobody holds the ground. %s." % [
+				name, _faction_name(s, owner), RulerRules._cap(who)]
+		"breach":
+			return "Through the breach at %s, the %s garrison met the %s in the open. %s." % [name, own, them, RulerRules._cap(who)]
+		"empty":
+			return "At %s, %s arrived together before the empty fort, where nobody holds the ground." % [name, who]
+	return "At %s, %s met outside the walls, where nobody holds the ground." % [name, who]
 
 
 ## What happened to each losing side, one sentence each (RulesCodex "battle_rounds"): its armies are
@@ -1068,8 +1132,15 @@ static func _sieges_phase(s: GameState, battle_sites: Dictionary, events: Array)
 	if not s.sieges:
 		return
 	var turn := s.current_turn + 1  # the turn being resolved, as players count it
+	var beaten := {}  # province id -> a faction other than the owner that fought there this turn
+	for e in events:
+		if e.type == "battle" and battle_sites.has(e.provinces[0]):
+			var owner := s.find_province(e.provinces[0]).owner
+			for fid in e.factions:
+				if fid != owner and not beaten.has(e.provinces[0]):
+					beaten[e.provinces[0]] = fid
 	for p in _sorted_provinces(s):
-		var step := SiegeRules.siege_step(s, p.id, turn, battle_sites)
+		var step := SiegeRules.siege_step(s, p.id, turn, battle_sites, String(beaten.get(p.id, "")))
 		var kind := String(step.get("kind", ""))
 		if not kind.is_empty():
 			_siege_events(s, step, turn, events)

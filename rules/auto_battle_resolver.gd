@@ -17,6 +17,11 @@ extends BattleResolver
 ## Terrain helps only the defender (the faction that held the province): TERRAIN bonuses, plus
 ## FORT_DEFENSE in a province with a fort. Border battles and meetings where everyone arrived this
 ## turn have no defender, so nobody gets terrain.
+## Forts and sieges (M3c S-1b, design/M3C_SIEGES.md §4.1): a battle at a fort in a game with sieges carries a
+## "siege" block (SiegeRules.siege_block). Then the flat fort bonus is gone; in a storm every fighter of the
+## stormed armies (from_inside) gets WALLS defense (WALLS_DEFENSE_PER_STEP for every WALL_STEP wall strength
+## standing, rounded up), and in a sally or a breach battle the fighters from inside get COVER (COVER_DEFENSE).
+## Engines are counts on armies, never fighters, so this code never sees them.
 ## Morale: a side's morale = average morale of its units at the start (rounded down; a lone
 ## commander uses its own), +COMMANDER_MORALE while its commander stands, + trait effects (Inspire,
 ## Fury). At the end of each round a side breaks (routs) once it has lost at least
@@ -129,6 +134,12 @@ const TERRAIN := {
 	"hills": {"defense": 1, "attack": 1},
 }
 const FORT_DEFENSE := 2
+## M3c (§4.1): the walls part in a storm and the cover part in a sally or breach battle, from FortData.
+const WALLS := "walls"
+const COVER := "cover"
+const WALLS_DEFENSE_PER_STEP := FortData.WALLS_DEFENSE_PER_STEP
+const WALL_STEP := FortData.WALL_STEP
+const COVER_DEFENSE := FortData.COVER_DEFENSE
 const SHIELD_WALL_DEFENSE := 2
 const CHARGE_DAMAGE := 4
 const CHARGE_DAMAGE_FOREST := 3
@@ -260,6 +271,8 @@ func resolve_battle(battle: Dictionary, rng: SeededRNG) -> Dictionary:
 		province = state.find_province(pids[0])
 	var ctx := {"kind": kind, "defender": battle.get("defender", ""), "province": province,
 		"province_ids": pids, "state": state if state is GameState else null}
+	if battle.has("siege"):
+		ctx["siege"] = battle.siege  # M3c: a battle at a fort in a game with sieges
 	if battle.has("max_events"):
 		ctx["max_events"] = battle.max_events
 	var r := fight(battle.sides, ctx, rng, true)
@@ -394,6 +407,8 @@ static func fight(sides_in: Array, ctx: Dictionary, rng: SeededRNG, record := fa
 		for s in sides:
 			s.dread_lands = dread_lands_value(state, s.faction, province)  # M4-3: the Blood Pact's own land
 	var env := {"terrain": terrain, "fort": fort, "kind": kind}
+	if ctx.has("siege"):
+		env["siege"] = ctx.siege  # M3c: walls and cover replace the flat fort bonus (_defense)
 	# M3-1: the recorder, {"log", "cap"}, or null when not recording.
 	var rec = null
 	if record:
@@ -1052,12 +1067,20 @@ static func _attack(f: Dictionary, side: Dictionary, env: Dictionary) -> Diction
 
 static func _defense(t: Dictionary, tside: Dictionary, _attacker: Dictionary, env: Dictionary) -> Dictionary:
 	var parts := {}
+	var siege: Dictionary = env.get("siege", {})
 	if tside.is_defender:
 		var td: int = TERRAIN.get(env.terrain, {}).get("defense", 0)
 		if td > 0:
 			parts["terrain"] = td
-		if env.fort:
+		if env.fort and siege.is_empty():
 			parts["fort"] = FORT_DEFENSE
+	if not siege.is_empty() and Array(siege.get("from_inside", [])).has(t.army):
+		# M3c (§4.1): the stormed garrison stands behind its walls; a sally or the breach keeps its cover.
+		if String(siege.get("kind", "")) == SiegeRules.STORM:
+			if int(siege.get("walls_defense", 0)) > 0:
+				parts[WALLS] = int(siege.walls_defense)
+		elif int(siege.get("cover_defense", 0)) > 0:
+			parts[COVER] = int(siege.cover_defense)
 	if t.trait == SHIELD_WALL:
 		for o in tside.fighters:
 			if o.alive and o != t:
