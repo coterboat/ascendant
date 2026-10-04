@@ -40,11 +40,11 @@ func test_swapped_seats_swap_colours_on_every_screen() -> void:
 		game.map.select_province("fangridge")
 		var owner := game.map.details.find_children("OwnerLabel", "Label", true, false)[0] as Label
 		assert_eq(owner.get_theme_color("font_color"), colour["beasts"].lightened(0.3), "%s: owner line" % [seats])
-		var army := game.map.details.find_children("Army_beasts-2", "PanelContainer", true, false)[0] as PanelContainer
+		var army := game.map.details.find_children("Army_beasts-1", "PanelContainer", true, false)[0] as PanelContainer
 		assert_eq((army.get_theme_stylebox("panel") as StyleBoxFlat).border_color, colour["beasts"], "%s: army border" % [seats])
 		# Battle report: both sides by seat.
 		var s := game.session.state()
-		var sides := [{"faction": "beasts", "armies": [s.find_army("beasts-2")]}, {"faction": "kingdom", "armies": [s.find_army("kingdom-1")]}]
+		var sides := [{"faction": "beasts", "armies": [s.find_army("beasts-1")]}, {"faction": "kingdom", "armies": [s.find_army("kingdom-1")]}]
 		var ctx := {"kind": "province", "defender": "", "province": s.find_province("thornvale"), "province_ids": ["thornvale"], "state": s}
 		var report: Dictionary = AutoBattleResolver.fight(sides, ctx, SeededRNG.new(2)).result.report
 		game._show_battle_report({"type": "battle", "numbers": {"report": report}, "text": ""})

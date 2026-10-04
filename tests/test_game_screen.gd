@@ -145,7 +145,7 @@ func test_three_scripted_turns_through_the_game_screen() -> void:
 	assert_true(game.end_turn_button.tooltip_text.contains("last player"), "seat 2 is told the turn resolves")
 
 	# Seat 2 orders and ends the turn: it resolves, and the computer goes back to seat 1.
-	_order_through_map(game, [["beasts-2", "ebonpeak"], ["tuskers"]])
+	_order_through_map(game, [["beasts-1", "ebonpeak"], ["tuskers"]])
 	game.end_turn_button.pressed.emit()
 	assert_eq(session.phase(), GameSession.Phase.HANDOFF)
 	assert_eq(session.current_player(), "kingdom")
@@ -160,7 +160,7 @@ func test_three_scripted_turns_through_the_game_screen() -> void:
 	assert_eq(game.map.turn_label.text, "Turn 2")
 	var s := session.state()
 	assert_eq(s.find_army("kingdom-1").location, "westwatch")
-	assert_eq(s.find_army("beasts-2").location, "ebonpeak")
+	assert_eq(s.find_army("beasts-1").location, "ebonpeak")
 	assert_eq(s.find_faction("kingdom").gold, 45 - 8 + 12 + 6)  # 55
 	assert_eq(s.find_faction("beasts").gold, 45 - 11 + 12 + 6)  # 52 (both start with 45 gold; Tuskers cost 11)
 	assert_true(game.map.gold_label.text.begins_with("Gold 55"), game.map.gold_label.text)
@@ -188,13 +188,13 @@ func test_three_scripted_turns_through_the_game_screen() -> void:
 	assert_true(game.report_overlay.visible, "seat 2 reads last turn's report after their handoff")
 	_assert_report_matches_session(game)
 	game.close_turn_report()
-	_order_through_map(game, [["beasts-2", "blackwood"]])
+	_order_through_map(game, [["beasts-1", "blackwood"]])
 	game.end_turn_button.pressed.emit()
 	_next_turn(game)
 	assert_eq(session.turn_number(), 3)
 	s = session.state()
 	assert_eq(s.find_army("kingdom-1").location, "stonegate")
-	assert_eq(s.find_army("beasts-2").location, "blackwood")
+	assert_eq(s.find_army("beasts-1").location, "blackwood")
 	assert_eq(s.find_faction("kingdom").gold, 55 + 12 + 6 + 8)  # 81
 	assert_eq(s.find_faction("beasts").gold, 52 + 12 + 6 + 8)  # 78
 
@@ -234,12 +234,12 @@ func test_same_config_and_orders_give_identical_games() -> void:
 	var a := _game()
 	var b := _game()
 	for game in [a, b]:
-		_play_turn(game, [["kingdom-1", "highcrag"], ["crossbowmen"]], [["beasts-2", "ironspike"]])
+		_play_turn(game, [["kingdom-1", "highcrag"], ["crossbowmen"]], [["beasts-1", "ironspike"]])
 		_next_turn(game)
-		_play_turn(game, [["kingdom-1", "thornvale"]], [["beasts-2", "wildmoor"]])
+		_play_turn(game, [["kingdom-1", "thornvale"]], [["beasts-1", "wildmoor"]])
 		_next_turn(game)
 		# They swap Thornvale and Wildmoor: a border battle decided by the seeded battle rules.
-		_play_turn(game, [["kingdom-1", "wildmoor"]], [["beasts-2", "thornvale"]])
+		_play_turn(game, [["kingdom-1", "wildmoor"]], [["beasts-1", "thornvale"]])
 	assert_eq(var_to_str(a.session.state().to_dict()), var_to_str(b.session.state().to_dict()))
 	assert_eq(a.session.turn_report().events.map(func(e): return e.text),
 		b.session.turn_report().events.map(func(e): return e.text))
@@ -279,19 +279,19 @@ func test_seat_two_never_sees_seat_one_orders() -> void:
 	assert_false(game.map.queue_move("kingdom-1", "highcrag").is_empty(), "seat 2 can't order seat 1's army")
 	assert_eq(game.session.current_orders(), [], "nothing was queued for seat 2")
 
-	_order_through_map(game, [["beasts-2", "ebonpeak"]])
+	_order_through_map(game, [["beasts-1", "ebonpeak"]])
 	game.end_turn_button.pressed.emit()
 	var s := game.session.state()
 	assert_eq(s.find_army("kingdom-1").location, "westwatch", "seat 1's orders still resolved")
-	assert_eq(s.find_army("beasts-2").location, "ebonpeak")
+	assert_eq(s.find_army("beasts-1").location, "ebonpeak")
 	game.free()
 
 
 func test_move_into_an_enemy_held_province_shows_forecast_battle_odds() -> void:
 	var game := _game()
-	_play_turn(game, [["kingdom-1", "westwatch"]], [["beasts-2", "ebonpeak"]])
+	_play_turn(game, [["kingdom-1", "westwatch"]], [["beasts-1", "ebonpeak"]])
 	_next_turn(game)
-	_play_turn(game, [["kingdom-1", "stonegate"]], [["beasts-2", "blackwood"]])
+	_play_turn(game, [["kingdom-1", "stonegate"]], [["beasts-1", "blackwood"]])
 	_next_turn(game)
 	var s := game.session.state()
 	var odds := Forecast.battle_odds(s, "kingdom", ["kingdom-1"], "blackwood")
@@ -324,7 +324,7 @@ func test_capturing_the_enemy_capital_shows_the_game_over_overlay() -> void:
 	var game := _game()
 	# Aurel Crown marches down the northern road while the Thornmane army wanders off south.
 	for step in [["westwatch", "bloodfen"], ["stonegate", "deepwood"], ["blackwood", "greenglade"], ["ebonpeak", "rivermarch"]]:
-		_play_turn(game, [["kingdom-1", step[0]]], [["beasts-2", step[1]]])
+		_play_turn(game, [["kingdom-1", step[0]]], [["beasts-1", step[1]]])
 		_next_turn(game)
 	_play_turn(game, [["kingdom-1", "fangridge"]], [])
 	var session := game.session

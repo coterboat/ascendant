@@ -85,7 +85,7 @@ func test_real_turn_report_links_every_event_to_its_codex_entry() -> void:
 	assert_eq(session.queue_recruit("spearmen"), "")
 	assert_eq(session.end_turn(), "")
 	assert_eq(session.acknowledge_handoff(), "")
-	assert_eq(session.queue_move("beasts-2", "ebonpeak"), "")
+	assert_eq(session.queue_move("beasts-1", "ebonpeak"), "")
 	assert_eq(session.end_turn(), "")
 	var panel := _panel()
 	panel.show_report(session)

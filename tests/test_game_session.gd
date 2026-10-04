@@ -96,13 +96,13 @@ func test_three_scripted_turns_through_the_flow() -> void:
 	# Turn 1: both armies march out of their capitals; both sides recruit a unit at home.
 	_play_turn(session,
 		[MoveOrder.new("kingdom-1", "westwatch"), RecruitOrder.new("spearmen")],
-		[MoveOrder.new("beasts-2", "ebonpeak"), RecruitOrder.new("tuskers")])
+		[MoveOrder.new("beasts-1", "ebonpeak"), RecruitOrder.new("tuskers")])
 	assert_eq(session.phase(), GameSession.Phase.HANDOFF)
 	assert_eq(session.current_player(), "kingdom", "back to seat 1 for the next turn")
 	assert_eq(session.turn_number(), 2)
 	var s := session.state()
 	assert_eq(s.find_army("kingdom-1").location, "westwatch")
-	assert_eq(s.find_army("beasts-2").location, "ebonpeak")
+	assert_eq(s.find_army("beasts-1").location, "ebonpeak")
 	assert_eq(s.find_province("westwatch").owner, "kingdom")
 	assert_eq(s.find_province("ebonpeak").owner, "beasts")
 	assert_true(_army_at(s, "kingdom", "crownkeep") != null, "kingdom recruit formed an army at home")
@@ -121,11 +121,11 @@ func test_three_scripted_turns_through_the_flow() -> void:
 	assert_eq(session.acknowledge_handoff(), "")
 
 	# Turn 2: both armies push on to the hill forts on the northern road.
-	_play_turn(session, [MoveOrder.new("kingdom-1", "stonegate")], [MoveOrder.new("beasts-2", "blackwood")])
+	_play_turn(session, [MoveOrder.new("kingdom-1", "stonegate")], [MoveOrder.new("beasts-1", "blackwood")])
 	assert_eq(session.turn_number(), 3)
 	s = session.state()
 	assert_eq(s.find_army("kingdom-1").location, "stonegate")
-	assert_eq(s.find_army("beasts-2").location, "blackwood")
+	assert_eq(s.find_army("beasts-1").location, "blackwood")
 	assert_eq(_gold(session, "kingdom"), 55 + 12 + 6 + 8)  # 81
 	assert_eq(_gold(session, "beasts"), 52 + 12 + 6 + 8)  # 78
 	assert_eq(session.turn_report().header, "Turn 2 results")
@@ -139,7 +139,7 @@ func test_three_scripted_turns_through_the_flow() -> void:
 	assert_eq(session.phase(), GameSession.Phase.HANDOFF)
 	assert_eq(session.turn_number(), 4)
 	s = session.state()
-	assert_eq(s.find_army("beasts-2"), null, "the holding army was destroyed")
+	assert_eq(s.find_army("beasts-1"), null, "the holding army was destroyed")
 	assert_eq(s.find_army("kingdom-1").location, "blackwood")
 	assert_eq(s.find_province("blackwood").owner, "kingdom", "the winner captures Blackwood")
 	assert_eq(_gold(session, "kingdom"), 81 + 12 + 6 + 8 + 8)  # 115, with Blackwood's income
@@ -160,12 +160,12 @@ func test_same_seed_and_orders_give_identical_games_and_replay_matches() -> void
 	var a := _session(null, 4242)
 	var b := _session(null, 4242)
 	for session in [a, b]:
-		_play_turn(session, [MoveOrder.new("kingdom-1", "highcrag")], [MoveOrder.new("beasts-2", "ironspike")])
+		_play_turn(session, [MoveOrder.new("kingdom-1", "highcrag")], [MoveOrder.new("beasts-1", "ironspike")])
 		session.acknowledge_handoff()
-		_play_turn(session, [MoveOrder.new("kingdom-1", "thornvale")], [MoveOrder.new("beasts-2", "wildmoor")])
+		_play_turn(session, [MoveOrder.new("kingdom-1", "thornvale")], [MoveOrder.new("beasts-1", "wildmoor")])
 		session.acknowledge_handoff()
 		# They swap Thornvale <-> Wildmoor: a border battle the kingdom army wins (82 beats 76).
-		_play_turn(session, [MoveOrder.new("kingdom-1", "wildmoor")], [MoveOrder.new("beasts-2", "thornvale")])
+		_play_turn(session, [MoveOrder.new("kingdom-1", "wildmoor")], [MoveOrder.new("beasts-1", "thornvale")])
 	assert_eq(var_to_str(a.state().to_dict()), var_to_str(b.state().to_dict()))
 	assert_eq(a.turn_report().events.map(func(e): return e.text), b.turn_report().events.map(func(e): return e.text))
 	assert_eq(a.battle_events().size(), 1, "the swap was a border battle")
@@ -238,7 +238,7 @@ func test_wrong_phase_calls_are_rejected_in_plain_language() -> void:
 	var not_handoff := session.acknowledge_handoff()
 	assert_true(not_handoff.contains("already player 1's turn (Aurel Crown)"), not_handoff)
 	assert_eq(session.end_turn(), "")
-	for why in [session.queue_move("beasts-2", "ebonpeak"), session.cancel_order(0), session.end_turn()]:
+	for why in [session.queue_move("beasts-1", "ebonpeak"), session.cancel_order(0), session.end_turn()]:
 		assert_true(why.contains("being passed to player 2 (Thornmane Clans)"), why)
 		_assert_no_raw_ids(why, "wrong-phase reason")
 	assert_eq(session.phase(), GameSession.Phase.HANDOFF, "rejected calls change nothing")
@@ -286,11 +286,11 @@ func test_capturing_the_enemy_capital_ends_the_game() -> void:
 	# Kingdom army next to an undefended Fangridge; the beasts army is far away in Deepwood.
 	var start := _state([
 		["kingdom-1", "kingdom", "ebonpeak", ["knights", "knight_captain"]],
-		["beasts-2", "beasts", "deepwood", ["tuskers"]],
+		["beasts-1", "beasts", "deepwood", ["tuskers"]],
 	], {"ebonpeak": "kingdom", "deepwood": "beasts"})
 	var session := _session(start)
 	assert_eq(VictoryCheck.check(session.state(), session.players()).over, false, "nobody has won at the start")
-	_play_turn(session, [MoveOrder.new("kingdom-1", "fangridge")], [MoveOrder.new("beasts-2", "bloodfen")])
+	_play_turn(session, [MoveOrder.new("kingdom-1", "fangridge")], [MoveOrder.new("beasts-1", "bloodfen")])
 	assert_eq(session.phase(), GameSession.Phase.GAME_OVER)
 	assert_true(session.is_over())
 	assert_eq(session.winner(), "kingdom")
@@ -334,7 +334,7 @@ func test_victory_summary_counts_battles_across_the_whole_game() -> void:
 	# Turn 1: kingdom knights (20) beat beasts fangthrowers (12) holding Ebonpeak. Turn 2: into Fangridge.
 	var start := _state([
 		["kingdom-1", "kingdom", "blackwood", ["knights"]],
-		["beasts-2", "beasts", "ebonpeak", ["fangthrowers"]],
+		["beasts-1", "beasts", "ebonpeak", ["fangthrowers"]],
 		["beasts-3", "beasts", "deepwood", ["tuskers"]],
 	], {"blackwood": "kingdom", "ebonpeak": "beasts", "deepwood": "beasts"})
 	var session := _session(start)
@@ -353,10 +353,10 @@ func test_victory_summary_counts_battles_across_the_whole_game() -> void:
 func test_both_capitals_falling_in_the_same_turn_is_a_draw() -> void:
 	var start := _state([
 		["kingdom-1", "kingdom", "ebonpeak", ["knights"]],
-		["beasts-2", "beasts", "westwatch", ["tuskers"]],
+		["beasts-1", "beasts", "westwatch", ["tuskers"]],
 	], {"ebonpeak": "kingdom", "westwatch": "beasts"})
 	var session := _session(start)
-	_play_turn(session, [MoveOrder.new("kingdom-1", "fangridge")], [MoveOrder.new("beasts-2", "crownkeep")])
+	_play_turn(session, [MoveOrder.new("kingdom-1", "fangridge")], [MoveOrder.new("beasts-1", "crownkeep")])
 	assert_eq(session.phase(), GameSession.Phase.GAME_OVER)
 	var v := session.victory()
 	assert_true(v.draw)

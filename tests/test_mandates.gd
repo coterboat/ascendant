@@ -228,7 +228,7 @@ func test_rulers_and_mandates_are_readable_for_later_tickets() -> void:
 	assert_true(RulerRules.has_mandate(s, "beasts", "sworn_vassals"))
 	assert_false(RulerRules.has_mandate(s, "beasts", "drilled_ranks"))
 	assert_eq(RulerRules.current_name(s, "beasts"), "the Ninth Fang")
-	assert_eq(RulerRules.ruler_army(s, "beasts").id, "beasts-4")
+	assert_eq(RulerRules.ruler_army(s, "beasts").id, "beasts-2")
 	assert_eq(RulerRules.ruler_unit(s, "beasts").type.hp, 20)
 	assert_eq(RulerRules.build_of(s, "beasts"), {"ruler": "fang_chieftain", "ruler_name": "the Ninth Fang", "kept_power": 0,
 		"mandates": ["iron_discipline", "blood_frenzy", "sworn_vassals"],

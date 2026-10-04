@@ -18,7 +18,11 @@ var armies: Array[Army] = []
 var rng: SeededRNG
 var current_turn: int = 0
 var seed_value: int = 0
-var next_army_id: int = 1  # counter behind new_army_id(); serialized so replays hand out the same ids
+## Behind new_army_id(): {faction id: the number its next army gets}. Each faction counts its own armies (#94),
+## kingdom-1, kingdom-2, beasts-1, ... in the order it raises them, and a number is never handed out twice.
+## Saved, so a loaded game and a replay hand out the same ids; a save from before it takes each faction's next
+## number from its highest army id (from_dict).
+var next_army_ids: Dictionary = {}
 var paths: bool = false  # M4: every faction has a path and researches (AscensionRules); saved only when true
 
 func _init(map_seed: int = 12345) -> void:
@@ -36,7 +40,7 @@ func _load_data() -> void:
 ## army there with one of each unit type and its commander. Returns false if a capital is missing.
 func place_starting_armies(errors = null) -> bool:
 	armies.clear()
-	next_army_id = 1
+	next_army_ids = {}
 	var ok := true
 	for f in factions:
 		var capital := find_province(f.capital)
@@ -70,7 +74,7 @@ static func with_rulers(map_seed: int = 12345, builds: Dictionary = {}, errors =
 ## Gives every faction its ruler and mandates before turn 1 (see with_rulers). All or nothing: if any
 ## build is illegal, nothing changes and the reasons go to `errors`. Each ruler's army is placed at its
 ## capital after every starting army (army 1 there, the ruler's army 2), in faction order, so the M1
-## starting armies keep their ids: kingdom-1, beasts-2, then kingdom-3 and beasts-4 for the rulers.
+## starting armies keep their ids: kingdom-1, beasts-1, then kingdom-2 and beasts-2 for the rulers.
 func setup_rulers(builds: Dictionary = {}, errors = null) -> bool:
 	var problems := []
 	for key in builds:
@@ -125,14 +129,33 @@ func setup_paths(errors = null) -> bool:
 	return validate(errors)
 
 
-## Hands out the next unique army id, e.g. "kingdom-3", skipping ids already in use.
+## Hands out `faction_id`'s next army id, e.g. "kingdom-3": its own count (next_army_ids), skipping ids
+## already in use.
 func new_army_id(faction_id: String) -> String:
-	var id := "%s-%d" % [faction_id, next_army_id]
-	next_army_id += 1
+	var n := int(next_army_ids.get(faction_id, 1))
+	var id := "%s-%d" % [faction_id, n]
+	n += 1
 	while find_army(id) != null:
-		id = "%s-%d" % [faction_id, next_army_id]
-		next_army_id += 1
+		id = "%s-%d" % [faction_id, n]
+		n += 1
+	next_army_ids[faction_id] = n
 	return id
+
+
+## For a save from before next_army_ids: each faction's next number, one past the highest number among its
+## armies' ids ("kingdom-7" -> 8), or 1 when it has none.
+func _next_ids_from_armies() -> Dictionary:
+	var out := {}
+	for f in factions:
+		out[f.id] = 1
+	for a in armies:
+		var prefix := a.owner + "-"
+		if not a.id.begins_with(prefix):
+			continue
+		var digits := a.id.substr(prefix.length())
+		if digits.is_valid_int():
+			out[a.owner] = maxi(int(out.get(a.owner, 1)), digits.to_int() + 1)
+	return out
 
 func find_province(id: String) -> Province:
 	for p in provinces:
@@ -250,13 +273,17 @@ func to_dict() -> Dictionary:
 	for a in armies:
 		army_dicts.append(a.to_dict())
 
+	var next_ids := {}  # #94: each faction's army count, in faction order
+	for f in factions:
+		next_ids[f.id] = int(next_army_ids.get(f.id, 1))
+
 	var d := {
 		"provinces": province_dicts,
 		"factions": faction_dicts,
 		"armies": army_dicts,
 		"current_turn": current_turn,
 		"seed_value": Serial.int64_to_str(seed_value),
-		"next_army_id": next_army_id,
+		"next_army_ids": next_ids,
 		"rng": rng.to_dict(),
 	}
 	if paths:
@@ -274,7 +301,9 @@ static func from_dict(data, errors = null) -> GameState:
 		return null
 	var state := GameState.new(Serial.to_int(data.get("seed_value", 12345), 12345))
 	state.current_turn = Serial.to_int(data.get("current_turn", 0))
-	state.next_army_id = Serial.to_int(data.get("next_army_id", 1), 1)
+	var next_ids = Serial.expect(data, "next_army_ids", TYPE_DICTIONARY, errors, WHO, {})
+	if next_ids == null:
+		return null
 	var paths_flag = Serial.expect(data, "paths", TYPE_BOOL, errors, WHO, false)
 	if paths_flag == null:
 		return null
@@ -342,6 +371,11 @@ static func from_dict(data, errors = null) -> GameState:
 			return null
 		state.armies.append(army)
 
+	# #94: each faction's army count; a save from before it goes on from the faction's highest army id.
+	state.next_army_ids = state._next_ids_from_armies()
+	for fid in next_ids:
+		if state.find_faction(str(fid)) != null:
+			state.next_army_ids[str(fid)] = Serial.to_int(next_ids[fid], 1)
 	if not state.validate(errors):
 		return null
 	return state

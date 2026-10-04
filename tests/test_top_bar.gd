@@ -54,7 +54,7 @@ func test_after_game_over_the_bar_has_no_gap_where_gold_was() -> void:
 		game.end_turn()
 		game.handoff.ready_button.pressed.emit()
 		if not String(step[1]).is_empty():
-			assert_eq(game.session.queue_move("beasts-2", step[1]), "")
+			assert_eq(game.session.queue_move("beasts-1", step[1]), "")
 		game.end_turn()
 		if game.session.is_over():
 			break

@@ -22,8 +22,9 @@ class_name TurnReportText
 ## The rules of #55:
 ##   1. Stable army names. An army is named once and keeps the name until it is gone: a ruler's army by its
 ##      ruler ("King Corvane I"), every other army by its number, "the Crown's 3rd". The number is the one in
-##      its id, which the game hands out once, in order, to every army raised on the map and never reuses,
-##      so a name never changes when other armies die, move or are raised. Numbers sort as numbers.
+##      its id, which the game hands out once, in the order each faction raises its armies (its own count,
+##      #94), and never reuses, so a name never changes when other armies die, move or are raised. Numbers
+##      sort as numbers.
 ##   2. Battle lines name the units on each side and the outcome: "Aurel Crown's Knights (20 hp) beat
 ##      Thornmane Clans' Tuskers (14 hp) ... The Tuskers (the Clans' 5th) were destroyed; the Knights (the
 ##      Crown's 3rd) lost no fighters."
