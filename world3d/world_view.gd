@@ -39,6 +39,8 @@ var props: Node3D
 var buildings: Node3D
 var fortresses := {} ## province id -> {"node": Node3D, "gate_dir": Vector2, "yaw": float, "mat": ShaderMaterial, "court": Rect2 (local), "frame": Transform3D}
 var _model_mats: Array = [] ## every model ShaderMaterial, so a look change swaps their shader
+var _prop_mats: Array = [] ## the woods', rocks' and cottages' materials: their ink outline only close in
+var prop_outlines := true
 var _banner_mats: Array = []
 var quality := 0
 var fog_k := 1.0
@@ -185,7 +187,7 @@ func set_look(p_look: String) -> void:
 	wmat.set_shader_parameter("toon", 1.0 if cel else 0.0)
 	for m in _model_mats:
 		(m as ShaderMaterial).shader = SH_MODEL_CEL if cel else SH_MODEL_LIT
-		(m as ShaderMaterial).next_pass = outline_mat if cel else null
+		(m as ShaderMaterial).next_pass = outline_mat if cel and (prop_outlines or not _prop_mats.has(m)) else null
 	for m in _banner_mats:
 		(m as ShaderMaterial).set_shader_parameter("cel", 1.0 if cel else 0.0)
 	if cel:
@@ -229,6 +231,16 @@ func set_quality(q: int) -> void:
 		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 		vp.scaling_3d_scale = 1.0 if quality < 3 else 0.75
 	apply_rig()
+
+
+## The woods', rocks' and cottages' ink outlines (Look A): the board keeps them only close in, where
+## they read; far out they are the dearest pass for the least (the spike's measurement, README).
+func set_prop_outlines(on: bool) -> void:
+	if on == prop_outlines:
+		return
+	prop_outlines = on
+	for m in _prop_mats:
+		(m as ShaderMaterial).next_pass = outline_mat if on and look == "cel" else null
 
 
 ## Effects on/off for the performance probe: SSAO, glow, fog, shadows, MSAA/FXAA together.
@@ -334,17 +346,19 @@ func owners_painted() -> Dictionary:
 
 
 ## The ground's highlights: the selected and hovered province (drawn in the ground shader), and per
-## province marks: road targets (a dashed gilt band), legal move targets (a gilt glow at the edge)
-## and a focus flash (0..1).
+## province marks: road targets (a dashed gilt band), legal move targets (a gilt glow at the edge),
+## a focus flash (0..1), and `grown`: provinces the rules have turned to forest since the land was
+## baked (the Wild Spreads, M4-2), painted with the forest's canopy so the land shows the rule.
 func set_highlights(select_id: String, hover_id: String) -> void:
 	gmat.set_shader_parameter("select_id", terrain.index_of(select_id) if not select_id.is_empty() else -1)
 	gmat.set_shader_parameter("hover_id", terrain.index_of(hover_id) if not hover_id.is_empty() else -1)
 
 
-func set_marks(road: Dictionary, move: Dictionary, flash: Dictionary) -> void:
+func set_marks(road: Dictionary, move: Dictionary, flash: Dictionary, grown: Dictionary = {}) -> void:
 	for i in terrain.ids.size():
 		var id: String = terrain.ids[i]
-		mark_img.set_pixel(i, 0, Color(1.0 if road.has(id) else 0.0, 1.0 if move.has(id) else 0.0, clampf(float(flash.get(id, 0.0)), 0.0, 1.0), 1.0))
+		mark_img.set_pixel(i, 0, Color(1.0 if road.has(id) else 0.0, 1.0 if move.has(id) else 0.0,
+			clampf(float(flash.get(id, 0.0)), 0.0, 1.0), 1.0 if grown.has(id) else 0.0))
 	mark_tex.update(mark_img)
 
 
@@ -436,6 +450,7 @@ func _multi(mesh: Mesh, xfs: Array, nm: String) -> MultiMeshInstance3D:
 	mi.name = nm
 	mi.multimesh = mm
 	mi.material_override = model_mat(Color.WHITE, null, -1.0, true)
+	_prop_mats.append(mi.material_override)
 	props.add_child(mi)
 	return mi
 
@@ -574,7 +589,7 @@ func _place_fortress(id: String, c: Vector2, gate: Vector2) -> void:
 		var mi := MeshInstance3D.new()
 		mi.mesh = Models.building_primitive("fortress", variant)
 		## the primitive's pale stone is drawn a little darker, so Look A's light doesn't blow it out
-		mat = model_mat(Color.WHITE, null, -1.0, false, 0.8 * tint, stone)
+		mat = model_mat(Color.WHITE, null, -1.0, false, 0.72 * tint, stone)
 		mi.material_override = mat
 		root.add_child(mi)
 	if bool(row.get("palisade", false)):

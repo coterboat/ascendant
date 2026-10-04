@@ -33,6 +33,8 @@ var _play_label: Label
 var _speed_buttons := {}
 var _legend: Label
 var _playing := false
+var _last_view := Transform3D() ## the camera when the plates were last placed
+var _dirty := true ## something changed: place the plates and redraw this frame
 
 
 func _init() -> void:
@@ -57,6 +59,7 @@ func refresh() -> void:
 		_built_for = map.state
 		_build_province_plates()
 	_update_province_marks()
+	_dirty = true
 	var sig := "%s|%s|%s" % [map.state.get_instance_id(), map.selected_army_id, board.armies.armies.size()]
 	if sig != _army_sig and not _playing:
 		_army_sig = sig
@@ -186,7 +189,7 @@ func _build_province_plates() -> void:
 				board.map.select_province(pid)
 				inc.accept_event())
 		root.add_child(inc)
-		_plates[p.id] = {"root": root, "name": name_label, "income": inc, "glyph": glyph, "pennant": null, "badge": null}
+		_plates[p.id] = {"root": root, "name": name_label, "income": inc, "glyph": glyph, "pennant": null, "badge": null, "sprout": null}
 
 
 ## The map's Sworn Vassals pennants and heir countdowns, mirrored onto the plates (their tooltips are
@@ -218,6 +221,22 @@ func _update_province_marks() -> void:
 						if CodexLink.is_open_click(e) and pen2.has_meta(CodexLink.META):
 							map.request_codex(String(pen2.get_meta(CodexLink.META))))
 				pen2.queue_redraw()
+		var wm: Control = region.wild_marker if "wild_marker" in region else null
+		if wm != null and pl.get("sprout") == null:
+			var sp := _Sprout.new()
+			sp.custom_minimum_size = Vector2(20, 22)
+			sp.mouse_filter = Control.MOUSE_FILTER_PASS
+			(pl["root"].get_child(0) as Control).add_child(sp)
+			sp.gui_input.connect(func(e: InputEvent):
+				if CodexLink.is_open_click(e) and sp.has_meta(CodexLink.META):
+					map.request_codex(String(sp.get_meta(CodexLink.META))))
+			pl["sprout"] = sp
+		if pl.get("sprout") != null:
+			var sp2: Control = pl["sprout"]
+			sp2.visible = wm != null
+			if wm != null:
+				sp2.tooltip_text = wm.tooltip_text
+				sp2.set_meta(CodexLink.META, CodexLink.key_at(wm))
 		var cb: Label = region.countdown_badge
 		if cb != null and pl["badge"] == null:
 			var b := Label.new()
@@ -287,7 +306,7 @@ func _build_army_plates() -> void:
 		lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		hb.add_child(lb)
 		pc.tooltip_text = army_tooltip(a.id, false)
-		pc.mouse_filter = Control.MOUSE_FILTER_STOP
+		pc.mouse_filter = Control.MOUSE_FILTER_PASS  ## the wheel and drags go on to the board
 		pc.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		CodexLink.attach(pc, "ruler_army" if a.ruler != null else TooltipText.codex_for("army_units", Breakdown.army_units(st, a.id)), map.request_codex)
 		var aid: String = a.id
@@ -301,34 +320,32 @@ func _build_army_plates() -> void:
 
 # ------------------------------------------------------------------ tooltips
 
-## A province's tooltip on the 3D board: what its 2D region says (name, terrain, owner, how to read it,
-## the King's Roads note when it is a road destination), with the 3D marks in words and its income's
-## breakdown, ending with its codex link.
+## A province's tooltip on the 3D board: its 2D region's own tooltip (name, terrain and how it grew,
+## owner, the King's Roads or Forest Stride note when it is a road destination, its codex link), with the
+## 2D marks replaced by the 3D board's in words, plus its income's breakdown lines.
 func province_tooltip(pid: String) -> String:
 	var map: Control = board.map
 	var st: GameState = map.state
 	var p := st.find_province(pid)
-	if p == null:
+	var region = map.regions.get(pid)
+	if p == null or region == null:
 		return ""
 	var seats: Array = map.seat_order()
 	var seat: int = UiPalette.seat_index(st, p.owner, seats)
-	var owner_name := "nobody (neutral)" if p.owner.is_empty() else st.find_faction(p.owner).faction_name
 	var marks := "Neutral: no colour wash." if seat < 0 else "Player %d's province: %s wash and inner border, %s emblem on its armies' plates." % [
 		seat + 1, UiPalette.seat_color_name(seat), SeatEmblem.shape_of(seat)]
 	if p.is_capital:
 		marks += " Capital (the crown, and the fortress whose yard musters its armies)."
 	elif p.has_fort:
 		marks += " Fort (the tower)."
-	var text := TooltipText.plain("%s: %s, owned by %s" % [p.name, p.terrain.capitalize(), owner_name],
-		"%s %s Click to see its terrain, income and armies; double-click to glide there." % [marks, TooltipText.codex_text(TooltipText.terrain_kind(p.terrain))])
-	var region = map.regions.get(pid)
-	if region != null and region.road_target:
-		var vias: Array = []
-		var army: Army = st.find_army(map.selected_army_id)
-		if army != null and map.orders != null:
-			vias = map.orders.road_destinations(army.id).get(pid, [])
-		var via_name: String = st.find_province(vias[0]).name if not vias.is_empty() else "the province between"
-		text += "\n\n" + TooltipText.wrap_text("King's Roads: the selected army can reach this province this turn through %s. Click to order the road move (dashed gilt band)." % via_name)
+	var text: String = String(region.tooltip_text)
+	var at := text.rfind("\n\nCodex: ")
+	if at >= 0:
+		text = text.substr(0, at)
+	text = text.replace(TooltipText.wrap_text(region.marks_text(p)), TooltipText.wrap_text(marks))
+	text = text.replace(region.marks_text(p), marks)
+	text = text.replace("dashed gilt ring", "dashed gilt band").replace("Click to see its terrain, income and armies.",
+		"Click to see its terrain, income and armies; double-click to glide there.")
 	## the income's breakdown lines (its long explanation is on the plate's gold, with the income's codex link)
 	var income: Dictionary = Breakdown.province_income(st, pid).duplicate(true)
 	income["description"] = ""
@@ -336,27 +353,28 @@ func province_tooltip(pid: String) -> String:
 	return CodexLink.with_link(text, TooltipText.codex_for("province"))
 
 
-## An army's tooltip: the 2D badge's (its units' breakdown, or the ruler's summary), who it belongs to
-## and how to read its figures.
+## An army's tooltip: its 2D badge's own (its units' breakdown or the ruler's summary, whose it is, a
+## heal forecast when Hallowed Land or the Forges will heal it), with how to read its figures.
 func army_tooltip(aid: String, with_link: bool = true) -> String:
 	var map: Control = board.map
 	var st: GameState = map.state
 	var a: Army = st.find_army(aid)
 	if a == null:
 		return ""
-	var seats: Array = map.seat_order()
-	var seat: int = UiPalette.seat_index(st, a.owner, seats)
-	var whose := "" if seat < 0 else "Player %d's army (%s plate, %s emblem). " % [seat + 1, UiPalette.seat_color_name(seat), SeatEmblem.shape_of(seat)]
-	var figures := "Its figures stand in a block per unit type (%s); the plate has the exact number. " % Models.block_rule_text()
-	var text: String
-	var key: String
-	if a.ruler != null:
-		text = RulerPanel.summary(st, a) + "\n\n" + TooltipText.wrap_text(whose + "The gilt ring marks the ruler. Click to select this army.")
-		key = "ruler_army"
+	var key: String = "ruler_army" if a.ruler != null else TooltipText.codex_for("army_units", Breakdown.army_units(st, a.id))
+	var text := ""
+	var region = map.regions.get(a.location)
+	var badge: Control = region.army_box.get_node_or_null("Army_%s" % a.id.validate_node_name()) if region != null else null
+	if badge != null:
+		text = String(badge.tooltip_text)
+		var at := text.rfind("\n\nCodex: ")
+		if at >= 0:
+			text = text.substr(0, at)
+		text = text.replace(" badge, ", " plate, ").replace("outside the badge", "on the plate")
 	else:
-		var units := Breakdown.army_units(st, a.id)
-		text = TooltipText.from_breakdown(units) + "\n\n" + TooltipText.wrap_text(whose + figures + "Click to select this army.")
-		key = TooltipText.codex_for("army_units", units)
+		text = RulerPanel.summary(st, a) if a.ruler != null else TooltipText.from_breakdown(Breakdown.army_units(st, a.id))
+	if a.ruler == null:
+		text += "\n\n" + TooltipText.wrap_text("Its figures stand in a block per unit type (%s); the plate has the exact number." % Models.block_rule_text())
 	return CodexLink.with_link(text, key) if with_link else text
 
 
@@ -365,6 +383,12 @@ func army_tooltip(aid: String, with_link: bool = true) -> String:
 func _process(_delta: float) -> void:
 	if board == null or not board.prepared or board.map == null or not is_visible_in_tree():
 		return
+	## only when the camera moved, a turn is playing, or the map changed: an idle board costs nothing here
+	var view: Transform3D = board.wv.cam_xform
+	if not _dirty and not _playing and view.is_equal_approx(_last_view):
+		return
+	_dirty = false
+	_last_view = view
 	var t = board.wv.terrain
 	var vp: Vector2 = size
 	for id in _plates.keys():
@@ -375,7 +399,8 @@ func _process(_delta: float) -> void:
 		var r: float = t.stage_r[i]
 		## under the stage (south), so the armies' plates above it stay clear
 		var s: Vector2 = board.project(c + Vector2(0, r * (0.95 if t.is_capital[i] else 1.15)), 2.0)
-		root.reset_size()
+		if root.size.x <= 1.0:
+			root.reset_size()
 		root.position = (s - Vector2(root.size.x * 0.5, 0.0)).round()
 		root.visible = s.x > -200 and s.x < vp.x + 200 and s.y > -60 and s.y < vp.y + 60
 	var placed: Array = []
@@ -388,7 +413,8 @@ func _process(_delta: float) -> void:
 		if s2.x < -9999:
 			pc.visible = false
 			continue
-		pc.reset_size()
+		if pc.size.x <= 1.0:
+			pc.reset_size()
 		var rect := Rect2(s2 - Vector2(pc.size.x * 0.5, pc.size.y), pc.size)
 		## a simple declutter: a plate that would sit on another one moves up above it
 		for k in 4:
@@ -409,8 +435,19 @@ func _process(_delta: float) -> void:
 			gp.visible = false
 			continue
 		var s3: Vector2 = board.project3(ghosts[i]["anchor"])
-		gp.reset_size()
-		gp.position = (s3 - Vector2(gp.size.x * 0.5, gp.size.y)).round()
+		if gp.size.x <= 1.0:
+			gp.reset_size()
+		var grect := Rect2(s3 - Vector2(gp.size.x * 0.5, gp.size.y), gp.size)
+		for k in 4:
+			var hit := false
+			for o in placed:
+				if (o as Rect2).grow(1.0).intersects(grect):
+					grect.position.y = (o as Rect2).position.y - grect.size.y - 2.0
+					hit = true
+			if not hit:
+				break
+		placed.append(grect)
+		gp.position = grect.position.round()
 		gp.visible = s3.x > -100 and s3.x < vp.x + 100 and s3.y > -50 and s3.y < vp.y + 50
 	if _playing:
 		_play_label.text = _play_text()
@@ -670,7 +707,10 @@ func _build_legend() -> void:
 	_legend.add_theme_stylebox_override("normal", style)
 	_legend.position = Vector2(10, 8)
 	_legend.mouse_filter = Control.MOUSE_FILTER_PASS
-	_legend.tooltip_text = LEGEND % Models.block_rule_text()
+	var lines: Array = []
+	for line in (LEGEND % Models.block_rule_text()).split("\n"):
+		lines.append(TooltipText.wrap_text(line) if line.begins_with("- ") or line.length() > TooltipText.WRAP else line)
+	_legend.tooltip_text = "\n".join(lines)
 	add_child(_legend)
 
 
@@ -695,6 +735,20 @@ class _Glyph extends Control:
 		var closed := pts.duplicate()
 		closed.append(pts[0])
 		draw_polyline(closed, UiPalette.KEYLINE_INK, 1.5, true)
+
+
+## The Wild Spreads' sprout (M4-2): the province turns to forest at the end of the turn.
+class _Sprout extends Control:
+	func _draw() -> void:
+		var c := Vector2(size.x * 0.5, size.y - 3.0)
+		draw_line(c, c + Vector2(0, -12), UiPalette.KEYLINE_INK, 4.0, true)
+		draw_line(c, c + Vector2(0, -12), Color("#5E7F35"), 2.0, true)
+		for sgn in [-1.0, 1.0]:
+			var leaf := PackedVector2Array([c + Vector2(0, -8), c + Vector2(sgn * 8, -14), c + Vector2(sgn * 3, -6)])
+			draw_colored_polygon(leaf, Color("#72C47A"))
+			var closed := leaf.duplicate()
+			closed.append(leaf[0])
+			draw_polyline(closed, UiPalette.KEYLINE_INK, 1.2, true)
 
 
 ## The Sworn Vassals pennant (as ProvinceRegion draws it) in the joining faction's colour.

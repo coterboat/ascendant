@@ -34,6 +34,8 @@ const TAIL := 0.5
 
 ## The land changed hands: the board repaints the province's wash and its fortress.
 signal captured(province_id: String, owner_id: String)
+## A battle's clash begins (the board plays its sound).
+signal clash_started(label: String)
 ## The whole turn has played (or was skipped); the board now shows the state after.
 signal playback_finished
 
@@ -710,6 +712,11 @@ func step_playback(delta: float, skipping: bool = false) -> void:
 					if float(f["fall"]) >= 1.0:
 						f["scale"] = maxf(0.0, float(f["scale"]) - step * 0.7)
 				_sync(armies[id])
+	## battles: each clash begins once
+	for c in _play["clashes"]:
+		if not c.get("begun", false) and now >= float(c["t0"]) and not skipping:
+			c["begun"] = true
+			clash_started.emit(String(c["label"]))
 	## the land changes hands as the columns arrive
 	for c in _play["caps"]:
 		if not c["done"] and (now >= float(c["t"]) or skipping):

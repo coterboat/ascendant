@@ -89,6 +89,11 @@ Ground paint_ground() {
 	col = mix(col, col * ratio, tile_k * flat_n);
 	// woods: the canopy tile under the 3D trees, so a wood reads as dense from far away
 	col = mix(col, tf * vec3(0.92, 1.0, 0.92), smoothstep(0.15, 0.55, woods) * 0.85);
+	// a province the rules turned to forest since the land was baked (the Wild Spreads): the canopy over it
+	vec4 mk0 = texture(mark_tex, vec2((float(g.id) + 0.5) / 16.0, 0.5));
+	if (g.id < 255 && mk0.a > 0.5) {
+		col = mix(col, tf * vec3(0.92, 1.0, 0.92), 0.78 * (1.0 - smoothstep(0.3, 0.5, g.slope)));
+	}
 	// rock on the steep, the walls' crests a cool grey
 	vec3 gn = texture(grain_tex, mp / 21.0).rgb;
 	vec3 rock = vec3(0.55, 0.52, 0.49) * (0.82 + 0.3 * gn.r);

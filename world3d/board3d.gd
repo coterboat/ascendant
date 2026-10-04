@@ -161,6 +161,7 @@ func _build_world() -> void:
 	armies.wv = wv
 	wv.add_child(armies)
 	armies.captured.connect(_on_captured)
+	armies.clash_started.connect(func(_label): GameAudio.sfx("battle_clash"))
 	armies.playback_finished.connect(_on_playback_finished)
 	overlay = BoardOverlay.new()
 	overlay.board = self
@@ -223,7 +224,15 @@ func _sync_marks() -> void:
 		if here != null:
 			for n in here.neighbors:
 				move[n] = true
-	wv.set_marks(road, move, _flash)
+	## provinces the rules turned to forest since the land was baked (the Wild Spreads)
+	var grown := {}
+	if st != null:
+		var t = wv.terrain
+		for p in st.provinces:
+			var i: int = t.index_of(p.id)
+			if i >= 0 and p.terrain == "forest" and t.terrain_of[i] != "forest":
+				grown[p.id] = true
+	wv.set_marks(road, move, _flash, grown)
 
 
 ## Queued recruits stand as ghosts where they will join (only the viewing player's orders).
@@ -271,6 +280,8 @@ func play_turn(before: GameState, events: Array, after: GameState) -> bool:
 	_playing = true
 	armies.play(plan, before, after)
 	_frame_action(plan)
+	if not plan["marches"].is_empty():
+		GameAudio.sfx("march", 0.2)
 	_sync_marks()
 	if overlay != null:
 		overlay.begin_playback(plan, after)
@@ -553,6 +564,11 @@ func _camera(delta: float) -> void:
 	## far out the figures stand taller (toy scale) so every army reads as a marker over the map
 	var z: float = clampf((log(float(r["span"])) - log(_span_fit)) / (log(SPAN_NEAR) - log(_span_fit)), 0.0, 1.0)
 	armies.set_fig_scale(lerpf(2.4, 1.0, smoothstep(0.0, 0.8, z)))
+	## the woods' ink outlines only close in (hysteresis, so a zoom never flickers them)
+	if wv.prop_outlines and z < 0.62:
+		wv.set_prop_outlines(false)
+	elif not wv.prop_outlines and z > 0.68:
+		wv.set_prop_outlines(true)
 	## Look A borrows Look B's glossy sea close in (the director's call on PR #81)
 	if wv.look == "cel":
 		wv.wmat.set_shader_parameter("toon", 1.0 - smoothstep(0.55, 0.9, z))
@@ -585,6 +601,8 @@ func _process(delta: float) -> void:
 	if not live:
 		return
 	_fit_viewport()
+	if overlay != null and (hover_id != "" or _playing):
+		overlay.queue_redraw()
 	_camera(delta)
 	if not _flash.is_empty():
 		for id in _flash.keys():
@@ -596,7 +614,6 @@ func _process(delta: float) -> void:
 	if fps_samples.size() > 240:
 		fps_samples.pop_front()
 	_watch_speed(delta)
-	queue_redraw()
 
 
 func _fit_viewport(force: bool = false) -> void:
@@ -611,6 +628,7 @@ func _fit_viewport(force: bool = false) -> void:
 	wv.view_size = Vector2(_vp.size)
 	if force or _fit_size != size:
 		_fit_size = size
+		queue_redraw() ## the viewport's texture is drawn once per size; its frames update by themselves
 		_compute_fit()
 		if zoom <= 0.001:
 			fit_whole(true)
