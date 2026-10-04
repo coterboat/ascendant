@@ -155,3 +155,21 @@ func test_recording_on_and_off_gives_the_same_outcome() -> void:
 			assert_eq(on.result.winner, off.result.winner, "%s, seed %d: the same winner" % [c[0], sd])
 			assert_eq(JSON.stringify(on.result.report), JSON.stringify(off.result.report), "%s, seed %d: the same report" % [c[0], sd])
 			assert_true(on.has("log") and not off.has("log"), "only the recorded fight has a log")
+
+
+func test_regenerate_rebuilds_a_siege_battle_from_the_game_record() -> void:
+	var session := GameSession.new(_state(), [CROWN, CLANS], 17, AutoBattleResolver.new())
+	assert_eq(session.setup_errors(), [])
+	for seat in 2:
+		if session.phase() == GameSession.Phase.HANDOFF:
+			session.acknowledge_handoff()
+		if session.current_player() == CLANS:
+			assert_eq(session.queue_storm("stonegate"), "")
+		session.end_turn()
+	var battles := session.battle_events()
+	assert_eq(battles.size(), 1, "the storm was fought")
+	var again := BattleLog.regenerate(JSON.parse_string(JSON.stringify(session.record())), 1, 0)
+	assert_eq(again.errors, [])
+	assert_eq(BattleLog.to_json(again.log), BattleLog.to_json(battles[0].numbers.log), "the record rebuilds the storm's log byte for byte")
+	assert_eq(String(again.log.siege.kind), "storm")
+	assert_eq(BattleLog.cross_check(again.log, again.report), [])
