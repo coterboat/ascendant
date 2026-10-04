@@ -14,8 +14,10 @@ extends Control
 ## problem is explained in plain words and disables Start. Never changes rules state.
 ## Player colours follow the seat (UiPalette.seat_color): Player 1 is Vermilion, Player 2 Cobalt, so the
 ## faction picked for a seat is shown in that seat's colour and swapping seats swaps the colours.
-## Rulers (M2-5, #33): the "Rulers (M2 preview)" box, off by default, so the M1 flow and Quick start
-## are unchanged (launching with `-- --rulers` ticks it). Ticked, config() adds "rulers": true and Start
+## MVP defaults: Player 1 is a person and Player 2 the computer at Normal, with rulers on. Hotseat is one
+## click away (Player 2's picker to Human), and Quick start skips this screen with the same defaults
+## (quick_start_config). A rematch (prefill) keeps the last game's choices instead.
+## Rulers (M2-5, #33): the "Rulers" box, ticked by default. Ticked, config() adds "rulers": true and Start
 ## opens the BuildScreen on top of this screen: every human seat picks a ruler and mandates in secret,
 ## computer seats get a seeded preset, and only then is start_requested emitted, with the config plus
 ## "builds" ({faction id: build}). Back on the build screen returns here and drops those builds.
@@ -41,8 +43,11 @@ extends Control
 ##                                   the same seating, the same human and computer seats at the same
 ##                                   levels, the rulers box as it was, each human seat's last build as
 ##                                   its starting build, and a new seed (the victory screen's New game)
-##   set_rulers(on), rulers_on()     the "Rulers (M2 preview)" box
+##   set_rulers(on), rulers_on()     the "Rulers" box (ticked by default)
 ##   set_paths(on), paths_on()       the "Paths (M4 preview)" box (M4-1); ticking it ticks rulers
+##   quick_start_config(rng) -> Dictionary   Quick start's config (static): a random faction for the person
+##                                   in seat 1, the computer at Normal in seat 2, rulers on with the balanced
+##                                   preset for the person, and a random seed
 ##   build_screen                    the BuildScreen Start opens while rulers are on (null until then);
 ##                                   build_screen_open() -> bool
 ##   seat_faction(seat) -> String, faction_ids() -> Array[String]
@@ -58,6 +63,7 @@ const KINDS := ["human", "computer"]  # the seat kind pickers' items, in order
 const KIND_NAMES := ["Human", "Computer"]
 const LEVELS := ["easy", "normal"]  # AIPlayer.DIFFICULTIES, in the level pickers' order
 const DEFAULT_LEVEL := "normal"
+const DEFAULT_KINDS := ["human", "computer"]  # MVP: you against the computer
 const MAX_SEED_DIGITS := 18  # any 18-digit number fits in a 64-bit int
 const MAX_RANDOM_SEED := 999999999
 const BACKGROUND := Color("#14131F")
@@ -79,7 +85,7 @@ var swap_button: Button
 var error_label: Label
 var start_button: Button
 var back_button: Button
-var rulers_toggle: CheckBox  # "Rulers (M2 preview)": off by default
+var rulers_toggle: CheckBox  # "Rulers": on by default
 var rulers_label: Label  # what the box does, shown while it is ticked
 var paths_toggle: CheckBox  # M4-1: "Paths (M4 preview)": off by default; needs rulers
 var build_screen: BuildScreen = null  # opened by Start while rulers are on; built on first use
@@ -98,6 +104,7 @@ func _init() -> void:
 	_build()
 	for i in SEAT_COUNT:
 		seat_pickers[i].select(i % _model.factions.size())
+		kind_pickers[i].select(KINDS.find(DEFAULT_KINDS[i]))
 	new_seed()
 
 
@@ -191,7 +198,7 @@ func prefill(last_game: Dictionary) -> void:
 	if last_game.get("rulers", false) == true or not builds.is_empty():
 		set_rulers(true)
 	elif last_game.has("players"):
-		set_rulers(_rulers_by_default())
+		set_rulers(OS.get_cmdline_user_args().has("--rulers"))  # a game without rulers: a rematch without them
 	if last_game.get("paths", false) == true:  # M4-1
 		set_paths(true)
 	elif last_game.has("players"):
@@ -286,7 +293,7 @@ func back() -> void:
 	back_requested.emit()
 
 
-## Ticks or clears the "Rulers (M2 preview)" box.
+## Ticks or clears the "Rulers" box.
 func set_rulers(on: bool) -> void:
 	rulers_toggle.set_pressed_no_signal(on)
 	_refresh()
@@ -317,9 +324,30 @@ func build_screen_open() -> bool:
 	return build_screen != null and build_screen.visible
 
 
-## Rulers start ticked when the game was launched with `-- --rulers` (GameScreen.starting_state).
+## Rulers start ticked (MVP default).
 static func _rulers_by_default() -> bool:
-	return OS.get_cmdline_user_args().has("--rulers")
+	return true
+
+
+## Quick start's config: the person in seat 1 plays a random faction against the computer at Normal in
+## seat 2, with rulers on and a random seed. The person gets their faction's balanced preset and the
+## computer the preset its seeded dice pick (BuildScreen.computer_build, the same roll AISeat makes), so
+## the game starts at once, without the build screen. The same as Start with this screen's defaults.
+static func quick_start_config(rng: RandomNumberGenerator = null) -> Dictionary:
+	var dice := rng
+	if dice == null:
+		dice = RandomNumberGenerator.new()
+		dice.randomize()
+	var ids := []
+	for f in FactionData.FACTIONS:
+		ids.append(f.id)
+	var human: String = ids[dice.randi_range(0, ids.size() - 1)]
+	var others := ids.filter(func(fid): return fid != human)
+	var opponent: String = others[dice.randi_range(0, others.size() - 1)]
+	var game_seed := dice.randi_range(1, MAX_RANDOM_SEED)
+	var builds := {human: RulerRules.preset_build(RulerRules.balanced_preset(human)),
+		opponent: BuildScreen.computer_build(opponent, game_seed, 1)}
+	return {"players": [human, opponent], "seed": game_seed, "ai": {opponent: DEFAULT_LEVEL}, "rulers": true, "builds": builds}
 
 
 func _open_builds() -> void:
@@ -616,11 +644,11 @@ func _build() -> void:
 	box.add_child(rulers_row)
 	rulers_toggle = CheckBox.new()
 	rulers_toggle.name = "RulersToggle"
-	rulers_toggle.text = "Rulers (M2 preview)"
+	rulers_toggle.text = "Rulers"
 	rulers_toggle.add_theme_font_size_override("font_size", 20)
 	rulers_toggle.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	rulers_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Rulers (preview)",
-		"A preview of the next milestone, the ruler: before the game each player picks a ruler and how much of its power to keep, and spends the rest on mandates for the whole nation. Rulers are still being built, so some of their effects may not be in play yet. %s" % RulesCodex.text("build_screen")), "build_screen")
+	rulers_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Rulers",
+		"Before the game each player picks a ruler and how much of its power to keep, and spends the rest on mandates for the whole nation. Untick it for the simpler game without rulers. %s" % RulesCodex.text("build_screen")), "build_screen")
 	rulers_toggle.set_pressed_no_signal(_rulers_by_default())
 	rulers_toggle.toggled.connect(func(_on: bool): _refresh())
 	rulers_row.add_child(rulers_toggle)

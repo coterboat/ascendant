@@ -2,17 +2,22 @@ class_name SceneFlow
 ## How the game moves between its screens (#7, #8, #33):
 ##   title --New game--> new game screen (over the title) --Start--> game screen
 ##                       new game screen --Back--> title
-##                       new game screen with "Rulers (M2 preview)" ticked --Choose builds--> build
+##                       new game screen with "Rulers" ticked (the default) --Choose builds--> build
 ##                       screen (over the new game screen): each human seat picks a ruler and mandates,
 ##                       behind a cover between two people --every build locked in--> game screen, with
 ##                       the builds in the config ("rulers": true, "builds")
 ##                       build screen --Back--> new game screen (the builds chosen so far are dropped)
-##   title --Quick start--> game screen (default setup)
+##   title --Quick start--> game screen (NewGameScreen.quick_start_config: you against the computer,
+##                          rulers on, a random faction and seed; no build screen)
+##   title --Continue / Load game--> game screen of the saved game (make_loaded_game), at the start of the
+##                          saved turn; a hotseat game opens on the handoff cover. A save that can't be
+##                          loaded stays on the title (or the load screen) with the reason
+##   game screen --Menu > Load game--> the same game screen, reloaded in place (GameScreen.load_game)
 ##   game screen --victory "New game"--> title with the new game screen open, set up for a rematch:
 ##                                       the last game's seating (who plays each seat, a person or the
 ##                                       computer at its level, included), the rulers box and each human
 ##                                       seat's build, and a new seed
-##   game screen --"Back to title" / "Quit to title"--> title
+##   game screen --"Back to title" / Menu > "Quit to title"--> title
 ##
 ## The one rule: the next screen is instantiated and fully set up while it is still OUT of the tree
 ## (GameScreen.start_game(config), TitleScreen.open_new_game()), then switch() makes it the current
@@ -32,6 +37,17 @@ static func make_game(config: Dictionary) -> GameScreen:
 	var game := load(GAME_SCENE).instantiate() as GameScreen
 	game.start_game(config)
 	return game
+
+
+## A game screen running the saved game `save` (SaveGame), ready to enter the tree: {"game": GameScreen,
+## "error": ""}, or {"game": null, "error": why it could not be loaded, in plain words}.
+static func make_loaded_game(save: Dictionary) -> Dictionary:
+	var game := load(GAME_SCENE).instantiate() as GameScreen
+	var why := game.load_game(save)
+	if not why.is_empty():
+		game.free()
+		return {"game": null, "error": why}
+	return {"game": game, "error": ""}
 
 
 ## The title screen; with `with_new_game`, its new game screen is already open. `last_game`, the
