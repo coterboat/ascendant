@@ -41,6 +41,8 @@ static func battle(name: String) -> Dictionary:
 				func(lg): return lg.events.any(func(e): return e.t == "heal"))
 		"path_red_harvest":
 			out = _red_harvest()
+		"massive":
+			out = _massive()
 		_:
 			out = Watch.load_fixture(name)
 	_cache[name] = out
@@ -72,6 +74,33 @@ static func _has_iron_hide(lg: Dictionary) -> bool:
 		if e.t == "attack" and e.hit and e.bonus.has(AutoBattleResolver.IRON_HIDE):
 			return true
 	return false
+
+
+## A battle bigger than any measured one (#125, M3 3.4's files): 161 fighters a side, 322 in all, over the
+## 3D stage's 1:1 limit of 280. The Crown holds Rivermarch. Not in names(): only the files tests and the
+## launcher (--fixture massive) play it.
+static func _massive() -> Dictionary:
+	var s := PB.game()
+	var crown := []
+	for k in 90:
+		crown.append("spearmen")
+	for k in 50:
+		crown.append("crossbowmen")
+	for k in 20:
+		crown.append("knights")
+	crown.append("knight_captain")
+	var clans := []
+	for k in 80:
+		clans.append("tuskers")
+	for k in 60:
+		clans.append("fangthrowers")
+	for k in 20:
+		clans.append("war_bear")
+	clans.append("warchief")
+	var a := PB.army(s, CROWN, "kingdom-1", "rivermarch", crown)
+	var b := PB.army(s, CLANS, "beasts-2", "rivermarch", clans)
+	var r := PB.fight(s, [a, b], "rivermarch", CROWN, 11)
+	return {"log": r.log, "report": r.result.report, "seed": 11}
 
 
 ## A Red Harvest battle fought through TurnResolver (the gold, the harvest event and the aftermath).

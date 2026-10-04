@@ -67,6 +67,8 @@ const PROP_CELL := 28.0 ## the woods' cells (world units)
 const PROP_LOD_BIAS := 0.4 ## the woods drop detail sooner than the fighters
 const WOODS_NEAR := 40.0
 const GLYPH_INTERVAL := 0.12
+const FILES_ABOVE := 280 ## 3D_DIRECTION 7.2: every fighter its own figure up to M3's 280; above, M3's files
+const LABEL_BACKING := 0.84 ## #125: the dark backing's opacity under the words over the land
 ## the woods and rocks: [model kind, plan key, sizing axis, the board's primitive MultiMesh name]
 const PROP_SPECS := [["tree_broadleaf", "broad", "y", "Broadleaf"], ["tree_pine", "pine", "y", "Pines"], ["rock", "rocks", "xz", "Rocks"]] ## model trees this far round the battle's ground, primitives beyond
 ## effects (playback seconds)
@@ -91,6 +93,7 @@ var overlay: Control
 var proj_root: Node3D
 var stage_fort: Node3D
 var plan := {}
+var groups := {} ## M3 3.4's files (BattleFormation.groups_of): {} while every fighter is its own figure
 var rig := {} ## the rig the camera stands at now (before the shake)
 var goal := {} ## the whole battle's framing
 var quality := 0
@@ -160,6 +163,10 @@ func _init() -> void:
 	field.move_child(overlay, 1)
 	controls.reframe_key = true
 	controls.reframe_requested.connect(reframe)
+	## #125: the words over the land (the round banner, a key moment's line, the morale tags) sit on a dark
+	## backing: a thin outline alone read as doubled letters over the bright grass
+	for l in [banner_label, toast_label] + tag_labels:
+		back_label(l)
 	legend.set_rows(BattleLegend.overlay_rows() + stage_rows())
 	selection.changed.connect(func(_fid): overlay.queue_redraw())
 
@@ -500,7 +507,8 @@ func _build_field() -> void:
 		return
 	_field_pending = false
 	build_now()
-	plan = Formation.plan(_log, terrain, _world_info(), _band().size.x / maxf(_band().size.y, 1.0))
+	groups = Formation.groups_of(_log, FILES_ABOVE)
+	plan = Formation.plan(_log, terrain, _world_info(), _band().size.x / maxf(_band().size.y, 1.0), groups)
 	_side_colours = []
 	_side_lin = []
 	var emblems := []
@@ -517,7 +525,7 @@ func _build_field() -> void:
 	_woods_near(plan["site"], _footprint_radius() + WOODS_NEAR)
 	_place_stage_fort()
 	figures.reduced_motion = reduced_motion
-	figures.build(_log, plan, _side_colours, _side_lin, emblems, factions)
+	figures.build(_log, plan, _side_colours, _side_lin, emblems, factions, groups)
 	view3d.queue_redraw()
 	_proj.clear()
 	_fx.clear()
@@ -847,8 +855,46 @@ func tick(delta: float) -> void:
 	if _glyphs_dirty_3d and (not player.is_playing() or _real - _glyph_at >= GLYPH_INTERVAL):
 		_refresh_glyph_cache()
 	overlay.queue_redraw()
+	_fit_land_labels()
 	_sample_frame(delta)
 
+
+
+## A label over the land on a dark backing (PANEL_BG at LABEL_BACKING, rounded), its outline off.
+static func back_label(l: Label) -> void:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(UiPalette.PANEL_BG, LABEL_BACKING)
+	sb.border_color = Color(UiPalette.PANEL_BORDER, 0.9)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(6)
+	sb.content_margin_left = 10
+	sb.content_margin_right = 10
+	sb.content_margin_top = 2
+	sb.content_margin_bottom = 3
+	l.add_theme_stylebox_override("normal", sb)
+	l.add_theme_constant_override("outline_size", 0)
+
+
+## Shrinks each label over the land to its words, so its backing is only as wide as they are: the banner and
+## the moment's line centred over the field, the morale tags at their side's edge.
+func _fit_land_labels() -> void:
+	var fw := field_width()
+	for l in [banner_label, toast_label]:
+		var lab := l as Label
+		if not lab.visible or lab.text.is_empty():
+			continue
+		var w: float = lab.get_minimum_size().x
+		if absf(lab.size.x - w) > 0.5:
+			lab.size.x = w
+		lab.position.x = roundf((fw - w) / 2.0)
+	for k in 2:
+		var tag: Label = tag_labels[k]
+		tag.visible = not tag.text.is_empty()
+		if tag.text.is_empty():
+			continue
+		var w2: float = tag.get_minimum_size().x
+		tag.size.x = w2
+		tag.position.x = 24.0 if k == 0 else fw - 24.0 - w2
 
 
 ## The quality ladder (3D_DIRECTION 3.4): after LADDER_SECONDS under LADDER_FPS, one rung down: SSAO and
@@ -933,8 +979,12 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 			_glyphs_dirty_3d = true
 		"death":
 			var i: int = figures.index_of(int(b.fighter))
-			figures.set_hold(i, "fallen")
-			figures.add_motion(i, {"kind": "topple", "t0": now, "dur": Figures.TOPPLE})
+			## a file's figure falls with the last of its fighters (M3 3.4); until then it only staggers
+			if Figures.hold_of(figures.members_of(i), st) == "fallen":
+				figures.set_hold(i, "fallen")
+				figures.add_motion(i, {"kind": "topple", "t0": now, "dur": Figures.TOPPLE})
+			else:
+				figures.add_motion(i, {"kind": "recoil", "t0": now, "dur": Figures.RECOIL, "away": Vector2.ZERO})
 			var ends: Array = _ends_home(int(b.fighter))
 			if not ends.is_empty():
 				_add_fx({"kind": "dust", "at": ends[0], "life": DUST_LIFE, "r": 1.0})
@@ -986,7 +1036,7 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 			var dur := BattlePlayer.ROUT
 			for fid in b.data.fled:
 				var i2: int = figures.index_of(int(fid))
-				if i2 < 0:
+				if i2 < 0 or Figures.hold_of(figures.members_of(i2), st) == "stand":
 					continue
 				_rout_figure(i2, now, dur)
 			for i3 in figures.extras_of(int(b.side)):
@@ -1044,7 +1094,7 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 		"aftermath":
 			for fid3 in b.data.lost:
 				var i6: int = figures.index_of(int(fid3))
-				if i6 >= 0 and String(figures.figs[i6]["hold"]) == "stand":
+				if i6 >= 0 and String(figures.figs[i6]["hold"]) == "stand" and Figures.hold_of(figures.members_of(i6), st) != "stand":
 					figures.set_hold(i6, "gone")
 					figures.add_motion(i6, {"kind": "fade", "t0": now, "dur": Figures.FADE})
 			var loser_out := []
@@ -1358,6 +1408,8 @@ func _refresh_glyph_cache() -> void:
 		var fs: Dictionary = st.fighters[fid]
 		if not fs.alive or fs.fled or fs.lost:
 			continue
+		if not groups.is_empty() and not (groups["reps"] as Dictionary).has(fid):
+			continue ## a file shows its glyphs and aura once, on its figure's first fighter
 		## a massed side's units (71 war bears' Fury) would carpet the ground and cost a status each: there
 		## only commanders and rulers (and the hovered or pinned fighter) show glyphs and aura rings (M3 3.4)
 		if _massed[int(f.side)] and f.role == "unit" and fid != _hovered and fid != _selected:
@@ -1382,10 +1434,11 @@ func _refresh_glyph_cache() -> void:
 func _tab_order() -> Array:
 	var ids := []
 	for f in _log.fighters:
-		ids.append(int(f.id))
+		if groups.is_empty() or (groups["reps"] as Dictionary).has(int(f.id)):
+			ids.append(int(f.id))
 	var left := int(layout.get("left", 0))
 	var slots: Array = plan.get("slots", [])
-	if slots.size() != ids.size():
+	if slots.size() != _log.fighters.size():
 		return BattleSelection.default_order(_log, left)
 	ids.sort_custom(func(a, b):
 		var sa: Dictionary = slots[a]
@@ -1514,7 +1567,7 @@ func _get_tooltip(at_position: Vector2) -> String:
 	var fid := pick(at_position)
 	if fid < 0 or player == null:
 		return ""
-	return fighter_tooltip(fid)
+	return figure_tooltip(fid)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -1577,6 +1630,9 @@ func visible_texts() -> Array:
 	if player != null and not _log.is_empty():
 		for f in _log.fighters:
 			out.append(fighter_tooltip(int(f.id)))
+		if figures != null and not groups.is_empty():
+			for i in figures.n_fighters:
+				out.append(figure_tooltip(int(figures.figs[i]["fid"])))
 		out.append_array(overlay_texts())
 	return out
 
@@ -1647,7 +1703,8 @@ func _draw_overlay(ci: CanvasItem) -> void:
 		var e2: Array = figures.ends_now(figures.index_of(fid2))
 		if e2.is_empty():
 			continue
-		var rad: float = maxf(2.6, minf(float(figures.figs[fid2]["w"]), float(figures.figs[fid2]["len"])) * 0.6)
+		var fi: int = figures.index_of(fid2)
+		var rad: float = maxf(2.6, minf(float(figures.figs[fi]["w"]), float(figures.figs[fi]["len"])) * 0.6)
 		draw_ring(ci, _ground_ring(e2[0], rad), k[1], float(k[2]), true)
 	## waves, dust, heals (under the plates)
 	for fx in _fx:
@@ -1666,33 +1723,36 @@ func _draw_overlay(ci: CanvasItem) -> void:
 				"wave":
 					var col2: Color = _side_colours[int(fx.get("side", 0))]
 					draw_ring(ci, _ground_ring(fx["at"], 5.0 + 13.0 * k2), Color(col2, 1.0 - k2), 2.0, true)
-	## plates and glyphs
+	## plates and glyphs: one per figure (a file's plate sums its fighters and wears its count, "x3")
 	var plate_list := []
-	for f in _log.fighters:
-		var fid3 := int(f.id)
-		var fs: Dictionary = st.fighters[fid3]
-		if not fs.alive or fs.fled or fs.lost:
+	for i in figures.n_fighters:
+		var fid3 := int(figures.figs[i]["fid"])
+		var f: Dictionary = _log.fighters[fid3]
+		var sum := file_hp(i, st)
+		if int(sum["standing"]) == 0:
 			continue
 		var si := int(f.side)
-		var hurt: bool = int(fs.hp) < int(f.max_hp) or int(fs.pending) > 0
+		var hurt: bool = int(sum["hp"]) < int(sum["max"]) or int(sum["pending"]) > 0
 		var show: bool = not _massed[si] or hurt or f.role != "unit" or fid3 == _hovered or fid3 == _selected
 		if not show:
 			continue
-		var e3: Array = figures.ends_now(figures.index_of(fid3))
+		var e3: Array = figures.ends_now(i)
 		if e3.is_empty():
 			continue
 		var head := _proj_overlay((e3[1] as Vector3) + Vector3.UP * 1.0)
 		if head.x < -90000.0:
 			continue
-		plate_list.append([head, fid3, f, fs])
+		plate_list.append([head, fid3, f, sum])
 	plate_list.sort_custom(func(a, b): return a[0].y < b[0].y)
 	for pl in plate_list:
 		var head2: Vector2 = pl[0]
 		var fid4: int = pl[1]
 		var f2: Dictionary = pl[2]
-		var fs2: Dictionary = pl[3]
+		var sum2: Dictionary = pl[3]
 		var bar := Rect2(head2 - Vector2(PLATE_W * 0.5, PLATE_H), Vector2(PLATE_W, PLATE_H))
-		BattleCard.draw_hp_bar(ci, bar, int(fs2.hp), int(f2.max_hp), int(fs2.pending))
+		BattleCard.draw_hp_bar(ci, bar, int(sum2["hp"]), int(sum2["max"]), int(sum2["pending"]))
+		if int(sum2["size"]) > 1:
+			draw_file_badge(ci, font, bar.position + Vector2(-3, PLATE_H * 0.5), int(sum2["standing"]))
 		if f2.role == "ruler":
 			BattleCard.draw_plate(ci, font, Rect2(bar.position - Vector2(60, 28), Vector2(PLATE_W + 120, 24)), _ruler_plate(fid4, st), 1.0, true, -4.0)
 		elif f2.role == "commander":
@@ -1756,9 +1816,53 @@ func _dive_point(i: int, t: float) -> Dictionary:
 	return {"pos": pos, "y": maxf(terrain.height_at(pos), 0.0) + float(p["extra_y"])}
 
 
+## Figure `i`'s fighters at `st`, summed: {"hp", "max", "pending" (of those still standing), "standing", "size"}.
+func file_hp(i: int, st: Dictionary) -> Dictionary:
+	var out := {"hp": 0, "max": 0, "pending": 0, "standing": 0, "size": 0}
+	for fid in figures.members_of(i):
+		var fs: Dictionary = st.fighters[int(fid)]
+		out["size"] = int(out["size"]) + 1
+		out["max"] = int(out["max"]) + int(_log.fighters[int(fid)].max_hp)
+		if fs.alive and not fs.fled and not fs.lost:
+			out["standing"] = int(out["standing"]) + 1
+			out["hp"] = int(out["hp"]) + int(fs.hp)
+			out["pending"] = int(out["pending"]) + int(fs.pending)
+	return out
+
+
+## A file's count beside its hp plate: "x3", the fighters of the file still standing (M3 3.4's badge).
+static func draw_file_badge(ci: CanvasItem, font: Font, right_mid: Vector2, n: int) -> void:
+	var text := "×%d" % n
+	var fs := 12
+	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 6.0
+	var box := Rect2(right_mid - Vector2(w, 8), Vector2(w, 16))
+	ci.draw_rect(box, Color(UiPalette.KEYLINE_INK, 0.85))
+	ci.draw_rect(box, UiPalette.GILT, false, 1.0)
+	ci.draw_string(font, box.position + Vector2(3, 12.5), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, UiPalette.TEXT_PRIMARY)
+
+
+## The hover text of the figure fighter `fid` stands in: BattleExplain's for a lone fighter; for a file, who is
+## in it (each one's hit points, or that it fell or fled), then its first fighter's explanation.
+func figure_tooltip(fid: int) -> String:
+	var i: int = figures.index_of(fid) if figures != null else -1
+	var members: Array = figures.members_of(i) if i >= 0 else []
+	if members.size() <= 1:
+		return fighter_tooltip(fid)
+	var st := player.live_state()
+	var f: Dictionary = _log.fighters[fid]
+	var lines := ["A file of %d %s of %s: in a battle this big (over %d fighters), one figure stands for up to %d." % [members.size(),
+		String(f.name), String(_log.sides[int(f.side)].name), FILES_ABOVE, int(groups.get("k", 1))]]
+	for m in members:
+		var fs: Dictionary = st.fighters[int(m)]
+		var mf: Dictionary = _log.fighters[int(m)]
+		var where := "fell" if not fs.alive else ("fled" if fs.fled else ("lost with its army" if fs.lost else "%d of %d hp" % [int(fs.hp), int(mf.max_hp)]))
+		lines.append("  %s: %s" % [String(mf.name), where])
+	return "\n".join(lines) + "\n\n" + fighter_tooltip(fid)
+
+
 ## The radius of fighter `fid`'s aura ring: a little wider than the figure.
 func aura_radius(fid: int) -> float:
-	var f: Dictionary = figures.figs[fid]
+	var f: Dictionary = figures.figs[figures.index_of(fid)]
 	return maxf(3.6, maxf(float(f["w"]), float(f["len"])) * 0.62)
 
 

@@ -52,6 +52,7 @@ var banners: Array = [] ## by side: the standard bearer's banner node
 var reduced_motion := false
 var shadows := true
 var land: RefCounted = null ## the baked land (the ground under a moving figure)
+var _fig_of: Array = [] ## by fighter id: its figure (a file's fighters share one)
 var lod_bias := 1.0
 ## The fighters' own ink (Look A): its width follows the figures' size on screen (set_ink_px), so a crowd of
 ## 35-pixel figures isn't drawn half in ink, while a close battle keeps the full line.
@@ -62,13 +63,24 @@ var _dirty := true
 
 ## Builds every figure of `plan` (BattleFormation.plan) for `battle_log`; by side: `colours` (sRGB, the
 ## banners), `lin` (linear, the bases), `emblems` (seat emblem indices), `factions` (the extras' models).
-func build(battle_log: Dictionary, plan: Dictionary, colours: Array, lin: Array, emblems: Array, factions: Array) -> void:
+## `files` (BattleFormation.groups_of, {} for 1:1): a figure per file of fighters instead of per fighter.
+func build(battle_log: Dictionary, plan: Dictionary, colours: Array, lin: Array, emblems: Array, factions: Array, files: Dictionary = {}) -> void:
 	clear()
-	n_fighters = (battle_log.get("fighters", []) as Array).size()
+	var members: Array = (files.get("members", []) as Array).duplicate()
+	if members.is_empty():
+		for f in battle_log.fighters:
+			members.append([int(f.id)])
+	n_fighters = members.size()
+	_fig_of = []
+	_fig_of.resize((battle_log.get("fighters", []) as Array).size())
 	var specs := []
-	for f in battle_log.fighters:
+	for i in members.size():
+		var f: Dictionary = battle_log.fighters[int(members[i][0])]
+		for fid in members[i]:
+			_fig_of[int(fid)] = i
 		var s: Dictionary = plan["slots"][int(f.id)]
-		specs.append({"fid": int(f.id), "type": String(f.type), "faction": "", "side": int(f.side), "role": String(f.role), "slot": s})
+		specs.append({"fid": int(f.id), "type": String(f.type), "faction": "", "side": int(f.side), "role": String(f.role), "slot": s,
+			"members": (members[i] as Array).duplicate()})
 	for ex in plan["extras"]:
 		var si := int(ex["side"])
 		specs.append({"fid": -1, "type": String(ex["type"]), "faction": String(factions[si]) if si < factions.size() else "", "side": si,
@@ -100,7 +112,8 @@ func build(battle_log: Dictionary, plan: Dictionary, colours: Array, lin: Array,
 		figs.append({"fid": sp["fid"], "type": sp["type"], "side": int(sp["side"]), "role": sp["role"], "home": s["pos"], "y": float(s["y"]),
 			"yaw": float(s["yaw"]), "keys": keys, "lin": col, "h": aabb.end.y, "w": maxf(aabb.size.x, 1.0),
 			"len": maxf(aabb.size.z, 1.0), "lying": lying, "hold": "stand", "motions": [], "phase": Choreo.hash_phase("fig", figs.size()),
-			"tier": int(s.get("tier", 2)), "back": plan["back"][int(sp["side"])] if int(sp["side"]) < (plan["back"] as Array).size() else s["pos"]})
+			"tier": int(s.get("tier", 2)), "back": plan["back"][int(sp["side"])] if int(sp["side"]) < (plan["back"] as Array).size() else s["pos"],
+			"members": sp.get("members", [])})
 	banners = []
 	for si in colours.size():
 		var bn: Node3D = wv.make_banner(colours[si], int(emblems[si]) if si < emblems.size() else 0, 11.0, Vector2(5.4, 3.6))
@@ -111,6 +124,7 @@ func build(battle_log: Dictionary, plan: Dictionary, colours: Array, lin: Array,
 
 
 func clear() -> void:
+	_fig_of = []
 	for g in groups.values():
 		(g["mi"] as Node).queue_free()
 	groups.clear()
@@ -189,16 +203,28 @@ func snap(state: Dictionary, out_sides: Array) -> void:
 		f["motions"] = []
 		var fid: int = f["fid"]
 		if fid >= 0:
-			var fs: Dictionary = state.fighters[fid]
-			if not fs.alive:
-				f["hold"] = "fallen"
-			elif fs.fled or fs.lost:
-				f["hold"] = "gone"
-			else:
-				f["hold"] = "stand"
+			f["hold"] = hold_of(f["members"], state)
 		else:
 			f["hold"] = "gone" if bool(out_sides[int(f["side"])]) else "stand"
 	_dirty = true
+
+
+## A figure's hold for its fighters `members` at `state`: standing while any of them stands; else gone while
+## any lives (fled, or lost with its army); else fallen.
+static func hold_of(members: Array, state: Dictionary) -> String:
+	var lives := false
+	for fid in members:
+		var fs: Dictionary = state.fighters[int(fid)]
+		if fs.alive and not fs.fled and not fs.lost:
+			return "stand"
+		if fs.alive:
+			lives = true
+	return "gone" if lives else "fallen"
+
+
+## The fighters a figure stands for (one, or a file's).
+func members_of(i: int) -> Array:
+	return figs[i]["members"] if i >= 0 and i < figs.size() else []
 
 
 func set_hold(i: int, hold: String) -> void:
@@ -478,9 +504,9 @@ func _ground(p: Vector2, fallback: float) -> float:
 
 # --- reading -------------------------------------------------------------------------------------------
 
-## The figure index of fighter `fid` (fighters come first, so it is the id itself).
+## The figure of fighter `fid` (its own, or its file's), or -1.
 func index_of(fid: int) -> int:
-	return fid if fid >= 0 and fid < n_fighters else -1
+	return int(_fig_of[fid]) if fid >= 0 and fid < _fig_of.size() and _fig_of[fid] != null else -1
 
 
 ## Figure `i`'s feet and head as last synced, world (the overlay draws every frame from these), or [] when it
