@@ -54,6 +54,7 @@ const Models := preload("res://world3d/models.gd")
 const Muster := preload("res://world3d/muster.gd")
 const Choreo := preload("res://world3d/choreo.gd")
 const Stands := preload("res://world3d/stands.gd")
+const Trays := preload("res://world3d/trays.gd")
 
 const SPAN_NEAR := 70.0
 const PITCH_FAR := 60.0
@@ -82,6 +83,7 @@ var map: Control = null ## the MapScreen this board serves
 var wv: Node3D ## world_view.gd
 var armies: Node3D ## armies.gd
 var stands: Node3D ## stands.gd (#125): the far-zoom army stands
+var trays: Node3D ## trays.gd (#125): the forest armies' movement trays
 var overlay: Control ## board_overlay.gd
 var prepared := false
 var cover_check: Callable = Callable() ## true while something covers the board (it then stops rendering)
@@ -204,6 +206,9 @@ func _build_world() -> void:
 	stands = Stands.new()
 	stands.wv = wv
 	wv.add_child(stands)
+	trays = Trays.new()
+	trays.wv = wv
+	wv.add_child(trays)
 	overlay = BoardOverlay.new()
 	overlay.board = self
 	add_child(overlay)
@@ -756,6 +761,8 @@ func _camera(delta: float) -> void:
 	armies.set_blend(stands.step(delta, Armies.Kit.FIG * armies.fig_scale * px_per_unit, px_per_unit, armies))
 	if overlay != null and absf(stands.k - was_k) > 0.0001:
 		overlay.refresh() ## the count plates ride the stands
+	## #125: in the woods every block stands on a tray in its owner's colour (trays.gd)
+	trays.step(armies)
 	## the model woods and rocks only at the near zoom, on the upper quality rungs (hysteresis): from the
 	## default zoom they put two million triangles on screen for little you can see (measured)
 	if wv.prop_models and (z < 0.76 or wv.quality >= 2):

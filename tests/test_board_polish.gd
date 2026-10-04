@@ -240,3 +240,110 @@ func test_a_transformed_faction_wears_its_variants_in_a_3d_battle() -> void:
 	var crown_si := 0 if String(wings.log.sides[0].faction) == "kingdom" else 1
 	assert_eq(stage.transformation_of(crown_si), SUNSPEARS, "a log alone: the people it records name the transformation")
 	stage.free()
+
+
+# --- the forest trays -------------------------------------------------------------------------------
+
+const Trays := preload("res://world3d/trays.gd")
+const THORN := ["beasts_boar_hide", "beasts_raiding", "beasts_oath_grove", "beasts_thorn_wild"]
+
+
+## The Thorn Wild's Briarwardens and Thornthrowers in Greenglade, the Crown's blocks in Thornvale (both
+## forest) and in Rivermarch (plains), at the default zoom over Greenglade.
+func _forest_board() -> Board3D:
+	var st := PB.with_nodes(PB.game(), "beasts", THORN)
+	assert_eq(AscensionRules.transformation(st, "beasts"), "beasts_thorn_wild", "the Clans have become the Thorn Wild")
+	PB.army(st, "beasts", "beasts-12", "greenglade", ["briarwardens", "briarwardens", "briarwardens", "fangthrowers", "fangthrowers", "fangthrowers", "warchief"])
+	PB.army(st, "kingdom", "kingdom-11", "thornvale", ["spearmen", "spearmen", "spearmen", "knights", "knights"])
+	PB.army(st, "kingdom", "kingdom-13", "rivermarch", ["spearmen", "spearmen"])
+	var b := _board_for(st)
+	b.zoom = 1.0
+	b.goal = b.rig_for(b.wv.terrain.centre_of("greenglade"), b.zoom)
+	b.wv.rig = b.goal.duplicate()
+	_run_camera(b, 0.5)
+	return b
+
+
+## Whether figure `f` (its slot: half its spacing either way) stands inside `tray`.
+func _on_tray(b: Board3D, f: Dictionary, tray: Dictionary) -> bool:
+	var sp: Vector2 = b.armies._spacing(String(f["type"])) * 0.5
+	var yaw: float = tray["yaw"]
+	var u := Vector2(cos(yaw), -sin(yaw))
+	var v := Vector2(sin(yaw), cos(yaw))
+	var d: Vector2 = (f["pos"] as Vector2) - (tray["centre"] as Vector2)
+	var half: Vector2 = (tray["size"] as Vector2) * 0.5
+	return absf(d.dot(u)) + sp.x <= half.x + 0.001 and absf(d.dot(v)) + sp.y <= half.y + 0.001
+
+
+## Whether two trays of one formation (one frame) overlap.
+func _overlap(t1: Dictionary, t2: Dictionary) -> bool:
+	var yaw: float = t1["yaw"]
+	var u := Vector2(cos(yaw), -sin(yaw))
+	var v := Vector2(sin(yaw), cos(yaw))
+	var d: Vector2 = (t2["centre"] as Vector2) - (t1["centre"] as Vector2)
+	var reach: Vector2 = ((t1["size"] as Vector2) + (t2["size"] as Vector2)) * 0.5
+	return absf(d.dot(u)) < reach.x - 0.001 and absf(d.dot(v)) < reach.y - 0.001
+
+
+func test_every_army_in_a_forest_stands_on_trays_in_its_owners_colour() -> void:
+	var b := _forest_board()
+	var st: GameState = b.shown
+	assert_eq(b.stands.k, 0.0, "the default zoom shows the figures")
+	assert_true(b.trays.visible, "the trays draw")
+	for a in st.armies:
+		var forest: bool = st.find_province(a.location).terrain == "forest"
+		assert_eq(b.trays.trays.has(a.id), forest, "%s in %s: %s" % [a.id, a.location, "on trays" if forest else "no trays off the woods"])
+		if not forest:
+			continue
+		var e: Dictionary = b.armies.armies[a.id]
+		var trays: Array = b.trays.trays[a.id]
+		## a tray for each block (a unit type's figures) and one for the command group at the back
+		var types := {}
+		var command := 0
+		for f in e["figs"]:
+			if String(f["role"]) == "unit":
+				types[f["type"]] = true
+			else:
+				command += 1
+		assert_eq(trays.size(), types.size() + (1 if command > 0 else 0), "%s: a tray per block and one for its command" % a.id)
+		for t in trays:
+			assert_eq(t["colour"], e["colour"], "%s's trays wear its owner's colour" % a.id)
+			assert_eq(t["ruler"], bool(e["ruler"]), "a ruler's army's trays carry the gilt ring")
+		## every figure, its whole slot, stands on one of its army's trays
+		for f in e["figs"]:
+			var on := false
+			for t in trays:
+				on = on or _on_tray(b, f, t)
+			assert_true(on, "%s's %s stands on a tray" % [a.id, f["type"]])
+		## and its trays stand apart, a tray to a block
+		for i in trays.size():
+			for j in range(i + 1, trays.size()):
+				assert_false(_overlap(trays[i], trays[j]), "%s's trays %d and %d stand apart" % [a.id, i, j])
+	assert_eq(b.trays.tray_count(), b.trays.trays["beasts-12"].size() + b.trays.trays["kingdom-11"].size(), "drawn: one mesh holds every tray")
+	assert_true(preload("res://world3d/board_overlay.gd").LEGEND.contains("stands on a tray in its owner's colour"), "the board's legend explains the trays")
+	_free_board(b)
+
+
+func test_the_trays_step_aside_for_the_stands_and_the_playback() -> void:
+	var b := _forest_board()
+	var drawn: int = b.trays.tray_count()
+	assert_true(drawn > 0, "trays under the forest armies")
+	## far out the stands take over: no trays under them
+	b.fit_whole(true)
+	b.wv.rig = b.goal.duplicate()
+	_run_camera(b, 1.0)
+	assert_eq(b.stands.k, 1.0, "the stands are full")
+	assert_false(b.trays.visible, "no trays under the stands")
+	## close in again: back
+	b.goal = b.rig_for(b.wv.terrain.centre_of("greenglade"), 1.0)
+	b.wv.rig = b.goal.duplicate()
+	_run_camera(b, 1.0)
+	assert_true(b.trays.visible and b.trays.tray_count() == drawn, "close in, the trays are back")
+	## while a turn plays the figures march off their places: the trays wait for them to settle
+	b.armies._play = {"probe": true}
+	_run_camera(b, 0.1)
+	assert_false(b.trays.visible, "no trays while the turn plays")
+	b.armies._play = {}
+	_run_camera(b, 0.1)
+	assert_true(b.trays.visible, "settled, the trays are back")
+	_free_board(b)
