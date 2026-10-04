@@ -388,7 +388,9 @@ func begin_turn() -> String:
 ## error (#49): a record, starting state or turn that can't be read gives state null and the reason;
 ## an order that can't be read is skipped and reported ("Turn 3: Order 2 for 'kingdom' should be ..."),
 ## so errors next to a state mean the replay may differ from the game that was recorded.
-static func replay(game_record, battle_resolver: BattleResolver = null) -> Dictionary:
+## M3-1: `up_to_turn` (1-based, as players count turns) stops after resolving that turn, so "state" is
+## the state after it and "events" are its events (BattleLog.regenerate); 0 replays every turn.
+static func replay(game_record, battle_resolver: BattleResolver = null, up_to_turn := 0) -> Dictionary:
 	var errors := []
 	if not Serial.check(game_record, TYPE_DICTIONARY, errors, "the replay"):
 		return {"state": null, "events": [], "errors": errors}
@@ -402,6 +404,8 @@ static func replay(game_record, battle_resolver: BattleResolver = null) -> Dicti
 		return {"state": null, "events": [], "errors": errors}
 	var events: Array = []
 	for i in history.size():
+		if up_to_turn > 0 and i >= up_to_turn:
+			break
 		var entry: Dictionary = history[i]
 		var orders_data = Serial.expect(entry, "orders", TYPE_DICTIONARY, errors, "turn %d of the replay" % (i + 1), {})
 		if orders_data == null:

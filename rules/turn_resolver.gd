@@ -478,7 +478,8 @@ static func _province_battles(s: GameState, resolver: BattleResolver, rng: Seede
 
 
 ## Runs one battle, destroys the losing armies, records the event and any ruler deaths (M2). Returns
-## the winner's faction id.
+## the winner's faction id. M3-1: when the resolver gives a battle event log (AutoBattleResolver does),
+## the event's numbers carry it as "log", with its id "t<turn>b<index>" and the aftermath event added.
 static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind: String, province_ids: Array, sides: Dictionary, defender: String, events: Array) -> String:
 	var fids: Array = sides.keys()
 	fids.sort()
@@ -588,6 +589,16 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 		"destroyed": destroyed, "why": result.get("why", ""), "report": report}
 	if not rulers_lost.is_empty() or not fallen.is_empty():
 		numbers["rulers_lost"] = rulers_lost.size() + fallen.size()  # M2-2: only in games with rulers
+	var battle_log = result.get("log")
+	if battle_log is Dictionary and not battle_log.is_empty():
+		# M3-1: the battle event log rides beside the report (in memory only: never in the game record).
+		# Its id, turn (as players count turns) and index (resolution order), then the aftermath event.
+		var index := 0
+		for e in events:
+			if e.type == "battle" or e.type == "border_battle":
+				index += 1
+		BattleLog.attach(battle_log, s.current_turn + 1, index, winner, destroyed, String(report.get("aftermath", "")))
+		numbers["log"] = battle_log
 	events.append(_event("border_battle" if kind == "border" else "battle", "battles", province_ids, fids, army_ids, cause,
 		numbers, text, codex))
 	_record_ruler_deaths(s, rulers_in, winner, kind, province_ids, events)

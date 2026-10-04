@@ -1,0 +1,820 @@
+class_name BattleLog
+## The battle event log (M3-1, #56; design/M3_BATTLES.md §2). Pure rules code: no nodes, no scenes.
+##
+## AutoBattleResolver.fight(sides, ctx, rng, record = true) writes the log while it fights, from the same
+## values it uses (see the resolver's _log_* functions); TurnResolver._fight gives it its id, turn and
+## index, adds the "aftermath" event and keeps it in the battle event's numbers.log, beside
+## numbers.report. GameSession keeps only the last resolved turn's events, so logs live in memory with
+## the last turn's report and are never in record() or history(): any older battle's log is rebuilt
+## from the game record and the seed with regenerate().
+##
+## The log is a JSON-safe Dictionary (schema version VERSION, §2.2). 64-bit values (the RNG seed and
+## states) are strings. Fighters and sides are integer ids into the log's own "fighters" and "sides".
+##   {"v", "id": "t<turn>b<index>", "turn", "index", "kind": "province" | "border", "provinces",
+##    "terrain", "fort", "defender", "round_cap", "rng": {"seed", "before", "after"},
+##    "sides": [SIDE], "fighters": [FIGHTER], "events": [EVENT], "truncated"}
+## Events, in the exact order the resolver did things (every one but end, feast and aftermath has "n",
+## its round): round, attack, wound, death, morale, rout, destroyed, round_end, end, feast, aftermath.
+## Within a round: round, every attack, the wounds and deaths, the morale checks, rout or destroyed,
+## round_end. design/M3_BATTLES.md §2.2 lists every field.
+##
+## Functions:
+##   validate(log)            plain-language reasons the log is malformed or inconsistent ([] when fine)
+##   verify_draws(log)        re-draws every recorded roll from rng.before; [] when every roll and the
+##                            final state rng.after match, otherwise plain-language reasons
+##   cross_check(log, report) design/M3_BATTLES.md §2.5's cross-checks between a log and its report
+##   regenerate(record, turn, index) -> {"log", "report", "errors"}: rebuilds a battle from a game record
+##   to_json(log) / from_json(text) -> {"log", "errors"}: exact round trip (numbers come back as ints,
+##                            except the "expected" and "impact" values, which are floats)
+##   final_hp(log)            each fighter's hp after every event
+##   without_logs(events)     a deep copy of turn report events with every numbers.log removed
+## MAX_EVENTS caps a log: past it recording stops and the log gets "truncated": true, while the battle
+## is fought to the end as usual (recording is passive). No measured battle comes near it.
+
+const VERSION := 1
+const MAX_EVENTS := 12000
+const EVENT_TYPES := ["round", "attack", "wound", "death", "morale", "rout", "destroyed", "round_end", "end", "feast", "aftermath"]
+## Events without a round number.
+const UNROUNDED := ["end", "feast", "aftermath"]
+const ROLES := ["unit", "commander", "ruler"]
+const REACH_WORDS := ["front", "second", "back", "skirmish"]
+const MORALE_RESULTS := ["holds", "breaks", "held"]
+const ENDS := ["rout", "destroyed", "mutual", "round_cap"]
+const TIE_BREAKS := ["none", "defender", "roll"]
+## Keys whose values are floats in a log (everything else numeric is an int): from_json restores them.
+const FLOAT_KEYS := ["expected", "impact"]
+## The report's "why" factors that are not measured in the resolver's impact accumulator (so they have no
+## per-round worth in the log): morale and rout factors, the bigger force, luck and the round cap.
+const NON_IMPACT_FACTORS := ["rout", "Fury", "ability_dread", "morale_commander", "morale_Inspire", "morale_ruler",
+	"mandate_iron_discipline", "numbers", "luck", "round_cap"]
+## At most this many reasons from validate() and cross_check(): the first ones say what is wrong.
+const MAX_REASONS := 25
+
+
+# --- building (the resolver and TurnResolver call these) ----------------------------------------------
+
+## Appends `ev` unless the log already holds `cap` events: then recording stops and the log is marked
+## "truncated". Returns true when the event was added.
+static func append(battle_log: Dictionary, ev: Dictionary, cap: int = MAX_EVENTS) -> bool:
+	if battle_log.get("truncated", false):
+		return false
+	if battle_log.events.size() >= cap:
+		battle_log.truncated = true
+		return false
+	battle_log.events.append(ev)
+	return true
+
+
+## TurnResolver's part (§2.3): sets the log's id "t<turn>b<index>", turn (as players count turns) and
+## index (0-based, in resolution order), and adds the aftermath event: the armies destroyed, the fighters
+## still standing on a losing side (destroyed with their armies), every ruler fighter that dies from this
+## battle (it fell, or was lost with its side: a ruler_died event follows for each) and the report's
+## aftermath sentence.
+static func attach(battle_log: Dictionary, turn: int, index: int, winner: String, destroyed_armies: Array, text: String) -> void:
+	battle_log.id = "t%db%d" % [turn, index]
+	battle_log.turn = turn
+	battle_log.index = index
+	var winner_side := -1
+	for s in battle_log.sides:
+		if s.faction == winner:
+			winner_side = int(s.index)
+	var hp := final_hp(battle_log)
+	var lost := []
+	var fallen := []
+	for f in battle_log.fighters:
+		var on_loser: bool = int(f.side) != winner_side
+		if on_loser and hp[int(f.id)] > 0:
+			lost.append(int(f.id))
+		if f.role == "ruler" and (on_loser or hp[int(f.id)] == 0):
+			fallen.append(int(f.id))
+	append(battle_log, {"t": "aftermath", "destroyed_armies": destroyed_armies.duplicate(), "lost": lost, "fallen_rulers": fallen,
+		"text": text})
+
+
+# --- reading ------------------------------------------------------------------------------------------
+
+## Each fighter's hp after every event of the log (wounds, then Feast of Victory's healing), by fighter id.
+static func final_hp(battle_log: Dictionary) -> Array:
+	var hp := []
+	for f in battle_log.fighters:
+		hp.append(int(f.hp))
+	for e in battle_log.events:
+		if e.t == "wound":
+			hp[int(e.f)] = int(e.to)
+		elif e.t == "feast":
+			for h in e.healed:
+				hp[int(h[0])] = int(h[2])
+	return hp
+
+
+## Index of the first event of type `t`, or -1.
+static func find_event(battle_log: Dictionary, t: String) -> int:
+	var events: Array = battle_log.events
+	for i in events.size():
+		if events[i].t == t:
+			return i
+	return -1
+
+
+## A deep copy of turn report `events` with the battle logs taken out of every numbers dictionary, for
+## anything that stores a turn report (logs are regenerated, never saved: §2.4).
+static func without_logs(events: Array) -> Array:
+	var out := []
+	for e in events:
+		var copy = e.duplicate(true) if e is Dictionary else e
+		if copy is Dictionary and copy.get("numbers") is Dictionary:
+			copy.numbers.erase("log")
+		out.append(copy)
+	return out
+
+
+# --- JSON ---------------------------------------------------------------------------------------------
+
+## The log as compact JSON, keys in schema order. The same log always gives the same bytes.
+static func to_json(battle_log: Dictionary) -> String:
+	return JSON.stringify(battle_log, "", false)
+
+
+## Reads a log written by to_json: {"log": Dictionary ({} when unreadable), "errors": plain reasons}.
+## Numbers come back exactly as the resolver wrote them (ints, and floats for "expected" and "impact"),
+## so from_json(to_json(log)).log == log.
+static func from_json(text: String) -> Dictionary:
+	var json := JSON.new()
+	var parsed = json.data if json.parse(text) == OK else null  # parse() reports no engine error on bad text
+	if not (parsed is Dictionary):
+		return {"log": {}, "errors": ["This is not a battle log: it isn't readable JSON with named values at the top."]}
+	var out = normalize(parsed)
+	return {"log": out, "errors": validate(out)}
+
+
+## `data` (parsed JSON) with whole-number floats turned back into ints, except the values under
+## FLOAT_KEYS, which are all floats in a log.
+static func normalize(data, floats := false):
+	match typeof(data):
+		TYPE_DICTIONARY:
+			var out := {}
+			for k in data:
+				out[k] = normalize(data[k], floats or FLOAT_KEYS.has(String(k)))
+			return out
+		TYPE_ARRAY:
+			var out := []
+			for v in data:
+				out.append(normalize(v, floats))
+			return out
+		TYPE_FLOAT:
+			if floats:
+				return data
+			return int(data) if data == floorf(data) and absf(data) < 9.0e15 else data
+		TYPE_INT:
+			return float(data) if floats else data
+	return data
+
+
+# --- validate -----------------------------------------------------------------------------------------
+
+## Plain-language reasons `battle_log` is not a well-formed, self-consistent version-1 log, [] when it
+## is: the header's fields and types, every fighter and side reference, each event's fields, rounds in
+## order, and each attack's arithmetic (its attack and defense values are their parts' sums, its chance
+## and damage follow the battle rules, "hit" is roll <= chance, "expected" is chance x damage).
+static func validate(battle_log) -> Array:
+	var r := []
+	if not (battle_log is Dictionary):
+		return ["This is not a battle log: it should be a group of named values."]
+	if int(_num(battle_log.get("v"), -1)) != VERSION:
+		return ["This battle log has version %s; this game reads version %d." % [str(battle_log.get("v")), VERSION]]
+	for key in ["id", "kind", "terrain", "defender"]:
+		if not (battle_log.get(key) is String):
+			_add(r, "The battle log's '%s' should be text." % key)
+	for key in ["turn", "index", "round_cap"]:
+		if not _is_int(battle_log.get(key)):
+			_add(r, "The battle log's '%s' should be a whole number." % key)
+	for key in ["fort", "truncated"]:
+		if not (battle_log.get(key) is bool):
+			_add(r, "The battle log's '%s' should be true or false." % key)
+	for key in ["provinces", "sides", "fighters", "events"]:
+		if not (battle_log.get(key) is Array):
+			_add(r, "The battle log's '%s' should be a list." % key)
+	if not r.is_empty():
+		return r
+	if not ["province", "border"].has(battle_log.kind):
+		_add(r, "The battle log's kind is '%s'; it should be province or border." % battle_log.kind)
+	var rng = battle_log.get("rng")
+	if not (rng is Dictionary):
+		_add(r, "The battle log has no random number state.")
+	else:
+		for key in ["seed", "before", "after"]:
+			if not (rng.get(key) is String and String(rng.get(key)).is_valid_int()):
+				_add(r, "The battle log's random number '%s' should be a whole number written as text." % key)
+	var sides: Array = battle_log.sides
+	var fighters: Array = battle_log.fighters
+	var ns := sides.size()
+	var nf := fighters.size()
+	if ns < 2:
+		_add(r, "A battle needs at least two sides; this log has %d." % ns)
+	for i in nf:
+		var f = fighters[i]
+		if not (f is Dictionary):
+			_add(r, "Fighter %d should be a group of named values." % i)
+			continue
+		if int(_num(f.get("id"), -1)) != i:
+			_add(r, "Fighter %d has id %s; each fighter's id should be its place in the list." % [i, str(f.get("id"))])
+		if not _in_range(f.get("side"), ns):
+			_add(r, "Fighter %d is on side %s, but the log has %d sides." % [i, str(f.get("side")), ns])
+		if not ROLES.has(f.get("role")):
+			_add(r, "Fighter %d has role '%s'; it should be unit, commander or ruler." % [i, str(f.get("role"))])
+		if not _in_range(f.get("tier"), 3):
+			_add(r, "Fighter %d stands in rank %s; ranks are 0 (front), 1 (second) and 2 (back)." % [i, str(f.get("tier"))])
+		for key in ["hp", "max_hp", "attack", "defense", "morale", "cost"]:
+			if not _is_int(f.get(key)):
+				_add(r, "Fighter %d's '%s' should be a whole number." % [i, key])
+		for key in ["type", "name", "trait", "army"]:
+			if not (f.get(key) is String):
+				_add(r, "Fighter %d's '%s' should be text." % [i, key])
+	for i in ns:
+		var s = sides[i]
+		if not (s is Dictionary):
+			_add(r, "Side %d should be a group of named values." % i)
+			continue
+		if int(_num(s.get("index"), -1)) != i:
+			_add(r, "Side %d has index %s; each side's index should be its place in the list." % [i, str(s.get("index"))])
+		if not (s.get("fighters") is Array):
+			_add(r, "Side %d's fighters should be a list." % i)
+			continue
+		for fid in s.fighters:
+			if not _in_range(fid, nf):
+				_add(r, "Side %d lists fighter %s, but the log has %d fighters." % [i, str(fid), nf])
+			elif int(_num(fighters[int(fid)].get("side"), -1)) != i:
+				_add(r, "Side %d lists fighter %d, but that fighter is on side %s." % [i, int(fid), str(fighters[int(fid)].get("side"))])
+		for key in ["hp_start", "base_morale", "base_hit", "frenzy", "dread"]:
+			if not _is_int(s.get(key)):
+				_add(r, "Side %d's '%s' should be a whole number." % [i, key])
+	if not r.is_empty():
+		return r
+	var round_no := 0
+	var cap := int(battle_log.round_cap)
+	var events: Array = battle_log.events
+	for i in events.size():
+		var e = events[i]
+		if not (e is Dictionary):
+			_add(r, "Event %d should be a group of named values." % i)
+			continue
+		var t = e.get("t")
+		if not EVENT_TYPES.has(t):
+			_add(r, "Event %d has type '%s', which a battle log doesn't have." % [i, str(t)])
+			continue
+		var what := "Event %d (%s)" % [i, t]
+		if not UNROUNDED.has(t):
+			if not _is_int(e.get("n")) or int(e.n) < 1 or int(e.n) > cap:
+				_add(r, "%s should have a round number from 1 to %d." % [what, cap])
+				continue
+			what = "Event %d (%s in round %d)" % [i, t, int(e.n)]
+			if t == "round":
+				if int(e.n) != round_no + 1:
+					_add(r, "%s comes after round %d; rounds should go 1, 2, 3 and so on." % [what, round_no])
+				round_no = int(e.n)
+			elif int(e.n) != round_no:
+				_add(r, "%s belongs to round %d, but it comes during round %d." % [what, int(e.n), round_no])
+		match t:
+			"round":
+				for entry in e.get("reach", []):
+					if not (entry is Dictionary) or not _in_range(entry.get("side"), ns) or not (entry.get("tiers") is Array) \
+							or not (entry.get("skirmish_tiers") is Array):
+						_add(r, "%s has a reach entry without a side and its tiers." % what)
+			"attack":
+				_validate_attack(r, what, e, nf)
+			"wound":
+				if not _in_range(e.get("f"), nf):
+					_add(r, "%s names fighter %s, but the log has %d fighters." % [what, str(e.get("f")), nf])
+				elif not _is_int(e.get("from")) or not _is_int(e.get("to")) or int(e.to) < 0 or int(e.to) >= int(e.from):
+					_add(r, "%s should take hit points from a number down to a smaller one, not below 0." % what)
+				if not (e.get("by") is Array) or e.by.is_empty():
+					_add(r, "%s should name the fighters whose hits wounded it." % what)
+			"death":
+				if not _in_range(e.get("f"), nf):
+					_add(r, "%s names fighter %s, but the log has %d fighters." % [what, str(e.get("f")), nf])
+				elif i == 0 or events[i - 1].get("t") != "wound" or int(_num(events[i - 1].get("f"), -1)) != int(e.f) \
+						or int(_num(events[i - 1].get("to"), -1)) != 0:
+					_add(r, "%s should come right after the wound that took fighter %d to 0 hit points." % [what, int(e.f)])
+			"morale":
+				if not _in_range(e.get("side"), ns):
+					_add(r, "%s names side %s, but the log has %d sides." % [what, str(e.get("side")), ns])
+				elif not MORALE_RESULTS.has(e.get("result")):
+					_add(r, "%s has result '%s'; it should be holds, breaks or held." % [what, str(e.get("result"))])
+				elif not (e.get("parts") is Dictionary) or not _is_int(e.get("morale")) or not _is_int(e.get("base")):
+					_add(r, "%s should have its morale, base and parts." % what)
+				else:
+					var total := int(e.base)
+					for p in e.parts:
+						total += int(e.parts[p])
+					if total != int(e.morale):
+						_add(r, "%s has morale %d, but its base and parts add up to %d." % [what, int(e.morale), total])
+					if int(_num(e.get("break_pct"), -1)) != AutoBattleResolver.break_pct(int(e.morale)):
+						_add(r, "%s breaks at %s%%, but morale %d breaks at %d%%." % [what, str(e.get("break_pct")), int(e.morale),
+							AutoBattleResolver.break_pct(int(e.morale))])
+					var breaks: bool = int(_num(e.get("lost_pct"), 0)) >= int(_num(e.get("break_pct"), 0))
+					if breaks != (e.result != "holds"):
+						_add(r, "%s says the side %s, but it lost %s%% and breaks at %s%%." % [what, e.result, str(e.get("lost_pct")),
+							str(e.get("break_pct"))])
+			"rout", "destroyed":
+				if not _in_range(e.get("side"), ns):
+					_add(r, "%s names side %s, but the log has %d sides." % [what, str(e.get("side")), ns])
+				if t == "rout":
+					for fid in e.get("fled", []):
+						if not _in_range(fid, nf):
+							_add(r, "%s lists fighter %s as fled, but the log has %d fighters." % [what, str(fid), nf])
+			"round_end":
+				for key in ["hp", "attacks", "hits", "dealt", "expected", "impact"]:
+					if not (e.get(key) is Array) or e.get(key).size() != ns:
+						_add(r, "%s should give '%s' for each of the %d sides." % [what, key, ns])
+			"end":
+				if not _in_range(e.get("winner"), ns):
+					_add(r, "%s names side %s as the winner, but the log has %d sides." % [what, str(e.get("winner")), ns])
+				if not ENDS.has(e.get("how")):
+					_add(r, "%s ended by '%s'; it should be rout, destroyed, mutual or round_cap." % [what, str(e.get("how"))])
+				if not TIE_BREAKS.has(e.get("tie_break")):
+					_add(r, "%s has tie break '%s'; it should be none, defender or roll." % [what, str(e.get("tie_break"))])
+				elif e.tie_break == "roll" and (not _is_int(e.get("tied")) or int(e.tied) < 2 or not _in_range(e.get("roll"), int(e.tied))):
+					_add(r, "%s was decided by a roll, so it needs the number of tied sides and a roll below it." % what)
+				if int(_num(e.get("rounds"), -1)) != round_no:
+					_add(r, "%s says %s rounds were fought, but the log has %d." % [what, str(e.get("rounds")), round_no])
+			"feast":
+				if not _in_range(e.get("side"), ns):
+					_add(r, "%s names side %s, but the log has %d sides." % [what, str(e.get("side")), ns])
+				for h in e.get("healed", []):
+					if not (h is Array) or h.size() != 3 or not _in_range(h[0], nf) or int(_num(h[2], 0)) <= int(_num(h[1], 0)):
+						_add(r, "%s should list [fighter, hit points before, hit points after] for each fighter it healed." % what)
+			"aftermath":
+				for key in ["lost", "fallen_rulers"]:
+					for fid in e.get(key, []):
+						if not _in_range(fid, nf):
+							_add(r, "%s lists fighter %s, but the log has %d fighters." % [what, str(fid), nf])
+				if not (e.get("text") is String):
+					_add(r, "%s should carry the report's aftermath sentence." % what)
+	if not battle_log.truncated and find_event(battle_log, "end") < 0:
+		_add(r, "The battle log has no end event, but it isn't marked as cut short.")
+	return r
+
+
+static func _validate_attack(r: Array, what: String, e: Dictionary, nf: int) -> void:
+	for key in ["by", "to"]:
+		if not _in_range(e.get(key), nf):
+			_add(r, "%s names fighter %s as '%s', but the log has %d fighters." % [what, str(e.get(key)), key, nf])
+			return
+	for key in ["pool", "pick", "chance", "roll", "damage", "base_hit"]:
+		if not _is_int(e.get(key)):
+			_add(r, "%s should have a whole number for '%s'." % [what, key])
+			return
+	if not (e.get("hit") is bool) or not (e.get("bonus") is Dictionary) or not (e.get("attack") is Dictionary) \
+			or not (e.get("defense") is Dictionary) or not REACH_WORDS.has(e.get("reach")) or not (e.get("screened") is bool):
+		_add(r, "%s should have hit, bonus, attack, defense, reach and screened." % what)
+		return
+	if int(e.pool) < 1 or int(e.pick) < 0 or int(e.pick) >= int(e.pool):
+		_add(r, "%s picked target %d of %d; it should be from 0 to %d." % [what, int(e.pick), int(e.pool), int(e.pool) - 1])
+	if int(e.roll) < 1 or int(e.roll) > 100:
+		_add(r, "%s rolled %d; a hit roll is from 1 to 100." % [what, int(e.roll)])
+	if bool(e.hit) != (int(e.roll) <= int(e.chance)):
+		_add(r, "%s rolled %d against a %d%% chance, so it should be a %s." % [what, int(e.roll), int(e.chance),
+			"hit" if int(e.roll) <= int(e.chance) else "miss"])
+	var values := {}
+	for key in ["attack", "defense"]:
+		var stat: Dictionary = e[key]
+		if not _is_int(stat.get("value")) or not _is_int(stat.get("base")) or not (stat.get("parts") is Dictionary):
+			_add(r, "%s should give its %s value, base and parts." % [what, key])
+			return
+		var total := int(stat.base)
+		for p in stat.parts:
+			total += int(stat.parts[p])
+		if total != int(stat.value):
+			_add(r, "%s has %s %d, but its base and parts add up to %d." % [what, key, int(stat.value), total])
+		values[key] = int(stat.value)
+	var chance := AutoBattleResolver.hit_chance(values.attack, values.defense, int(e.base_hit))
+	if chance != int(e.chance):
+		_add(r, "%s has a %d%% chance, but attack %d against defense %d from base %d gives %d%%." % [what, int(e.chance),
+			values.attack, values.defense, int(e.base_hit), chance])
+	var bonus := 0
+	for p in e.bonus:
+		bonus += int(e.bonus[p])
+	var dmg := AutoBattleResolver.damage(values.attack, values.defense) + bonus
+	if dmg != int(e.damage):
+		_add(r, "%s does %d damage, but attack %d against defense %d (bonus %d) gives %d." % [what, int(e.damage), values.attack,
+			values.defense, bonus, dmg])
+	if absf(float(_num(e.get("expected"), -100.0)) - int(e.chance) / 100.0 * int(e.damage)) > 0.051:
+		_add(r, "%s expects %s damage, but a %d%% chance of %d is %.2f." % [what, str(e.get("expected")), int(e.chance), int(e.damage),
+			int(e.chance) / 100.0 * int(e.damage)])
+
+
+# --- verify_draws -------------------------------------------------------------------------------------
+
+## Replays the log's rolls from the seed (§2.1): starting from rng.before, re-draws every target roll and
+## hit roll and the tie-break roll exactly as the resolver drew them, and checks each against the log and
+## the final state against rng.after. [] when everything matches, otherwise plain-language reasons (the
+## first wrong roll stops the check: every roll after it would be drawn from a different state).
+static func verify_draws(battle_log) -> Array:
+	var problems := validate(battle_log)
+	if not problems.is_empty():
+		return problems
+	if battle_log.truncated:
+		return ["This battle log was cut short at %d events, so its rolls can't all be checked." % battle_log.events.size()]
+	var rng := SeededRNG.new(Serial.to_int(battle_log.rng.seed))
+	rng.set_state(Serial.to_int(battle_log.rng.before))
+	var events: Array = battle_log.events
+	for i in events.size():
+		var e: Dictionary = events[i]
+		if e.t == "attack":
+			var pick := rng.randi_range(0, int(e.pool) - 1)
+			if pick != int(e.pick):
+				return ["Round %d, event %d: fighter %d's target roll comes out as %d of %d from the saved state, but the log says %d. The rolls after it can't be checked." % [
+					int(e.n), i, int(e.by), pick, int(e.pool), int(e.pick)]]
+			var roll := rng.randi_range(1, 100)
+			if roll != int(e.roll):
+				return ["Round %d, event %d: fighter %d's hit roll comes out as %d from the saved state, but the log says %d. The rolls after it can't be checked." % [
+					int(e.n), i, int(e.by), roll, int(e.roll)]]
+		elif e.t == "end" and e.tie_break == "roll":
+			var r := rng.randi_range(0, int(e.tied) - 1)
+			if r != int(e.roll):
+				return ["The tie-break roll comes out as %d of %d from the saved state, but the log says %d." % [r, int(e.tied), int(e.roll)]]
+	var after := Serial.int64_to_str(rng.get_state())
+	if after != String(battle_log.rng.after):
+		return ["After re-drawing every roll, the random numbers are at state %s, but the log says the battle ended at %s." % [
+			after, battle_log.rng.after]]
+	return []
+
+
+# --- regenerate ---------------------------------------------------------------------------------------
+
+## Rebuilds battle `index` (0-based, in resolution order) of `turn` (1-based, as players count turns)
+## from a game record (GameSession.record(), also after a JSON round trip): replays the record to the
+## start of that turn and resolves it with its recorded orders and seed (GameSession.replay's
+## up_to_turn). Returns {"log", "report", "errors"}; "log" and "report" are {} when there is no such
+## battle, and "errors" says why in plain words ("This game record has no turn 9.").
+static func regenerate(game_record, turn: int, index: int) -> Dictionary:
+	var out := {"log": {}, "report": {}, "errors": []}
+	if not (game_record is Dictionary) or not (game_record.get("history") is Array):
+		out.errors.append("This is not a game record: it has no list of turns.")
+		return out
+	var turns: int = game_record.history.size()
+	if turn < 1 or turn > turns:
+		out.errors.append("This game record has no turn %d. It has %d %s." % [turn, turns, "turn" if turns == 1 else "turns"])
+		return out
+	var replayed := GameSession.replay(game_record, null, turn)
+	out.errors.append_array(replayed.errors)
+	if replayed.state == null:
+		return out
+	var battles: Array = replayed.events.filter(func(e): return GameSession.BATTLE_TYPES.has(e.get("type", "")))
+	if index < 0 or index >= battles.size():
+		out.errors.append("Turn %d had %d %s, so there is no battle %d." % [turn, battles.size(),
+			"battle" if battles.size() == 1 else "battles", index + 1])
+		return out
+	var numbers: Dictionary = battles[index].numbers
+	out.report = numbers.get("report", {})
+	out.log = numbers.get("log", {})
+	if out.log.is_empty():
+		out.errors.append("Battle %d of turn %d has no log." % [index + 1, turn])
+	return out
+
+
+# --- cross_check --------------------------------------------------------------------------------------
+
+## design/M3_BATTLES.md §2.5's cross-checks between `battle_log` and its `report` (numbers.report; also
+## after a JSON round trip of either). [] when they agree, otherwise plain-language reasons:
+##   - the final state (BattleTimeline) equals the report: each side's hp_end, its lost fighters' names
+##     in order, routed / destroyed / out_round, rounds_fought, the winner and how it ended; each round's
+##     hp, attacks, hits and dealt (the round line's "dealt N damage (H of A hits)"); the totals, hit
+##     rates and hit chance ranges; the morale log; the ruler's fell / fell_round / hp_end / damage; the
+##     Feast's healing
+##   - every wound is the sum of that round's hits on the fighter (capped at its hp), by those attackers
+##   - the rounds' impact plus the end's impact equals each side's impact in the report's all_factors,
+##     within 0.1
+##   - the derived statuses (BattleTimeline.statuses) agree with every attack's parts and "screened"
+##   - every attack's target is a standing enemy in a tier its attacker could reach that round, and the
+##     pool is the number of such enemies
+static func cross_check(battle_log: Dictionary, report: Dictionary) -> Array:
+	var r := validate(battle_log)
+	if not r.is_empty():
+		return r
+	if battle_log.truncated:
+		return ["This battle log was cut short, so it can't be checked against its report."]
+	var sides: Array = battle_log.sides
+	var fighters: Array = battle_log.fighters
+	var rep_sides: Array = report.get("sides", [])
+	if rep_sides.size() != sides.size():
+		return ["The log has %d sides but the report has %d." % [sides.size(), rep_sides.size()]]
+	var events: Array = battle_log.events
+	var tl := BattleTimeline.build(battle_log)
+	var frenzy_key: String = AutoBattleResolver.MANDATE_PREFIX + RulerRules.BLOOD_FRENZY
+
+	# One pass over the events: per-attack checks on the running state, and the round's tallies.
+	var state := BattleTimeline.initial_state(battle_log)
+	var reach := {}  # side index -> {"tiers", "skirmish_tiers"} for the current round
+	var pending := {}  # fighter id -> hits this round: {"dmg", "by": []}
+	var tally := []  # per side this round: [attacks, hits, dealt]
+	var totals := []  # per side: {"attacks", "hits", "dealt", "chance_sum", "chance_min", "chance_max", "ruler_dealt"}
+	var deaths := []  # per side: names in death order
+	var out_round := []
+	var morale := []  # per side: morale events
+	var impact := []  # per side: {key: summed worth}
+	for i in sides.size():
+		totals.append({"attacks": 0, "hits": 0, "dealt": 0, "chance_sum": 0, "chance_min": 100, "chance_max": 0, "ruler_dealt": 0})
+		deaths.append([])
+		out_round.append(0)
+		morale.append([])
+		impact.append({})
+	var end_state := {}
+	var end_event := {}
+	var feast_healed := -1
+	for i in events.size():
+		var e: Dictionary = events[i]
+		match e.t:
+			"round":
+				reach = {}
+				for entry in e.reach:
+					reach[int(entry.side)] = entry
+				pending = {}
+				tally = []
+				for s in sides:
+					tally.append([0, 0, 0])
+			"attack":
+				_check_attack(r, i, e, battle_log, state, reach, tl, frenzy_key)
+				var a: Dictionary = fighters[int(e.by)]
+				var si := int(a.side)
+				tally[si][0] += 1
+				var tot: Dictionary = totals[si]
+				tot.attacks += 1
+				tot.chance_sum += int(e.chance)
+				tot.chance_min = mini(tot.chance_min, int(e.chance))
+				tot.chance_max = maxi(tot.chance_max, int(e.chance))
+				if e.hit:
+					tally[si][1] += 1
+					tally[si][2] += int(e.damage)
+					tot.hits += 1
+					tot.dealt += int(e.damage)
+					if a.role == "ruler":
+						tot.ruler_dealt += int(e.damage)
+					var p: Dictionary = pending.get(int(e.to), {"dmg": 0, "by": []})
+					p.dmg += int(e.damage)
+					p.by.append(int(e.by))
+					pending[int(e.to)] = p
+			"wound":
+				var p: Dictionary = pending.get(int(e.f), {"dmg": 0, "by": []})
+				var want := maxi(0, int(e.from) - int(p.dmg))
+				if int(e.from) != int(state.fighters[int(e.f)].hp) or int(e.to) != want:
+					_add(r, "Round %d: fighter %d's wound goes from %d to %d hp, but it had %d hp and took %d damage in hits." % [
+						int(e.n), int(e.f), int(e.from), int(e.to), int(state.fighters[int(e.f)].hp), int(p.dmg)])
+				if _ints(e.by) != p.by:
+					_add(r, "Round %d: fighter %d's wound names %s as its attackers, but the hits on it came from %s." % [
+						int(e.n), int(e.f), str(_ints(e.by)), str(p.by)])
+				pending.erase(int(e.f))
+			"death":
+				deaths[int(fighters[int(e.f)].side)].append(String(fighters[int(e.f)].name))
+			"morale":
+				morale[int(e.side)].append(e)
+			"rout", "destroyed":
+				out_round[int(e.side)] = int(e.n)
+			"round_end":
+				if not pending.is_empty():
+					_add(r, "Round %d: fighters %s were hit but have no wound." % [int(e.n), str(pending.keys())])
+				var rr: Dictionary = _report_round(report, int(e.n))
+				for si in sides.size():
+					if int(e.attacks[si]) != tally[si][0] or int(e.hits[si]) != tally[si][1] or int(e.dealt[si]) != tally[si][2]:
+						_add(r, "Round %d: side %d's round totals (%d attacks, %d hits, %d dealt) don't match its attacks (%d, %d, %d)." % [
+							int(e.n), si, int(e.attacks[si]), int(e.hits[si]), int(e.dealt[si]), tally[si][0], tally[si][1], tally[si][2]])
+					var s_hp := int(state.sides[si].hp)
+					if int(e.hp[si]) != s_hp:
+						_add(r, "Round %d: side %d ends the round with %d hp in round_end, but its wounds leave %d." % [int(e.n), si, int(e.hp[si]), s_hp])
+					for k in e.impact[si]:
+						impact[si][k] = float(impact[si].get(k, 0.0)) + float(e.impact[si][k])
+					if rr.is_empty():
+						continue
+					var faction := String(sides[si].faction)
+					if int(_num(rr.get("hp", {}).get(faction), -1)) != int(e.hp[si]):
+						_add(r, "Round %d: the report gives %s %s hp after the round, the log %d." % [int(e.n), faction,
+							str(rr.get("hp", {}).get(faction)), int(e.hp[si])])
+					var rdealt = _keyed(rr.get("dealt", {}), si)
+					if rdealt != null:
+						if int(_num(rdealt, -1)) != int(e.dealt[si]):
+							_add(r, "Round %d: the report says %s dealt %s, the log %d." % [int(e.n), faction, str(rdealt), int(e.dealt[si])])
+						var phrase := "%s dealt %d damage (%d of %d hits)" % [sides[si].name, int(e.dealt[si]), int(e.hits[si]), int(e.attacks[si])]
+						if not String(rr.get("line", "")).contains(phrase):
+							_add(r, "Round %d: the report's line doesn't say \"%s\"." % [int(e.n), phrase])
+			"end":
+				end_event = e
+				end_state = tl.state_at(i + 1)
+				for si in sides.size():
+					for k in e.impact[si]:
+						impact[si][k] = float(impact[si].get(k, 0.0)) + float(e.impact[si][k])
+			"feast":
+				feast_healed = 0
+				for h in e.healed:
+					feast_healed += int(h[2]) - int(h[1])
+		BattleTimeline.apply(battle_log, state, i)
+
+	# The end and the report.
+	if end_event.is_empty():
+		return r + ["The battle log has no end event."]
+	if int(end_event.rounds) != int(_num(report.get("rounds_fought"), -1)):
+		_add(r, "The log fought %d rounds, the report %s." % [int(end_event.rounds), str(report.get("rounds_fought"))])
+	if String(sides[int(end_event.winner)].faction) != String(report.get("winner", "")):
+		_add(r, "The log's winner is %s, the report's %s." % [sides[int(end_event.winner)].faction, str(report.get("winner"))])
+	if String(end_event.how) != String(report.get("end", "")):
+		_add(r, "The log's battle ended by %s, the report's by %s." % [end_event.how, str(report.get("end"))])
+	for si in sides.size():
+		var s: Dictionary = sides[si]
+		var sr: Dictionary = rep_sides[si]
+		var name := String(s.faction)
+		if String(sr.get("faction", "")) != name:
+			_add(r, "Side %d is %s in the log but %s in the report." % [si, name, str(sr.get("faction"))])
+			continue
+		var es: Dictionary = end_state.sides[si]
+		var checks := [["hp_start", int(s.hp_start)], ["fighters_start", s.fighters.size()], ["base_morale", int(s.base_morale)],
+			["hp_end", int(es.hp)], ["fighters_lost", deaths[si].size()], ["routed", es.out == "routed"],
+			["destroyed", es.out == "destroyed"], ["out_round", out_round[si]],
+			["attacks", int(totals[si].attacks)], ["hits", int(totals[si].hits)], ["damage_dealt", int(totals[si].dealt)]]
+		var tot: Dictionary = totals[si]
+		if tot.attacks > 0:
+			checks.append(["hit_rate", roundi(100.0 * tot.hits / tot.attacks)])
+			checks.append(["expected_hit_rate", roundi(float(tot.chance_sum) / tot.attacks)])
+		for c in checks:
+			var want = sr.get(c[0])
+			if want is bool or c[1] is bool:
+				if bool(want) != bool(c[1]):
+					_add(r, "%s: the report's %s is %s, the log's %s." % [name, c[0], str(want), str(c[1])])
+			elif int(_num(want, -999999)) != int(c[1]):
+				_add(r, "%s: the report's %s is %s, the log's %s." % [name, c[0], str(want), str(c[1])])
+		if tot.attacks > 0:
+			var hcr = sr.get("hit_chance_range", [])
+			if not (hcr is Array) or hcr.size() != 2 or int(hcr[0]) != int(tot.chance_min) or int(hcr[1]) != int(tot.chance_max):
+				_add(r, "%s: the report's hit chances range %s, the log's [%d, %d]." % [name, str(hcr), tot.chance_min, tot.chance_max])
+		var expected := 0.0
+		for e in events:
+			if e.t == "round_end":
+				expected += float(e.expected[si])
+		if absf(expected - float(_num(sr.get("damage_expected"), -1000.0))) > 0.1:
+			_add(r, "%s: the report expected %s damage, the log's rounds %.2f." % [name, str(sr.get("damage_expected")), expected])
+		if _strings(sr.get("lost", [])) != deaths[si]:
+			_add(r, "%s: the report's fallen are %s, the log's %s." % [name, str(sr.get("lost")), str(deaths[si])])
+		_check_morale_log(r, name, sr.get("morale_log", []), morale[si])
+		_check_ruler(r, battle_log, si, sr, end_state, tot.ruler_dealt)
+		# Impact: each factor measured in the resolver's accumulator equals the log's rounds plus its end.
+		for f in report.get("all_factors", []):
+			if String(f.get("faction", "")) != name or NON_IMPACT_FACTORS.has(String(f.get("id", ""))):
+				continue
+			var got := float(impact[si].get(String(f.id), 0.0))
+			if absf(got - float(_num(f.get("impact"), 0.0))) > 0.1:
+				_add(r, "%s: the report's factor %s is worth %s, but the log's rounds add up to %.2f." % [name, f.id, str(f.get("impact")), got])
+	var feast = report.get("feast", {})
+	if feast is Dictionary and not feast.is_empty():
+		if feast_healed != int(_num(feast.get("healed"), -1)):
+			_add(r, "The report's Feast healed %s hp, the log's %d." % [str(feast.get("healed")), feast_healed])
+	elif feast_healed >= 0:
+		_add(r, "The log has a Feast of Victory the report doesn't.")
+	return r
+
+
+static func _check_attack(r: Array, i: int, e: Dictionary, battle_log: Dictionary, state: Dictionary, reach: Dictionary, tl: BattleTimeline,
+		frenzy_key: String) -> void:
+	var fighters: Array = battle_log.fighters
+	var a: Dictionary = fighters[int(e.by)]
+	var t: Dictionary = fighters[int(e.to)]
+	var where := "Round %d, event %d (%s attacking %s)" % [int(e.n), i, a.name, t.name]
+	var fa: Dictionary = state.fighters[int(e.by)]
+	var ft: Dictionary = state.fighters[int(e.to)]
+	if not fa.alive or fa.fled:
+		_add(r, "%s: the attacker isn't standing." % where)
+	if not ft.alive or ft.fled or int(t.side) == int(a.side):
+		_add(r, "%s: the target isn't a standing enemy." % where)
+	if not reach.has(int(t.side)):
+		_add(r, "%s: the round gives no reach for the target's side." % where)
+		return
+	var skirmish: bool = a.trait == AutoBattleResolver.SKIRMISH
+	var tiers: Array = _ints(reach[int(t.side)].skirmish_tiers if skirmish else reach[int(t.side)].tiers)
+	if not tiers.has(int(t.tier)):
+		_add(r, "%s: the target stands in rank %d, which the attacker couldn't reach this round (%s)." % [where, int(t.tier), str(tiers)])
+	var ordinary: Array = _ints(reach[int(t.side)].tiers)
+	var word: String = "skirmish" if not ordinary.has(int(t.tier)) else REACH_WORDS[int(t.tier)]
+	if String(e.reach) != word:
+		_add(r, "%s: the attack's reach is %s, but it should be %s." % [where, e.reach, word])
+	var pool := 0
+	for s in battle_log.sides:
+		var si := int(s.index)
+		if si == int(a.side) or state.sides[si].out != "" or not reach.has(si):
+			continue
+		var st: Array = _ints(reach[si].skirmish_tiers if skirmish else reach[si].tiers)
+		for fid in s.fighters:
+			var fs: Dictionary = state.fighters[int(fid)]
+			if fs.alive and st.has(int(fighters[int(fid)].tier)):
+				pool += 1
+	if pool != int(e.pool):
+		_add(r, "%s: the attacker could reach %d enemies, but the log says %d." % [where, pool, int(e.pool)])
+	var st_a := tl.statuses(state, int(e.by))
+	var st_t := tl.statuses(state, int(e.to))
+	var parts: Dictionary = e.attack.parts
+	var dparts: Dictionary = e.defense.parts
+	for c in [["Berserk", st_a.berserk, parts.has(AutoBattleResolver.BERSERK)],
+			["Blood Frenzy", st_a.blood_frenzy, parts.has(frenzy_key)],
+			["Pack Leader", st_a.pack_leader, parts.has(AutoBattleResolver.PACK_LEADER)],
+			["Shield Wall", st_t.shield_wall, dparts.has(AutoBattleResolver.SHIELD_WALL)],
+			["shielded", st_a.shielded, bool(e.screened)]]:
+		if bool(c[1]) != bool(c[2]):
+			_add(r, "%s: the derived %s status is %s, but the attack says %s." % [where, c[0], str(c[1]), str(c[2])])
+
+
+static func _check_morale_log(r: Array, name: String, morale_log, events: Array) -> void:
+	if not (morale_log is Array) or morale_log.size() != events.size():
+		_add(r, "%s: the report has %d morale checks, the log %d." % [name, morale_log.size() if morale_log is Array else 0, events.size()])
+		return
+	for k in events.size():
+		var m: Dictionary = morale_log[k]
+		var e: Dictionary = events[k]
+		for key in [["round", "n"], ["morale", "morale"], ["break_pct", "break_pct"], ["lost_pct", "lost_pct"], ["hp", "hp"]]:
+			if int(_num(m.get(key[0]), -1)) != int(e[key[1]]):
+				_add(r, "%s: morale check %d has %s %s in the report, %d in the log." % [name, k + 1, key[0], str(m.get(key[0])), int(e[key[1]])])
+		var parts: Dictionary = m.get("parts", {})
+		if parts.size() != e.parts.size():
+			_add(r, "%s: morale check %d has parts %s in the report, %s in the log." % [name, k + 1, str(parts), str(e.parts)])
+			continue
+		for p in parts:
+			if int(_num(e.parts.get(p), -999)) != int(parts[p]):
+				_add(r, "%s: morale check %d has parts %s in the report, %s in the log." % [name, k + 1, str(parts), str(e.parts)])
+				break
+		if (e.result == "held") != m.has("held_by"):
+			_add(r, "%s: morale check %d is %s in the log, but the report %s Iron Discipline holding it." % [name, k + 1, e.result,
+				"has" if m.has("held_by") else "doesn't have"])
+
+
+static func _check_ruler(r: Array, battle_log: Dictionary, si: int, sr: Dictionary, end_state: Dictionary, ruler_dealt: int) -> void:
+	var rep = sr.get("ruler")
+	var ruler_id := -1
+	for fid in battle_log.sides[si].fighters:
+		if battle_log.fighters[int(fid)].role == "ruler":
+			ruler_id = int(fid)
+	if not (rep is Dictionary):
+		if ruler_id >= 0:
+			_add(r, "%s: the log has a ruler the report doesn't." % battle_log.sides[si].faction)
+		return
+	if ruler_id < 0:
+		_add(r, "%s: the report has a ruler the log doesn't." % battle_log.sides[si].faction)
+		return
+	var fell_round := 0
+	for e in battle_log.events:
+		if e.t == "death" and int(e.f) == ruler_id:
+			fell_round = int(e.n)
+	var hp := int(end_state.fighters[ruler_id].hp)
+	for c in [["fell", fell_round > 0], ["fell_round", fell_round], ["hp_end", hp], ["damage_dealt", ruler_dealt],
+			["hp_start", int(battle_log.fighters[ruler_id].hp)]]:
+		var want = rep.get(c[0])
+		if (c[1] is bool and bool(want) != c[1]) or (not (c[1] is bool) and int(_num(want, -1)) != int(c[1])):
+			_add(r, "%s's ruler: the report's %s is %s, the log's %s." % [battle_log.sides[si].faction, c[0], str(want), str(c[1])])
+
+
+## The report's round `n` ({} when it has none).
+static func _report_round(report: Dictionary, n: int) -> Dictionary:
+	var rounds = report.get("rounds", [])
+	if rounds is Array and n >= 1 and n <= rounds.size() and rounds[n - 1] is Dictionary:
+		return rounds[n - 1]
+	return {}
+
+
+## `d[key]` where `d` is keyed by an int side index, or by its string after a JSON round trip; null if absent.
+static func _keyed(d, key: int):
+	if not (d is Dictionary):
+		return null
+	if d.has(key):
+		return d[key]
+	if d.has(str(key)):
+		return d[str(key)]
+	return null
+
+
+# --- small helpers ------------------------------------------------------------------------------------
+
+static func _add(reasons: Array, text: String) -> void:
+	if reasons.size() < MAX_REASONS:
+		reasons.append(text)
+
+
+static func _num(v, default = 0):
+	return v if v is int or v is float else default
+
+
+static func _is_int(v) -> bool:
+	return v is int or (v is float and v == floorf(v))
+
+
+static func _in_range(v, n: int) -> bool:
+	return _is_int(v) and int(v) >= 0 and int(v) < n
+
+
+static func _ints(a) -> Array:
+	var out := []
+	if a is Array:
+		for v in a:
+			out.append(int(v))
+	return out
+
+
+static func _strings(a) -> Array:
+	var out := []
+	if a is Array:
+		for v in a:
+			out.append(String(v))
+	return out
