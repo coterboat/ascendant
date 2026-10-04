@@ -1,7 +1,8 @@
 class_name SettingsPanel
 extends Control
 ## The Settings overlay (title screen and the game menu): window mode, interface size, for later
-## whether battles play by themselves, and the sound: Master, Music, Effects and Ambiance volumes and a
+## whether battles play by themselves, the board (the 3D world or the 2D map, M3a.1) and how fast a turn
+## plays out on it, and the sound: Master, Music, Effects and Ambiance volumes and a
 ## mute switch. Every change is saved to the settings file (GameSettings) and put into effect at once
 ## (volumes even before the panel is in the tree, since the buses are global); Close (or Esc) hides the
 ## panel and emits `closed`.
@@ -13,6 +14,8 @@ extends Control
 ##   set_volume(key, percent) -> bool   key: a GameSettings.VOLUME_BUSES key ("music_volume", ...)
 ##   set_muted(on)
 ##   window_picker, scale_picker, watch_picker   the three pickers
+##   board_picker, speed_picker   M3a.1: the map as the 3D world or the 2D map, and the 3D playback speed
+##   set_board(value) -> bool, set_playback_speed(value) -> bool
 ##   volume_sliders               {volume key: HSlider}, volume_labels {volume key: Label} ("80%")
 ##   mute_toggle                  the "Mute all sound" CheckBox (like the new game screen's toggles)
 ##   close()
@@ -32,6 +35,8 @@ var settings: GameSettings = null
 var window_picker: OptionButton
 var scale_picker: OptionButton
 var watch_picker: OptionButton  # "Off" / "On": battles play by themselves (milestone 3)
+var board_picker: OptionButton  # "3D world" / "2D map" (M3a.1)
+var speed_picker: OptionButton  # 1x / 2x / 4x: a turn's playback on the 3D board
 var volume_sliders := {}  # GameSettings volume key -> HSlider (0 to 100)
 var volume_labels := {}  # GameSettings volume key -> Label showing the percent
 var mute_toggle: CheckBox
@@ -59,6 +64,8 @@ func open(game_settings: GameSettings = null) -> void:
 	window_picker.select(GameSettings.WINDOW_MODES.find(settings.window_mode))
 	scale_picker.select(GameSettings.UI_SCALES.find(settings.ui_scale))
 	watch_picker.select(1 if settings.auto_watch_battles else 0)
+	board_picker.select(GameSettings.BOARDS.find(settings.board))
+	speed_picker.select(GameSettings.PLAYBACK_SPEEDS.find(settings.playback_speed))
 	for key in volume_sliders:
 		_show_volume(key)
 	mute_toggle.set_pressed_no_signal(settings.muted)
@@ -95,6 +102,22 @@ func set_auto_watch(on: bool) -> void:
 	settings.auto_watch_battles = on
 	watch_picker.select(1 if on else 0)
 	_changed()
+
+
+func set_board(value: String) -> bool:
+	if settings == null or not settings.set_board(value):
+		return false
+	board_picker.select(GameSettings.BOARDS.find(value))
+	_changed()
+	return true
+
+
+func set_playback_speed(value: int) -> bool:
+	if settings == null or not settings.set_playback_speed(value):
+		return false
+	speed_picker.select(GameSettings.PLAYBACK_SPEEDS.find(value))
+	_changed()
+	return true
 
 
 func set_volume(key: String, percent: int) -> bool:
@@ -179,6 +202,15 @@ func _build() -> void:
 	watch_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(watch_note)
 
+	board_picker = _picker("BoardPicker", GameSettings.BOARD_NAMES)
+	board_picker.item_selected.connect(func(i: int): set_board(GameSettings.BOARDS[i]))
+	_row(box, "Board", board_picker, TooltipText.plain("Board: the 3D world or the 2D map",
+		"The 3D world shows the map as land with fortresses and armies of miniatures, and plays each turn out on it. The 2D map is the flat board, for a slower computer. Both give the same orders, numbers and tooltips; a game in progress switches when you close the settings."))
+	var speed_names: Array = GameSettings.PLAYBACK_SPEEDS.map(func(v): return "%d×" % v)
+	speed_picker = _picker("PlaybackSpeedPicker", speed_names)
+	speed_picker.item_selected.connect(func(i: int): set_playback_speed(GameSettings.PLAYBACK_SPEEDS[i]))
+	_row(box, "Turn playback", speed_picker, TooltipText.plain("Turn playback speed",
+		"How fast each resolved turn plays out on the 3D board before the turn report opens. Space or a click skips it at any speed."))
 	box.add_child(_label("SoundLabel", "Sound", 26, UiPalette.GILT))
 	for key in GameSettings.VOLUME_BUSES:
 		_volume_row(box, String(key))
