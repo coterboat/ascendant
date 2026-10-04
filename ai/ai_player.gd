@@ -67,6 +67,31 @@ extends RefCounted
 ##   * Our own ruler is left out of the rough strength guess and enemy rulers are counted in it, which
 ##     errs on the safe side whether or not battles count rulers yet; every battle that risks our ruler
 ##     is checked with the forecast, which fights the real battle rules.
+##
+## Games with paths (M4, design/M4_ASCENSION.md §8; ticket M4-5, #70). Nothing below runs without paths,
+## so M1 and M2 games (and their records) are unchanged:
+##   * Research: the build preset's plan (AIPaths.AI_PATHS): its ordinary nodes, then the chosen side's
+##     Oath and transformation, then the rest. A ResearchOrder only when our own target is empty or off the
+##     plan, pre-checked with AscensionRules.check_research. The side of the fork is choose_branch, a seeded
+##     roll on its own stream (AIPaths.BRANCH_SALT), never the seat RNG. configure(game_seed, seat) tells the
+##     brain whose seat it plays (AISeat and the autoplay do); otherwise the state's seed and the faction's
+##     place in it stand in. A rival's research target is never read: only its completed nodes and side.
+##   * Recruits: unit numbers come from RulerRules.unit_stats (mandates and path parts), recruits arrive at
+##     the hp the recruitment phase gives (Blood Levy included), and the new traits are valued with the
+##     battle rules' constants: Wings (worth more the more commanders the enemy fields; it reaches the
+##     second rank like Skirmish), Iron Hide (each enemy hit deals IRON_HIDE_DAMAGE less, which hurts many
+##     small hits most), Rooted (its ROOTED_DEFENSE counts by the share of forest provinces on our front)
+##     and Lifedrinker (healing worth about LIFEDRINK_SHARE of its hits' share, like Berserk).
+##   * Moves: Forest Stride road moves follow the King's Roads logic (marches, returns home, recalls), and
+##     enemy armies that can reach a province by a road move this turn count as threats to it (the capital
+##     checks and every "is this step safe" check).
+##   * Captures: a province is worth the income we would draw from it with our path lines (Market Charters,
+##     Deep Mines, Bounty of the Wild, Tithe of Light, Forge Tithe), plus what its owner loses, plus
+##     RAID_WEIGHT of the Raiding Parties windfall.
+##   * Sacrifice: once transformed, the mandate the transformation opened goes last in the preset's picks;
+##     a forsworn pick is skipped (RulerRules.sacrifice_check refuses it).
+##   * Notes name only what is public: nodes already completed, the side once sworn and its transformation
+##     (which the Oath's own report names as the next research). The target is never named before it is done.
 
 const DIFFICULTIES := ["easy", "normal"]
 
@@ -138,6 +163,15 @@ const BERSERK_SHARE := 0.5
 ## within this many moves of the capital (and half of them stay home while no army of ours is there).
 const FIELD_RECRUIT_SAFE := 3
 
+## M4 (paths). Wings: while an enemy commander stands, Wings units attack commanders. A side keeps its
+## commander bonuses (COMMANDER_MORALE, Inspire, Pack Leader) only for the share of the battle its
+## commander survives the foe's Wings: their expected damage on it over ROUNDS_GUESS rounds against its hp.
+## Lifedrinker heals a share of its hits' damage (AutoBattleResolver.LIFEDRINK_DIVISOR) at the end of each
+## round it still stands: counted for ROUNDS_GUESS rounds, this share of the time (like BERSERK_SHARE).
+const LIFEDRINK_SHARE := 0.5
+## Raiding Parties: a capture's one-off gold counts this much against gold per turn.
+const RAID_WEIGHT := 0.5
+
 var _notes: Array = []
 var _stats := {}
 var _state: GameState = null
@@ -163,6 +197,15 @@ var _ruler: Army = null  # our living ruler's army: planned on its own, never pa
 var _preset := {}  # the build preset we play (preset_for), {} without rulers
 var _sacrifice := ""  # the mandate this turn's Sacrifice order is for, or ""
 var _head := 0  # notes put at the top (build, sacrifice, ruler, mandates) so far
+# M4 (paths): unused, and never read, in a game without paths.
+var _paths := false  # the game has paths
+var _game_seed := 0  # configure(): the game seed and 0-based seat this brain plays (choose_branch)
+var _seat := -1  # -1: not configured; the state's seed and the faction's place in it stand in
+var _forced_branch := ""  # configure(): a side the autoplay forces (--branches), or ""
+var _branch := ""  # the side of the fork we plan for this turn
+var _ctx := {}  # {"stats": {"<faction>|<type id>": {"attack", "defense", "morale"}}, "forest_share", "front", "forest"}
+var _threat_cache := {}  # province id -> enemy armies that can reach it this turn (_threats_to)
+var _arrival := {}  # unit type id -> the hp a recruit of it arrives with
 
 
 ## Orders for `faction_id` this turn. See the class comment. Unknown difficulties play as "normal".
@@ -180,6 +223,9 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 		_rebase(RulerRules.with_sacrifice(state, faction_id, _sacrifice))
 		out.append(SacrificeOrder.new(_sacrifice))
 		_stats.sacrifices = 1
+	var research := _plan_research()  # M4: "" without paths, and on most turns with them
+	if not research.is_empty():
+		out.append(ResearchOrder.new(research))
 	_recruit_plan = _plan_recruits([])  # a fresh army, for judging next turn's garrison
 	_defend_capital()
 	_strike_capitals()
@@ -199,7 +245,32 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 	_mine = []
 	_foes = []
 	_ruler = null
+	_ctx = {}
+	_threat_cache = {}
+	_arrival = {}
 	return out
+
+
+## Tells the brain whose seat it plays (M4, paths): the game seed and the 0-based seat, as AISeat.seat_seed
+## takes them, so the side of the fork is choose_branch's roll for that seat. `forced_branch` (a PathData
+## branch id of the faction, e.g. "blood_pact") replaces the roll, for the autoplay's --branches. Without
+## a call the state's seed and the faction's place in the state stand in. No effect without paths.
+func configure(game_seed: int, seat: int, forced_branch: String = "") -> void:
+	_game_seed = game_seed
+	_seat = seat
+	_forced_branch = forced_branch
+
+
+## The side of the fork the computer in 0-based `seat` swears to in a game with paths (design/M4_ASCENSION.md
+## §8.1): a weighted pick by the preset's fork weights, the first draw of
+## SeededRNG(AISeat.seat_seed(game_seed, seat) + AIPaths.BRANCH_SALT), a stream of its own, so the seat's
+## RNG and every M1/M2 game are untouched. A pure function of the seed, seat and preset (AIPaths.choose_branch).
+## `faction_id` defaults to the preset's faction; a custom build ("" preset) needs it.
+static func choose_branch(game_seed: int, seat: int, preset_id: String, faction_id: String = "") -> String:
+	var fid := faction_id
+	if fid.is_empty():
+		fid = String(AIPaths.AI_PATHS.get(preset_id, {}).get("faction", ""))
+	return AIPaths.choose_branch(game_seed, seat, preset_id, fid)
 
 
 ## The build an AI seat plays in a game with rulers (design/M2_RULER.md §6.1): one of the faction's
@@ -306,6 +377,14 @@ func _begin(state: GameState, faction_id: String, rng: SeededRNG, difficulty: St
 		_dist[p.id] = _bfs(p.id)
 	_collect_armies()
 	_preset = preset_for(state, faction_id)
+	_paths = AscensionRules.has_paths(state)
+	_branch = ""
+	_ctx = {}
+	_threat_cache = {}
+	_arrival = {}
+	if _paths:
+		_branch = _plan_branch()
+		_build_ctx()
 
 
 ## Sorts the state's armies into ours (_mine, without our ruler's army), our ruler's army and the foes'.
@@ -338,6 +417,8 @@ func _rebase(state: GameState) -> void:
 	_vias = {}
 	_busy = {}
 	_collect_armies()
+	if _paths:
+		_build_ctx()  # a sacrifice can change unit numbers (Royal Armories, Veteran Levies)
 
 
 func _bfs(from_id: String) -> Dictionary:
@@ -361,7 +442,7 @@ func _defend_capital() -> void:
 	if cap == null or cap.owner != _fid:
 		return
 	var home := _mine_at(cap.id)
-	var threats := _foes_next_to(cap.id)
+	var threats := _threats_to(cap.id)  # M4: plus enemy road moves (King's Roads, Forest Stride) with paths
 	if threats.is_empty():
 		_size_garrison(cap, home)
 		return
@@ -438,6 +519,8 @@ func _sally(cap: Province, home: Array, threats: Array) -> bool:
 	for e in threats:
 		if e.location != at:
 			return false
+	if not _nbrs[cap.id].has(at):
+		return false  # M4: an army two provinces off (a road move) can't be met on the border
 	# Judged with the garrison alone: on the border it meets that army without the armies joining
 	# from elsewhere (and without terrain, which only makes this estimate safer).
 	var odds := _attack_rate(home, at)
@@ -707,7 +790,10 @@ func _field_move(g: Dictionary, is_main: bool, objective: String, main_dest: Str
 		claimed[capture] = true
 		_stats.captures += 1
 		var p := _state.find_province(capture)
-		_note("Taking %s for %d gold per turn%s." % [p.name, p.income, "" if p.owner.is_empty() else " (and %s lose it)" % _faction_name(p.owner)])
+		if _paths:
+			_note(_capture_note(p))
+		else:
+			_note("Taking %s for %d gold per turn%s." % [p.name, p.income, "" if p.owner.is_empty() else " (and %s lose it)" % _faction_name(p.owner)])
 		return capture
 	if is_main:
 		return _advance(g, objective)
@@ -749,7 +835,11 @@ func _best_capture(g: Dictionary, is_main: bool, objective: String, claimed: Dic
 			continue
 		if not _safe_at(g.armies, n):
 			continue
-		var score: float = float(p.income) * (1.0 if p.owner.is_empty() else 2.0) + _rng.randf() * float(JITTER[_level])
+		var score: float
+		if _paths:
+			score = _capture_worth(p) + _rng.randf() * float(JITTER[_level])
+		else:
+			score = float(p.income) * (1.0 if p.owner.is_empty() else 2.0) + _rng.randf() * float(JITTER[_level])
 		if not objective.is_empty():
 			score -= 0.01 * _d(n, objective)
 		if score > best_score:
@@ -807,7 +897,7 @@ func _road_or_step(here: String, target: String, armies: Array) -> String:
 ## first by id; the way through is the first legal one by id (as the orders UI picks). Sets _last_via.
 ## "" without King's Roads or when no road move helps.
 func _road_step(here: String, target: String, armies: Array) -> String:
-	if armies.is_empty() or not RulerRules.has_mandate(_state, _fid, RulerRules.KINGS_ROADS):
+	if armies.is_empty() or not RulerRules.has_road_moves(_state, _fid):  # M4: or Forest Stride
 		return ""
 	var d_here := _d(here, target)
 	if d_here < 2:
@@ -836,7 +926,7 @@ func _road_step(here: String, target: String, armies: Array) -> String:
 ## this turn, {army id: the province it goes through}. {} without King's Roads.
 func _road_recalls(cap_id: String) -> Dictionary:
 	var out := {}
-	if not RulerRules.has_mandate(_state, _fid, RulerRules.KINGS_ROADS):
+	if not RulerRules.has_road_moves(_state, _fid):  # M4: or Forest Stride
 		return out
 	for a in _mine:
 		if _busy.has(a.id) or _d(a.location, cap_id) != 2:
@@ -868,7 +958,10 @@ func _pick_step(options: Array) -> String:
 	var best_key := -1.0
 	for n in options:
 		var p := _state.find_province(n)
-		var key: float = float(p.income) + (100.0 if p.owner != _fid else 0.0) + _rng.randf() * float(JITTER[_level])
+		var gold: float = float(p.income)
+		if _paths:
+			gold = float(_income_if_ours(p)) + (RAID_WEIGHT * _raid_gold(p) if p.owner != _fid else 0.0)
+		var key: float = gold + (100.0 if p.owner != _fid else 0.0) + _rng.randf() * float(JITTER[_level])
 		if key > best_key + 0.0001:
 			best_key = key
 			best = [n]
@@ -880,7 +973,7 @@ func _pick_step(options: Array) -> String:
 
 
 func _safe_at(armies: Array, pid: String) -> bool:
-	var threat := _foes_next_to(pid)
+	var threat := _threats_to(pid)
 	return threat.is_empty() or _ratio(armies, threat, _ground_bonus(pid), 1.0) >= SAFE_RATIO
 
 
@@ -944,7 +1037,7 @@ func _plan_recruits(base: Array) -> Array:
 	# A threatened capital with no commander gets one first: a commander steadies the whole army.
 	if cmd != null and threatened and not has_cmd and _price(cmd) <= gold:
 		out.append(cmd)
-		units.append(Unit.new(cmd, _fid))
+		units.append(_recruit_unit(cmd))
 		gold -= _price(cmd)
 	var value := _recruit_value(units, foe_units)
 	for _i in 40:
@@ -961,7 +1054,7 @@ func _plan_recruits(base: Array) -> Array:
 			if ut.trait_id == AutoBattleResolver.VOLLEY and ranks.volley + 1 > ranks.front:
 				continue
 			var trial: Array = units.duplicate()
-			trial.append(Unit.new(ut, _fid))
+			trial.append(_recruit_unit(ut))
 			var v := _recruit_value(trial, foe_units)
 			var gain := (v - value) / float(price)
 			if gain > best_gain + 0.000001:
@@ -971,7 +1064,7 @@ func _plan_recruits(base: Array) -> Array:
 		if best == null:
 			break
 		out.append(best)
-		units.append(Unit.new(best, _fid))
+		units.append(_recruit_unit(best))
 		gold -= _price(best)
 		value = best_value
 	return out
@@ -1002,34 +1095,55 @@ func _recruit_value(units: Array, foe_units: Array) -> float:
 	if units.is_empty():
 		return 0.0
 	var foes: Array = foe_units if not foe_units.is_empty() else _roster_units()
-	var ours := _side_summary(units)
-	var theirs := _side_summary(foes)
+	var ours := _side_summary(units, _ctx)
+	var theirs := _side_summary(foes, _ctx)
 	return _trait_power(ours, theirs) / maxf(_trait_power(theirs, ours), 0.001)
 
 
 ## Totals of one side for _trait_power: {"hp", "morale", "regulars", "best_morale", "cmd", "inspire",
 ## "pack", "bears", "front", "volley", "skirmish", "fighters", "def_hp", "shield_hp", "kinds": {type id:
-## {"type", "n"}}}. Rulers are skipped.
-static func _side_summary(units: Array) -> Dictionary:
+## {"type", "n", "attack"}}}, and for the M4 traits "commanders", "wings", "iron_hide_hp", "rooted".
+## Rulers are skipped. `ctx` (M4, a game with paths: AIPlayer._ctx) gives every type's attack, defense
+## and morale with its faction's mandates and path parts, and the share of forest provinces on our front
+## for Rooted; without it the unit types' own numbers are used, exactly as before paths.
+static func _side_summary(units: Array, ctx: Dictionary = {}) -> Dictionary:
 	var s := {"hp": 0.0, "morale": 0, "regulars": 0, "best_morale": 0, "cmd": false, "inspire": false, "pack": false,
-		"bears": 0, "front": 0, "volley": 0, "skirmish": 0, "fighters": 0, "def_hp": 0.0, "shield_hp": 0.0, "kinds": {}}
+		"bears": 0, "front": 0, "volley": 0, "skirmish": 0, "fighters": 0, "def_hp": 0.0, "shield_hp": 0.0, "kinds": {},
+		"commanders": 0, "cmd_hp": 0.0, "cmd_def_hp": 0.0, "wings": 0, "iron_hide_hp": 0.0, "rooted": 0,
+		"iron_discipline": false}
+	var stats: Dictionary = ctx.get("stats", {})
+	var disciplined: Dictionary = ctx.get("iron_discipline", {})
 	for u in units:
 		var ut: UnitType = u.type
 		if ut.is_ruler:
 			continue
+		var attack: int = ut.attack
+		var defense: int = ut.defense
+		var morale: int = ut.morale
+		if not stats.is_empty():
+			var st: Dictionary = stats.get(u.owner + "|" + ut.id, {})
+			if not st.is_empty():
+				attack = int(st.attack)
+				defense = int(st.defense)
+				morale = int(st.morale)
 		var hp := float(u.current_hp)
 		s.hp += hp
-		s.def_hp += hp * ut.defense
+		s.def_hp += hp * defense
 		s.fighters += 1
+		if disciplined.get(u.owner, false):
+			s.iron_discipline = true
 		if ut.is_commander:
 			s.cmd = true
-			s.best_morale = maxi(s.best_morale, ut.morale)
+			s.commanders += 1
+			s.cmd_hp += hp
+			s.cmd_def_hp += hp * defense
+			s.best_morale = maxi(s.best_morale, morale)
 			if ut.trait_id == AutoBattleResolver.INSPIRE:
 				s.inspire = true
 			elif ut.trait_id == AutoBattleResolver.PACK_LEADER:
 				s.pack = true
 		else:
-			s.morale += ut.morale
+			s.morale += morale
 			s.regulars += 1
 			if ut.trait_id == AutoBattleResolver.VOLLEY:
 				s.volley += 1
@@ -1041,8 +1155,16 @@ static func _side_summary(units: Array) -> Dictionary:
 				s.bears += 1
 			elif ut.trait_id == AutoBattleResolver.SHIELD_WALL:
 				s.shield_hp += hp
+			elif ut.trait_id == AutoBattleResolver.WINGS:
+				s.wings += 1
+			elif ut.trait_id == AutoBattleResolver.IRON_HIDE:
+				s.iron_hide_hp += hp
+			elif ut.trait_id == AutoBattleResolver.ROOTED:
+				# Rooted: +ROOTED_DEFENSE in a province battle in a forest, counted by the forest share of our front.
+				s.rooted += 1
+				s.def_hp += hp * AutoBattleResolver.ROOTED_DEFENSE * float(ctx.get("forest_share", 0.0))
 		if not s.kinds.has(ut.id):
-			s.kinds[ut.id] = {"type": ut, "n": 0}
+			s.kinds[ut.id] = {"type": ut, "n": 0, "attack": attack}
 		s.kinds[ut.id].n += 1
 	return s
 
@@ -1053,42 +1175,83 @@ static func _side_summary(units: Array) -> Dictionary:
 ## Wall raises our defense, Pack Leader and (about half the time) Berserk our attack, Charge adds its
 ## first-round damage; a shielded Volley unit's damage counts more (less against Skirmish), and a
 ## Skirmish unit's more against an enemy with Volley units, which only Skirmish reaches behind its front.
+## M4 traits: the foe's Wings put our commander bonuses at risk (_wings_keep) and reach our second rank
+## like Skirmish; the foe's Iron Hide takes IRON_HIDE_DAMAGE off our hits on it (never below
+## MIN_DAMAGE); our Lifedrinker hits heal us (LIFEDRINK_DIVISOR, LIFEDRINK_SHARE of ROUNDS_GUESS rounds).
 static func _trait_power(s: Dictionary, foe: Dictionary) -> float:
 	if float(s.hp) <= 0.0:
 		return 0.0
 	var foe_def := _summary_defense(foe)
 	var m: float = float(s.morale) / s.regulars if int(s.regulars) > 0 else float(s.best_morale)
+	# The foe's Wings dive at our commanders while one stands: their bonuses count for less.
+	var keep := 1.0
+	if int(foe.get("wings", 0)) > 0 and int(s.get("commanders", 0)) > 0:
+		keep = _wings_keep(s, foe)
 	if s.cmd:
-		m += AutoBattleResolver.COMMANDER_MORALE
+		m += AutoBattleResolver.COMMANDER_MORALE if keep >= 1.0 else AutoBattleResolver.COMMANDER_MORALE * keep
 	if s.inspire:
-		m += AutoBattleResolver.INSPIRE_MORALE
+		m += AutoBattleResolver.INSPIRE_MORALE if keep >= 1.0 else AutoBattleResolver.INSPIRE_MORALE * keep
 	m -= mini(AutoBattleResolver.FURY_MAX, AutoBattleResolver.FURY_MORALE * int(foe.bears))
 	var hold := clampf(AutoBattleResolver.BREAK_BASE_PCT + AutoBattleResolver.MORALE_PCT_PER_POINT * m,
 		AutoBattleResolver.MIN_BREAK_PCT, AutoBattleResolver.MAX_BREAK_PCT) / 100.0
+	if s.get("iron_discipline", false) and s.cmd:
+		# M4 (paths only): Iron Discipline, a side never breaks while one of its commanders stands, for the
+		# share of the battle its commander survives the foe's Wings.
+		hold = keep * AutoBattleResolver.MAX_BREAK_PCT / 100.0 + (1.0 - keep) * hold
 	var shielded: bool = int(s.volley) > 0 and int(s.front) >= int(s.volley)
 	# Enemy Skirmish units reach our shielded Volley units anyway; ours reach the enemy's. Both pick
 	# their targets at random among the ranks they reach, so it is the share of each side's units that counts.
 	var foe_regulars := maxf(1.0, float(foe.regulars))
-	var foe_reach := float(foe.skirmish) / foe_regulars
+	var foe_reach := float(foe.skirmish + foe.get("wings", 0)) / foe_regulars
 	var our_targets := float(foe.volley) / foe_regulars
+	var hide_share := float(foe.get("iron_hide_hp", 0.0)) / float(foe.hp) if float(foe.hp) > 0.0 else 0.0
 	var dmg := 0.0
+	var drink := 0.0
 	for k in s.kinds.values():
 		var ut: UnitType = k.type
-		var atk := float(ut.attack)
+		var atk := float(k.attack)
 		if not ut.is_commander and s.pack:
-			atk += AutoBattleResolver.PACK_LEADER_ATTACK
+			atk += AutoBattleResolver.PACK_LEADER_ATTACK if keep >= 1.0 else AutoBattleResolver.PACK_LEADER_ATTACK * keep
 		if ut.trait_id == AutoBattleResolver.BERSERK:
 			atk += AutoBattleResolver.BERSERK_ATTACK * BERSERK_SHARE
 		var hit := _hit_rate(atk, foe_def)
-		var per := hit * maxf(AutoBattleResolver.MIN_DAMAGE, ceilf(atk * 0.5) - floorf(foe_def * 0.25))
+		var per_hit := maxf(AutoBattleResolver.MIN_DAMAGE, ceilf(atk * 0.5) - floorf(foe_def * 0.25))
+		if hide_share > 0.0:
+			# Iron Hide: every hit on it deals IRON_HIDE_DAMAGE less, but at least MIN_DAMAGE.
+			per_hit = (1.0 - hide_share) * per_hit + hide_share * maxf(AutoBattleResolver.MIN_DAMAGE,
+				per_hit - AutoBattleResolver.IRON_HIDE_DAMAGE)
+		var per := hit * per_hit
 		if ut.trait_id == AutoBattleResolver.CHARGE:
 			per += hit * AutoBattleResolver.CHARGE_DAMAGE / ROUNDS_GUESS
 		if ut.trait_id == AutoBattleResolver.VOLLEY and shielded:
 			per *= 1.0 + VOLLEY_SHIELD_VALUE * (1.0 - foe_reach)
-		if ut.trait_id == AutoBattleResolver.SKIRMISH:
+		if ut.trait_id == AutoBattleResolver.SKIRMISH or ut.trait_id == AutoBattleResolver.WINGS:
 			per *= 1.0 + SKIRMISH_REACH_VALUE * our_targets
 		dmg += per * int(k.n)
-	return float(s.hp) * hold * dmg
+		if ut.trait_id == AutoBattleResolver.LIFEDRINKER:
+			drink += per * int(k.n)
+	var hp := float(s.hp)
+	if drink > 0.0:
+		hp += drink / float(AutoBattleResolver.LIFEDRINK_DIVISOR) * ROUNDS_GUESS * LIFEDRINK_SHARE
+	return hp * hold * dmg
+
+
+## The share of a battle side `s` keeps its commander bonuses against the foe's Wings units: 1 minus their
+## expected damage on one of its commanders (the average one) over ROUNDS_GUESS rounds, against its hp, with
+## the battle rules' hit and damage formulas. Worth nothing against a side without commanders.
+static func _wings_keep(s: Dictionary, foe: Dictionary) -> float:
+	var n := int(s.get("commanders", 0))
+	if n <= 0 or float(s.cmd_hp) <= 0.0:
+		return 1.0
+	var cmd_hp := float(s.cmd_hp) / n
+	var cmd_def := float(s.cmd_def_hp) / float(s.cmd_hp)
+	var dmg := 0.0
+	for k in foe.kinds.values():
+		if k.type.trait_id != AutoBattleResolver.WINGS:
+			continue
+		var atk := float(k.attack)
+		dmg += _hit_rate(atk, cmd_def) * maxf(AutoBattleResolver.MIN_DAMAGE, ceilf(atk * 0.5) - floorf(cmd_def * 0.25)) * int(k.n)
+	return 1.0 - minf(1.0, dmg * ROUNDS_GUESS / cmd_hp)
 
 
 ## A side's average defense, weighted by hp, with Shield Wall's bonus while it has company.
@@ -1123,7 +1286,7 @@ func _roster_units() -> Array:
 func _recruit_units() -> Array:
 	var out := []
 	for ut in _recruit_plan:
-		out.append(Unit.new(ut, _fid))
+		out.append(_recruit_unit(ut))
 	return out
 
 
@@ -1145,14 +1308,26 @@ func _checked_moves() -> Array:
 				roads.append(order)
 		else:
 			_stats.dropped_invalid += 1
-	if not roads.is_empty():
+	# M4: a road move uses King's Roads or Forest Stride (TurnResolver.road_rule); without paths every one
+	# is a King's Roads move, and the note is as before.
+	var kings := roads.filter(func(o): return TurnResolver.road_rule(_state, _fid, o) != "forest_stride")
+	var stride := roads.filter(func(o): return TurnResolver.road_rule(_state, _fid, o) == "forest_stride")
+	if not kings.is_empty():
 		var parts := []
-		for o in roads.slice(0, 2):
+		for o in kings.slice(0, 2):
 			var a := _state.find_army(o.army_id)
 			var who := "%s at %s" % ["our ruler" if a != null and a.ruler != null else "the army", _province_name(a.location if a else "")]
 			parts.append("%s goes through %s to %s" % [who, _province_name(o.via), _province_name(o.to)])
-		var more := "" if roads.size() <= 2 else " (and %d more)" % (roads.size() - 2)
+		var more := "" if kings.size() <= 2 else " (and %d more)" % (kings.size() - 2)
 		_note_top("Using the King's Roads: %s%s, two provinces in one turn through our own land." % [" and ".join(parts), more])
+	if not stride.is_empty():
+		var parts := []
+		for o in stride.slice(0, 2):
+			var a := _state.find_army(o.army_id)
+			var who := "%s at %s" % ["our ruler" if a != null and a.ruler != null else "the army", _province_name(a.location if a else "")]
+			parts.append("%s goes through the forest of %s to %s" % [who, _province_name(o.via), _province_name(o.to)])
+		var more := "" if stride.size() <= 2 else " (and %d more)" % (stride.size() - 2)
+		_note_top("Using Forest Stride: %s%s, two provinces in one turn through our own forest." % [" and ".join(parts), more])
 	return out
 
 
@@ -1188,6 +1363,23 @@ func _checked_recruits() -> Array:
 	_stats.recruits = out.size()
 	if not home.names.is_empty():
 		_note("Recruiting at %s for %d gold: %s." % [_province_name(_me.capital), home.spent, _tally_text(home)])
+	if _paths:
+		# M4: why a unit with a path trait (Seraphs, the Iron Colossus, Briarwardens, Bloodsworn) is in the plan.
+		var counts := {}
+		var types := []
+		for o in out:
+			var ut := TurnResolver.recruitable_type(_me, o.unit_type_id)
+			if ut == null or not AutoBattleResolver.PATH_TRAITS.has(ut.trait_id):
+				continue
+			if not counts.has(ut.id):
+				counts[ut.id] = 0
+				types.append(ut)
+			counts[ut.id] += 1
+		for ut in types:
+			var why := _path_recruit_reason(ut, int(counts[ut.id]))
+			if not why.is_empty():
+				_note_top(why)
+				_stats["path_recruits"] = int(_stats.get("path_recruits", 0)) + int(counts[ut.id])
 	if not away.names.is_empty():
 		var dest: String = _ruler.location if _ruler != null else ""  # they gather where the ruler starts the turn
 		_note_top("Recruiting with %s for %d gold: %s, joining our armies at %s at the end of the turn (Warband Muster)." % [
@@ -1299,7 +1491,13 @@ func _choose_sacrifice() -> String:
 	if _ruler == null or _preset.is_empty():
 		return ""
 	var pick := ""
-	for mid in _preset.get("ai_sacrifices", []):
+	var picks: Array = _preset.get("ai_sacrifices", []).duplicate()
+	if _paths:
+		# M4: once transformed, the mandate it opened goes last; a forsworn pick fails sacrifice_check.
+		for mid in AscensionRules.opened_mandates(_state, _fid):
+			if not picks.has(mid):
+				picks.append(mid)
+	for mid in picks:
 		if RulerRules.sacrifice_check(_state, _fid, String(mid)).is_empty():
 			pick = String(mid)
 			break
@@ -1312,9 +1510,12 @@ func _choose_sacrifice() -> String:
 		return ""
 	var kept := RulerRules.kept_power(_state, _fid)
 	var cost := RulerRules.sacrifice_cost(pick)
-	_note_top("Sacrificing %d of %s's power for %s (%d, +%d for a mid-game sacrifice), kept power %d to %d: %s." % [
+	var opened := ""
+	if _paths and AscensionRules.opened_mandates(_state, _fid).has(pick):
+		opened = "; %s opened it" % AscensionRules.branch_ref(AscensionRules.branch(_state, _fid))
+	_note_top("Sacrificing %d of %s's power for %s (%d, +%d for a mid-game sacrifice%s), kept power %d to %d: %s." % [
 		cost, RulerRules.current_name(_state, _fid), RulerRules.mandate_name(pick), RulerRules.mandate_cost(pick),
-		MandateData.SACRIFICE_PREMIUM, kept, kept - cost, why])
+		MandateData.SACRIFICE_PREMIUM, opened, kept, kept - cost, why])
 	return pick
 
 
@@ -1324,7 +1525,7 @@ func _capital_danger() -> String:
 	var cap := _state.find_province(_me.capital)
 	if cap == null or cap.owner != _fid:
 		return ""
-	var threats := _foes_next_to(cap.id)
+	var threats := _threats_to(cap.id)
 	if threats.is_empty():
 		return ""
 	var defenders := _mine_at(cap.id)
@@ -1460,7 +1661,7 @@ func _ruler_steps(target: String, why: String) -> Array:
 	var out := []
 	if d_here <= 0:
 		return out
-	if RulerRules.has_mandate(_state, _fid, RulerRules.KINGS_ROADS) and d_here >= 2:
+	if RulerRules.has_road_moves(_state, _fid) and d_here >= 2:  # M4: or Forest Stride
 		var dests := RulerRules.road_destinations(_state, _fid, _ruler.id)
 		var keys: Array = dests.keys()
 		keys.sort()
@@ -1513,6 +1714,8 @@ func _ruler_note(who: String, o: Dictionary, spot: Dictionary) -> String:
 	var here: String = _ruler.location
 	var place := _province_name(o.to)
 	var road := "" if String(o.via).is_empty() else " by the King's Roads through %s" % _province_name(o.via)
+	if not road.is_empty() and TurnResolver.road_rule(_state, _fid, MoveOrder.new(_ruler.id, String(o.to), String(o.via))) == "forest_stride":
+		road = " by Forest Stride through the forest of %s" % _province_name(o.via)  # M4
 	var odds := ""
 	match String(spot.get("kind", "")):
 		"attack":
@@ -1537,6 +1740,261 @@ func _note_top(text: String) -> void:
 	_head += 1
 	if _notes.size() > MAX_NOTES:
 		_notes.pop_back()
+
+
+# --- M4: paths of ascension (design/M4_ASCENSION.md §8; #70) --------------------------------------
+
+## The side of the fork we plan for: the one we swore, else the autoplay's forced side, else choose_branch
+## for our seat (configure), or for the state's seed and our place in the state when not configured.
+func _plan_branch() -> String:
+	var sworn := AscensionRules.branch(_state, _fid)
+	if not sworn.is_empty():
+		return sworn
+	if not _forced_branch.is_empty() and String(AscensionRules.branch_data(_forced_branch).get("faction", "")) == _fid:
+		return _forced_branch
+	var game_seed := _game_seed
+	var seat := _seat
+	if seat < 0:
+		game_seed = _state.seed_value
+		seat = 0
+		for i in _state.factions.size():
+			if _state.factions[i].id == _fid:
+				seat = i
+	return AIPaths.choose_branch(game_seed, seat, String(_preset.get("id", "")), _fid)
+
+
+## This plan's unit numbers and front (paths only): every faction's roster and commander numbers with its
+## mandates and path parts (RulerRules.unit_stats; both are public), and the forest share of our front for
+## Rooted. Taken again after a sacrifice.
+func _build_ctx() -> void:
+	_threat_cache = {}
+	_arrival = {}
+	var stats := {}
+	for f in _state.factions:
+		var types: Array = f.unit_types.duplicate()
+		if f.commander_type != null:
+			types.append(f.commander_type)
+		for ut in types:
+			var st := RulerRules.unit_stats(_state, f.id, ut.id)
+			if st.get("ok", false):
+				stats[f.id + "|" + ut.id] = {"attack": int(st.attack), "defense": int(st.defense), "morale": int(st.morale)}
+	# Our front: the provinces we own next to one we don't, and those neighbours.
+	var front := {}
+	for p in _state.provinces:
+		if p.owner != _fid:
+			continue
+		for n in _nbrs.get(p.id, []):
+			var q := _state.find_province(n)
+			if q != null and q.owner != _fid:
+				front[p.id] = true
+				front[n] = true
+	var forest := 0
+	for pid in front:
+		if _state.find_province(pid).terrain == AscensionRules.FOREST:
+			forest += 1
+	var disciplined := {}
+	for f in _state.factions:
+		disciplined[f.id] = RulerRules.battle_effects(_state, f.id).iron_discipline
+	_ctx = {"stats": stats, "front": front.size(), "forest": forest, "iron_discipline": disciplined,
+		"forest_share": float(forest) / float(front.size()) if not front.is_empty() else 0.0}
+
+
+## A unit's attack, defense and morale for this plan: unit_stats' totals in a game with paths, else its type's.
+func _eff(u: Unit) -> Dictionary:
+	var st: Dictionary = _ctx.get("stats", {}).get(u.owner + "|" + u.type.id, {})
+	if st.is_empty():
+		return {"attack": u.type.attack, "defense": u.type.defense, "morale": u.type.morale}
+	return st
+
+
+## A recruit of `ut` as a unit, for the recruit plan's guesses: at its type's hp without paths (as before);
+## with paths at the hp the recruitment phase gives it (its maximum with every part, less Blood Levy's share).
+func _recruit_unit(ut: UnitType) -> Unit:
+	var u := Unit.new(ut, _fid)
+	if not _paths:
+		return u
+	if not _arrival.has(ut.id):
+		_arrival[ut.id] = AscensionRules.arrival_hp(_state, _fid, ut, RulerRules.unit_max_hp(_state, u))
+	u.current_hp = int(_arrival[ut.id])
+	return u
+
+
+## Enemy armies that could reach `pid` this turn: those next to it, and in a game with paths also those two
+## provinces off with a legal road move into it (King's Roads or Forest Stride, RulerRules.road_vias from
+## their side). Without paths exactly _foes_next_to.
+func _threats_to(pid: String) -> Array:
+	var near := _foes_next_to(pid)
+	if not _paths:
+		return near
+	if _threat_cache.has(pid):
+		return _threat_cache[pid].duplicate()
+	var by_road := {}
+	for e in _foes:
+		if near.has(e) or _d(e.location, pid) != 2:
+			continue
+		if not by_road.has(e.owner):
+			by_road[e.owner] = RulerRules.has_road_moves(_state, e.owner)
+		if by_road[e.owner] and not RulerRules.road_vias(_state, e.owner, e.id, pid).is_empty():
+			near.append(e)
+	_threat_cache[pid] = near.duplicate()
+	return near
+
+
+## The gold a turn `p` would earn us (paths): its base income plus our path lines for it (the
+## income_terrain of our researched nodes for its terrain; Tithe of Light's n more at the capital for one
+## more province) and Forge Tithe's fort gold. Never below 0. The same numbers RulerRules.province_income_parts
+## gives once we own it.
+func _income_if_ours(p: Province) -> int:
+	if p.owner == _fid:
+		return int(RulerRules.province_income_parts(_state, p.id).total)
+	var total := p.income
+	for nid in AscensionRules.researched(_state, _fid):
+		var fx := AscensionRules.node_effects(nid)
+		total += int(fx.get("income_terrain", {}).get(p.terrain, 0))
+		total += int(fx.get("tithe_per_province", 0))
+	var fort := AscensionRules.mandate_value(_state, _fid, "fort_income", 0)
+	if fort > 0 and p.has_fort:
+		total += fort
+	return maxi(0, total)
+
+
+## Raiding Parties' one-off gold if our armies capture `p` (AscensionRules.capture_gold), else 0.
+func _raid_gold(p: Province) -> float:
+	return float(AscensionRules.capture_gold(_state, _fid, p).get("gold", 0))
+
+
+## What capturing `p` is worth a turn (paths): our income from it, what its owner loses, and RAID_WEIGHT of
+## the Raiding Parties windfall.
+func _capture_worth(p: Province) -> float:
+	var theirs := 0.0
+	if not p.owner.is_empty() and p.owner != _fid:
+		theirs = float(RulerRules.province_income_parts(_state, p.id).total)
+	return float(_income_if_ours(p)) + theirs + RAID_WEIGHT * _raid_gold(p)
+
+
+## The capture note in a game with paths: the gold a turn with our path lines, and Raiding Parties' gold.
+func _capture_note(p: Province) -> String:
+	var gold := _income_if_ours(p)
+	var lines := ""
+	if gold != p.income:
+		lines = " (%d base, with %s)" % [p.income, _income_line_names(p)]
+	var raid := AscensionRules.capture_gold(_state, _fid, p)
+	var windfall := ""
+	if int(raid.get("gold", 0)) > 0:
+		windfall = " and %d gold at once (%s: %s)" % [int(raid.gold), AscensionRules.node_name(String(raid.node)),
+			AscensionRules.times_text(int(raid.times))]
+	return "Taking %s for %d gold per turn%s%s%s." % [p.name, gold, lines, windfall,
+		"" if p.owner.is_empty() else " (and %s lose it)" % _faction_name(p.owner)]
+
+
+## The names of our income lines that change what `p` would earn us: "Market Charters and Tithe of Light".
+func _income_line_names(p: Province) -> String:
+	var names := []
+	for nid in AscensionRules.researched(_state, _fid):
+		var fx := AscensionRules.node_effects(nid)
+		if int(fx.get("income_terrain", {}).get(p.terrain, 0)) != 0 or int(fx.get("tithe_per_province", 0)) != 0:
+			names.append(AscensionRules.part_name(nid))
+	if p.has_fort and AscensionRules.mandate_value(_state, _fid, "fort_income", 0) > 0:
+		names.append(RulerRules.mandate_name(RulerRules.FORGE_TITHE))
+	return RulerRules._and_list(names) if not names.is_empty() else "our path"
+
+
+## This turn's research (paths): the node to order ("" for no ResearchOrder), with the research notes.
+## Only our own target is read.
+func _plan_research() -> String:
+	if not _paths:
+		return ""
+	var nid := AIPaths.order_for(_state, _fid, String(_preset.get("id", "")), _branch)
+	_note_research(not nid.is_empty())
+	if not nid.is_empty():
+		_stats["research_orders"] = 1
+	return nid
+
+
+## Notes on research that are public by now (the turn report already named them): what we completed at the
+## end of last turn, the Oath we swore (and that the side was a seeded roll), the transformation and what
+## it brought. A new research order is mentioned without naming its node: the target stays secret.
+func _note_research(ordering: bool) -> void:
+	var last := _state.current_turn
+	var lines := []
+	if last > 0:
+		for nid in AIPaths.done_on(_state, _fid, last):
+			lines.append(_research_done_note(nid))
+	if ordering:
+		var secret := "what we research next stays secret until it is done"
+		if lines.is_empty():
+			lines.append("Choosing our next research along our path: %s." % secret)
+		else:
+			lines[lines.size() - 1] = String(lines.back()).trim_suffix(".") + "; %s." % secret
+	for line in lines:
+		_note_top(line)
+
+
+## The note for a node we completed last turn.
+func _research_done_note(nid: String) -> String:
+	var kind := AscensionRules.node_kind(nid)
+	if kind == PathData.OATH:
+		var side := String(AscensionRules.node_data(nid).get("branch", ""))
+		var other := AscensionRules.other_branch(_fid, side)
+		var next := String(AscensionRules.branch_data(side).get("transformation", ""))
+		var when := ""
+		if AscensionRules.research_target(_state, _fid) == next:
+			var n := AscensionRules.eta(AscensionRules.node_cost(next), AscensionRules.research_points(_state, _fid),
+				int(AscensionRules.research_rate(_state, _fid).rate))
+			when = " in about %d %s" % [n, "turn" if n == 1 else "turns"] if n > 0 else ""
+		var odds := AIPaths.branch_odds(String(_preset.get("id", "")), _fid)
+		var pct := int(odds.get(side, 0))
+		var roll := "our side of the fork was a seeded roll"
+		if pct > 0:
+			roll += " (%s)" % ("even odds" if pct == 50 else "%d%% for this side" % pct)
+		return "We swore %s last turn: we will become %s%s, and %s is closed to us; %s." % [
+			AscensionRules.node_ref(nid), AscensionRules.branch_ref(side), when, AscensionRules.branch_ref(other), roll]
+	if kind == PathData.TRANSFORMATION:
+		var fx := AscensionRules.node_effects(nid)
+		var parts := []
+		var renames: Dictionary = fx.get("rename", {})
+		for type_id in renames:
+			parts.append("our %s are %s now" % [AscensionRules.base_unit_name(_fid, String(type_id)), String(renames[type_id])])
+		var new_id := String(fx.get("new_unit", ""))
+		if not new_id.is_empty():
+			var ut := TurnResolver.recruitable_type(_me, new_id)
+			parts.append("we can recruit %s at %s" % [ut.name if ut != null else AscensionRules.base_unit_name(_fid, new_id),
+				_province_name(_me.capital)])
+		var opened := String(fx.get("opens_mandate", ""))
+		var mandates := ""
+		if not opened.is_empty():
+			mandates = " %s can now be bought by sacrifice" % RulerRules.mandate_name(opened)
+			var gone := String(fx.get("forswears", ""))
+			if not gone.is_empty():
+				mandates += " and %s no longer can" % RulerRules.mandate_name(gone)
+			mandates += "."
+		return "We became %s last turn: %s.%s" % [AscensionRules.branch_ref(String(AscensionRules.node_data(nid).get("branch", ""))),
+			RulerRules._and_list(parts), mandates]
+	return "Our research finished last turn. %s" % AscensionRules.done_text(_state, _fid, nid)
+
+
+## Why we recruit a unit with a path trait, in plain words with the rules' own numbers, or "".
+func _path_recruit_reason(ut: UnitType, n: int) -> String:
+	var what := "%s x%d" % [ut.name, n]
+	var short := String(AutoBattleResolver.TRAIT_SHORT.get(ut.trait_id, ""))
+	match ut.trait_id:
+		AutoBattleResolver.WINGS:
+			var cmds := 0
+			for e in _foes:
+				if e.commander != null:
+					cmds += 1
+			if cmds > 0:
+				return "Recruiting %s for %s (Wings: %s): the enemy fields %d %s." % [what, "their wings" if n > 1 else "its wings",
+					short, cmds, "commander" if cmds == 1 else "commanders"]
+			return "Recruiting %s (Wings: %s, and it reaches any rank)." % [what, short]
+		AutoBattleResolver.ROOTED:
+			return "Recruiting %s (Rooted: %s): %d of the %d provinces on our front are forest." % [what, short,
+				int(_ctx.get("forest", 0)), int(_ctx.get("front", 0))]
+		AutoBattleResolver.IRON_HIDE:
+			return "Recruiting %s (Iron Hide: %s), which blunts many small hits most." % [what, short]
+		AutoBattleResolver.LIFEDRINKER:
+			return "Recruiting %s (Lifedrinker: %s), so it lasts in a long fight." % [what, short]
+	return ""
 
 
 # --- forecasts ------------------------------------------------------------------------------------
@@ -1617,6 +2075,8 @@ func _scratch_with(placed: Array, pid: String) -> GameState:
 func _power_units(units: Array, foe_units: Array) -> float:
 	if units.is_empty():
 		return 0.0
+	if _paths:
+		return _power_units_paths(units, foe_units)
 	var foe_def := _avg_defense(foe_units)
 	var hp := 0.0
 	var dmg := 0.0
@@ -1630,6 +2090,35 @@ func _power_units(units: Array, foe_units: Array) -> float:
 			led = true
 		else:
 			morale += u.type.morale
+			regulars += 1
+	var m := morale / regulars if regulars > 0 else 10.0
+	if led:
+		m += 2.0
+	return hp * clampf(0.2 + 0.05 * m, 0.25, 0.95) * dmg
+
+
+## _power_units in a game with paths (M4): the same guess with each type's numbers from RulerRules.unit_stats
+## (mandates and path parts: Iron Knights' +4 defense, Arbalests' +2 attack, Sunspears' +2 morale, ...).
+func _power_units_paths(units: Array, foe_units: Array) -> float:
+	var hp := 0.0
+	var def_total := 0.0
+	for u in foe_units:
+		hp += u.current_hp
+		def_total += u.current_hp * int(_eff(u).defense)
+	var foe_def := def_total / hp if hp > 0.0 else 0.0
+	hp = 0.0
+	var dmg := 0.0
+	var morale := 0.0
+	var regulars := 0
+	var led := false
+	for u in units:
+		var st := _eff(u)
+		hp += u.current_hp
+		dmg += _pressure(int(st.attack), foe_def)
+		if u.type.is_commander:
+			led = true
+		else:
+			morale += int(st.morale)
 			regulars += 1
 	var m := morale / regulars if regulars > 0 else 10.0
 	if led:
