@@ -43,7 +43,7 @@ const RULERS: Array[Dictionary] = [
 		"battle_rank": "front",
 		"morale": 10,
 		"stats": {
-			"hp": {"base": 18, "gain": 2, "per": 1},
+			"hp": {"base": 18, "gain": 3, "per": 1},
 			"attack": {"base": 9, "gain": 1, "per": 2},
 			"defense": {"base": 8, "gain": 1, "per": 2},
 		},
@@ -77,7 +77,7 @@ const RULERS: Array[Dictionary] = [
 		"battle_rank": "front",
 		"morale": 14,
 		"stats": {
-			"hp": {"base": 24, "gain": 3, "per": 1},
+			"hp": {"base": 24, "gain": 4, "per": 1},
 			"attack": {"base": 8, "gain": 1, "per": 1},
 			"defense": {"base": 7, "gain": 1, "per": 2},
 		},
@@ -109,19 +109,19 @@ const RULERS: Array[Dictionary] = [
 const ABILITIES := {
 	"royal_court": {
 		"name": "Royal Court",
-		"values": [2, 3, 4, 5],
+		"values": [1, 3, 5, 6],
 		"short": "+{value} gold",
 		"effect": "In the income phase, the province {ruler} is in earns {value} more gold, if you own it.",
 	},
 	"mending_light": {
 		"name": "Mending Light",
-		"values": [3, 6, 9, 12],
+		"values": [3, 5, 9, 12],
 		"short": "heal {value}",
 		"effect": "At the end of each turn, each of your wounded units and commanders in the province {ruler} is in heals {value} hit points, up to its maximum. Rulers heal on their own instead.",
 	},
 	"dread": {
 		"name": "Dread",
-		"values": [1, 1, 1, 1],
+		"values": [1, 1, 1, 2],
 		"short": "-{value} enemy morale",
 		"effect": "Every enemy side in a province battle {ruler} fights in has {value} less morale. Not in border battles. It adds to a War Bear's Fury.",
 	},
