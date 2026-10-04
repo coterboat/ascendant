@@ -98,8 +98,14 @@ func test_the_army_panel_names_armies_as_the_turn_report_does() -> void:
 		var panel := screen.details.find_child("Army_%s" % a.id.validate_node_name(), true, false)
 		assert_true(panel != null, "the army is listed")
 		var header := panel.find_child("ArmyHeader", true, false) as Button
-		assert_eq(header.text, RulerRules._cap(TurnReportText.army_title(s, a)))
+		## #125: the report's name and place on one line, who is in it on the line under it
+		var title := RulerRules._cap(TurnReportText.army_title(s, a))
+		var who := panel.find_child("ArmyMembers", true, false) as Label
+		assert_true(who != null, "the line under the header lists who is in the army")
+		assert_eq("%s (%s) at %s" % [header.text.get_slice(" at ", 0), who.text.substr(0, 1).to_lower() + who.text.substr(1) if a.ruler != null else who.text,
+			header.text.get_slice(" at ", 1)], title, "together they say the turn report's title")
 		assert_true(header.text.to_lower().begins_with(_name(s, a).to_lower()), "the header starts with the report's name: %s" % header.text)
+		assert_false(header.text.contains("("), "the header keeps to the name and the place: %s" % header.text)
 		headers.append(header.text)
 	assert_eq(headers.size(), 2, "the starting army and the ruler's army")
 	_assert_no_place_names_or_ids(_texts(screen.details), "the side panel")

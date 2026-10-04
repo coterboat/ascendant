@@ -11,9 +11,18 @@ extends SceneTree
 ## stored orders: if all of them still match turn by turn, the rules are unchanged and only the computer's
 ## choices are re-recorded; if one doesn't, the rules changed too and nothing is written (`-- --force` writes
 ## anyway). `-- --note TEXT` adds why the games were re-recorded to the file's note.
+##
+## M5-0 (#111, design/M5_MAGIC_FOG.md §1.3, §18): `-- --m5` writes tests/fixtures/m5_base_records.json instead,
+## from M5_GAMES: M1, M2 and M4 (paths) games, each with the spec it was played from, so a test can rerun the AI
+## policy loop (play) and compare the computer's orders turn by turn. tests/test_m5_fields.gd, and later
+## test_fog_off.gd and test_magic_off.gd, replay it. Record it on `main`, before the change it guards, with
+## FIXTURE_COMMIT set to main's commit so the note names it:
+##   FIXTURE_COMMIT=04a130a godot --headless --path . -s tools/replay_fixture.gd -- --m5
+## An AI change outside M5 (such as #94) re-records it in a commit of its own, with `-- --m5 --note TEXT`.
 
 const Policies := preload("res://tools/autoplay/policies.gd")
 const OUT := "res://tests/fixtures/main_records.json"
+const M5_OUT := "res://tests/fixtures/m5_base_records.json"
 const TURN_CAP := 30
 
 ## {name, seed, rulers, policies, builds (optional preset ids, kingdom first)}: two seats, kingdom first.
@@ -26,29 +35,59 @@ const GAMES := [
 		"builds": ["warrior_king", "beast_god_unbound"]},
 ]
 
+## The M5 base games (`-- --m5`), as GAMES plus, for M4, `paths` true and `branches` (each seat's forced side of
+## the fork, "" to roll it). A paths game is set up as tools/autoplay/simulator.gd sets one up: with_paths, each
+## seat's build the first draw of its RNG (unless `builds` names presets), and each policy configured with the
+## seed, its seat and its side. Seeds differ from the other fixtures so these are new games.
+const M5_GAMES := [
+	{"name": "m1_ai_vs_ai", "seed": 1201, "rulers": false, "policies": ["ai", "ai"]},
+	{"name": "m1_greedy_vs_ai", "seed": 88, "rulers": false, "policies": ["greedy", "ai"]},
+	{"name": "m2_ai_vs_ai_rulers", "seed": 1707, "rulers": true, "policies": ["ai", "ai"]},
+	{"name": "m2_regents_court_vs_blood_of_the_fang", "seed": 64, "rulers": true, "policies": ["ai", "ai"],
+		"builds": ["regents_court", "blood_of_the_fang"]},
+	{"name": "m2_keep_presets_sacrifice", "seed": 12, "rulers": true, "policies": ["ai", "ai"],
+		"builds": ["warrior_king", "beast_god_unbound"]},
+	{"name": "m4_ai_vs_ai_rolled", "seed": 606, "rulers": true, "paths": true, "policies": ["ai", "ai"],
+		"branches": ["", ""]},
+	{"name": "m4_celestial_host_vs_thorn_wild", "seed": 1111, "rulers": true, "paths": true, "policies": ["ai", "ai"],
+		"branches": ["celestial_host", "thorn_wild"]},
+	{"name": "m4_living_iron_vs_blood_pact", "seed": 47, "rulers": true, "paths": true, "policies": ["ai", "ai"],
+		"branches": ["living_iron", "blood_pact"], "builds": ["regents_court", "blood_of_the_fang"]},
+]
+
 
 const FIRST_NOTE := "Recorded on main (f98c8b5) by tools/replay_fixture.gd for M4-1 (#66). Do not edit by hand."
+const M5_FIRST_NOTE := "Recorded on main (%s) by tools/replay_fixture.gd -- --m5 for M5-0 (#111): M1, M2 and M4 games with the computer's orders, before magic and fog of war. Do not edit by hand."
 
 
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
+	var m5 := args.has("--m5")
+	var out_path := M5_OUT if m5 else OUT
 	var note := ""
 	var i := args.find("--note")
 	if i >= 0 and i + 1 < args.size():
 		note = args[i + 1]
-	var old := check_existing(OUT)
+	var old := check_existing(out_path)
 	print(old.text)
 	if not old.ok and not args.has("--force"):
 		printerr("replay_fixture: not written. The rules changed, not just the computer's choices (-- --force writes anyway).")
 		quit(1)
 		return
 	var games := []
-	for g in GAMES:
-		games.append(_play(g))
+	for g in (M5_GAMES if m5 else GAMES):
+		var game := play(g)
+		if m5:
+			game["spec"] = g  # the M5 file says how each game was played, so a test reruns the AI from the file alone
+		games.append(game)
+	var first := FIRST_NOTE
+	if m5:
+		var commit := OS.get_environment("FIXTURE_COMMIT")
+		first = M5_FIRST_NOTE % (commit if not commit.is_empty() else "commit not given")
 	var checked: String = old.text if old.ok else "Written with --force: %s" % old.text
-	var out := {"note": FIRST_NOTE if note.is_empty() else "%s Re-recorded: %s %s Do not edit by hand." % [
-		FIRST_NOTE.trim_suffix(" Do not edit by hand."), note, checked], "games": games}
-	var f := FileAccess.open(OUT, FileAccess.WRITE)
+	var out := {"note": first if note.is_empty() else "%s Re-recorded: %s %s Do not edit by hand." % [
+		first.trim_suffix(" Do not edit by hand."), note, checked], "games": games}
+	var f := FileAccess.open(out_path, FileAccess.WRITE)
 	f.store_string(JSON.stringify(out) + "\n")
 	f.close()
 	for g in games:
@@ -56,22 +95,29 @@ func _initialize() -> void:
 	quit(0)
 
 
-func _play(g: Dictionary) -> Dictionary:
+## Plays one game of GAMES or M5_GAMES with the AI policy loop, as the engine and the computer play it now:
+## {"name", "record" (GameSession.record()), "turns" (a digest per turn), "final_state" (its JSON)}. Pure and
+## deterministic: the same spec always gives the same game, so a test can rerun it and compare the orders.
+static func play(g: Dictionary) -> Dictionary:
 	var seats := ["kingdom", "beasts"]
 	var seed_value := int(g.seed)
+	var with_paths := bool(g.get("paths", false))
 	var policies := []
 	var rngs := []
 	for i in seats.size():
-		policies.append(Policies.make(String(g.policies[i])))
+		var policy = Policies.make(String(g.policies[i]))
+		if with_paths:
+			policy.configure(seed_value, i, String(g.branches[i]))  # as tools/autoplay/simulator.gd does
+		policies.append(policy)
 		rngs.append(SeededRNG.new(seed_value * 7919 + (i + 1) * 104729))
 	var start := GameState.new(seed_value)
-	if g.rulers:
+	if g.rulers or with_paths:
 		var builds := {}
 		for i in seats.size():
 			builds[seats[i]] = AIPlayer.choose_build(null, seats[i], rngs[i])  # the seat RNG's first draw, as in AISeat
 			if g.has("builds"):
 				builds[seats[i]] = String(g.builds[i])
-		start = GameState.with_rulers(seed_value, builds, [])
+		start = GameState.with_paths(seed_value, builds, []) if with_paths else GameState.with_rulers(seed_value, builds, [])
 	var session := GameSession.new(start, seats, seed_value, AutoBattleResolver.new())
 	var turns := []
 	while not session.is_over() and session.turns_played() < TURN_CAP:

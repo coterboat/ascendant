@@ -10,6 +10,10 @@ extends Control
 ## Art (#10): the winner's banner hangs large beside the headline (both banners, smaller, on a draw),
 ## and each faction's row in "Provinces held" flies its banner by its seat emblem.
 ##
+## M3c S-3 (#101): in a game with forts and sieges, a "Forts and sieges" block gives each faction's forts built,
+## sieges won and storms fought, from `siege_stats` (SiegeChronicle.stats(), which the game screen sets), each
+## line explained on hover and linked to the codex.
+##
 ## API:
 ##   show_for(session) -> bool    shows session.victory(); false (and hidden) while the game runs
 ##   show_victory(victory, state = null, players = [], computer_seats = {})
@@ -58,6 +62,11 @@ var _capture_labels: Array[Label] = []
 var paths_heading: Label  # M4-4: "Paths taken", only in a game with paths
 var paths_box: VBoxContainer
 var _path_labels: Array[Label] = []
+## M3c S-3: {faction id: {"forts_built", "sieges_won", "storms"}} (SiegeChronicle.stats()); the host sets it.
+var siege_stats := {}
+var sieges_heading: Label
+var sieges_box: VBoxContainer
+var _siege_labels: Array[Label] = []
 
 
 func _init() -> void:
@@ -177,9 +186,41 @@ func show_victory(summary: Dictionary, state: GameState = null, players: Array =
 		_path_labels.append(l)
 	paths_box.visible = not _path_labels.is_empty()
 	paths_heading.visible = paths_box.visible
+	_show_siege_stats(state, seats)  # M3c S-3
 	visible = true
 	if is_inside_tree():
 		new_game_button.grab_focus.call_deferred()
+
+
+## M3c S-3: each faction's forts built, sieges won and storms, in a game with sieges.
+func _show_siege_stats(state: GameState, seats: Array) -> void:
+	_clear(sieges_box, _siege_labels)
+	var on := state != null and state.sieges
+	sieges_box.visible = on
+	sieges_heading.visible = on
+	if not on:
+		return
+	for i in seats.size():
+		var fid := String(seats[i])
+		var st: Dictionary = siege_stats.get(fid, {})
+		var built := int(st.get("forts_built", 0))
+		var won := int(st.get("sieges_won", 0))
+		var storms := int(st.get("storms", 0))
+		var name := _faction_name(fid, state)
+		var l := _label("%s: %s, %s, %s" % [name, TooltipText.count(built, "fort built", "forts built"),
+			TooltipText.count(won, "siege won", "sieges won"), TooltipText.count(storms, "storm")], 19, seat_color(i).lightened(0.3))
+		l.name = "Sieges_%s" % fid.validate_node_name()
+		l.mouse_filter = Control.MOUSE_FILTER_PASS
+		var b := {"title": "%s: forts and sieges" % name,
+			"description": "Forts built counts every fort level the %s finished (a palisade, or a keep). A siege is won by the besiegers when the fort falls to them, and by the fort's owner when the siege lines are destroyed (a sally, a relief, or a storm that failed). Storms count the storms the %s fought. %s" % [
+				name, name, RulesCodex.text("siege")],
+			"lines": [{"label": "Forts built", "value": built, "note": ""}, {"label": "Sieges won", "value": won, "note": ""},
+				{"label": "Storms fought", "value": storms, "note": ""}],
+			"total_label": "Siege deeds", "total": built + won + storms}
+		l.tooltip_text = TooltipText.from_breakdown(b)
+		CodexLink.attach(l, "siege", codex_requested.emit)
+		sieges_box.add_child(l)
+		_siege_labels.append(l)
 
 
 ## Adds a smaller button for the host's own action in a row above "New game". Returns it so the host
@@ -449,6 +490,17 @@ func _build() -> void:
 	paths_box.add_theme_constant_override("separation", 4)
 	paths_box.visible = false
 	paths_col.add_child(paths_box)
+
+	# M3c S-3: forts and sieges, only in a game with sieges.
+	sieges_heading = _heading("Forts and sieges", TooltipText.plain(String(RulesCodex.entry("siege").get("title", "")), RulesCodex.text("siege")))
+	sieges_heading.name = "SiegesHeading"
+	sieges_heading.visible = false
+	box.add_child(sieges_heading)
+	sieges_box = VBoxContainer.new()
+	sieges_box.name = "Sieges"
+	sieges_box.add_theme_constant_override("separation", 4)
+	sieges_box.visible = false
+	box.add_child(sieges_box)
 
 	captures_box = VBoxContainer.new()
 	captures_box.name = "Captures"

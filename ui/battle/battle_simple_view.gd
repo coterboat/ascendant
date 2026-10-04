@@ -75,6 +75,9 @@ const TOOLTIP_WRAP := 72
 const WHY_W := 384.0
 const WHY_X := 1216.0
 const DEPLOY_LINE := "Before round 1: the armies deploy. Press Space to play, or L for what every mark means."
+## #125: the terrain and fort chips keep this far from the title and the plaque, with this gap between them.
+const CHIP_GAP := 10.0
+const CHIP_SEPARATION := 6.0
 
 var player: BattlePlayer = null
 var reduced_motion := false
@@ -1084,6 +1087,8 @@ func _fill_top_bar() -> void:
 		var k := _slot_of_side(si)
 		var side: Dictionary = _log.sides[si]
 		var role := "on the border" if border else ("defending" if side.get("defender", false) else ("attacking" if not defender.is_empty() else "arrived"))
+		if not border and not _siege_block().is_empty():
+			role = FortView.siege_role(_siege_block(), si)  # M3c S-3: "storming", "sallying garrison", "garrison, in the breach"...
 		var people := String(side.get("people", {}).get("name", "")) if side.get("people", {}) is Dictionary else ""
 		plaque_labels[k].text = "%s · %s · %s" % [side.name, people, role] if not people.is_empty() else "%s · %s" % [side.name, role]
 		_fit(plaque_labels[k], 18, 13)
@@ -1104,27 +1109,107 @@ func _fill_top_bar() -> void:
 				if int(bonus.get("attack", 0)) > 0:
 					text += " and +%d attack" % int(bonus.attack)
 				var chip := _chip(text, TooltipText.plain("Terrain", "The defender of a %s province gets %s." % [terrain, text.substr(text.find(":") + 2)]))
+				var short := "%s +%d def" % [terrain.capitalize(), int(bonus.defense)] + (", +%d atk" % int(bonus.attack) if int(bonus.get("attack", 0)) > 0 else "")
+				chip.set_meta("full", text)
+				chip.set_meta("short", short)
 				chip_boxes[k].add_child(chip)
 				CodexLink.attach(chip, TooltipText.codex_for(TooltipText.terrain_kind(terrain)), codex_requested.emit)
-			if _log.get("fort", false):
+			var walls := FortView.siege_chip(_siege_block())
+			if not walls.is_empty():  # M3c S-3 (§9.7): a stormed garrison's walls replace the fort's old +2
+				var wchip := _chip(String(walls.text), String(walls.tip))
+				wchip.name = "SiegeChip"
+				wchip.set_meta("full", wchip.text)  # #125: "Walls +3 def" where the full words don't fit (_place_chips)
+				wchip.set_meta("short", wchip.text.get_slice(" (", 0).replace(": ", " ").replace(" defense", " def"))
+				chip_boxes[k].add_child(wchip)
+				CodexLink.attach(wchip, String(walls.codex), codex_requested.emit)
+			elif _log.get("fort", false):
 				var fchip := _chip("Fort: +%d defense" % AutoBattleResolver.FORT_DEFENSE, TooltipText.plain("Fort", "Only a defender gets a fort's bonus: +%d defense to every fighter." % AutoBattleResolver.FORT_DEFENSE))
+				fchip.set_meta("full", fchip.text)
+				fchip.set_meta("short", "Fort +%d def" % AutoBattleResolver.FORT_DEFENSE)
 				chip_boxes[k].add_child(fchip)
 				CodexLink.attach(fchip, "fort", codex_requested.emit)
+	for k2 in 2:
+		_place_chips(k2)
+	var open := FortView.siege_chip(_siege_block())
 	if border:
 		center_chip.text = "Border battle: nobody defends, no terrain bonus"
+	elif defender.is_empty() and not open.is_empty():
+		center_chip.text = String(open.text)  # M3c S-3 (§9.7): outside the walls, or through the breach
 	elif defender.is_empty():
 		center_chip.text = "Nobody was defending: no terrain bonus"
 	else:
 		center_chip.text = ""
 	center_chip.visible = not center_chip.text.is_empty()
 	center_chip.tooltip_text = TooltipText.plain("Terrain", "Only a side that already held the province gets its terrain and fort bonus. Here nobody did.") if center_chip.visible else ""
-	if center_chip.visible:
+	if center_chip.visible and defender.is_empty() and not open.is_empty() and not border:
+		center_chip.tooltip_text = String(open.tip)
+		CodexLink.attach(center_chip, String(open.codex), codex_requested.emit)
+	elif center_chip.visible:
 		CodexLink.attach(center_chip, "battle_terrain", codex_requested.emit)
+
+
+## Puts slot `k`'s terrain and fort chips where they never overlap the title or the plaque (#125): beside the
+## plaque's text when they fit between it and the title, in their short words ("Hills +1 def, +1 atk") if only
+## those fit, else centred under the round counter (that row's note only shows when nobody defends, and
+## chips only when someone does). The full words stay in each chip's tooltip.
+func _place_chips(k: int) -> void:
+	var box: HBoxContainer = chip_boxes[k]
+	var chips := box.get_children()
+	if chips.is_empty():
+		return
+	var tf := _font_of(title_label)
+	var tw := tf.get_string_size(title_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size_of(title_label, 20)).x
+	var title_l := title_label.position.x + (title_label.size.x - tw) / 2.0
+	var title_r := title_l + tw
+	var pl: Label = plaque_labels[k]
+	var pw := minf(_font_of(pl).get_string_size(pl.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size_of(pl, 18)).x, pl.size.x)
+	var lo := pl.position.x + pw + CHIP_GAP if k == 0 else title_r + CHIP_GAP
+	var hi := title_l - CHIP_GAP if k == 0 else pl.position.x + pl.size.x - pw - CHIP_GAP
+	for words in ["full", "short"]:
+		for c in chips:
+			(c as Label).text = String((c as Label).get_meta(words, (c as Label).text))
+		var w := chips_width(chips)
+		if w <= hi - lo:
+			box.position = Vector2(lo if k == 0 else hi - w, 6)
+			box.size = Vector2(w, 22)
+			return
+	## under the round counter, centred in the title's column
+	var w2 := chips_width(chips)
+	box.position = Vector2(title_label.position.x + (title_label.size.x - w2) / 2.0, center_chip.position.y)
+	box.size = Vector2(w2, 20)
+
+
+## The width the chips take side by side (their text, padding and the box's gaps).
+func chips_width(chips: Array) -> float:
+	var w := 0.0
+	for c in chips:
+		var l := c as Label
+		w += _font_of(l).get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size_of(l, 13)).x + 12.0
+	return w + CHIP_SEPARATION * maxi(0, chips.size() - 1)
+
+
+func _font_of(l: Control) -> Font:
+	return l.get_theme_font("font") if l.get_theme_font("font") != null else l.get_theme_default_font()
+
+
+func _font_size_of(l: Control, fallback: int) -> int:
+	return l.get_theme_font_size("font_size") if l.has_theme_font_size_override("font_size") else fallback
+
+
+## M3c S-3: the battle's siege block (§4.4): the log's, the report's, or the event's (S-1b puts it on the event first).
+func _siege_block() -> Dictionary:
+	for src in [_log, _report, _event.get("numbers", {}) if _event is Dictionary else {}]:
+		if src is Dictionary and src.get("siege") is Dictionary and not (src.siege as Dictionary).is_empty():
+			return src.siege
+	return {}
 
 
 func _role_words(side: Dictionary, border: bool, defender: String) -> String:
 	if border:
 		return "met the enemy on the border as both armies tried to swap places"
+	if not _siege_block().is_empty():  # M3c S-3: its role at the fort and what it meant
+		var si := (_log.get("sides", []) as Array).find(side)
+		return "%s: %s" % [FortView.siege_role(_siege_block(), si), String(FortView.role_meaning(_siege_block(), si).text)]
 	if side.get("defender", false):
 		return "defending: it already held the province"
 	if defender.is_empty():

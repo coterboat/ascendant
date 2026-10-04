@@ -11,6 +11,10 @@ extends Control
 ## M2-6 (#34): a ruler's army badge wears a second, gilt ring outside its player colour (STYLE_BIBLE.md
 ## 2.4, "ruler present"), and while a dead ruler's successor is pending its capital shows a countdown
 ## badge ("heir in 2 turns"), with the breakdown and the succession rule in its tooltip.
+## M3c S-3 (#101), only in a game with sieges: the fort chip (FortChip: the level, the walls bar marking the
+## storm steps, the besieger's chevrons, a construction site's progress) stands under the income instead of the
+## tower, and a province the viewer has a Fortify order for shows a dashed scaffold ghost (set_fortify_ghost),
+## which the map sets from the viewer's own orders only.
 ## Reads the GameState only. Clicking it emits `pressed`; clicking an army badge emits `army_pressed`.
 ## The region, its income and its army badges link to their codex entries: right-clicking one (or F1)
 ## emits codex_requested.
@@ -66,6 +70,11 @@ var countdown_badge: Label = null
 ## M4-2, the Wild Spreads: a sprout for the province that turns to forest at the end of the turn; its
 ## tooltip is the forecast. null when none.
 var wild_marker: Control = null
+## M3c S-3: the fort chip under the income (null without sieges, or with no fort and no construction site).
+var fort_chip: FortChip = null
+## M3c S-3: true while the viewer has a Fortify order here (a dashed scaffold ghost; set_fortify_ghost).
+var fortify_ghost := false
+var ghost_marker: Control = null
 
 
 ## Builds the region for `province_id` from `state`. `center` is in the map canvas' design space.
@@ -90,14 +99,14 @@ func setup(state: GameState, p: Province, center: Vector2, seats: Array = []) ->
 	ring_color = UiPalette.owner_color(state, p.owner, seats)
 	owner_seat = UiPalette.seat_index(state, p.owner, seats)
 	_is_capital = p.is_capital
-	_has_fort = p.has_fort
+	_has_fort = p.has_fort and not state.sieges  # M3c: the fort chip replaces the tower
 	_east = MapLayout.is_east(p.id)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var owner_name := "nobody (neutral)" if p.owner.is_empty() else state.find_faction(p.owner).faction_name
 	var grown := AscensionRules.terrain_note(p)  # M4-2: "grown by the Wild Spreads; it was hills"
 	tooltip_text = TooltipText.plain("%s: %s%s, owned by %s" % [p.name, p.terrain.capitalize(), " (%s)" % grown if not grown.is_empty() else "",
-		owner_name], "%s Click to see its terrain, income and armies." % marks_text(p))
+		owner_name], "%s Click to see its terrain, income and armies." % marks_text(p, state.sieges))
 	_base_tooltip = tooltip_text
 	CodexLink.attach(self, TooltipText.codex_for("province"), codex_requested.emit)
 
@@ -133,6 +142,10 @@ func setup(state: GameState, p: Province, center: Vector2, seats: Array = []) ->
 	income_label.tooltip_text = TooltipText.from_breakdown(income)
 	CodexLink.attach(income_label, TooltipText.codex_for("province_income", income), codex_requested.emit)
 	box.add_child(income_label)
+
+	fort_chip = FortChip.make(state, p.id, seats, codex_requested.emit)  # M3c S-3: only in a game with sieges
+	if fort_chip != null:
+		box.add_child(fort_chip)
 
 	army_box = HFlowContainer.new()
 	army_box.name = "Armies"
@@ -283,15 +296,54 @@ func _draw_sprout() -> void:
 
 
 ## What the ring and markers say, in words: "Player 1's province: Vermilion ring, circle emblem.
-## Capital (the crown). Fort (the tower)." Neutral provinces get the slate ring and shield.
-func marks_text(p: Province) -> String:
+## Capital (the crown). Fort (the tower)." Neutral provinces get the slate ring and shield. With sieges (M3c) the
+## fort is the chip under the income.
+func marks_text(p: Province, sieges: bool = false) -> String:
 	var text := "Neutral: slate ring, shield emblem." if owner_seat < 0 else "Player %d's province: %s ring, %s emblem." % [
 		owner_seat + 1, UiPalette.seat_color_name(owner_seat), SeatEmblem.shape_of(owner_seat)]
 	if p.is_capital:
 		text += " Capital (the crown)."
-	if p.has_fort:
+	if p.has_fort and sieges:
+		text += " %s (the chip under its income: its walls, and a siege)." % SiegeRules.level_name(p.fort_level)
+	elif p.has_fort:
 		text += " Fort (the tower)."
 	return text
+
+
+## M3c S-3: a dashed scaffold ghost by the plate while the viewer has a Fortify order here (`on`), with the
+## order's line as its tooltip. The map calls it with the viewer's own orders only.
+func set_fortify_ghost(on: bool, tooltip: String = "") -> void:
+	fortify_ghost = on
+	if not on:
+		if ghost_marker != null:
+			ghost_marker.queue_free()
+			remove_child(ghost_marker)
+			ghost_marker = null
+		return
+	if ghost_marker == null:
+		ghost_marker = Control.new()
+		ghost_marker.name = "FortifyGhost"
+		ghost_marker.size = Vector2(26, 26)
+		ghost_marker.mouse_filter = Control.MOUSE_FILTER_PASS
+		ghost_marker.draw.connect(_draw_ghost)
+		var r := size.x / 2.0
+		ghost_marker.position = Vector2(r, r * 1.7) - ghost_marker.size / 2.0  # under the plate's labels
+		add_child(ghost_marker)
+	ghost_marker.tooltip_text = TooltipText.plain("Fortify ordered (only you see this)", tooltip)
+	CodexLink.attach(ghost_marker, "fortify", codex_requested.emit)
+	ghost_marker.queue_redraw()
+
+
+## The Fortify ghost: a dashed gilt scaffold on an ink disc.
+func _draw_ghost() -> void:
+	if ghost_marker == null:
+		return
+	var c := ghost_marker.size / 2.0
+	ghost_marker.draw_circle(c, 12.0, Color(UiPalette.KEYLINE_INK, 0.8))
+	for x in [-6.0, 6.0]:
+		ghost_marker.draw_dashed_line(c + Vector2(x, -8), c + Vector2(x, 8), UiPalette.GILT, 2.0, 3.0)
+	for y in [-5.0, 0.0, 5.0]:
+		ghost_marker.draw_dashed_line(c + Vector2(-8, y), c + Vector2(8, y), UiPalette.GILT, 2.0, 3.0)
 
 
 func _army_badge(state: GameState, a: Army, seats: Array) -> Button:
@@ -332,6 +384,9 @@ func _army_badge(state: GameState, a: Army, seats: Array) -> Button:
 	else:
 		var units := Breakdown.army_units(state, a.id)
 		b.tooltip_text = TooltipText.from_breakdown(units) + "\n\n" + TooltipText.wrap_text(whose + "Click to select this army.")
+		if state.sieges and a.engines > 0:  # M3c S-3 (§9.1): the siege engines it carries
+			b.tooltip_text += "\n\n" + TooltipText.wrap_text("It carries %s: they don't fight; +%d siege damage each while besieging, for every %d troops with them." % [
+				SiegeRules.engines_text(a.owner, a.engines), int(FortData.SIEGE.engine), int(FortData.SIEGE.troops_per_engine)])
 		CodexLink.attach(b, TooltipText.codex_for("army_units", units), codex_requested.emit)
 	b.pressed.connect(func(): army_pressed.emit(a.id))
 	return b

@@ -53,6 +53,8 @@ const Playback := preload("res://world3d/playback.gd")
 const Models := preload("res://world3d/models.gd")
 const Muster := preload("res://world3d/muster.gd")
 const Choreo := preload("res://world3d/choreo.gd")
+const Stands := preload("res://world3d/stands.gd")
+const Trays := preload("res://world3d/trays.gd")
 
 const SPAN_NEAR := 70.0
 const PITCH_FAR := 60.0
@@ -73,10 +75,15 @@ const MAX_PIECE_SCALE := 3.2 ## past this the blocks pile into each other: the f
 static var _terrain: RefCounted = null
 static var _task := -1
 static var look := "cel" ## Look A by default (PR #81); L switches for the session
+## #125: where the board's camera stood last (its rig), so a battle opened from it dives from there onto the
+## province (BattleStage3D); {} before the board has shown.
+static var view_rig := {}
 
 var map: Control = null ## the MapScreen this board serves
 var wv: Node3D ## world_view.gd
 var armies: Node3D ## armies.gd
+var stands: Node3D ## stands.gd (#125): the far-zoom army stands
+var trays: Node3D ## trays.gd (#125): the forest armies' movement trays
 var overlay: Control ## board_overlay.gd
 var prepared := false
 var cover_check: Callable = Callable() ## true while something covers the board (it then stops rendering)
@@ -196,6 +203,12 @@ func _build_world() -> void:
 	armies.beat.connect(_on_beat)
 	armies.clash_started.connect(_on_clash_started)
 	armies.playback_finished.connect(_on_playback_finished)
+	stands = Stands.new()
+	stands.wv = wv
+	wv.add_child(stands)
+	trays = Trays.new()
+	trays.wv = wv
+	wv.add_child(trays)
 	overlay = BoardOverlay.new()
 	overlay.board = self
 	add_child(overlay)
@@ -519,7 +532,7 @@ func army_at(local: Vector2) -> String:
 
 ## An army formation's box on screen (local pixels), a little padded; empty when nothing of it stands.
 func army_rect(id: String) -> Rect2:
-	var pts: Array = armies.army_points(id)
+	var pts: Array = stands.points(id) if stands != null and stands.k > 0.5 else armies.army_points(id)
 	if pts.is_empty():
 		return Rect2()
 	var lo := Vector2(1.0e9, 1.0e9)
@@ -538,7 +551,7 @@ func army_rect(id: String) -> Rect2:
 
 ## Where an army's count plate stands (local pixels), or Vector2(-99999) when nothing of it stands.
 func army_plate_point(id: String) -> Vector2:
-	var a: Vector3 = armies.army_anchor(id)
+	var a: Vector3 = stands.anchor(id) if stands != null and stands.k > 0.5 else armies.army_anchor(id)
 	if a.x < -9999:
 		return Vector2(-99999, -99999)
 	return project3(a)
@@ -735,12 +748,21 @@ func _camera(delta: float) -> void:
 	r["pitch"] = lerpf(r["pitch"], goal["pitch"], k)
 	r["yaw"] = float(r["yaw"]) + wrapf(float(goal["yaw"]) - float(r["yaw"]), -180.0, 180.0) * k
 	wv.apply_rig()
+	view_rig = r.duplicate()
 	## far out the figures stand taller (toy scale) so every army reads as a marker over the map, and a
 	## man-sized figure never stands shorter than MIN_FIG_PX on screen (design 6.1, piece scale)
 	var z: float = clampf((log(float(r["span"])) - log(_span_fit)) / (log(SPAN_NEAR) - log(_span_fit)), 0.0, 1.0)
 	var px_per_unit: float = size.y / maxf(float(r["span"]), 1.0)
 	var min_scale: float = clampf(MIN_FIG_PX / (Armies.Kit.FIG * maxf(px_per_unit, 0.01)), 1.0, MAX_PIECE_SCALE)
 	armies.set_fig_scale(maxf(lerpf(2.4, 1.0, smoothstep(0.0, 0.8, z)), min_scale))
+	## #125: where even piece scale leaves a man-sized figure too small to read, the armies become stands
+	## (stands.gd, with hysteresis); the figures blend away as the stands grow in
+	var was_k: float = stands.k
+	armies.set_blend(stands.step(delta, Armies.Kit.FIG * armies.fig_scale * px_per_unit, px_per_unit, armies))
+	if overlay != null and absf(stands.k - was_k) > 0.0001:
+		overlay.refresh() ## the count plates ride the stands
+	## #125: in the woods every block stands on a tray in its owner's colour (trays.gd)
+	trays.step(armies)
 	## the model woods and rocks only at the near zoom, on the upper quality rungs (hysteresis): from the
 	## default zoom they put two million triangles on screen for little you can see (measured)
 	if wv.prop_models and (z < 0.76 or wv.quality >= 2):
@@ -836,7 +858,22 @@ func _watch_speed(delta: float) -> void:
 		_slow = maxf(0.0, _slow - delta * 0.5)
 	if _slow > 3.0:
 		_slow = 0.0
-		wv.set_quality(wv.quality + 1)
+		set_quality_rung(wv.quality + 1)
+
+
+## A quality rung (world_view.gd set_quality: the ladder steps down by itself, _watch_speed). From
+## Armies.MUSICIAN_OFF_RUNG down the musicians stand down from every colour party (#125, #92's cost); the
+## bearers stay (they carry the banners).
+func set_quality_rung(q: int) -> void:
+	wv.set_quality(q)
+	var keep := Armies.musicians_at(wv.quality)
+	if keep == Armies.musicians:
+		return
+	Armies.musicians = keep
+	if shown != null and not _playing:
+		armies.show_state(shown, seats, plan_of_orders())
+		if overlay != null:
+			overlay.refresh()
 
 
 func _draw() -> void:

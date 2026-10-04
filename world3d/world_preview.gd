@@ -84,6 +84,13 @@ func _ready() -> void:
 	_task = WorkerThreadPool.add_task(func(): _terrain_out = Terrain3D.build(), false, "3D land")
 
 
+## Closed while the land still builds: wait for the worker, which writes into this node.
+func _exit_tree() -> void:
+	if _task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_task)
+		_task = -1
+
+
 func _process(delta: float) -> void:
 	if _task >= 0 and WorkerThreadPool.is_task_completed(_task):
 		WorkerThreadPool.wait_for_task_completion(_task)
