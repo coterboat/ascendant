@@ -13,6 +13,8 @@ extends PanelContainer
 ## before the turn resolves, because they describe the computer's simultaneous orders. The section
 ## remembers whether the player opened or closed it.
 ## Reads the session only and never changes rules state. Builds its children in code.
+## Art (#10): a recruitment row shows the recruited unit's face at its left (Art), and the panel uses the
+## style bible's deep indigo.
 
 signal province_focus_requested(province_id: String)
 signal battle_report_requested(event: Dictionary)
@@ -28,7 +30,8 @@ const PHASE_TITLES := {
 	"victory": "Victory",
 }
 const GAME_OVER_TYPE := "game_over"
-const BACKGROUND := Color(0.1, 0.11, 0.14, 1.0)
+const BACKGROUND := UiPalette.PANEL_BG
+const ROW_PORTRAIT := Vector2(40, 40)
 ## The computer's notes box: at most this tall (it scrolls past that), sized from a rough line count.
 const NOTES_MAX_HEIGHT := 190
 const NOTE_LINE_HEIGHT := 25
@@ -236,6 +239,11 @@ func _event_row(e: Dictionary) -> HBoxContainer:
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(content)
 	var provinces: Array = e.get("provinces", [])
+	var unit_id := recruited_unit(e)
+	if not unit_id.is_empty():
+		var card := Art.portrait_card(unit_id, ROW_PORTRAIT, "", Art.Crop.FACE)
+		row.add_child(card)
+		row.move_child(card, 0)
 
 	var b := Button.new()
 	b.text = str(e.get("text", ""))
@@ -266,6 +274,22 @@ func _event_row(e: Dictionary) -> HBoxContainer:
 	if RulesCodex.ENTRIES.has(key):
 		row.add_child(_codex_button(key))
 	return row
+
+
+## The unit type a "recruited" event is about ("knights"), found by the unit names of the recruiting
+## faction in the event's text; "" for any other event.
+static func recruited_unit(e: Dictionary) -> String:
+	if str(e.get("type", "")) != "recruited":
+		return ""
+	var factions: Array = e.get("factions", [])
+	var text := str(e.get("text", ""))
+	for f in FactionData.FACTIONS:
+		if not factions.is_empty() and f.id != str(factions[0]):
+			continue
+		for u in f.unit_types + [f.commander]:
+			if text.contains(" recruited %s " % u.name):
+				return String(u.id)
+	return ""
 
 
 func _codex_button(key: String) -> Button:

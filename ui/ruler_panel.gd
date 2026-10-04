@@ -13,12 +13,16 @@ extends Control
 ## tooltip, and the lines the map's side panel shows for it, with a breakdown behind every number and a
 ## codex link on each. UI only: every number and sentence comes from RulerRules, Breakdown and Forecast,
 ## so nothing here can disagree with the rules.
+## Art (#10): each column flies its faction's banner by the heading and shows the ruler's portrait card
+## (Art.ruler_card: a styled placeholder with the ruler's initial until the ruler portraits land) to the
+## left of its numbers.
 
 signal closed
 signal sacrifice_requested
 signal codex_requested(key: String)
 
 const PANEL_SIZE := Vector2(1320, 800)
+const PORTRAIT_SIZE := Vector2(120, 160)
 
 var state: GameState = null
 var viewing_faction_id := ""
@@ -130,20 +134,44 @@ func close() -> void:
 ## The column of one faction's ruler. Yours (`own`) adds the queued sacrifice and the Sacrifice button.
 func _column(fid: String, own: bool) -> VBoxContainer:
 	var f := state.find_faction(fid)
-	var col := VBoxContainer.new()
-	col.name = "Column_%s" % fid.validate_node_name()
-	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.custom_minimum_size = Vector2(560, 0)
-	col.add_theme_constant_override("separation", 6)
-	var heading := _heading(col, "%s: %s" % ["Your ruler" if own else "Enemy ruler (read-only)", f.faction_name], 21)
+	var outer := VBoxContainer.new()
+	outer.name = "Column_%s" % fid.validate_node_name()
+	outer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer.custom_minimum_size = Vector2(560, 0)
+	outer.add_theme_constant_override("separation", 8)
+	var head := HBoxContainer.new()
+	head.name = "HeadingRow"
+	head.add_theme_constant_override("separation", 10)
+	outer.add_child(head)
+	var banner := Art.banner_card(fid, 48.0)
+	banner.name = "FactionBanner"
+	head.add_child(banner)
+	var heading := _heading(head, "%s: %s" % ["Your ruler" if own else "Enemy ruler (read-only)", f.faction_name], 21)
 	heading.name = "FactionHeading"
+	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	heading.add_theme_color_override("font_color", UiPalette.owner_color(state, fid).lightened(0.3))
 	if not f.has_ruler():
-		_text(col, "The %s has no ruler in this game." % f.faction_name, TooltipText.plain("No ruler", RulesCodex.text("ruler")),
+		_text(outer, "The %s has no ruler in this game." % f.faction_name, TooltipText.plain("No ruler", RulesCodex.text("ruler")),
 			UiPalette.TEXT_SECONDARY)
-		return col
+		return outer
 	var rid := f.ruler_type
 	var name := RulerRules.current_name(state, fid)
+	# The ruler's portrait card at the left, every line about the ruler at its right.
+	var body := HBoxContainer.new()
+	body.name = "Body"
+	body.add_theme_constant_override("separation", 16)
+	outer.add_child(body)
+	var card := Art.ruler_card(rid, name, PORTRAIT_SIZE)
+	card.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	card.tooltip_text = TooltipText.plain(RulerRules._cap(name), String(RulerRules.ruler_data(rid).get("flavour", "")))
+	card.mouse_filter = Control.MOUSE_FILTER_PASS
+	body.add_child(card)
+	var col := VBoxContainer.new()
+	col.name = "Lines"
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 6)
+	body.add_child(col)
 	var who := _text(col, RulerRules._cap(name), TooltipText.plain("%s, ruler of the %s" % [RulerRules._cap(name), f.faction_name],
 		"%s %s" % [String(RulerRules.ruler_data(rid).get("flavour", "")), RulesCodex.text("ruler")]), UiPalette.GILT)
 	who.name = "RulerName"
@@ -171,7 +199,7 @@ func _column(fid: String, own: bool) -> VBoxContainer:
 	_mandates(col, f, own)
 	if own:
 		_sacrifice_section(col, f)
-	return col
+	return outer
 
 
 ## A living ruler's numbers, each with its breakdown and codex link.
@@ -427,10 +455,17 @@ static func fill(box: Control, state: GameState, army: Army, request_codex: Call
 	var fid := f.id
 	var rid := f.ruler_type
 	var name := RulerRules.current_name(state, fid)
-	var ruler_label := _text(box, "Ruler: %s" % name, TooltipText.plain("%s, ruler of the %s" % [RulerRules._cap(name), f.faction_name],
+	# The ruler's face beside its name (Art: a placeholder card until the ruler portraits land).
+	var row := HBoxContainer.new()
+	row.name = "RulerRow"
+	row.add_theme_constant_override("separation", 10)
+	box.add_child(row)
+	row.add_child(Art.ruler_card(rid, name, Vector2(44, 44), Art.Crop.FACE))
+	var ruler_label := _text(row, "Ruler: %s" % name, TooltipText.plain("%s, ruler of the %s" % [RulerRules._cap(name), f.faction_name],
 		"%s It %s. %s" % [String(RulerRules.ruler_data(rid).get("flavour", "")), RulerData.BATTLE_RANKS.get(RulerRules.battle_rank(rid), ""),
 			RulesCodex.text("ruler_army")]), UiPalette.GILT)
 	ruler_label.name = "RulerLabel"
+	ruler_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	CodexLink.attach(ruler_label, "ruler_" + rid, request_codex)
 
 	var hp := Breakdown.ruler_stat(state, fid, "hp")
