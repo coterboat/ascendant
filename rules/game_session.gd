@@ -214,6 +214,9 @@ func describe_order(faction_id: String, order) -> String:
 	if order is MoveOrder:
 		var army := _state.find_army(order.army_id)
 		var who := "the %s" % TurnResolver.army_label(_state, army) if army else "an army that no longer exists"
+		if order.is_road_move() and TurnResolver.road_rule(_state, faction_id, order) == "forest_stride":  # M4-2
+			return "Move %s to %s through the forest of %s (Forest Stride)." % [who, TurnResolver._province_name(_state, order.to),
+				TurnResolver._province_name(_state, order.via)]
 		if order.is_road_move():  # King's Roads (M2-4)
 			return "Move %s to %s by the King's Roads through %s." % [who, TurnResolver._province_name(_state, order.to),
 				TurnResolver._province_name(_state, order.via)]

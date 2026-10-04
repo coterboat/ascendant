@@ -25,7 +25,7 @@ const BIGGEST := {"game_seed": 9, "turn": 34, "index": 0}
 const BIGGEST_RECORD := "res://tests/fixtures/battles/biggest_game.json"
 
 const NAMES := ["starting_plains", "forest_fort", "knights_charge", "skirmish", "iron_discipline", "king_falls_wins",
-	"dread_feast_frenzy", "round_cap_defender", "border", "biggest"]
+	"dread_feast_frenzy", "round_cap_defender", "border", "biggest", "one_round", "mutual_rout"]
 const WHAT := {
 	"starting_plains": "The starting armies on plains: the Clans attack the Crown at Rivermarch (no rulers).",
 	"forest_fort": "A forest defence with a fort: the Crown holds Thornvale (given a fort for this fixture) against the Clans.",
@@ -36,6 +36,8 @@ const WHAT := {
 	"dread_feast_frenzy": "Dread with Feast and Blood Frenzy: the Great Thornmane's Clans hold Wildmoor, frenzied, and feast after.",
 	"round_cap_defender": "The round cap with the defender holding: a Knight Captain alone in the Stonegate fort against a Warchief.",
 	"border": "A border battle: the Crown and the Clans swap Rivermarch and Greenglade and meet on the border.",
+	"one_round": "A one-round battle: a lone Crown Spearmen holding Rivermarch is swept away in the first round (M3-2's turning point has none).",
+	"mutual_rout": "A mutual rout: both sides break in the same round on the Rivermarch-Greenglade border, and the one with more strength left keeps the field.",
 	"biggest": "The biggest battle measured in AI-vs-AI games with rulers (design/M3_BATTLES.md §1.3): game seed 9, turn 34, 277 fighters, 898 attacks, 4 rounds, rebuilt from the game's record.",
 }
 
@@ -88,6 +90,10 @@ static func shows(name: String, battle_log: Dictionary, report: Dictionary) -> b
 		"round_cap_defender":
 			var end: Dictionary = events[BattleLog.find_event(battle_log, "end")]
 			return end.how == "round_cap" and end.tie_break == "defender"
+		"one_round":
+			return int(events[BattleLog.find_event(battle_log, "end")].rounds) == 1
+		"mutual_rout":
+			return events[BattleLog.find_event(battle_log, "end")].how == "mutual"
 		"biggest":
 			var attacks := events.filter(func(e): return e.t == "attack").size()
 			return battle_log.fighters.size() == 277 and attacks == 898 and int(report.rounds_fought) == 4
@@ -310,6 +316,16 @@ static func _setup(name: String) -> Dictionary:
 			var s := _state()
 			_army(s, "kingdom-1", CROWN, "rivermarch", ["spearmen", "spearmen", "crossbowmen", "knights", "knight_captain"])
 			_army(s, "beasts-2", CLANS, "greenglade", ["tuskers", "tuskers", "fangthrowers", "war_bear", "warchief"])
+			return {"state": s, "orders": {CROWN: [MoveOrder.new("kingdom-1", "greenglade")], CLANS: [MoveOrder.new("beasts-2", "rivermarch")]}}
+		"one_round":
+			var s := _state()
+			_army(s, "kingdom-1", CROWN, "rivermarch", ["spearmen"])
+			_army(s, "beasts-2", CLANS, "greenglade", ["tuskers", "tuskers", "tuskers", "war_bear", "warchief"])
+			return {"state": s, "orders": {CLANS: [MoveOrder.new("beasts-2", "rivermarch")]}}
+		"mutual_rout":
+			var s := _state()
+			_army(s, "kingdom-1", CROWN, "rivermarch", ["spearmen", "spearmen", "crossbowmen"])
+			_army(s, "beasts-2", CLANS, "greenglade", ["tuskers", "fangthrowers", "fangthrowers"])
 			return {"state": s, "orders": {CROWN: [MoveOrder.new("kingdom-1", "greenglade")], CLANS: [MoveOrder.new("beasts-2", "rivermarch")]}}
 	return {"error": "There is no fixture scenario called '%s'. The scenarios are: %s." % [name, ", ".join(NAMES)]}
 

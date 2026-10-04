@@ -7,6 +7,9 @@
     python3 tools/ludo/ludo.py --jobs 8 id ...   # a pool of 8 jobs in flight instead of one per lane
     python3 tools/ludo/ludo.py --account         # the credit balance (free)
     python3 tools/ludo/ludo.py --takes 3 id ...  # speech/voice/sfx: 3 takes (extras in .takes/)
+    python3 tools/ludo/ludo.py --manifest tools/ludo/batches/x.json --ledger path/x_ledger.json
+                                               # another manifest and ledger (paths from the repo root);
+                                               # a manifest's "rid_prefix" names its request ids
 
 Reads LUDO_API_KEY from the environment or .env.local. Idempotent: an asset whose
 output file exists is skipped, and every job carries a stable request_id so a
@@ -176,6 +179,7 @@ def record(entry):
 
 
 MANIFEST_V = {}
+RID_PREFIX = "concurrent"  ## a manifest's "rid_prefix" replaces it
 FAILED = set()  ## ids that failed in this run: whatever waits on them fails at once
 
 
@@ -325,7 +329,7 @@ def build(asset, style, force):
     if have and not force and ledger_v(aid) >= ver:
         return
     kind = asset["kind"]
-    rid = "concurrent-%s-v%s" % (aid, ver)
+    rid = "%s-%s-v%s" % (RID_PREFIX, aid, ver)
     t0 = time.time()
     extra = {}
     calls = []
@@ -585,7 +589,16 @@ def account():
 
 
 def main(argv):
-    global KEY
+    global KEY, MANIFEST, LEDGER, RID_PREFIX
+    for flag in ("--manifest", "--ledger"):
+        if flag in argv:
+            i = argv.index(flag)
+            path = os.path.join(ROOT, argv[i + 1])
+            argv = argv[:i] + argv[i + 2:]
+            if flag == "--manifest":
+                MANIFEST = path
+            else:
+                LEDGER = path
     KEY = api_key()
     if "--account" in argv:
         c = account()
@@ -605,6 +618,7 @@ def main(argv):
         argv = argv[:i] + argv[i + 2:]
     wanted = [a for a in argv if not a.startswith("--")]
     man = json.load(open(MANIFEST))
+    RID_PREFIX = man.get("rid_prefix", RID_PREFIX)
     for a in man["assets"]:
         MANIFEST_V[a["id"]] = int(a.get("v", 1))
     style = man["style"]

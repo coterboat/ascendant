@@ -66,6 +66,8 @@ static func _modifier_rule(key: String) -> String:
 			return "Royal Court: the province the King is in earns more gold, if you own it, so it follows him when he moves."
 		"income_floor":
 			return "A province never earns less than nothing."
+		RulerRules.FORGE_TITHE:  # M4-2
+			return "Forge Tithe: every province with a fort you own earns more gold."
 	if key.begins_with(AscensionRules.PART_PREFIX):
 		return AscensionRules.part_rule(key)  # M4: Market Charters, Tithe of Light, Deep Mines, Bounty of the Wild
 	return ""
@@ -255,7 +257,10 @@ static func unit_stat(state: GameState, faction_id: String, unit_type_id: String
 	var label := String(RulerRules.STAT_NAMES.get(stat, stat))
 	if not us.get("ok", false) or not us.base.has(stat):
 		return _make(label, "This faction can't recruit that unit type.", [], label, 0)
-	var lines := [_line(us.name, us.base[stat], "its own %s" % label.to_lower())]
+	# M4-2: a changed unit's own line keeps its old name ("Max hp 10 = Spearmen 8 + Celestial Host 2"), and the
+	# title names both ("Sunspears (Spearmen of the Celestial Host)"). Unchanged units read as before.
+	var base_name := AscensionRules.base_unit_name(faction_id, unit_type_id) if AscensionRules.has_paths(state) else String(us.name)
+	var lines := [_line(base_name, us.base[stat], "its own %s" % label.to_lower())]
 	var names := []
 	var path_names := []
 	for m in us.mods[stat]:
@@ -269,7 +274,10 @@ static func unit_stat(state: GameState, faction_id: String, unit_type_id: String
 		else "Your mandates change it: %s." % ", ".join(names)]
 	if not path_names.is_empty():
 		desc += " Your path changes it: %s. %s" % [", ".join(path_names), RulesCodex.text("path_node")]
-	return _coded(_make("%s of %s" % [label, us.name], desc, lines, label, us[stat]), "mandates" if path_names.is_empty() else "path_node")
+	var title := String(us.name)
+	if AscensionRules.has_paths(state):
+		title = AscensionRules.unit_title(state, faction_id, TurnResolver.recruitable_type(state.find_faction(faction_id), unit_type_id))
+	return _coded(_make("%s of %s" % [label, title], desc, lines, label, us[stat]), "mandates" if path_names.is_empty() else "path_node")
 
 
 # --- mid-game sacrifice and succession countdown (M2-6, #34) ---------------------------------------
