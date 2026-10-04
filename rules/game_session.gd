@@ -43,6 +43,15 @@ extends RefCounted
 ## Saved games (SaveGame): a save holds record(); from_record() turns it back into a playable session at
 ## the start of the saved turn (a game with two people behind the handoff cover). Orders queued during a
 ## turn are not in record(), so they are not saved.
+##
+## Fog of war (M5-1, design/M5_MAGIC_FOG.md §2.1, §2.5-§2.8): truth stays behind named doors. Every player-facing
+## surface and the computer read the per-viewer accessors: state_for(viewer) (alias view_state), turn_report_for,
+## view_before, memory and intel. With fog off, state_for returns state() and turn_report_for returns turn_report(),
+## so nothing changes. With fog on, each seat's memory and intel are kept up after every resolved turn (FogRules
+## remember and learn) and rebuilt by the replay from_record() already runs, so a save holds no new keys; views and
+## filtered reports are built when asked and cached until the next turn resolves. The truth accessors are state(),
+## turn_report(), battle_events(), builds(), record(), history() and victory(); FogRules.OBSERVER sees the truth
+## through the per-viewer accessors too.
 
 enum Phase { ORDERS, HANDOFF, GAME_OVER, INVALID }
 
@@ -78,6 +87,14 @@ var _setup_errors: Array = []
 var _start_builds := {}  # faction id -> RulerRules.build_of at the start; {} in a game without rulers
 var _computer := {}  # faction id -> level, for the seats the computer plays
 var _removed: Array = []  # M2-6: texts of the orders the last queue_order / cancel_order removed
+# --- fog of war (M5-1): kept only in a game with fog -------------------------------------------------
+var _before: GameState = null  # the true state at the start of the last resolved turn (null before turn 1)
+var _fog_memory := {}  # faction id -> its memory now (FogRules.remember)
+var _fog_intel := {}  # faction id -> its intel now (FogRules.learn)
+var _fog_memory_before := {}  # faction id -> its memory at the start of the last resolved turn
+var _fog_intel_before := {}  # faction id -> its intel at the start of the last resolved turn
+var _fog_cache := {}  # "state|<viewer>", "before|<viewer>", "report|<viewer>" -> built views and reports
+var _fog_sight := {}  # faction id -> its sight of the current state (FogRules.sight), kept for the next turn
 
 
 func _init(state: GameState = null, players: Array = [], game_seed: int = 0, battle_resolver: BattleResolver = null,
@@ -106,6 +123,10 @@ func _init(state: GameState = null, players: Array = [], game_seed: int = 0, bat
 			_start_builds[f.id] = RulerRules.build_of(_state, f.id)
 	for fid in _players:
 		_books[fid] = OrderBook.new()
+	if _state.fog:
+		for fid in _players:
+			_fog_memory[fid] = FogRules.new_memory(_state, fid)
+			_fog_intel[fid] = FogRules.new_intel(_state, fid)
 
 
 ## The report phases of `state`'s game, in display order (M3c, design/M3C_SIEGES.md §6): TurnResolver.phases
@@ -195,6 +216,81 @@ func turn_number() -> int:
 ## The live state is never handed out, so the UI can't change it by accident.
 func state() -> GameState:
 	return _state.deep_copy() if _state != null else null
+
+
+# --- the per-viewer accessors (M5-1, fog of war, §2.1) -------------------------------------------------
+
+## The game as `viewer` (a faction id, or FogRules.OBSERVER) sees it at the start of the current turn: its view
+## (FogRules.view_state) in a game with fog, otherwise state(). A copy, as state() is. null for a faction that is not
+## in this game.
+func state_for(viewer: String) -> GameState:
+	if _state == null:
+		return null
+	if not _state.fog or viewer == FogRules.OBSERVER:
+		return state()
+	if _state.find_faction(viewer) == null:
+		return null
+	var key := "state|" + viewer
+	if not _fog_cache.has(key):
+		_fog_cache[key] = FogRules.view_state(_state, viewer, _fog_memory.get(viewer, {}), _fog_intel.get(viewer, {}))
+	var view: GameState = _fog_cache[key]
+	return view.deep_copy() if view != null else null
+
+
+## The same as state_for (§10.1 names it so for the computer).
+func view_state(viewer: String) -> GameState:
+	return state_for(viewer)
+
+
+## The game as `viewer` saw it at the start of the last resolved turn (§2.8): what its playback of that turn starts
+## from. With fog off, the true state then. null before the first turn is resolved.
+func view_before(viewer: String) -> GameState:
+	if _before == null:
+		return null
+	if not _before.fog or viewer == FogRules.OBSERVER:
+		return _before.deep_copy()
+	if _before.find_faction(viewer) == null:
+		return null
+	var key := "before|" + viewer
+	if not _fog_cache.has(key):
+		_fog_cache[key] = FogRules.view_state(_before, viewer, _fog_memory_before.get(viewer, {}), _fog_intel_before.get(viewer, {}))
+	var view: GameState = _fog_cache[key]
+	return view.deep_copy() if view != null else null
+
+
+## The last resolved turn's report as `viewer` sees it (§2.8): turn_report() in a game without fog, or for the
+## observer; otherwise {"turn", "header", "events": FogRules.report_for(...), "fog": true, "viewer"}, with the
+## game_over event whole for everyone (the fog lifts).
+func turn_report_for(viewer: String) -> Dictionary:
+	if _state == null or not _state.fog or viewer == FogRules.OBSERVER:
+		return turn_report()
+	var plain := turn_report()
+	plain["fog"] = true
+	plain["viewer"] = viewer
+	if _before == null or _state.find_faction(viewer) == null:
+		plain["events"] = []
+		return plain
+	var key := "report|" + viewer
+	if not _fog_cache.has(key):
+		# One pass gives the report and both views (FogRules.turn_for); its memory and intel are the ones kept.
+		var turn := FogRules.turn_for(_report, viewer, _before, _state, _fog_memory_before.get(viewer, {}),
+			_fog_intel_before.get(viewer, {}))
+		_fog_cache[key] = turn.events
+		_fog_cache["before|" + viewer] = turn.view_before
+		if not _fog_cache.has("state|" + viewer):
+			_fog_cache["state|" + viewer] = turn.view_after
+	plain["events"] = _fog_cache[key].duplicate(true)
+	return plain
+
+
+## What `viewer` remembers of the rivals' armies out of its sight (FogRules.remember, §2.5): a copy, {} without fog.
+func memory(viewer: String) -> Dictionary:
+	return _fog_memory.get(viewer, {}).duplicate(true)
+
+
+## What `viewer` knows of each rival's build (FogRules.learn, §2.6): a copy, {} without fog.
+func intel(viewer: String) -> Dictionary:
+	return _fog_intel.get(viewer, {}).duplicate(true)
 
 
 ## The current player's queued orders, in the order given. Empty outside the ORDERS phase, so the
@@ -587,9 +683,12 @@ func _resolve_orders(orders: Dictionary, recorded: Dictionary) -> String:
 	var result := TurnResolver.resolve(_state, orders, seed_value, _battle_resolver)
 	if result.new_state == null:
 		return "This turn could not be resolved: %s" % " ".join(result.get("errors", []))
+	_before = _state
 	_state = result.new_state
 	_history.append({"turn": turn + 1, "seed": Serial.int64_to_str(seed_value), "orders": recorded})
 	var events: Array = result.events
+	if _state.fog:
+		_fog_turn(events)
 	for e in events:
 		if BATTLE_TYPES.has(e.type):
 			_battles += 1
@@ -606,6 +705,23 @@ func _resolve_orders(orders: Dictionary, recorded: Dictionary) -> String:
 		_phase = Phase.HANDOFF if _needs_handoff(0) else Phase.ORDERS
 	_report = events
 	return ""
+
+
+## M5-1: after a turn resolves in a fog game, each seat's memory and intel move on (FogRules.remember and learn on the
+## events it is shown); views and filtered reports are rebuilt when next asked for.
+func _fog_turn(events: Array) -> void:
+	_fog_cache = {}
+	_fog_memory_before = _fog_memory
+	_fog_intel_before = _fog_intel
+	_fog_memory = {}
+	_fog_intel = {}
+	for fid in _players:
+		var sights := {"before": _fog_sight[fid] if _fog_sight.has(fid) else FogRules.sight(_before, fid), "after": FogRules.sight(_state, fid)}
+		_fog_sight[fid] = sights.after
+		var memory: Dictionary = _fog_memory_before.get(fid, {})
+		_fog_memory[fid] = FogRules.remember(memory, fid, _before, _state, events, sights)
+		var shown := FogRules.filter_events(events, fid, _before, _state, null, sights)
+		_fog_intel[fid] = FogRules.learn(_fog_intel_before.get(fid, {}), fid, shown, _state, sights.after)
 
 
 ## Whether the seat at `seat_index` starts its turn behind a handoff cover: only a human seat, and only

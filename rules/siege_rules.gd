@@ -458,8 +458,8 @@ static func _check_storm(state: GameState, fid: String, order: SiegeOrder, moves
 		return _reject("storm_own_fort", "%s is your own fort, and nobody storms their own walls. To fight the siege lines outside, sally out." % p.name)
 	if p.walls <= 0:
 		return _reject("storm_walls_down", "%s's walls are down: the battle there comes on its own." % p.name)
-	if p.owner.is_empty() or garrison(state, p.id).is_empty():
-		return _reject("storm_empty_fort", "Nobody is inside the walls of %s, so there is nothing to storm: an army that walks in takes it." % p.name)
+	# M5-1 (fog of war, design/M5_MAGIC_FOG.md §2.10): your own armies are checked before the garrison, so a storm
+	# with no army of yours near never says whether anyone is inside: you see a fort's garrison only from there or next door.
 	var here := false
 	for a in state.armies:
 		if a.owner == fid and a.location == p.id:
@@ -469,6 +469,8 @@ static func _check_storm(state: GameState, fid: String, order: SiegeOrder, moves
 			here = true
 	if not here:
 		return _reject("storm_no_army", "You have no army at %s and no move into it this turn, so nobody would storm. Move an army in and storm with it, or storm with the armies already besieging it." % p.name)
+	if p.owner.is_empty() or garrison(state, p.id).is_empty():
+		return _reject("storm_empty_fort", "Nobody is inside the walls of %s, so there is nothing to storm: an army that walks in takes it." % p.name)
 	for o in given:
 		if o is SiegeOrder and o.action == STORM and o.province == p.id:
 			return _reject("storm_twice", "You already ordered a storm of %s this turn. A storm is ordered once for each fort, and every army of yours there takes part." % p.name)
