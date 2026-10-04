@@ -705,6 +705,27 @@ func test_battle_viewer_chips_for_storm_open_and_breach() -> void:
 	viewer.free()
 
 
+func test_a_real_storm_shows_its_walls_chip_teaches_and_counts() -> void:
+	var s := Fx.state([["kingdom-3", CROWN, "stonegate", Fx.units("knights", 20)], ["beasts-5", CLANS, "blackwood", Fx.units("tuskers", 2)]],
+		{"stonegate": CROWN, "blackwood": CLANS})
+	var result := Fx.resolve(s, {CROWN: [MoveOrder.new("kingdom-3", "blackwood"), SiegeOrder.storm("blackwood")]}, true)
+	var battles := Fx.events_of(result.events, "battle")
+	assert_eq(battles.size(), 1, "a storm from the march")
+	var siege: Dictionary = battles[0].get("numbers", {}).get("siege", {})
+	assert_eq(String(siege.get("kind", "")), "storm", "the battle carries its siege block (S-1b)")
+	var walls := int(FortData.LEVELS[2].walls)
+	var viewer := BattleReportViewer.new()
+	viewer.show_event(battles[0], result.new_state)
+	var chip := viewer.find_children("SiegeChip", "", true, false)
+	assert_eq(chip.size(), 1, "the viewer reads the event's siege block")
+	assert_eq((chip[0] as Label).text, "Walls: +%d defense (%d of %d)" % [SiegeRules.walls_defense(walls), walls, walls])
+	viewer.free()
+	var c := SiegeChronicle.new()
+	c.add_turn(1, result.events)
+	assert_eq(c.teach(result.events, CROWN, 1).map(func(l): return String(l.kind)), ["storm"], "the first storm teaches")
+	assert_eq(int(c.stats()[CROWN].storms), 1, "and counts for the stormers")
+
+
 # --- the victory screen --------------------------------------------------------------------------------
 
 func test_the_victory_screen_counts_forts_built_sieges_won_and_storms() -> void:

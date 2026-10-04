@@ -118,6 +118,9 @@ func show_event(event: Dictionary, state: GameState = null, seats: Array = []) -
 	_show_watch(_event)
 	var numbers: Dictionary = event.get("numbers", {})
 	var report: Dictionary = numbers.get("report", {})
+	if not report.is_empty() and not report.has("siege") and numbers.get("siege") is Dictionary:
+		report = report.duplicate()  # M3c: the battle's siege block rides on the event (S-1b) before the report has it (S-2)
+		report["siege"] = numbers.siege
 	if report.is_empty():
 		_state = state
 		# #55: the battle in the turn report's words (TurnReportText), when the state is at hand.

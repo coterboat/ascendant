@@ -1106,7 +1106,7 @@ func _fill_top_bar() -> void:
 				var chip := _chip(text, TooltipText.plain("Terrain", "The defender of a %s province gets %s." % [terrain, text.substr(text.find(":") + 2)]))
 				chip_boxes[k].add_child(chip)
 				CodexLink.attach(chip, TooltipText.codex_for(TooltipText.terrain_kind(terrain)), codex_requested.emit)
-			var walls := FortView.siege_chip(_log.get("siege", {}) if _log.get("siege", {}) is Dictionary else {})
+			var walls := FortView.siege_chip(_siege_block())
 			if not walls.is_empty():  # M3c S-3 (§9.7): a stormed garrison's walls replace the fort's old +2
 				var wchip := _chip(String(walls.text), String(walls.tip))
 				wchip.name = "SiegeChip"
@@ -1116,7 +1116,7 @@ func _fill_top_bar() -> void:
 				var fchip := _chip("Fort: +%d defense" % AutoBattleResolver.FORT_DEFENSE, TooltipText.plain("Fort", "Only a defender gets a fort's bonus: +%d defense to every fighter." % AutoBattleResolver.FORT_DEFENSE))
 				chip_boxes[k].add_child(fchip)
 				CodexLink.attach(fchip, "fort", codex_requested.emit)
-	var open := FortView.siege_chip(_log.get("siege", {}) if _log.get("siege", {}) is Dictionary else {})
+	var open := FortView.siege_chip(_siege_block())
 	if border:
 		center_chip.text = "Border battle: nobody defends, no terrain bonus"
 	elif defender.is_empty() and not open.is_empty():
@@ -1132,6 +1132,14 @@ func _fill_top_bar() -> void:
 		CodexLink.attach(center_chip, String(open.codex), codex_requested.emit)
 	elif center_chip.visible:
 		CodexLink.attach(center_chip, "battle_terrain", codex_requested.emit)
+
+
+## M3c S-3: the battle's siege block (§4.4): the log's, the report's, or the event's (S-1b puts it on the event first).
+func _siege_block() -> Dictionary:
+	for src in [_log, _report, _event.get("numbers", {}) if _event is Dictionary else {}]:
+		if src is Dictionary and src.get("siege") is Dictionary and not (src.siege as Dictionary).is_empty():
+			return src.siege
+	return {}
 
 
 func _role_words(side: Dictionary, border: bool, defender: String) -> String:
