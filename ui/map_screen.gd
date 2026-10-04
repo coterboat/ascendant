@@ -1079,14 +1079,21 @@ func _add_army(a: Army) -> void:
 
 	var header := Button.new()
 	header.name = "ArmyHeader"
-	header.text = RulerRules._cap(TurnReportText.army_title(state, a))  # the turn report's name for it (#55)
+	var parts := army_header_parts(state, a)
+	header.text = String(parts[0])  # the turn report's name for it (#55) and its place, on one line (#125)
 	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	header.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	header.autowrap_mode = TextServer.AUTOWRAP_OFF
+	header.clip_text = true
+	header.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	header.focus_mode = Control.FOCUS_NONE
 	header.tooltip_text = TooltipText.from_breakdown(Breakdown.army_units(state, a.id)) + "\n\nClick to select this army."
 	_link(header, "army_units")
 	header.pressed.connect(select_army.bind(a.id))
 	box.add_child(header)
+	# Who is in it goes on the line under the name (#125: a big army's header wrapped to three lines).
+	var who := _add_text(String(parts[1]), header.tooltip_text, UiPalette.TEXT_SECONDARY, box)
+	who.name = "ArmyMembers"
+	who.add_theme_font_size_override("font_size", 15)
 	if a.ruler != null:
 		# A ruler's army holds only its ruler (M2): show the ruler's numbers instead of units (RulerPanel).
 		header.tooltip_text = RulerPanel.summary(state, a) + "\n\nClick to select this army."
@@ -1169,6 +1176,17 @@ func _add_heading(text: String, font_size: int) -> Label:
 
 
 ## Adds a line of text with a tooltip. Labels with tooltips take the mouse so the tooltip shows.
+## An army's side panel header as [the one-line header: its report name and where it is ("The Crown's 1st at
+## Crownkeep"), the line under it: who is in it ("Spearmen, Crossbowmen and Knight Captain"; a ruler's army:
+## "Ruler of the Aurel Crown")], from TurnReportText.army_title's own words (#125).
+static func army_header_parts(st: GameState, a: Army) -> Array:
+	var name := TurnReportText.army_name(st, a.id, a.owner)
+	var bare := TurnReportText.army_title(st, a, false)
+	var placed := TurnReportText.army_title(st, a)
+	var inside := bare.substr(name.length()).strip_edges().trim_prefix("(").trim_suffix(")")
+	return [RulerRules._cap(name) + placed.substr(bare.length()), RulerRules._cap(inside)]
+
+
 func _add_text(text: String, tooltip: String, color: Color = UiPalette.TEXT_PRIMARY, parent: Control = null) -> Label:
 	var l := Label.new()
 	l.text = text

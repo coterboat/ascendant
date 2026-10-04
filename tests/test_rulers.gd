@@ -512,7 +512,8 @@ func test_ruler_army_on_the_map_reads_plainly_and_explains_every_number() -> voi
 	var panel := map.details.find_child("Army_kingdom-3", true, false)
 	assert_true(panel != null, "the ruler's army is listed in the side panel")
 	var header := panel.find_child("ArmyHeader", true, false) as Button
-	assert_eq(header.text, "The Ever-Regent (ruler of the Aurel Crown) at Crownkeep")
+	assert_eq(header.text, "The Ever-Regent at Crownkeep")
+	assert_eq((panel.find_child("ArmyMembers", true, false) as Label).text, "Ruler of the Aurel Crown", "who the army is, on the line under it (#125)")
 	assert_eq(String(header.get_meta(CodexLink.META)), "ruler_army")
 	var numbers := 0
 	for node_name in ["RulerLabel", "RulerHpLabel", "RulerAttackLabel", "RulerDefenseLabel", "RulerMoraleLabel",

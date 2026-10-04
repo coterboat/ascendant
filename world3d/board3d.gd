@@ -74,6 +74,9 @@ const MAX_PIECE_SCALE := 3.2 ## past this the blocks pile into each other: the f
 static var _terrain: RefCounted = null
 static var _task := -1
 static var look := "cel" ## Look A by default (PR #81); L switches for the session
+## #125: where the board's camera stood last (its rig), so a battle opened from it dives from there onto the
+## province (BattleStage3D); {} before the board has shown.
+static var view_rig := {}
 
 var map: Control = null ## the MapScreen this board serves
 var wv: Node3D ## world_view.gd
@@ -740,6 +743,7 @@ func _camera(delta: float) -> void:
 	r["pitch"] = lerpf(r["pitch"], goal["pitch"], k)
 	r["yaw"] = float(r["yaw"]) + wrapf(float(goal["yaw"]) - float(r["yaw"]), -180.0, 180.0) * k
 	wv.apply_rig()
+	view_rig = r.duplicate()
 	## far out the figures stand taller (toy scale) so every army reads as a marker over the map, and a
 	## man-sized figure never stands shorter than MIN_FIG_PX on screen (design 6.1, piece scale)
 	var z: float = clampf((log(float(r["span"])) - log(_span_fit)) / (log(SPAN_NEAR) - log(_span_fit)), 0.0, 1.0)

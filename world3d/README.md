@@ -211,6 +211,45 @@ without rulers; a played board stands exactly as one built from the state after;
 before and after); a game where the report waits for the playback; and a static check that the board's
 code never rolls dice or resolves a turn. `tests/test_world3d.gd` keeps the spike's land tests.
 
+## Polish (#125)
+
+- **Far-zoom army stands** (`stands.gd`, design 6.1): where even piece scale leaves a man-sized figure under 23 px
+  on screen, every army becomes a stand: a base in its owner's colour (an ink rim, a gilt ring for a ruler's
+  army), its banner, and one figure for each of its three most numerous types, sized in screen pixels (a 32 px
+  base, a 38 px banner). The count plate rides over the stand. Hysteresis (on under 23 px, off over 27) and a
+  0.35 s cross-blend: the figures shrink away as the stands grow in (`armies.gd set_blend`). The board's hooks
+  are three lines in `board3d.gd _camera`, `army_rect` and `army_plate_point`.
+- **The musician's rung**: from quality rung 2 (`Armies.MUSICIAN_OFF_RUNG`, `Board3D.set_quality_rung`) the
+  musicians stand down from every colour party; the bearers stay, they carry the banners.
+- **Path-unit variants** (#126): a unit row's `variants` entry for a faction's transformation is merged over the
+  row (`Models.figure_row(type, variant)`, `variant_of(type, AscensionRules.transformation(state, faction))`), and
+  every mesh cache, MultiMesh and stand key carries the variant. The board reads the transformation from its
+  state; the 3D stage from the state `play()` is given (with a log alone, from the people its log records).
+- **The camera dives from the board** into a battle: `Board3D.view_rig` is where the board's camera stood; the
+  stage, opened over it, eases from there onto its framing in 1 s (any key or click lands it; a cut with
+  reduced motion). The stage still builds its own copy of the world: the dive is the camera, not the scene.
+- **M3's files** (`BattleFormation.groups_of`): a battle of more than 280 fighters stands one figure for a file
+  of up to k fighters of the same side, army, type and rank (k the smallest from 2 that fits 280; leaders stand
+  alone). A file's figure falls with its last fighter; its plate sums its fighters with a "×n" badge of those
+  standing; its tooltip lists each one. `--fixture massive` (322 fighters) shows it.
+
+### Measuring the minimum-spec rung (3D_DIRECTION 3.5, #62)
+
+The budget is p95 ≤ 33.3 ms at 1920×1080 on a 2020+ integrated GPU (Iris Xe, Vega 7/680M, M1) at its Auto
+rung. The studio has no such machine, so the method is fixed and the number waits for one:
+
+1. On the machine, plugged in, nothing else running: `godot --path . -- --battle3d --fixture biggest
+   --window=1920x1080 --rung 3 --quit-at-end`. It plays the 277-fighter battle at 1× to the result and prints
+   `fps`, `frame time p95`, `max`, the draw calls and the rung (`battle_watch3d.gd`).
+2. Again with `--rung 4`, then without `--rung` (the Auto ladder: it starts at 0 and steps down after 3 s under
+   40 fps; the printout names the rung it ended on).
+3. Pass: p95 ≤ 33.3 ms at the Auto rung, no frame over 50 ms after the first second. Report the three lines,
+   the machine, its driver and the build's commit in the PR or the issue.
+4. The board: start a game, `F` for the whole map with every army visible, and read the board's fps over
+   10 s at the same rungs (Settings has no rung switch yet; the ladder steps down by itself).
+
+Alex's Mac (Apple M4, the reference row) runs step 1 at rung 0 for the numbers in M3b's PR (#109).
+
 ## Battles on the land (M3b)
 
 A battle is played back in 3D on the province where it happened (design/3D_DIRECTION.md 7), driven entirely by

@@ -9,6 +9,11 @@
 ## primitive "fallback" (a Kit.figure id) at the row's "scale". A unit type with no row at all stands as
 ## Kit's generic figure, so a new unit never breaks the board.
 ##
+## Variants (#125, the path-unit models): a row may carry "variants": {"<transformation id>": {"model", "height",
+## "yaw", "poses", "pose_size"}}, a faction's transformed family of the unit. figure_row(type, variant) merges
+## the entry over the row; every lookup takes the variant (and keys its cache by it); variant_of(type,
+## AscensionRules.transformation(state, faction)) is the variant a faction's units wear.
+##
 ## Poses (M3a.2, design/3D_DIRECTION.md 7.3 and 9.3): a row may name a model per pose in "poses"
 ## ({"ready", "march", "strike", "fallen"}, each a path or {"model": path}), sized by "pose_size"
 ## ({pose: {"axis": "height" or "length", "men": n}}). figure_mesh(type, prefer, pose) draws that pose's
@@ -42,9 +47,29 @@ static func table() -> Dictionary:
 	return _table
 
 
-## A unit type's row ({} when it has none: the generic figure stands in).
-static func figure_row(type_id: String) -> Dictionary:
-	return (table().get("figures", {}) as Dictionary).get(type_id, {})
+## A unit type's row ({} when it has none: the generic figure stands in). With `variant` (a transformation
+## id, #125), the row's "variants"[variant] entry merged over it (its model, height, yaw, poses and pose
+## sizes), or the plain row when it has no such variant.
+static func figure_row(type_id: String, variant: String = "") -> Dictionary:
+	var row: Dictionary = (table().get("figures", {}) as Dictionary).get(type_id, {})
+	if variant.is_empty():
+		return row
+	var v: Variant = (row.get("variants", {}) as Dictionary).get(variant)
+	if not (v is Dictionary):
+		return row
+	var out := row.duplicate()
+	out.erase("variants")
+	for key in (v as Dictionary).keys():
+		out[key] = (v as Dictionary)[key]
+	return out
+
+
+## The variant a unit of `type_id` wears for a faction whose transformation is `transformation` (#125,
+## AscensionRules.transformation): the transformation itself when the row has a variant for it, else "".
+static func variant_of(type_id: String, transformation: String) -> String:
+	if transformation.is_empty():
+		return ""
+	return transformation if ((figure_row(type_id).get("variants", {}) as Dictionary).has(transformation)) else ""
 
 
 ## A building kind's row; `variant` (a faction id) picks "<kind>.<variant>" when the table has it.
@@ -91,8 +116,8 @@ static func block_rule_text() -> String:
 
 
 ## The GLB a figure row would load, or "" when it draws its primitive (nothing found on disk).
-static func figure_model_path(type_id: String) -> String:
-	var row := figure_row(type_id)
+static func figure_model_path(type_id: String, variant: String = "") -> String:
+	var row := figure_row(type_id, variant)
 	var p := String(row.get("model", ""))
 	if not p.is_empty() and ResourceLoader.exists(p):
 		return p
@@ -120,13 +145,15 @@ static func has_musician() -> bool:
 ## The GLB a row names for `pose` ("" when it names none, or the file is missing): the row's
 ## "poses"[pose] (a path, or {"model": path}); for "ready" also the row's "model" and the bible's
 ## convention (figure_model_path); for any other pose the convention <unit>_<pose>.glb.
-static func pose_model_path(type_id: String, pose: String) -> String:
-	var row := figure_row(type_id)
+static func pose_model_path(type_id: String, pose: String, variant: String = "") -> String:
+	var row := figure_row(type_id, variant)
 	var p := _pose_entry_path((row.get("poses", {}) as Dictionary).get(pose, ""))
 	if not p.is_empty() and ResourceLoader.exists(p):
 		return p
 	if pose == "ready":
-		return figure_model_path(type_id)
+		return figure_model_path(type_id, variant)
+	if not variant.is_empty() and figure_row(type_id, variant) != figure_row(type_id):
+		return "" ## a variant's missing pose draws the variant's ready model, never the base's pose
 	var faction := String(row.get("faction", ""))
 	if not faction.is_empty():
 		var conv := "res://assets/models/%s/%s/%s_%s.glb" % [faction, type_id, type_id, pose]
@@ -142,18 +169,18 @@ static func _pose_entry_path(entry: Variant) -> String:
 
 
 ## True when `pose` has a model of its own (otherwise the ready mesh stands in, moved in code).
-static func has_pose_model(type_id: String, pose: String, prefer_model: bool = true) -> bool:
+static func has_pose_model(type_id: String, pose: String, prefer_model: bool = true, variant: String = "") -> bool:
 	if not prefer_model or pose == "ready":
 		return false
-	return String((figure_mesh(type_id, prefer_model, pose) as Dictionary).get("pose", "ready")) == pose
+	return String((figure_mesh(type_id, prefer_model, pose, "", variant) as Dictionary).get("pose", "ready")) == pose
 
 
 ## Every pose a type can stand in: pose -> its figure_mesh() dictionary. Poses without a model of their
 ## own map to the ready pose's dictionary (the same mesh), so callers group by mesh.
-static func pose_meshes(type_id: String, prefer_model: bool = true, faction: String = "") -> Dictionary:
+static func pose_meshes(type_id: String, prefer_model: bool = true, faction: String = "", variant: String = "") -> Dictionary:
 	var out := {}
 	for pose in POSES:
-		out[pose] = figure_mesh(type_id, prefer_model, pose, faction)
+		out[pose] = figure_mesh(type_id, prefer_model, pose, faction, variant)
 	return out
 
 
@@ -161,8 +188,11 @@ static func pose_meshes(type_id: String, prefer_model: bool = true, faction: Str
 ## man, with a base whose team part takes the player's colour (and a gilt ring for a ruler).
 ## `prefer_model` false always gives the primitive. A pose with no model of its own returns the ready
 ## pose's dictionary (the same mesh). Returns {"mesh", "tex", "source", "pose"}.
-static func figure_mesh(type_id: String, prefer_model: bool = true, pose: String = "ready", faction: String = "") -> Dictionary:
-	var row := figure_row(type_id)
+## `variant` (#125): a transformation's model family for the unit (figure_row's merge; variant_of picks it).
+static func figure_mesh(type_id: String, prefer_model: bool = true, pose: String = "ready", faction: String = "", variant: String = "") -> Dictionary:
+	if not variant.is_empty() and not (figure_row(type_id).get("variants", {}) as Dictionary).has(variant):
+		variant = ""
+	var row := figure_row(type_id, variant)
 	## an army extra (bearer, musician) wears its faction's model, in every pose
 	var extra := extra_model_path(type_id, faction) if prefer_model and not faction.is_empty() else ""
 	if not extra.is_empty():
@@ -177,21 +207,21 @@ static func figure_mesh(type_id: String, prefer_model: bool = true, pose: String
 			got["pose"] = "ready"
 			_meshes[ekey] = got
 		return _meshes[ekey]
-	var key := "fig:%s:%s:%s" % [type_id, prefer_model, pose]
+	var key := "fig:%s:%s:%s:%s" % [type_id, prefer_model, pose, variant]
 	if _meshes.has(key):
 		return _meshes[key]
 	var out := {}
 	if pose != "ready":
-		var pp := pose_model_path(type_id, pose) if prefer_model else ""
-		if not pp.is_empty() and pp != pose_model_path(type_id, "ready"):
+		var pp := pose_model_path(type_id, pose, variant) if prefer_model else ""
+		if not pp.is_empty() and pp != pose_model_path(type_id, "ready", variant):
 			out = _glb_figure(pp, type_id, row, pose)
 		if out.is_empty():
-			out = figure_mesh(type_id, prefer_model, "ready")
+			out = figure_mesh(type_id, prefer_model, "ready", "", variant)
 		else:
 			out["pose"] = pose
 		_meshes[key] = out
 		return out
-	var path := pose_model_path(type_id, "ready") if prefer_model else ""
+	var path := pose_model_path(type_id, "ready", variant) if prefer_model else ""
 	if not path.is_empty():
 		out = _glb_figure(path, type_id, row, "ready")
 	if out.is_empty():

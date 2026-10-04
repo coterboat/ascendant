@@ -64,7 +64,9 @@ var _dirty := true
 ## Builds every figure of `plan` (BattleFormation.plan) for `battle_log`; by side: `colours` (sRGB, the
 ## banners), `lin` (linear, the bases), `emblems` (seat emblem indices), `factions` (the extras' models).
 ## `files` (BattleFormation.groups_of, {} for 1:1): a figure per file of fighters instead of per fighter.
-func build(battle_log: Dictionary, plan: Dictionary, colours: Array, lin: Array, emblems: Array, factions: Array, files: Dictionary = {}) -> void:
+## `transformations` (by side, #125): each side's faction's transformation, so its units wear their variants.
+func build(battle_log: Dictionary, plan: Dictionary, colours: Array, lin: Array, emblems: Array, factions: Array, files: Dictionary = {},
+		transformations: Array = []) -> void:
 	clear()
 	var members: Array = (files.get("members", []) as Array).duplicate()
 	if members.is_empty():
@@ -79,8 +81,9 @@ func build(battle_log: Dictionary, plan: Dictionary, colours: Array, lin: Array,
 		for fid in members[i]:
 			_fig_of[int(fid)] = i
 		var s: Dictionary = plan["slots"][int(f.id)]
+		var tr := String(transformations[int(f.side)]) if int(f.side) < transformations.size() else ""
 		specs.append({"fid": int(f.id), "type": String(f.type), "faction": "", "side": int(f.side), "role": String(f.role), "slot": s,
-			"members": (members[i] as Array).duplicate()})
+			"members": (members[i] as Array).duplicate(), "variant": Models.variant_of(String(f.type), tr)})
 	for ex in plan["extras"]:
 		var si := int(ex["side"])
 		specs.append({"fid": -1, "type": String(ex["type"]), "faction": String(factions[si]) if si < factions.size() else "", "side": si,
@@ -88,11 +91,12 @@ func build(battle_log: Dictionary, plan: Dictionary, colours: Array, lin: Array,
 	## how many figures each (type, faction) has: every one of its pose groups holds that many at most
 	var count := {}
 	for sp in specs:
-		var tk := "%s:%s" % [sp["type"], sp["faction"]]
+		var tk := "%s:%s:%s" % [sp["type"], sp["faction"], sp.get("variant", "")]
 		count[tk] = int(count.get(tk, 0)) + 1
 	for sp in specs:
-		var tk := "%s:%s" % [sp["type"], sp["faction"]]
-		var pm: Dictionary = Models.pose_meshes(String(sp["type"]), true, String(sp["faction"]))
+		var tk := "%s:%s:%s" % [sp["type"], sp["faction"], sp.get("variant", "")]
+		var vt := String(sp.get("variant", ""))
+		var pm: Dictionary = Models.pose_meshes(String(sp["type"]), true, String(sp["faction"]), vt)
 		var keys := {}
 		for pose in Models.POSES:
 			if not pm.has(pose):
@@ -108,12 +112,12 @@ func build(battle_log: Dictionary, plan: Dictionary, colours: Array, lin: Array,
 		var col: Color = lin[int(sp["side"])] if int(sp["side"]) < lin.size() else Color.WHITE
 		var ready_mesh: Mesh = (pm["ready"] as Dictionary)["mesh"]
 		var aabb: AABB = ready_mesh.get_aabb()
-		var lying := Models.has_pose_model(String(sp["type"]), "fallen", true)
+		var lying := Models.has_pose_model(String(sp["type"]), "fallen", true, vt)
 		figs.append({"fid": sp["fid"], "type": sp["type"], "side": int(sp["side"]), "role": sp["role"], "home": s["pos"], "y": float(s["y"]),
 			"yaw": float(s["yaw"]), "keys": keys, "lin": col, "h": aabb.end.y, "w": maxf(aabb.size.x, 1.0),
 			"len": maxf(aabb.size.z, 1.0), "lying": lying, "hold": "stand", "motions": [], "phase": Choreo.hash_phase("fig", figs.size()),
 			"tier": int(s.get("tier", 2)), "back": plan["back"][int(sp["side"])] if int(sp["side"]) < (plan["back"] as Array).size() else s["pos"],
-			"members": sp.get("members", [])})
+			"members": sp.get("members", []), "variant": vt})
 	banners = []
 	for si in colours.size():
 		var bn: Node3D = wv.make_banner(colours[si], int(emblems[si]) if si < emblems.size() else 0, 11.0, Vector2(5.4, 3.6))

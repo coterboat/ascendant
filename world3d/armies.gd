@@ -545,7 +545,8 @@ func _make_entry(d: Dictionary, placed: Array, ghost: bool = false) -> Dictionar
 	var seat: int = UiPalette.seat_index(state, d["owner"], seats)
 	var col: Color = UiPalette.seat_color(seat)
 	var e := {"id": d["id"], "owner": d["owner"], "colour": col, "emblem": maxi(seat, 0), "figs": [], "types": {},
-		"province": d["location"], "units": d.get("units", 0), "ruler": d.get("ruler", false), "ghost": ghost}
+		"province": d["location"], "units": d.get("units", 0), "ruler": d.get("ruler", false), "ghost": ghost,
+		"transformation": AscensionRules.transformation(state, String(d["owner"])) if state != null else ""}
 	_fill_entry(e, placed, ghost)
 	return e
 
@@ -566,7 +567,9 @@ func _fill_entry(e: Dictionary, placed: Array, ghost: bool = false) -> void:
 	var lin: Color = col.srgb_to_linear()
 	var parent: Node = ghost_root if ghost else self
 	for t in order:
-		var pm: Dictionary = {"ready": Models.figure_mesh(t, prefer_models)} if ghost else Models.pose_meshes(t, prefer_models, String(e["owner"]))
+		## #125: a transformed faction's units wear their variant's model family (Models.variant_of)
+		var vt := Models.variant_of(t, String(e.get("transformation", "")))
+		var pm: Dictionary = {"ready": Models.figure_mesh(t, prefer_models, "ready", "", vt)} if ghost else Models.pose_meshes(t, prefer_models, String(e["owner"]), vt)
 		var groups := {}
 		var mis: Array = []
 		var by_mesh := {}
@@ -599,7 +602,7 @@ func _fill_entry(e: Dictionary, placed: Array, ghost: bool = false) -> void:
 			by_mesh[mid] = mis.size()
 			groups[pose] = mis.size()
 			mis.append(mi)
-		e["types"][t] = {"groups": groups, "mis": mis, "lying": (not ghost) and Models.has_pose_model(t, "fallen", prefer_models)}
+		e["types"][t] = {"groups": groups, "mis": mis, "lying": (not ghost) and Models.has_pose_model(t, "fallen", prefer_models, vt), "variant": vt}
 	var k := 0
 	for sl in placed:
 		var f := {"type": sl["type"], "role": sl["role"],

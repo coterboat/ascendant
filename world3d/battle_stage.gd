@@ -67,6 +67,7 @@ const PROP_CELL := 28.0 ## the woods' cells (world units)
 const PROP_LOD_BIAS := 0.4 ## the woods drop detail sooner than the fighters
 const WOODS_NEAR := 40.0
 const GLYPH_INTERVAL := 0.12
+const DIVE_TIME := 1.0 ## the dive from the board onto the battle (3D_DIRECTION 7.2, 8.2: at most 1.2 s)
 const FILES_ABOVE := 280 ## 3D_DIRECTION 7.2: every fighter its own figure up to M3's 280; above, M3's files
 const LABEL_BACKING := 0.84 ## #125: the dark backing's opacity under the words over the land
 ## the woods and rocks: [model kind, plan key, sizing axis, the board's primitive MultiMesh name]
@@ -94,6 +95,12 @@ var proj_root: Node3D
 var stage_fort: Node3D
 var plan := {}
 var groups := {} ## M3 3.4's files (BattleFormation.groups_of): {} while every fighter is its own figure
+var game_state: GameState = null ## the state play() was given (the factions' transformations), or null
+var dive_from_board := true ## #125: opened by the host (play()), dive from the board's camera (Board3D.view_rig)
+var _dive_pending := false
+var dives := 0
+var _shown_before := false
+var _play_state: GameState = null
 var rig := {} ## the rig the camera stands at now (before the shake)
 var goal := {} ## the whole battle's framing
 var quality := 0
@@ -429,7 +436,17 @@ func _world_info() -> Dictionary:
 
 # --- showing a battle (the Simple view's flow, with the land for a field) ----------------------------
 
+## The battle view contract (M3-5): plays the battle on the land; `state` (the game state) says which
+## transformation each side's faction has, so its units wear their variant models (#125).
+func play(battle_log: Dictionary, report: Dictionary, state: GameState = null, seats: Array = []) -> String:
+	_play_state = state
+	_dive_pending = true ## opened from the game (the host): dive from the board's camera
+	return show_battle(battle_log, report, seats)
+
+
 func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array = [], event: Dictionary = {}) -> String:
+	game_state = _play_state
+	_play_state = null
 	var st := BattleFx.settings()
 	if not _settings_read:
 		_settings_read = true
@@ -490,6 +507,7 @@ func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array =
 
 func close() -> void:
 	super.close()
+	_shown_before = false
 	if _vp != null:
 		_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 
@@ -525,7 +543,10 @@ func _build_field() -> void:
 	_woods_near(plan["site"], _footprint_radius() + WOODS_NEAR)
 	_place_stage_fort()
 	figures.reduced_motion = reduced_motion
-	figures.build(_log, plan, _side_colours, _side_lin, emblems, factions, groups)
+	var transformations := []
+	for si in _log.sides.size():
+		transformations.append(transformation_of(si))
+	figures.build(_log, plan, _side_colours, _side_lin, emblems, factions, groups, transformations)
 	view3d.queue_redraw()
 	_proj.clear()
 	_fx.clear()
@@ -537,10 +558,38 @@ func _build_field() -> void:
 	_move = {}
 	goal = _frame_all()
 	_set_rig(goal)
+	## #125: opened over the board, the camera dives from where the board's stood onto the battle (at most
+	## DIVE_TIME, skipped by any key or click, a cut with reduced motion)
+	if dive_from_board and _dive_pending and not _shown_before and not reduced_motion and not Board3D.view_rig.is_empty():
+		var from: Dictionary = Board3D.view_rig.duplicate()
+		from["fov"] = float(goal.get("fov", Cam.FOV))
+		_set_rig(from)
+		_move = {"from": from, "to": goal.duplicate(), "t": 0.0, "dur": DIVE_TIME, "dive": true}
+		dives += 1
+	_shown_before = true
+	_dive_pending = false
 	var left_near: bool = bool(goal.get("left_near", true))
 	var near: int = plan["near"]
 	var far: int = plan["far"]
 	layout = {"left": near if left_near else far, "right": far if left_near else near, "scale": 1.0, "slots": plan["slots"]}
+
+
+## Side `si`'s faction's transformation (#125): from the game state play() was given, as the rules read it
+## (AscensionRules.transformation); with no state (the launcher, tests), the variant whose id ends in the log's
+## people id ("celestial_host" -> "crown_celestial_host"); "" before one.
+func transformation_of(si: int) -> String:
+	var side: Dictionary = _log.sides[si]
+	if game_state != null:
+		return AscensionRules.transformation(game_state, String(side.faction))
+	var people: Variant = side.get("people", {})
+	var pid := String((people as Dictionary).get("id", "")) if people is Dictionary else ""
+	if pid.is_empty():
+		return ""
+	for row in (Models.table().get("figures", {}) as Dictionary).values():
+		for vid in (row.get("variants", {}) as Dictionary).keys():
+			if String(vid).ends_with("_" + pid):
+				return String(vid)
+	return ""
 
 
 ## Puts back what the last battle lifted off the table, then lifts the woods, rocks, villages and houses
@@ -1499,7 +1548,22 @@ func pick(at: Vector2) -> int:
 	return best
 
 
+## Any key or click during the dive lands it at once (3D_DIRECTION 8.2: cinematic moves are skippable).
+func skip_dive_on(event: InputEvent) -> bool:
+	if not bool(_move.get("dive", false)):
+		return false
+	var pressed := (event is InputEventKey and (event as InputEventKey).pressed) or (event is InputEventMouseButton and (event as InputEventMouseButton).pressed)
+	if not pressed:
+		return false
+	_move = {}
+	_set_rig(goal)
+	return true
+
+
 func _gui_input(event: InputEvent) -> void:
+	if skip_dive_on(event):
+		accept_event()
+		return
 	var mm := event as InputEventMouseMotion
 	if mm != null:
 		if _drag >= 0:
@@ -1572,6 +1636,9 @@ func _get_tooltip(at_position: Vector2) -> String:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible or player == null:
+		return
+	if skip_dive_on(event):
+		_handled()
 		return
 	if CodexLink.is_open_key(event):
 		var key := ""
@@ -1751,7 +1818,8 @@ func _draw_overlay(ci: CanvasItem) -> void:
 		var sum2: Dictionary = pl[3]
 		var bar := Rect2(head2 - Vector2(PLATE_W * 0.5, PLATE_H), Vector2(PLATE_W, PLATE_H))
 		BattleCard.draw_hp_bar(ci, bar, int(sum2["hp"]), int(sum2["max"]), int(sum2["pending"]))
-		if int(sum2["size"]) > 1:
+		## a file's count once it has lost someone (or under the mouse / pinned): a crowd of "x2"s said nothing
+		if int(sum2["size"]) > 1 and (int(sum2["standing"]) < int(sum2["size"]) or fid4 == _hovered or fid4 == _selected):
 			draw_file_badge(ci, font, bar.position + Vector2(-3, PLATE_H * 0.5), int(sum2["standing"]))
 		if f2.role == "ruler":
 			BattleCard.draw_plate(ci, font, Rect2(bar.position - Vector2(60, 28), Vector2(PLATE_W + 120, 24)), _ruler_plate(fid4, st), 1.0, true, -4.0)
@@ -2050,6 +2118,10 @@ static func stage_rows(seat: int = 0) -> Array:
 				for k in 5:
 					ci.draw_rect(Rect2(w.position + Vector2(k * w.size.x / 5.0 + 2, -6), Vector2(w.size.x / 10.0, 6)), Color(0.62, 0.58, 0.52))
 				ci.draw_rect(w, UiPalette.KEYLINE_INK, false, 1.0)),
+		BattleLegend._row("file3d", "\"×3\" beside a plate", "In a battle of more than 280 fighters one figure stands for a file of a few fighters of the same army and type (M3's files). Once a file loses someone, the badge counts those still standing; hover it to see each one.",
+			"battle_formation", "BattleStage3D.draw_file_badge", func(ci: CanvasItem, r: Rect2):
+				BattleCard.draw_hp_bar(ci, Rect2(r.get_center() + Vector2(-8, -3), Vector2(30, 6)), 14, 24, 0)
+				draw_file_badge(ci, BattleLegend._font(ci), r.get_center() + Vector2(-11, 0), 3)),
 		BattleLegend._row("camera3d", "Camera", "The camera frames the whole battle. F frames it again; drag with the right button to turn it, the wheel zooms. A key-moment jump frames that moment.",
 			"battle_playback", "BattleStage3D.draw_camera_hint", func(ci: CanvasItem, r: Rect2):
 				draw_camera_hint(ci, BattleLegend._font(ci), r.end - Vector2(2, 10), "F")),

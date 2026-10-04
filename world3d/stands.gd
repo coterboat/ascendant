@@ -31,6 +31,7 @@ const EXTRAS := ["bearer", "musician"]
 var wv: Node3D ## world_view.gd
 var k := 0.0 ## 0 the figures, 1 the stands
 var on := false ## the hysteresis switch
+var enabled := true ## false keeps the figures at every zoom (a probe's A/B)
 var unit_px := 1.0 ## screen pixels per world unit at the camera's distance now
 var stands := {} ## army id -> {"pos": Vector3, "yaw", "types": [type ids], "colour", "emblem", "ruler", "count"}
 var _plates: MultiMeshInstance3D
@@ -38,6 +39,7 @@ var _ruler_plates: MultiMeshInstance3D
 var _figs := {} ## type id -> MultiMeshInstance3D
 var _banners := {} ## army id -> Node3D
 var _mats := {}
+var _sig := "" ## what the stands were last drawn for (step re-reads them only when it changes)
 
 
 func _init() -> void:
@@ -53,12 +55,18 @@ static func wants_stands(man_px: float, now_on: bool) -> bool:
 ## One frame: the switch, the blend, and (while any stand shows) where each stands. Returns the figures'
 ## share, 1 - k, for armies.gd set_blend.
 func step(delta: float, man_px: float, px_per_unit: float, armies: Node3D) -> float:
-	on = wants_stands(man_px, on)
+	on = enabled and wants_stands(man_px, on)
 	k = move_toward(k, 1.0 if on else 0.0, delta / BLEND_TIME if delta > 0.0 else 1.0)
 	unit_px = maxf(px_per_unit, 0.0001)
 	visible = k > 0.001
 	if visible:
-		sync(armies)
+		## re-read only when something changed: the blend, the zoom, the camera's turn, the armies (a new state, a
+		## plan) or a playback moving them; an idle whole map costs nothing here
+		var sig := "%.4f|%.5f|%.2f|%d|%d|%s|%s" % [k, unit_px, float(wv.rig.get("yaw", 0.0)) if wv != null else 0.0, armies.armies.size(),
+			armies.state.get_instance_id() if armies.state != null else 0, armies._plan_key, armies.playing()]
+		if sig != _sig or armies.playing():
+			_sig = sig
+			sync(armies)
 	return 1.0 - k
 
 
@@ -109,10 +117,14 @@ static func plan_of(armies: Node3D) -> Dictionary:
 			counts[t] = int(counts[t]) + 1
 		if n == 0:
 			continue
-		order.sort_custom(func(a, b): return int(counts[a]) > int(counts[b]) or (int(counts[a]) == int(counts[b]) and order.find(a) < order.find(b)))
+		var first := {}
+		for j in order.size():
+			first[order[j]] = j
+		order.sort_custom(func(a, b): return int(counts[a]) > int(counts[b]) or (int(counts[a]) == int(counts[b]) and int(first[a]) < int(first[b])))
 		var facing := dir.normalized() if dir.length() > 0.01 else Vector2(0, -1)
 		out[id] = {"pos": sum / float(n), "yaw": atan2(-facing.x, -facing.y), "types": order.slice(0, MAX_TYPES), "colour": e["colour"],
-			"emblem": int(e["emblem"]), "ruler": bool(e.get("ruler", false)), "count": n}
+			"emblem": int(e["emblem"]), "ruler": bool(e.get("ruler", false)), "count": n,
+			"transformation": String(e.get("transformation", ""))}
 	return out
 
 
@@ -200,19 +212,20 @@ func _draw_stands() -> void:
 		var types: Array = s["types"]
 		var spots := figure_spots(types.size())
 		for j in types.size():
-			var t := String(types[j])
+			var t := "%s|%s" % [String(types[j]), Models.variant_of(String(types[j]), String(s.get("transformation", "")))]
 			if not by_type.has(t):
 				by_type[t] = []
 			var off: Vector2 = spots[j] * (r * 0.62)
 			var at: Vector3 = c + basis * Vector3(off.x, 0.0, off.y) + Vector3.UP * (r * 0.35) ## on the plate's top
-			by_type[t].append([Transform3D(basis.scaled(Vector3.ONE * maxf(figure_scale(t) * k, 0.0001)), at), lin])
+			by_type[t].append([Transform3D(basis.scaled(Vector3.ONE * maxf(figure_scale(String(types[j])) * k, 0.0001)), at), lin])
 		## the banner at the plate's edge on the screen's right, where no figure and no plate hides it
 		_banner(String(id), s, c + right * (r * 0.92))
 	_fill(_plates, plain)
 	_fill(_ruler_plates, rulers)
 	for t in by_type.keys():
 		if not _figs.has(t):
-			var fm: Dictionary = Models.figure_mesh(String(t), true, "ready")
+			var tv := String(t).split("|")
+			var fm: Dictionary = Models.figure_mesh(tv[0], true, "ready", "", tv[1] if tv.size() > 1 else "")
 			_figs[t] = _mm("Fig_%s" % String(t).validate_node_name(), fm["mesh"], fm.get("tex"))
 		_fill(_figs[t], by_type[t])
 	for t2 in _figs.keys():
