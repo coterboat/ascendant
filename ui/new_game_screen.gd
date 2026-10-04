@@ -19,6 +19,9 @@ extends Control
 ## opens the BuildScreen on top of this screen: every human seat picks a ruler and mandates in secret,
 ## computer seats get a seeded preset, and only then is start_requested emitted, with the config plus
 ## "builds" ({faction id: build}). Back on the build screen returns here and drops those builds.
+## Paths (M4-1, #66): the "Paths (M4 preview)" box, off by default (launching with `-- --paths` ticks it).
+## Paths need rulers, so ticking it ticks the rulers box too, and clearing the rulers box clears it.
+## Ticked, config() adds "paths": true (GameScreen.starting_state then uses GameState.with_paths).
 ## Builds its children in code, so it works before it is in the tree (headless tests).
 ##
 ## API:
@@ -39,6 +42,7 @@ extends Control
 ##                                   levels, the rulers box as it was, each human seat's last build as
 ##                                   its starting build, and a new seed (the victory screen's New game)
 ##   set_rulers(on), rulers_on()     the "Rulers (M2 preview)" box
+##   set_paths(on), paths_on()       the "Paths (M4 preview)" box (M4-1); ticking it ticks rulers
 ##   build_screen                    the BuildScreen Start opens while rulers are on (null until then);
 ##                                   build_screen_open() -> bool
 ##   seat_faction(seat) -> String, faction_ids() -> Array[String]
@@ -77,6 +81,7 @@ var start_button: Button
 var back_button: Button
 var rulers_toggle: CheckBox  # "Rulers (M2 preview)": off by default
 var rulers_label: Label  # what the box does, shown while it is ticked
+var paths_toggle: CheckBox  # M4-1: "Paths (M4 preview)": off by default; needs rulers
 var build_screen: BuildScreen = null  # opened by Start while rulers are on; built on first use
 var _last_builds := {}  # faction id -> the last game's build of a human seat (rematch)
 var _model: GameState
@@ -120,6 +125,8 @@ func config() -> Dictionary:
 		out["ai"] = ai
 	if rulers_on():
 		out["rulers"] = true
+	if paths_on():
+		out["paths"] = true
 	return out
 
 
@@ -185,6 +192,10 @@ func prefill(last_game: Dictionary) -> void:
 		set_rulers(true)
 	elif last_game.has("players"):
 		set_rulers(_rulers_by_default())
+	if last_game.get("paths", false) == true:  # M4-1
+		set_paths(true)
+	elif last_game.has("players"):
+		set_paths(_paths_by_default())
 	new_seed(int(last_game.get("seed", -1)))
 
 
@@ -285,6 +296,23 @@ func rulers_on() -> bool:
 	return rulers_toggle.button_pressed
 
 
+## Ticks or clears the "Paths (M4 preview)" box (M4-1). Paths need rulers: ticking it ticks rulers too.
+func set_paths(on: bool) -> void:
+	paths_toggle.set_pressed_no_signal(on)
+	if on:
+		rulers_toggle.set_pressed_no_signal(true)
+	_refresh()
+
+
+func paths_on() -> bool:
+	return paths_toggle.button_pressed
+
+
+## Paths start ticked when the game was launched with `-- --paths` (GameScreen.starting_state).
+static func _paths_by_default() -> bool:
+	return OS.get_cmdline_user_args().has("--paths")
+
+
 func build_screen_open() -> bool:
 	return build_screen != null and build_screen.visible
 
@@ -361,6 +389,8 @@ func _problems() -> Array[String]:
 
 
 func _refresh() -> void:
+	if paths_toggle != null and paths_on() and not rulers_on():
+		paths_toggle.set_pressed_no_signal(false)  # M4-1: paths need rulers
 	var problems := _problems()
 	error_label.text = "\n".join(problems)
 	error_label.visible = not problems.is_empty()
@@ -600,6 +630,7 @@ func _build() -> void:
 	_tooltip(rulers_label, CodexLink.with_link(TooltipText.plain(String(RulesCodex.entry("build").get("title", "")), RulesCodex.text("build")), "build"))
 	rulers_label.visible = false
 	rulers_row.add_child(rulers_label)
+	_build_paths_row(box)
 
 	error_label = _label("ErrorLabel", "", 19, NEGATIVE)
 	error_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -634,6 +665,26 @@ func _build() -> void:
 		start_button.add_theme_stylebox_override(state_name, sb)
 	start_button.pressed.connect(start)
 	buttons.add_child(start_button)
+
+
+## M4-1: the "Paths (M4 preview)" box under the rulers box. Ticking it ticks rulers (paths need them).
+func _build_paths_row(box: Container) -> void:
+	var row := HBoxContainer.new()
+	row.name = "PathsRow"
+	row.add_theme_constant_override("separation", 14)
+	box.add_child(row)
+	paths_toggle = CheckBox.new()
+	paths_toggle.name = "PathsToggle"
+	paths_toggle.text = "Paths (M4 preview)"
+	paths_toggle.add_theme_font_size_override("font_size", 20)
+	paths_toggle.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	paths_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Paths (preview)",
+		"A preview of milestone 4, the paths of ascension: each faction researches its path with research points from its land, then swears an Oath that transforms its people. Paths need rulers, so this ticks Rulers too. Paths are still being built, so some of their effects may not be in play yet. %s" % RulesCodex.text("path")), "path")
+	paths_toggle.set_pressed_no_signal(_paths_by_default())
+	if paths_toggle.button_pressed:
+		rulers_toggle.set_pressed_no_signal(true)
+	paths_toggle.toggled.connect(func(on: bool): set_paths(on))
+	row.add_child(paths_toggle)
 
 
 ## Human or Computer for seat `i` (0-based).

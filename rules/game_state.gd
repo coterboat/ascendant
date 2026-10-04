@@ -7,6 +7,10 @@ class_name GameState
 ## Rulers (M2, #29) are opt-in at setup until battles and succession handle them (director's note on
 ## #29): GameState.new(seed) is exactly the M1 game, and GameState.with_rulers(seed, builds) is the M1
 ## game plus a ruler, kept power and mandates for every faction, with each ruler's army at its capital.
+##
+## Paths (M4, #66; design/M4_ASCENSION.md §1.3) are opt-in too: GameState.with_paths(seed, builds) is the
+## rulers game plus a path for every faction (`paths` true, research fields on each Faction). Without them
+## no path field is saved, so M1 and M2 games, records and saves are byte-identical to before.
 
 var provinces: Array[Province] = []
 var factions: Array[Faction] = []
@@ -15,6 +19,7 @@ var rng: SeededRNG
 var current_turn: int = 0
 var seed_value: int = 0
 var next_army_id: int = 1  # counter behind new_army_id(); serialized so replays hand out the same ids
+var paths: bool = false  # M4: every faction has a path and researches (AscensionRules); saved only when true
 
 func _init(map_seed: int = 12345) -> void:
 	seed_value = map_seed
@@ -83,6 +88,41 @@ func setup_rulers(builds: Dictionary = {}, errors = null) -> bool:
 	for msg in problems:
 		_report(errors, msg)
 	return problems.is_empty() and validate(errors)
+
+
+## The rulers game (with_rulers) plus a path for every faction (M4, design/M4_ASCENSION.md §1.3): research
+## starts at 0 with no target. Paths need rulers, so this always sets rulers up first. Returns null when a
+## build is illegal, with the reasons in `errors`, as with_rulers does.
+static func with_paths(map_seed: int = 12345, builds: Dictionary = {}, errors = null) -> GameState:
+	var state := with_rulers(map_seed, builds, errors)
+	if state == null or not state.setup_paths(errors):
+		return null
+	return state
+
+
+## Turns paths on before turn 1 for a game whose factions all have rulers (setup_rulers first): every
+## faction gets its path from PathData with an empty pool, no target and nothing researched. Returns false,
+## with plain reasons in `errors`, when it is too late or a faction has no ruler or no path.
+func setup_paths(errors = null) -> bool:
+	var problems := []
+	if current_turn != 0:
+		problems.append("Paths are chosen before the game starts.")
+	for f in factions:
+		if not f.has_ruler():
+			problems.append("Paths need rulers, and %s has none. Set up rulers first." % f.faction_name)
+		if AscensionRules.path_data(f.id).is_empty():
+			problems.append("%s has no path in this game." % f.faction_name)
+	for msg in problems:
+		_report(errors, msg)
+	if not problems.is_empty():
+		return false
+	paths = true
+	for f in factions:
+		f.research_points = 0
+		f.research_target = ""
+		f.researched = []
+		f.path_branch = ""
+	return validate(errors)
 
 
 ## Hands out the next unique army id, e.g. "kingdom-3", skipping ids already in use.
@@ -175,6 +215,9 @@ func validate(errors = null) -> bool:
 	# Rulers, kept power, mandates and ruler armies (M2): RulerRules owns those rules.
 	if not RulerRules.validate(self, errors):
 		ok = false
+	# Research and paths (M4): AscensionRules owns those rules.
+	if not AscensionRules.validate(self, errors):
+		ok = false
 	if not _living_rulers_on_map(errors):
 		ok = false
 	return ok
@@ -201,13 +244,13 @@ func to_dict() -> Dictionary:
 
 	var faction_dicts := []
 	for f in factions:
-		faction_dicts.append(f.to_dict())
+		faction_dicts.append(f.to_dict(paths))
 
 	var army_dicts := []
 	for a in armies:
 		army_dicts.append(a.to_dict())
 
-	return {
+	var d := {
 		"provinces": province_dicts,
 		"factions": faction_dicts,
 		"armies": army_dicts,
@@ -216,6 +259,9 @@ func to_dict() -> Dictionary:
 		"next_army_id": next_army_id,
 		"rng": rng.to_dict(),
 	}
+	if paths:
+		d["paths"] = true  # only a game with paths carries the key, so M1 and M2 save exactly as before
+	return d
 
 ## Rebuilds a state from to_dict() output (or the same data after a JSON round-trip). Returns null when
 ## the data is not a valid game, with plain-language reasons in `errors` (or push_error when it isn't
@@ -229,6 +275,10 @@ static func from_dict(data, errors = null) -> GameState:
 	var state := GameState.new(Serial.to_int(data.get("seed_value", 12345), 12345))
 	state.current_turn = Serial.to_int(data.get("current_turn", 0))
 	state.next_army_id = Serial.to_int(data.get("next_army_id", 1), 1)
+	var paths_flag = Serial.expect(data, "paths", TYPE_BOOL, errors, WHO, false)
+	if paths_flag == null:
+		return null
+	state.paths = paths_flag
 
 	var rng_data = Serial.expect(data, "rng", TYPE_DICTIONARY, errors, WHO, {})
 	if rng_data == null:

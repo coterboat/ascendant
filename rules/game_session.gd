@@ -47,6 +47,8 @@ const PHASE_NAMES := ["orders", "handoff", "game_over", "invalid"]
 ## "rulers" (M2) only have events in a game with rulers: sacrifices (TurnResolver._sacrifice_phase), and
 ## healing and successors (TurnResolver._rulers_phase).
 const REPORT_PHASES := ["sacrifice", "orders", "movement", "battles", "capture", "recruitment", "income", "rulers", "victory"]
+## The report phases of a game with paths (M4): TurnResolver.PATH_PHASES, then the victory event.
+const PATH_REPORT_PHASES := ["sacrifice", "orders", "movement", "battles", "capture", "recruitment", "income", "research", "rulers", "victory"]
 const BATTLE_TYPES := ["battle", "border_battle"]
 ## RulesCodex entries this flow links to (handoff screen, victory screen, final report).
 const CODEX_KEYS := ["hotseat", "handoff", "victory", "simultaneous_capture", "computer_opponent"]
@@ -225,6 +227,12 @@ func describe_order(faction_id: String, order) -> String:
 		return "Sacrifice: %s gives up %d power for %s (%d, +%d for a mid-game sacrifice)." % [
 			RulerRules._cap(RulerRules.current_name(_state, faction_id)), RulerRules.sacrifice_cost(mid),
 			RulerRules.mandate_name(mid), RulerRules.mandate_cost(mid), MandateData.SACRIFICE_PREMIUM]
+	if order is ResearchOrder:  # M4: the research target (shown only to its own player)
+		var fc := Forecast.research(_state, faction_id, [order])
+		if not fc.ok:
+			return "Research %s." % AscensionRules.node_name(order.node_id)
+		return "Research %s next (%d research, done at the end of %s)." % [fc.name, fc.cost,
+			"this turn" if int(fc.eta) == 1 else ("turn %d" % int(fc.done_turn) if int(fc.eta) > 0 else "no turn at this pace")]
 	return "An order this game does not know."
 
 
@@ -326,6 +334,12 @@ func queue_sacrifice(mandate_id: String) -> String:
 ## pass ("Road move to Westwatch removed: you no longer have King's Roads."); [] when none were.
 func removed_orders() -> Array:
 	return _removed.duplicate()
+
+
+## Queues a ResearchOrder (M4, design/M4_ASCENSION.md §2.2) for the current player: make `node_id` the
+## research target. It replaces a research order already queued this turn. "" when accepted.
+func queue_research(node_id: String) -> String:
+	return queue_order(ResearchOrder.new(node_id))
 
 
 func queue_move(army_id: String, to: String) -> String:

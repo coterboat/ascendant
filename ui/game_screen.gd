@@ -129,10 +129,13 @@ func start_game(game_config: Dictionary = {}) -> void:
 
 
 ## The starting state for `game_config`: the M1 game, or with rulers when the config asks for them
-## ("rulers": true, or "builds") or the game was launched with `-- --rulers`. Factions without a
+## ("rulers": true, or "builds") or the game was launched with `-- --rulers`; with paths (M4-1) when it has
+## "paths": true or the game was launched with `-- --paths`. Factions without a
 ## build get their balanced preset. Null when a build is illegal (the session then explains).
 static func starting_state(game_config: Dictionary) -> GameState:
 	var seed_value := int(game_config.get("seed", 0))
+	if game_config.get("paths", false) or OS.get_cmdline_user_args().has("--paths"):
+		return GameState.with_paths(seed_value, game_config.get("builds", {}), [])  # M4-1: paths need rulers
 	if game_config.get("rulers", false) or game_config.has("builds") or OS.get_cmdline_user_args().has("--rulers"):
 		return GameState.with_rulers(seed_value, game_config.get("builds", {}), [])
 	return GameState.new(seed_value)
