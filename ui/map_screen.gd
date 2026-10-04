@@ -30,6 +30,10 @@ extends Control
 ##   set_hint(text, tooltip)    the short help text in the top bar (at most two lines; the tooltip can
 ##                              say more)
 ##
+## Sound (GameAudio): an accepted order sounds order_queued, with march after a move and recruit after a
+## recruit; a sacrifice sounds sacrifice; a cancelled order order_cancelled. A refused order is silent
+## (its reason shows in the panel).
+##
 ## Colour is never the only channel (design/STYLE_BIBLE.md 1.1): every owner ring and army badge also
 ## carries the seat's emblem (SeatEmblem: Player 1 circle, Player 2 square, nobody a slate shield), and
 ## so does the viewing player's name in the top bar.
@@ -309,6 +313,7 @@ func close_sacrifice_dialog() -> void:
 func queue_sacrifice(mandate_id: String) -> String:
 	var reason := orders.queue_sacrifice(mandate_id)
 	if reason.is_empty():
+		GameAudio.sfx("sacrifice")
 		status_text = "Sacrifice ordered: %s. It resolves first when the turn ends, so your other orders already count on it; click the cross to cancel." % \
 			RulerRules.mandate_name(mandate_id)
 		status_text += _removed_text(orders.last_removed())
@@ -611,6 +616,7 @@ func _update_top_bar() -> void:
 func queue_move(army_id: String, to_province: String) -> String:
 	var reason := orders.queue_move(army_id, to_province)
 	status_text = reason if not reason.is_empty() else "Move ordered. Armies move when the turn ends; click the cross to cancel."
+	_order_sound(reason, "march")
 	_orders_changed()
 	return reason
 
@@ -619,6 +625,7 @@ func queue_move(army_id: String, to_province: String) -> String:
 func queue_recruit(unit_type_id: String) -> String:
 	var reason := orders.queue_recruit(unit_type_id)
 	status_text = reason if not reason.is_empty() else "Recruit ordered. It is paid and joins at your capital when the turn ends."
+	_order_sound(reason, "recruit")
 	_orders_changed()
 	return reason
 
@@ -628,6 +635,7 @@ func queue_recruit_with_ruler(unit_type_id: String) -> String:
 	var reason := orders.queue_recruit_with_ruler(unit_type_id)
 	status_text = reason if not reason.is_empty() else "Recruit ordered. It is paid and joins %s where it ends the turn, if you own that province then." % \
 		RulerRules.current_name(state, viewing_faction_id)
+	_order_sound(reason, "recruit")
 	_orders_changed()
 	return reason
 
@@ -636,13 +644,25 @@ func queue_recruit_with_ruler(unit_type_id: String) -> String:
 func change_via(index: int) -> void:
 	var reason := orders.change_via(index)
 	status_text = reason if not reason.is_empty() else "Road move changed: it now goes the other way. It moved to the end of your orders."
+	_order_sound(reason, "")
 	_orders_changed()
 
 
 func cancel_order(index: int) -> void:
 	var reason := orders.cancel(index)
 	status_text = reason if not reason.is_empty() else "Order cancelled." + _removed_text(orders.last_removed())
+	if reason.is_empty():
+		GameAudio.sfx("order_cancelled")
 	_orders_changed()
+
+
+## An accepted order (`reason` empty): order_queued, then `follow` (march, recruit) just after it.
+func _order_sound(reason: String, follow: String) -> void:
+	if not reason.is_empty():
+		return
+	GameAudio.sfx("order_queued")
+	if not follow.is_empty():
+		GameAudio.sfx(follow, 0.12)
 
 
 func _orders_changed() -> void:
@@ -662,6 +682,7 @@ func _orders_changed() -> void:
 func _update_map_marks() -> void:
 	_update_road_targets()
 	_update_vassal_marks()
+	_update_province_rule_marks()
 
 
 ## With one of your armies selected, marks every province two steps away that a click would reach by
@@ -676,9 +697,11 @@ func _update_road_targets() -> void:
 	for id in regions:
 		var vias: Array = targets.get(id, [])
 		var via_name := ""
+		var rule := "King's Roads"
 		if not vias.is_empty():
 			via_name = state.find_province(vias[0]).name
-		regions[id].set_road_target(not vias.is_empty(), via_name)
+			rule = orders.road_rule_name(army.id, id, vias[0])  # M4-2: or Forest Stride
+		regions[id].set_road_target(not vias.is_empty(), via_name, rule)
 
 
 ## Marks the province each faction's Sworn Vassals will take at the end of the turn (Forecast.vassal,
@@ -705,6 +728,28 @@ func _update_vassal_marks() -> void:
 		# Two factions after one province: it joins nobody, so the mark is the neutral one.
 		var seat := -1 if list.size() > 1 else UiPalette.seat_index(state, list[0].faction, seats)
 		regions[id].set_vassal_mark(seat, TooltipText.plain("Sworn Vassals", " ".join(texts) + " " + RulesCodex.text("mandate_sworn_vassals")))
+
+
+## The transformations' province rules (M4-2, §9.4): a sprout on each province the Wild Spreads grows at
+## the end of the turn, and the heal forecast on each army Hallowed Land or the Forges heals, from
+## OrdersController.province_rule_forecasts (the rules' own picks).
+func _update_province_rule_marks() -> void:
+	if state == null or orders == null:
+		return
+	var wild := {}  # province id -> [forecast texts]
+	for pr in orders.province_rule_forecasts():
+		for pick in pr.spread:
+			if not wild.has(pick.province):
+				wild[pick.province] = []
+			wild[pick.province].append(String(pick.text))
+		for army_id in pr.by_army:
+			var a := state.find_army(String(army_id))
+			if a != null and regions.has(a.location):
+				regions[a.location].set_heal_note(String(army_id), String(pr.by_army[army_id].text))
+	for id in regions:
+		var texts: Array = wild.get(id, [])
+		regions[id].set_wild_mark("" if texts.is_empty() else TooltipText.plain("The Wild Spreads",
+			" ".join(texts) + " " + RulesCodex.text("wild_spreads")))
 
 
 ## One arrow per queued move, from the army's province to its destination. A road move (King's Roads)

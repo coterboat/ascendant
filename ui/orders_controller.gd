@@ -260,6 +260,31 @@ func ruler_recruit_info() -> Dictionary:
 		"left": maxi(0, limit - used), "text": text}
 
 
+## The road rule of a legal road move of `army_id` to `to` through `via`, by name ("King's Roads" or "Forest
+## Stride", M4-2), for the map's road destination marks.
+func road_rule_name(army_id: String, to: String, via: String) -> String:
+	return TurnResolver.road_rule_name(TurnResolver.road_rule(view_state(), faction_id, MoveOrder.new(army_id, to, via)))
+
+
+## Every transformation's province rule forecast on the board (M4-2, §9.4), in faction id order:
+## Forecast.province_rules for each faction with a rule now (your own counts a transformation your research
+## completes this turn; a rival's never reads its private target), plus "faction".
+func province_rule_forecasts() -> Array:
+	var out := []
+	if state == null or not AscensionRules.has_paths(state):
+		return out
+	var fids := []
+	for f in state.factions:
+		fids.append(f.id)
+	fids.sort()
+	for fid in fids:
+		var pr := Forecast.province_rules(state, fid, orders() if fid == faction_id else [], faction_id)
+		if pr.ok:
+			pr["faction"] = fid
+			out.append(pr)
+	return out
+
+
 ## Every Sworn Vassals forecast on the board (§2.3), one per faction with the mandate, in faction id
 ## order: Forecast.vassal with this faction's queued moves (other armies hold), plus "faction".
 func vassal_forecasts() -> Array:
@@ -303,8 +328,19 @@ func order_text(index: int) -> String:
 	if r.at == RecruitOrder.AT_RULER:
 		var name := RulerRules.current_name(state, faction_id)
 		return "Recruit one %s with %s for %d gold, leaving %d gold. It gathers at %s, where %s starts this turn, and joins your armies there at the end of the turn, if you still own %s then and %s stands; if not, it is cancelled and costs nothing." % [
-			_unit_name(r.unit_type), name, r.cost, r.gold_after, _province_name(r.province), name, _province_name(r.province), name]
-	return "Recruit one %s at %s for %d gold, leaving %d gold." % [_unit_name(r.unit_type), _capital_name(), r.cost, r.gold_after]
+			_unit_name(r.unit_type), name, r.cost, r.gold_after, _province_name(r.province), name, _province_name(r.province), name] + _arrival_note(r)
+	var text := "Recruit one %s at %s for %d gold, leaving %d gold." % [_unit_name(r.unit_type), _capital_name(), r.cost, r.gold_after]
+	return text + _arrival_note(r)
+
+
+## M4-2, Blood Levy (§9.4): " It arrives wounded, 11 of 14 hit points (Blood Levy ...)." for a recruit that
+## arrives below its maximum (price_recruits' "hp"), "" otherwise, so other lines read as before.
+func _arrival_note(r: Dictionary) -> String:
+	if int(r.get("hp", 0)) >= int(r.get("max_hp", 0)):
+		return ""
+	var f := state.find_faction(faction_id)
+	var ut: UnitType = TurnResolver.recruitable_type(f, String(r.unit_type)) if f else null
+	return " " + AscensionRules.arrival_text(ut, int(r.hp), int(r.max_hp), AscensionRules.blood_levy_divisor(view_state(), faction_id)).replace("They arrive", "It arrives")
 
 
 ## Breakdown (rules/breakdown.gd shape) behind an order line's numbers, for its tooltip.
@@ -323,9 +359,13 @@ func order_breakdown(index: int) -> Dictionary:
 		var odds_desc: String = "%s %s" % [odds.text, RulesCodex.text("battle_odds")] if odds.enemy_present else odds.text
 		var step := _line("Moving one province", 1, "armies move one neighboring province per turn")
 		var rule := RulesCodex.text("move")
-		if o.is_road_move():
+		if o.is_road_move() and TurnResolver.road_rule(view_state(), faction_id, o) == "forest_stride":
+			step = _line("Moving two provinces by Forest Stride", 1, "a road move takes one turn, through a forest you own into another forest")
+			rule = RulesCodex.text("forest_stride")
+		elif o.is_road_move():
 			step = _line("Moving two provinces by the King's Roads", 1, "a road move takes one turn, through land you own")
 			rule = RulesCodex.text("road_move")
+		if o.is_road_move():
 			if road_vias_at(index).size() > 1:
 				rule += " Another way through is open: use the button next to this order to change it."
 		return _bd("Move forecast", "%s %s %s" % [f.text, odds_desc, rule],
@@ -379,6 +419,9 @@ func recruit_breakdown(unit_type_id: String, at: String = RecruitOrder.AT_CAPITA
 		rules = String(info.get("text", RulesCodex.text("field_recruit")))
 		title = "Recruit %s with %s" % [_unit_name(unit_type_id), RulerRules.current_name(state, faction_id)]
 	var desc := "%s %s" % [Breakdown.unit_type_description(ut, price_text(unit_type_id)) if ut else "", rules]
+	var fc := Forecast.recruit(state, faction_id, unit_type_id, orders())  # M4-2: Blood Levy's wounded arrivals
+	if fc.ok and int(fc.hp) < int(fc.max_hp):
+		desc = "%s %s" % [fc.text, desc]
 	return _bd(title, desc.strip_edges(), [_line("Gold left after queued recruits", g.gold_after, ""),
 		_line("Cost of one %s" % _unit_name(unit_type_id), -cost, _price_note(unit_type_id))],
 		"Gold left if you recruit it", g.gold_after - cost)

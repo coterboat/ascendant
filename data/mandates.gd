@@ -80,3 +80,40 @@ const MANDATES: Array[Dictionary] = [
 		"codex": "mandate_feast_of_victory",
 	},
 ]
+
+## The four mandates a transformation opens (M4, design/M4_ASCENSION.md §4.10, §6; M4-2). Kept apart from
+## MANDATES, so the pre-game build list, the presets and every M2 game are exactly as before. They can be
+## bought only by mid-game sacrifice (at cost + SACRIFICE_PREMIUM), and only once the faction has become
+## `path` (a PathData transformation node id). RulerRules.mandate_data reads both lists.
+##   sacrifice_only   true: never in a pre-game build
+##   path             the transformation that opens it
+## Effect numbers, read by AscensionRules and RulerRules:
+##   heal_multiplier  Hallowed Land heals this many times its value (Hymn of Dawn: 3 → 6)
+##   fort_income      every province with a fort you own earns this much more gold (Forge Tithe)
+##   wild_spreads     the Wild Spreads grows this many provinces a turn instead of one (Deep Roots)
+## Red Harvest works in battle's aftermath (AutoBattleResolver, M4-3).
+const PATH_MANDATES: Array[Dictionary] = [
+	{
+		"id": "hymn_of_dawn", "name": "Hymn of Dawn", "faction": "kingdom", "cost": 3, "area": "map",
+		"effect": "Hallowed Land heals 6 hit points a turn instead of 3.",
+		"codex": "mandate_hymn_of_dawn", "sacrifice_only": true, "path": "crown_celestial_host",
+		"heal_multiplier": 2,
+	},
+	{
+		"id": "forge_tithe", "name": "Forge Tithe", "faction": "kingdom", "cost": 3, "area": "economy",
+		"effect": "Every province with a fort you own earns +4 gold per turn.",
+		"codex": "mandate_forge_tithe", "sacrifice_only": true, "path": "crown_living_iron",
+		"fort_income": 4,
+	},
+	{
+		"id": "deep_roots", "name": "Deep Roots", "faction": "beasts", "cost": 3, "area": "map",
+		"effect": "The Wild Spreads into two provinces each turn instead of one.",
+		"codex": "mandate_deep_roots", "sacrifice_only": true, "path": "beasts_thorn_wild",
+		"wild_spreads": 2,
+	},
+	{
+		"id": "red_harvest", "name": "Red Harvest", "faction": "beasts", "cost": 3, "area": "battle",
+		"effect": "After each battle you win, you gain 1 gold for every enemy fighter lost in it.",
+		"codex": "mandate_red_harvest", "sacrifice_only": true, "path": "beasts_blood_pact",
+	},
+]

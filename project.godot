@@ -19,6 +19,10 @@ config/features=PackedStringArray("4.5", "Forward Plus")
 
 World3DLaunch="*res://world3d/launch.gd"
 
+[autoload]
+
+Audio="*res://ui/audio.gd"
+
 [display]
 
 window/size/viewport_width=1600
