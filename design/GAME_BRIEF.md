@@ -1,6 +1,7 @@
 # ASCENDANT: game brief
 
 Status: **APPROVED by Alex, 2026-09-30.** Changes after approval need Alex's OK.
+3D change approved by Alex, 2026-10-04.
 
 ## one line
 A deep, simultaneous-turn fantasy strategy game with the spirit of Dominions 6, where your ruler trades personal power for faction-wide strength, your people can transform down locked-in paths, battles are worth watching, and every rule is visible so you never need a wiki.
@@ -14,7 +15,7 @@ We keep the feel, not the rulebook: wildly asymmetric factions, a build decision
 ## pillars
 1. **Power is a budget you spend on your people.** Your ruler's personal might and your faction's strength come from the same pool. Every point you keep for yourself is a point your nation doesn't get.
 2. **Commit and become.** Your faction develops down branching paths that lock in. Big forks change what your people are, not just what they have. No two games of the same faction need to end the same way.
-3. **Preparation wins battles, and battles are worth watching.** You choose the army, commanders, formation, and simple orders. The autobattle plays out from that with great sprite animation and spell effects, and the report tells you exactly why you won or lost.
+3. **Preparation wins battles, and battles are worth watching.** You choose the army, commanders, formation, and simple orders. The autobattle plays out from that as a 3D battle on the land, with great animation and spell effects, and the report tells you exactly why you won or lost.
 4. **Nothing hidden that matters.** Every number explains itself on hover. Every order and every lock-in shows its outcome before you commit. Randomness is shown as odds and ranges.
 5. **Simultaneous turns, readable results.** Everyone orders at once, then everything resolves together in one deterministic pass, and the turn report explains every change as cause and effect.
 6. **Polish over breadth.** Fewer factions, units, and spells, each distinct and well explained. UI/UX and battle presentation are features, not a finishing pass.
@@ -71,13 +72,15 @@ Research is organized into **paths** per faction: military doctrine, society and
 - **Roster bloat:** curated units and spells, each with a distinct job.
 - **Busywork:** gem and resource shuffling, repetitive recruitment, and army bookkeeping get sensible defaults and repeat-last-turn options.
 - **Ambiguous resolution order:** fixed, documented, and visible.
-- **Dated battle presentation:** readable, animated sprites with strong spell and impact effects.
+- **Dated battle presentation:** readable, animated 3D battles with strong spell and impact effects.
 
 ## battle presentation
-- Autobattles are resolved by pure rules code first, then played back visually from the result. The playback never changes the outcome.
-- Sprites are animated (idle, move, attack, hit, death). Spells and big hits get real effects: projectiles, impacts, screen shake, readable area markers.
+- Autobattles are resolved by pure rules code first, then played back in 3D from the result. The playback never changes the outcome.
+- Battles are fought on the province's own ground: its terrain, its woods and hills, and its fort's walls behind the defender. The camera frames both armies so you see everyone.
+- Every fighter is its own 3D figure, in the ranks the rules give it, and moves through posed models plus code motion (ready, march, strike, hit, fall, flee). Spells and big hits get real effects: projectiles, impacts, screen shake, readable area markers.
+- Player identity is drawn in code (base rings, banners, territory colour), never baked into the art. Every figure's silhouette reads its class.
 - Playback controls: speed, pause, skip, and jump to key moments. Hovering a unit shows what it's doing and why.
-- Readability beats spectacle: you can always tell who's winning and why. Art lead owns the look through the style bible.
+- Readability beats spectacle: you can always tell who's winning and why. Text, numbers and bars stay in the 2D interface on top. Art lead owns the look through the style bible; the 3D direction is in `design/3D_DIRECTION.md`.
 
 ## approachability rules (apply to every ticket)
 1. No mechanic ships without in-game explanation in the same PR: a tooltip, a preview, or a forecast.
@@ -103,7 +106,7 @@ An original high-fantasy world where rival rulers race to ascend, whether that m
 - Mod support or scripting tools.
 - A story campaign.
 - Matching Dominions' content volume.
-- 3D. The game is 2D, with a clean, readable map and animated sprites.
+- **3D is no longer a non-goal (changed by Alex on 2026-10-04).** The game is 3D with a 2D interface: a living 3D world and 3D battles under a clean, readable 2D UI. See `design/3D_DIRECTION.md`.
 
 ## how we'll know it's working
 - A new player finishes a first game without leaving the game to look something up.
