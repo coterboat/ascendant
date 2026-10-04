@@ -80,8 +80,13 @@ extends RefCounted
 ##     the hp the recruitment phase gives (Blood Levy included), and the new traits are valued with the
 ##     battle rules' constants: Wings (worth more the more commanders the enemy fields; it reaches the
 ##     second rank like Skirmish), Iron Hide (each enemy hit deals IRON_HIDE_DAMAGE less, which hurts many
-##     small hits most), Rooted (its ROOTED_DEFENSE counts by the share of forest provinces on our front)
-##     and Lifedrinker (healing worth about LIFEDRINK_SHARE of its hits' share, like Berserk).
+##     small hits most), Rooted (#94: a forest battle, with its ROOTED_DEFENSE, or an open one, weighted by the
+##     share of forest provinces on our front) and Lifedrinker (#94: each hit heals its damage over
+##     LIFEDRINK_DIVISOR rounded up, from the first round for a recruit that arrives wounded, else LIFEDRINK_SHARE
+##     of the time; healing lands before morale is checked, so it counts in full against breaking).
+##   * Wounded units (#94): a unit's maximum hp is known with paths, so one below it (every Blood Levy recruit
+##     arrives so) counts Berserk and Blood Frenzy in full, in the rough guess and in recruiting; the others
+##     count them BERSERK_SHARE of the time in recruiting, as before.
 ##   * Moves: Forest Stride road moves follow the King's Roads logic (marches, returns home, recalls), and
 ##     enemy armies that can reach a province by a road move this turn count as threats to it (the capital
 ##     checks and every "is this step safe" check).
@@ -92,6 +97,16 @@ extends RefCounted
 ##     a forsworn pick is skipped (RulerRules.sacrifice_check refuses it).
 ##   * Notes name only what is public: nodes already completed, the side once sworn and its transformation
 ##     (which the Oath's own report names as the next research). The target is never named before it is done.
+##
+## Stand-offs (#94; every game, with or without rulers and paths). When neither side can win an attack, both
+## used to recruit into their capitals forever. standoff_info reads a stand-off from the state alone (every unit
+## we field and our treasury, at recruit prices, worth STANDOFF_TURNS turns of income: the pile a quiet game
+## builds), and the plan then breaks it by position: it hunts the enemy army that keeps the garrison home (the
+## garrison marches out), besieges the enemy capital past guarded roads where it is at least even, or raids the
+## foe's unguarded provinces; attacks at even odds (STANDOFF_WIN) are made, and the garrison sallies at a
+## likely win. Its notes say so in plain words ("Breaking the stand-off: ..."), and the turn report shows them
+## once the turn resolves (AISeat.report_notes). Nothing is kept between turns.
+## Gold is never banked: when every recruit adds only a sliver against an overwhelming foe, the best sliver buys.
 
 const DIFFICULTIES := ["easy", "normal"]
 
@@ -172,6 +187,28 @@ const LIFEDRINK_SHARE := 0.5
 ## Raiding Parties: a capture's one-off gold counts this much against gold per turn.
 const RAID_WEIGHT := 0.5
 
+## Stand-offs (#94). The state keeps no record of battles, so a stand-off is read from what piles up while
+## nobody fights (standoff_info): every unit a faction fields and its treasury, at today's recruit prices,
+## against its income. The computer spends all its gold every turn, so each quiet turn adds about a turn of
+## income to the pile and every battle takes some away: a pile worth STANDOFF_TURNS turns of income is about
+## that many turns of building up with nothing lost. Then the computer picks what to do by position:
+##   hunt   an enemy army (not in its capital) within MASS_REACH of our capital or our strongest army, that
+##          our armies within MASS_REACH of it beat at STANDOFF_WIN or better by the rough guess (its ground,
+##          and the enemy armies next to it joining in): the garrison the army kept home marches out against
+##          it, and the main army goes for it.
+##   siege  no army to hunt: the main army pushes on to the enemy capital wherever it is at least even
+##          (STANDOFF_SAFE) rather than SAFE_RATIO stronger, and camps next to it until the odds of taking it
+##          are even (CAPITAL_WIN, _strike_capitals).
+##   raid   even that road is guarded: the nearest province of the foe within MASS_REACH that no army holds
+##          and that it can reach safely, to cut the foe's income and draw its army out.
+## And any attack at STANDOFF_WIN or better is made: after a long wait, an even fight is worth taking.
+## The garrison sallies against the one enemy army next to the capital at STANDOFF_SALLY_WIN instead of
+## SALLY_WIN during a stand-off.
+const STANDOFF_TURNS := 20.0
+const STANDOFF_WIN := 0.5
+const STANDOFF_SAFE := 1.0
+const STANDOFF_SALLY_WIN := LIKELY_WIN
+
 var _notes: Array = []
 var _stats := {}
 var _state: GameState = null
@@ -203,9 +240,14 @@ var _game_seed := 0  # configure(): the game seed and 0-based seat this brain pl
 var _seat := -1  # -1: not configured; the state's seed and the faction's place in it stand in
 var _forced_branch := ""  # configure(): a side the autoplay forces (--branches), or ""
 var _branch := ""  # the side of the fork we plan for this turn
-var _ctx := {}  # {"stats": {"<faction>|<type id>": {"attack", "defense", "morale"}}, "forest_share", "front", "forest"}
+var _ctx := {}  # {"stats": {"<faction>|<type id>": {"attack", "defense", "morale", "hp"}}, "forest_share", "front", "forest",
+	# "iron_discipline": {faction: bool}, "frenzy": {faction: Blood Frenzy's attack}}
 var _threat_cache := {}  # province id -> enemy armies that can reach it this turn (_threats_to)
 var _arrival := {}  # unit type id -> the hp a recruit of it arrives with
+# #94 stand-offs: read afresh from the state every plan, never carried over.
+var _standoff := {}  # standoff_info for us, or {} when there is no stand-off
+var _hunt := {}  # the enemy army a stand-off hunts (_choose_hunt): {"pid", "rate", "force"}, or {}
+var _sally_to := ""  # where the garrison sallies to this turn (_sally), or ""
 
 
 ## Orders for `faction_id` this turn. See the class comment. Unknown difficulties play as "normal".
@@ -226,6 +268,10 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 	var research := _plan_research()  # M4: "" without paths, and on most turns with them
 	if not research.is_empty():
 		out.append(ResearchOrder.new(research))
+	_standoff = standoff_info(_state, _fid)  # #94: read from the state alone, every plan
+	if not _standoff.is_empty():
+		_stats.standoff = 1
+		_hunt = _choose_hunt()
 	_recruit_plan = _plan_recruits([])  # a fresh army, for judging next turn's garrison
 	_defend_capital()
 	_strike_capitals()
@@ -248,6 +294,7 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 	_ctx = {}
 	_threat_cache = {}
 	_arrival = {}
+	_hunt = {}
 	return out
 
 
@@ -364,6 +411,9 @@ func _begin(state: GameState, faction_id: String, rng: SeededRNG, difficulty: St
 	_ruler = null
 	_preset = {}
 	_sacrifice = ""
+	_standoff = {}
+	_hunt = {}
+	_sally_to = ""
 	_me = state.find_faction(faction_id) if state != null else null
 	if _me == null:
 		return
@@ -524,7 +574,8 @@ func _sally(cap: Province, home: Array, threats: Array) -> bool:
 	# Judged with the garrison alone: on the border it meets that army without the armies joining
 	# from elsewhere (and without terrain, which only makes this estimate safer).
 	var odds := _attack_rate(home, at)
-	if odds.rate < SALLY_WIN:
+	var need := SALLY_WIN if _standoff.is_empty() else STANDOFF_SALLY_WIN  # #94: a stand-off accepts a likely win
+	if odds.rate < need:
 		return false
 	var attackers: Array = home.duplicate()
 	for a in _free_next_to(at):
@@ -532,10 +583,12 @@ func _sally(cap: Province, home: Array, threats: Array) -> bool:
 			attackers.append(a)
 	for a in attackers:
 		_move(a, at)
+	_sally_to = at
 	_stats.attacks += 1
 	_home_rate = odds.rate
-	_note("Sallying out of %s to destroy the enemy army at %s (odds: %s): it cannot slip into %s without fighting us on the way." % [
-		cap.name, _province_name(at), _odds_words(odds.rate, odds.label), cap.name])
+	var tail := "" if odds.rate >= SALLY_WIN else " After a long stand-off, a likely win is worth the risk."
+	_note("Sallying out of %s to destroy the enemy army at %s (odds: %s): it cannot slip into %s without fighting us on the way.%s" % [
+		cap.name, _province_name(at), _odds_words(odds.rate, odds.label), cap.name, tail])
 	return true
 
 
@@ -594,6 +647,13 @@ func _size_garrison(cap: Province, home: Array) -> void:
 	if near.is_empty() and far.is_empty():
 		return
 	var threat: Array = near + far
+	if not home.is_empty() and _hunting_the_pin(threat):
+		# #94: a stand-off, and the army that keeps the garrison home is one we can beat: the garrison
+		# marches out against it (_field_moves) instead. Nobody can reach the capital this turn.
+		_stats.hunts = 1
+		_note_top("Breaking the stand-off: what we have built up while both sides waited is worth %d turns of our income, so the %s at %s march out against the enemy army at %s (rough odds: %s) instead of guarding %s." % [
+			floori(float(_standoff.turns)), _units_text(home), cap.name, _province_name(_hunt.pid), _odds_words(float(_hunt.rate)), cap.name])
+		return
 	var recruits := _recruit_units()
 	var need := GARRISON_RATIO if not near.is_empty() else GARRISON_RATIO * 0.6
 	var bonus := _ground_bonus(cap.id)
@@ -678,6 +738,8 @@ func _attack_armies() -> void:
 		var p := _state.find_province(c.pid)
 		var odds := _attack_rate(att, c.pid)
 		var need := URGENT_WIN if c.urgent else LIKELY_WIN
+		if not c.urgent and not _standoff.is_empty():
+			need = STANDOFF_WIN  # #94: after a long stand-off an even fight is worth taking
 		if odds.rate < need:
 			_stats.held_back += 1
 			if odds.rate > HOPELESS_RATIO or c.urgent:
@@ -690,7 +752,10 @@ func _attack_armies() -> void:
 			_move(a, c.pid)
 		_stats.attacks += 1
 		var why := " before it reaches %s" % _province_name(_me.capital) if c.urgent else ""
-		_note("Attacking the enemy at %s with %s%s (odds: %s%s)." % [p.name, _count_text(att), why, _odds_words(odds.rate, odds.label), _joiners_text(odds)])
+		var tail := ""
+		if not c.urgent and odds.rate < LIKELY_WIN:
+			tail = ": after a long stand-off, even odds are worth taking"
+		_note("Attacking the enemy at %s with %s%s (odds: %s%s)%s." % [p.name, _count_text(att), why, _odds_words(odds.rate, odds.label), _joiners_text(odds), tail])
 
 
 ## Free armies next to `pid` that should attack it. A small enemy army (a straggler) is not worth a
@@ -738,6 +803,8 @@ func _field_moves() -> void:
 		return
 	var main: Dictionary = groups[0]
 	var objective := _objective_for(main.loc)
+	if not _hunt.is_empty():
+		objective = String(_hunt.pid)  # #94: in a stand-off the main army marches on the army it hunts
 	var claimed := {}
 	var main_dest: String = main.loc
 	# Mass before pushing: the main army waits while a big share of our strength is still on its way.
@@ -797,6 +864,8 @@ func _field_move(g: Dictionary, is_main: bool, objective: String, main_dest: Str
 		return capture
 	if is_main:
 		return _advance(g, objective)
+	if not _hunt.is_empty() and _d(here, String(_hunt.pid)) <= 1:
+		return here  # #94: next to the army we hunt, wait there for the main army
 	return _join(g, main_dest)
 
 
@@ -868,6 +937,12 @@ func _advance(g: Dictionary, objective: String) -> String:
 		if _d(n, objective) == d_here - 1 and _foes_at(n).is_empty() and _safe_at(g.armies, n):
 			options.append(n)
 	if options.is_empty():
+		# #94: in a stand-off, besiege the enemy capital anyway where we are at least even, else raid.
+		var other := _siege_step(here, objective, g.armies)
+		if other.is_empty():
+			other = _raid_step(here, g.armies)
+		if not other.is_empty():
+			return other
 		_note("Massing at %s before pushing on to %s: the road ahead is guarded by stronger armies." % [_province_name(here), _province_name(objective)])
 		return here
 	var step := _pick_step(options)
@@ -1045,6 +1120,11 @@ func _plan_recruits(base: Array) -> Array:
 		var best_gain := 0.0
 		var best_value := value
 		var ranks := _ranks(units)
+		# #94: against an overwhelming foe every gain is a sliver below the tie margin; gold has no other use,
+		# so the best gain above nothing at all still buys (banked gold only feeds a stand-off).
+		var sliver: UnitType = null
+		var sliver_gain := 0.0
+		var sliver_value := value
 		for ut in roster:
 			var price := _price(ut)
 			if price > gold or price <= 0:
@@ -1061,6 +1141,13 @@ func _plan_recruits(base: Array) -> Array:
 				best = ut
 				best_gain = gain
 				best_value = v
+			if gain > sliver_gain:
+				sliver = ut
+				sliver_gain = gain
+				sliver_value = v
+		if best == null:
+			best = sliver
+			best_value = sliver_value
 		if best == null:
 			break
 		out.append(best)
@@ -1095,8 +1182,22 @@ func _recruit_value(units: Array, foe_units: Array) -> float:
 	if units.is_empty():
 		return 0.0
 	var foes: Array = foe_units if not foe_units.is_empty() else _roster_units()
-	var ours := _side_summary(units, _ctx)
-	var theirs := _side_summary(foes, _ctx)
+	var share := float(_ctx.get("forest_share", 0.0))
+	if share <= 0.0 or share >= 1.0 or not (units + foes).any(func(u): return u.type.trait_id == AutoBattleResolver.ROOTED):
+		return _value_of(_side_summary(units, _ctx), _side_summary(foes, _ctx))
+	# #94: Rooted works in a forest battle or not at all, and defense is not worth the same for every point (hit
+	# chances stop at MIN_HIT, damage drops in steps of four), so half its ROOTED_DEFENSE on every battle misjudges
+	# it: the value is that of a forest battle and of an open one, weighted by the forest share of our front.
+	var forest := _ctx.duplicate()
+	forest["forest_share"] = 1.0
+	var open := _ctx.duplicate()
+	open["forest_share"] = 0.0
+	return share * _value_of(_side_summary(units, forest), _side_summary(foes, forest)) \
+		+ (1.0 - share) * _value_of(_side_summary(units, open), _side_summary(foes, open))
+
+
+## Our _trait_power over theirs.
+static func _value_of(ours: Dictionary, theirs: Dictionary) -> float:
 	return _trait_power(ours, theirs) / maxf(_trait_power(theirs, ours), 0.001)
 
 
@@ -1110,9 +1211,11 @@ static func _side_summary(units: Array, ctx: Dictionary = {}) -> Dictionary:
 	var s := {"hp": 0.0, "morale": 0, "regulars": 0, "best_morale": 0, "cmd": false, "inspire": false, "pack": false,
 		"bears": 0, "front": 0, "volley": 0, "skirmish": 0, "fighters": 0, "def_hp": 0.0, "shield_hp": 0.0, "kinds": {},
 		"commanders": 0, "cmd_hp": 0.0, "cmd_def_hp": 0.0, "wings": 0, "iron_hide_hp": 0.0, "rooted": 0,
-		"iron_discipline": false}
+		"iron_discipline": false, "frenzy": 0, "wounded_aware": false}
 	var stats: Dictionary = ctx.get("stats", {})
 	var disciplined: Dictionary = ctx.get("iron_discipline", {})
+	var frenzy: Dictionary = ctx.get("frenzy", {})
+	s.wounded_aware = not stats.is_empty()  # #94: with paths, a unit's maximum hp is known, so who is wounded is too
 	for u in units:
 		var ut: UnitType = u.type
 		if ut.is_ruler:
@@ -1120,18 +1223,21 @@ static func _side_summary(units: Array, ctx: Dictionary = {}) -> Dictionary:
 		var attack: int = ut.attack
 		var defense: int = ut.defense
 		var morale: int = ut.morale
+		var max_hp: int = ut.hp
 		if not stats.is_empty():
 			var st: Dictionary = stats.get(u.owner + "|" + ut.id, {})
 			if not st.is_empty():
 				attack = int(st.attack)
 				defense = int(st.defense)
 				morale = int(st.morale)
+				max_hp = int(st.get("hp", ut.hp))
 		var hp := float(u.current_hp)
 		s.hp += hp
 		s.def_hp += hp * defense
 		s.fighters += 1
 		if disciplined.get(u.owner, false):
 			s.iron_discipline = true
+		s.frenzy = maxi(int(s.frenzy), int(frenzy.get(u.owner, 0)))
 		if ut.is_commander:
 			s.cmd = true
 			s.commanders += 1
@@ -1164,8 +1270,10 @@ static func _side_summary(units: Array, ctx: Dictionary = {}) -> Dictionary:
 				s.rooted += 1
 				s.def_hp += hp * AutoBattleResolver.ROOTED_DEFENSE * float(ctx.get("forest_share", 0.0))
 		if not s.kinds.has(ut.id):
-			s.kinds[ut.id] = {"type": ut, "n": 0, "attack": attack}
+			s.kinds[ut.id] = {"type": ut, "n": 0, "attack": attack, "wounded": 0}
 		s.kinds[ut.id].n += 1
+		if u.current_hp < max_hp:
+			s.kinds[ut.id].wounded += 1  # #94: Lifedrinker heals from the first round (Blood Levy recruits arrive so)
 	return s
 
 
@@ -1207,33 +1315,63 @@ static func _trait_power(s: Dictionary, foe: Dictionary) -> float:
 	var hide_share := float(foe.get("iron_hide_hp", 0.0)) / float(foe.hp) if float(foe.hp) > 0.0 else 0.0
 	var dmg := 0.0
 	var drink := 0.0
-	for k in s.kinds.values():
-		var ut: UnitType = k.type
-		var atk := float(k.attack)
-		if not ut.is_commander and s.pack:
-			atk += AutoBattleResolver.PACK_LEADER_ATTACK if keep >= 1.0 else AutoBattleResolver.PACK_LEADER_ATTACK * keep
-		if ut.trait_id == AutoBattleResolver.BERSERK:
-			atk += AutoBattleResolver.BERSERK_ATTACK * BERSERK_SHARE
-		var hit := _hit_rate(atk, foe_def)
-		var per_hit := maxf(AutoBattleResolver.MIN_DAMAGE, ceilf(atk * 0.5) - floorf(foe_def * 0.25))
-		if hide_share > 0.0:
-			# Iron Hide: every hit on it deals IRON_HIDE_DAMAGE less, but at least MIN_DAMAGE.
-			per_hit = (1.0 - hide_share) * per_hit + hide_share * maxf(AutoBattleResolver.MIN_DAMAGE,
-				per_hit - AutoBattleResolver.IRON_HIDE_DAMAGE)
-		var per := hit * per_hit
-		if ut.trait_id == AutoBattleResolver.CHARGE:
-			per += hit * AutoBattleResolver.CHARGE_DAMAGE / ROUNDS_GUESS
-		if ut.trait_id == AutoBattleResolver.VOLLEY and shielded:
-			per *= 1.0 + VOLLEY_SHIELD_VALUE * (1.0 - foe_reach)
-		if ut.trait_id == AutoBattleResolver.SKIRMISH or ut.trait_id == AutoBattleResolver.WINGS:
-			per *= 1.0 + SKIRMISH_REACH_VALUE * our_targets
-		dmg += per * int(k.n)
-		if ut.trait_id == AutoBattleResolver.LIFEDRINKER:
-			drink += per * int(k.n)
-	var hp := float(s.hp)
-	if drink > 0.0:
-		hp += drink / float(AutoBattleResolver.LIFEDRINK_DIVISOR) * ROUNDS_GUESS * LIFEDRINK_SHARE
-	return hp * hold * dmg
+	for kind in s.kinds.values():
+		# #94: with paths, the units already wounded (every Blood Levy recruit) have Berserk and Blood Frenzy from
+		# the first blow; the others about BERSERK_SHARE of the time. Without paths, every unit is the latter.
+		var parts := [[int(kind.n), false]]
+		if s.get("wounded_aware", false):
+			parts = [[int(kind.get("wounded", 0)), true], [int(kind.n) - int(kind.get("wounded", 0)), false]]
+		for part in parts:
+			if int(part[0]) <= 0:
+				continue
+			var k: Dictionary = kind.duplicate()
+			k.n = int(part[0])
+			k.wounded = int(part[0]) if part[1] else 0
+			var took := _kind_power(k, s, foe_def, keep, hide_share, shielded, foe_reach, our_targets, bool(part[1]))
+			dmg += float(took.dmg)
+			drink += float(took.drink)
+	# What the side can lose before it breaks. Lifedrinker's healing lands before morale is checked, so every
+	# hp healed is an hp not lost: it counts in full, not just the share the side would lose of it (#94).
+	return (float(s.hp) * hold + drink * ROUNDS_GUESS) * dmg
+
+
+## The damage a round and the healing a round (Lifedrinker) of one kind of units `k` ({"type", "n", "attack",
+## "wounded"}) of side `s`, all `hurt` (below their maximum hp) or none, for _trait_power. {"dmg", "drink"}.
+static func _kind_power(k: Dictionary, s: Dictionary, foe_def: float, keep: float, hide_share: float, shielded: bool,
+		foe_reach: float, our_targets: float, hurt: bool) -> Dictionary:
+	var dmg := 0.0
+	var drink := 0.0
+	var ut: UnitType = k.type
+	var atk := float(k.attack)
+	if not ut.is_commander and s.pack:
+		atk += AutoBattleResolver.PACK_LEADER_ATTACK if keep >= 1.0 else AutoBattleResolver.PACK_LEADER_ATTACK * keep
+	var wound_share := 1.0 if hurt else BERSERK_SHARE
+	if ut.trait_id == AutoBattleResolver.BERSERK:
+		atk += AutoBattleResolver.BERSERK_ATTACK * wound_share
+	atk += float(s.get("frenzy", 0)) * wound_share  # Blood Frenzy: every fighter below its maximum hp
+	var hit := _hit_rate(atk, foe_def)
+	var raw := maxf(AutoBattleResolver.MIN_DAMAGE, ceilf(atk * 0.5) - floorf(foe_def * 0.25))
+	var per_hit := raw
+	var hidden := maxf(AutoBattleResolver.MIN_DAMAGE, raw - AutoBattleResolver.IRON_HIDE_DAMAGE)
+	if hide_share > 0.0:
+		# Iron Hide: every hit on it deals IRON_HIDE_DAMAGE less, but at least MIN_DAMAGE.
+		per_hit = (1.0 - hide_share) * raw + hide_share * hidden
+	var per := hit * per_hit
+	if ut.trait_id == AutoBattleResolver.CHARGE:
+		per += hit * AutoBattleResolver.CHARGE_DAMAGE / ROUNDS_GUESS
+	if ut.trait_id == AutoBattleResolver.VOLLEY and shielded:
+		per *= 1.0 + VOLLEY_SHIELD_VALUE * (1.0 - foe_reach)
+	if ut.trait_id == AutoBattleResolver.SKIRMISH or ut.trait_id == AutoBattleResolver.WINGS:
+		per *= 1.0 + SKIRMISH_REACH_VALUE * our_targets
+	dmg += per * int(k.n)
+	if ut.trait_id == AutoBattleResolver.LIFEDRINKER:
+		# #94: each hit heals the damage it dealt over LIFEDRINK_DIVISOR, rounded up (the rules' own rounding),
+		# from the first round for a unit already wounded (a Blood Levy recruit), else LIFEDRINK_SHARE of the time.
+		var div := float(AutoBattleResolver.LIFEDRINK_DIVISOR)
+		var heal := hit * ((1.0 - hide_share) * ceilf(raw / div) + hide_share * ceilf(hidden / div))
+		var wounded := float(k.get("wounded", 0))
+		drink += heal * (wounded + (float(k.n) - wounded) * LIFEDRINK_SHARE)
+	return {"dmg": dmg, "drink": drink}
 
 
 ## The share of a battle side `s` keeps its commander bonuses against the foe's Wings units: 1 minus their
@@ -1601,12 +1739,18 @@ func _ruler_moves() -> void:
 	if _ruler_role() == "home":
 		var reason := "with %d kept power %s is easy to kill" % [kept, RulerRules.current_name(_state, _fid)] if kept <= LOW_KEPT \
 			else "its build keeps it home"
-		if here == cap:
+		if here == cap and (_ruler_spot(cap).ok or _sally_to.is_empty()):
 			_hold(_ruler)
 			_note_top("%s stays in %s: %s." % [who, _province_name(cap), reason])
 			return
-		options.append_array(_ruler_steps(cap, "to head back to %s: %s" % [_province_name(cap), reason]))
-		options.append({"to": here, "via": "", "why": "holding: the way back to %s isn't safe this turn" % _province_name(cap)})
+		if here == cap:
+			# The garrison sallies (a stand-off lets it at a likely win, #94), and an enemy army is next door: the
+			# ruler goes with the garrison rather than wait in the capital alone.
+			options.append({"to": _sally_to, "via": "", "why": "with the garrison's sally out of %s" % _province_name(cap)})
+			options.append({"to": here, "via": "", "why": reason})
+		else:
+			options.append_array(_ruler_steps(cap, "to head back to %s: %s" % [_province_name(cap), reason]))
+			options.append({"to": here, "via": "", "why": "holding: the way back to %s isn't safe this turn" % _province_name(cap)})
 	else:
 		var lead := _lead_army()
 		if lead == null:
@@ -1777,7 +1921,7 @@ func _build_ctx() -> void:
 		for ut in types:
 			var st := RulerRules.unit_stats(_state, f.id, ut.id)
 			if st.get("ok", false):
-				stats[f.id + "|" + ut.id] = {"attack": int(st.attack), "defense": int(st.defense), "morale": int(st.morale)}
+				stats[f.id + "|" + ut.id] = {"attack": int(st.attack), "defense": int(st.defense), "morale": int(st.morale), "hp": int(st.hp)}
 	# Our front: the provinces we own next to one we don't, and those neighbours.
 	var front := {}
 	for p in _state.provinces:
@@ -1793,9 +1937,12 @@ func _build_ctx() -> void:
 		if _state.find_province(pid).terrain == AscensionRules.FOREST:
 			forest += 1
 	var disciplined := {}
+	var frenzy := {}
 	for f in _state.factions:
-		disciplined[f.id] = RulerRules.battle_effects(_state, f.id).iron_discipline
-	_ctx = {"stats": stats, "front": front.size(), "forest": forest, "iron_discipline": disciplined,
+		var fx := RulerRules.battle_effects(_state, f.id)
+		disciplined[f.id] = fx.iron_discipline
+		frenzy[f.id] = int(fx.wounded_attack)  # #94: Blood Frenzy, for every fighter below its maximum hp
+	_ctx = {"stats": stats, "front": front.size(), "forest": forest, "iron_discipline": disciplined, "frenzy": frenzy,
 		"forest_share": float(forest) / float(front.size()) if not front.is_empty() else 0.0}
 
 
@@ -1997,6 +2144,155 @@ func _path_recruit_reason(ut: UnitType, n: int) -> String:
 	return ""
 
 
+# --- #94: stand-offs ------------------------------------------------------------------------------
+
+## Whether `faction_id` has reached a stand-off in `state`, read from the state alone (no battle history,
+## no saved AI state): every unit it fields (rulers left out) at today's recruit price, plus its treasury,
+## worth STANDOFF_TURNS turns of its income or more. {"turns" (the pile in turns of income), "value" (its
+## units' worth), "gold", "income", "units"}, or {} when it isn't one (or the faction is unknown).
+static func standoff_info(state: GameState, faction_id: String) -> Dictionary:
+	var f: Faction = state.find_faction(faction_id) if state != null else null
+	if f == null:
+		return {}
+	var income := int(TurnResolver.income_of(state, faction_id).total)
+	var prices := {}
+	var value := 0
+	var units := 0
+	for a in state.armies:
+		if a.owner != faction_id:
+			continue
+		var members: Array = a.units.duplicate()
+		if a.commander != null:
+			members.append(a.commander)
+		for u in members:
+			if not prices.has(u.type.id):
+				prices[u.type.id] = maxi(0, RulerRules.recruit_price(state, faction_id, u.type))
+			value += int(prices[u.type.id])
+			units += 1
+	var turns := float(value + maxi(0, f.gold)) / float(maxi(1, income))
+	if turns < STANDOFF_TURNS:
+		return {}
+	return {"turns": turns, "value": value, "gold": f.gold, "income": income, "units": units}
+
+
+## The enemy army a stand-off hunts, or {} (see STANDOFF_TURNS): enemy armies outside their capitals within
+## MASS_REACH of our capital or of our strongest army, that our armies within MASS_REACH of them beat at
+## STANDOFF_WIN or better by the rough guess, on their ground and with the enemy armies next to them joining
+## in. The nearest to our capital first, then the strongest, then by province id. {"pid", "rate", "force", "power"}.
+func _choose_hunt() -> Dictionary:
+	var cap: String = _me.capital
+	var groups := _free_groups()  # nothing has a job yet: every army but our ruler's
+	var lead: String = groups[0].loc if not groups.is_empty() else ""
+	var best := {}
+	var seen := {}
+	for e in _foes:
+		var pid: String = e.location
+		if seen.has(pid) or _is_enemy_capital(pid):
+			continue
+		seen[pid] = true
+		if _d(pid, cap) > MASS_REACH and (lead.is_empty() or _d(pid, lead) > MASS_REACH):
+			continue
+		var force := _mine.filter(func(a): return _d(a.location, pid) <= MASS_REACH)
+		if force.is_empty():
+			continue
+		var held := _foes_at(pid)
+		var rate := _rate_from_ratio(_ratio(force, held + _foes_next_to(pid), 1.0, _ground_bonus(pid)))
+		if rate < STANDOFF_WIN:
+			continue
+		var power := _power_units(_units(held), _units(force))
+		var better := best.is_empty() or _d(pid, cap) < _d(best.pid, cap)
+		if not better and _d(pid, cap) == _d(best.pid, cap):
+			better = power > float(best.power) or (power == float(best.power) and pid < String(best.pid))
+		if better:
+			best = {"pid": pid, "rate": rate, "force": force, "power": power}
+	return best
+
+
+## True when this plan hunts the strongest of `threat` (the enemy armies near our capital that would keep
+## the garrison home), so the garrison may march out against it.
+func _hunting_the_pin(threat: Array) -> bool:
+	if _hunt.is_empty():
+		return false
+	var mine := _units(_mine)
+	var by := {}
+	for e in threat:
+		by[e.location] = true
+	var pin := ""
+	var pin_power := -1.0
+	var locs: Array = by.keys()
+	locs.sort()
+	for loc in locs:
+		var p := _power_units(_units(_foes_at(loc)), mine)
+		if p > pin_power:
+			pin = loc
+			pin_power = p
+	return pin == String(_hunt.pid)
+
+
+## "52 units": the units and commanders of `armies`.
+func _units_text(armies: Array) -> String:
+	var n := _units(armies).size()
+	return "%d %s" % [n, "unit" if n == 1 else "units"]
+
+
+## A siege step in a stand-off with nothing to hunt: one step from `here` toward the enemy capital
+## `objective` where `armies` are at least even (STANDOFF_SAFE), or "".
+func _siege_step(here: String, objective: String, armies: Array) -> String:
+	if _standoff.is_empty() or not _hunt.is_empty() or objective.is_empty() or not _is_enemy_capital(objective):
+		return ""
+	var d_here := _d(here, objective)
+	var options := []
+	for n in _nbrs[here]:
+		if _d(n, objective) != d_here - 1 or not _foes_at(n).is_empty():
+			continue
+		var threat := _threats_to(n)
+		var friends: Array = armies + _friends_ending_at(n, armies)
+		if threat.is_empty() or _ratio(friends, threat, _ground_bonus(n), 1.0) >= STANDOFF_SAFE:
+			options.append(n)
+	if options.is_empty():
+		return ""
+	var step := _pick_step(options)
+	_stats.sieges = 1
+	_note_top("Breaking the stand-off: pushing on to %s past stronger armies on the road, to camp next to %s until the odds of taking it are even." % [
+		_province_name(step), _province_name(objective)])
+	return step
+
+
+## A raid in a stand-off: from `here`, a safe step toward the nearest province of an enemy within MASS_REACH
+## that no army holds and that `armies` could hold safely (ties: what it is worth to us, then id), or "".
+func _raid_step(here: String, armies: Array) -> String:
+	if _standoff.is_empty():
+		return ""
+	var best := ""
+	var best_step := ""
+	var best_d := MASS_REACH + 1
+	var best_worth := -1.0
+	for p in _sorted_provinces():
+		if p.owner.is_empty() or p.owner == _fid or not _foes_at(p.id).is_empty():
+			continue
+		var d := _d(here, p.id)
+		if d < 1 or d > MASS_REACH or d > best_d:
+			continue
+		if not _safe_at(armies, p.id):
+			continue
+		var step: String = p.id if d == 1 else _step_toward(here, p.id, armies)
+		if step.is_empty():
+			continue
+		var worth: float = _capture_worth(p) if _paths else float(p.income) * 2.0
+		if d < best_d or worth > best_worth + 0.0001:
+			best = p.id
+			best_step = step
+			best_d = d
+			best_worth = worth
+	if best.is_empty():
+		return ""
+	_stats.raids = 1
+	var target := _state.find_province(best)
+	_note_top("Breaking the stand-off: raiding %s, which the %s left unguarded, to cut their income and draw their army out." % [
+		target.name, _faction_name(target.owner)])
+	return best_step
+
+
 # --- forecasts ------------------------------------------------------------------------------------
 
 ## Forecast.battle_odds of `attacker` attacking `pid` with `ids` on `st`, cached within this plan.
@@ -2114,7 +2410,7 @@ func _power_units_paths(units: Array, foe_units: Array) -> float:
 	for u in units:
 		var st := _eff(u)
 		hp += u.current_hp
-		dmg += _pressure(int(st.attack), foe_def)
+		dmg += _pressure(int(st.attack) + _wounded_attack(u), foe_def)
 		if u.type.is_commander:
 			led = true
 		else:
@@ -2124,6 +2420,18 @@ func _power_units_paths(units: Array, foe_units: Array) -> float:
 	if led:
 		m += 2.0
 	return hp * clampf(0.2 + 0.05 * m, 0.25, 0.95) * dmg
+
+
+## The attack a unit gets for being below its maximum hp now (paths, #94): Berserk's BERSERK_ATTACK and its
+## faction's Blood Frenzy. Every Blood Levy recruit arrives wounded, so a Blood Pact army fights with them on.
+func _wounded_attack(u: Unit) -> int:
+	var st: Dictionary = _ctx.get("stats", {}).get(u.owner + "|" + u.type.id, {})
+	if u.current_hp >= int(st.get("hp", u.type.hp)):
+		return 0
+	var bonus := int(_ctx.get("frenzy", {}).get(u.owner, 0))
+	if u.type.trait_id == AutoBattleResolver.BERSERK:
+		bonus += AutoBattleResolver.BERSERK_ATTACK
+	return bonus
 
 
 ## Rough expected damage of one attack with `attack` against `foe_def` defense.
