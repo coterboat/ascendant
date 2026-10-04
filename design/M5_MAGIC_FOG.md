@@ -159,6 +159,10 @@ This milestone proves two things:
   - **`army_counters`** (per-faction army numbers): `setup_army_counters()` gives each faction its own counter, starting at its highest existing army number + 1. From then on `new_army_id` numbers each faction's armies alone, so the numbers on your armies can't count your rival's.
     - It is saved whenever it is set, whatever `fog` says.
     - It is a small rule change. Army ids sort as strings, so fighter order, and with it which roll goes to which attack, differs from a game without counters. That is why only fog games turn it on.
+    - **Director's note (2026-10-04):** issue #94 makes per-faction army numbering the rule in **every** game. Its reason is the turn report's army names ("the Crown's 13th" on turn 1), and it re-records the fixtures for that change. Once #94 is on `main`:
+      - `army_counters` is the base game's counter and not a fog setup choice. M5-0/M5-1 reuse #94's counter and save key instead of adding `setup_army_counters()`.
+      - The "only fog games" rule change goes away, and so does the "`army_counters` on" half of G11's no-fog control.
+      - Wherever this spec says fog games number armies per faction, read it as "all games do".
   - **Far Sight** is a magic rule whenever magic is on (§6.2). It writes an enchantment that FogRules reads. Without fog, the UI and the AI simply never offer it.
   - **Acceptance (M5-1):** a fog record replayed with `fog` stripped and `army_counters` kept gives identical states.
 - **Truth stays behind named doors.** In a fog game, every player-facing surface reads through the per-viewer accessors:
