@@ -113,8 +113,10 @@ func _draw_projectile(p: Dictionary) -> void:
 	var u := clampf(float(p.age) / float(p.life), 0.0, 1.0)
 	var head := path_point(p, u)
 	var dist := maxf(1.0, (p.from as Vector2).distance_to(p.to))
-	var tail_u := maxf(0.0, u - 24.0 / dist)
-	var col := UiPalette.GILT if p.kind == "arcane" else UiPalette.TEXT_PRIMARY
+	# Wings' dive leaves a longer, wider streak than a missile.
+	var dive: bool = p.kind == "dive"
+	var tail_u := maxf(0.0, u - (56.0 if dive else 24.0) / dist)
+	var col := UiPalette.GILT if p.kind == "arcane" or dive else UiPalette.TEXT_PRIMARY
 	var a := 1.0
 	if not p.hit:
 		var over := MISS_OVERSHOOT / dist
@@ -124,7 +126,7 @@ func _draw_projectile(p: Dictionary) -> void:
 		var u0 := lerpf(tail_u, u, float(j) / steps)
 		var u1 := lerpf(tail_u, u, float(j + 1) / steps)
 		draw_line(path_point(p, u0), path_point(p, u1), Color(col, a * float(j + 1) / steps), 1.0 + 3.0 * float(j + 1) / steps)
-	var r := 5.0 * float(p.s)
+	var r := (7.0 if dive else 5.0) * float(p.s)
 	draw_circle(head, r + 1.5, Color(UiPalette.KEYLINE_INK, a))
 	draw_circle(head, r, Color(col, a))
 

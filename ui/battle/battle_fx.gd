@@ -13,6 +13,9 @@ extends RefCounted
 ##                                  WCAG 2.3.1); an impact over the limit plays without its bright frames
 ##   BattleFx.ShakeLimiter          at least SHAKE_SPACING between shakes; one that comes too soon is dropped
 ##   BattleFx.Pool                  a fixed number of live effects; a full pool skips the new one (§4.4)
+##   BattleFx.sound_of(beat)        the battle sound cue for a beat (#84's audio.json events), or ""
+##   BattleFx.SoundGate             keeps each cue at least SOUND_SPACING apart in real time, so 4x and
+##                                  massed rounds don't machine-gun the same sample
 
 ## §7.4: at most 3 bright-frame starts per rolling second, anywhere on screen.
 const MAX_FLASHES := 3
@@ -25,6 +28,15 @@ const SHAKE_SPACING := 0.75
 const MAX_IMPACTS := 48
 const MAX_PROJECTILES := 96
 const MAX_NUMBERS := 32
+## The battle's sound cues in assets/audio/audio.json (#84).
+const SOUNDS := ["battle_hit", "battle_clash", "battle_miss", "battle_bolt", "battle_javelin", "battle_arcane", "battle_charge",
+	"rout_horn", "ruler_death"]
+## Real seconds between two plays of the same frequent cue (others: no limit; GameAudio's polyphony and
+## cooldowns still apply on top).
+const SOUND_SPACING := {"battle_hit": 0.06, "battle_clash": 0.06, "battle_miss": 0.08, "battle_bolt": 0.06, "battle_javelin": 0.06}
+## Every CLASH_EVERY-th melee hit (by beat index, never an RNG) sounds as a clash for variety, as does
+## any hit Iron Hide or Shield Wall took some of (audio.json: "alternate with battle_hit").
+const CLASH_EVERY := 3
 const SECTION := "battle"
 const DEFAULTS := {"reduced_motion": false, "screen_shake": true, "speed": 1}
 
@@ -46,6 +58,58 @@ static func settings(path: String = "") -> Dictionary:
 	if (sp is int or sp is float) and BattlePlayer.SPEEDS.has(int(sp)):
 		out.speed = int(sp)
 	return out
+
+
+## The sound cue for beat `b` (a BattlePlayer beat), or "" for none. Deterministic: the same beat always
+## gives the same cue.
+##   attack_started  battle_charge for a side's first Charge attack; battle_bolt / battle_javelin /
+##                   battle_arcane when a projectile is released
+##   attack_landed   battle_miss for a miss; for a melee or Wings hit, battle_clash when blocked or on every
+##                   CLASH_EVERY-th beat index, else battle_hit (a projectile's hit has its release sound)
+##   death           ruler_death for a ruler
+##   rout            rout_horn
+static func sound_of(b: Dictionary) -> String:
+	var data: Dictionary = b.get("data", {})
+	match String(b.get("kind", "")):
+		"attack_started":
+			if data.get("first_charge", false):
+				return "battle_charge"
+			match String(data.get("projectile", "")):
+				"bolt":
+					return "battle_bolt"
+				"javelin":
+					return "battle_javelin"
+				"arcane":
+					return "battle_arcane"
+		"attack_landed":
+			if not data.get("hit", false):
+				return "battle_miss"
+			var proj := String(data.get("projectile", ""))
+			if proj.is_empty() or proj == "dive":
+				if data.get("blocked", false) or int(b.get("i", 0)) % CLASH_EVERY == 0:
+					return "battle_clash"
+				return "battle_hit"
+		"death":
+			if data.get("ruler", false):
+				return "ruler_death"
+		"rout":
+			return "rout_horn"
+	return ""
+
+
+## Spaces out repeats of a sound cue in real time (SOUND_SPACING); a repeat that comes too soon is dropped.
+class SoundGate extends RefCounted:
+	var _last := {}  # cue -> real time of its last play
+
+	func allow(cue: String, now: float) -> bool:
+		var gap := float(BattleFx.SOUND_SPACING.get(cue, 0.0))
+		if gap > 0.0 and _last.has(cue) and now - float(_last[cue]) < gap:
+			return false
+		_last[cue] = now
+		return true
+
+	func reset() -> void:
+		_last.clear()
 
 
 ## Counts bright-frame starts in a rolling window of real time.

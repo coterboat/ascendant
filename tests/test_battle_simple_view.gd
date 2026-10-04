@@ -10,6 +10,7 @@ extends "res://tests/test_case.gd"
 
 const Watch := preload("res://ui/battle/battle_watch.gd")
 const Scenarios := preload("res://tools/battle_log/scenarios.gd")
+const Fx := preload("res://tests/battle_playback_fixtures.gd")
 const STEP := 1.0 / 60.0
 ## §8.2: playback CPU per frame, headless, fixed 1/60 s steps (average and worst frame), on the build box.
 const CPU_AVG_MS := 2.0
@@ -17,8 +18,8 @@ const CPU_MAX_MS := 4.0
 
 
 func _fixture(name: String) -> Dictionary:
-	var fx := Watch.load_fixture(name)
-	assert_false(fx.is_empty(), "fixture %s loads" % name)
+	var fx := Fx.battle(name)
+	assert_false(fx.is_empty(), "battle %s loads" % name)
 	return fx
 
 
@@ -51,7 +52,7 @@ func _collapse(text: String) -> String:
 
 
 func test_every_fixture_plays_to_the_timelines_final_state() -> void:
-	for name in Scenarios.NAMES:
+	for name in Fx.names():
 		var fx := _fixture(name)
 		var v := _view(fx)
 		_play_out(v, 4)
@@ -87,7 +88,7 @@ func test_every_fixture_plays_to_the_timelines_final_state() -> void:
 
 func test_every_fighter_has_its_own_place_in_the_field() -> void:
 	var field := Rect2(0, 0, BattleSimpleView.BASE.x, BattleSimpleView.FIELD_H)
-	for name in Scenarios.NAMES:
+	for name in Fx.names():
 		var fx := _fixture(name)
 		var lay := BattleLayout.build(fx.log, field.size)
 		var rects := []
@@ -205,7 +206,7 @@ func test_reduced_motion_is_read_from_the_settings_file() -> void:
 
 
 func test_no_visible_text_has_a_raw_id() -> void:
-	for name in Scenarios.NAMES:
+	for name in Fx.names():
 		var fx := _fixture(name)
 		var v := _view(fx)
 		var ids := _raw_ids(fx.log)
@@ -242,6 +243,9 @@ func _raw_ids(battle_log: Dictionary) -> Array:
 			ids[String(a.id)] = true
 		for m in s.mandates:
 			ids[String(m)] = true
+		var people = s.get("people", {})
+		if people is Dictionary and not people.is_empty():
+			ids[String(people.id)] = true
 	for f in battle_log.fighters:
 		ids[String(f.type)] = true
 		if not f.ruler.is_empty():
@@ -455,3 +459,116 @@ func _avg_max(times: Array) -> Array:
 		total += float(ms)
 		worst = maxf(worst, float(ms))
 	return [total / maxi(1, times.size()), worst]
+
+
+# --- battles with paths (M4-3, #83) and sound (#84) -------------------------------------------------
+
+func test_path_battles_show_heals_harvest_dives_and_iron_hide() -> void:
+	# Lifedrinker: each heal shows a green "+N hp" over the healer as its beat fires.
+	var lf := _fixture("path_lifedrinker")
+	var v := _view(lf)
+	var greens := []
+	v.player.beat.connect(func(b, _st):
+		if b.kind == "heal":
+			var c := v.card(int(b.fighter))
+			for n in v.effects.numbers.items:
+				if n.text == "+%d hp" % int(b.data.healed) and n.color == UiPalette.POSITIVE:
+					greens.append(int(b.fighter))
+					break
+			assert_eq(c.hp, int(b.data.to), "the healer's card refills to its healed hp"))
+	_play_out(v, 4)
+	assert_true(greens.size() >= 1, "every heal rose as a green number")
+	v.free()
+	# Red Harvest: a gold note as it lands, and the aftermath's harvest sentence on the result card.
+	var rh := _fixture("path_red_harvest")
+	var w := BattleSimpleView.new()
+	assert_eq(w.show_event(rh.event), "", "the battle event plays")
+	var toasts := []
+	w.player.beat.connect(func(b, _st):
+		if b.kind == "harvest":
+			toasts.append(w.toast_label.text))
+	_play_out(w, 4)
+	assert_eq(toasts.size(), 1, "the harvest beat fired")
+	assert_true(String(toasts[0]).begins_with("Red Harvest: Thornmane Clans takes"), "a Red Harvest note: %s" % toasts[0])
+	var lines := w.end_card_lines()
+	assert_eq(lines.filter(func(l): return String(l).contains("Red Harvest")).size(), 1, "the result card says it once: %s" % [lines])
+	var plaques := [w.plaque_labels[0].text, w.plaque_labels[1].text]
+	assert_true(plaques.any(func(t): return String(t).contains("Blood Pact")), "the plaque names the people: %s" % [plaques])
+	# Without the aftermath's sentence (a log fought outside a turn), the card says it from the harvest event.
+	var bare: Dictionary = rh.log.duplicate(true)
+	bare.events = bare.events.filter(func(e): return e.t != "aftermath")
+	w.show_battle(bare, rh.report)
+	assert_true(w.end_card_lines().any(func(l): return String(l).begins_with("Red Harvest: Thornmane Clans took")), "from the harvest event")
+	w.free()
+	# Wings: the Seraphs don't lunge; a dive streaks to the target.
+	var wg := _fixture("path_wings")
+	var x := _view(wg)
+	var dives := [0]
+	var lunged := [false]
+	x.player.beat.connect(func(b, _st):
+		if b.kind == "attack_started" and String(b.data.projectile) == "dive":
+			if x.effects.projectiles.items.any(func(pp): return pp.kind == "dive"):
+				dives[0] += 1)
+	x.player.play()
+	var guard := 0
+	while not x.player.is_finished() and guard < 4000:
+		x.tick(STEP)
+		guard += 1
+		for f in wg.log.fighters:
+			var c := x.card(int(f.id))
+			if f.trait == AutoBattleResolver.WINGS and c._lunge_t >= 0.0:
+				lunged[0] = true
+	assert_true(dives[0] >= 1, "a Wings attack draws a dive")
+	assert_false(lunged[0], "the diving Seraphs never lunge")
+	x.free()
+	# Iron Hide: a grey "-1" beside the damage of a hit it turned.
+	var ih := _fixture("path_iron_hide")
+	var y := _view(ih)
+	var minus := [0]
+	y.player.beat.connect(func(b, _st):
+		if b.kind == "attack_landed" and int(b.data.iron_hide) < 0:
+			if y.effects.numbers.items.any(func(n): return n.text == "-1" and n.color == UiPalette.TEXT_SECONDARY):
+				minus[0] += 1)
+	_play_out(y, 4)
+	assert_true(minus[0] >= 1, "Iron Hide's -1 shows on its hits")
+	y.free()
+
+
+func test_battle_sounds_play_on_their_beats_and_never_on_a_seek() -> void:
+	var fx := _fixture("king_falls_wins")
+	var runs := []
+	for k in 2:
+		var a := GameAudio.new()
+		a.quiet = true
+		GameAudio.current = a
+		var v := _view(fx)
+		assert_true(a.in_mood(), "the battle music and bed come up with the battle")
+		_play_out(v, 1)
+		var counts := {}
+		for cue in BattleFx.SOUNDS:
+			counts[cue] = a.play_count(cue)
+		runs.append({"history": a.history.duplicate(), "counts": counts})
+		# Seeking, jumping and skipping are silent.
+		var before := a.history.size()
+		v.player.restart()
+		v.player.seek_round(2)
+		v.player.next_moment()
+		v.player.skip_to_end()
+		v.tick(STEP)
+		assert_eq(a.history.size(), before, "no sound on a seek, a jump or a skip")
+		v.close()
+		assert_false(a.in_mood(), "closing brings the map's music back")
+		v.free()
+		GameAudio.current = null
+		a.free()
+	var c: Dictionary = runs[0].counts
+	assert_eq(int(c.battle_charge), 1, "the Knights' charge sounds once (the Crown's first charge)")
+	assert_eq(int(c.ruler_death), 1, "King Corvane's fall")
+	assert_eq(int(c.rout_horn), 1, "the Clans' rout")
+	assert_true(int(c.battle_hit) + int(c.battle_clash) >= 5, "melee hits")
+	assert_true(int(c.battle_clash) >= 1, "some of them clash")
+	assert_true(int(c.battle_miss) >= 1, "misses")
+	assert_true(int(c.battle_bolt) >= 1, "the Crossbowmen's bolts")
+	assert_true(int(c.battle_javelin) >= 1, "the Fangthrowers' javelins")
+	assert_eq(runs[1].history, runs[0].history, "the same battle plays the same sounds in the same order")
+	assert_eq(runs[1].counts, runs[0].counts, "and the same counts")

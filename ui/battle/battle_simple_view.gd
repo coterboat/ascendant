@@ -67,6 +67,8 @@ var _cards: Array = []
 var _glyph_cards: Array = []  # the cards that can show status glyphs (on a massed side: rulers and commanders)
 var _animating: Dictionary = {}
 var _flash := BattleFx.FlashLimiter.new()
+var _sound := BattleFx.SoundGate.new()
+var _mood_on := false
 var _shake := BattleFx.ShakeLimiter.new()
 var _real := 0.0
 var _last_time := 0.0
@@ -175,6 +177,10 @@ func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array =
 	_shake.enabled = screen_shake and not reduced_motion
 	_flash.reset()
 	_shake.reset()
+	_sound.reset()
+	if not _mood_on:
+		_mood_on = true
+		GameAudio.battle(true)
 	_build_field()
 	_fill_top_bar()
 	_fill_controls()
@@ -196,6 +202,9 @@ func _disconnect_player() -> void:
 func close() -> void:
 	if player != null:
 		player.pause()
+	if _mood_on:
+		_mood_on = false
+		GameAudio.battle(false)
 	visible = false
 	closed.emit()
 
@@ -291,6 +300,14 @@ func _try_shake(spec: Dictionary, event_index: int) -> void:
 	_shake_phase = float(event_index % 7) * 0.9
 
 
+## The beat's sound cue (BattleFx.sound_of), spaced out in real time. Beats fire only while playing or
+## stepping, so seeking and scrubbing are silent.
+func _play_sound(b: Dictionary) -> void:
+	var cue := BattleFx.sound_of(b)
+	if not cue.is_empty() and _sound.allow(cue, _real):
+		GameAudio.sfx(cue)
+
+
 func _animate(c: BattleCard) -> void:
 	if c != null and c.is_animating():
 		_animating[c] = true
@@ -299,6 +316,7 @@ func _animate(c: BattleCard) -> void:
 # --- beats ----------------------------------------------------------------------------------------
 
 func _on_beat(b: Dictionary, st: Dictionary) -> void:
+	_play_sound(b)
 	match String(b.kind):
 		"deploy":
 			for c in _cards:
@@ -331,6 +349,19 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 				_try_shake(b.data.shake, int(b.event))
 			_glyphs_dirty = true
 			_bars_dirty = true
+		"heal":
+			# M4-3's Lifedrinker: a green rising number, and the hp bar refills.
+			var c := card(int(b.fighter))
+			if c != null:
+				c.sync(st.fighters[c.fid], c.glyphs)
+				effects.add_number(_upper(c), "+%d hp" % int(b.data.healed), UiPalette.POSITIVE, _number_size(false))
+			_bars_dirty = true
+		"harvest":
+			var side_name := String(_log.sides[int(b.side)].name)
+			toast_label.text = "%s: %s takes %d gold from the %d enemy fighters lost." % [RulerRules.mandate_name(AutoBattleResolver.RED_HARVEST),
+				side_name, int(b.data.gold), int(b.data.fighters)]
+			toast_label.visible = true
+			_toast_t = 0.0
 		"morale":
 			var si := int(b.side)
 			if b.data.result == "held":
@@ -418,6 +449,9 @@ func _attack_landed(b: Dictionary, st: Dictionary) -> void:
 		effects.add_impact(_upper(t), _scale(), big, not reduced_motion and _flash.allow(_real), reduced_motion)
 		if shown or big or kills:
 			effects.add_number(_upper(t) - Vector2(0, 8), str(int(b.data.damage)), UiPalette.TEXT_PRIMARY, _number_size(big))
+			if int(b.data.get("iron_hide", 0)) < 0:
+				# Iron Hide's negative damage part, small and grey beside the number.
+				effects.add_number(_upper(t) + Vector2(22, -2), "%d" % int(b.data.iron_hide), UiPalette.TEXT_SECONDARY, maxi(12, _number_size(false) - 6))
 		_try_shake(b.data.shake, int(b.event))
 		_bars_dirty = true
 	elif shown:
@@ -766,18 +800,12 @@ func end_card_lines() -> Array:
 	var fin := player.timeline().final_state()
 	for si in _log.sides.size():
 		var side: Dictionary = _log.sides[si]
-		var lost := 0
+		# Those who fell in the fight; the aftermath sentence below says who else was lost with their army.
+		var fell := 0
 		for fid in side.fighters:
-			var fs: Dictionary = fin.fighters[int(fid)]
-			if not fs.alive or fs.fled or fs.lost:
-				lost += 1
-		var sr := {}
-		for r in _report.get("sides", []):
-			if String(r.get("faction", "")) == String(side.faction):
-				sr = r
-		if not sr.is_empty():
-			lost = int(sr.get("fighters_lost", lost))
-		out.append("%s: lost %d of %d fighters · %d of %d hp left" % [side.name, lost, side.fighters.size(), int(fin.sides[si].hp), int(side.hp_start)])
+			if not fin.fighters[int(fid)].alive:
+				fell += 1
+		out.append("%s: %d of %d fighters fell · %d of %d hp left" % [side.name, fell, side.fighters.size(), int(fin.sides[si].hp), int(side.hp_start)])
 	for e in _log.events:
 		if e.t == "death" and _log.fighters[int(e.f)].role == "ruler":
 			out.append("%s fell in round %d." % [_cap(String(_log.fighters[int(e.f)].name)), int(e.n)])
@@ -790,6 +818,11 @@ func end_card_lines() -> Array:
 				for h in e.healed:
 					healed += int(h[2]) - int(h[1])
 				out.append("%s healed %d hp after the battle." % [feast, healed])
+		elif e.t == "harvest":
+			var harvest := RulerRules.mandate_name(AutoBattleResolver.RED_HARVEST)
+			var aft := BattleLog.find_event(_log, "aftermath")
+			if aft < 0 or not String(_log.events[aft].get("text", "")).contains(harvest):
+				out.append("%s: %s took %d gold from the %d enemy fighters lost." % [harvest, _log.sides[int(e.side)].name, int(e.gold), int(e.fighters)])
 		elif e.t == "aftermath" and not String(e.get("text", "")).is_empty():
 			out.append(String(e.text))
 	return out
@@ -871,9 +904,12 @@ func _fill_top_bar() -> void:
 		var k := _slot_of_side(si)
 		var side: Dictionary = _log.sides[si]
 		var role := "on the border" if border else ("defending" if side.get("defender", false) else ("attacking" if not defender.is_empty() else "arrived"))
-		plaque_labels[k].text = "%s · %s" % [side.name, role]
-		plaque_labels[k].tooltip_text = TooltipText.plain(String(side.name), "%s, %s. %s" % [SeatEmblem.describe(_side_seat[si]).capitalize(),
-			_role_words(side, border, defender), _army_words(side)])
+		var people := String(side.get("people", {}).get("name", "")) if side.get("people", {}) is Dictionary else ""
+		plaque_labels[k].text = "%s · %s · %s" % [side.name, people, role] if not people.is_empty() else "%s · %s" % [side.name, role]
+		_fit(plaque_labels[k], 18, 13)
+		var people_words := " Its people: %s." % people if not people.is_empty() else ""
+		plaque_labels[k].tooltip_text = TooltipText.plain(String(side.name), "%s, %s. %s%s" % [SeatEmblem.describe(_side_seat[si]).capitalize(),
+			_role_words(side, border, defender), _army_words(side), people_words])
 		var b: BattleStrengthBar = bars[k]
 		b.seat = _side_seat[si]
 		b.mirrored = k == 1

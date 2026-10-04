@@ -9,12 +9,13 @@ extends "res://tests/test_case.gd"
 
 const Watch := preload("res://ui/battle/battle_watch.gd")
 const Scenarios := preload("res://tools/battle_log/scenarios.gd")
+const Fx := preload("res://tests/battle_playback_fixtures.gd")
 const STEP := 1.0 / 60.0
 
 
 func _fixture(name: String) -> Dictionary:
-	var fx := Watch.load_fixture(name)
-	assert_false(fx.is_empty(), "fixture %s loads" % name)
+	var fx := Fx.battle(name)
+	assert_false(fx.is_empty(), "battle %s loads" % name)
 	return fx
 
 
@@ -35,7 +36,7 @@ func _play_all(p: BattlePlayer, speed: int) -> Array:
 
 
 func test_the_same_log_gives_the_same_beats_and_timings() -> void:
-	for name in Scenarios.NAMES:
+	for name in Fx.names():
 		var fx := _fixture(name)
 		var a := BattlePlayer.new(fx.log, fx.report)
 		var copy: Dictionary = BattleLog.from_json(BattleLog.to_json(fx.log)).log
@@ -53,7 +54,7 @@ func test_the_same_log_gives_the_same_beats_and_timings() -> void:
 
 
 func test_every_log_event_is_applied_by_exactly_one_beat() -> void:
-	for name in Scenarios.NAMES:
+	for name in Fx.names():
 		var fx := _fixture(name)
 		var p := BattlePlayer.new(fx.log, fx.report)
 		var count := {}
@@ -77,7 +78,7 @@ func test_every_log_event_is_applied_by_exactly_one_beat() -> void:
 
 
 func test_beats_follow_the_spec_timing() -> void:
-	for name in Scenarios.NAMES:
+	for name in Fx.names():
 		var fx := _fixture(name)
 		var p := BattlePlayer.new(fx.log, fx.report)
 		var tl := p.timeline()
@@ -93,6 +94,7 @@ func test_beats_follow_the_spec_timing() -> void:
 			var starts := {}
 			var lands := {}
 			var wounds_at := -1.0
+			var heal_at := -1.0
 			var morale_at := -1.0
 			var rout_at := -1.0
 			var caption_at := -1.0
@@ -107,6 +109,8 @@ func test_beats_follow_the_spec_timing() -> void:
 						lands[int(b.event)] = float(b.t)
 					"wound", "death":
 						wounds_at = float(b.t) if wounds_at < 0.0 else wounds_at
+					"heal":
+						heal_at = float(b.t) if heal_at < 0.0 else heal_at
 					"morale":
 						morale_at = float(b.t) if morale_at < 0.0 else morale_at
 					"rout", "destroyed":
@@ -129,6 +133,9 @@ func test_beats_follow_the_spec_timing() -> void:
 			if wounds_at >= 0.0:
 				assert_true(absf(wounds_at - cursor) < 0.0005, "%s round %d: wounds land when the last attack has" % [name, n])
 				cursor += BattlePlayer.WOUNDS
+			if heal_at >= 0.0:
+				assert_true(absf(heal_at - cursor) < 0.0005, "%s round %d: heals after the wounds" % [name, n])
+				cursor += BattlePlayer.HEAL
 			if morale_at >= 0.0:
 				assert_true(absf(morale_at - cursor) < 0.0005, "%s round %d: morale 0.6 s after the wounds" % [name, n])
 				cursor += BattlePlayer.MORALE
@@ -139,7 +146,7 @@ func test_beats_follow_the_spec_timing() -> void:
 			if end_at >= 0.0:
 				assert_true(absf(end_at - cursor) < 0.0005, "%s round %d: the round ends after its last phase" % [name, n])
 			var length := cursor - t0
-			var cap := 0.4 + 1.6 + 0.35 + 0.6 + 0.5 + (1.5 if rout_at >= 0.0 else 0.0)
+			var cap := 0.4 + 1.6 + 0.35 + 0.6 + 0.5 + (1.5 if rout_at >= 0.0 else 0.0) + (BattlePlayer.HEAL if heal_at >= 0.0 else 0.0)
 			assert_true(length <= cap + 0.0005, "%s round %d: %.2f s, within §4.1's round length" % [name, n, length])
 		# The result card comes RESULT_DELAY after the end (or after a feast's refill, if longer).
 		var end_t := -1.0
@@ -150,7 +157,7 @@ func test_beats_follow_the_spec_timing() -> void:
 
 
 func test_seek_lands_on_the_timelines_state() -> void:
-	for name in Scenarios.NAMES:
+	for name in Fx.names():
 		var fx := _fixture(name)
 		var p := BattlePlayer.new(fx.log, fx.report)
 		var tl := p.timeline()
@@ -198,7 +205,7 @@ func test_attacks_fold_in_display_order() -> void:
 
 
 func test_jumps_land_a_lead_in_before_each_moment() -> void:
-	for name in Scenarios.NAMES:
+	for name in Fx.names():
 		var fx := _fixture(name)
 		var p := BattlePlayer.new(fx.log, fx.report)
 		var tl := p.timeline()
@@ -253,7 +260,7 @@ func test_a_jump_keeps_playing_and_m_cycles_through_moments() -> void:
 
 
 func test_skip_to_end_gives_the_final_state() -> void:
-	for name in Scenarios.NAMES:
+	for name in Fx.names():
 		var fx := _fixture(name)
 		var p := BattlePlayer.new(fx.log, fx.report)
 		var fired := []
@@ -423,3 +430,142 @@ func test_battle_settings_default_and_read_the_battle_section() -> void:
 	assert_eq(st.reduced_motion, false, "a value of the wrong kind gives the default")
 	DirAccess.remove_absolute(path)
 	DirAccess.remove_absolute(dir)
+
+
+# --- battles with paths (M4-3, #83) and new log kinds ----------------------------------------------
+
+## The beats of `kind` in `p`.
+func _beats_of(p: BattlePlayer, kind: String) -> Array:
+	return p.beats().filter(func(b): return b.kind == kind)
+
+
+func test_path_battles_get_beats_for_heals_harvest_wings_and_iron_hide() -> void:
+	for name in Fx.PATH_NAMES:
+		var fx := _fixture(name)
+		assert_true(fx.log.get("paths", false), "%s is a battle with paths" % name)
+		assert_eq(BattleLog.validate(fx.log), [], "%s: a valid log" % name)
+	# Lifedrinker: one heal beat per heal event, after the round's wounds and before its morale checks.
+	var lf := _fixture("path_lifedrinker")
+	var p := BattlePlayer.new(lf.log, lf.report)
+	var tl := p.timeline()
+	var heals := _beats_of(p, "heal")
+	var heal_events: Array = lf.log.events.filter(func(e): return e.t == "heal")
+	assert_eq(heals.size(), heal_events.size(), "a heal beat for every heal")
+	assert_true(heals.size() >= 1, "the Lifedrinker healed")
+	for hb in heals:
+		var e: Dictionary = lf.log.events[int(hb.event)]
+		assert_eq(int(hb.fighter), int(e.f), "the heal beat is the healer's")
+		assert_eq(int(hb.data.healed), int(e.to) - int(e.from), "it carries the hp healed")
+		assert_eq(String(hb.data.trait), AutoBattleResolver.LIFEDRINKER, "and the trait")
+		for b in p.beats():
+			if int(b.round) != int(hb.round):
+				continue
+			if b.kind == "wound" or b.kind == "death":
+				assert_true(int(b.i) < int(hb.i) and float(b.t) < float(hb.t), "the wounds land before the heal")
+			elif b.kind == "morale":
+				assert_true(int(b.i) > int(hb.i) and float(b.t) > float(hb.t), "morale is checked after it")
+		p.seek_beat(int(hb.i))
+		var fired := p.step()
+		assert_eq(fired[-1].kind, "heal", "stepping fires the heal")
+		assert_eq(p.state(), tl.state_at(int(hb.event) + 1), "after the heal beat the state is state_at(heal + 1)")
+		assert_eq(int(p.state().fighters[int(e.f)].hp), int(e.to), "with the healed hp")
+	# Red Harvest: one harvest beat after the end, before the aftermath, carrying the gold.
+	var rh := _fixture("path_red_harvest")
+	var q := BattlePlayer.new(rh.log, rh.report)
+	var hv := _beats_of(q, "harvest")
+	assert_eq(hv.size(), 1, "one harvest beat")
+	var he: Dictionary = rh.log.events[int(hv[0].event)]
+	assert_eq(int(hv[0].data.gold), int(he.gold), "with its gold")
+	assert_eq(int(hv[0].data.fighters), int(he.fighters), "and the fighters lost")
+	assert_true(int(_beats_of(q, "end")[0].i) < int(hv[0].i) and int(hv[0].i) < int(_beats_of(q, "aftermath")[0].i), "between the end and the aftermath")
+	q.skip_to_end()
+	assert_eq(q.state(), q.timeline().final_state(), "skip still lands on the final state")
+	# Wings: the Seraphs dive (no lunge), and at least one dive strikes a standing commander.
+	var wg := _fixture("path_wings")
+	var w := BattlePlayer.new(wg.log, wg.report)
+	var at_commander := 0
+	for b in _beats_of(w, "attack_started"):
+		var f: Dictionary = wg.log.fighters[int(b.fighter)]
+		if f.trait == AutoBattleResolver.WINGS:
+			assert_eq(String(b.data.projectile), "dive", "a Wings attack is a dive")
+		if b.data.wings and wg.log.fighters[int(b.target)].role == "commander":
+			at_commander += 1
+			assert_eq(String(b.data.reach), "wings", "its reach is Wings'")
+	assert_true(at_commander >= 1, "a Seraphs dive strikes the Warchief")
+	# Iron Hide: the hit's negative damage part is in the beat, and the damage is the log's.
+	var ih := _fixture("path_iron_hide")
+	var r := BattlePlayer.new(ih.log, ih.report)
+	var hidden := 0
+	for b in _beats_of(r, "attack_landed"):
+		var e: Dictionary = ih.log.events[int(b.event)]
+		if e.hit and e.bonus.has(AutoBattleResolver.IRON_HIDE):
+			hidden += 1
+			assert_eq(int(b.data.iron_hide), -AutoBattleResolver.IRON_HIDE_DAMAGE, "Iron Hide takes 1 off")
+			assert_eq(int(b.data.parts[AutoBattleResolver.IRON_HIDE]), -AutoBattleResolver.IRON_HIDE_DAMAGE, "as a named damage part")
+			assert_eq(int(b.data.damage), int(e.damage), "the damage is the log's")
+			assert_true(b.data.blocked, "a hit Iron Hide took some of")
+	assert_true(hidden >= 1, "Iron Hide turned some hits")
+
+
+func test_a_log_event_of_an_unknown_kind_still_gets_exactly_one_beat() -> void:
+	var fx := _fixture("skirmish")
+	var lg: Dictionary = fx.log.duplicate(true)
+	# A future kind, between round 1's wounds and its morale checks, and another after the end.
+	var at := -1
+	for i in lg.events.size():
+		if lg.events[i].t == "morale":
+			at = i
+			break
+	lg.events.insert(at, {"t": "omen", "n": 1})
+	lg.events.insert(BattleLog.find_event(lg, "end") + 1, {"t": "epilogue"})
+	var p := BattlePlayer.new(lg, fx.report)
+	var tl := p.timeline()
+	var count := {}
+	for b in p.beats():
+		if BattlePlayer.APPLYING.has(b.kind):
+			count[int(b.event)] = int(count.get(int(b.event), 0)) + 1
+	for i in lg.events.size():
+		assert_eq(int(count.get(i, 0)), 1, "event %d (%s) is applied once" % [i, lg.events[i].t])
+	var unknown := _beats_of(p, "event")
+	assert_eq(unknown.map(func(b): return String(b.data.t)), ["omen", "epilogue"], "each unknown kind is an \"event\" beat")
+	for i in lg.events.size():
+		if lg.events[i].t != "attack":
+			p.seek(i)
+			assert_eq(p.state(), tl.state_at(i), "seek(%d) is still state_at(%d)" % [i, i])
+	p.skip_to_end()
+	assert_eq(p.state(), tl.final_state(), "and skip the final state")
+
+
+func test_battle_sounds_come_from_the_beats() -> void:
+	assert_eq(BattleFx.sound_of({"kind": "attack_started", "data": {"projectile": "bolt"}}), "battle_bolt")
+	assert_eq(BattleFx.sound_of({"kind": "attack_started", "data": {"projectile": "javelin"}}), "battle_javelin")
+	assert_eq(BattleFx.sound_of({"kind": "attack_started", "data": {"projectile": "arcane"}}), "battle_arcane", "the Ever-Regent's bolt")
+	assert_eq(BattleFx.sound_of({"kind": "attack_started", "data": {"projectile": "", "first_charge": true}}), "battle_charge")
+	assert_eq(BattleFx.sound_of({"kind": "attack_started", "data": {"projectile": ""}}), "", "a melee swing makes its sound when it lands")
+	assert_eq(BattleFx.sound_of({"kind": "attack_landed", "i": 7, "data": {"hit": false, "projectile": "bolt"}}), "battle_miss")
+	assert_eq(BattleFx.sound_of({"kind": "attack_landed", "i": 7, "data": {"hit": true, "projectile": ""}}), "battle_hit")
+	assert_eq(BattleFx.sound_of({"kind": "attack_landed", "i": 9, "data": {"hit": true, "projectile": ""}}), "battle_clash", "every third beat index clashes")
+	assert_eq(BattleFx.sound_of({"kind": "attack_landed", "i": 7, "data": {"hit": true, "projectile": "", "blocked": true}}), "battle_clash", "a blocked hit clashes")
+	assert_eq(BattleFx.sound_of({"kind": "attack_landed", "i": 7, "data": {"hit": true, "projectile": "dive"}}), "battle_hit", "a Wings dive hits like melee")
+	assert_eq(BattleFx.sound_of({"kind": "attack_landed", "i": 7, "data": {"hit": true, "projectile": "bolt"}}), "", "a bolt sounded when it flew")
+	assert_eq(BattleFx.sound_of({"kind": "death", "data": {"ruler": true}}), "ruler_death")
+	assert_eq(BattleFx.sound_of({"kind": "death", "data": {"ruler": false}}), "")
+	assert_eq(BattleFx.sound_of({"kind": "rout", "data": {}}), "rout_horn")
+	# Every cue the beats can give is one of the nine, and each is in audio.json.
+	var a := GameAudio.new()
+	a.quiet = true
+	for cue in BattleFx.SOUNDS:
+		assert_true(a.has_event(cue), "%s is in audio.json" % cue)
+	for name in Fx.names():
+		var fx := _fixture(name)
+		for b in BattlePlayer.new(fx.log, fx.report).beats():
+			var cue := BattleFx.sound_of(b)
+			assert_true(cue.is_empty() or BattleFx.SOUNDS.has(cue), "%s: %s is a battle cue" % [name, cue])
+	a.free()
+	# The gate spaces repeats of a frequent cue in real time, and leaves the rare ones alone.
+	var gate := BattleFx.SoundGate.new()
+	assert_true(gate.allow("battle_hit", 0.0))
+	assert_false(gate.allow("battle_hit", 0.03), "too soon: dropped")
+	assert_true(gate.allow("battle_clash", 0.03), "another cue is its own")
+	assert_true(gate.allow("battle_hit", 0.07), "later: plays")
+	assert_true(gate.allow("rout_horn", 0.0) and gate.allow("rout_horn", 0.01), "a rare cue is never held back")
