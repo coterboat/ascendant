@@ -187,3 +187,142 @@ func test_m2_games_still_match_the_records_from_main() -> void:
 	var key := "%s|%d" % [str(cells[0].id).trim_prefix("P7:"), int(cells[0].seed)]
 	assert_eq(str(res[0].record_md5), str(fixture.digests[key]), "%s is byte-identical to main" % key)
 	assert_true(res[0].paths.is_empty(), "no paths in an M2 game")
+
+
+# --- the tuned numbers: text follows the data ----------------------------------------------------------
+
+## The base stat of a regular unit type from data/factions.gd.
+func _base(type_id: String, stat: String) -> int:
+	for f in FactionData.FACTIONS:
+		for u in f.unit_types:
+			if String(u.id) == type_id:
+				return int(u[stat])
+	return 0
+
+
+func test_codex_and_cards_state_the_tuned_numbers_from_the_data() -> void:
+	for side in PathData.BRANCHES:
+		var nid := String(PathData.BRANCHES[side].transformation)
+		var fx := AscensionRules.node_effects(nid)
+		var text := RulesCodex.text("node_" + nid)
+		# The new unit's numbers, as the codex states them.
+		var nu: Dictionary = PathData.NEW_UNITS[String(fx.new_unit)]
+		var stats := "%d hit points, attack %d, defense %d, morale %d, %d gold" % [nu.hp, nu.attack, nu.defense, nu.morale, nu.cost]
+		assert_true(text.contains(stats), "%s states %s: %s" % [nid, stats, text])
+		# The changed unit's numbers before and after.
+		for type_id in fx.unit:
+			for stat in fx.unit[type_id]:
+				var before := _base(type_id, String(stat))
+				var after := before + int(fx.unit[type_id][stat])
+				assert_true(text.contains("(%d to %d)" % [before, after]), "%s states %s %s %d to %d: %s" % [nid, type_id, stat, before, after, text])
+		# The province rule's value, where it is a number of hit points.
+		var rule: Dictionary = fx.province_rule
+		if String(rule.id) == "hallowed_land":
+			assert_true(text.contains("heals %d hit points" % int(rule.value)), "%s states Hallowed Land's heal" % nid)
+			assert_true(RulesCodex.text("hallowed_land").contains("heals %d hit points" % int(rule.value)))
+	# The Oaths' economy rules.
+	var dawn := AscensionRules.node_effects("crown_oath_dawn")
+	assert_true(RulesCodex.text("tithe_of_light").contains("earns %d more gold for every province" % int(dawn.tithe_per_province)))
+	var forge: Dictionary = AscensionRules.node_effects("crown_oath_forge").income_terrain
+	for key in ["deep_mines", "node_crown_oath_forge"]:
+		assert_true(RulesCodex.text(key).contains("every hills province you own earns %d more gold" % int(forge.hills)), key)
+	var grove: Dictionary = AscensionRules.node_effects("beasts_oath_grove").income_terrain
+	for key in ["bounty_of_the_wild", "node_beasts_oath_grove"]:
+		assert_true(RulesCodex.text(key).contains("every forest province you own earns %d more gold" % int(grove.forest)), key)
+	var charters: Dictionary = AscensionRules.node_effects("crown_charters").income_terrain
+	assert_true(RulesCodex.text("node_crown_charters").contains("every plains province you own earns %d more gold" % int(charters.plains)))
+	var raid := int(AscensionRules.node_effects("beasts_raiding").capture_gold)
+	var times: String = {1: "equal to its base income", 2: "equal to twice its base income", 3: "equal to three times its base income"}[raid]
+	assert_true(RulesCodex.text("node_beasts_raiding").contains(times), "Raiding Parties states %s" % times)
+	# Blood Levy: its share and the worked example (Tuskers' price and arriving hit points).
+	var levy := int(AscensionRules.node_effects("beasts_oath_blood").blood_levy)
+	var word := AscensionRules._fraction_word(levy)
+	for key in ["blood_levy", "node_beasts_oath_blood"]:
+		assert_true(RulesCodex.text(key).contains("%s less" % word), "%s states %s off" % [key, word])
+	var tusk_cost := _base("tuskers", "cost")
+	var tusk_hp := _base("tuskers", "hp")
+	var example := "Tuskers %d gold instead of %d" % [tusk_cost - floori(float(tusk_cost) / levy), tusk_cost]
+	assert_true(RulesCodex.text("blood_levy").contains(example), "blood_levy: %s" % example)
+	var arrive := "Tuskers %d of %d" % [tusk_hp - floori(float(tusk_hp) / levy), tusk_hp]
+	assert_true(RulesCodex.text("blood_levy").contains(arrive), "blood_levy: %s" % arrive)
+	# Every node's one-line card text names its numbers too.
+	for fid in ["kingdom", "beasts"]:
+		for nid in AscensionRules.node_ids(fid):
+			var card := String(AscensionRules.node_data(nid).text)
+			var nfx := AscensionRules.node_effects(nid)
+			for type_id in nfx.get("unit", {}):
+				for stat in nfx.unit[type_id]:
+					var v := int(nfx.unit[type_id][stat])
+					assert_true(card.contains("%d" % absi(v)), "%s's card states %d: %s" % [nid, absi(v), card])
+			for terrain in nfx.get("income_terrain", {}):
+				assert_true(card.contains("%d" % absi(int(nfx.income_terrain[terrain]))), "%s's card states its gold: %s" % [nid, card])
+			if nfx.has("blood_levy"):
+				assert_true(card.contains("%s less" % word), "%s's card states %s: %s" % [nid, word, card])
+
+
+# --- fast band checks for the tuned numbers ----------------------------------------------------------
+
+func test_every_side_wins_and_transforms_mid_game_in_a_short_fixed_seed_batch() -> void:
+	# Every Crown side against every Clans side, both seat orders, seeds 1-2, builds rolled by the seed as an
+	# AI seat rolls them: 16 games. The full check (P1, P2) has each side winning 40-60% of its games; in this
+	# small batch every side must win at least one decisive game and lose at least one (P2's "no dominant
+	# side" in miniature), transformations must land mid-game (P4) and the research forecasts must hold (P8).
+	var games := []
+	for cs in PathMatrix.sides_of("kingdom"):
+		for ks in PathMatrix.sides_of("beasts"):
+			for seats in [["kingdom", "beasts"], ["beasts", "kingdom"]]:
+				var sides: Array = [cs, ks] if seats[0] == "kingdom" else [ks, cs]
+				for sd in range(1, 3):
+					var r := Simulator.play_game(sd, seats, ["ai", "ai"], 40, Callable(), {"paths": true, "branches": sides})
+					assert_eq(r.errors.size() + r.violations.size(), 0, "seed %d %s: clean" % [sd, sides])
+					assert_eq(int(r.research.turn_mismatches) + int(r.research.target_mismatches), 0, str(r.research.first))
+					r["branches"] = sides
+					games.append(r)
+	var turns := []
+	for r in games:
+		for fid in r.paths:
+			if int(r.paths[fid].transform_turn) > 0:
+				turns.append(int(r.paths[fid].transform_turn))
+	var median := float(Simulator.stats_of(turns).median)
+	assert_true(median >= PathMatrix.P4_BAND[0] and median <= PathMatrix.P4_BAND[1], "transformations land on turn %s (median)" % median)
+	for fid in ["kingdom", "beasts"]:
+		for side in PathMatrix.sides_of(fid):
+			var rec := PathMatrix.side_record(games, side)
+			assert_true(rec.wins >= 1, "%s won %d of %d decisive games" % [side, rec.wins, rec.decisive])
+			assert_true(rec.losses >= 1, "%s lost %d of %d decisive games" % [side, rec.losses, rec.decisive])
+
+
+func test_dread_lands_does_not_stack_with_dread() -> void:
+	# M4-6 (§10.3, §15 call 13): on the Blood Pact's own land with the Great Thornmane fighting there, the
+	# invader loses the Thornmane's Dread and Dread Lands adds nothing; without him, Dread Lands applies.
+	var PB := preload("res://tests/path_battle_fixtures.gd")
+	var value := int(AscensionRules.node_effects("beasts_blood_pact").province_rule.value)
+	for with_avatar in [true, false]:
+		var s := GameState.with_paths(7, {"beasts": {"ruler": "thornmane_avatar", "mandates": []}}, [])
+		s = PB.with_nodes(s, "beasts", ["beasts_raiding", "beasts_boar_hide", "beasts_oath_blood", "beasts_blood_pact"])
+		var dread := RulerRules.dread_value(s, "beasts")
+		assert_true(dread >= value, "the Thornmane keeping all its power has Dread %d" % dread)
+		var keep: Array[Army] = []
+		for a in s.armies:
+			if a.ruler != null and (with_avatar and a.owner == "beasts"):
+				a.location = "bloodfen"
+				keep.append(a)
+		s.armies = keep
+		s.find_province("bloodfen").owner = "beasts"
+		var crown := PB.army(s, "kingdom", "kingdom-1", "bloodfen", ["spearmen", "spearmen", "crossbowmen", "knights"])
+		var clans := PB.army(s, "beasts", "beasts-2", "bloodfen", ["tuskers", "fangthrowers"])
+		var armies := [crown, clans]
+		if with_avatar:
+			armies.append(keep[0])
+		var r := PB.fight(s, armies, "bloodfen", "beasts", 3)
+		var parts: Dictionary = {}
+		for side in r.log.sides:
+			if side.faction == "kingdom":
+				parts = side.start_morale.parts
+		if with_avatar:
+			assert_eq(int(parts.get(AutoBattleResolver.DREAD, 0)), -dread, "the Thornmane's Dread")
+			assert_eq(int(parts.get(AutoBattleResolver.DREAD_LANDS, 0)), -maxi(0, value - dread), "Dread Lands adds nothing on top of it")
+			assert_true(String(r.result.report.lines[1]).contains("not on top of"), String(r.result.report.lines[1]))
+		else:
+			assert_eq(int(parts.get(AutoBattleResolver.DREAD_LANDS, 0)), -value, "Dread Lands without the Thornmane")
+	assert_true(RulesCodex.text("dread_lands").contains("doesn't add to the Great Thornmane's Dread"))

@@ -679,7 +679,7 @@ func test_codex_entries_for_every_rule_and_mandate_follow_the_m4_1_block() -> vo
 	var start := all.find("bounty_of_the_wild") + 1
 	assert_eq(all.slice(start, start + keys.size()), keys, "one block, directly after M4-1's")
 	assert_true(RulesCodex.text("wild_spreads").contains("+%d defense" % int(AutoBattleResolver.TERRAIN.forest.defense)))
-	assert_true(RulesCodex.text("blood_levy").contains("a quarter"))
+	assert_true(RulesCodex.text("blood_levy").contains(AscensionRules._fraction_word(int(AscensionRules.node_effects("beasts_oath_blood").blood_levy))))
 	assert_true(RulesCodex.text("road_move").contains("Forest Stride"))
 
 
