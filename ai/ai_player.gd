@@ -270,10 +270,7 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 	var research := _plan_research()  # M4: "" without paths, and on most turns with them
 	if not research.is_empty():
 		out.append(ResearchOrder.new(research))
-	_standoff = standoff_info(_state, _fid)  # #94: read from the state alone, every plan
-	if not _standoff.is_empty():
-		_stats.standoff = 1
-		_hunt = _choose_hunt()
+	_plan_standoff()  # #94: read from the state alone, every plan
 	_recruit_plan = _plan_recruits([])  # a fresh army, for judging next turn's garrison
 	_defend_capital()
 	_strike_capitals()
@@ -2148,6 +2145,23 @@ func _path_recruit_reason(ut: UnitType, n: int) -> String:
 
 
 # --- #94: stand-offs ------------------------------------------------------------------------------
+
+## The stand-off decision (#94), made once per plan before any army moves; the one place to extend it (the
+## sieges AI, S-6 / #104, turns it into a siege). It sets _standoff (standoff_info: are we in one?) and, in one,
+## _hunt (_choose_hunt: the enemy army to go after, or {}). The rest of the plan only reads those two:
+##   _size_garrison     the garrison marches out against the hunted army instead of staying home (hunt)
+##   _field_moves       the main army's objective is the hunted army; one next to it waits for the main army
+##   _advance           with nothing to hunt and the road guarded: _siege_step, else _raid_step
+##   _attack_armies     attacks at STANDOFF_WIN instead of LIKELY_WIN
+##   _sally             the garrison sallies at STANDOFF_SALLY_WIN instead of SALLY_WIN
+func _plan_standoff() -> void:
+	_standoff = standoff_info(_state, _fid)
+	_hunt = {}
+	if _standoff.is_empty():
+		return
+	_stats.standoff = 1
+	_hunt = _choose_hunt()
+
 
 ## Whether `faction_id` has reached a stand-off in `state`, read from the state alone (no battle history,
 ## no saved AI state): every unit it fields (rulers left out) at today's recruit price, plus its treasury,
