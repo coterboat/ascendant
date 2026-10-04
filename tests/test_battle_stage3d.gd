@@ -839,3 +839,117 @@ func test_the_stage_keeps_the_battle_view_contract_in_the_host() -> void:
 	assert_eq(var_to_str(session.state().to_dict()), state_before, "and the game is as it was")
 	h.free()
 	DirAccess.remove_absolute(path)
+
+
+# --- #125: M3's files over 280 fighters, the words over the land -----------------------------------------
+
+func test_battles_over_280_fighters_stand_in_files() -> void:
+	for name in Fx.names():
+		var fx := _fixture(name)
+		assert_true(Formation.groups_of(fx.log, BattleStage3D.FILES_ABOVE).is_empty(), "%s (%d fighters) stands 1:1" % [name, fx.log.fighters.size()])
+	var big: Dictionary = Fx.battle("massive")
+	assert_false(big.is_empty(), "the massive battle is fought")
+	var n: int = big.log.fighters.size()
+	assert_true(n > BattleStage3D.FILES_ABOVE, "it has more than 280 fighters (%d)" % n)
+	var g := Formation.groups_of(big.log, BattleStage3D.FILES_ABOVE)
+	var members: Array = g["members"]
+	assert_true(members.size() <= BattleStage3D.FILES_ABOVE, "files bring the figures down to 280 (%d)" % members.size())
+	assert_true(int(g.k) >= 2 and Formation.groups_of(big.log, n).is_empty(), "k is at least 2")
+	if int(g.k) > 2:
+		assert_true(Formation._groups_with(big.log, int(g.k) - 1)["members"].size() > BattleStage3D.FILES_ABOVE, "and the smallest that fits")
+	var seen := {}
+	for m in members:
+		assert_true((m as Array).size() <= int(g.k), "a file holds at most k fighters")
+		var f0: Dictionary = big.log.fighters[int(m[0])]
+		for fid in m:
+			var f: Dictionary = big.log.fighters[int(fid)]
+			assert_false(seen.has(int(fid)), "a fighter is in one file")
+			seen[int(fid)] = true
+			assert_true(f.side == f0.side and f.army == f0.army and f.type == f0.type and f.tier == f0.tier, "a file is one side, army, type and rank")
+			if f.role != "unit":
+				assert_eq((m as Array).size(), 1, "a commander or a ruler stands alone")
+	assert_eq(seen.size(), n, "every fighter is in a file")
+	var s := _stage(big)
+	assert_eq(s.figures.n_fighters, members.size(), "one figure per file")
+	_play_out(s, 4)
+	var fin := s.player.timeline().final_state()
+	for i in s.figures.n_fighters:
+		assert_eq(String(s.figures.figs[i]["hold"]), Figures.hold_of(s.figures.members_of(i), fin), "file %d stands, lies or is gone as its fighters do" % i)
+	## a file's tooltip names every fighter in it, and its plate counts them
+	var multi := -1
+	for i2 in s.figures.n_fighters:
+		if s.figures.members_of(i2).size() > 1:
+			multi = i2
+			break
+	var tip := s.figure_tooltip(int(s.figures.figs[multi]["fid"]))
+	assert_true(tip.begins_with("A file of %d " % s.figures.members_of(multi).size()), "the tooltip says it is a file: %s" % tip.get_slice("\n", 0))
+	assert_eq(tip.split("\n").size() - s.fighter_tooltip(int(s.figures.figs[multi]["fid"])).split("\n").size(), s.figures.members_of(multi).size() + 2,
+		"with a line for each of its fighters")
+	var sum := s.file_hp(multi, s.player.live_state())
+	assert_eq(int(sum["size"]), s.figures.members_of(multi).size())
+	assert_eq(s._tab_order().size(), members.size(), "Tab goes through the files")
+	s.free()
+
+
+func test_the_words_over_the_land_sit_on_a_dark_backing_that_hugs_them() -> void:
+	var s := _stage(_fixture("knights_charge"))
+	for l in [s.banner_label, s.toast_label] + s.tag_labels:
+		var sb := (l as Label).get_theme_stylebox("normal") as StyleBoxFlat
+		assert_true(sb != null and sb.bg_color.a >= 0.8, "%s has a dark backing" % l.name)
+		assert_eq((l as Label).get_theme_constant("outline_size"), 0, "%s draws no outline (it doubled the letters over the grass)" % l.name)
+		var fg: Color = (l as Label).get_theme_color("font_color")
+		var bg := sb.bg_color
+		assert_true(_contrast(fg, bg) >= 4.5, "%s's words read at 4.5:1 or more on the backing (%.1f)" % [l.name, _contrast(fg, bg)])
+	var m := s.player.jump_to_moment("charge")
+	s.player.play()
+	for k in 60:
+		s.tick(STEP)
+	assert_true(s.toast_label.visible and s.toast_label.text == String(m.text), "the charge's line is up")
+	assert_true(absf(s.toast_label.size.x - s.toast_label.get_minimum_size().x) < 1.0, "its backing is as wide as its words")
+	assert_true(absf(s.toast_label.position.x + s.toast_label.size.x / 2.0 - s.field_width() / 2.0) < 1.0, "centred over the field")
+	s.free()
+
+
+static func _lum(c: Color) -> float:
+	var l := c.srgb_to_linear()
+	return 0.2126 * l.r + 0.7152 * l.g + 0.0722 * l.b
+
+
+static func _contrast(a: Color, b: Color) -> float:
+	var la := _lum(a)
+	var lb := _lum(b)
+	return (maxf(la, lb) + 0.05) / (minf(la, lb) + 0.05)
+
+
+func test_opened_over_the_board_the_camera_dives_onto_the_battle() -> void:
+	var keep := Board3D.view_rig.duplicate()
+	Board3D.view_rig = {"target": Vector3(500, 0, 300), "pitch": 60.0, "yaw": 0.0, "fov": 30.0, "span": 600.0}
+	var s := BattleStage3D.new()
+	var fx := _fixture("king_falls_wins")
+	assert_eq(s.show_battle(fx.log, fx.report), "")
+	assert_eq(s.dives, 0, "shown on its own (the launcher, a test), it opens framed")
+	s.close()
+	assert_eq(s.play(fx.log, fx.report, null, []), "", "opened by the host")
+	assert_eq(s.dives, 1, "it dives")
+	assert_true(absf(float(s.rig.span) - 600.0) < 0.01, "from where the board's camera stood")
+	for k in int(BattleStage3D.DIVE_TIME / STEP) + 2:
+		s.tick(STEP)
+	assert_true(absf(float(s.rig.span) - float(s.goal.span)) < 0.01 and (s.rig.target as Vector3).distance_to(s.goal.target) < 0.01,
+		"onto the battle's framing, within DIVE_TIME")
+	## the next battle in the queue doesn't dive again; closing and opening again does, and a key skips it
+	s.play(fx.log, fx.report, null, [])
+	assert_eq(s.dives, 1, "the next battle in the queue opens framed")
+	s.close()
+	s.play(fx.log, fx.report, null, [])
+	assert_eq(s.dives, 2, "opened again from the board, it dives again")
+	var key := InputEventKey.new()
+	key.keycode = KEY_SPACE
+	key.pressed = true
+	assert_true(s.skip_dive_on(key), "a key skips the dive")
+	assert_true(absf(float(s.rig.span) - float(s.goal.span)) < 0.01, "and lands it at once")
+	s.close()
+	s.reduced_motion = true
+	s.play(fx.log, fx.report, null, [])
+	assert_eq(s.dives, 2, "with reduced motion it is a cut")
+	s.free()
+	Board3D.view_rig = keep
