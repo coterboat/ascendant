@@ -94,6 +94,7 @@ var _fog_intel := {}  # faction id -> its intel now (FogRules.learn)
 var _fog_memory_before := {}  # faction id -> its memory at the start of the last resolved turn
 var _fog_intel_before := {}  # faction id -> its intel at the start of the last resolved turn
 var _fog_cache := {}  # "state|<viewer>", "before|<viewer>", "report|<viewer>" -> built views and reports
+var _fog_sight := {}  # faction id -> its sight of the current state (FogRules.sight), kept for the next turn
 
 
 func _init(state: GameState = null, players: Array = [], game_seed: int = 0, battle_resolver: BattleResolver = null,
@@ -271,8 +272,13 @@ func turn_report_for(viewer: String) -> Dictionary:
 		return plain
 	var key := "report|" + viewer
 	if not _fog_cache.has(key):
-		_fog_cache[key] = FogRules.report_for(_report, viewer, _before, _state, _fog_memory_before.get(viewer, {}),
+		# One pass gives the report and both views (FogRules.turn_for); its memory and intel are the ones kept.
+		var turn := FogRules.turn_for(_report, viewer, _before, _state, _fog_memory_before.get(viewer, {}),
 			_fog_intel_before.get(viewer, {}))
+		_fog_cache[key] = turn.events
+		_fog_cache["before|" + viewer] = turn.view_before
+		if not _fog_cache.has("state|" + viewer):
+			_fog_cache["state|" + viewer] = turn.view_after
 	plain["events"] = _fog_cache[key].duplicate(true)
 	return plain
 
@@ -710,10 +716,12 @@ func _fog_turn(events: Array) -> void:
 	_fog_memory = {}
 	_fog_intel = {}
 	for fid in _players:
+		var sights := {"before": _fog_sight[fid] if _fog_sight.has(fid) else FogRules.sight(_before, fid), "after": FogRules.sight(_state, fid)}
+		_fog_sight[fid] = sights.after
 		var memory: Dictionary = _fog_memory_before.get(fid, {})
-		_fog_memory[fid] = FogRules.remember(memory, fid, _before, _state, events)
-		var shown := FogRules.filter_events(events, fid, _before, _state)
-		_fog_intel[fid] = FogRules.learn(_fog_intel_before.get(fid, {}), fid, shown, _state)
+		_fog_memory[fid] = FogRules.remember(memory, fid, _before, _state, events, sights)
+		var shown := FogRules.filter_events(events, fid, _before, _state, null, sights)
+		_fog_intel[fid] = FogRules.learn(_fog_intel_before.get(fid, {}), fid, shown, _state, sights.after)
 
 
 ## Whether the seat at `seat_index` starts its turn behind a handoff cover: only a human seat, and only

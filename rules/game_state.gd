@@ -22,6 +22,8 @@ class_name GameState
 ## magic fields), and `is_view` with the stand-ins' view notes (Army.seen) in a player's view. Without them a game
 ## saves byte-identically to before. Rules: MagicRules (validate checks the magic fields against `magic`); a view
 ## note only in a view (_validate_views). The per-faction army numbers M5 asks for are next_army_ids (#94).
+## M5-1: setup_fog() turns fog on for any game before turn 1; a view (FogRules.view_state) also saves `view_of`, its
+## viewer, and validate relaxes four checks for the view's rivals (view_relaxes).
 
 var provinces: Array[Province] = []
 var factions: Array[Faction] = []

@@ -438,6 +438,23 @@ static func pool_now(state: GameState, fid: String, armies: Array, level: String
 		"level": level, "turn": turn}
 
 
+## One rival's sighting (§2.4): what `armies` (all of one faction, in one province) show at `level` on turn `turn`:
+## {"level", "turn", "total": round count, "counts": {type id: round count}, "blessed", "commanders": [type ids],
+## "ruler": the ruler's type id or ""}. Exact in clear sight, rounded and shared out when glimpsed.
+static func sighting(state: GameState, fid: String, armies: Array, level: String, turn: int) -> Dictionary:
+	var pool := pool_now(state, fid, armies, level, turn)
+	var commanders := []
+	for s in pool.stand_ins:
+		if not s.commander.is_empty():
+			commanders.append(String(s.commander[0]))
+	var ruler := ""
+	for a in armies:
+		if a.ruler != null:
+			ruler = a.ruler.type.id
+	return {"level": level, "turn": turn, "total": pool.total, "counts": pool.counts, "blessed": pool.blessed,
+		"commanders": commanders, "ruler": ruler}
+
+
 static func _count_units(armies: Array, blessed_ids: Dictionary, blessed: bool) -> int:
 	var n := 0
 	for a in armies:
@@ -790,7 +807,8 @@ static func new_memory(state: GameState, viewer: String) -> Dictionary:
 ##      there); a rival ruler is remembered once, at its latest sighting, and forgotten when seen gone or dead;
 ##   3. battles it fought: the enemy's survivors where the battle ended, kept beside the current view;
 ##   4. provinces out of sight keep what they had.
-static func remember(memory: Dictionary, viewer: String, before: GameState, after: GameState, events: Array) -> Dictionary:
+## `sights` may carry the viewer's sight of `before` and `after` ({"before", "after"}) when the caller has them.
+static func remember(memory: Dictionary, viewer: String, before: GameState, after: GameState, events: Array, sights: Dictionary = {}) -> Dictionary:
 	var out := memory.duplicate(true)
 	if not out.has("provinces"):
 		out["provinces"] = {}
@@ -799,8 +817,8 @@ static func remember(memory: Dictionary, viewer: String, before: GameState, afte
 	if viewer == OBSERVER or after == null:
 		return out
 	var turn := after.current_turn
-	var after_sight := sight(after, viewer)
-	var before_sight := sight(before, viewer) if before != null else {}
+	var after_sight: Dictionary = sights.get("after", {}) if sights.has("after") else sight(after, viewer)
+	var before_sight: Dictionary = sights.get("before", {}) if sights.has("before") else (sight(before, viewer) if before != null else {})
 	# 1. moves seen leaving
 	if before != null:
 		var groups := {}
@@ -988,8 +1006,8 @@ static func new_intel(state: GameState, viewer: String) -> Dictionary:
 ## you are shown names it. `shown` are the viewer's own filtered events (report_for without the synthetic ones);
 ## `after` is the true state, read only for rivals' rulers in the viewer's sight (kept power is learned whenever you
 ## see or fight the ruler, at any sight level, and at its heralded death and succession). Learned facts stay
-## learned. Pure and JSON-safe.
-static func learn(intel: Dictionary, viewer: String, shown: Array, after: GameState) -> Dictionary:
+## learned. Pure and JSON-safe. `after_sight`: the viewer's sight of `after`, when the caller has it.
+static func learn(intel: Dictionary, viewer: String, shown: Array, after: GameState, after_sight: Dictionary = {}) -> Dictionary:
 	var out := {}
 	if viewer == OBSERVER or after == null:
 		return intel.duplicate(true)
@@ -1036,7 +1054,8 @@ static func learn(intel: Dictionary, viewer: String, shown: Array, after: GameSt
 				_learn_node(out[fid], String(e.numbers.get("node", "")), int(e.numbers.get("turn", turn)))
 			"ruler_died", "ruler_arrived":
 				_learn_kept(out[fid], int(e.numbers.get("kept_power", 0)), turn)
-	var after_sight := sight(after, viewer)
+	if after_sight.is_empty():
+		after_sight = sight(after, viewer)
 	for fid in out:
 		var army := RulerRules.ruler_army(after, fid)
 		if army != null and String(after_sight.get(army.location, VEILED)) != VEILED:
@@ -1124,9 +1143,10 @@ static func turn_for(events: Array, viewer: String, before: GameState, after: Ga
 			"intel": intel.duplicate(true), "view_before": before.deep_copy() if before else null,
 			"view_after": after.deep_copy() if after else null}
 	var built_before := build_view(before, viewer, memory, intel)
-	var shown := filter_events(events, viewer, before, after, built_before.stand_ins)
-	var memory_after := remember(memory, viewer, before, after, events)
-	var intel_after := learn(intel, viewer, shown, after)
+	var sights := {"before": built_before.sight, "after": sight(after, viewer)}
+	var shown := filter_events(events, viewer, before, after, built_before.stand_ins, sights)
+	var memory_after := remember(memory, viewer, before, after, events, sights)
+	var intel_after := learn(intel, viewer, shown, after, sights.after)
 	var view_after := view_state(after, viewer, memory_after, intel_after)
 	var out: Array = shown.duplicate(true)
 	out.append_array(synthetic_events(built_before.view, view_after, shown, viewer))
@@ -1136,12 +1156,12 @@ static func turn_for(events: Array, viewer: String, before: GameState, after: Ga
 
 ## The events of `events` the viewer is shown, before the synthetic ones (§2.8), following FogData.AUDIENCE. `ins`
 ## are the stand-ins of the viewer's view before the turn (stand_ins()), for the battles' view ids; computed when
-## not given.
-static func filter_events(events: Array, viewer: String, before: GameState, after: GameState, ins = null) -> Array:
+## not given. `sights` may carry the viewer's sight of `before` and `after` ({"before", "after"}).
+static func filter_events(events: Array, viewer: String, before: GameState, after: GameState, ins = null, sights: Dictionary = {}) -> Array:
 	if viewer == OBSERVER:
 		return events.duplicate(true)
-	var before_sight := sight(before, viewer)
-	var after_sight := sight(after, viewer)
+	var before_sight: Dictionary = sights.get("before", {}) if sights.has("before") else sight(before, viewer)
+	var after_sight: Dictionary = sights.get("after", {}) if sights.has("after") else sight(after, viewer)
 	if ins == null:
 		ins = stand_ins(before, viewer, before_sight, {})  # memory adds only ghosts, which no event names
 	var out := []
@@ -1335,10 +1355,10 @@ static func text_for(t: String, numbers: Dictionary, provinces: Array, factions:
 			p["branch_ref"] = AscensionRules.branch_ref(String(numbers.get("branch", "")))
 			p["node_name"] = AscensionRules.node_name(String(numbers.get("node", "")))
 			var renamed: Dictionary = numbers.get("renamed", {})
-			for old in renamed:
-				var line := String(FogData.TEXT.transformed_renamed)
-				text += line.format({"old_name": AscensionRules.base_unit_name(String(factions[0]) if not factions.is_empty() else "", String(old)),
-					"new_name": String(renamed[old])})
+			for old in renamed:  # {type id: {"from", "to"}}
+				var names: Dictionary = renamed[old] if renamed[old] is Dictionary else {}
+				text += String(FogData.TEXT.transformed_renamed).format({"old_name": String(names.get("from", old)),
+					"new_name": String(names.get("to", old))})
 			var new_unit := String(numbers.get("new_unit", ""))
 			if not new_unit.is_empty():
 				p["new_unit_name"] = String(PathData.NEW_UNITS.get(new_unit, {}).get("name", new_unit))
