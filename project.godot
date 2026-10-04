@@ -15,6 +15,10 @@ config/description="A deep, approachable simultaneous-turn fantasy strategy game
 run/main_scene="res://ui/title_screen.tscn"
 config/features=PackedStringArray("4.5", "GL Compatibility")
 
+[autoload]
+
+Audio="*res://ui/audio.gd"
+
 [display]
 
 window/size/viewport_width=1600
