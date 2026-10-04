@@ -27,6 +27,8 @@ studio/ledgers/asc-3d-paths.jsonl.
     python3 tools/ludo/asc_3d_paths.py install <model row> [--frac F | --men M | --like-base] [--notes T]
     python3 tools/ludo/asc_3d_paths.py board               # this batch's rows of world3d/models.json, surgically
     python3 tools/ludo/asc_3d_paths.py gates               # silhouette IoU of every variant picture (needs Pillow)
+    python3 tools/ludo/asc_3d_paths.py texlevels [rows]    # each model's mean L* against its picture's (Pillow, numpy)
+    python3 tools/ludo/asc_3d_paths.py retexture <rows> --auto | --gamma G   # lift a crushed colour map (no Ludo call)
     python3 tools/ludo/asc_3d_paths.py sheet units|portraits|silhouettes   # the sheets (Pillow; units, silhouettes: numpy)
     python3 tools/ludo/asc_3d_paths.py account
 
@@ -525,6 +527,200 @@ def install(row_id, men=None, frac=None, notes="", like=False):
     return entry
 
 
+# ------------------------------------------------------------------------------- texture levels
+## Image-to-3D sometimes returns a colour map far darker than its picture (the Bloodtuskers' crimson and
+## black, near-black after three takes). The model is right, only its values are crushed: `retexture` lifts
+## the embedded colour map's lightness (CIE L*) with a gamma curve, keeping each texel's chromaticity
+## (hue and saturation, in linear light), so the model's mean L* comes back near its picture's. It always
+## starts again from the raw Ludo GLB, so it is repeatable, and records what it did in the descriptor
+## (`tex_lift`). No Ludo call. Needs Pillow and numpy.
+TEX_TOLERANCE = 8.0  ## a model's mean L* may sit this far under its picture's before it is lifted
+
+
+def _lstar(rgb):
+    """CIE L* (D65) of sRGB values in 0..1 (numpy, any shape ending in 3)."""
+    import numpy as np
+    c = np.asarray(rgb, dtype=np.float64)
+    lin = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+    y = lin @ np.array([0.2126, 0.7152, 0.0722])
+    return np.where(y > 216 / 24389, 116 * np.cbrt(y) - 16, y * 24389 / 27)
+
+
+def tex_lstar(path):
+    """A model's mean L* as it is drawn: its colour map sampled at every triangle's UV centroid, weighted by
+    the triangle's surface area, so unused atlas space never counts."""
+    import numpy as np
+    V, T, C = _glb_faces(path)
+    tri = V[T]
+    area = np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1)
+    return float((_lstar(C) * area).sum() / max(area.sum(), 1e-12))
+
+
+def pic_lstar(path):
+    """A concept picture's mean L* over the figure (the gate's mask: inside the ink outline)."""
+    import numpy as np
+    from PIL import Image
+    m = np.asarray(_mask(path, 256)) > 0
+    im = np.asarray(Image.open(path).convert("RGB").resize((256, 256), Image.LANCZOS), dtype=np.float64) / 255.0
+    return float(_lstar(im[m]).mean())
+
+
+def _lift_rgb(rgb, gamma):
+    """L' = 100 (L / 100) ^ (1 / gamma) per texel, the texel's linear RGB scaled by Y'/Y, so its chromaticity
+    (hue, saturation) is kept; a channel that would pass 1 scales the texel back down."""
+    import numpy as np
+    c = np.asarray(rgb, dtype=np.float64)
+    lin = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+    y = lin @ np.array([0.2126, 0.7152, 0.0722])
+    L = np.where(y > 216 / 24389, 116 * np.cbrt(y) - 16, y * 24389 / 27)
+    L2 = 100.0 * np.clip(L / 100.0, 0, 1) ** (1.0 / gamma)
+    f = (L2 + 16) / 116
+    y2 = np.where(L2 > 8.0, f ** 3, L2 * 27 / 24389)
+    k = np.where(y > 1e-6, y2 / np.maximum(y, 1e-6), 1.0)
+    lin2 = lin * k[..., None]
+    peak = lin2.max(axis=-1, keepdims=True)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        lin2 = np.where(peak > 1.0, lin2 / np.maximum(peak, 1e-12), lin2)
+    lin2 = np.where(y[..., None] <= 1e-6, y2[..., None], lin2)  ## pure black: a neutral grey of L2
+    out = np.where(lin2 <= 0.0031308, lin2 * 12.92, 1.055 * np.power(np.clip(lin2, 0, 1), 1 / 2.4) - 0.055)
+    return np.clip(out, 0, 1)
+
+
+def _gamma_for(colours, weights, target):
+    """The gamma that brings the weighted mean L* of `colours` (lifted) to `target` (bisection)."""
+    import numpy as np
+    lo, hi = 1.0, 4.0
+    for _ in range(30):
+        mid = (lo + hi) / 2
+        L = float((_lstar(_lift_rgb(colours, mid)) * weights).sum() / weights.sum())
+        lo, hi = (mid, hi) if L < target else (lo, mid)
+    return round((lo + hi) / 2, 3)
+
+
+def _replace_image(path, out_path, fn):
+    """The GLB's base colour image decoded, passed through fn (an RGB uint8 array -> RGB uint8 array) and
+    written to out_path as a lossless PNG, every buffer view repacked (glb_slim then encodes it as JPEG)."""
+    import io
+    import numpy as np
+    from PIL import Image
+    js, binc = glb_slim.read_glb(path)
+    views = js["bufferViews"]
+    mat = js["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"]["index"]
+    img = js["images"][js["textures"][mat]["source"]]
+    vi = img["bufferView"]
+    v = views[vi]
+    src = binc[v.get("byteOffset", 0):v.get("byteOffset", 0) + v["byteLength"]]
+    arr = np.asarray(Image.open(io.BytesIO(src)).convert("RGB"))
+    buf = io.BytesIO()
+    Image.fromarray(fn(arr)).save(buf, "PNG")
+    new = buf.getvalue()
+    img["mimeType"] = "image/png"
+    out = bytearray()
+    for i, view in enumerate(views):
+        start = view.get("byteOffset", 0)
+        piece = new if i == vi else binc[start:start + view["byteLength"]]
+        while len(out) % 4:
+            out.append(0)
+        view["byteOffset"] = len(out)
+        view["byteLength"] = len(piece)
+        out += piece
+    if js.get("buffers"):
+        js["buffers"][0]["byteLength"] = len(out)
+    glb_slim.write_glb(out_path, js, bytes(out))
+
+
+def reference_lstar(a):
+    """The L* a model is held to: its picked picture's, or, where that picture was lifted before modelling
+    (`lift`, state "lifts"), the original pick's, which the lift would otherwise inflate (kept beside the
+    candidates as <out>_before_lift.webp; the descriptor records it). Returns (L*, which)."""
+    st = load_state()
+    pic_row = "pic_" + a["id"][len("model_"):]
+    man = manifest_rows()
+    if pic_row in st.get("lifts", {}) and pic_row in man:
+        orig = os.path.join(ROOT, man[pic_row]["out"] + "_before_lift.webp")
+        if os.path.exists(orig):
+            return pic_lstar(orig), "original pick (before its gamma %.1f lift)" % st["lifts"][pic_row]
+        d, e = _entry_of(a)
+        if "original_pick_lstar" in e.get("tex_lift", {}):
+            return float(e["tex_lift"]["original_pick_lstar"]), "original pick (recorded)"
+    return pic_lstar(os.path.join(ROOT, a["from_file"])), "picked picture"
+
+
+def _entry_of(a):
+    d = F.load_descriptor()
+    key = vkey(a["unit"]) if a["group"] == "variants" else a["unit"]
+    return d, d[a["group"]][key][a["pose"]]
+
+
+def texlevels(rows_only=None):
+    """Every installed model of this batch: its mean L* against its picture's (and the base unit's models
+    from asc-3d-factions, for calibration), and the gamma `retexture --auto` would use."""
+    import numpy as np
+    man = manifest_rows()
+    out = {}
+    ids = [r for r in man if r.startswith("model_") and (not rows_only or r in rows_only)]
+    for rid in ids:
+        a = man[rid]
+        dst = os.path.join(ROOT, a["target"])
+        if not os.path.exists(dst):
+            continue
+        tl, (pl, which) = tex_lstar(dst), reference_lstar(a)
+        out[rid] = (tl, pl)
+        print("%-30s model L* %5.1f  picture L* %5.1f  gap %+5.1f%s%s" % (rid, tl, pl, tl - pl,
+              "  LIFT" if tl < pl - TEX_TOLERANCE else "", "" if which == "picked picture" else "  (" + which + ")"))
+    if not rows_only:
+        print("calibration (asc-3d-factions, accepted as they are):")
+        d = F.load_descriptor()
+        for u in ("spearmen", "knights", "fangthrowers", "tuskers"):
+            for pose in POSES:
+                e = d["units"][u][pose]
+                pic = os.path.join(ROOT, F.pick_path(e["faction"], "%s_%s" % (u, pose)))
+                tl, pl = tex_lstar(os.path.join(ROOT, e["path"][6:])), pic_lstar(pic)
+                print("  %-26s model L* %5.1f  picture L* %5.1f  gap %+5.1f" % (u + " " + pose, tl, pl, tl - pl))
+    return out
+
+
+def retexture(row_id, gamma=None, auto=False, target_gap=-4.0):
+    """The model re-slimmed from its raw Ludo GLB, its colour map lifted by `gamma` (or, with auto, the gamma
+    that brings its mean L* to its picture's + target_gap), re-imported, and the descriptor entry updated
+    (`bytes`, and `tex_lift`: gamma, L* before and after, the picture's L*). gamma 1 undoes a lift."""
+    import numpy as np
+    a = manifest_rows()[row_id]
+    src = os.path.join(ROOT, a["out"] + ".glb")
+    dst = os.path.join(ROOT, a["target"])
+    glb_slim.slim(src, dst, 3, a["slim_max"], True)
+    before = tex_lstar(dst)
+    pic, which = reference_lstar(a)
+    picked = pic_lstar(os.path.join(ROOT, a["from_file"]))
+    if auto:
+        V, T, C = _glb_faces(dst)
+        tri = V[T]
+        w = np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1)
+        gamma = _gamma_for(C, w, pic + target_gap) if before < pic + target_gap else 1.0
+    gamma = float(gamma or 1.0)
+    if gamma != 1.0:
+        ## lift the raw, lossless colour map, then slim it as usual (a lifted JPEG would show its blocks)
+        tmp = dst + ".lift.glb"
+        _replace_image(src, tmp, lambda arr: (_lift_rgb(arr / 255.0, gamma) * 255.0 + 0.5).astype("uint8"))
+        glb_slim.slim(tmp, dst, 3, a["slim_max"], True)
+        os.remove(tmp)
+    if not os.path.exists(dst + ".import"):  ## keep the model's import (and its uid) when it has one
+        glb_slim.write_import(a["target"], ROOT)
+    after = tex_lstar(dst)
+    d, e = _entry_of(a)
+    e["bytes"] = os.path.getsize(dst)
+    if gamma != 1.0:
+        e["tex_lift"] = {"gamma": round(gamma, 3), "lstar_before": round(before, 1), "lstar_after": round(after, 1),
+                         "picture_lstar": round(picked, 1)}
+        if which != "picked picture":
+            e["tex_lift"]["original_pick_lstar"] = round(pic, 1)
+    else:
+        e.pop("tex_lift", None)
+    F.dump_descriptor(d)
+    print("retexture %-28s gamma %.3f  L* %5.1f -> %5.1f  (picture %5.1f)" % (row_id, gamma, before, after, pic))
+    return before, after, pic
+
+
 # -------------------------------------------------------------------------------- the board's table
 ## A new unit's block spacing comes from its row's fallback figure x "scale" (world3d/armies.gd _spacing):
 ## sized here so a block of the installed figures doesn't overlap. "large" spaces it like a mounted unit.
@@ -948,6 +1144,12 @@ def main(argv):
         board()
     elif cmd == "gates":
         gates()
+    elif cmd == "texlevels":
+        texlevels(rest or None)
+    elif cmd == "retexture":
+        for rid in rest:
+            retexture(rid, float(opt["gamma"]) if "gamma" in opt else None, bool(opt.get("auto")),
+                      float(opt.get("gap", -4.0)))
     elif cmd == "sheet":
         out = os.path.join(ROOT, "studio", "contact-sheets", "asc-3d-paths-%s.png" % rest[0])
         silhouette_sheet(out) if rest[0] == "silhouettes" else contact_sheet(rest[0], out)
