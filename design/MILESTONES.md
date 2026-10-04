@@ -4,6 +4,21 @@ Every milestone ends in something Alex can play. Alex approves each milestone's 
 
 ---
 
+## 3D restructure (proposed by the director, 2026-10-04)
+Alex decided on 2026-10-04 that the game goes 3D with a 2D interface. Full direction: `design/3D_DIRECTION.md`. Its §11 has the restructure and its §14 the calls to review first. **This restructure is a proposal until Alex approves it.** The sections below stay as written; M3's is superseded in part.
+
+- **Now:** M3-1 (#56, event log) and M3-2 (#57, captions and explanations) continue unchanged. They are renderer-agnostic. The 3D spike, the look A/B and the lore writers' room (6 factions) run alongside.
+- **M3a.1 the world:** Forward+ and a quality ladder; the 3D world in a SubViewport under the 2D UI; terrain, borders, territory wash, roads and rivers from the M1 map; fortress kits; villages; the camera; orders on the 3D board; armies as blocks of ready poses. *Play:* an M2 game on the 3D board, with every order and tooltip working as on the 2D map.
+- **M3a.2 the armies:** full pose families, formations, muster yards and war camps, the fortress close-up, and the turn's playback (march-out, border clashes, captures, recruits mustering). Independents, if approved. *Play:* watch each turn resolve on the land, and predict the next battle from what you saw muster.
+- **M3b battles on the land:** M3's event log, timeline, controls, why panel and approachability drive a 3D stage on the province. #58 is re-scoped; #61, #62, #63 and #64 are rewritten for 3D. *Play:* M3's own goals.
+- **Forts and sieges** (proposal): sieges, walls, and building and upgrading fortresses.
+- **M4 in 3D:** M4's rules as built, with transformed model families and a 3D turntable in the lock-in preview.
+- **M5 magic and fog:** magic, fog of war on the world's vision mask, and seasons if approved.
+- **M6 six factions and bigger maps:** the lore room's factions 3-6, generated maps for 2-6 players, and battles with more than two sides.
+- **Art:** about 200 Ludo credits per faction planned (about 300 with reserve). About 1,465 planned and 2,170 with reserve in all, about 540 of it in the M3 steps. This replaces M3's sprite plan and M4's phase-2 battle figures.
+
+---
+
 ## milestone 1: playable skeleton
 Status: **Scope APPROVED by Alex, 2026-09-30. Built; awaiting Alex's playtest.** Code tickets #1-#8 closed (2026-10-02), balanced by #41, plus Computer seats (#42). The art batch (#10, PR #14) is waiting for Alex. Open design calls are in #25.
 
@@ -101,6 +116,8 @@ Budget: 50 Ludo credits for the milestone (4 portraits plus re-rolls).
 ## milestone 3: battles worth watching
 Status: **PROPOSED by the director (Claude session, 2026-10-02). Not yet approved by Alex; nothing will be built until Alex has played M1/M2 and approves.**
 
+**Superseded in part by `design/3D_DIRECTION.md` (2026-10-04), after Alex's call to go 3D.** Still valid: the event log, the pure helpers, the controls, the why panel, the entry points, approachability and the goals. Superseded: the 2D field and sprites, the fixed camera, the GL Compatibility / integrated-graphics performance target, and the sprite art batch. Battles become a 3D stage on the province (M3b in the restructure above). Ticket changes are in `3D_DIRECTION.md` §7.6: #56 and #57 unchanged; #58 re-scoped; #59 and #60 small additions; #61, #62, #63 and #64 rewritten.
+
 Full spec, with every number, schema and acceptance criterion: `design/M3_BATTLES.md`. Its §12 lists the director's calls to review first.
 
 ### goal
@@ -158,6 +175,60 @@ Budget: 500 Ludo credits for the milestone (321 planned, 482 with the re-roll re
 
 ---
 
+## milestone 4: paths of ascension
+Status: **PROPOSED by the director (Claude session, 2026-10-04). Built provisionally under Alex's 10-4 'build an MVP you'd want to play'. Alex can change anything.**
+
+Full spec, with every number, rule and acceptance criterion: `design/M4_ASCENSION.md`. Its §15 lists the director's calls to review first.
+
+### goal
+Each faction researches down one path and, mid-game, swears an Oath at a fork that closes the other side for good. A few turns later its people transform: one of its units changes, a new unit joins the roster, the economy and the provinces follow new rules, and the army looks different. Before swearing, the player sees exactly what they gain and lose. This milestone proves pillar 2: commit and become, so that two games with the same faction feel different because of the fork taken.
+
+### what's in
+- **Research:**
+  - research points from land: the capital yields 5 a turn and every other province 1
+  - one research target at a time from one pool; switching is free and spare points carry over
+  - a new research phase after income
+  - an ETA in turns on every node
+- **One path per faction, 8 nodes:**
+  - 4 ordinary nodes (stats, economy, movement) in two tiers
+  - one fork between two Oaths; each Oath needs any two ordinary nodes, locks the other side out, and brings an economy rule
+  - each Oath leads to a transformation
+- **Four transformations:**
+  - Aurel Crown: the **Celestial Host** (Sunspears, winged Seraphs that dive at commanders, Tithe of Light, Hallowed Land heals your wounded) or **Living Iron** (Iron Knights, the Iron Colossus, Deep Mines, forts that repair to full)
+  - Thornmane Clans: the **Thorn Wild** (Thornthrowers, Briarwardens rooted in forests, Bounty of the Wild, the map turning to forest) or the **Blood Pact** (Bloodtuskers, Bloodsworn who drink their wounds back, Blood Levy, Dread Lands)
+  - each changes one unit, adds one, adds a province rule and a new look, opens one mandate for sacrifice and forswears one
+- **A mandatory lock-in preview:** gains, what you lose access to, every unit stat before → after, and the units' portraits (placeholders until art).
+- **A research panel** with a HUD chip, the path tree, ETAs and the rival's path read-only.
+- **AI research:** each build preset has a research order, and the AI picks its side of the fork by a seeded roll.
+- **Explanations for all of it:** tooltips with breakdowns, codex entries, forecasts, turn report lines ("Your people have become the Celestial Host: ..."), and battle "why" lines naming transformation effects.
+- **An autoplay balance check** with target bands for both sides of each fork.
+- **Eight portraits** (each side's new unit and changed unit), with battle figures after M3's base sheets.
+- **Opt-in for now:** "Paths (M4 preview)" on the new game screen needs Rulers; off, M1 and M2 play exactly as before.
+
+### what's out (later milestones)
+Magic and magic research (M5), more than one path or fork per faction, research buildings, rulers and commanders transforming, undoing a transformation, a use for research after the path is complete, fog of war, more factions, AI difficulty levels, save/load, sound, and the open questions in #25.
+
+### what to play and what to feel for (at the end)
+Play two games against the AI with the same faction, swearing a different Oath each time. Feel for four things:
+- The lock-in preview tells you what you will become clearly enough that you can predict your turn-9 army before you swear.
+- Swearing the Oath feels like a real commitment, and the turns before it (rush or round out) are a real decision.
+- After the transformation, your army plays differently, and the turn and battle reports say why.
+- The second game with the same faction feels different from the first.
+
+### tickets (github issues to be cut; M4-n are placeholders)
+After M4-1, tickets 2, 3 and 4 run in parallel, each owning its files; 5 needs 2 and 3, and 6 closes the milestone. M4-7 can start now, and M4-8's second phase follows M3-9.
+1. M4-1 `code` `hard` Research and path rules model: path data, faction fields, `AscensionRules`, `ResearchOrder`, the research phase, research forecasts and breakdowns, every stat, income and price effect, opt-in setup, serialization and replay. (needs M2)
+2. M4-2 `code` `hard` Transformations on the map: roster changes, Blood Levy, Raiding Parties, Forest Stride, the Wild Spreads, Hallowed Land, the Forges, opened and forsworn mandates, turn report events. (needs 1)
+3. M4-3 `code` `hard` Battles with paths: Wings, Iron Hide, Rooted, Lifedrinker, path morale, Dread Lands, Red Harvest, "why" factors. (needs 1)
+4. M4-4 `code` Research panel and lock-in preview, people labels, victory screen, placeholders. (needs 1; best after 2)
+5. M4-5 `code` AI research and transformations: preset research orders, the seeded fork pick, using the new units and rules. (needs 2, 3)
+6. M4-6 `code` Autoplay balance check for paths against the bands in `design/M4_ASCENSION.md` §10. (needs 2, 3, 5)
+7. M4-7 `design` Art lead: M4 manifest rows, the T-thornwild block and fork glyphs. (no code dependencies)
+8. M4-8 `asset` Asset builder: 8 portraits, then 8 battle figures after M3-9. (needs 7)
+
+Budget: 300 Ludo credits for the milestone (190 planned, 285 with the re-roll reserve; 18 of that for the portraits that ship with the milestone).
+
+---
+
 ## later milestones (outline, not approved)
-- **M4: paths of ascension.** Research paths, a first lock-in fork, and one transformation per faction.
 - **M5: magic.** Magic schools, rituals, battle spells, and fog of war.
