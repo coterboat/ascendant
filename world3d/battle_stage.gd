@@ -65,7 +65,10 @@ const LADDER_SECONDS := 3.0
 const MAX_RUNG := 4
 const PROP_CELL := 28.0 ## the woods' cells (world units)
 const PROP_LOD_BIAS := 0.4 ## the woods drop detail sooner than the fighters
-const WOODS_NEAR := 40.0 ## model trees this far round the battle's ground, primitives beyond
+const WOODS_NEAR := 40.0
+const GLYPH_INTERVAL := 0.12
+## the woods and rocks: [model kind, plan key, sizing axis, the board's primitive MultiMesh name]
+const PROP_SPECS := [["tree_broadleaf", "broad", "y", "Broadleaf"], ["tree_pine", "pine", "y", "Pines"], ["rock", "rocks", "xz", "Rocks"]] ## model trees this far round the battle's ground, primitives beyond
 ## effects (playback seconds)
 const IMPACT_LIFE := 0.22
 const RING_LIFE := 0.3
@@ -127,6 +130,8 @@ var _glyphs_dirty_3d := true
 var _side_lin: Array = []
 var _field_pending := false
 var _wood_cells := {} ## Vector2i cell -> {"model": [MultiMeshInstance3D], "prim": [...]}
+var _glyph_at := -10.0
+var _xfs := {} ## MultiMesh -> [Transform3D]: where each woods, rocks, village and cottage instance stands
 
 
 func _init() -> void:
@@ -256,44 +261,62 @@ func _fit_viewport() -> void:
 ## to about 1.5 million triangles). Each cell also picks its own level of detail from its distance.
 func _rechunk_props(cell: float) -> void:
 	_wood_cells = {}
+	_xfs = {}
+	var pl: Dictionary = WorldView.plan_of(terrain)
+	## the board's own pieces, to reuse their meshes and materials
 	var olds: Array = []
+	var prim_mi := {}
+	var model_mi := {}
 	for n in wv.props.get_children():
-		if n is MultiMeshInstance3D:
-			olds.append(n)
+		if not (n is MultiMeshInstance3D):
+			continue
+		olds.append(n)
+		var nm := String(n.name)
+		for spec in PROP_SPECS:
+			if n.has_meta("chunk") and nm.begins_with(String(spec[0])):
+				model_mi[spec[1]] = n
+			elif not n.has_meta("chunk") and nm == String(spec[3]):
+				prim_mi[spec[1]] = n
 	var fresh: Array = []
+	for spec in PROP_SPECS:
+		var list: Array = pl.get(spec[1], [])
+		for model in [false, true]:
+			var src: MultiMeshInstance3D = (model_mi if model else prim_mi).get(spec[1])
+			if src == null:
+				continue
+			var base := _model_base(String(spec[0]), String(spec[2])) if model else Transform3D()
+			var buckets := {}
+			for xf in list:
+				var o: Vector3 = (xf as Transform3D).origin
+				var key := Vector2i(int(floor(o.x / cell)), int(floor(o.z / cell)))
+				if not buckets.has(key):
+					buckets[key] = []
+				buckets[key].append((xf as Transform3D) * base)
+			for key in buckets.keys():
+				var xfs: Array = buckets[key]
+				var mm := MultiMesh.new()
+				mm.transform_format = MultiMesh.TRANSFORM_3D
+				mm.use_custom_data = true
+				mm.mesh = src.multimesh.mesh
+				mm.instance_count = xfs.size()
+				for i in xfs.size():
+					mm.set_instance_transform(i, xfs[i])
+					mm.set_instance_custom_data(i, Color(1, 1, 1, 1))
+				var mi := MultiMeshInstance3D.new()
+				mi.name = "%s_%s_%d_%d" % [String(spec[1]), "m" if model else "p", key.x, key.y]
+				mi.multimesh = mm
+				mi.material_override = src.material_override
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if model else src.cast_shadow
+				mi.lod_bias = PROP_LOD_BIAS
+				mi.visible = false
+				if model:
+					mi.set_meta("chunk", true)
+				fresh.append(mi)
+				_xfs[mm] = xfs
+				if not _wood_cells.has(key):
+					_wood_cells[key] = {"model": [], "prim": []}
+				_wood_cells[key]["model" if model else "prim"].append(mi)
 	for old in olds:
-		var model: bool = old.has_meta("chunk")
-		var mm: MultiMesh = (old as MultiMeshInstance3D).multimesh
-		var buckets := {}
-		for i in mm.instance_count:
-			var xf: Transform3D = mm.get_instance_transform(i)
-			var key := Vector2i(int(floor(xf.origin.x / cell)), int(floor(xf.origin.z / cell)))
-			if not buckets.has(key):
-				buckets[key] = []
-			buckets[key].append(xf)
-		for key in buckets.keys():
-			var list: Array = buckets[key]
-			var nm := MultiMesh.new()
-			nm.transform_format = MultiMesh.TRANSFORM_3D
-			nm.use_custom_data = true
-			nm.mesh = mm.mesh
-			nm.instance_count = list.size()
-			for i in list.size():
-				nm.set_instance_transform(i, list[i])
-				nm.set_instance_custom_data(i, Color(1, 1, 1, 1))
-			var mi := MultiMeshInstance3D.new()
-			mi.name = "%s_%s_%d_%d" % [String(old.name).validate_node_name(), "m" if model else "p", key.x, key.y]
-			mi.multimesh = nm
-			mi.material_override = (old as MultiMeshInstance3D).material_override
-			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if model else (old as GeometryInstance3D).cast_shadow
-			mi.lod_bias = PROP_LOD_BIAS
-			mi.visible = false
-			if model:
-				mi.set_meta("chunk", true)
-			fresh.append(mi)
-			if not _wood_cells.has(key):
-				_wood_cells[key] = {"model": [], "prim": []}
-			_wood_cells[key]["model" if model else "prim"].append(mi)
 		wv.props.remove_child(old)
 		wv._prop_chunks.erase(old)
 		wv._prop_prims.erase(old)
@@ -304,6 +327,65 @@ func _rechunk_props(cell: float) -> void:
 			wv._prop_chunks.append(mi)
 		else:
 			wv._prop_prims.append(mi)
+	_table_buildings(pl)
+
+
+## A woods or rocks model's transform onto its primitive's placement (world_view.gd _build_prop_models: the
+## model normalised to its primitive's size, a one-for-one swap).
+static func _model_base(kind: String, axis: String) -> Transform3D:
+	var glb: Dictionary = Models.building_model(kind)
+	if glb.is_empty():
+		return Transform3D()
+	var row: Dictionary = Models.building_row(kind)
+	var prim: AABB = Models.building_primitive(kind).get_aabb()
+	var a: AABB = glb["aabb"]
+	var sc: float = (prim.size.y / maxf(a.size.y, 0.001)) if axis == "y" else (maxf(prim.size.x, prim.size.z) / maxf(maxf(a.size.x, a.size.z), 0.001))
+	var yaw := deg_to_rad(float(row.get("yaw", 180.0)))
+	var c: Vector3 = a.get_center()
+	return Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * sc), Vector3.ZERO) * Transform3D(Basis(), Vector3(-c.x, -a.position.y, -c.z))
+
+
+## Where the world's villages, landmarks and cottages stand (each MultiMesh's instances, from the land's plan
+## as world_view.gd placed them), so the stage can lift them without reading the renderer back.
+func _table_buildings(pl: Dictionary) -> void:
+	var by_path := {}
+	for v in pl.get("villages", []):
+		var paths: Array = Models.building_variants(v["kind"])
+		if paths.is_empty():
+			continue
+		var path: String = paths[Models.variant_for(v["province"], paths.size())]
+		if not by_path.has(path):
+			by_path[path] = {"kind": v["kind"], "list": []}
+		by_path[path]["list"].append(v)
+	for n in wv.buildings.get_children():
+		if not (n is MultiMeshInstance3D):
+			continue
+		var nm := String(n.name)
+		var mm: MultiMesh = (n as MultiMeshInstance3D).multimesh
+		if nm.begins_with("Cottages"):
+			var v := int(nm.trim_prefix("Cottages"))
+			var houses: Array = pl.get("houses", [[], [], []])
+			if v >= 0 and v < houses.size() and (houses[v] as Array).size() == mm.instance_count:
+				_xfs[mm] = houses[v]
+		elif nm.begins_with("Village_"):
+			for path in by_path.keys():
+				if "Village_" + String(path).get_file().get_basename() != nm:
+					continue
+				var glb: Dictionary = Models.model_at(path)
+				if glb.is_empty():
+					continue
+				var row: Dictionary = Models.building_row(by_path[path]["kind"])
+				var aabb: AABB = glb["aabb"]
+				var sc: float = float(row.get("side", 24.0)) / maxf(aabb.size.x, aabb.size.z)
+				var c: Vector3 = aabb.get_center()
+				var yaw0 := deg_to_rad(float(row.get("yaw", 180.0)))
+				var xfs := []
+				for vv in by_path[path]["list"]:
+					var b := Basis(Vector3.UP, float(vv["yaw"]) + yaw0).scaled(Vector3.ONE * sc)
+					var at: Vector3 = terrain.ground_at(vv["pos"]) - Vector3(0, 0.25, 0)
+					xfs.append(Transform3D(b, at) * Transform3D(Basis(), Vector3(-c.x, -aabb.position.y, -c.z)))
+				if xfs.size() == mm.instance_count:
+					_xfs[mm] = xfs
 
 
 ## Model trees within `r` of `site` (when the quality rung allows them), primitives everywhere else.
@@ -454,23 +536,36 @@ func clear_for(poly: PackedVector2Array) -> void:
 	restore_ground()
 	if wv == null:
 		return
-	for parent in [wv.props, wv.buildings]:
-		for n in (parent as Node).get_children():
-			if not (n is MultiMeshInstance3D):
-				continue
-			var mm: MultiMesh = (n as MultiMeshInstance3D).multimesh
-			var pad := 10.0 if String(n.name).begins_with("Village") or String(n.name).begins_with("Cottage") else 2.5
-			for i in mm.instance_count:
-				var xf: Transform3D = mm.get_instance_transform(i)
-				if Formation.inside(poly, Vector2(xf.origin.x, xf.origin.z), pad):
-					_cleared.append({"mm": mm, "i": i, "xf": xf})
-					mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * 0.0001), xf.origin - Vector3(0, 50, 0)))
+	for mm in _xfs.keys():
+		var xfs: Array = _xfs[mm]
+		var pad := 10.0 if xfs.size() > 0 and mm.mesh != null and mm.mesh.get_aabb().size.x * (xfs[0] as Transform3D).basis.get_scale().x > 8.0 else 2.5
+		for i in xfs.size():
+			var xf: Transform3D = xfs[i]
+			if Formation.inside(poly, Vector2(xf.origin.x, xf.origin.z), pad):
+				_cleared.append({"mm": mm, "i": i, "xf": xf})
+				(mm as MultiMesh).set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * 0.0001), xf.origin - Vector3(0, 50, 0)))
 
 
 func restore_ground() -> void:
 	for c in _cleared:
 		(c["mm"] as MultiMesh).set_instance_transform(int(c["i"]), c["xf"])
 	_cleared = []
+
+
+## How many woods, rocks and houses still stand on `poly` (tests: none, on the battle's footprint); with
+## `all`, how many the land has there, lifted or not.
+func props_standing_on(poly: PackedVector2Array, all: bool = false) -> int:
+	var gone := {}
+	for c in _cleared:
+		gone["%d:%d" % [(c["mm"] as Object).get_instance_id(), int(c["i"])]] = true
+	var n := 0
+	for mm in _xfs.keys():
+		var xfs: Array = _xfs[mm]
+		for i in xfs.size():
+			var o: Vector3 = (xfs[i] as Transform3D).origin
+			if Formation.inside(poly, Vector2(o.x, o.z), 0.0) and (all or not gone.has("%d:%d" % [(mm as Object).get_instance_id(), i])):
+				n += 1
+	return n
 
 
 func _footprint_radius() -> float:
@@ -737,7 +832,9 @@ func tick(delta: float) -> void:
 	_clock_last = now
 	_step_projectiles(now)
 	_tick_camera(delta)
-	if _glyphs_dirty_3d:
+	## glyphs and auras follow the state at most every GLYPH_INTERVAL of real time while playing (the why
+	## panel's rule), at once when paused
+	if _glyphs_dirty_3d and (not player.is_playing() or _real - _glyph_at >= GLYPH_INTERVAL):
 		_refresh_glyph_cache()
 	overlay.queue_redraw()
 	_sample_frame(delta)
@@ -1239,6 +1336,7 @@ func _step_effects(dt: float, _real_dt: float) -> void:
 
 func _refresh_glyph_cache() -> void:
 	_glyphs_dirty_3d = false
+	_glyph_at = _real
 	if player == null:
 		return
 	var st := player.live_state()
@@ -1246,20 +1344,24 @@ func _refresh_glyph_cache() -> void:
 	_auras = []
 	for f in _log.fighters:
 		var fid := int(f.id)
+		var fs: Dictionary = st.fighters[fid]
+		if not fs.alive or fs.fled or fs.lost:
+			continue
+		## a massed side's units (71 war bears' Fury) would carpet the ground and cost a status each: there
+		## only commanders and rulers (and the hovered or pinned fighter) show glyphs and aura rings (M3 3.4)
+		if _massed[int(f.side)] and f.role == "unit" and fid != _hovered and fid != _selected:
+			continue
 		var g := _glyphs_for(fid, st)
 		if not g.is_empty():
 			_glyph_cache[fid] = g
-		var fs: Dictionary = st.fighters[fid]
-		## a massed side's units (71 war bears' Fury) would carpet the ground: there only commanders and rulers
-		## (and the hovered or pinned fighter) show their aura's ring, as with the glyphs (M3 3.4)
-		if _massed[int(f.side)] and f.role == "unit" and fid != _hovered and fid != _selected:
-			continue
-		if fs.alive and not fs.fled and not fs.lost:
-			var s := player.timeline().statuses(st, fid)
-			for a in s.auras:
-				var kind := "aura_down" if a == AutoBattleResolver.FURY or a == AutoBattleResolver.DREAD else "aura_up"
-				_auras.append({"fid": fid, "kind": kind})
-				break
+		## the morale it gives while it stands (BattleTimeline.statuses' auras, read off the log)
+		var kind := ""
+		if f.role == "commander" or f.role == "ruler":
+			kind = "aura_up"
+		if String(f.trait) == AutoBattleResolver.FURY or int(f.get("ruler", {}).get("dread", 0)) > 0:
+			kind = "aura_down" if kind == "" else kind
+		if kind != "":
+			_auras.append({"fid": fid, "kind": kind})
 
 
 # --- tab order, hover, selection -------------------------------------------------------------------------

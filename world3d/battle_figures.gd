@@ -195,8 +195,10 @@ func snap(state: Dictionary, out_sides: Array) -> void:
 
 
 func set_hold(i: int, hold: String) -> void:
+	if i < 0 or i >= figs.size():
+		return
 	figs[i]["hold"] = hold
-	_dirty = true
+	figs[i]["was_active"] = true
 
 
 ## Adds motion `m` ({"kind", "t0", "dur", ...}) to figure `i`, replacing any of the same kind.
@@ -208,7 +210,7 @@ func add_motion(i: int, m: Dictionary) -> void:
 		if String(list[k]["kind"]) == String(m["kind"]):
 			list.remove_at(k)
 	list.append(m)
-	_dirty = true
+	figs[i]["was_active"] = true
 
 
 ## The figure indices of side `si`'s colour party (standard bearer, musician).
@@ -348,76 +350,117 @@ func prune(now: float) -> void:
 				list.remove_at(k)
 
 
-## Writes every figure at clock time `now` into its group's MultiMesh, and the banners onto the bearers.
+## Writes the figures at clock time `now` into their groups' MultiMeshes, and the banner onto each bearer.
+## Incremental: only a figure with a motion under way (or one that just ended, or changed its hold) is posed
+## again; a group is rebuilt (compacted) only when a figure joins or leaves it, otherwise the moved rows are
+## written in place. `force` poses every figure (a seek, a new battle).
 func sync(now: float, force: bool = false) -> void:
-	if not force and not _dirty and not moving(now):
+	var todo: Array = []
+	if force or _dirty:
+		todo = range(figs.size())
+		_dirty = false
+	else:
+		for i in figs.size():
+			var f: Dictionary = figs[i]
+			var active := false
+			for m in f["motions"]:
+				var t: float = now - float(m["t0"])
+				if t >= -0.0001 and t < float(m.get("dur", 0.0)) + 0.05:
+					active = true
+					break
+			if active or bool(f.get("was_active", false)):
+				todo.append(i)
+			f["was_active"] = active
+	if todo.is_empty():
 		return
-	_dirty = false
-	for g in groups.values():
-		g["n"] = 0
-	for i in figs.size():
+	var rebuild := {}
+	var touched := {}
+	for i in todo:
 		var f: Dictionary = figs[i]
 		var p := pose_at(i, now)
-		if not bool(p["shown"]) or float(p["scale"]) < 0.01:
-			if String(f["role"]) == "bearer" and int(f["side"]) < banners.size():
-				(banners[int(f["side"])] as Node3D).visible = false
-			continue
-		var lying: bool = bool(p["lying"])
-		var pose := "fallen" if lying else String(p["pose"])
-		if pose == "fallen" and not lying:
-			pose = "ready"
-		var keys: Dictionary = f["keys"]
-		var base_key: String = keys.get(pose, keys["ready"])
-		var gk: String = base_key + ("f" if String(f["hold"]) == "fallen" and float(p["fall"]) >= 0.999 else "s")
-		var g: Dictionary = groups[gk]
-		var yaw: float = p["yaw"]
-		var basis := Basis(Vector3.UP, yaw)
-		var fall: float = p["fall"]
-		if fall > 0.0 and not lying:
-			## topple about the feet, backwards (away from the enemy)
-			basis = basis * Basis(Vector3.RIGHT, fall * PI * 0.5)
-		var sc: float = p["scale"]
-		basis = basis.scaled(Vector3.ONE * sc)
-		var pos: Vector2 = p["pos"]
-		var y: float = float(p["y"]) + float(p["hop"]) + float(p["extra_y"])
-		if pos != (f["home"] as Vector2):
-			y = maxf(_ground(pos, float(f["y"])), 0.0) + float(p["hop"]) + float(p["extra_y"])
-		var n: int = g["n"]
-		if n >= int(g["cap"]):
-			continue
-		var buf: PackedFloat32Array = g["buf"]
-		var o := n * STRIDE
-		buf[o] = basis.x.x
-		buf[o + 1] = basis.y.x
-		buf[o + 2] = basis.z.x
-		buf[o + 3] = pos.x
-		buf[o + 4] = basis.x.y
-		buf[o + 5] = basis.y.y
-		buf[o + 6] = basis.z.y
-		buf[o + 7] = y
-		buf[o + 8] = basis.x.z
-		buf[o + 9] = basis.y.z
-		buf[o + 10] = basis.z.z
-		buf[o + 11] = pos.y
-		var lin: Color = f["lin"]
-		buf[o + 12] = lin.r
-		buf[o + 13] = lin.g
-		buf[o + 14] = lin.b
-		buf[o + 15] = 1.0 - float(p["hurt"])
-		g["n"] = n + 1
-		if String(f["role"]) == "bearer" and int(f["side"]) < banners.size():
-			var bn: Node3D = banners[int(f["side"])]
-			var xf := Transform3D(basis, Vector3(pos.x, y, pos.y))
-			bn.transform = Transform3D(Basis(Vector3.UP, yaw + PI * 0.5).scaled(Vector3.ONE * sc), xf * Vector3(0.95, 1.2, 0.0))
-			bn.visible = sc > 0.05 and fall < 0.5
-	for g in groups.values():
-		var mm: MultiMesh = (g["mi"] as MultiMeshInstance3D).multimesh
-		var n2: int = g["n"]
-		if n2 > 0:
-			mm.buffer = g["buf"]
-		mm.visible_instance_count = n2
-		(g["mi"] as Node3D).visible = n2 > 0
+		var shown: bool = bool(p["shown"]) and float(p["scale"]) >= 0.01
+		var gk := ""
+		var row := PackedFloat32Array()
+		if shown:
+			var lying: bool = bool(p["lying"])
+			var pose := "fallen" if lying else String(p["pose"])
+			if pose == "fallen" and not lying:
+				pose = "ready"
+			var keys: Dictionary = f["keys"]
+			var base_key: String = keys.get(pose, keys["ready"])
+			gk = base_key + ("f" if String(f["hold"]) == "fallen" and float(p["fall"]) >= 0.999 else "s")
+			row = _row(f, p)
+		elif String(f["role"]) == "bearer" and int(f["side"]) < banners.size():
+			(banners[int(f["side"])] as Node3D).visible = false
+		var old := String(f.get("gk", ""))
+		f["row"] = row
+		if old != gk:
+			if old != "":
+				rebuild[old] = true
+			if gk != "":
+				rebuild[gk] = true
+			f["gk"] = gk
+		elif gk != "" and not rebuild.has(gk):
+			var g: Dictionary = groups[gk]
+			var gi: int = int(f.get("gi", -1))
+			if gi >= 0 and gi < int(g["n"]):
+				var buf: PackedFloat32Array = g["buf"]
+				var o := gi * STRIDE
+				for k in STRIDE:
+					buf[o + k] = row[k]
+				touched[gk] = true
+			else:
+				rebuild[gk] = true
+	for gk2 in rebuild.keys():
+		var g2: Dictionary = groups[gk2]
+		var buf2: PackedFloat32Array = g2["buf"]
+		var n := 0
+		for f2 in figs:
+			if String(f2.get("gk", "")) != gk2 or n >= int(g2["cap"]):
+				continue
+			var row2: PackedFloat32Array = f2["row"]
+			var o2 := n * STRIDE
+			for k in STRIDE:
+				buf2[o2 + k] = row2[k]
+			f2["gi"] = n
+			n += 1
+		g2["n"] = n
+		touched[gk2] = true
+	for gk3 in touched.keys():
+		var g3: Dictionary = groups[gk3]
+		var mm: MultiMesh = (g3["mi"] as MultiMeshInstance3D).multimesh
+		var n3: int = g3["n"]
+		if n3 > 0:
+			mm.buffer = g3["buf"]
+		mm.visible_instance_count = n3
+		(g3["mi"] as Node3D).visible = n3 > 0
 
+
+## A figure's MultiMesh row at pose `p` (a 3x4 transform, then its side's colour and the hit tint), and its
+## banner when it is the bearer.
+func _row(f: Dictionary, p: Dictionary) -> PackedFloat32Array:
+	var lying: bool = bool(p["lying"])
+	var yaw: float = p["yaw"]
+	var basis := Basis(Vector3.UP, yaw)
+	var fall: float = p["fall"]
+	if fall > 0.0 and not lying:
+		## topple about the feet, backwards (away from the enemy)
+		basis = basis * Basis(Vector3.RIGHT, fall * PI * 0.5)
+	var sc: float = p["scale"]
+	basis = basis.scaled(Vector3.ONE * sc)
+	var pos: Vector2 = p["pos"]
+	var y: float = float(p["y"]) + float(p["hop"]) + float(p["extra_y"])
+	if pos != (f["home"] as Vector2):
+		y = maxf(_ground(pos, float(f["y"])), 0.0) + float(p["hop"]) + float(p["extra_y"])
+	var lin: Color = f["lin"]
+	var row := PackedFloat32Array([basis.x.x, basis.y.x, basis.z.x, pos.x, basis.x.y, basis.y.y, basis.z.y, y, basis.x.z, basis.y.z, basis.z.z, pos.y,
+		lin.r, lin.g, lin.b, 1.0 - float(p["hurt"])])
+	if String(f["role"]) == "bearer" and int(f["side"]) < banners.size():
+		var bn: Node3D = banners[int(f["side"])]
+		var xf := Transform3D(basis, Vector3(pos.x, y, pos.y))
+		bn.transform = Transform3D(Basis(Vector3.UP, yaw + PI * 0.5).scaled(Vector3.ONE * sc), xf * Vector3(0.95, 1.2, 0.0))
+		bn.visible = sc > 0.05 and fall < 0.5
+	return row
 
 
 func _ground(p: Vector2, fallback: float) -> float:

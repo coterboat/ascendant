@@ -118,6 +118,9 @@ static func frame(t, points: Array, band: Rect2, view: Vector2, axis: Vector2, o
 		var see_pts := los if los.size() <= 48 else _thin(los, 48)
 		while float(r["pitch"]) < PITCH_MAX and not sees_all(t, r, see_pts, obstacles):
 			r["pitch"] = float(r["pitch"]) + PITCH_STEP
+		## then everyone, not just the sample (a crowd's every fighter)
+		while see_pts.size() < los.size() and float(r["pitch"]) < PITCH_MAX and not sees_all(t, r, los, obstacles):
+			r["pitch"] = float(r["pitch"]) + PITCH_STEP
 		fit(r, points, band, view, min_span)
 		var back := Vector2(sin(deg_to_rad(float(yaw))), cos(deg_to_rad(float(yaw))))
 		var score := float(r["span"]) * (1.0 + 0.22 * (1.0 - back.dot(SUN_FROM)) + 0.004 * absf(float(r["pitch"]) - 40.0))
