@@ -864,7 +864,7 @@ func _field_moves() -> void:
 
 func _field_move(g: Dictionary, is_main: bool, objective: String, main_dest: String, claimed: Dictionary) -> String:
 	var here: String = g.loc
-	var armies: Array = g.armies
+	var armies: Array = _escort(g)  # #131: with our ruler when it stands with them
 	var here_name := _province_name(here)
 	# A clearly stronger enemy next door: pull back.
 	var danger := _foes_next_to(here)
@@ -934,7 +934,7 @@ func _best_capture(g: Dictionary, is_main: bool, objective: String, claimed: Dic
 			continue
 		if is_main and not objective.is_empty() and _d(n, objective) > _d(here, objective):
 			continue
-		if not _safe_at(g.armies, n):
+		if not _safe_at(_escort(g), n):
 			continue
 		var score: float
 		if _paths:
@@ -963,7 +963,7 @@ func _advance(g: Dictionary, objective: String) -> String:
 		_note("Massing at %s: waiting for %s to join before pushing on to %s." % [_province_name(here),
 			_count_text(int(g.get("waiting_for", 1))), _province_name(objective)])
 		return here
-	var road := _road_step(here, objective, g.armies)  # King's Roads: two provinces through our own land
+	var road := _road_step(here, objective, _escort(g))  # King's Roads: two provinces through our own land
 	if not road.is_empty():
 		return road
 	if _state.sieges:
@@ -972,14 +972,14 @@ func _advance(g: Dictionary, objective: String) -> String:
 			return around
 	var options := []
 	for n in _nbrs[here]:
-		if _d(n, objective) == d_here - 1 and _foes_at(n).is_empty() and _safe_at(g.armies, n):
+		if _d(n, objective) == d_here - 1 and _foes_at(n).is_empty() and _safe_at(_escort(g), n):
 			options.append(n)
 	if options.is_empty():
 		# #94: in a stand-off, besiege the enemy capital anyway where we are at least even, else raid.
 		# M3c: with sieges, the step next to a target fort is judged by the siege-start odds instead.
-		var other := _sieges.approach_step(here, objective, g.armies) if _state.sieges else _siege_step(here, objective, g.armies)
+		var other := _sieges.approach_step(here, objective, g.armies) if _state.sieges else _siege_step(here, objective, _escort(g))
 		if other.is_empty():
-			other = _raid_step(here, g.armies)
+			other = _raid_step(here, _escort(g))
 		if not other.is_empty():
 			return other
 		_note("Massing at %s before pushing on to %s: the road ahead is guarded by stronger armies." % [_province_name(here), _province_name(objective)])
@@ -2591,15 +2591,25 @@ func _d(a: String, b: String) -> int:
 	return int(_dist.get(a, {}).get(b, 999))
 
 
-## The fighters of `a` for the rough guess: its units and commander, plus an enemy ruler (our own ruler
-## is left out, so the guess errs on the safe side whether or not battles count rulers yet).
+## The fighters of `a` for the rough guess: its units, commander and ruler. #131: our own ruler counts too
+## (it used to be left out "to err on the safe side"; rulers fight in every battle now, and leaving a 10-kept
+## ruler out made a keep build judge its own field army a third weaker than it is). Our ruler's army is never in
+## _mine, so it counts only where it is passed in: the capital's guard, the ruler's own spot, an escort (_escort).
 func _members(a: Army) -> Array:
 	var out: Array = a.units.duplicate()
 	if a.commander != null:
 		out.append(a.commander)
-	if a.ruler != null and a.owner != _fid:
+	if a.ruler != null:
 		out.append(a.ruler)
 	return out
+
+
+## The armies of group `g` for judging its safety, with our ruler's army when a field ruler stands with it (it
+## fights beside them if they are attacked there). Last in the list, so the first army is still the group's.
+func _escort(g: Dictionary) -> Array:
+	if _ruler != null and _ruler.location == String(g.loc) and _ruler_role() == "field":
+		return g.armies + [_ruler]
+	return g.armies
 
 
 func _units(armies: Array) -> Array:
