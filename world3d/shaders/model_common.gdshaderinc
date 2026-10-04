@@ -14,6 +14,11 @@ uniform float key_width = 0.06;
 uniform float tint = 1.0;   // a whole-model brightness (a stage's sunlit stone vs the shade)
 uniform vec3 stone_tint : source_color = vec3(1.0); // a kit variant's stone (multiplies the texture, not the keyed roofs)
 uniform float fade = 1.0;
+// M3b, the battle stage: the fallen are drawn desaturated (0 off; 0.3 for a fallen figure's material), and a
+// struck figure takes a short red tint, carried by its instance's custom data alpha (1 = none; the board's
+// figures and props always write 1).
+uniform float desat = 0.0;
+varying float v_hurt;
 // M3a.2: pale, near-neutral stone in a building (a texture's walls, or a primitive's vertex colours)
 // is pulled down toward a warm grey, so Look A's bright sun doesn't blow it out or tint it pink. Only
 // low-saturation texels move; roofs, timber, gold and grass keep their colour. 0 for figures.
@@ -87,5 +92,7 @@ vec3 model_albedo(vec4 vcol, vec2 uv) {
 		c *= stone_tint;
 	}
 	c = mix(v_team, c, vcol.a);
+	c = mix(c, vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), desat);
+	c = mix(c, vec3(0.871, 0.144, 0.127), v_hurt * 0.4);
 	return c * tint;
 }

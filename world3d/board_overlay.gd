@@ -718,7 +718,10 @@ func _update_caption() -> void:
 	_caption_title.text = String(now["caption"])
 	_caption_detail.text = String(now["detail"])
 	_caption_detail.visible = not _caption_detail.text.is_empty()
-	_caption.tooltip_text = TooltipText.plain(String(now["caption"]), String(Choreo.CAPTION_HELP.get(now["key"], "")))
+	var help := String(Choreo.CAPTION_HELP.get(now["key"], ""))
+	if not String(now.get("line", "")).is_empty():
+		help = "%s\n\n%s" % [String(now["line"]), help] ## the turn report's own words for this battle
+	_caption.tooltip_text = TooltipText.plain(String(now["caption"]), help)
 	_caption.reset_size()
 	_caption.position = Vector2(round((size.x - _caption.size.x) * 0.5), _play_bar.position.y + _play_bar.size.y + 10.0)
 

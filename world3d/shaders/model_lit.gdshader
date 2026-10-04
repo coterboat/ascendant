@@ -7,6 +7,7 @@ render_mode cull_back, depth_draw_opaque;
 
 void vertex() {
 	v_team = instanced_team ? INSTANCE_CUSTOM.rgb : team;
+	v_hurt = instanced_team ? clamp(1.0 - INSTANCE_CUSTOM.a, 0.0, 1.0) : 0.0;
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
