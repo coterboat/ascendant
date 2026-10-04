@@ -108,6 +108,12 @@ func _init(state: GameState = null, players: Array = [], game_seed: int = 0, bat
 		_books[fid] = OrderBook.new()
 
 
+## The report phases of `state`'s game, in display order (M3c, design/M3C_SIEGES.md §6): TurnResolver.phases
+## (with "sieges" after "battles" in a game with sieges, and "research" in a game with paths), then "victory".
+static func report_phases(state: GameState) -> Array:
+	return TurnResolver.phases(state) + ["victory"]
+
+
 ## Seed for resolving `turn` (the state's current_turn before resolving) in a game with `game_seed`.
 static func turn_seed(game_seed: int, turn: int) -> int:
 	return game_seed * 1000003 + turn
@@ -225,14 +231,32 @@ func describe_order(faction_id: String, order) -> String:
 		return "Move %s to %s." % [who, to]
 	if order is RecruitOrder:
 		var faction := _state.find_faction(faction_id)
-		var ut: UnitType = TurnResolver.recruitable_type(faction, order.unit_type_id) if faction else null
+		var ut: UnitType = TurnResolver.recruitable_type(faction, order.unit_type_id, _state) if faction else null
 		if ut == null:
 			return "Recruit %s." % TurnResolver._unit_type_name(_state, order.unit_type_id)
 		# The price the recruitment phase charges (Muster Grounds included, M2-4).
 		var price := TurnResolver.recruit_cost(_state, faction_id, ut.id)
 		if order.is_with_ruler():  # Warband Muster (M2-4)
 			return "Recruit %s with %s for %d gold." % [ut.name, RulerRules.current_name(_state, faction_id), price]
-		return "Recruit %s at %s for %d gold." % [ut.name, TurnResolver._province_name(_state, faction.capital), price]
+		var where := TurnResolver.recruit_at(_state, faction, order)  # M3c: a recruit at a fort names it
+		return "Recruit %s at %s for %d gold." % [ut.name, TurnResolver._province_name(_state, faction.capital if where.is_empty() else where), price]
+	if order is FortifyOrder:  # M3c
+		var to := SiegeRules.fortify_level(_state, order.province)
+		return "Fortify %s: build %s there for %d gold (%d turns of work)." % [TurnResolver._province_name(_state, order.province),
+			SiegeRules.fort_phrase(to), int(SiegeRules.level_data(to).cost), int(SiegeRules.level_data(to).turns)]
+	if order is SiegeOrder:  # M3c
+		if order.is_storm():
+			return "Storm the walls of %s with every army of yours there." % TurnResolver._province_name(_state, order.province)
+		var army := _state.find_army(order.army_id)
+		if army == null:  # as the order check says it
+			return "Sally out with an army that is not on the map."
+		var who := TurnReportText.army_title(_state, army, false)
+		var where := TurnResolver._province_name(_state, army.location)
+		if not order.with_army.is_empty():
+			var relief := _state.find_army(order.with_army)
+			return "Sally out of %s with %s, together with the relief from %s." % [where, who,
+				TurnResolver._province_name(_state, relief.location) if relief else "an army that is not on the map"]
+		return "Sally out of %s with %s against the siege lines." % [where, who]
 	if order is SacrificeOrder:  # M2-6
 		var mid: String = order.mandate_id
 		return "Sacrifice: %s gives up %d power for %s (%d, +%d for a mid-game sacrifice)." % [
@@ -359,6 +383,20 @@ func queue_move(army_id: String, to: String) -> String:
 
 func queue_recruit(unit_type_id: String) -> String:
 	return queue_order(RecruitOrder.new(unit_type_id))
+
+
+## M3c (games with sieges): queue a Fortify order for `province_id`, a storm of the fort at `province_id`, or a
+## sally by `army_id` (tied to the relief army `relief_id` when it is given). "" when accepted.
+func queue_fortify(province_id: String) -> String:
+	return queue_order(FortifyOrder.new(province_id))
+
+
+func queue_storm(province_id: String) -> String:
+	return queue_order(SiegeOrder.storm(province_id))
+
+
+func queue_sally(army_id: String, relief_id: String = "") -> String:
+	return queue_order(SiegeOrder.sally(army_id, relief_id))
 
 
 ## Withdraws the current player's order at `index` (0-based, as in current_orders()). The other orders

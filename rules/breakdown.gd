@@ -44,6 +44,10 @@ static func gold(state: GameState, faction_id: String) -> Dictionary:
 	for pid in ids:
 		var parts := RulerRules.province_income_parts(state, pid)
 		var note := "a province you own"
+		if income.modifiers.has(TurnResolver.BESIEGED_PREFIX + pid):  # M3c: its base income, taken by your siege
+			lines.append(_line("Income from %s (besieged)" % _province_name(state, pid), income.by_province[pid],
+				"its base income, while your siege cuts it off"))
+			continue
 		if not parts.mods.is_empty():
 			var bits := ["%d base" % int(parts.base)]
 			for m in parts.mods:
@@ -52,7 +56,11 @@ static func gold(state: GameState, faction_id: String) -> Dictionary:
 		lines.append(_line("Income from %s" % _province_name(state, pid), income.by_province[pid], note))
 	var desc := "%s Gold next turn assumes you recruit nothing and no provinces change hands. %s" % [
 		Faction.describe("gold"), RulesCodex.text("income")]
-	if not income.modifiers.is_empty():
+	if state.sieges:  # M3c: cut-off and besieged provinces, on both sides
+		for part in [TurnResolver.income_modifiers_text(state, faction_id, income, "is now"), TurnResolver.siege_income_text(state, faction_id, income)]:
+			if not String(part).is_empty():
+				desc += " %s" % part
+	elif not income.modifiers.is_empty():
 		desc += " %s" % TurnResolver.income_modifiers_text(state, faction_id, income, "is now")
 	return _make("Gold of %s" % f.faction_name, desc, lines, "Gold next turn (before recruits)", f.gold + income.total)
 
@@ -68,6 +76,8 @@ static func _modifier_rule(key: String) -> String:
 			return "A province never earns less than nothing."
 		RulerRules.FORGE_TITHE:  # M4-2
 			return "Forge Tithe: every province with a fort you own earns more gold."
+		RulerRules.CUT_OFF:  # M3c
+			return "Cut off: while a real army besieges a fort, from the siege's second turn, it pays its owner nothing and its base income goes to the besiegers."
 	if key.begins_with(AscensionRules.PART_PREFIX):
 		return AscensionRules.part_rule(key)  # M4: Market Charters, Tithe of Light, Deep Mines, Bounty of the Wild
 	return ""
@@ -325,13 +335,21 @@ static func income(state: GameState, faction_id: String, ruler_at: Dictionary = 
 	ids.sort()
 	var lines := []
 	for pid in ids:
+		if inc.modifiers.has(TurnResolver.BESIEGED_PREFIX + pid):  # M3c: its base income, taken by your siege
+			lines.append(_line("%s (besieged)" % _province_name(state, pid), int(inc.by_province[pid]),
+				"its base income, while your siege cuts it off"))
+			continue
 		var parts := RulerRules.province_income_parts(state, pid, ruler_at)
 		var bits := ["%d base" % int(parts.base)]
 		for m in parts.mods:
 			bits.append("%s %d" % [m.name, int(m.value)])
 		lines.append(_line(_province_name(state, pid), int(inc.by_province[pid]), " + ".join(bits)))
 	var desc := "%s This assumes no provinces change hands." % RulesCodex.text("income")
-	if not inc.modifiers.is_empty():
+	if state.sieges:  # M3c: cut-off and besieged provinces, on both sides
+		for part in [TurnResolver.income_modifiers_text(state, faction_id, inc, "ends the turn"), TurnResolver.siege_income_text(state, faction_id, inc)]:
+			if not String(part).is_empty():
+				desc += " %s" % part
+	elif not inc.modifiers.is_empty():
 		desc += " %s" % TurnResolver.income_modifiers_text(state, faction_id, inc, "ends the turn")
 	return _coded(_make("Income of %s this turn" % f.faction_name, desc, lines, "Income this turn", int(inc.total)), "income")
 
@@ -401,6 +419,119 @@ static func research_progress(state: GameState, faction_id: String, orders: Arra
 	elif not String(fc.get("reason", "")).is_empty():
 		desc = "%s %s" % [String(fc.reason), desc]
 	return _coded(_make("Research of the %s" % f.faction_name, desc, lines, "Research after this turn", pool + gain), "research_phase")
+
+
+# --- forts and sieges (M3c, #98; design/M3C_SIEGES.md §9.3) -----------------------------------------
+# Every number from SiegeRules, never redone here; each breakdown's lines add up to its total, and each carries
+# the RulesCodex entry that explains it.
+
+## A fort's walls: "Walls 5 of 9 = citadel 9 - siege damage 4", with how fast they repair in the description.
+static func walls(state: GameState, province_id: String) -> Dictionary:
+	var p := state.find_province(province_id)
+	if p == null or p.fort_level <= 0:
+		return _coded(_make("Walls", "There is no fort here, so there are no walls.", [], "Walls", 0), "walls")
+	var top := SiegeRules.walls_max(p.fort_level)
+	var lines := [_line(SiegeRules.level_name(p.fort_level), top, "full walls")]
+	if p.walls < top:
+		lines.append(_line("Siege damage not yet repaired", p.walls - top, "the walls drop only by siege damage"))
+	var desc := "%s Repair: +%d a turn while no army of another faction is here (%s), up to %d. %s" % [SiegeRules.walls_text(state, p.id),
+		SiegeRules.repair_amount(p.fort_level), SiegeRules.level_word(p.fort_level), top, RulesCodex.text("walls")]
+	return _coded(_make("Walls of %s" % p.name, desc, lines, "Walls", p.walls), "walls")
+
+
+## The defense the walls give a stormed garrison: "+4 defense = 2 for every 3 wall strength standing: 5 -> 2
+## steps (rounded up)", one line per step standing.
+static func walls_defense(state: GameState, province_id: String) -> Dictionary:
+	var p := state.find_province(province_id)
+	if p == null or p.fort_level <= 0:
+		return _coded(_make("Walls if stormed", "There is no fort here.", [], "Defense if stormed", 0), "walls")
+	var lines := []
+	for i in SiegeRules.wall_steps(p.walls):
+		var low := i * FortData.WALL_STEP + 1
+		lines.append(_line("Walls %d to %d standing" % [low, low + FortData.WALL_STEP - 1], FortData.WALLS_DEFENSE_PER_STEP,
+			"%d defense for every %d wall strength" % [FortData.WALLS_DEFENSE_PER_STEP, FortData.WALL_STEP]))
+	var desc := "+%d defense = %d for every %d wall strength standing: %d -> %d %s (rounded up). Only a garrison that is stormed gets it; a sally, a relief and the battle after the breach are fought in the open." % [
+		SiegeRules.walls_defense(p.walls), FortData.WALLS_DEFENSE_PER_STEP, FortData.WALL_STEP, p.walls, SiegeRules.wall_steps(p.walls),
+		"step" if SiegeRules.wall_steps(p.walls) == 1 else "steps"]
+	return _coded(_make("Walls of %s if stormed" % p.name, desc, lines, "Defense if stormed", SiegeRules.walls_defense(p.walls)), "walls")
+
+
+## Siege damage a turn at `province_id` from the armies outside it, plus `extra` armies (a forecast's arrivals):
+## "5 a turn = siege camp 1 + 22 troops +2 + 2 engines +2; at most 6".
+static func siege_damage(state: GameState, province_id: String, extra: Array = []) -> Dictionary:
+	var p := state.find_province(province_id)
+	if p == null:
+		return _coded(_make("Siege damage", "This place is not on the map.", [], "Siege damage a turn", 0), "siege_damage")
+	var dmg := SiegeRules.siege_damage_at(state, province_id, extra)
+	var lines := []
+	for part in dmg.parts:
+		lines.append(_line(String(part.name), int(part.value), String(part.note)))
+	var desc := "%d a turn = %s. %s" % [int(dmg.total), SiegeRules.damage_text(dmg), RulesCodex.text("siege_damage")]
+	return _coded(_make("Siege damage at %s" % p.name, desc, lines, "Siege damage a turn", int(dmg.total)), "siege_damage")
+
+
+## Whether the siege cuts `province_id` off: "Cut off: the Thornmane Clans have 22 troops outside, at least half
+## of your 30 (15)." / "Not cut off: 4 troops outside are only pickets (half of your 30 is 15)." The total is the
+## troops outside; the line below it is what they need.
+static func cut_off(state: GameState, province_id: String) -> Dictionary:
+	var p := state.find_province(province_id)
+	if p == null:
+		return _coded(_make("Cut off", "This place is not on the map.", [], "Troops outside", 0), "cut_off")
+	var info := SiegeRules.cut_off_info(state, province_id)
+	var title := "%s is cut off" % p.name if bool(info.cut_off) else "%s is not cut off" % p.name
+	var desc := ""
+	if not SiegeRules.is_besieged(state, province_id):
+		desc = "%s is not besieged." % p.name
+	elif bool(info.pickets):
+		desc = "Not cut off: %d troops outside are only pickets (half of the garrison's %d is %d)." % [int(info.besieger_troops),
+			int(info.garrison_troops), int(info.need)]
+	elif bool(info.cut_off):
+		desc = "Cut off: the %s have %d troops outside, at least half of the garrison's %d (%d). Nobody can recruit there, and its %d gold a turn goes to them." % [
+			_faction_name(state, String(info.besieger)), int(info.besieger_troops), int(info.garrison_troops), int(info.need), p.income]
+	else:
+		desc = "The siege began this turn: %s is cut off from next turn if the besiegers keep at least half the garrison's troops (%d)." % [p.name, int(info.need)]
+	var lines := [_line("Troops outside the walls", int(info.besieger_troops), "regular units of the besiegers")]
+	return _coded(_make(title, "%s %s" % [desc, RulesCodex.text("cut_off")], lines, "Troops outside (%d needed)" % int(info.need),
+		int(info.besieger_troops)), "cut_off")
+
+
+## How many recruits a fort takes a turn: "Stonegate takes 4 recruits a turn (keep). Ordered: 3." `orders` are the
+## faction's queued orders; the breakdown carries "ordered" too.
+static func recruit_limit(state: GameState, province_id: String, faction_id: String = "", orders: Array = []) -> Dictionary:
+	var p := state.find_province(province_id)
+	if p == null or p.fort_level <= 0:
+		return _coded(_make("Recruits a turn", "There is no fort here, so nobody recruits here.", [], "Recruits a turn", 0), "recruit_at_forts")
+	var fid := faction_id if not faction_id.is_empty() else p.owner
+	var ordered := 0
+	var f := state.find_faction(fid)
+	for o in orders:
+		if o is RecruitOrder and not o.is_with_ruler() and f != null \
+				and SiegeRules.recruit_place(state, f, TurnResolver.recruit_at(state, f, o)) == p.id:
+			ordered += 1
+	var limit := SiegeRules.recruit_limit(p.fort_level)
+	var desc := "%s takes %d recruits a turn (%s). Ordered: %d. Troops, commanders and siege engines all count. %s" % [p.name, limit,
+		SiegeRules.level_word(p.fort_level), ordered, RulesCodex.text("recruit_at_forts")]
+	var out := _coded(_make("Recruits at %s" % p.name, desc, [_line(SiegeRules.level_name(p.fort_level), limit, "recruits a turn")],
+		"Recruits a turn", limit), "recruit_at_forts")
+	out["ordered"] = ordered
+	return out
+
+
+## A construction site: "Keep at Greenglade: 2 of 3 turns of work done". The total is the turns of work left.
+static func construction(state: GameState, province_id: String) -> Dictionary:
+	var p := state.find_province(province_id)
+	if p == null or p.works.is_empty():
+		return _coded(_make("Construction", "Nothing is being built here.", [], "Turns of work left", 0), "construction")
+	var to := int(p.works.to)
+	var turns := int(SiegeRules.level_data(to).turns)
+	var left := int(p.works.left)
+	var lines := [_line("Work the %s needs" % SiegeRules.level_word(to), turns, "turns of work"),
+		_line("Work done", left - turns, "one turn of work each turn no enemy army stands here")]
+	var desc := "%s at %s: %d of %d turns of work done. Ordered on turn %d; it stands at the end of turn %d if no enemy army stands here meanwhile. Work stops while an enemy army is here, and nothing done is lost; a captured site is razed. %s" % [
+		SiegeRules.level_name(to), p.name, turns - left, turns, int(p.works.turn), state.current_turn + left, RulesCodex.text("construction")]
+	if not SiegeRules.besiegers(state, province_id).is_empty():
+		desc = "Work is stopped: an enemy army stands here. " + desc
+	return _coded(_make("%s at %s" % [SiegeRules.level_name(to), p.name], desc, lines, "Turns of work left", left), "construction")
 
 
 ## Sum of the line values. Equal to the breakdown's total by construction; tests check it.
