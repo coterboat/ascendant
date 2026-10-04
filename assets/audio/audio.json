@@ -1,0 +1,218 @@
+{
+ "version": 1,
+ "base": "res://assets/audio/",
+ "buses": {
+  "Music": "music and stings",
+  "SFX": "one-shot effects",
+  "Ambiance": "looping beds"
+ },
+ "_levels": "Files are pre-levelled: music and stings -16 LUFS (true peak <= -1 dBFS), ambiance -20 LUFS, sfx loudest 400 ms at -16 dBFS RMS with peaks <= -1 dBFS. volume_db is the suggested mix offset on top, so the mix lives here, not in the files.",
+ "_loops": "Loops have loop=true in their .import (Godot AudioStreamMP3). Music loops are Ludo's loop-adjusted tracks played end to end; ambiance loops are equal-power circular crossfades of 2 takes (17.0 s).",
+ "_fields": "file (relative to base), bus, volume_db, when (the game event that plays it), loop, fade_in_s/fade_out_s (suggested), max_polyphony (voices of this event at once), cooldown_ms (minimum gap between plays), pitch_jitter (+/- fraction for pitch_scale; take the offset from the event index, e.g. a hash of it, never from an RNG: M3's battle screen bans random calls in ui/battle_*.gd).",
+ "events": {
+  "music_title": {
+   "file": "music/title.mp3",
+   "bus": "Music",
+   "volume_db": -6,
+   "when": "title screen and new-game setup; loops",
+   "loop": true,
+   "fade_in_s": 1.5,
+   "fade_out_s": 1.0
+  },
+  "music_map": {
+   "file": "music/map.mp3",
+   "bus": "Music",
+   "volume_db": -8,
+   "when": "the map while players plan their orders; loops",
+   "loop": true,
+   "fade_in_s": 2.0,
+   "fade_out_s": 1.5
+  },
+  "music_battle": {
+   "file": "music/battle.mp3",
+   "bus": "Music",
+   "volume_db": -7,
+   "when": "while a battle plays back; loops; duck music_map under it",
+   "loop": true,
+   "fade_in_s": 0.5,
+   "fade_out_s": 1.0
+  },
+  "sting_victory": {
+   "file": "music/victory.mp3",
+   "bus": "Music",
+   "volume_db": -4,
+   "when": "a won battle's result card, and the game-won screen",
+   "loop": false
+  },
+  "sting_defeat": {
+   "file": "music/defeat.mp3",
+   "bus": "Music",
+   "volume_db": -4,
+   "when": "a lost battle's result card, and the game-lost screen",
+   "loop": false
+  },
+  "amb_map": {
+   "file": "ambiance/map.mp3",
+   "bus": "Ambiance",
+   "volume_db": -12,
+   "when": "under the map at all times (wind, leaves, birdsong); loops",
+   "loop": true,
+   "fade_in_s": 2.0
+  },
+  "amb_battle": {
+   "file": "ambiance/battle.mp3",
+   "bus": "Ambiance",
+   "volume_db": -8,
+   "when": "under a battle playback (wind, banners, distant armies); loops (file sits at -22.7 LUFS, 2.7 dB under the other bed: its transients hit the peak ceiling)",
+   "loop": true,
+   "fade_in_s": 1.0
+  },
+  "ui_click": {
+   "file": "sfx/ui_click.wav",
+   "bus": "SFX",
+   "volume_db": -12,
+   "when": "any button press",
+   "pitch_jitter": 0.04
+  },
+  "ui_hover": {
+   "file": "sfx/ui_hover.wav",
+   "bus": "SFX",
+   "volume_db": -20,
+   "when": "pointer enters a button or a hoverable row",
+   "cooldown_ms": 60,
+   "pitch_jitter": 0.06
+  },
+  "order_queued": {
+   "file": "sfx/order_queued.wav",
+   "bus": "SFX",
+   "volume_db": -10,
+   "when": "an order is added (move, recruit, research)"
+  },
+  "order_cancelled": {
+   "file": "sfx/order_cancelled.wav",
+   "bus": "SFX",
+   "volume_db": -10,
+   "when": "an order is removed or undone"
+  },
+  "end_turn": {
+   "file": "sfx/end_turn.wav",
+   "bus": "SFX",
+   "volume_db": -8,
+   "when": "the player commits their orders (End turn)"
+  },
+  "turn_start": {
+   "file": "sfx/turn_start.wav",
+   "bus": "SFX",
+   "volume_db": -8,
+   "when": "a new turn starts, and the hotseat handoff screen"
+  },
+  "recruit": {
+   "file": "sfx/recruit.wav",
+   "bus": "SFX",
+   "volume_db": -9,
+   "when": "a unit or commander is recruited (on queue, or when it appears in the turn report)"
+  },
+  "march": {
+   "file": "sfx/march.wav",
+   "bus": "SFX",
+   "volume_db": -11,
+   "when": "an army is given a move order, or starts to move in the turn report"
+  },
+  "battle_hit": {
+   "file": "sfx/battle_hit.wav",
+   "bus": "SFX",
+   "volume_db": -11,
+   "when": "a melee attack hits (at impact)",
+   "max_polyphony": 6,
+   "pitch_jitter": 0.08
+  },
+  "battle_clash": {
+   "file": "sfx/battle_clash.wav",
+   "bus": "SFX",
+   "volume_db": -13,
+   "when": "a melee attack is blocked or both fronts collide; alternate with battle_hit",
+   "max_polyphony": 4,
+   "pitch_jitter": 0.08
+  },
+  "battle_miss": {
+   "file": "sfx/battle_miss.wav",
+   "bus": "SFX",
+   "volume_db": -14,
+   "when": "an attack misses (at impact time)",
+   "max_polyphony": 4,
+   "pitch_jitter": 0.1
+  },
+  "battle_bolt": {
+   "file": "sfx/battle_bolt.wav",
+   "bus": "SFX",
+   "volume_db": -12,
+   "when": "a Volley unit (Crossbowmen) shoots",
+   "max_polyphony": 4,
+   "pitch_jitter": 0.06
+  },
+  "battle_javelin": {
+   "file": "sfx/battle_javelin.wav",
+   "bus": "SFX",
+   "volume_db": -12,
+   "when": "a Skirmish unit (Fangthrowers) throws",
+   "max_polyphony": 4,
+   "pitch_jitter": 0.06
+  },
+  "battle_arcane": {
+   "file": "sfx/battle_arcane.wav",
+   "bus": "SFX",
+   "volume_db": -11,
+   "when": "the Ever-Regent's attack (his arcane bolt)"
+  },
+  "battle_charge": {
+   "file": "sfx/battle_charge.wav",
+   "bus": "SFX",
+   "volume_db": -8,
+   "when": "Knights charge (first round)"
+  },
+  "unit_fall": {
+   "file": "sfx/unit_fall.wav",
+   "bus": "SFX",
+   "volume_db": -10,
+   "when": "a fighter dies",
+   "max_polyphony": 4,
+   "pitch_jitter": 0.06
+  },
+  "rout_horn": {
+   "file": "sfx/rout_horn.wav",
+   "bus": "SFX",
+   "volume_db": -6,
+   "when": "a side breaks and routs"
+  },
+  "capital_captured": {
+   "file": "sfx/capital_captured.wav",
+   "bus": "SFX",
+   "volume_db": -4,
+   "when": "a capital changes hands (turn report)"
+  },
+  "ruler_death": {
+   "file": "sfx/ruler_death.wav",
+   "bus": "SFX",
+   "volume_db": -4,
+   "when": "a ruler dies (battle or turn report)"
+  },
+  "succession_crown": {
+   "file": "sfx/succession_crown.wav",
+   "bus": "SFX",
+   "volume_db": -6,
+   "when": "an heir is crowned or a ruler returns (succession)"
+  },
+  "sacrifice": {
+   "file": "sfx/sacrifice.wav",
+   "bus": "SFX",
+   "volume_db": -6,
+   "when": "the ruler sacrifices power for a new mandate"
+  },
+  "research_complete": {
+   "file": "sfx/research_complete.wav",
+   "bus": "SFX",
+   "volume_db": -8,
+   "when": "a research node completes (for M4)"
+  }
+ }
+}
