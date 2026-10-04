@@ -408,6 +408,43 @@ static func palisade(radius: float) -> ArrayMesh:
 	return b.mesh()
 
 
+## A war camp's tent (design/3D_DIRECTION.md 6.3), door on -Z: "kingdom" a linen ridge tent with royal
+## trim, "beasts" a hide cone on bone poles. Its pennant is a team part (the owner's colour).
+static func tent(style: String = "kingdom") -> ArrayMesh:
+	var b := Builder.new()
+	if style == "beasts":
+		b.cyl(3.6, 3.8, 0.25, Vector3(0, 0.12, 0), Color("#8A6A44"), 12)
+		b.cyl(0.25, 3.4, 5.4, Vector3(0, 2.95, 0), FUR, 9)
+		b.cyl(0.0, 0.5, 0.9, Vector3(0, 5.9, 0), FUR_DK, 7)
+		for k in 4:
+			var a: float = TAU * (k + 0.5) / 4.0
+			b.cyl(0.08, 0.1, 2.2, Vector3(cos(a) * 0.35, 6.4, sin(a) * 0.35), BONE, 4, Basis(Vector3(sin(a), 0, -cos(a)).normalized(), 0.35))
+		b.box(Vector3(1.4, 2.2, 0.3), Vector3(0, 1.1, -2.6), DOOR, Basis(Vector3.RIGHT, -0.5))
+		b.box(Vector3(0.12, 0.9, 1.3), Vector3(0, 7.4, -0.65), TEAM, Basis(), true)
+		b.box(Vector3(0.2, 0.25, 2.6), Vector3(0, 3.0, -2.7), CRIMSON, Basis(Vector3.RIGHT, 0.55))
+	else:
+		b.box(Vector3(6.6, 0.2, 7.4), Vector3(0, 0.1, 0), Color("#B9A27A"))
+		b.prism(Vector3(5.8, 3.8, 6.6), Vector3(0, 2.1, 0), LINEN)
+		b.prism(Vector3(5.9, 0.5, 6.7), Vector3(0, 0.45, 0), ROYAL)
+		b.box(Vector3(1.4, 2.0, 0.12), Vector3(0, 1.0, -3.32), DOOR)
+		b.cyl(0.08, 0.08, 2.2, Vector3(0, 5.0, -3.0), WOOD, 5)
+		b.box(Vector3(0.08, 0.7, 1.2), Vector3(0, 5.7, -2.4), TEAM, Basis(), true)
+	return b.mesh()
+
+
+## A camp fire: a ring of stones, crossed logs and a flame (its smoke is world_view.gd's).
+static func campfire() -> ArrayMesh:
+	var b := Builder.new()
+	for k in 7:
+		var a: float = TAU * k / 7.0
+		b.ball(0.32, Vector3(cos(a) * 1.05, 0.18, sin(a) * 1.05), STONE, Vector3(1.0, 0.7, 1.0), 6)
+	b.box(Vector3(2.0, 0.3, 0.32), Vector3(0, 0.3, 0), WOOD, Basis(Vector3.UP, 0.5))
+	b.box(Vector3(2.0, 0.3, 0.32), Vector3(0, 0.4, 0), WOOD, Basis(Vector3.UP, -0.7))
+	b.cyl(0.0, 0.62, 1.5, Vector3(0, 1.05, 0), Color("#F2862E"), 7)
+	b.cyl(0.0, 0.34, 1.0, Vector3(0, 0.95, 0), Color("#FFD35A"), 6)
+	return b.mesh()
+
+
 static func cottage(variant: int) -> ArrayMesh:
 	var b := Builder.new()
 	var walls: Color = [Color("#EFE3C8"), Color("#E3D2AE"), Color("#D9C7A5")][variant % 3]
@@ -522,8 +559,9 @@ static func formation_depth(slots: Array) -> float:
 ## 0 front / 1 second (Volley), "sp": Vector2 spacing}]), front rank first, packed into rows no wider
 ## than `max_w`. `leaders` ([{"type", "role": "commander" or "ruler", "rank", "sp"}]) stand with their
 ## rank: a front-rank ruler leads from the front, a commander (rank 2) stands at the back with the
-## banner bearer, who carries the army's banner in every army. Returns [{"type", "pos", "role"}].
-static func formation_blocks(blocks: Array, leaders: Array, max_w: float) -> Array:
+## banner bearer, who carries the army's banner in every army, and the army's other `extras` (M3a.2:
+## its musician). Returns [{"type", "pos", "role"}].
+static func formation_blocks(blocks: Array, leaders: Array, max_w: float, extras: Array = ["bearer"]) -> Array:
 	var out: Array = []
 	var z := 0.0
 	var gap := 2.0
@@ -543,7 +581,8 @@ static func formation_blocks(blocks: Array, leaders: Array, max_w: float) -> Arr
 			for ld in leaders:
 				if int(ld.get("rank", 2)) >= 2:
 					row_items.append({"type": ld["type"], "n": 1, "cols": 1, "sp": ld["sp"], "role": ld["role"]})
-			row_items.append({"type": "bearer", "n": 1, "cols": 1, "sp": SPACING["bearer"], "role": "bearer"})
+			for ex in extras:
+				row_items.append({"type": ex, "n": 1, "cols": 1, "sp": SPACING["bearer"], "role": ex})
 		if row_items.is_empty():
 			continue
 		## pack this rank's blocks into lines no wider than max_w

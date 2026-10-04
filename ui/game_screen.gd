@@ -76,6 +76,8 @@ extends Control
 ## turn resolves, its moves, battles and captures play out on the board (from the start-of-turn state
 ## and the report's events) before the turn report opens. The board stops rendering while the handoff
 ## cover or a modal overlay covers it. use_board("3d" / "2d") switches it (tests and tools).
+## M3a.2: the turn's start is kept with its report (_replay), so every hotseat seat sees the playback
+## behind its own handoff, and the report's "Watch this turn again" (watch_turn_again) plays it once more.
 
 const SCENE := "res://ui/game_screen.tscn"
 const CODEX_SCENE := "res://ui/codex_panel.tscn"
@@ -133,6 +135,7 @@ var _battle_audio := false  # the battle report viewer's music is on
 var _bound := false
 var _turn_before: GameState = null  # M3a.1: the start-of-turn state of the turn being resolved, for its playback
 var _played_for := {}  # M3a.1: faction id -> the report turn already played out on the board for them
+var _replay := {}  # M3a.2: {"turn", "before"}: the last resolved turn's start, for every seat's playback and "Watch this turn again"
 
 
 func _ready() -> void:
@@ -353,6 +356,8 @@ func open_turn_report() -> void:
 		return
 	# The computer's notes are those of the turn the report shows, which has resolved (AISeat.report_notes).
 	report_panel.show_report(session, computer.report_notes(session) if computer else [])
+	_keep_replay()
+	report_panel.set_watch_again(can_watch_again())
 	_report_seen = maxi(_report_seen, session.turn_report().turn)
 	_raise(report_overlay)
 
@@ -1095,6 +1100,7 @@ func _report_overlay() -> Control:
 	report_panel.province_focus_requested.connect(_on_report_focus)
 	report_panel.battle_report_requested.connect(func(e: Dictionary): _show_battle_report(e))
 	report_panel.codex_requested.connect(open_codex)
+	report_panel.watch_again_requested.connect(func(): watch_turn_again())
 	box.add_child(report_panel)
 	var footer := PanelContainer.new()
 	footer.name = "Footer"
@@ -1223,13 +1229,45 @@ func _board_covered() -> bool:
 ## If the turn just resolved hasn't been played out for `faction_id` yet, plays it on the 3D board: from
 ## the start-of-turn state, through the report's events, to the state the map now shows. True if it plays.
 func _play_on_board(faction_id: String) -> bool:
-	if map.board == null or session == null or _turn_before == null:
+	_keep_replay()
+	if map.board == null or session == null or not can_watch_again():
 		return false
 	var report := session.turn_report()
-	if report.turn == 0 or _turn_before.current_turn != report.turn - 1 or int(_played_for.get(faction_id, 0)) == report.turn:
+	if int(_played_for.get(faction_id, 0)) == report.turn:
 		return false
 	_played_for[faction_id] = report.turn
-	return map.board.play_turn(_turn_before, report.events, map.state)
+	return map.board.play_turn(_replay["before"], report.events, map.state)
+
+
+## M3a.2: keeps the start-of-turn state of the turn the report describes, the first time it is seen
+## after resolving (before a later End turn moves _turn_before on), for every seat's playback and replays.
+func _keep_replay() -> void:
+	if session == null or _turn_before == null:
+		return
+	var report := session.turn_report()
+	if report.turn > 0 and int(_replay.get("turn", 0)) != report.turn and _turn_before.current_turn == report.turn - 1:
+		_replay = {"turn": report.turn, "before": _turn_before}
+
+
+## True when the last resolved turn can be played on the 3D board (its start is kept).
+func can_watch_again() -> bool:
+	return map != null and map.board != null and session != null and session.turn_report().turn > 0 \
+		and int(_replay.get("turn", 0)) == session.turn_report().turn
+
+
+## "Watch this turn again" (the turn report's button): closes the report, plays the turn on the board
+## once more from its start, and opens the report again when it ends. Returns false when it can't.
+func watch_turn_again() -> bool:
+	if not can_watch_again():
+		return false
+	close_turn_report()
+	if not map.board.play_turn(_replay["before"], session.turn_report().events, map.state):
+		open_turn_report()
+		return false
+	map.board.playback_finished.connect(func():
+		if session != null and session.turn_report().turn > 0:
+			open_turn_report(), CONNECT_ONE_SHOT)
+	return true
 
 
 ## Opens the turn report (with its headline cues after `cue_delay` seconds), after the board's playback

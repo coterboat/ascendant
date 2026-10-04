@@ -10,8 +10,15 @@ extends Control
 ## The view owns the card: it sets the live numbers from the BattlePlayer's state (sync()), starts the
 ## motions (lunge, hit, die, rout, fade, deploy) and calls animate(dt) with playback seconds while one runs.
 ## With reduced_motion the card never moves: no lunge, no shake, no tip, no slide (§7.4).
+## A left click emits `clicked` (M3-4: the view selects the fighter and pins it in the why panel); a
+## selected card keeps the white outline.
+##
+## Its pieces are drawn by static functions (draw_frame, draw_ground, draw_hp_bar, draw_standard,
+## draw_plate, draw_glyph, hatch) so the legend (BattleLegend, M3-4) draws every row with the field's own
+## code.
 
 signal codex_requested(key: String)
+signal clicked(fid: int)
 
 const LUNGE_OUT := 0.12
 const LUNGE_BACK := 0.18
@@ -288,6 +295,12 @@ func _gui_input(event: InputEvent) -> void:
 		if is_inside_tree():
 			accept_event()
 		codex_requested.emit(codex_key)
+		return
+	var mb := event as InputEventMouseButton
+	if mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+		if is_inside_tree():
+			accept_event()
+		clicked.emit(fid)
 
 
 # --- drawing --------------------------------------------------------------------------------------
@@ -298,28 +311,16 @@ func _draw() -> void:
 	var commander: bool = fighter.get("role", "") == "commander"
 	# The ground ellipse at its feet (hidden in a crowd, where the next row stands on it).
 	if not bar_on_top and alive:
-		var c := Vector2(r.size.x / 2.0, r.size.y)
-		var rad := Vector2(r.size.x * 0.58, maxf(4.0, 7.0 * s))
-		_ellipse(c, rad + Vector2(1.5, 1.5), UiPalette.KEYLINE_INK, 1.5)
-		_ellipse(c, rad, color, 2.0)
-		if ruler:
-			_ellipse(c, rad + Vector2(4, 3), UiPalette.GILT, 1.5)
+		draw_ground(self, Vector2(r.size.x / 2.0, r.size.y), Vector2(r.size.x * 0.58, maxf(4.0, 7.0 * s)), color, ruler)
 	# Drawn in an order that keeps a card to a few batches: the portrait, then every plain rect (tint, frame,
 	# keylines, hp bar), then the baked emblem, then the few polygons (glyphs, a commander's standard).
 	var inner := r.grow(-3.0)
 	_draw_portrait(inner)
-	if ruler:
-		draw_rect(r.grow(3.0), UiPalette.KEYLINE_INK, false, 1.0)
-		draw_rect(r.grow(1.5), UiPalette.GILT, false, 2.0)
 	if _tint > 0.0:
 		draw_rect(inner, Color(UiPalette.NEGATIVE, _tint))
-	draw_rect(r.grow(-1.5), color, false, 3.0)
-	draw_rect(r.grow(-0.5), UiPalette.KEYLINE_INK, false, 1.0)
-	draw_rect(r.grow(-3.5), UiPalette.GILT if commander else UiPalette.KEYLINE_INK, false, 1.0)
-	if hovered or selected:
-		draw_rect(r.grow(2.0), UiPalette.SELECTION, false, 2.0)
+	draw_frame(self, r, color, ruler, commander, hovered or selected)
 	if alive:
-		_draw_hp_bar(r)
+		draw_hp_bar(self, _hp_bar_rect(r), hp, max_hp, pending)
 	var er := clampf(7.0 * s, 5.0, 8.0)
 	var ec := Vector2(er + 4.0, er + 4.0 + (bar_h + 2.0 if bar_on_top else 0.0))
 	var scale_px := er / EMBLEM_R
@@ -333,9 +334,36 @@ func _draw() -> void:
 		if gx < gs:
 			break
 	if commander:
-		_draw_standard(Vector2(5.0, r.size.y - 5.0), clampf(14.0 * s, 9.0, 14.0))
+		draw_standard(self, Vector2(5.0, r.size.y - 5.0), clampf(14.0 * s, 9.0, 14.0))
 	if ruler:
-		_draw_plate(r)
+		draw_plate(self, get_theme_default_font(), r, "%s · %d/%d" % [String(fighter.name), hp, max_hp], s, bar_on_top, bar_h)
+
+
+## The card's frame: the seat-colour border with ink keylines (gilt inside for a commander), the ruler's
+## outer gilt ring, and the white outline of a hovered or selected card.
+static func draw_frame(ci: CanvasItem, r: Rect2, col: Color, ruler: bool, commander: bool, highlight: bool) -> void:
+	if ruler:
+		ci.draw_rect(r.grow(3.0), UiPalette.KEYLINE_INK, false, 1.0)
+		ci.draw_rect(r.grow(1.5), UiPalette.GILT, false, 2.0)
+	ci.draw_rect(r.grow(-1.5), col, false, 3.0)
+	ci.draw_rect(r.grow(-0.5), UiPalette.KEYLINE_INK, false, 1.0)
+	ci.draw_rect(r.grow(-3.5), UiPalette.GILT if commander else UiPalette.KEYLINE_INK, false, 1.0)
+	if highlight:
+		ci.draw_rect(r.grow(2.0), UiPalette.SELECTION, false, 2.0)
+
+
+## The keylined ground ellipse in the seat's colour under a figure, with the second gilt ring for a ruler.
+static func draw_ground(ci: CanvasItem, c: Vector2, rad: Vector2, col: Color, ruler: bool) -> void:
+	_ellipse(ci, c, rad + Vector2(1.5, 1.5), UiPalette.KEYLINE_INK, 1.5)
+	_ellipse(ci, c, rad, col, 2.0)
+	if ruler:
+		_ellipse(ci, c, rad + Vector2(4, 3), UiPalette.GILT, 1.5)
+
+
+func _hp_bar_rect(r: Rect2) -> Rect2:
+	if bar_on_top:
+		return Rect2(4.0, 4.0, r.size.x - 8.0, bar_h)
+	return Rect2(0.0, r.size.y + 3.0, r.size.x, bar_h)
 
 
 ## Seat `seat`'s emblem (SeatEmblem's TOKEN look: the seat colour, an ink keyline and a light halo) baked
@@ -401,49 +429,48 @@ func _draw_portrait(r: Rect2) -> void:
 		draw_texture_rect_region(texture, r, src)
 
 
-func _draw_hp_bar(r: Rect2) -> void:
-	var bar := Rect2(0.0, r.size.y + 3.0, r.size.x, bar_h)
-	if bar_on_top:
-		bar = Rect2(4.0, 4.0, r.size.x - 8.0, bar_h)
-	draw_rect(bar.grow(1.0), UiPalette.KEYLINE_INK)
-	draw_rect(bar, UiPalette.PANEL_BG)
-	var share := clampf(float(hp) / max_hp, 0.0, 1.0)
+## An hp bar in `bar`: ink keyline, the hp left in green, and the damage still to land this round as a
+## hatched red chunk at the fill's end (the pattern carries it as well as the colour, §7.4).
+static func draw_hp_bar(ci: CanvasItem, bar: Rect2, p_hp: int, p_max_hp: int, p_pending: int) -> void:
+	ci.draw_rect(bar.grow(1.0), UiPalette.KEYLINE_INK)
+	ci.draw_rect(bar, UiPalette.PANEL_BG)
+	var share := clampf(float(p_hp) / maxi(1, p_max_hp), 0.0, 1.0)
 	var fill := Rect2(bar.position, Vector2(bar.size.x * share, bar.size.y))
-	draw_rect(fill, UiPalette.POSITIVE)
-	if pending > 0 and hp > 0:
-		var p_share := clampf(float(mini(pending, hp)) / max_hp, 0.0, share)
+	ci.draw_rect(fill, UiPalette.POSITIVE)
+	if p_pending > 0 and p_hp > 0:
+		var p_share := clampf(float(mini(p_pending, p_hp)) / maxi(1, p_max_hp), 0.0, share)
 		var chunk := Rect2(bar.position.x + bar.size.x * (share - p_share), bar.position.y, bar.size.x * p_share, bar.size.y)
-		hatch(self, chunk, UiPalette.NEGATIVE)
+		hatch(ci, chunk, UiPalette.NEGATIVE)
 
 
-func _draw_plate(r: Rect2) -> void:
-	var font := get_theme_default_font()
-	var fs := int(clampf(13.0 * s, 12.0, 14.0))
-	var text := "%s · %d/%d" % [String(fighter.name), hp, max_hp]
+## A ruler's name plate ("King Corvane I · 18/18") centred near the bottom of card rect `r` (near the top
+## in a crowd).
+static func draw_plate(ci: CanvasItem, font: Font, r: Rect2, text: String, p_s: float, p_bar_on_top: bool, p_bar_h: float) -> void:
+	var fs := int(clampf(13.0 * p_s, 12.0, 14.0))
 	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 8.0
 	var h := fs + 4.0
-	var y := r.size.y - h - 4.0 if not bar_on_top else bar_h + 6.0
-	var box := Rect2((r.size.x - w) / 2.0, y, w, h)
-	draw_rect(box, Color(UiPalette.KEYLINE_INK, 0.85))
-	draw_rect(box, UiPalette.GILT, false, 1.0)
-	draw_string(font, Vector2(box.position.x + 4.0, box.end.y - 4.0 - fs * 0.08), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, UiPalette.TEXT_PRIMARY)
+	var y := r.position.y + (r.size.y - h - 4.0 if not p_bar_on_top else p_bar_h + 6.0)
+	var box := Rect2(r.position.x + (r.size.x - w) / 2.0, y, w, h)
+	ci.draw_rect(box, Color(UiPalette.KEYLINE_INK, 0.85))
+	ci.draw_rect(box, UiPalette.GILT, false, 1.0)
+	ci.draw_string(font, Vector2(box.position.x + 4.0, box.end.y - 4.0 - fs * 0.08), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, UiPalette.TEXT_PRIMARY)
 
 
-func _draw_standard(foot: Vector2, h: float) -> void:
-	# A commander's standard: a pole and a gilt pennant.
-	draw_line(foot, foot - Vector2(0, h), UiPalette.KEYLINE_INK, 2.0)
+## A commander's standard: a pole and a gilt pennant, standing on `foot`, `h` px tall.
+static func draw_standard(ci: CanvasItem, foot: Vector2, h: float) -> void:
+	ci.draw_line(foot, foot - Vector2(0, h), UiPalette.KEYLINE_INK, 2.0)
 	var top := foot - Vector2(0, h)
 	var flag := PackedVector2Array([top, top + Vector2(h * 0.7, h * 0.18), top + Vector2(0, h * 0.42)])
-	draw_colored_polygon(flag, UiPalette.GILT)
-	draw_polyline(PackedVector2Array([flag[0], flag[1], flag[2], flag[0]]), UiPalette.KEYLINE_INK, 1.0)
+	ci.draw_colored_polygon(flag, UiPalette.GILT)
+	ci.draw_polyline(PackedVector2Array([flag[0], flag[1], flag[2], flag[0]]), UiPalette.KEYLINE_INK, 1.0)
 
 
-func _ellipse(c: Vector2, rad: Vector2, col: Color, width: float) -> void:
+static func _ellipse(ci: CanvasItem, c: Vector2, rad: Vector2, col: Color, width: float) -> void:
 	var pts := PackedVector2Array()
 	for k in 25:
 		var a := TAU * k / 24.0
 		pts.append(c + Vector2(cos(a) * rad.x, sin(a) * rad.y))
-	draw_polyline(pts, col, width, true)
+	ci.draw_polyline(pts, col, width, true)
 
 
 ## Diagonal hatching in `col` over `r` (pending damage: the pattern carries it as well as the colour).

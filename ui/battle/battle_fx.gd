@@ -7,8 +7,12 @@ extends RefCounted
 ## clock, so 4x can't make the screen flash or jitter faster.
 ##
 ##   BattleFx.settings(path = "")   the [battle] section of the settings file: {"reduced_motion" (false),
-##                                  "screen_shake" (true), "speed" (1)}. A missing or broken file, or a value
-##                                  this game doesn't know, gives the defaults, with no error (§6).
+##                                  "screen_shake" (true), "speed" (1), "why_panel_open" (true),
+##                                  "legend_open" (false), "first_hint_seen" (false)}. A missing or broken file,
+##                                  or a value this game doesn't know, gives the defaults, with no error (§6).
+##   BattleFx.save_settings(changes, path = "")   writes those keys into [battle], keeping every other key
+##                                  and section of the file (M3-4: the last speed, the why panel and legend
+##                                  toggles, the first-visit hint). Returns "" or why it could not be saved.
 ##   BattleFx.FlashLimiter          at most MAX_FLASHES bright-frame starts per rolling FLASH_WINDOW (§7.4,
 ##                                  WCAG 2.3.1); an impact over the limit plays without its bright frames
 ##   BattleFx.ShakeLimiter          at least SHAKE_SPACING between shakes; one that comes too soon is dropped
@@ -38,7 +42,10 @@ const SOUND_SPACING := {"battle_hit": 0.06, "battle_clash": 0.06, "battle_miss":
 ## any hit Iron Hide or Shield Wall took some of (audio.json: "alternate with battle_hit").
 const CLASH_EVERY := 3
 const SECTION := "battle"
-const DEFAULTS := {"reduced_motion": false, "screen_shake": true, "speed": 1}
+const DEFAULTS := {"reduced_motion": false, "screen_shake": true, "speed": 1, "why_panel_open": true, "legend_open": false,
+	"first_hint_seen": false}
+## The settings that are true or false (every key of DEFAULTS but the speed).
+const _BOOLS := ["reduced_motion", "screen_shake", "why_panel_open", "legend_open", "first_hint_seen"]
 
 
 ## The battle settings from the game's settings file (GameSettings.default_path unless `path` is given).
@@ -48,16 +55,38 @@ static func settings(path: String = "") -> Dictionary:
 	var cfg := ConfigFile.new()
 	if not FileAccess.file_exists(file) or cfg.load(file) != OK:
 		return out
-	var rm = cfg.get_value(SECTION, "reduced_motion", false)
-	if rm is bool:
-		out.reduced_motion = rm
-	var shake = cfg.get_value(SECTION, "screen_shake", true)
-	if shake is bool:
-		out.screen_shake = shake
+	for key in _BOOLS:
+		var v = cfg.get_value(SECTION, key, DEFAULTS[key])
+		if v is bool:
+			out[key] = v
 	var sp = cfg.get_value(SECTION, "speed", 1)
 	if (sp is int or sp is float) and BattlePlayer.SPEEDS.has(int(sp)):
 		out.speed = int(sp)
 	return out
+
+
+## Writes `changes` (keys of DEFAULTS; anything else, or a value of the wrong kind, is ignored) into the
+## [battle] section of the settings file, keeping the rest of the file as it was. Returns "" or why not.
+static func save_settings(changes: Dictionary, path: String = "") -> String:
+	var file := path if not path.is_empty() else GameSettings.default_path
+	var cfg := ConfigFile.new()
+	if FileAccess.file_exists(file):
+		cfg.load(file)  # a broken file is simply rewritten
+	var wrote := false
+	for key in changes:
+		var v = changes[key]
+		if _BOOLS.has(key) and v is bool:
+			cfg.set_value(SECTION, key, v)
+			wrote = true
+		elif key == "speed" and (v is int or v is float) and BattlePlayer.SPEEDS.has(int(v)):
+			cfg.set_value(SECTION, key, int(v))
+			wrote = true
+	if not wrote:
+		return ""
+	var folder := file.get_base_dir()
+	if not folder.is_empty() and not DirAccess.dir_exists_absolute(folder):
+		DirAccess.make_dir_recursive_absolute(folder)
+	return "" if cfg.save(file) == OK else "Your battle settings could not be saved."
 
 
 ## The sound cue for beat `b` (a BattlePlayer beat), or "" for none. Deterministic: the same beat always

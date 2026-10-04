@@ -83,6 +83,9 @@ static func load_from(file_path: String = "") -> GameSettings:
 ## Writes the settings to their file. Returns "" or why they could not be saved.
 func save() -> String:
 	var cfg := ConfigFile.new()
+	# Keep the file's other sections (the battle screen's [battle] settings, M3-4); a broken file is rewritten.
+	if FileAccess.file_exists(path):
+		cfg.load(path)
 	cfg.set_value(SECTION, "window_mode", window_mode)
 	cfg.set_value(SECTION, "ui_scale", ui_scale)
 	cfg.set_value(SECTION, "auto_watch_battles", auto_watch_battles)
