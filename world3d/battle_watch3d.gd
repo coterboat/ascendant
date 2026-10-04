@@ -6,9 +6,11 @@ extends Control
 ##   godot --path . -- --battle3d --fixture biggest           (world3d/launch.gd opens this scene)
 ##   godot --path . res://world3d/battle_watch3d.tscn -- --fixture king_falls_wins
 ##   options: --fixture NAME (a file in tests/fixtures/battles, or path_wings / path_iron_hide /
-##            path_lifedrinker / path_red_harvest, fought on the spot by the tests' path fixtures; default
-##            starting_plains), --speed 1|2|4, --paused, --reduced-motion, --quit-at-end (prints the frame
-##            times, fps and draw calls, then quits)
+##            path_lifedrinker / path_red_harvest / massive (322 fighters: M3's files), fought on the spot by
+##            the tests' fixtures; default starting_plains), --speed 1|2|4, --paused, --reduced-motion,
+##            --quit-at-end (prints the frame times, fps and draw calls, then quits), --rung N (a fixed
+##            quality rung, the automatic ladder off: the min-spec measurement, world3d/README.md),
+##            --window WxH (the window's size, e.g. 1920x1080)
 ##
 ## In code: watch(source, seats = [], report = {}) -> "" or why it can't be watched. `source` is a battle
 ## event (numbers.log + numbers.report), a fixture-style {"log", "report"}, or a bare log.
@@ -53,6 +55,7 @@ func _ready() -> void:
 	var fixture := DEFAULT_FIXTURE
 	var speed := 0
 	var paused := false
+	var rung := -1
 	for k in args.size():
 		var a := String(args[k])
 		if a == "--fixture" and k + 1 < args.size():
@@ -69,12 +72,24 @@ func _ready() -> void:
 			stage.reduced_motion = true
 		elif a == "--quit-at-end":
 			quit_at_end = true
+		elif a == "--rung" and k + 1 < args.size():
+			rung = int(args[k + 1])
+		elif a.begins_with("--rung="):
+			rung = int(a.trim_prefix("--rung="))
+		elif a.begins_with("--window="):
+			var wh := a.trim_prefix("--window=").split("x")
+			if wh.size() == 2 and DisplayServer.get_name() != "headless":
+				DisplayServer.window_set_size(Vector2i(int(wh[0]), int(wh[1])))
 	var fx := load_fixture(fixture)
 	if fx.is_empty():
 		push_warning("There is no battle fixture called %s." % fixture)
 		return
 	if not watch(fx).is_empty():
 		return
+	if rung >= 0:
+		## a fixed rung for a measurement: the automatic ladder stays off (world3d/README.md, min-spec)
+		stage.auto_quality = false
+		stage.set_quality(rung)
 	if speed > 0:
 		stage.player.set_speed(speed)
 	if not paused:
@@ -107,7 +122,7 @@ func watch(source: Dictionary, seats: Array = [], report: Dictionary = {}) -> St
 
 ## A stored battle fixture, or one of the tests' path battles, as {"log", "report"} ({} when unknown).
 static func load_fixture(fixture_name: String) -> Dictionary:
-	if fixture_name.begins_with("path_") and ResourceLoader.exists(PATH_FIXTURES):
+	if (fixture_name.begins_with("path_") or fixture_name == "massive") and ResourceLoader.exists(PATH_FIXTURES):
 		var fixtures: Script = load(PATH_FIXTURES)
 		return fixtures.call("battle", fixture_name)
 	return Watch.load_fixture(fixture_name)
@@ -137,6 +152,7 @@ func _report_and_quit(fixture: String) -> void:
 	dsorted.sort()
 	var dmax: int = dsorted[-1] if not dsorted.is_empty() else 0
 	var ps := stage.perf_stats()
-	print("watched %s in 3D: %d frames, %.1f fps, frame time p95 %.2f ms, max %.2f ms, draw calls max %d, %d figures in %d groups, rung %d" % [
-		fixture, _frames, 1000.0 / maxf(mean, 0.001), p95, mx, dmax, int(ps["figures"]), int(ps["groups"]), int(ps["rung"])])
+	print("watched %s in 3D: %d frames, %.1f fps, frame time p95 %.2f ms, max %.2f ms, draw calls max %d, %d figures in %d groups, rung %d, window %s, 3D at %s" % [
+		fixture, _frames, 1000.0 / maxf(mean, 0.001), p95, mx, dmax, int(ps["figures"]), int(ps["groups"]), int(ps["rung"]),
+		DisplayServer.window_get_size() if DisplayServer.get_name() != "headless" else Vector2i.ZERO, stage._view])
 	get_tree().create_timer(0.3).timeout.connect(func(): get_tree().quit())
