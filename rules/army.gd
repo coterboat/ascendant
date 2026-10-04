@@ -10,13 +10,11 @@ var units: Array[Unit] = []
 var commander: Unit = null
 var ruler: Unit = null  # the faction's living ruler (its type is the faction's ruler_unit_type), or null
 
-func get_description() -> String:
-	if ruler:
-		return "%s ruler %s at %s" % [owner, ruler.type.name, location]
-	var desc := "%s army at %s with %d units" % [owner, location, units.size()]
-	if commander:
-		desc += " led by %s" % commander.type.name
-	return desc
+## The army in one line for players, with its name for life and no ids (TurnReportText.describe_army): "the
+## Crown's 1st at Crownkeep: Spearmen, Crossbowmen, Knights and Knight Captain", or "King Corvane I, the Aurel
+## Crown ruler, at Crownkeep". Without `state`, faction and province names come from their data.
+func get_description(state: GameState = null) -> String:
+	return TurnReportText.describe_army(self, state)
 
 func to_dict() -> Dictionary:
 	var unit_dicts := []

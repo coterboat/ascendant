@@ -79,12 +79,14 @@ func _next_turn(game: GameScreen) -> void:
 
 func _assert_report_matches_session(game: GameScreen) -> void:
 	var report := game.session.turn_report()
-	var events: Array = report.events.filter(func(e): return e.type != "game_over")
+	# #55: the rows read as TurnReportText writes the session's events, in its display order.
+	var lines := TurnReportText.rows(report.events, game.session.state(), game.report_panel._viewer).filter(func(r): return r.event.type != "game_over")
 	var rows := game.report_panel.event_rows()
 	assert_eq(game.report_panel.header_label.text, report.header)
-	assert_eq(rows.size(), events.size(), "one report row per session event")
-	for i in mini(rows.size(), events.size()):
-		assert_eq(rows[i].text, events[i].text, "row %d is the session's event" % i)
+	assert_eq(rows.size(), lines.size(), "one report row per session event")
+	for i in mini(rows.size(), lines.size()):
+		assert_eq(rows[i].text, lines[i].text, "row %d is the session's event" % i)
+		assert_eq(rows[i].get_meta("event"), lines[i].event, "row %d carries its event" % i)
 
 
 func _visible_text(node: Node) -> String:

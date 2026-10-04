@@ -22,6 +22,11 @@ extends PanelContainer
 ## (BattleHost.watch_problem); the computer's battles are watchable like anyone's. The header gets **Watch
 ## your battles (N)** (watch_battles_requested(events)): the viewer's battles in report order, or "Watch
 ## the battles (N)" when nobody in particular reads the report (watch mode, game over).
+## #55: with the state after the turn (show_report always has it), the rows read as TurnReportText writes
+## them: armies by their names for life ("the Crown's 3rd"), battles by the units that fought and how each
+## side came out, captures by what became of the defenders, rejected orders by their result, and the moves
+## of the movement phase grouped by destination. A row naming armies says how they are named in its tooltip.
+## Without a state (show_report_data's default) the rows are the events' own text, in resolver order.
 
 signal province_focus_requested(province_id: String)
 signal battle_report_requested(event: Dictionary)
@@ -90,7 +95,8 @@ func show_report(session: GameSession, computer_notes: Array = []) -> void:
 	var viewer := ""
 	if session != null and session.phase() == GameSession.Phase.ORDERS and not session.is_computer(session.current_player()):
 		viewer = session.current_player()
-	show_report_data(session.turn_report() if session != null else {}, viewer, session != null)
+	show_report_data(session.turn_report() if session != null else {}, viewer, session != null,
+		session.state() if session != null else null)
 	if not viewer.is_empty():
 		show_needs_you(PathView.needs_you(session.state(), viewer))
 	_show_seats(session)
@@ -98,8 +104,9 @@ func show_report(session: GameSession, computer_notes: Array = []) -> void:
 
 
 ## Rebuilds the panel from a report dictionary shaped like GameSession.turn_report(). `rebuild` (M3-5): a
-## battle log that isn't kept can be rebuilt from the game record (show_report has the session).
-func show_report_data(report: Dictionary, viewer: String = "", rebuild: bool = false) -> void:
+## battle log that isn't kept can be rebuilt from the game record (show_report has the session). `state`
+## (#55): the state after the turn, which the rows' wording reads (TurnReportText.rows).
+func show_report_data(report: Dictionary, viewer: String = "", rebuild: bool = false, state: GameState = null) -> void:
 	_viewer = viewer
 	can_rebuild = rebuild
 	_clear_rows()
@@ -117,14 +124,15 @@ func show_report_data(report: Dictionary, viewer: String = "", rebuild: bool = f
 	victory_box.visible = not victory_texts.is_empty()
 
 	var current_phase := ""
-	for e in events:
+	for row in TurnReportText.rows(events, state, viewer):
+		var e: Dictionary = row.event
 		if _is_game_over(e):
 			continue
 		var phase := str(e.get("phase", ""))
 		if phase != current_phase:
 			current_phase = phase
 			rows_box.add_child(_phase_heading(phase))
-		rows_box.add_child(_event_row(e))
+		rows_box.add_child(_event_row(e, String(row.text), state != null))
 	_show_watch_battles(events)
 	visible = true
 
@@ -276,8 +284,9 @@ func _phase_heading(phase: String) -> Label:
 	return l
 
 
-## One event: [the event text button, its "Battle report" button] in an inner box, then the "?".
-func _event_row(e: Dictionary) -> HBoxContainer:
+## One event: [the event text button, its "Battle report" button] in an inner box, then the "?". `text` is
+## its line (TurnReportText); `named` says the line calls armies by their names.
+func _event_row(e: Dictionary, text: String, named: bool = false) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	var content := HBoxContainer.new()
@@ -293,13 +302,15 @@ func _event_row(e: Dictionary) -> HBoxContainer:
 		row.move_child(card, 0)
 
 	var b := Button.new()
-	b.text = event_text(e, _viewer)
+	b.text = text
 	b.flat = true
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.add_theme_font_size_override("font_size", 18)
 	var tip := RulesCodex.text(str(e.get("codex", "")))
+	if named and TurnReportText.NAMES_ARMIES.has(str(e.get("type", ""))):
+		tip = ("%s\n\n" % tip if not tip.is_empty() else "") + TurnReportText.NAMES_HINT
 	if not provinces.is_empty():
 		tip = ("%s\n\n" % tip if not tip.is_empty() else "") + "Click to show this on the map."
 	b.tooltip_text = tip
@@ -326,13 +337,9 @@ func _event_row(e: Dictionary) -> HBoxContainer:
 
 ## The text of event `e` as `viewer` reads it (M4-4): a faction's own transformation speaks to it ("Your
 ## people have become the Celestial Host. ...", the event's numbers.own_text); everything else as it is.
+## The rows read TurnReportText's lines, which use this for the events whose own text they keep.
 static func event_text(e: Dictionary, viewer: String = "") -> String:
-	var factions: Array = e.get("factions", [])
-	if str(e.get("type", "")) == "transformed" and not viewer.is_empty() and not factions.is_empty() and str(factions[0]) == viewer:
-		var own := str(e.get("numbers", {}).get("own_text", ""))
-		if not own.is_empty():
-			return own
-	return str(e.get("text", ""))
+	return TurnReportText.own_text(e, viewer)
 
 
 ## The "needs you" line (M4-4, design/M4_ASCENSION.md §9.5) at the top of the report: nothing is being
