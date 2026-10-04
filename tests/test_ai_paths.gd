@@ -440,6 +440,9 @@ func test_notes_never_name_the_research_target_before_it_is_done_and_show_no_ids
 						seen.research += 1
 					if text.begins_with("We swore"):
 						seen.oath += 1
+						# Plain words for the fork's roll (#55, #94): no "seeded".
+						assert_false(text.contains("seeded"), text)
+						assert_true(text.contains("we picked our side of the fork by a roll"), text)
 					if text.begins_with("We became"):
 						seen.became += 1
 		var session := _session(players, fid)

@@ -231,6 +231,8 @@ func test_in_a_standoff_the_garrison_hunts_the_army_that_pins_it() -> void:
 	var said: Array = p.notes.filter(func(n): return n.contains("stand-off"))
 	assert_eq(said.size(), 1, "one plain note says it: %s" % str(p.notes))
 	assert_true(said[0].contains("Crownkeep") and said[0].contains("Deepwood"), said[0])
+	# It names the armies as the turn report does (#55): ours marching out, and the one it hunts.
+	assert_true(said[0].contains(TurnReportText.army_name(s, "kingdom-1")) and said[0].contains(TurnReportText.army_name(s, "beasts-1")), said[0])
 	assert_false(" ".join(p.notes).contains("Keeping the garrison"), str(p.notes))
 	var ids := _ids(s)
 	for n in p.notes:
@@ -351,7 +353,7 @@ func test_in_a_standoff_the_main_army_besieges_the_enemy_capital() -> void:
 	var p := _plan(s, "kingdom")
 	assert_eq(p.moves.get("kingdom-1", ""), "ebonpeak", "stand-off: it camps next to Fangridge (%s)" % str(p.notes))
 	assert_eq(int(p.stats.get("sieges", 0)), 1)
-	assert_true(p.notes.any(func(n): return n.contains("stand-off") and n.contains("Fangridge")), str(p.notes))
+	assert_true(p.notes.any(func(n): return n.contains("stand-off") and n.contains("Fangridge") and n.contains(TurnReportText.army_name(s, "kingdom-1"))), str(p.notes))
 
 
 # --- raid: the weaker side takes what is left unguarded ---------------------------------------------
@@ -378,7 +380,7 @@ func test_in_a_standoff_the_weaker_side_raids_an_unguarded_province() -> void:
 	var p := _plan(s, "kingdom")
 	assert_eq(p.moves.get("kingdom-1", ""), "thornvale", "stand-off: it heads for Wildmoor through Thornvale (%s %s)" % [p.moves, p.notes])
 	assert_eq(int(p.stats.get("raids", 0)), 1)
-	assert_true(p.notes.any(func(n): return n.contains("stand-off") and n.contains("Wildmoor")), str(p.notes))
+	assert_true(p.notes.any(func(n): return n.contains("stand-off") and n.contains("Wildmoor") and n.contains(TurnReportText.army_name(s, "kingdom-1"))), str(p.notes))
 
 
 # --- whole games -------------------------------------------------------------------------------------

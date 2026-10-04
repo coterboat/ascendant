@@ -651,8 +651,9 @@ func _size_garrison(cap: Province, home: Array) -> void:
 		# #94: a stand-off, and the army that keeps the garrison home is one we can beat: the garrison
 		# marches out against it (_field_moves) instead. Nobody can reach the capital this turn.
 		_stats.hunts = 1
-		_note_top("Breaking the stand-off: what we have built up while both sides waited is worth %d turns of our income, so the %s at %s march out against the enemy army at %s (rough odds: %s) instead of guarding %s." % [
-			floori(float(_standoff.turns)), _units_text(home), cap.name, _province_name(_hunt.pid), _odds_words(float(_hunt.rate)), cap.name])
+		_note_top("Breaking the stand-off: what we have built up while both sides waited is worth %d turns of our income, so %s (%s) %s out of %s against %s at %s (rough odds: %s) instead of guarding it." % [
+			floori(float(_standoff.turns)), _army_names(home), _units_text(home), "marches" if home.size() == 1 else "march", cap.name,
+			_army_names(_foes_at(_hunt.pid)), _province_name(_hunt.pid), _odds_words(float(_hunt.rate))])
 		return
 	var recruits := _recruit_units()
 	var need := GARRISON_RATIO if not near.is_empty() else GARRISON_RATIO * 0.6
@@ -2059,7 +2060,7 @@ func _plan_research() -> String:
 
 
 ## Notes on research that are public by now (the turn report already named them): what we completed at the
-## end of last turn, the Oath we swore (and that the side was a seeded roll), the transformation and what
+## end of last turn, the Oath we swore (and that we picked the side by a roll), the transformation and what
 ## it brought. A new research order is mentioned without naming its node: the target stays secret.
 func _note_research(ordering: bool) -> void:
 	var last := _state.current_turn
@@ -2091,7 +2092,7 @@ func _research_done_note(nid: String) -> String:
 			when = " in about %d %s" % [n, "turn" if n == 1 else "turns"] if n > 0 else ""
 		var odds := AIPaths.branch_odds(String(_preset.get("id", "")), _fid)
 		var pct := int(odds.get(side, 0))
-		var roll := "our side of the fork was a seeded roll"
+		var roll := "we picked our side of the fork by a roll"
 		if pct > 0:
 			roll += " (%s)" % ("even odds" if pct == 50 else "%d%% for this side" % pct)
 		return "We swore %s last turn: we will become %s%s, and %s is closed to us; %s." % [
@@ -2229,6 +2230,16 @@ func _hunting_the_pin(threat: Array) -> bool:
 	return pin == String(_hunt.pid)
 
 
+## The turn report's names for `armies` (TurnReportText.army_name, #55): "the Crown's 3rd", "the Clans' 5th and
+## the Clans' 8th", in number order.
+func _army_names(armies: Array) -> String:
+	var ids := TurnReportText.sort_ids(armies.map(func(a): return a.id))
+	var names := []
+	for id in ids:
+		names.append(TurnReportText.army_name(_state, String(id)))
+	return RulerRules._and_list(names) if not names.is_empty() else "nobody"
+
+
 ## "52 units": the units and commanders of `armies`.
 func _units_text(armies: Array) -> String:
 	var n := _units(armies).size()
@@ -2253,8 +2264,8 @@ func _siege_step(here: String, objective: String, armies: Array) -> String:
 		return ""
 	var step := _pick_step(options)
 	_stats.sieges = 1
-	_note_top("Breaking the stand-off: pushing on to %s past stronger armies on the road, to camp next to %s until the odds of taking it are even." % [
-		_province_name(step), _province_name(objective)])
+	_note_top("Breaking the stand-off: %s %s on to %s past stronger armies on the road, to camp next to %s until the odds of taking it are even." % [
+		_army_names(armies), "pushes" if armies.size() == 1 else "push", _province_name(step), _province_name(objective)])
 	return step
 
 
@@ -2288,8 +2299,8 @@ func _raid_step(here: String, armies: Array) -> String:
 		return ""
 	_stats.raids = 1
 	var target := _state.find_province(best)
-	_note_top("Breaking the stand-off: raiding %s, which the %s left unguarded, to cut their income and draw their army out." % [
-		target.name, _faction_name(target.owner)])
+	_note_top("Breaking the stand-off: %s %s for %s, which the %s left unguarded, to cut their income and draw their army out." % [
+		_army_names(armies), "heads" if armies.size() == 1 else "head", target.name, _faction_name(target.owner)])
 	return best_step
 
 
