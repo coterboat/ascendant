@@ -191,6 +191,42 @@ func test_recruit_buttons_show_portraits() -> void:
 	screen.free()
 
 
+## After a transformation the side panel shows the changed unit in its new look (#73): its army row and its
+## recruit button wear Art.variant_portrait; before it, the base portrait. Every side of every fork.
+func test_side_panel_shows_the_transformation_look_once_researched() -> void:
+	for side in PathData.BRANCHES:
+		var b: Dictionary = PathData.BRANCHES[side]
+		var fid := String(b.faction)
+		var trans := String(b.transformation)
+		var tier1 := AscensionRules.node_ids(fid).filter(func(n): return AscensionRules.node_kind(n) == PathData.TIER1)
+		var before := GameState.with_paths(21)
+		var after := AscensionRules.with_nodes(before, fid, tier1 + [String(b.oath), trans])
+		for type_id in AscensionRules.node_effects(trans).get("rename", {}):
+			var look := Art.variant_portrait(String(type_id), fid, trans)
+			assert_true(look != null, "%s has its %s portrait" % [type_id, trans])
+			for s in [before, after]:
+				var want: Texture2D = look if s == after else Art.portrait(String(type_id), fid)
+				var when := "after %s" % trans if s == after else "before %s" % trans
+				assert_true(Art.unit_portrait(s, fid, String(type_id)) == want, "%s %s: the lookup" % [type_id, when])
+				var screen := _map(s, fid)
+				var army: Army = null
+				for a in s.armies:
+					if a.owner == fid and a.units.any(func(u): return u.type.id == String(type_id)):
+						army = a
+						break
+				assert_true(army != null, "%s has an army with %s" % [fid, type_id])
+				if army != null:
+					screen.select_army(army.id)
+					var row := screen.details.find_child("UnitRow_%s" % type_id, true, false)
+					var card := row.get_child(0) as Art.PortraitCard if row != null else null
+					assert_true(card != null and card.texture == want, "%s %s: the army row's portrait" % [type_id, when])
+				screen.select_province(String(s.find_faction(fid).capital))
+				var btn := screen.details.find_child("Recruit_%s" % type_id, true, false) as Button
+				assert_true(btn != null and btn.icon is AtlasTexture and (btn.icon as AtlasTexture).atlas == want,
+					"%s %s: the recruit button's face" % [type_id, when])
+				screen.free()
+
+
 func test_army_list_shows_portraits_with_counts() -> void:
 	var screen := _map()
 	var army: Army = screen.state.armies[0]
