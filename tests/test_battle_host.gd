@@ -219,10 +219,11 @@ func test_the_battle_view_setting_and_the_3d_fallback() -> void:
 	var path := _settings_path()
 	DirAccess.remove_absolute(path)
 	var keep := BattleHost.stage_3d_path
-	assert_eq(BattleHost.chosen_view(path), "simple", "Simple by default")
+	assert_eq(BattleHost.chosen_view(path), "3d", "3D on the land by default (M3b)")
+	assert_eq(BattleFx.save_settings({"view": "simple"}, path), "")
 	var h := _host()
 	h.open([_event("skirmish")])
-	assert_eq(h.view_kind, "simple")
+	assert_eq(h.view_kind, "simple", "Simple stays a setting")
 	assert_false(h.note_label.visible, "no note for the Simple view")
 	assert_eq(BattleFx.save_settings({"view": "3d"}, path), "")
 	BattleHost.stage_3d_path = "res://world3d/no_such_stage.tscn"
@@ -316,8 +317,11 @@ func test_the_settings_survive_a_restart_and_a_broken_file_gives_the_defaults() 
 	var path := _settings_path()
 	DirAccess.remove_absolute(path)
 	assert_eq(BattleFx.settings(path), BattleFx.DEFAULTS, "no file: the defaults")
-	assert_eq(BattleFx.settings(path).view, "simple")
+	assert_eq(BattleFx.settings(path).view, "3d", "3D on the land by default (M3b)")
 	assert_false(GameSettings.load_from(path).auto_watch_battles, "auto-watch is off by default")
+	var keep := BattleHost.stage_3d_path
+	BattleHost.stage_3d_path = "res://world3d/no_such_stage.tscn"
+	BattleFx.save_settings({"view": "simple"}, path)
 	var panel := SettingsPanel.new()
 	panel.open(GameSettings.load_from(path))
 	assert_eq(panel.battle_view_picker.selected, 0, "Simple")
@@ -332,8 +336,9 @@ func test_the_settings_survive_a_restart_and_a_broken_file_gives_the_defaults() 
 	panel.screen_shake_toggle.toggled.emit(false)
 	panel.watch_picker.item_selected.emit(1)
 	panel.set_window_mode("fullscreen")  # [settings] saved after [battle]: both stay
-	assert_true(panel.battle_view_note.visible, "3D chosen before the stage exists: the note says it plays Simple")
+	assert_true(panel.battle_view_note.visible, "3D chosen without the stage: the note says it plays Simple")
 	panel.free()
+	BattleHost.stage_3d_path = keep
 	# A restart: everything is read back from the file.
 	var st := BattleFx.settings(path)
 	assert_eq(st.view, "3d")
@@ -368,7 +373,7 @@ func test_the_settings_survive_a_restart_and_a_broken_file_gives_the_defaults() 
 	assert_false(GameSettings.load_from(path).auto_watch_battles)
 	var broken := SettingsPanel.new()
 	broken.open(GameSettings.load_from(path))
-	assert_eq(broken.battle_view_picker.selected, 0, "the panel shows the defaults")
+	assert_eq(broken.battle_view_picker.selected, BattleFx.VIEWS.find(String(BattleFx.DEFAULTS.view)), "the panel shows the defaults")
 	broken.free()
 	DirAccess.remove_absolute(path)
 

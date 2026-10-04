@@ -1035,7 +1035,7 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 				_add_leg(f, {"kind": "walk", "t0": tb - STEP_OUT, "t1": tb - 0.1, "from": f["pos"], "to": sl["pos"],
 					"from_y": f["y"], "to_y": sl["y"], "to_yaw": sl["yaw"]})
 		var rec := {"at": t.ground_at(g["front"]), "t0": tb, "t1": tb + CLASH, "label": Playback.battle_label(b, before),
-			"index": bi, "front": g["front"]}
+			"index": bi, "front": g["front"], "line": String(b.get("text", ""))}
 		clashes.append(rec)
 		beats.append({"kind": "clash", "t": tb, "phase": "battles", "index": bi})
 		var losses := _battle_figures(b, g, after, tb)
@@ -1407,7 +1407,8 @@ func phases() -> Array:
 	return out
 
 
-## The phase playing now: {"key", "caption", "detail", "k" 0..1 through it}, or {} between phases.
+## The phase playing now: {"key", "caption", "detail", "k" 0..1 through it, "line": during a battle, the turn
+## report's own line for it (TurnReportText, the caption's tooltip)}, or {} between phases.
 func phase_now() -> Dictionary:
 	if _play.is_empty():
 		return {}
@@ -1423,16 +1424,19 @@ func phase_now() -> Dictionary:
 	if cur.is_empty() or now > float(cur["t1"]) + 0.6:
 		return {}
 	var detail: String = cur["detail"]
+	var line := ""
 	if cur["key"] == "battles":
 		for c in _play["clashes"]:
 			if now >= float(c["t0"]) - 0.2:
 				detail = c["label"]
+				line = String(c.get("line", ""))
 	elif cur["key"] == "capture":
 		for c in _play["caps"]:
 			if now >= float(c["t"]) - 0.05:
 				detail = _capture_text(c, _play["after"])
 	var span: float = maxf(float(cur["t1"]) - float(cur["t0"]), 0.01)
-	return {"key": cur["key"], "caption": Choreo.caption(cur["key"]), "detail": detail, "k": clampf((now - float(cur["t0"])) / span, 0.0, 1.0), "index": ci}
+	return {"key": cur["key"], "caption": Choreo.caption(cur["key"]), "detail": detail, "k": clampf((now - float(cur["t0"])) / span, 0.0, 1.0), "index": ci,
+		"line": line}
 
 
 ## The beats of the playback: [{"kind", "t", "phase", "index"}] (tests and the board's sounds).
