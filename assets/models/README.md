@@ -7,6 +7,8 @@ paths, sizes and turns.
 | folder | what | made by |
 |---|---|---|
 | `units/<faction>/<unit>_<pose>.glb` | the 8 unit and commander types, 4 poses each: `ready`, `march`, `strike`, `fallen` | batch `asc-3d-factions` |
+| `units/<faction>/<unit>_<pose>.glb` (new units) | the 4 units the M4 transformations add (`data/paths.gd` `NEW_UNITS`): `seraphs`, `iron_colossus` (Crown), `briarwardens`, `bloodsworn` (Clans), 4 poses each | batch `asc-3d-paths` |
+| `units/<faction>/<unit>__<transformation id>_<pose>.glb` | a transformation's look of the unit it changes, 4 poses each: `spearmen__crown_celestial_host` (Sunspears), `knights__crown_living_iron` (Iron Knights), `fangthrowers__beasts_thorn_wild` (Thornthrowers), `tuskers__beasts_blood_pact` (Bloodtuskers) | batch `asc-3d-paths` |
 | `units/<faction>/standard_bearer.glb`, `musician.glb` | the army extras (3D_DIRECTION §6.2): a bearer with a bare pole and crossbar (the game hangs the code banner on it), a Crown drummer and a Clans war-horn | batch `asc-3d-factions` |
 | `rulers/<ruler_id>_<pose>.glb` | the 4 rulers, the same 4 poses plus `cheer` (§9.3's fifth ruler pose) | batch `asc-3d-factions` |
 | `buildings/<kind>[_<variant>].glb` | fortresses, forts, villages (`_a`, `_b`), the mill, the watchtower, war camps | batch `asc-3d-factions` |
@@ -50,6 +52,22 @@ Thornmane Clans), `<unit>` the unit type id and `<ruler_id>` the id in `data/rul
 
 Ludo treats `target_num_faces` as a target, not a cap: models come back up to ~25% over.
 
+### The M4 batch (`asc-3d-paths`)
+
+`tools/ludo/asc_3d_paths.py` (manifest `tools/ludo/batches/asc-3d-paths.json`, ledger
+`studio/ledgers/asc-3d-paths.jsonl`) reuses `asc_3d_factions.py`'s driver:
+
+- **Variants** keep the base's outline (STYLE_BIBLE §5): each of the base unit's four picked pictures is
+  edited with the fork's transformation block, verbatim (`gates` checks the silhouette IoU >= 0.85).
+  Sized from the base pose (its size times the picture's height ratio; a lying pose its width ratio),
+  or from a ruler reading where geometry falls outside the outline (the Celestial Host's halo ring).
+- **New units**: generateWithStyle with the fork's picked variant picture as the style image (a Crown
+  unit anchored to a Crown picture, a Clans unit to a Clans one), poses as C-pose edits. Their pictures
+  come back as a soft painted render with a soft ground shadow, which image-to-3D fused into a floor
+  slab, so each is cut out (Ludo removeBackground, pixels kept) and laid on plain grey before modelling.
+- The Bloodtuskers' crimson and black came back near-black from image-to-3D three times; their four
+  pictures are lifted (gamma 1.5) before modelling.
+
 ## `models.json`
 
 ```json
@@ -57,6 +75,7 @@ Ludo treats `target_num_faces` as a target, not a cap: models come back up to ~2
  "format": 1,
  "units":     { "<unit id>":  { "<pose>": {model}, ... }, ... },
  "rulers":    { "<ruler id>": { "<pose>": {model}, ... }, ... },
+ "variants":  { "<unit id>__<transformation id>": { "<pose>": {model}, ... }, ... },
  "extras":    { "standard_bearer" | "musician": { "<faction id>": {model} } },
  "buildings": { "<kind>":     { "<variant>": {model}, ... }, ... },
  "props":     { "<kind>":     { "default": {model} } }
@@ -70,7 +89,8 @@ pieces (`fortress.kingdom`, `fort.beasts`, `camp.kingdom`), `a` / `b` for interc
 | field | meaning |
 |---|---|
 | `path` | `res://` path of the GLB |
-| `kind` | `unit`, `ruler`, `extra`, `building` or `prop` |
+| `kind` | `unit`, `ruler`, `variant`, `extra`, `building` or `prop` |
+| `base`, `transformation`, `name` | variants: the unit it is a look of, the transformation (`data/paths.gd`) and the changed unit's name ("Sunspears"); new units carry their `transformation` too |
 | `id` | unit type id, ruler id, or building kind (`fortress_kingdom`, `village_plains`, ...) |
 | `faction` | `kingdom`, `beasts`, or `null` for world pieces |
 | `pose` / `variant` | figures / buildings |
@@ -98,6 +118,10 @@ The board reads its own table, `world3d/models.json` (format in `world3d/README.
   or a lying figure keeps the ready pose's body size) for the pose swap of M3a.2.
 - **Extras:** the `bearer` row gets `models` (`{"<faction>": path}`) and `model_height`; a new
   `musician` row the same.
+- **Variants** (`asc_3d_paths.py board`, which edits only its own rows, line by line): the changed
+  unit's row gets an optional `"variants": {"<transformation id>": {"model", "height", "yaw", "poses",
+  "pose_size"}}`, the same fields as the row's own, for the board to swap to when the transformation
+  lands. `world3d/models.gd` ignores it until then.
 - **Fortresses** (`fortress.kingdom`, `fortress.beasts`): `model`, `side` 76, `yaw`, `key_hue` (the
   Crown's blue roofs; −1 for the Clans: their crimson banners sit too close in hue to the timber for
   the shader's fixed 0.06 key width), `tint`, and the yard, gate and banners measured off the GLB in the

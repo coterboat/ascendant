@@ -174,14 +174,15 @@ func _fill_look(fid: String) -> void:
 		arrow.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		look_box.add_child(arrow)
 		var after := PathPortrait.make(String(look.changed), fid, colour, PORTRAIT)
-		look_box.add_child(_captioned(after, String(look.changed_name), TooltipText.plain(String(look.changed_name), note)))
+		var after_tip := "Your %s as they will look, in the fork's frame." % String(look.changed_name) if after.shows_variant else note
+		look_box.add_child(_captioned(after, String(look.changed_name), TooltipText.plain(String(look.changed_name), after_tip)))
 	if not String(look.new_unit).is_empty():
 		var spacer := Control.new()
 		spacer.custom_minimum_size = Vector2(24, 0)
 		look_box.add_child(spacer)
 		var card := PathPortrait.make(String(look.new_unit), fid, colour, PORTRAIT)
-		look_box.add_child(_captioned(card, "%s (new)" % String(look.new_name), TooltipText.plain(String(look.new_name),
-			"A new unit. Placeholder until its portrait lands: a card with its initial in the fork's frame.")))
+		var new_tip := "A new unit, in the fork's frame." if card.has_art() else "A new unit. Placeholder until its portrait lands: a card with its initial in the fork's frame."
+		look_box.add_child(_captioned(card, "%s (new)" % String(look.new_name), TooltipText.plain(String(look.new_name), new_tip)))
 
 
 func _captioned(card: Control, caption: String, tip: String) -> VBoxContainer:

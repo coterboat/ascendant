@@ -8,6 +8,10 @@ re-rolled or a pose edited later without Ludo URLs (which die after 7 days). God
 - `<faction>/<unit>_<pose>.webp`: a unit's or ruler's picture per pose. The `ready` picture is an edit
   of the unit's concept art (`assets/concept/units/`) or a style transfer from the ruler's portrait;
   `march`, `strike`, `fallen` (and the rulers' `cheer`) are edits of the `ready` picture.
+- `<faction>/<unit>__<transformation id>_<pose>.webp` (batch `asc-3d-paths`): a transformation's look of
+  the unit it changes, each an edit of that unit's picked pose picture with the bible §5 block;
+  `<faction>/<new unit>_<pose>.webp`: the transformations' new units, the `ready` picture styled from the
+  fork's variant picture, cut out and laid on plain grey (their soft shadows fused into floor slabs).
 - `<faction>/standard_bearer_<faction>.webp`, `<faction>/musician_<faction>.webp`: army extras,
   edits of a picked unit picture of the same faction.
 - `<faction>/fortress_<faction>.webp`, `fort_<faction>.webp`, `camp_<faction>.webp`; `world/`:
