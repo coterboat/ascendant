@@ -135,8 +135,8 @@ func test_same_province_collision_fights_with_no_defender() -> void:
 	_assert_event_shape(r.events)
 
 
-func test_same_province_tie_with_no_defender_uses_seeded_roll() -> void:
-	# Spearmen (16) vs fangthrowers (16), both arriving: the seeded roll decides.
+func test_same_province_tie_with_no_defender_uses_a_50_50_roll() -> void:
+	# Spearmen (16) vs fangthrowers (16), both arriving: a 50/50 roll from the turn's seed decides.
 	var s := _state([
 		["kingdom-1", "kingdom", "highcrag", ["spearmen"]],
 		["beasts-2", "beasts", "wildmoor", ["fangthrowers"]],
@@ -430,7 +430,7 @@ func test_invalid_orders_are_rejected_with_reasons() -> void:
 	var cases := [
 		[MoveOrder.new("kingdom-1", "thornvale"), "not_adjacent", "Thornvale is not next to Crownkeep"],
 		[MoveOrder.new("beasts-2", "ebonpeak"), "not_your_army", "belongs to Thornmane Clans"],
-		[MoveOrder.new("kingdom-9", "westwatch"), "unknown_army", "That army no longer exists"],
+		[MoveOrder.new("kingdom-9", "westwatch"), "unknown_army", "There is no such army on the map"],
 		[MoveOrder.new("kingdom-1", "atlantis"), "unknown_province", "not a province on the map"],
 		[MoveOrder.new("kingdom-1", "crownkeep"), "already_there", "already in Crownkeep"],
 	]
@@ -529,7 +529,8 @@ func test_event_text_uses_player_facing_names() -> void:
 	var moved: Dictionary = _events_of(r4.events, "army_moved")[0]
 	assert_eq(moved.text, "The second Aurel Crown army at Crownkeep (1 unit, no commander) moved to Westwatch.")
 	assert_eq(moved.armies, ["kingdom-2"], "the id stays in the structured field")
-	assert_true(_events_of(r4.events, "order_rejected")[0].reason.begins_with("The second Aurel Crown army at Crownkeep"))
+	# The order check names the army as the map and the turn report do (TurnReportText.army_name).
+	assert_true(_events_of(r4.events, "order_rejected")[0].reason.begins_with(RulerRules._cap(TurnReportText.army_name(twins, "kingdom-2")) + " already has a move order"))
 	assert_eq(TurnResolver.army_label(twins, twins.find_army("kingdom-1")), "first Aurel Crown army at Crownkeep (1 unit, no commander)")
 	assert_eq(TurnResolver.army_label(s, s.find_army("kingdom-1")), "Aurel Crown army at Crownkeep (1 unit, led by Knight Captain)")
 
