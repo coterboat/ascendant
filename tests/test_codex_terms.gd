@@ -178,3 +178,61 @@ func test_m1_entries_say_what_a_game_with_rulers_changes() -> void:
 			assert_true(text.find("In a game with rulers") > m1_rule[id].length(), "%s adds the rulers part after it: %s" % [id, text])
 		assert_true(digits.search(text) == null, "%s has no numbers of its own: %s" % [id, text])
 		assert_false(text.contains("[") or text.contains("_"), "%s is plain text with no ids: %s" % [id, text])
+
+
+## M3c S-3 (#101, design/M3C_SIEGES.md §9.6, §15): every forts-and-sieges term has its own entry in plain words,
+## and every control of the fort panel, the recruit picker, the siege order lines and the plates' fort chips links
+## to a real entry, for both sides of a siege, a construction site, a quiet capital and a breach.
+func test_siege_terms_have_entries_and_every_fort_control_links_one() -> void:
+	var terms := ["fort", "fort_levels", "palisade", "keep", "citadel", "recruit_at_forts", "fortify", "construction", "walls",
+		"repair", "siege", "inside_outside", "siege_damage", "cut_off", "storm", "sally", "relief", "breach", "empty_fort",
+		"trait_siege_engine", "unit_siege_ram", "unit_wallbreakers"]
+	for key in terms:
+		assert_true(RulesCodex.ENTRIES.has(key), "the siege term %s has an entry" % key)
+		var text := RulesCodex.text(key)
+		assert_true(text.length() > 60, "%s is explained: %s" % [key, text])
+		assert_false(text.contains("[") or text.contains("_"), "%s is plain text with no ids" % key)
+	for kind in TooltipText.CODEX:
+		assert_true(RulesCodex.ENTRIES.has(String(TooltipText.CODEX[kind])), "the %s kind links a real entry" % kind)
+	var Fx := preload("res://tests/siege_fixtures.gd")
+	var s: GameState = load("res://tests/test_fort_panel.gd").besieged_keep(true)
+	Fx.rich(s, "kingdom")
+	s.find_province("rivermarch").owner = "kingdom"
+	s.find_province("rivermarch").works = {"faction": "kingdom", "to": 1, "left": 1, "turn": 1}
+	s.find_province("blackwood").owner = "kingdom"
+	s.armies.append(Fx.army(s, ["beasts-9", "beasts", "thornvale", Fx.units("tuskers", 6)]))
+	for viewer in ["kingdom", "beasts"]:
+		var map: MapScreen = load("res://ui/map_screen.tscn").instantiate()
+		map.set_state(s, viewer)
+		if viewer == "kingdom":
+			map.queue_move("kingdom-7", "stonegate")  # a relief, with its tied sallies
+			map.queue_recruit_at("spearmen", "blackwood")
+		else:
+			map.queue_move("beasts-9", "stonegate")  # a siege from the march, with Storm now on its line
+			map.set_storm("stonegate", true)
+		for pid in ["stonegate", "rivermarch", "crownkeep", "blackwood", "westwatch"]:
+			map.selected_army_id = ""
+			map.select_province(pid)
+			_assert_links_resolve(map.details, "%s sees %s" % [viewer, pid])
+		for region in map.regions.values():
+			if region.fort_chip != null:
+				_assert_links_resolve(region.fort_chip, "%s's chip at %s" % [viewer, region.province_id])
+		map.free()
+	# A queued Fortify order.
+	var quiet := GameState.with_sieges(5)
+	quiet.find_province("rivermarch").owner = "kingdom"
+	var m1: MapScreen = load("res://ui/map_screen.tscn").instantiate()
+	m1.set_state(quiet, "kingdom")
+	assert_eq(m1.queue_fortify("rivermarch"), "")
+	m1.select_province("rivermarch")
+	assert_true(not m1.details.find_children("FortifyQueued", "", true, false).is_empty())
+	_assert_links_resolve(m1.details, "a queued Fortify")
+	_assert_links_resolve(m1.regions["rivermarch"], "the Fortify ghost")
+	m1.free()
+	# A breach.
+	s.find_province("stonegate").walls = 0
+	var m2: MapScreen = load("res://ui/map_screen.tscn").instantiate()
+	m2.set_state(s, "beasts")
+	m2.select_province("stonegate")
+	_assert_links_resolve(m2.details, "the breach")
+	m2.free()

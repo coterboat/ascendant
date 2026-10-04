@@ -12,6 +12,10 @@ extends Control
 ##   6. routs      morale checks: who broke and fled, who held (and when Iron Discipline held a side)
 ##   7. hits       hit rates against the chances each side had
 ##   8. round_cap  only when the battle ran out of rounds
+## M3c S-3 (#101, design/M3C_SIEGES.md §9.7): a battle at a fort in a game with sieges carries a `siege` block
+## (written by S-2, §4.4-§4.5); the terrain section then shows its chip (FortView.siege_chip) in place of the old
+## fort line: "Walls: +4 defense (5 of 9)" in a storm, "Outside the walls: ..." in an open battle, "Through the
+## breach: ..." at the breach, each linked to its codex entry.
 ## Reads the report only: every number comes from the report (or the rules' terrain and fort bonus
 ## constants), every explanation from RulesCodex. Never changes rules state.
 ## Builds its children in code, so it works before it is in the tree (headless tests).
@@ -386,6 +390,12 @@ func _add_terrain() -> void:
 	var box := _section("terrain", "Terrain and fort", tip, "battle_terrain")
 	var terrain := String(_report.get("terrain", ""))
 	var defender := _defender_side()
+	var siege = _report.get("siege", {})
+	var chip := FortView.siege_chip(siege if siege is Dictionary else {})
+	if not chip.is_empty():  # M3c S-3: the walls, the open ground or the breach (§9.7)
+		var c := _text(box, String(chip.text), String(chip.tip), 20, UiPalette.GILT)
+		c.name = "SiegeChip"
+		CodexLink.attach(c, String(chip.codex), codex_requested.emit)
 	if _report.get("kind", "province") == "border":
 		_text(box, "This was a border battle: the armies tried to swap places and met between the two provinces, so nobody was defending and nobody got terrain or fort bonuses.",
 			_tip("Armies swapping places", RulesCodex.text("swap")))
@@ -409,7 +419,9 @@ func _add_terrain() -> void:
 		_text(box, "%s give no bonus, even to the defending %s." % [terrain.capitalize(), who], tip)
 	else:
 		_text(box, "The defending %s got %s from the %s." % [who, " and ".join(parts), terrain], tip)
-	if _report.get("fort", false):
+	if not chip.is_empty():
+		pass  # M3c: with sieges the walls replace the fort's old +2 (the chip above says what they gave)
+	elif _report.get("fort", false):
 		_text(box, "Fort: the defending %s got +%d defense more from the fort." % [who, AutoBattleResolver.FORT_DEFENSE], tip)
 	else:
 		_text(box, "Fort: none here.", tip)

@@ -1106,19 +1106,31 @@ func _fill_top_bar() -> void:
 				var chip := _chip(text, TooltipText.plain("Terrain", "The defender of a %s province gets %s." % [terrain, text.substr(text.find(":") + 2)]))
 				chip_boxes[k].add_child(chip)
 				CodexLink.attach(chip, TooltipText.codex_for(TooltipText.terrain_kind(terrain)), codex_requested.emit)
-			if _log.get("fort", false):
+			var walls := FortView.siege_chip(_log.get("siege", {}) if _log.get("siege", {}) is Dictionary else {})
+			if not walls.is_empty():  # M3c S-3 (§9.7): a stormed garrison's walls replace the fort's old +2
+				var wchip := _chip(String(walls.text), String(walls.tip))
+				wchip.name = "SiegeChip"
+				chip_boxes[k].add_child(wchip)
+				CodexLink.attach(wchip, String(walls.codex), codex_requested.emit)
+			elif _log.get("fort", false):
 				var fchip := _chip("Fort: +%d defense" % AutoBattleResolver.FORT_DEFENSE, TooltipText.plain("Fort", "Only a defender gets a fort's bonus: +%d defense to every fighter." % AutoBattleResolver.FORT_DEFENSE))
 				chip_boxes[k].add_child(fchip)
 				CodexLink.attach(fchip, "fort", codex_requested.emit)
+	var open := FortView.siege_chip(_log.get("siege", {}) if _log.get("siege", {}) is Dictionary else {})
 	if border:
 		center_chip.text = "Border battle: nobody defends, no terrain bonus"
+	elif defender.is_empty() and not open.is_empty():
+		center_chip.text = String(open.text)  # M3c S-3 (§9.7): outside the walls, or through the breach
 	elif defender.is_empty():
 		center_chip.text = "Nobody was defending: no terrain bonus"
 	else:
 		center_chip.text = ""
 	center_chip.visible = not center_chip.text.is_empty()
 	center_chip.tooltip_text = TooltipText.plain("Terrain", "Only a side that already held the province gets its terrain and fort bonus. Here nobody did.") if center_chip.visible else ""
-	if center_chip.visible:
+	if center_chip.visible and defender.is_empty() and not open.is_empty() and not border:
+		center_chip.tooltip_text = String(open.tip)
+		CodexLink.attach(center_chip, String(open.codex), codex_requested.emit)
+	elif center_chip.visible:
 		CodexLink.attach(center_chip, "battle_terrain", codex_requested.emit)
 
 

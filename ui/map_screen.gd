@@ -38,6 +38,12 @@ extends Control
 ## carries the seat's emblem (SeatEmblem: Player 1 circle, Player 2 square, nobody a slate shield), and
 ## so does the viewing player's name in the top bar.
 ##
+## Forts and sieges (M3c S-3, #101), only in a game with sieges: the "Fort:" line names the level and the fort
+## section (FortPanel) follows it, with every number explained and the viewer's Fortify, Storm and Sally choices;
+## the recruit section becomes "Recruit at" with a picker of your forts, each greyed with the rules' reason when
+## it can't take recruits; a move into an enemy fort can be turned into a storm from its order line (Storm now);
+## and a relief move sends the garrison out to join it (OrdersController.queue_move).
+##
 ## Art (#10, through Art): the map is one painted board: a sea with shallows and wave marks, one
 ## landmass under every province (its coast keylined in map ink, land bridges along the roads), sandy
 ## roads, and each province painted with its terrain tile over a soft drop shadow. The viewing faction's
@@ -618,6 +624,12 @@ func _update_top_bar() -> void:
 func queue_move(army_id: String, to_province: String) -> String:
 	var reason := orders.queue_move(army_id, to_province)
 	status_text = reason if not reason.is_empty() else "Move ordered. Armies move when the turn ends; click the cross to cancel."
+	if reason.is_empty() and not orders.last_relief.is_empty():  # M3c: the garrison comes out to join the relief
+		var place := state.find_province(to_province).name
+		status_text = "Relief ordered: it marches into %s when the turn ends, and the garrison comes out to join it: %s. Untick them in %s's fort panel to keep them in." % [
+			place, RulerRules._and_list(orders.last_relief.map(func(id): return TurnReportText.army_name(state, id))), place]
+	elif reason.is_empty() and orders.siege_kind(army_id, to_province) == "besiege":
+		status_text = "Move ordered: it besieges %s when the turn ends. Tick Storm now on the order to storm from the march instead." % state.find_province(to_province).name
 	_order_sound(reason, "march")
 	_orders_changed()
 	return reason
@@ -638,6 +650,61 @@ func queue_recruit_with_ruler(unit_type_id: String) -> String:
 	status_text = reason if not reason.is_empty() else "Recruit ordered. It is paid and joins %s where it ends the turn, if you own that province then." % \
 		RulerRules.current_name(state, viewing_faction_id)
 	_order_sound(reason, "recruit")
+	_orders_changed()
+	return reason
+
+
+## M3c S-3: queues one recruit at the fort `at` ("" for the capital). Returns "" or the rules' reason.
+func queue_recruit_at(unit_type_id: String, at: String) -> String:
+	var reason := orders.queue_recruit(unit_type_id, at)
+	var place := state.find_province(at)
+	status_text = reason if not reason.is_empty() else "Recruit ordered. It is paid and joins your armies at %s when the turn ends." % (
+		place.name if place != null else "your capital")
+	_order_sound(reason, "recruit")
+	_orders_changed()
+	return reason
+
+
+## M3c S-3: queues a Fortify order for `province_id` (the fort panel's Fortify or Upgrade). "" or the reason.
+func queue_fortify(province_id: String) -> String:
+	var reason := orders.queue_fortify(province_id)
+	if reason.is_empty():
+		var fc := orders.fortify_preview(province_id)
+		status_text = "Fortify ordered: %s at %s stands at the end of turn %d if no enemy army stands there, and takes recruits from turn %d. Click the cross to cancel." % [
+			SiegeRules.fort_phrase(int(fc.level)), state.find_province(province_id).name, int(fc.stands), int(fc.recruit_from)]
+	else:
+		status_text = reason
+	_order_sound(reason, "")
+	_orders_changed()
+	return reason
+
+
+## M3c S-3: the Storm toggle (fort panel, or Storm now on a move): storm `province_id` this turn, or wait.
+func set_storm(province_id: String, on: bool) -> String:
+	var reason := orders.set_storm(province_id, on)
+	var place := state.find_province(province_id).name
+	if reason.is_empty():
+		status_text = ("Storm ordered: every army of yours at %s attacks its garrison when the turn ends. Untick it to wait instead." if on \
+			else "Storm cancelled: your armies wait at %s, and the walls keep dropping.") % place
+		if not on:
+			status_text += _removed_text(orders.last_removed())
+	else:
+		status_text = reason
+	_order_sound(reason, "")
+	_orders_changed()
+	return reason
+
+
+## M3c S-3: a Sally tick: `army_id` comes out of its besieged fort this turn (on), or stays inside.
+func set_sally(army_id: String, on: bool) -> String:
+	var reason := orders.set_sally(army_id, on)
+	var name := TurnReportText.army_name(state, army_id)
+	if reason.is_empty():
+		status_text = ("Sally ordered: %s comes out when the turn ends and fights the siege lines in the open. Untick it to stay inside." if on \
+			else "%s stays inside the walls.") % (name if on else RulerRules._cap(name))
+	else:
+		status_text = reason
+	_order_sound(reason, "")
 	_orders_changed()
 	return reason
 
@@ -685,6 +752,17 @@ func _update_map_marks() -> void:
 	_update_road_targets()
 	_update_vassal_marks()
 	_update_province_rule_marks()
+	_update_fortify_ghosts()
+
+
+## M3c S-3: a scaffold ghost on the plate of each province the viewer has a Fortify order for. Only the viewer's
+## own orders: another seat's never show.
+func _update_fortify_ghosts() -> void:
+	if state == null or orders == null or not state.sieges:
+		return
+	for id in regions:
+		var i := orders.fortify_index(id)
+		regions[id].set_fortify_ghost(i >= 0, orders.order_texts()[i] if i >= 0 else "")
 
 
 ## With one of your armies selected, marks every province two steps away that a click would reach by
@@ -842,6 +920,16 @@ func _add_orders_section() -> void:
 			via_button.pressed.connect(change_via.bind(i))
 			_link(via_button, "road_move")
 			row.add_child(via_button)
+		var besieged := orders.storm_target(i)
+		if not besieged.is_empty():  # M3c S-3: Besiege, or Storm now, on a line of its own under the order
+			var sub := HBoxContainer.new()
+			sub.name = "StormNowRow_%d" % i
+			var pad := Control.new()
+			pad.custom_minimum_size = Vector2(16, 0)
+			sub.add_child(pad)
+			sub.add_child(_storm_now_toggle(besieged))
+			details.add_child(sub)
+			details.move_child(sub, row.get_index() + 1)
 		var cancel := Button.new()
 		cancel.name = "CancelButton"
 		cancel.text = "✕"
@@ -853,7 +941,9 @@ func _add_orders_section() -> void:
 	var gold := _add_text("Gold after recruits: %d" % g.gold_after, TooltipText.from_breakdown(orders.gold_breakdown()), UiPalette.GILT)
 	gold.name = "GoldAfterLabel"
 	_link(gold, "gold_after_recruits")
-	if selected_province_id == f.capital:
+	if state.sieges:
+		_add_fort_recruit_section(f)  # M3c S-3: recruit at any fort you own
+	elif selected_province_id == f.capital:
 		var capital := state.find_province(f.capital)
 		_add_heading("Recruit at %s" % capital.name, 18)
 		_add_fortress_view_button(f.capital)
@@ -946,6 +1036,121 @@ func _style_unit_button(b: Button, unit_type_id: String, faction_id: String) -> 
 	b.add_theme_color_override("icon_disabled_color", Color(1, 1, 1, 0.4))
 
 
+## M3c S-3: "Fort: Keep" (linked to the level's own entry), then the fort section (FortPanel) in a frame.
+func _add_fort_section(p: Province) -> void:
+	var level_key: String = String(SiegeRules.level_data(p.fort_level).id) if p.fort_level > 0 else "fort_levels"
+	var text := "Fort: %s" % (SiegeRules.level_name(p.fort_level) if p.fort_level > 0 else "none")
+	var fort_label := _add_text(text, TooltipText.plain(text, RulesCodex.text(level_key)))
+	fort_label.name = "FortLabel"
+	CodexLink.attach(fort_label, level_key, request_codex)
+	var panel := FortPanel.make(self, p.id)
+	if panel == null:
+		return
+	var frame := PanelContainer.new()
+	frame.name = "FortFrame"
+	var style := StyleBoxFlat.new()
+	style.bg_color = UiPalette.PANEL_RAISED
+	style.border_color = UiPalette.PANEL_BORDER
+	style.border_width_left = 3
+	style.set_corner_radius_all(4)
+	style.set_content_margin_all(8)
+	frame.add_theme_stylebox_override("panel", style)
+	frame.add_child(panel)
+	details.add_child(frame)
+
+
+## M3c S-3: "Recruit at <fort>": a picker of every fort you own (each with its count this turn, greyed with the
+## rules' reason when it can't take recruits), then the recruit buttons for the fort selected on the map.
+func _add_fort_recruit_section(f: Faction) -> void:
+	var places := orders.recruit_places()
+	var here := places.filter(func(r): return r.province == selected_province_id)
+	if here.is_empty():
+		return
+	var place: Dictionary = here[0]
+	var heading := _add_heading("Recruit at %s" % place.name, 18)
+	heading.name = "RecruitHeading"
+	heading.tooltip_text = TooltipText.plain("Recruit at", RulesCodex.text("recruit_at_forts"))
+	heading.mouse_filter = Control.MOUSE_FILTER_PASS
+	_link(heading, "recruit_at")
+	var picker := VBoxContainer.new()
+	picker.name = "RecruitAtPicker"
+	picker.add_theme_constant_override("separation", 2)
+	details.add_child(picker)
+	for r in places:
+		var b := Button.new()
+		b.name = "RecruitAt_%s" % String(r.province).validate_node_name()
+		b.toggle_mode = true
+		b.button_pressed = r.province == selected_province_id
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_font_size_override("font_size", 16)
+		var level := SiegeRules.level_word(int(r.level))
+		b.text = "%s (%s): %d of %d this turn" % [r.name, level, int(r.count), int(r.limit)]
+		var limit := Breakdown.recruit_limit(state, String(r.province), viewing_faction_id, orders.orders())
+		var tip := TooltipText.from_breakdown(limit)
+		if not r.ok:
+			b.disabled = true
+			tip = TooltipText.plain("%s can't take recruits" % r.name, String(r.reason)) + "\n\n" + tip
+		else:
+			tip = TooltipText.plain("Recruit at %s" % r.name, "Click to recruit here: the buttons below make their recruits at %s, and they join your armies there." % r.name) + "\n\n" + tip
+		b.tooltip_text = tip
+		_link(b, "recruit_at")
+		var pid := String(r.province)
+		b.pressed.connect(func(): select_province(pid))
+		picker.add_child(b)
+		if not r.ok:
+			var why := _add_text(String(r.reason), TooltipText.plain("Why not", String(r.reason)), UiPalette.NEGATIVE.lightened(0.25), picker)
+			why.name = "RecruitAtReason_%s" % pid.validate_node_name()
+			why.add_theme_font_size_override("font_size", 15)
+	if place.province == f.capital:
+		_add_fortress_view_button(f.capital)
+	if not place.ok:
+		return
+	var at: String = "" if place.province == f.capital else String(place.province)
+	for ut in orders.recruitable_types_at(String(place.province)):
+		var b := Button.new()
+		b.name = "Recruit_%s" % ut.id.validate_node_name()
+		b.text = "Recruit %s (%d gold)" % [ut.name, orders.recruit_cost(ut.id)]
+		var tip := TooltipText.from_breakdown(orders.recruit_breakdown(ut.id, at))
+		var fc := Forecast.recruit_at(orders.view_state(), viewing_faction_id, ut.id, at, orders.orders())
+		if not fc.ok and String(fc.code) != "not_enough_gold":
+			b.disabled = true
+			tip = TooltipText.plain("Can't recruit %s here" % ut.name, String(fc.reason)) + "\n\n" + tip
+		b.tooltip_text = tip
+		_link(b, "recruit_at" if not SiegeRules.is_engine(ut) else "recruit")
+		if SiegeRules.is_engine(ut):
+			CodexLink.attach(b, SiegeRules.engine_codex(ut.id), request_codex)
+		_style_unit_button(b, ut.id, f.id)
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var type_id: String = ut.id
+		b.pressed.connect(func(): queue_recruit_at(type_id, at))
+		details.add_child(b)
+		if b.disabled:
+			var why := _add_text(String(fc.reason), TooltipText.plain("Why not", String(fc.reason)), UiPalette.NEGATIVE.lightened(0.25))
+			why.name = "RecruitReason_%s" % ut.id.validate_node_name()
+			why.add_theme_font_size_override("font_size", 15)
+
+
+## M3c S-3: "Storm now" on the order line of a move into an enemy fort: the fort's storm (one per fort).
+func _storm_now_toggle(province_id: String) -> CheckBox:
+	var t := CheckBox.new()
+	t.name = "StormNowToggle"
+	t.text = "Storm now"
+	t.focus_mode = Control.FOCUS_NONE
+	t.button_pressed = orders.storm_index(province_id) >= 0
+	var check := orders.storm_check(province_id)
+	var p := state.find_province(province_id)
+	var tip := "Off: your armies besiege %s and the walls drop each turn. On: every army of yours there storms it this turn, from the march, against its walls (+%d defense) and its %s." % [
+		p.name, SiegeRules.walls_defense(p.walls), p.terrain]
+	if not check.is_empty():
+		t.disabled = true
+		tip = "%s %s" % [String(check.reason), tip]
+	t.tooltip_text = TooltipText.plain("Besiege or storm now", "%s %s" % [tip, RulesCodex.text("storm")])
+	CodexLink.attach(t, "storm", request_codex)
+	t.toggled.connect(func(on: bool): set_storm(province_id, on))
+	return t
+
+
 func _show_details() -> void:
 	_show_province_details()
 	_add_orders_section()
@@ -996,9 +1201,12 @@ func _show_province_details() -> void:
 	var capital_label := _add_text("Capital: %s" % capital_text, TooltipText.plain("Capital", TooltipText.codex_text("capital")))
 	capital_label.name = "CapitalLabel"
 	_link(capital_label, "capital")
-	var fort_label := _add_text("Fort: %s" % ("Yes" if p.has_fort else "No"), TooltipText.plain("Fort", TooltipText.codex_text("fort")))
-	fort_label.name = "FortLabel"
-	_link(fort_label, "fort")
+	if state.sieges:
+		_add_fort_section(p)  # M3c S-3: the level, then the fort section
+	else:
+		var fort_label := _add_text("Fort: %s" % ("Yes" if p.has_fort else "No"), TooltipText.plain("Fort", TooltipText.codex_text("fort")))
+		fort_label.name = "FortLabel"
+		_link(fort_label, "fort")
 	var names := []
 	for n in p.neighbors:
 		var np := state.find_province(n)
