@@ -151,6 +151,12 @@ func _column(fid: String, own: bool) -> VBoxContainer:
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	heading.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	heading.add_theme_color_override("font_color", UiPalette.owner_color(state, fid).lightened(0.3))
+	var people := AscensionRules.people_name(state, fid)  # M4-4: the people line (design/M4_ASCENSION.md §9.1)
+	if not people.is_empty():
+		heading.text += " · %s" % people
+		heading.tooltip_text = TooltipText.plain("%s · %s" % [f.faction_name, people], "%s %s" % [
+			AscensionRules.province_rule_sentence(state, fid, own), RulesCodex.text("transformation")])
+		_codex_link(heading, "transformation")
 	if not f.has_ruler():
 		_text(outer, "The %s has no ruler in this game." % f.faction_name, TooltipText.plain("No ruler", RulesCodex.text("ruler")),
 			UiPalette.TEXT_SECONDARY)

@@ -55,6 +55,9 @@ var actions_row: HBoxContainer  # add_action() buttons; hidden while empty
 var banner_box: HBoxContainer  # the winner's banner (both on a draw), left of the headline
 var _province_labels: Array[Label] = []
 var _capture_labels: Array[Label] = []
+var paths_heading: Label  # M4-4: "Paths taken", only in a game with paths
+var paths_box: VBoxContainer
+var _path_labels: Array[Label] = []
 
 
 func _init() -> void:
@@ -160,6 +163,20 @@ func show_victory(summary: Dictionary, state: GameState = null, players: Array =
 		_capture_labels.append(l)
 	captures_box.visible = not _capture_labels.is_empty()
 	captures_heading.visible = captures_box.visible
+	# M4-4 (design/M4_ASCENSION.md §9.1): each faction's path, the nodes in the order taken, with turns.
+	_clear(paths_box, _path_labels)
+	for line in (PathView.victory_lines(state) if state != null else []):
+		var l := _label(String(line.text), 15, UiPalette.TEXT_PRIMARY)
+		l.name = "Path_%s" % String(line.faction).validate_node_name()
+		l.custom_minimum_size = Vector2(380, 0)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.tooltip_text = String(line.tooltip)
+		l.mouse_filter = Control.MOUSE_FILTER_PASS
+		CodexLink.attach(l, "path", codex_requested.emit)
+		paths_box.add_child(l)
+		_path_labels.append(l)
+	paths_box.visible = not _path_labels.is_empty()
+	paths_heading.visible = paths_box.visible
 	visible = true
 	if is_inside_tree():
 		new_game_button.grab_focus.call_deferred()
@@ -403,12 +420,35 @@ func _build() -> void:
 	battles_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	stats.add_child(battles_label)
 
-	box.add_child(_heading("Provinces held", TooltipText.plain("Provinces held",
+	# M4-4: in a game with paths, "Paths taken" stands beside "Provinces held", so the page grows little.
+	var standing := HBoxContainer.new()
+	standing.name = "Standing"
+	standing.add_theme_constant_override("separation", 36)
+	box.add_child(standing)
+	var held := VBoxContainer.new()
+	held.name = "Held"
+	held.add_theme_constant_override("separation", 6)
+	standing.add_child(held)
+	held.add_child(_heading("Provinces held", TooltipText.plain("Provinces held",
 		"How many provinces each side owned when the game ended. Hover a line to see which ones.")))
 	provinces_box = VBoxContainer.new()
 	provinces_box.name = "Provinces"
 	provinces_box.add_theme_constant_override("separation", 6)
-	box.add_child(provinces_box)
+	held.add_child(provinces_box)
+	var paths_col := VBoxContainer.new()
+	paths_col.name = "PathsColumn"
+	paths_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	paths_col.add_theme_constant_override("separation", 4)
+	standing.add_child(paths_col)
+	paths_heading = _heading("Paths taken", TooltipText.plain(String(RulesCodex.entry("path").get("title", "")), RulesCodex.text("path")))
+	paths_heading.name = "PathsHeading"
+	paths_heading.visible = false
+	paths_col.add_child(paths_heading)
+	paths_box = VBoxContainer.new()
+	paths_box.name = "Paths"
+	paths_box.add_theme_constant_override("separation", 4)
+	paths_box.visible = false
+	paths_col.add_child(paths_box)
 
 	captures_box = VBoxContainer.new()
 	captures_box.name = "Captures"

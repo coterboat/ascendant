@@ -53,6 +53,8 @@ var notes_toggle: Button = null  # the section's header button, while the report
 var notes_scroll: ScrollContainer
 var notes_body: VBoxContainer
 var _note_labels: Array[Label] = []
+var _viewer := ""  # M4-4: the faction the report is shown to ("" for public text only)
+var needs_you_label: Label = null  # M4-4: "Choose what to research: ..." at the top, when it applies
 
 
 func _init() -> void:
@@ -64,13 +66,21 @@ func _init() -> void:
 ## Rebuilds the panel from session.turn_report(). `computer_notes` (AISeat.report_notes) fills the
 ## "What the computer was thinking" section; leave it empty in a hotseat game.
 func show_report(session: GameSession, computer_notes: Array = []) -> void:
-	show_report_data(session.turn_report() if session != null else {})
+	# M4-4: the person at the controls reads their own transformation as "Your people have become ..." and,
+	# with nothing to research chosen, the "needs you" line. Nobody (watch mode, game over) reads public text.
+	var viewer := ""
+	if session != null and session.phase() == GameSession.Phase.ORDERS and not session.is_computer(session.current_player()):
+		viewer = session.current_player()
+	show_report_data(session.turn_report() if session != null else {}, viewer)
+	if not viewer.is_empty():
+		show_needs_you(PathView.needs_you(session.state(), viewer))
 	_show_seats(session)
 	show_computer_notes(computer_notes)
 
 
 ## Rebuilds the panel from a report dictionary shaped like GameSession.turn_report().
-func show_report_data(report: Dictionary) -> void:
+func show_report_data(report: Dictionary, viewer: String = "") -> void:
+	_viewer = viewer
 	_clear_rows()
 	_clear_seats()
 	show_computer_notes([])
@@ -246,7 +256,7 @@ func _event_row(e: Dictionary) -> HBoxContainer:
 		row.move_child(card, 0)
 
 	var b := Button.new()
-	b.text = str(e.get("text", ""))
+	b.text = event_text(e, _viewer)
 	b.flat = true
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -274,6 +284,38 @@ func _event_row(e: Dictionary) -> HBoxContainer:
 	if RulesCodex.ENTRIES.has(key):
 		row.add_child(_codex_button(key))
 	return row
+
+
+## The text of event `e` as `viewer` reads it (M4-4): a faction's own transformation speaks to it ("Your
+## people have become the Celestial Host. ...", the event's numbers.own_text); everything else as it is.
+static func event_text(e: Dictionary, viewer: String = "") -> String:
+	var factions: Array = e.get("factions", [])
+	if str(e.get("type", "")) == "transformed" and not viewer.is_empty() and not factions.is_empty() and str(factions[0]) == viewer:
+		var own := str(e.get("numbers", {}).get("own_text", ""))
+		if not own.is_empty():
+			return own
+	return str(e.get("text", ""))
+
+
+## The "needs you" line (M4-4, design/M4_ASCENSION.md §9.5) at the top of the report: nothing is being
+## researched and research is waiting. "" removes it.
+func show_needs_you(text: String) -> void:
+	if needs_you_label != null:
+		rows_box.remove_child(needs_you_label)
+		needs_you_label.queue_free()
+		needs_you_label = null
+	if text.is_empty():
+		return
+	needs_you_label = Label.new()
+	needs_you_label.name = "NeedsYou"
+	needs_you_label.text = "Needs you: %s" % text
+	needs_you_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	needs_you_label.add_theme_font_size_override("font_size", 18)
+	needs_you_label.add_theme_color_override("font_color", UiPalette.GILT)
+	needs_you_label.tooltip_text = TooltipText.plain("Choose what to research", RulesCodex.text("research_order"))
+	CodexLink.attach(needs_you_label, "research_order", codex_requested.emit)
+	rows_box.add_child(needs_you_label)
+	rows_box.move_child(needs_you_label, 0)
 
 
 ## The unit type a "recruited" event is about ("knights"), found by the unit names of the recruiting
@@ -330,6 +372,7 @@ func _on_codex_pressed(key: String) -> void:
 
 
 func _clear_rows() -> void:
+	needs_you_label = null  # freed with the rows below
 	_event_rows.clear()
 	_battle_buttons.clear()
 	_codex_buttons.clear()
