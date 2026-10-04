@@ -75,7 +75,11 @@ func _assert_no_raw_ids(text: String, what: String) -> void:
 func test_new_game_screen_offers_human_or_computer_per_seat() -> void:
 	var screen := load(NEW_GAME_SCENE).instantiate() as NewGameScreen
 	assert_eq(screen.kind_pickers.size(), 2)
-	assert_eq(screen.seat_kind(1), "human", "both seats start human, so the hotseat default is unchanged")
+	# Start from the hotseat setup without rulers (the default is you against the computer, with rulers:
+	# tests/test_mvp_defaults.gd), so the pickers are walked from Human to Computer.
+	assert_true(screen.set_seat_kind(2, "human"))
+	screen.set_rulers(false)
+	assert_eq(screen.seat_kind(1), "human", "both seats human")
 	assert_eq(screen.seat_kind(2), "human")
 	assert_false(screen.config().has("ai"), "an all-human config is exactly {players, seed}")
 	assert_false(screen.level_pickers[1].visible, "no level for a human seat")

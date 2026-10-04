@@ -8,9 +8,14 @@ const RAW_IDS := ["kingdom", "beasts", "crownkeep", "fangridge", "knight_captain
 	"tuskers", "war_bear", "codex:", "_"]
 
 
+## The screen set up for the M1 hotseat game these tests are about: both seats human, no rulers. (The
+## MVP default, you against the computer with rulers, is tested in tests/test_mvp_defaults.gd.)
 func _screen() -> NewGameScreen:
 	var screen := load(SCENE).instantiate() as NewGameScreen
 	assert_true(screen != null, "scene instantiates as NewGameScreen")
+	if screen:
+		assert_true(screen.set_seat_kind(2, "human"))
+		screen.set_rulers(false)
 	return screen
 
 
@@ -58,7 +63,7 @@ func _assert_no_raw_ids(text: String, where: String) -> void:
 
 # --- tests ----------------------------------------------------------------------------------------
 
-func test_default_config_is_valid_with_distinct_factions_and_an_int_seed() -> void:
+func test_hotseat_config_is_valid_with_distinct_factions_and_an_int_seed() -> void:
 	var screen := _screen()
 	var cfg := screen.config()
 	var keys := cfg.keys()
@@ -258,9 +263,10 @@ func test_victory_new_game_is_a_rematch() -> void:
 	title.free()
 	game.free()
 
-	# The title's own New game is a fresh setup: default seats, no rematch note.
+	# The title's own New game is a fresh setup: default seats (you against the computer), no rematch note.
 	var fresh := SceneFlow.make_title(true)
 	assert_eq(fresh.new_game_screen.config().players, ["kingdom", "beasts"])
+	assert_eq(fresh.new_game_screen.seat_kind(2), "computer")
 	assert_false(fresh.new_game_screen.rematch_label.visible)
 	fresh.free()
 

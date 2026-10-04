@@ -24,6 +24,14 @@ var sacrifices: Array = []  # mid-game sacrifices: [{"turn", "mandate", "cost"}]
 ## RulerRules.refresh_ruler_type. Derived, so never serialized: it is rebuilt on load.
 var ruler_unit_type: UnitType = null
 
+# --- research and the path (M4, #66; design/M4_ASCENSION.md §2.2, §3.3). Rules: AscensionRules. ---
+# Paths are opt-in at game setup (GameState.with_paths): in a game without paths these stay at their
+# defaults and are never serialized (GameState.to_dict passes with_path), so M1 and M2 games save as before.
+var research_points: int = 0  # the research pool: whole points, never lost (§2.2)
+var research_target: String = ""  # the node being researched (PathData id), or ""; private to this faction
+var researched: Array = []  # [{"node": PathData id, "turn": the turn it was done at the end of}], in order
+var path_branch: String = ""  # the side of the fork its Oath swore to ("celestial_host", ...), or ""
+
 
 func has_ruler() -> bool:
 	return not ruler_type.is_empty()
@@ -37,7 +45,9 @@ static func describe(stat: String) -> String:
 		"gold": return "Current treasury. Used to recruit units and commanders."
 		_: return ""
 
-func to_dict() -> Dictionary:
+## `with_path` (GameState.to_dict passes GameState.paths) adds the research and path fields; without it
+## they are left out, so a game without paths saves exactly as before.
+func to_dict(with_path: bool = false) -> Dictionary:
 	var ut_dicts := []
 	for ut in unit_types:
 		ut_dicts.append(ut.to_dict())
@@ -63,6 +73,14 @@ func to_dict() -> Dictionary:
 		d["successor_turn"] = successor_turn
 		d["successor_power"] = successor_power
 		d["sacrifices"] = sacrifice_dicts
+	if with_path:
+		var done := []
+		for r in researched:
+			done.append({"node": str(r.get("node", "")), "turn": int(r.get("turn", 0))})
+		d["research_points"] = research_points
+		d["research_target"] = research_target
+		d["researched"] = done
+		d["path_branch"] = path_branch
 	return d
 
 ## Returns null when a field has the wrong type, with a plain-language reason in `errors` (Serial load
@@ -103,6 +121,23 @@ static func from_dict(data: Dictionary, errors = null, who: String = "") -> Fact
 	if mandate_list == null:
 		return null
 	f.mandates = Serial.to_string_array(mandate_list)
+
+	# Research and the path (M4): only present in a game with paths (see to_dict). AscensionRules.validate
+	# checks them against GameState.paths.
+	for key in ["research_target", "path_branch"]:
+		var value = Serial.expect(data, key, TYPE_STRING, errors, who, "")
+		if value == null:
+			return null
+		f.set(key, String(value))
+	var done_list = Serial.expect_dicts(data, "researched", errors, who, "researched node")
+	if done_list == null:
+		return null
+	for i in done_list.size():
+		var node = Serial.expect(done_list[i], "node", TYPE_STRING, errors, "researched node %d of %s" % [i + 1, who], "")
+		if node == null:
+			return null
+		f.researched.append({"node": String(node), "turn": Serial.to_int(done_list[i].get("turn", 0))})
+	f.research_points = Serial.to_int(data.get("research_points", 0))
 
 	# The other ruler fields are only present for a faction with a ruler (see to_dict). GameState.from_dict
 	# checks them and rebuilds ruler_unit_type.

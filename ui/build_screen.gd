@@ -29,6 +29,9 @@ extends Control
 ## screen's own codex opens on top.
 ##
 ## Builds its children in code, so it works before it is in the tree (headless tests).
+## Art (#10): the header flies the builder's faction banner, each ruler card shows the ruler's portrait
+## (Art.ruler_card: a styled placeholder with the ruler's initial until the ruler portraits land), and
+## the roster rows show each unit's face.
 ##
 ## API:
 ##   begin(config, last_builds)   starts the build phase for config ({"players", "seed", "ai"}).
@@ -892,6 +895,9 @@ func _build_body() -> void:
 	head.name = "Header"
 	head.add_theme_constant_override("separation", 12)
 	body.add_child(head)
+	var banner := Art.banner_card(faction_id, 58.0)
+	banner.name = "HeaderBanner"
+	head.add_child(banner)
 	head.add_child(SeatEmblem.new(seat, SeatEmblem.Look.TOKEN, 26.0))
 	header_label = _label("HeaderLabel", "Player %d, %s: choose your ruler and how much power to keep." % [seat + 1, fname], 24, UiPalette.TEXT_PRIMARY)
 	header_label.add_theme_color_override("font_color", UiPalette.seat_color(seat).lightened(0.35))
@@ -1055,28 +1061,13 @@ func _ruler_card(rid: String) -> Control:
 	return card
 
 
-## The ruler's portrait: a placeholder frame with the ruler's initial until the portraits arrive (M2-9).
+## The ruler's portrait (Art.ruler_card): the art once the ruler portraits land (M2-9), until then a
+## styled placeholder card with the ruler's initial.
 func _portrait(rid: String) -> Control:
-	var frame := PanelContainer.new()
-	frame.name = "Portrait"
-	frame.custom_minimum_size = Vector2(72, 96)
-	frame.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var style := StyleBoxFlat.new()
-	style.bg_color = UiPalette.PANEL_RAISED.darkened(0.25)
-	style.border_color = UiPalette.GILT.darkened(0.35)
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(4)
-	frame.add_theme_stylebox_override("panel", style)
-	var initial := ""
-	for w in RulerRules.ruler_name(rid, 1).split(" ", false):
-		if w.length() > 1 and w[0] == w[0].to_upper():
-			initial = w[0]
-	var l := _label("Initial", initial, 40, UiPalette.GILT.darkened(0.15))
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	frame.add_child(l)
-	return frame
+	var card := Art.ruler_card(rid, RulerRules.ruler_name(rid, 1), Vector2(72, 96))
+	card.name = "Portrait"
+	card.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	return card
 
 
 func _power_column() -> Control:
@@ -1214,7 +1205,13 @@ func _nation_column() -> Control:
 			"%s: %s" % [ut.trait_id, AutoBattleResolver.TRAIT_SHORT.get(ut.trait_id, ut.get_trait_desc())])
 		unit_label.mouse_filter = Control.MOUSE_FILTER_PASS
 		CodexLink.attach(unit_label, "commander" if ut.is_commander else "units", open_codex)
-		grid.add_child(unit_label)
+		var unit_cell := HBoxContainer.new()
+		unit_cell.name = "UnitCell_%s" % ut_id
+		unit_cell.add_theme_constant_override("separation", 8)
+		unit_cell.add_child(Art.portrait_card(ut_id, Vector2(32, 32), faction_id, Art.Crop.FACE))
+		unit_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		unit_cell.add_child(unit_label)
+		grid.add_child(unit_cell)
 		var cells := {}
 		for stat in STATS:
 			var cell := VBoxContainer.new()

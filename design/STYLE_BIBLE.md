@@ -2,6 +2,8 @@
 
 Status: **FINAL. Direction: Bright Cel, picked by Alex on 2026-09-30** from the style probe (PR #12, review only, not merged). Owner: art lead. Specs only. Asset builder generates from these specs; nobody else does. Changing a style block needs art lead to change it here and bump `v` on the affected manifest rows.
 
+**3D (2026-10-04).** The game is now 3D with a 2D interface (Alex's call; see `design/3D_DIRECTION.md`). §1–§7 still govern all 2D art, and now also govern **concept art (the input pictures for 3D models) and portraits**, as well as lore art, the UI, icons and banners. §8 governs the 3D world. The director proposed it, and the art lead adopts or changes it after the 3D spike.
+
 Built on: `design/GAME_BRIEF.md` (approved v2), `design/MILESTONES.md` (M1 approved), ticket #9, `studio/ludo-playbook.md` §1–9, and the probe findings in playbook §10 (on the PR #12 ref, `probe12`).
 
 What the brief sets for art:
@@ -316,3 +318,117 @@ Everything else is exactly as probed.
     - banners: 192 px, 48 px, and 48 px greyscale
     - portraits: 384×512 and 96×128
   - GIFs for animated rows go next to the sheet as `studio/contact-sheets/<batch>-<id>.gif`.
+
+## 8. 3D (proposed by the director, 2026-10-04)
+
+Status: **PROPOSED.** The direction and its reasons are in `design/3D_DIRECTION.md` (§3-§4, §9). The 3D spike's screenshots settle the look A/B (§8.3), and the art lead then adopts or changes this section and bumps `v` on any model rows. §1-§7 keep governing every 2D asset, including the concept pictures that 3D models are made from.
+
+What carries over unchanged: the player colours, emblems and keylines (§1.1), the terrain anchors and their lightness gate (§1.2, now measured on the rendered ground), the UI palette (§1.3), the class silhouettes (§2.3), the figure value rules (§2.5), the Ludo rules (§3), the transformation contract (§5), and Bright Cel's intent (§6): bold, clean, saturated, readable, with darkness from subject and palette.
+
+### 8.1 readability: minimum on-screen sizes in 3D
+At 1920×1080, also checked at 1600×900. The map zooms are in `3D_DIRECTION.md` §8.1.
+
+| element | minimum | made by |
+|---|---|---|
+| human-sized figure on the map | 24 px tall (piece scale grows as the camera rises; below 24 px the army becomes a stand) | Ludo model + code scale |
+| army stand (far zoom) | banner 32 px tall, base ring 28 px across | code |
+| human-sized figure in a battle | 48 px tall up to 40 a side; 32 px at the largest (150 a side); beyond that, M3's files | the auto-framing camera |
+| fortress at the strategic zoom | 48 px across | Ludo kit + code walls |
+| base ring stroke | 3 px in screen space, with the §1.1 keylines | code |
+| owned-province inner band | 4 px in screen space, keylined; doubled when fortified | ground shader |
+| count plate | emblem 16 px, number 16 px | 2D overlay. Art never carries text, and neither does the 3D |
+| selection / hover | 3 px `#FFFFFF` / 2 px `#F1ECE0` screen-space outline | code (stencil) |
+
+### 8.2 silhouette
+- **The class gate in 3D:** render the figure filled black at 24 px tall from the default map pitch (about 50°), and a reviewer must name the class. §2.3's shape rules apply as seen from that camera: infantry with weapon upright near the body, mounted longer than tall with the mount's legs visible, a commander's standard ≥ 25% of figure height above the head, a caster's bell robe and glowing focus, a flyer's wings wider than tall, and a monster ≥ 1.5 men tall.
+- **The block gate:** a block of 8 of one unit at the default zoom is told apart from the faction's other blocks by shape alone, in greyscale.
+- **Concept pictures:** arms a little away from the body, both hands and what they hold visible (§3 rule 6). Image-to-3D separates limbs better, and the class read survives the turn to 3D.
+
+### 8.3 outline, and the cel-or-painted A/B
+Both looks share the §6 intent and these rules: no outline on terrain or water, the outline colour is ink `#1A1612`, and selection and occlusion outlines are code (§8.1, §8.6).
+
+| | **A: cel** | **B: painted-lit** |
+|---|---|---|
+| shading | toon ramp: lit, shadow (55% of lit) and highlight bands, with hard band edges; a rim band at grazing angles | wrap Lambert (wrap 0.3) over the painted albedo, with a soft rim of 0.1 |
+| outline | inverted hull on every piece (figures, buildings, trees): 1.5 px at 1080p, constant in screen space | the same hull on figures, fortresses and hero buildings only |
+| concept `art_style` | `Cel-Shaded` | `Hand-Painted` |
+
+The spike renders one scene in both looks at three zooms, in colour and greyscale. Alex picks. The director's lean is B with outlines on pieces.
+
+### 8.4 model budgets
+`target_num_faces` is the value sent to Ludo `create3DModel` (minimum 1,000) and the import's LOD0. LODs are generated on import (about 25% and about 6% of LOD0); figures draw at the smallest LOD at the strategic zoom. Slimmed textures are JPEG embedded in the GLB.
+
+| class | faces (LOD0) | texture | slimmed GLB | height (men) |
+|---|---|---|---|---|
+| regular figure, human-sized (and army extras) | 6,000 | 512 | ≤ 0.5 MB | 1.0 |
+| large figure (mounted, beast) | 8,000 | 512 | ≤ 0.6 MB | 1.3-2.0 |
+| commander | 8,000 | 1024 | ≤ 0.9 MB | 1.1 |
+| ruler, human-sized | 12,000 | 1024 | ≤ 1.2 MB | 1.25 |
+| ruler, monster (for example the Great Thornmane) | 15,000 | 1024 | ≤ 1.5 MB | 2.5-3.5 |
+| fortress hero piece (gatehouse, keep) | 14,000 | 1024 | ≤ 1.0 MB | 6-10 |
+| corner tower | 8,000 | 1024 | ≤ 0.7 MB | 5-7 |
+| capital hall | 16,000 | 1024 | ≤ 1.2 MB | 6-9 |
+| building (house, barracks, landmark) | 8,000-10,000 | 512 | ≤ 0.5 MB | 2-6 |
+| prop (rack, post, tents) | 3,000 | 512 | ≤ 0.3 MB | 0.5-2 |
+| tree, rock (instanced) | 2,000 | 512 | ≤ 0.3 MB | 2-4 |
+
+Over budget means re-model at fewer faces (failed jobs are free; a re-roll is 3), never a hand edit.
+
+### 8.5 materials: Ludo's PBR is always replaced
+- Ludo GLBs come with PBR materials that render too shiny and differ from model to model. **Every Ludo mesh is drawn with the game's `piece` material instead** (a `material_override`, or the MultiMesh's material). It keeps only Ludo's base colour texture.
+- `piece`: metallic 0, roughness 0.8, specular 0.3; the §8.3 lighting model and outline. Emission is reserved for code effects (transformation shimmer, flashes). Ludo's normal and metallic-roughness maps are dropped when the GLB is slimmed.
+- **Shine gate:** under the default light, no highlight on a piece is more than 10 L\* above its lit albedo.
+- **Value gate:** rendered under the default light, a figure's mean L\* is 40-65 with a light area (L\* > 70) and a dark area (L\* < 30), as §2.5. A model off by up to 15 L\* gets a per-model Lab correction (a and b kept) in its model-table row. Off by more is re-rolled.
+- One material family for every piece, so models from different jobs read as one set.
+
+### 8.6 player identity, in code only
+§1.1's rule holds in 3D: **model art never carries player colour.** The faction's palette is worn in the art; the player's colour is drawn by code:
+- **Base ring** under every block, stand and battle fighter: the slot colour with keylines, and the slot emblem on its front edge. It replaces §2.2's battle ground ellipse.
+- **Banners:** a code cloth mesh with a ripple shader in the slot colour, with the emblem as a decal. Carried by every army's standard bearer and flown by every owned fortress, capital and village.
+- **Territory wash:** §2.2's 30% multiply tint on the ground, plus the keylined inner band (§8.1).
+- **Pennants** on fortress towers in the slot colour.
+- **Occluded armies:** a keylined silhouette in the slot colour at 60% through terrain and buildings.
+- Hue-key repainting of a model's own colour (CONCURRENT's `tin.gdshader`) is used only if the director calls for it after the spike. Six faction palettes make a keyed hue collide.
+
+### 8.7 faction palettes in 3D
+- §1.3's faction material palettes extend to every faction the lore room defines: 4 named materials per faction, worn at moderate chroma (≤ 45), so the slot colour stays the loudest, keylined colour on a piece.
+- **Gate before any model is made:** all faction palettes on one sheet in colour and greyscale. Each faction differs from every other by value pattern as well as hue.
+- The Crown keeps steel, white linen, royal blue and gold. The Clans keep tawny fur, bone, moss green and crimson war paint. A cross-faction anchor is always greyscale (§3 rule 3).
+
+### 8.8 lighting, time of day and seasons
+- One key sun from the upper left of the default view, at about 50° elevation, warm; a cool sky fill. Shadowed ground keeps L\* ≥ 30.
+- Planning is bright midday. Turn playback uses a warm late-afternoon grade.
+- Seasons swap the ground grade and tree canopies (spring green, summer gold, autumn rust, winter snow) and never touch the code colours.
+- **Gate under every lighting and season preset:** the terrain anchors keep their §1.2 bands at the default zoom, and every player mark keeps ≥ 3.5:1 through its keylines on every terrain.
+
+### 8.9 camera and readability gates (every model batch and every world PR)
+1. The silhouette gate and the block gate (§8.2).
+2. The owner gate: at the strategic, default and near zooms, in greyscale, every army's owner reads from its ring, emblem and banner.
+3. The value and shine gates (§8.5), rendered.
+4. The contrast gate under every preset (§8.8).
+5. The occlusion gate: no army is fully hidden at any zoom.
+6. The label gate: no label overlaps another label or a plate at the default zoom on the largest map.
+7. The family gate: a unit's pose models are within ΔE 8 of the base pose on their shared materials.
+8. Turntable, zoom and silhouette renders on the batch's model sheet (§7's format, one row per unit with its poses as columns), and a human look at every model. No gate replaces looking (playbook §8).
+
+### 8.10 3D asset classes
+3.5 cr a piece = a 0.5 picture + a 3.0 model. Base pictures take 3 candidates (1.5).
+
+| class | Ludo call | image_type / view / aspect | ship | path | gates | cr |
+|---|---|---|---|---|---|---|
+| concept picture, figure (base pose) | createImage, n = 3, C-model block | `asset` / `High Angle` / `ar_1_1` | the pick as webp q90, ≤ 1024 px (a pipeline input, like the anchors) | `assets/_concept/<faction>/<unit>.webp` (with `.gdignore`) | class read, palette, hands and held items visible | 1.5 |
+| pose picture | editImage on the base pick, C-pose template | – | as above | `assets/_concept/<faction>/<unit>_<pose>.webp` | same outfit, base and palette | 0.5 |
+| figure model | create3DModel, `texture_size` 1024, `texture_type` pbr | – | slimmed GLB | `assets/models/<faction>/<unit>/<unit>_<pose>.glb` | §8.9 | 3.0 |
+| structure picture | createImage, n = 3, C-structure block | `asset` / `High Angle` / `ar_1_1` or `ar_4_3` | as figure pictures | `assets/_concept/<faction>/fortress/<piece>.webp`, `assets/_concept/world/<piece>.webp` | walls meet the floor, footprint as planned | 1.5 |
+| structure model | create3DModel | – | slimmed GLB | `assets/models/<faction>/fortress/<piece>.glb`, `assets/models/world/<piece>_<a\|b>.glb` | §8.4, §8.9 | 3.0 |
+| wall mat | createImage, 2 takes, C-wallmat block | `texture` / `Top-Down` / `ar_1_1` | 512 seamless webp q90 | `assets/tex/walls/<faction>.webp` | seams on 3×3, the §4 lightness gate against the faction stone's target | 0.5 each |
+| ground mat | createImage, 2 takes, C-terrain v2 | `texture` / `Top-Down` / `ar_1_1` | 512 seamless webp q90 | `assets/tex/ground/<terrain>.webp` | §4 lightness gate | 0.5 each |
+| battle effect | §4.2, shown as a billboard | – | §4.2 | `assets/vfx/<vfx>/` | §4.2 | 5.5 |
+
+Every model has a row in the model table (`data/models.gd`: height in men, yaw, long axis for lying or long pieces, LOD bias, collider). A test fails on any GLB without one. Candidates and raw GLBs stay gitignored (§3 rule 16). Every input goes to Ludo as base64 from a local file.
+
+### 8.11 style blocks (drafts; the spike tunes them, then they're verbatim as in §6.1)
+- **C-model:** `Concept picture of one game miniature for a 3D model, bright high fantasy: a single full figure standing on a small plain round base, chunky simplified shapes and large readable forms, a bold clear silhouette, arms held a little away from the body with both hands visible, flat saturated colours with one soft shadow tone, matte painted finish, even soft studio light from the front, three-quarter view from slightly above, the whole figure centred with wide empty margin on every side and clear headroom, plain flat light grey background.`
+- **C-structure:** `Concept picture of one tabletop terrain model for a 3D model, bright high fantasy: a single building standing on its own with its walls meeting the floor, chunky simplified shapes, a bold clear silhouette, flat saturated colours with one soft shadow tone, matte painted finish, even soft studio light, three-quarter view from a little above, the whole building centred with clear space on every side, plain flat light grey background.`
+- **C-pose** (an edit instruction on the base picture): `The same figure, now <one plain line of the pose>. Same outfit, same colours, same round base, same outline style, three-quarter view from slightly above.`
+- **C-wallmat:** `Seamless tileable cel-shaded stone wall texture viewed straight on in bright sunlit daylight: <the faction's stone and mortar>, simple bold block shapes in two close light tones, low contrast within the texture, even flat lighting, pattern continues across all four edges.`
