@@ -10,7 +10,8 @@ class_name SiegeRules
 ##                      is_besieged, siege_stands, is_cut_off, cut_off_info, turn_of_siege
 ## Siege damage:        siege_damage (with parts), siege_damage_at, engines_counted, turns_to_breach, breach_turn
 ## Checks:              check_fortify, check_siege_order, check_recruit_at, recruit_place, engine_type, is_engine
-## The battles phase:   next_battle (§3.9; S-1a's stub: a siege where there is one, M1's battle everywhere else)
+## The battles phase:   next_battle (§3.9, every crossing of orders), sallying_armies, storming_factions, called_off,
+##                      siege_block
 ## The sieges phase:    siege_step, repair_step, works_step (TurnResolver._sieges_phase calls them in this order)
 ## Texts:               walls_text, damage_text, fort_phrase, in_turns_text and the event sentences
 ## validate(state, errors), called by GameState.validate.
@@ -21,6 +22,9 @@ class_name SiegeRules
 
 const STORM := "storm"
 const SALLY := "sally"
+## The kinds of battle at a fort (§3.9): outside the walls, a storm of the walls, through the breach.
+const OPEN := "open"
+const BREACH := "breach"
 ## The looks the board draws (§10.1): one per step of WALL_STEP lost, and the breach at 0.
 const LOOKS := ["intact", "damaged", "battered", "breached"]
 
@@ -504,55 +508,202 @@ static func _check_sally(state: GameState, fid: String, order: SiegeOrder, moves
 
 # --- the battles phase (§3.9) ----------------------------------------------------------------------
 
-## The next battle at a fort in a game with sieges (§3.9), or {} when there is none: {"kind", "why", "sides":
-## {faction id: [armies]}, "defender", "from_inside": [army ids]}. `moved` holds the army ids that moved this
-## turn, `siege_orders` the turn's recorded storms and sallies ({"storms": {province id: {faction id: true}},
-## "sallies": {army id: {"faction", "with"}}}), and `fought` how many battles this province has had this turn.
+## The next battle at a fort in a game with sieges (§3.9), or {} when there is none. TurnResolver._fort_battles asks
+## again after each battle, on the armies still standing, because whether a storm follows depends on who won the
+## battle outside the walls. `moved` holds the army ids that moved this turn; `siege_orders` the turn's recorded
+## storms and sallies ({"storms": {province id: {faction id: true}}, "sallies": {army id: {"faction", "with",
+## "from"}}}); `fought` the kinds of the battles this fort has already had this turn, in order.
+## Returns {"kind": "open" | "storm" | "breach", "why" (§3.9's last column), "sides": {faction id: [armies]},
+## "defender" (the owner in a storm, "" otherwise), "from_inside": [army ids], "siege": the battle's siege block
+## (§4.4, siege_block)}.
 ##
-## S-1a's stub (#98): one battle at most. A garrison with standing walls and only enemies outside holds, and
-## the enemy besieges: no battle. A storm ordered by the besiegers is a battle the garrison defends; any other
-## meeting (a sally, a relief, the breach, rivals, an empty fort) is one battle with nobody defending. S-1b
-## (#99) replaces it with every row of §3.9.
-static func next_battle(state: GameState, province_id: String, moved: Dictionary, siege_orders: Dictionary, fought: int = 0) -> Dictionary:
-	if fought > 0:
-		return {}
+## The rule: at a fort the only defender is a garrison being stormed. Every other battle there is in the open and
+## nobody defends, but fighters coming from inside the walls (a sally, or the garrison at the breach) get cover.
+## Inside a province the open battle outside the walls comes first (when two or more factions are outside,
+## counting sallying armies as their owner's), then the storm (when one was ordered and stormers and garrison
+## armies are still there). At a breached fort the garrison and the enemy fight once, through the breach.
+static func next_battle(state: GameState, province_id: String, moved: Dictionary, siege_orders: Dictionary, fought: Array = []) -> Dictionary:
 	var p := state.find_province(province_id)
-	var sides := {}
+	if p == null or p.fort_level <= 0 or fought.has(STORM) or fought.has(BREACH):
+		return {}
+	var by_faction := _armies_by_faction(state, province_id)
+	if by_faction.size() < 2:
+		return {}
+	var owner := p.owner
+	var inside := garrison(state, province_id, moved)
+	var relief := []
+	var enemies := []
 	for a in _sorted_armies(state):
 		if a.location != province_id:
 			continue
+		if a.owner == owner and moved.has(a.id):
+			relief.append(a)
+		elif a.owner != owner:
+			enemies.append(a)
+	var enemy_fids := _factions_of(enemies)
+	# Rows 16 and 17: through the breach, on its own, in the open; a relief fights beside the garrison.
+	if p.walls <= 0 and not inside.is_empty() and not enemies.is_empty():
+		if not fought.is_empty():
+			return {}
+		return _plan(state, p, BREACH, BREACH, inside + relief, enemies, "", inside)
+	# Rows 11 and 15 (an empty fort): whoever arrives meets in the open; nobody is inside.
+	if inside.is_empty():
+		if not fought.is_empty() or _factions_of(relief + enemies).size() < 2:
+			return {}
+		return _plan(state, p, OPEN, "empty", relief, enemies, "", [])
+	var sallying := sallying_armies(state, province_id, moved, siege_orders)
+	var stormers := storming_factions(state, province_id, siege_orders)
+	# The open battle outside the walls (rows 3-8, 12, 15): at most one, before any storm.
+	if fought.is_empty() and not enemies.is_empty() and (not relief.is_empty() or not sallying.is_empty() or enemy_fids.size() > 1):
+		var why := "sally"
+		if enemy_fids.size() > 1:
+			why = "rivals"
+		elif not relief.is_empty() and not sallying.is_empty():
+			why = "relief_sally"
+		elif not relief.is_empty():
+			why = "relief"
+		elif not stormers.is_empty():
+			why = "gate"
+		return _plan(state, p, OPEN, why, relief + sallying, enemies, "", sallying)
+	# The storm (rows 2, 4, 7, 8, 12, 13): every army of the storming faction there against the armies that stayed
+	# inside. Sallying armies are outside the walls this turn, so a storm never meets them.
+	var staying := inside.filter(func(a): return not sallying.has(a))
+	if stormers.is_empty() or staying.is_empty():
+		return {}
+	var fid := String(stormers[0])
+	var attackers := enemies.filter(func(a): return a.owner == fid)
+	return _plan(state, p, STORM, STORM, staying, attackers, owner, staying)
+
+
+## The garrison armies of `province_id` that come out this turn (§3.4, §3.6): those with a sally order, except a
+## sally tied to a relief army that isn't outside the walls when the battles start (row 18).
+static func sallying_armies(state: GameState, province_id: String, moved: Dictionary, siege_orders: Dictionary) -> Array:
+	var sallies: Dictionary = siege_orders.get("sallies", {})
+	var out := []
+	for a in garrison(state, province_id, moved):
+		if not sallies.has(a.id):
+			continue
+		var tie := String(sallies[a.id].get("with", ""))
+		if tie.is_empty() or _relief_outside(state, province_id, moved, tie):
+			out.append(a)
+	return out
+
+
+## The factions that ordered a storm of `province_id` and still have an army there, in id order.
+static func storming_factions(state: GameState, province_id: String, siege_orders: Dictionary) -> Array:
+	var p := state.find_province(province_id)
+	var out := []
+	var storms: Dictionary = siege_orders.get("storms", {}).get(province_id, {})
+	for fid in storms:
+		if String(fid) == p.owner:
+			continue
+		for a in state.armies:
+			if a.owner == String(fid) and a.location == province_id:
+				out.append(String(fid))
+				break
+	out.sort()
+	return out
+
+
+## The orders at `province_id` that come to nothing when the battles start (§3.5, §3.6, row 9 of §3.9), for the
+## battles phase's report lines: [{"type": "storm_called_off" | "sally_called_off" | "sally_found_nothing",
+## "faction", "armies", "why", "text", "codex"}], storms first, then sallies by army id.
+static func called_off(state: GameState, province_id: String, moved: Dictionary, siege_orders: Dictionary) -> Array:
+	var p := state.find_province(province_id)
+	var out := []
+	if p == null or p.fort_level <= 0:
+		return out
+	var inside := garrison(state, province_id, moved)
+	var storms: Dictionary = siege_orders.get("storms", {}).get(province_id, {})
+	var fids: Array = storms.keys()
+	fids.sort()
+	for fid in fids:
+		if String(fid) == p.owner:
+			continue
+		var name := _faction_name(state, String(fid))
+		var here := state.armies.filter(func(a): return a.owner == String(fid) and a.location == province_id)
+		if here.is_empty():
+			out.append({"type": "storm_called_off", "faction": String(fid), "armies": [], "why": "no_army",
+				"text": "The %s storm of %s was called off: none of their armies stood there after the march. It cost nothing." % [
+					RulerRules._possessive(name), p.name], "codex": "storm"})
+		elif inside.is_empty():
+			out.append({"type": "storm_called_off", "faction": String(fid), "armies": here.map(func(a): return a.id), "why": "no_garrison",
+				"text": "The %s storm of %s was called off: nobody was left inside the walls. It cost nothing." % [
+					RulerRules._possessive(name), p.name], "codex": "storm"})
+	var sallies: Dictionary = siege_orders.get("sallies", {})
+	var outside_enemy := false
+	for a in state.armies:
+		if a.location == province_id and a.owner != p.owner:
+			outside_enemy = true
+	var found_nothing := []
+	for a in inside:
+		if not sallies.has(a.id):
+			continue
+		var tie := String(sallies[a.id].get("with", ""))
+		if not tie.is_empty() and not _relief_outside(state, province_id, moved, tie):
+			var from := String(sallies[a.id].get("from", ""))
+			out.append({"type": "sally_called_off", "faction": a.owner, "armies": [a.id], "why": "relief_missing",
+				"text": "The garrison of %s stayed inside: the relief from %s never arrived." % [p.name,
+					_province_name(state, from) if not from.is_empty() else "outside"], "codex": "sally"})
+		elif not outside_enemy:
+			found_nothing.append(a.id)
+	if not found_nothing.is_empty():
+		out.append({"type": "sally_found_nothing", "faction": p.owner, "armies": found_nothing, "why": "besiegers_left",
+			"text": "The garrison of %s came out to find the siege lines empty: the besiegers had left, so there was no battle." % p.name,
+			"codex": "sally"})
+	return out
+
+
+## The siege block a battle at a fort carries (§4.4): {"kind", "why", "fort" (the level's id), "walls", "walls_max",
+## "walls_defense" (the part each garrison fighter gets in a storm; 0 otherwise), "cover_defense"
+## (FortData.COVER_DEFENSE for the from_inside fighters of a sally or breach battle; 0 otherwise), "garrison" (the
+## owner's side index among the sides in faction id order, or -1), "from_inside", "turn_of_siege" (0 when there
+## was no siege at the start of the turn)}. Walls never change during a battle.
+static func siege_block(state: GameState, p: Province, kind: String, why: String, fids: Array, from_inside: Array) -> Dictionary:
+	var ids := from_inside.map(func(a): return a.id if a is Army else String(a))
+	return {"kind": kind, "why": why, "fort": String(level_data(p.fort_level).id), "walls": p.walls,
+		"walls_max": walls_max(p.fort_level), "walls_defense": walls_defense(p.walls) if kind == STORM else 0,
+		"cover_defense": FortData.COVER_DEFENSE if kind != STORM and not ids.is_empty() else 0,
+		"garrison": fids.find(p.owner), "from_inside": ids, "turn_of_siege": turn_of_siege(state, p.id)}
+
+
+static func _plan(state: GameState, p: Province, kind: String, why: String, owner_side: Array, others: Array, defender: String,
+		from_inside: Array) -> Dictionary:
+	var sides := {}
+	for a in owner_side + others:
 		if not sides.has(a.owner):
 			sides[a.owner] = []
 		sides[a.owner].append(a)
-	if p == null or sides.size() < 2:
-		return {}
-	var inside := garrison(state, province_id, moved)
-	var relief := false
-	for a in owner_armies(state, province_id):
-		if moved.has(a.id):
-			relief = true
-	var stormed := false
-	var storms: Dictionary = siege_orders.get("storms", {}).get(province_id, {})
-	for fid in storms:
-		if String(fid) != p.owner and sides.has(String(fid)):
-			stormed = true
-	var sallied := false
-	for a in inside:
-		if siege_orders.get("sallies", {}).has(a.id):
-			sallied = true
-	var rivals := sides.size() - (1 if sides.has(p.owner) else 0)
-	if not inside.is_empty() and p.walls > 0 and not relief and rivals == 1:
-		if stormed and not sallied:
-			return {"kind": STORM, "why": STORM, "sides": sides, "defender": p.owner, "from_inside": inside.map(func(a): return a.id)}
-		if not stormed and not sallied:
-			return {}
-	var holders := {}
-	for fid in sides:
-		for a in sides[fid]:
-			if not moved.has(a.id):
-				holders[fid] = true
-	var defender: String = holders.keys()[0] if holders.size() == 1 and inside.is_empty() else ""
-	return {"kind": "open", "why": "", "sides": sides, "defender": defender, "from_inside": []}
+	var fids: Array = sides.keys()
+	fids.sort()
+	var ids := from_inside.map(func(a): return a.id)
+	return {"kind": kind, "why": why, "sides": sides, "defender": defender, "from_inside": ids,
+		"siege": siege_block(state, p, kind, why, fids, ids)}
+
+
+## Whether the relief army `army_id` stands in `province_id`, having arrived this turn (outside the walls).
+static func _relief_outside(state: GameState, province_id: String, moved: Dictionary, army_id: String) -> bool:
+	var a := state.find_army(army_id)
+	return a != null and a.location == province_id and moved.has(a.id)
+
+
+static func _armies_by_faction(state: GameState, province_id: String) -> Dictionary:
+	var out := {}
+	for a in _sorted_armies(state):
+		if a.location == province_id:
+			if not out.has(a.owner):
+				out[a.owner] = []
+			out[a.owner].append(a)
+	return out
+
+
+static func _factions_of(armies: Array) -> Array:
+	var out := []
+	for a in armies:
+		if not out.has(a.owner):
+			out.append(a.owner)
+	out.sort()
+	return out
 
 
 # --- the sieges phase (§3.3, §3.10, §2.5, §2.6) ----------------------------------------------------
@@ -562,13 +713,16 @@ static func next_battle(state: GameState, province_id: String, moved: Dictionary
 ## provinces that had a battle this turn. Returns {} when nothing happens, otherwise {"kind": "started" |
 ## "damaged" | "lifted" | "fallen", "province", "owner", "besieger", "walls_before", "walls", "walls_max",
 ## "damage" (siege_damage's result for a siege), "breached", "turn_of_siege", "why"}.
-static func siege_step(state: GameState, province_id: String, turn: int, battle_sites: Dictionary = {}) -> Dictionary:
+## `beaten_by` names the faction whose armies outside the walls were destroyed there this turn, when there was one,
+## so a siege lifted in battle can still say whose siege lines fell.
+static func siege_step(state: GameState, province_id: String, turn: int, battle_sites: Dictionary = {}, beaten_by: String = "") -> Dictionary:
 	var p := state.find_province(province_id)
 	if p == null or p.fort_level <= 0 or p.owner.is_empty():
 		return {}
 	var mine := owner_armies(state, province_id)
 	var theirs := besiegers(state, province_id)
-	var out := {"kind": "", "province": p.id, "owner": p.owner, "besieger": besieging_faction(state, province_id),
+	var besieger := besieging_faction(state, province_id)
+	var out := {"kind": "", "province": p.id, "owner": p.owner, "besieger": besieger if not besieger.is_empty() else beaten_by,
 		"walls_before": p.walls, "walls": p.walls, "walls_max": walls_max(p.fort_level), "damage": {}, "breached": false,
 		"turn_of_siege": 0, "why": "", "fought": battle_sites.has(p.id)}
 	if p.siege_since > 0 and theirs.is_empty():
@@ -857,6 +1011,11 @@ static func _faction_name(state: GameState, fid: String) -> String:
 ## "takes" for "Aurel Crown", "take" for "Thornmane Clans": the verb agreeing with a faction's name.
 static func _verb(name: String, verb: String) -> String:
 	return verb if name.ends_with("s") else verb + "s"
+
+
+static func _province_name(state: GameState, pid: String) -> String:
+	var p := state.find_province(pid)
+	return p.name if p else "a place not on the map"
 
 
 static func _faction_of(armies: Array) -> String:

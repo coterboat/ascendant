@@ -67,6 +67,10 @@ Ludo treats `target_num_faces` as a target, not a cap: models come back up to ~2
   slab, so each is cut out (Ludo removeBackground, pixels kept) and laid on plain grey before modelling.
 - The Bloodtuskers' crimson and black came back near-black from image-to-3D three times; their four
   pictures are lifted (gamma 1.5) before modelling.
+- **Texture levels** (`texlevels`, `retexture`): image-to-3D returns colour maps darker than their
+  pictures (#91's accepted base units sit 5-24 L* under theirs). Every path model more than 5 under is
+  lifted to about 5 under, the Bloodtuskers to about 4 under their original picks; each lift is recorded
+  in its `tex_lift`.
 
 ## `models.json`
 
@@ -105,6 +109,7 @@ pieces (`fortress.kingdom`, `fort.beasts`, `camp.kingdom`), `a` / `b` for interc
 | `faces`, `texture`, `bytes` | triangle count, colour map size (px), file size |
 | `extent` | the raw GLB AABB size `[x, y, z]` in model units (Ludo normalises to a unit cube) |
 | `notes` | what a reviewer should know (a known flaw, a by-eye size) |
+| `tex_lift` | when the colour map came back crushed (near-black) and was lifted (`asc_3d_paths.py retexture`, no Ludo call): `{"gamma", "lstar_before", "lstar_after", "picture_lstar", "original_pick_lstar"?}`. The model's mean L* (its colour map sampled at every triangle's UV centroid, area-weighted) is lifted with an L* gamma that keeps each texel's chromaticity, from the raw Ludo GLB before slimming, until it sits about 5 under its picture's (`original_pick_lstar` when the picture itself was lifted before modelling) |
 
 ### On the board: `world3d/models.json`
 
