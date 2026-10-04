@@ -6,6 +6,7 @@ extends "res://tests/test_case.gd"
 ## odds and the codex. Expected numbers come from data and the resolver's constants, never typed in.
 
 const PB := preload("res://tests/path_battle_fixtures.gd")
+const Simulator := preload("res://tools/autoplay/simulator.gd")
 const CROWN := "kingdom"
 const CLANS := "beasts"
 const HOST := ["crown_drillyard", "crown_charters", "crown_oath_dawn", "crown_celestial_host"]
@@ -292,8 +293,8 @@ func test_dread_lands_only_in_province_battles_in_provinces_the_blood_pact_owned
 func test_red_harvest_pays_a_gold_for_every_enemy_fighter_lost() -> void:
 	var paid := false
 	for sd in range(1, 21):
-		# The mandate is set after the copy with_nodes makes: its MandateData row comes with M4-2, and a state
-		# that names an unknown mandate doesn't copy. TurnResolver._fight reads the state as it stands.
+		# The mandate is set after the copy with_nodes makes: Red Harvest is bought only by sacrifice, so a state
+		# that has it without one doesn't copy (the next test buys it properly). _fight reads the state as it is.
 		var s := PB.with_nodes(PB.game(), CLANS, PACT)
 		s.find_faction(CLANS).mandates = [AutoBattleResolver.RED_HARVEST]
 		var a := PB.army(s, CLANS, "beasts-1", "bloodfen", ["tuskers", "tuskers", "tuskers", "war_bear"])
@@ -327,6 +328,43 @@ func test_red_harvest_pays_a_gold_for_every_enemy_fighter_lost() -> void:
 	var pb := PB.army(plain, CROWN, "kingdom-2", "bloodfen", ["spearmen"])
 	var r := PB.fight(plain, [pa, pb], "bloodfen", CLANS, 1)
 	assert_eq(AutoBattleResolver.red_harvest(r.sides, r.result.winner), {})
+
+
+func test_red_harvest_through_a_turn_and_the_simulators_gold_check() -> void:
+	# M4-2's MandateData row is in, so a game with the mandate resolves a whole turn; the Simulator's strict
+	# gold check counts the harvest (numbers.red_harvest, paid to the battle's winner).
+	var md := RulerRules.mandate_data(AutoBattleResolver.RED_HARVEST)
+	assert_false(md.is_empty(), "the Red Harvest row")
+	assert_true(String(md.effect).contains("%d gold for every enemy fighter" % AutoBattleResolver.RED_HARVEST_GOLD), md.effect)
+	assert_true(RulesCodex.text(String(md.codex)).contains("%d gold for every enemy fighter" % AutoBattleResolver.RED_HARVEST_GOLD))
+	var checked := false
+	for sd in range(1, 21):
+		var s := PB.with_nodes(PB.game(), CLANS, PACT)
+		s.current_turn = 1  # a sacrifice is made in a turn of the game, never before it
+		var bought := RulerRules.apply_sacrifice(s, CLANS, AutoBattleResolver.RED_HARVEST, s.current_turn)  # sacrifice only
+		assert_true(bought.ok, "the Blood Pact can sacrifice for Red Harvest: %s" % bought.get("reason", ""))
+		var errors := []
+		assert_true(s.deep_copy(errors) != null, "a state with Red Harvest copies: %s" % [errors])
+		PB.army(s, CLANS, "beasts-1", "deepwood", ["tuskers", "tuskers", "tuskers", "war_bear"])
+		PB.army(s, CROWN, "kingdom-2", "bloodfen", ["spearmen", "crossbowmen"])
+		var r := TurnResolver.resolve(s, {CLANS: [MoveOrder.new("beasts-1", "bloodfen")]}, sd)
+		var battles: Array = r.events.filter(func(e): return e.type == "battle")
+		assert_eq(battles.size(), 1)
+		if battles[0].numbers.winner != CLANS:
+			continue
+		assert_eq(int(battles[0].numbers.red_harvest), 2 * AutoBattleResolver.RED_HARVEST_GOLD, "both Crown fighters lost")
+		var found: Array = Simulator.check_invariants(s, r.new_state, r.events)
+		assert_false(found.map(func(x): return x.check).has("gold_accounting"), "the harvest is accounted for: %s" % [found])
+		# Without counting it, the same turn would not add up.
+		var stripped: Array = r.events.duplicate(true)
+		for e in stripped:
+			if e.type == "battle":
+				e.numbers.erase("red_harvest")
+		var off: Array = Simulator.check_invariants(s, r.new_state, stripped)
+		assert_true(off.map(func(x): return x.check).has("gold_accounting"), "an unpaid harvest is caught")
+		checked = true
+		break
+	assert_true(checked, "the Clans won a battle with Red Harvest")
 
 
 # --- the "why", the report and the odds ----------------------------------------------------------------
@@ -465,8 +503,48 @@ func test_trait_text_codex_entries_and_the_new_units() -> void:
 	assert_true(AutoBattleResolver.TRAIT_TEXT[AutoBattleResolver.IRON_HIDE].contains("%d less damage" % AutoBattleResolver.IRON_HIDE_DAMAGE))
 	assert_true(AutoBattleResolver.TRAIT_TEXT[AutoBattleResolver.ROOTED].contains("+%d defense" % AutoBattleResolver.ROOTED_DEFENSE))
 	assert_true(AutoBattleResolver.TRAIT_TEXT[AutoBattleResolver.LIFEDRINKER].contains(AutoBattleResolver.SHARE_WORDS[AutoBattleResolver.LIFEDRINK_DIVISOR]))
+	assert_true(RulesCodex.text(AutoBattleResolver.DREAD_LANDS_ID).contains("%d less morale" % int(AscensionRules.node_effects("beasts_blood_pact").province_rule.value)))
 	var morale := RulesCodex.text("battle_morale")
 	assert_true(morale.contains("Dread Lands") and morale.contains("Sunspears"), morale)
 	# A new unit's tooltip text is its trait's (the roster M4-2 adds reads TRAIT_TEXT, as data/factions.gd does).
 	var s := PB.with_nodes(PB.game(), CROWN, HOST)
 	assert_eq(PB.unit_type(s, CROWN, "seraphs").get_trait_desc(), AutoBattleResolver.TRAIT_TEXT[AutoBattleResolver.WINGS])
+
+
+func test_playback_text_names_path_parts_and_traits_in_plain_words() -> void:
+	# M3-2's hover explanations, captions and moments read path logs: no raw part ids, and Wings' reach and Iron
+	# Hide's damage part are explained.
+	var battles := [
+		_battle(CROWN, HOST, CROWN, ["seraphs", "seraphs", "spearmen"], CLANS, ["tuskers", "warchief"], "rivermarch", "", 1),
+		_battle(CROWN, IRON, CROWN, ["iron_colossus", "knights"], CLANS, ["fangthrowers", "fangthrowers", "tuskers"], "rivermarch", "", 1),
+		_battle(CLANS, WILD, CLANS, ["briarwardens", "fangthrowers"], CROWN, ["knights", "spearmen"], "greenglade", "", 1),
+		_battle(CLANS, PACT, CLANS, ["bloodsworn", "bloodsworn", "tuskers"], CROWN, ["knights", "spearmen", "crossbowmen"], "rivermarch", "", 1),
+	]
+	var saw := {"wings": false, "hide": false, "path": false}
+	for r in battles:
+		var lg: Dictionary = r.log
+		for i in lg.events.size():
+			var e: Dictionary = lg.events[i]
+			if e.t != "attack":
+				continue
+			var x := BattleExplain.explain_attack(lg, i)
+			for bd in [x.attack, x.defense, x.damage]:
+				for l in bd.lines:
+					assert_false(String(l.label).contains("_"), "no raw id in a breakdown line: %s" % l.label)
+			if e.reach == "wings":
+				saw.wings = true
+				assert_true(String(x.reach).contains("only Wings could reach"), x.reach)
+			if e.bonus.has(AutoBattleResolver.IRON_HIDE):
+				saw.hide = true
+				assert_true(x.damage.lines.any(func(l): return String(l.note).begins_with("Iron Hide")))
+			for p in e.attack.parts.keys() + e.defense.parts.keys():
+				if String(p).begins_with(AutoBattleResolver.PATH_PREFIX):
+					saw.path = true
+		for c in BattleCaptions.all_rounds(lg, r.result.report):
+			for l in c.lines:
+				assert_false(String(l.text).contains("_"), "no raw id in a caption: %s" % l.text)
+		for m in BattleMoments.key_moments(lg):
+			assert_false(String(m.get("text", "")).contains("_"), "no raw id in a moment")
+		for f in r.result.report.factors:
+			assert_ne(BattleExplain.factor_entry(String(f.id)), "", "factor %s has a codex entry" % f.id)
+	assert_true(saw.wings and saw.hide and saw.path, "the battles showed Wings' reach, Iron Hide and a path part: %s" % saw)

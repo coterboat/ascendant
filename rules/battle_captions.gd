@@ -347,6 +347,17 @@ static func _worth_phrase(battle_log: Dictionary, id: String, si: int, worth: in
 		AutoBattleResolver.PACK_LEADER:
 			return "%s %s drove the pack (+%d attack to every unit), adding about %d damage" % [who, _trait_unit(battle_log, si, id),
 				AutoBattleResolver.PACK_LEADER_ATTACK, worth]
+		# M4-3: the transformations' traits.
+		AutoBattleResolver.WINGS:
+			return "%s %s flew over the line, worth about %d damage" % [who, _trait_unit(battle_log, si, id), worth]
+		AutoBattleResolver.IRON_HIDE:
+			return "%s %s iron hide turned aside about %d damage" % [who, BattleExplain.poss(_trait_unit(battle_log, si, id)), worth]
+		AutoBattleResolver.ROOTED:
+			return "%s rooted %s turned aside about %d damage" % [who, _trait_unit(battle_log, si, id), worth]
+		AutoBattleResolver.LIFEDRINKER:
+			return "%s %s drank back %d hp" % [who, _trait_unit(battle_log, si, id), worth]
+	if id.begins_with(AutoBattleResolver.PATH_PREFIX):
+		return "%s was worth about %d damage to %s" % [AscensionRules.part_name(id), worth, side]  # M4-3: a path part
 	if id.begins_with(AutoBattleResolver.MANDATE_PREFIX):
 		return "%s was worth about %d damage to %s" % [RulerRules.mandate_name(id.trim_prefix(AutoBattleResolver.MANDATE_PREFIX)), worth, side]
 	return ""

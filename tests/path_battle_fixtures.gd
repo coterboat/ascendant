@@ -21,8 +21,8 @@ static func game(mandates: Dictionary = {}) -> GameState:
 	return s
 
 
-## `s` with `ids` researched by `fid` (AscensionRules.with_nodes), and every new unit the nodes bring on
-## its roster (until M4-2's roster change does it itself), so unit_stats and the battle read it.
+## `s` with `ids` researched by `fid` (AscensionRules.with_nodes: since M4-2 it renames the changed unit and
+## puts the new unit on the roster; unit_type() below is then a no-op for it).
 static func with_nodes(s: GameState, fid: String, ids: Array) -> GameState:
 	var out := AscensionRules.with_nodes(s, fid, ids)
 	for nid in ids:
@@ -32,16 +32,15 @@ static func with_nodes(s: GameState, fid: String, ids: Array) -> GameState:
 	return out
 
 
-## The unit type `type_id` of `fid`: its roster's, or a new unit from PathData.NEW_UNITS, added to the
-## roster with its trait text (AutoBattleResolver.TRAIT_TEXT).
+## The unit type `type_id` of `fid`: its roster's, or a new unit from PathData.NEW_UNITS added to the roster
+## (AscensionRules.new_unit_type, with its trait text from AutoBattleResolver.TRAIT_TEXT). Tests use it to
+## field a new unit for the other faction too, to try a trait against any roster.
 static func unit_type(s: GameState, fid: String, type_id: String) -> UnitType:
 	var f := s.find_faction(fid)
 	var ut := TurnResolver.recruitable_type(f, type_id)
 	if ut != null:
 		return ut
-	var data: Dictionary = PathData.NEW_UNITS[type_id]
-	ut = UnitType.from_dict(data)
-	ut.trait_description = AutoBattleResolver.TRAIT_TEXT.get(ut.trait_id, "")
+	ut = AscensionRules.new_unit_type(type_id)
 	f.unit_types.append(ut)
 	return ut
 

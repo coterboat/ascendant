@@ -544,13 +544,11 @@ static func _build_sides(sides_in: Array, defender_fid: String, state, kind: Str
 static func people_of(state, fid: String) -> Dictionary:
 	if not (state is GameState) or not AscensionRules.has_paths(state):
 		return {}
-	var ids: Array = PathData.BRANCHES.keys()
-	ids.sort()
-	for bid in ids:
-		var b: Dictionary = PathData.BRANCHES[bid]
-		if String(b.faction) == fid and AscensionRules.has_node(state, fid, String(b.transformation)):
-			return {"id": bid, "name": String(b.name)}
-	return {}
+	var nid := AscensionRules.transformation(state, fid)
+	if nid.is_empty():
+		return {}
+	var bid := String(AscensionRules.node_data(nid).get("branch", ""))
+	return {"id": bid, "name": AscensionRules.branch_name(bid)}
 
 
 ## Dread Lands (§4.7): the morale every enemy side loses in a province battle in `province` when `fid`
@@ -559,12 +557,8 @@ static func people_of(state, fid: String) -> Dictionary:
 static func dread_lands_value(state, fid: String, province: Province) -> int:
 	if not (state is GameState) or province == null or province.owner != fid or not AscensionRules.has_paths(state):
 		return 0
-	var value := 0
-	for nid in AscensionRules.researched(state, fid):
-		var rule: Dictionary = AscensionRules.node_effects(nid).get("province_rule", {})
-		if String(rule.get("id", "")) == DREAD_LANDS_ID:
-			value = maxi(value, int(rule.get("value", 0)))
-	return value
+	var rule := AscensionRules.province_rule(state, fid)
+	return int(rule.get("value", 0)) if String(rule.get("id", "")) == DREAD_LANDS_ID else 0
 
 
 ## The attack, defense, maximum hp and morale parts the side's mandates and path give a regular unit of
