@@ -178,6 +178,40 @@ const ENTRIES := {
 		"title": "Battle odds",
 		"text": "Before you attack, the forecast fights the same battle with the real rules 24 times on fixed test seeds and tells you how often you won: likely win (65% or more), close, or likely loss (35% or less), with the main reasons. The real battle uses this turn's own rolls, so a likely win can still go wrong.",
 	},
+	# --- battle playback (M3-2, #57; design/M3_BATTLES.md §7.2): the terms the battle player's captions,
+	# key moments and hover explanations use (BattleCaptions, BattleMoments and BattleExplain link here).
+	# Numbers from AutoBattleResolver's constants.
+	"battle_playback": {
+		"title": "Watching a battle",
+		"text": "A battle is fought by the rules first, all at once, and only then played back. The playback shows exactly what happened: the same rolls, hits, wounds and morale checks as the battle report, round by round, so watching it can never change the result. A caption after every round says what mattered most, and hovering anyone shows what it is doing and the numbers behind it. Speed it up, pause it, skip to the end or jump to its key moments whenever you like.",
+	},
+	"battle_formation": {
+		"title": "Ranks on the battlefield",
+		"text": "Fighters stand in the ranks the battle rules give them. The front rank holds every unit without Volley, and the rulers who fight in front. The second rank holds the Crossbowmen and the Ever-Regent, shielded while at least as many front-rank fighters stand as second-rank ones. Commanders stand in the back line, out of reach while any unit stands. The defender holds its own ground. Where a fighter stands within its rank is only for show: who attacks whom is decided by the rules, among the enemies it can reach.",
+	},
+	"battle_strength": {
+		"title": "Strength bars",
+		"text": "Each side has a strength bar: the hit points it has left, out of what it started the battle with. A white notch marks where the side breaks, with the exact number beneath it (\"breaks at 26 hp or less\"): a side breaks at the end of a round once it has lost %d%%" % AutoBattleResolver.BREAK_BASE_PCT
+			+ " plus %d%% per point of morale of its starting hit points" % AutoBattleResolver.MORALE_PCT_PER_POINT
+			+ " (at least %d%%," % AutoBattleResolver.MIN_BREAK_PCT + " at most %d%%)." % AutoBattleResolver.MAX_BREAK_PCT
+			+ " When its morale changes, because a commander, a ruler or an enemy War Bear fell, the notch moves. Whoever is further above its notch is closer to winning.",
+	},
+	"battle_pending_damage": {
+		"title": "Damage lands at the end of the round",
+		"text": "Every fighter attacks once a round, all at the same time. The damage of a round's hits shows as a hatched chunk on the hit points bar and lands only at the end of the round, so a fighter that falls still makes its own attack that round. Then the fallen fall, and each side's morale is checked.",
+	},
+	"battle_key_moments": {
+		"title": "Key moments",
+		"text": "The battle player can jump to five key moments. First to fall: the first fighter whose hit points reach 0 (not the first hit). Charge: the first attack of a Knights' charge in round 1. Ruler falls: each ruler that falls. Turning point: the round after which the winner stayed further from breaking than every other side to the end (how far a side is from breaking is its break percentage minus the share of its hit points it has lost); there is none when the winner was ahead from the start, when the battle lasted one round, or when it ended in a mutual rout or at the round cap. Rout: each side that breaks, or has no one left standing. A moment the battle doesn't have is greyed out, with the reason.",
+	},
+	"battle_auras": {
+		"title": "Morale auras",
+		"text": "Some fighters change morale while they stand, shown as a ring at their feet. Rings marked ▲ raise their own side's morale: a commander +%d," % AutoBattleResolver.COMMANDER_MORALE
+			+ " the Knight Captain's Inspire +%d more," % AutoBattleResolver.INSPIRE_MORALE + " a ruler +%d." % RulerData.RULER_MORALE
+			+ " Rings marked ▼ lower every enemy side's morale: each War Bear's Fury -%d" % AutoBattleResolver.FURY_MORALE
+			+ " (at most -%d in all), and the Great Thornmane's Dread -1 or -2." % AutoBattleResolver.FURY_MAX
+			+ " When the fighter falls, its ring fades, and the next morale check counts without it.",
+	},
 	# Trait entries start with AutoBattleResolver.TRAIT_TEXT, built from the constants the rules use.
 	"trait_shield_wall": {
 		"title": "Shield Wall (Spearmen)",
