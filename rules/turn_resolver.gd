@@ -807,6 +807,8 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 					rulers.append(a.ruler.type.name)  # the ruler is a fighter too (M2-2)
 					rulers_lost.append(a.ruler.type.name)
 				lost_by_faction[fid] = {"armies": lost.armies + 1, "units": lost.units + n + (1 if a.ruler else 0), "rulers": rulers}
+				if a.engines > 0 or lost.has("engines"):
+					lost_by_faction[fid]["engines"] = int(lost.get("engines", 0)) + a.engines  # M3c: lost with their army
 			elif a.units.is_empty() and a.commander == null and a.ruler == null:
 				destroyed.append(a.id)  # every unit of this winning army fell (a ruler's army holds only its ruler)
 				if ruler_names.has(a.id):
@@ -876,7 +878,7 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 	if not report.is_empty():
 		# One line with the result and the "why", then what happened to each loser's armies. The full
 		# report rides along in numbers.report (#7) and gets the same aftermath as its last line.
-		var aftermath := _aftermath(s, report, winner, fids, lost_by_faction, winner_wiped, fallen)
+		var aftermath := _aftermath(s, report, winner, fids, lost_by_faction, winner_wiped, fallen, siege, province_ids[0])
 		report["aftermath"] = aftermath
 		if report.get("lines") is Array:
 			report.lines.append("Aftermath: %s" % aftermath)
@@ -912,40 +914,11 @@ const SIEGE_CODEX := {"storm": "storm", "sally": "sally", "gate": "sally", "reli
 	"rivals": "inside_outside", "empty": "empty_fort", "breach": "breach"}
 
 
-## The first sentence of a battle at a fort (M3c, §4.3): "At Stonegate, the Aurel Crown's garrison sallied out against
-## the Thornmane Clans' siege lines. Outside the walls nobody holds the ground." `parts` name each side's fighters.
+## The first sentences of a battle at a fort (M3c, §4.3): AutoBattleResolver.siege_sentence, then each side's
+## fighters ("Thornmane Clans (4 fighters) and Aurel Crown (4 fighters).").
 static func _siege_where(s: GameState, pid: String, siege: Dictionary, fids: Array, parts: Array) -> String:
-	var name := _province_name(s, pid)
-	var gi := int(siege.get("garrison", -1))
-	var owner := String(fids[gi]) if gi >= 0 and gi < fids.size() else ""
-	var others := []
-	for fid in fids:
-		if fid != owner:
-			others.append(_faction_name(s, fid))
-	var them := " and ".join(others)
-	var who := " and ".join(parts)
-	var own := RulerRules._possessive(_faction_name(s, owner)) if not owner.is_empty() else ""
-	match String(siege.why):
-		"storm":
-			return "At %s, the %s stormed the walls (%d of %d: +%d defense) held by the %s. %s." % [name, them, int(siege.walls),
-				int(siege.walls_max), int(siege.walls_defense), _faction_name(s, owner), RulerRules._cap(who)]
-		"sally":
-			return "At %s, the %s garrison sallied out against the %s siege lines. Outside the walls nobody holds the ground. %s." % [
-				name, own, RulerRules._possessive(them), RulerRules._cap(who)]
-		"gate":
-			return "At %s, the %s stormers met the sallying garrison at the gate, outside the walls. %s." % [name, RulerRules._possessive(them),
-				RulerRules._cap(who)]
-		"relief":
-			return "At %s, a relief army of the %s met the siege lines outside the walls, where nobody holds the ground. %s." % [name,
-				_faction_name(s, owner), RulerRules._cap(who)]
-		"relief_sally":
-			return "At %s, a relief army of the %s met the siege lines, and the garrison sallied to join it. Outside the walls nobody holds the ground. %s." % [
-				name, _faction_name(s, owner), RulerRules._cap(who)]
-		"breach":
-			return "Through the breach at %s, the %s garrison met the %s in the open. %s." % [name, own, them, RulerRules._cap(who)]
-		"empty":
-			return "At %s, %s arrived together before the empty fort, where nobody holds the ground." % [name, who]
-	return "At %s, %s met outside the walls, where nobody holds the ground." % [name, who]
+	var names := fids.map(func(fid): return _faction_name(s, fid))
+	return "%s %s." % [AutoBattleResolver.siege_sentence(siege, _province_name(s, pid), names), RulerRules._cap(" and ".join(parts))]
 
 
 ## What happened to each losing side, one sentence each (RulesCodex "battle_rounds"): its armies are
@@ -953,8 +926,11 @@ static func _siege_where(s: GameState, pid: String, siege: Dictionary, fids: Arr
 ## `report` is an AutoBattleResolver report; `lost_by_faction` counts the armies and fighters removed
 ## (and names the rulers among them). M2-2: `fallen` names the winner's rulers that fell, and a Feast of
 ## Victory (report "feast") gets its own sentence.
+## M3c: `siege` (the battle's siege block) adds, after a won storm or breach battle, "The walls of Stonegate were taken.
+## The Thornmane Clans hold the keep (2 of 6 walls)."; and a losing side's engines go with it: "Its 2 Siege Rams
+## were lost with it."
 static func _aftermath(s: GameState, report: Dictionary, winner: String, fids: Array, lost_by_faction: Dictionary, winner_wiped: int,
-		fallen: Array = []) -> String:
+		fallen: Array = [], siege: Dictionary = {}, pid: String = "") -> String:
 	var sentences := []
 	for fid in fids:
 		if fid == winner:
@@ -984,6 +960,18 @@ static func _aftermath(s: GameState, report: Dictionary, winner: String, fids: A
 		else:
 			sentences.append("%s had less of its strength left when the battle ended, and %s destroyed (%s; there are no retreats yet)." % [
 				name, armies, units])
+		var engines := int(lost.get("engines", 0))
+		if engines > 0:
+			var engine_words := String(FortData.engine_for(fid).get("name", "engine")) if engines == 1 else SiegeRules.engines_text(fid, engines)
+			sentences.append("Its %s %s lost with it." % [engine_words, "was" if engines == 1 else "were"])
+	if not siege.is_empty() and ["storm", "breach"].has(String(siege.kind)):
+		var p := s.find_province(pid)
+		var gi := int(siege.get("garrison", -1))
+		var owner := String(fids[gi]) if gi >= 0 and gi < fids.size() else ""
+		if p != null and winner != owner:
+			var wname := _faction_name(s, winner)
+			sentences.append("The walls of %s were taken. The %s %s the %s (%d of %d walls)." % [p.name, wname,
+				"hold" if wname.ends_with("s") else "holds", SiegeRules.level_word(p.fort_level), p.walls, SiegeRules.walls_max(p.fort_level)])
 	if winner_wiped > 0:
 		sentences.append("%s won, but %s lost every fighter and %s gone too." % [_faction_name(s, winner),
 			"one of its armies" if winner_wiped == 1 else "%d of its armies" % winner_wiped, "is" if winner_wiped == 1 else "are"])
