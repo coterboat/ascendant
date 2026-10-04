@@ -24,8 +24,12 @@ extends SceneTree
 ##                                       cross-checks, and regenerate must rebuild it byte for byte; prints
 ##                                       the size and time measurements
 ##   --overhead [--runs N]               time the biggest fixture's battle with recording off and on
+##   --captions [mode]                   M3-2 (#57): print the round captions and key moments instead of the
+##                                       dump, for --record, --scenario or --fixture; on its own, for every
+##                                       stored fixture
 ## Options:
-##   --json        dump {"log", "report"} as JSON instead of text
+##   --json        dump {"log", "report"} as JSON instead of text (with --captions: {"captions", "moments",
+##                 "missing"})
 ##   --turn-cap T  turns before a played game stops (default 60)
 ##   --out PATH    also write the output to PATH
 ## Exit code: 0 when everything ran and every check passed, 1 when a check failed, 2 for bad arguments.
@@ -39,7 +43,7 @@ func _initialize() -> void:
 	var o := _parse(OS.get_cmdline_user_args())
 	if o.has("error"):
 		printerr("battle_log: %s" % o.error)
-		printerr("usage: godot --headless --path . -s tools/battle_log.gd -- (--record PATH (--turn T --battle I | --list) | --scenario NAME [--seed S] | --fixture NAME | --fixtures | --play SEED [--save PATH] | --check N [--seed S] | --overhead) [--json] [--out PATH]")
+		printerr("usage: godot --headless --path . -s tools/battle_log.gd -- (--record PATH (--turn T --battle I | --list) | --scenario NAME [--seed S] | --fixture NAME | --fixtures | --play SEED [--save PATH] | --check N [--seed S] | --overhead | --captions) [--captions] [--json] [--out PATH]")
 		quit(2)
 		return
 	var out := {"text": "", "code": 0}
@@ -58,6 +62,8 @@ func _initialize() -> void:
 			_check(o, out)
 		"overhead":
 			_overhead(o, out)
+		"captions":
+			_all_captions(o, out)
 	print(out.text)
 	if not String(o.get("out", "")).is_empty():
 		var f := FileAccess.open(o.out, FileAccess.WRITE)
@@ -113,6 +119,29 @@ func _fixture(o: Dictionary, out: Dictionary) -> void:
 		return
 	var lg := BattleLog.from_json(JSON.stringify(fx.log, "", false))
 	_emit(o, out, lg.log, fx.report)
+
+
+## --captions on its own: every stored fixture's captions and key moments.
+func _all_captions(o: Dictionary, out: Dictionary) -> void:
+	var parts := []
+	var all := {}
+	for name in Scenarios.NAMES:
+		var fx = _read_json(Scenarios.fixture_path(name))
+		if not (fx is Dictionary):
+			parts.append("%s: there is no fixture file." % name)
+			out.code = 1
+			continue
+		var lg: Dictionary = BattleLog.from_json(JSON.stringify(fx.log, "", false)).log
+		if o.json:
+			all[name] = _captions_data(lg, fx.report)
+		else:
+			parts.append("=== %s: %s\n%s" % [name, Scenarios.WHAT.get(name, ""), Dump.captions(lg, fx.report)])
+	out.text = JSON.stringify(all, "  ", false) if o.json else "\n\n".join(parts)
+
+
+func _captions_data(battle_log: Dictionary, report: Dictionary) -> Dictionary:
+	return {"captions": BattleCaptions.all_rounds(battle_log, report), "moments": BattleMoments.key_moments(battle_log),
+		"missing": BattleMoments.missing(battle_log)}
 
 
 func _fixtures(out: Dictionary) -> void:
@@ -251,7 +280,9 @@ func _overhead(o: Dictionary, out: Dictionary) -> void:
 # --- helpers ------------------------------------------------------------------------------------------
 
 func _emit(o: Dictionary, out: Dictionary, battle_log: Dictionary, report: Dictionary) -> void:
-	if o.json:
+	if o.captions:
+		out.text = JSON.stringify(_captions_data(battle_log, report), "  ", false) if o.json else Dump.captions(battle_log, report)
+	elif o.json:
 		out.text = JSON.stringify({"log": battle_log, "report": report}, "  ", false)
 	else:
 		out.text = Dump.text(battle_log, report)
@@ -295,7 +326,7 @@ func _read_json(path: String):
 
 func _parse(args: PackedStringArray) -> Dictionary:
 	var o := {"mode": "", "record": "", "turn": 0, "battle": 0, "list": false, "scenario": "", "seed": 0, "fixture": "", "play": 0,
-		"save": "", "check": 0, "runs": 9, "json": false, "turn_cap": 60, "out": ""}
+		"save": "", "check": 0, "runs": 9, "json": false, "turn_cap": 60, "out": "", "captions": false}
 	var i := 0
 	while i < args.size():
 		var a := args[i]
@@ -344,6 +375,8 @@ func _parse(args: PackedStringArray) -> Dictionary:
 				i += 1
 			"--json":
 				o.json = true
+			"--captions":
+				o.captions = true
 			"--turn-cap":
 				o.turn_cap = maxi(1, v.to_int())
 				i += 1
@@ -353,8 +386,10 @@ func _parse(args: PackedStringArray) -> Dictionary:
 			_:
 				return {"error": "unknown option %s" % a}
 		i += 1
+	if o.mode.is_empty() and o.captions:
+		o.mode = "captions"
 	if o.mode.is_empty():
-		return {"error": "say what to do: --record, --scenario, --fixture, --fixtures, --play, --check or --overhead"}
+		return {"error": "say what to do: --record, --scenario, --fixture, --fixtures, --play, --check, --overhead or --captions"}
 	if o.mode == "record" and not o.list and o.turn < 1:
 		return {"error": "--record needs --turn T (1-based) and --battle I (0-based), or --list"}
 	if o.mode == "scenario" and not Scenarios.NAMES.has(o.scenario):
