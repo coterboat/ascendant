@@ -35,6 +35,13 @@ Run the tests (`tests/runner.gd` runs every `test_*` method in `tests/**/test_*.
 /home/box/playtester/godot/godot --headless --path . -s tests/runner.gd
 ```
 
+Wall-clock performance checks (time budgets and overhead ratios, such as the biggest battle's recording overhead and its moments and hover budgets) are off by default, because a busy machine fails them at random and hides real failures. Those tests still do their work and check its results, and print `note: perf skipped (run with --perf): ...` with the time they measured. Turn the checks on with `-- --perf` (or `ASCENDANT_PERF=1`), on a quiet machine before a release or on the build box: each then prints `note: perf ok: ...` with its numbers, or fails with `perf: ...`. Under load they can fail without anything being wrong, so rerun on a quiet machine before trusting a perf failure. New timing tests use `best_ms()` and `assert_perf()` from `tests/test_case.gd`:
+
+```sh
+/home/box/playtester/godot/godot --headless --path . -s tests/runner.gd -- --perf
+/home/box/playtester/godot/godot --headless --path . -s tests/runner.gd -- --perf --only=test_battle_log,test_battle_moments
+```
+
 Compile check (parses every project `.gd` file, skipping `.godot/` and other hidden or `.gdignore` folders):
 
 ```sh

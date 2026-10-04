@@ -25,6 +25,14 @@ extends RefCounted
 ## id in "builds" overrides that seat's roll (the draw is still made, so the orders after it stay the
 ## same). Results then carry "builds" ({faction id: preset id}) and "ruler" counts, and summarize() adds
 ## the wins by build and the ruler counts (sacrifices, deaths, successors).
+##
+## Paths (M4-5, #70): `options` {"paths": true} starts the game with paths (GameState.with_paths: the rulers
+## game plus a path for every faction; it implies rulers), and {"branches": [branch id or "" per seat]} forces
+## a seat's side of the fork (otherwise it is AIPlayer.choose_branch's roll for that seed and seat). Every
+## policy is told its seed and seat (configure), as AISeat tells a real computer seat. Results then carry
+## "paths" ({faction id: {"branch", "oath_turn", "transform_turn", "nodes", "ordinary_before_oath"}}), and
+## summarize() adds the wins by side of the fork and by pairing, when transformations land and the path
+## mandates bought by sacrifice. The full M4 balance bands (--matrix with paths) are M4-6's.
 
 const Policies := preload("res://tools/autoplay/policies.gd")
 
@@ -47,7 +55,7 @@ const END_NAMES := {"rout": "rout (a side broke and fled)", "destroyed": "destro
 const SUMMARY_KEYS := ["games", "matchup", "seats", "policies", "seeds", "turn_cap", "finished", "unfinished",
 	"draws", "wins_by_faction", "wins_by_seat", "length", "length_decisive", "length_all", "length_buckets", "battles",
 	"why_factors", "final_gold", "mean_gold", "provinces_held", "orders", "rejections",
-	"resolution_rejections", "violations", "errors", "script_errors", "policy_stats", "patterns", "builds", "rulers"]
+	"resolution_rejections", "violations", "errors", "script_errors", "policy_stats", "patterns", "builds", "rulers", "paths"]
 ## Trait names as they appear as "why" factor ids (data/factions.gd), for the trait line of the report.
 const TRAITS := ["Shield Wall", "Volley", "Charge", "Inspire", "Berserk", "Skirmish", "Fury", "Pack Leader"]
 const LENGTH_BUCKETS := [[1, 9, "under 10"], [10, 15, "10-15"], [16, 20, "16-20"], [21, 30, "21-30"], [31, 100000, "31+"]]
@@ -77,7 +85,8 @@ static func run_batch(games: int, base_seed: int, seat_factions: Array, policy_n
 ##    {code: n} (order_rejected events in turn reports), "violations": [{"seed", "turn", "check",
 ##    "detail"}], "errors": [{"seed", "turn", "detail"}] (session problems), "script_errors": [{"seed",
 ##    "turn", "detail"}], "repro": {} or {"seed", "turn", "what", "orders"} for the first problem turn,
-##    "policy_stats": [per seat], "first_battle_turn", "quiet_streak", "final_state": dict}
+##    "policy_stats": [per seat], "first_battle_turn", "quiet_streak", "final_state": dict, "paths": {} (M4-5,
+##    see the class comment)}
 ## `probe` (optional) is called after every turn and returns the engine/script errors logged since its
 ## last call (a PackedStringArray or Array of strings), so each one is filed under this seed and turn.
 ## `options` (optional): {"rulers": true, "builds": [...]} for a game with rulers (see the class comment).
@@ -92,7 +101,7 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 		"builds": {}, "ruler": {"sacrifices": {}, "deaths": {}, "arrivals": {}},
 		# M2-8: when each ruler died (and when its successor was due), arrived, and what was sacrificed.
 		"ruler_log": {"deaths": [], "arrivals": [], "sacrifices": [], "mandates": {}}, "successors_due": 0,
-		"replay": "",
+		"replay": "", "paths": {},
 	}
 	if seat_factions.size() != policy_names.size():
 		_error(result, 0, "There are %d seats but %d policies." % [seat_factions.size(), policy_names.size()])
@@ -106,9 +115,13 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 			return result
 		policies.append(policy)
 		rngs.append(SeededRNG.new(policy_seed(game_seed, i)))
+	var paths: bool = options.get("paths", false)
+	var forced_sides: Array = options.get("branches", [])
+	for i in policies.size():
+		policies[i].configure(game_seed, i, str(forced_sides[i]) if i < forced_sides.size() and forced_sides[i] != null else "")
 
 	var start := GameState.new(game_seed)
-	if options.get("rulers", false):
+	if options.get("rulers", false) or paths:
 		var forced: Array = options.get("builds", [])
 		var builds := {}
 		for i in seat_factions.size():
@@ -126,7 +139,7 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 			builds[fid] = {"preset": parsed.preset, "ruler": parsed.ruler, "mandates": parsed.mandates}
 			result.builds[fid] = str(parsed.id)
 		var build_errors := []
-		start = GameState.with_rulers(game_seed, builds, build_errors)
+		start = GameState.with_paths(game_seed, builds, build_errors) if paths else GameState.with_rulers(game_seed, builds, build_errors)
 		if start == null:
 			for e in build_errors:
 				_error(result, 0, "setup: %s" % e)
@@ -221,6 +234,7 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 		result.policy_stats.append(p.stats.duplicate())
 	result.final_state = final_state.to_dict()
 	_log_rulers(result, final_state)
+	_log_paths(result, final_state)
 	if options.get("replay_check", false):
 		result.replay = replay_check(session)
 	return result
@@ -245,6 +259,26 @@ static func _log_rulers(result: Dictionary, final_state: GameState) -> void:
 		if t < final_state.current_turn or RulerRules.holds_capital(final_state, str(d.faction)):
 			due += 1
 	result.successors_due = due
+
+
+## M4-5: each faction's path at the end of a game with paths: {"branch" (the side it swore, or ""),
+## "oath_turn" and "transform_turn" (the turn at whose end each was done, 0 if never), "nodes" (ids in the
+## order done) and "ordinary_before_oath" (rush or round out)}.
+static func _log_paths(result: Dictionary, final_state: GameState) -> void:
+	if not AscensionRules.has_paths(final_state):
+		return
+	for f in final_state.factions:
+		var side := AscensionRules.branch(final_state, f.id)
+		var oath := String(AscensionRules.branch_data(side).get("oath", ""))
+		var oath_turn := AscensionRules.researched_turn(final_state, f.id, oath) if not oath.is_empty() else 0
+		var trans := AscensionRules.transformation(final_state, f.id)
+		var before := 0
+		for nid in AscensionRules.researched(final_state, f.id):
+			if AscensionRules.is_ordinary(nid) and (oath_turn == 0 or AscensionRules.researched_turn(final_state, f.id, nid) < oath_turn):
+				before += 1
+		result.paths[f.id] = {"branch": side, "oath_turn": oath_turn,
+			"transform_turn": AscensionRules.researched_turn(final_state, f.id, trans) if not trans.is_empty() else 0,
+			"nodes": AscensionRules.researched(final_state, f.id), "ordinary_before_oath": before}
 
 
 ## Replays the session's record after a JSON round trip (GameSession.replay, which never runs the AI)
@@ -682,7 +716,72 @@ static func summarize(results: Array) -> Dictionary:
 		"longest_quiet_streak": stats_of(quiet)}
 	s.builds = by_build
 	s.rulers = rulers
+	s.paths = _paths_summary(results)
 	return s
+
+
+## M4-5: the paths part of summarize(): {"games", "by_branch": {branch id ("" = never swore): {"faction",
+## "games", "decisive", "wins", "oath_turns", "transform_turns", "never"}}, "pairings": {"<side>|<side>":
+## {"games", "decisive", "wins": {faction id: n}}}, "transform_turns", "reached_14", "both_by_14", "nodes",
+## "before_oath": {n: games}, "path_mandates": {mandate id: n}, "path_mandate_turns"}. {"games": 0} without paths.
+static func _paths_summary(results: Array) -> Dictionary:
+	var out := {"games": 0, "by_branch": {}, "pairings": {}, "transform_turns": [], "reached_14": 0, "both_by_14": 0,
+		"nodes": [], "before_oath": {}, "path_mandates": {}, "path_mandate_turns": []}
+	for r in results:
+		var paths: Dictionary = r.get("paths", {})
+		if paths.is_empty():
+			continue
+		out.games += 1
+		var decisive: bool = r.finished and not r.draw and not str(r.winner).is_empty()
+		var fids: Array = paths.keys()
+		fids.sort()
+		var sides := []
+		var all_by_14 := true
+		for fid in fids:
+			var e: Dictionary = paths[fid]
+			var side := str(e.branch)
+			sides.append(side)
+			if not out.by_branch.has(side):
+				out.by_branch[side] = {"faction": fid, "games": 0, "decisive": 0, "wins": 0, "oath_turns": [], "transform_turns": [], "never": 0}
+			var b: Dictionary = out.by_branch[side]
+			b.games += 1
+			if decisive:
+				b.decisive += 1
+				if str(r.winner) == fid:
+					b.wins += 1
+			if int(e.oath_turn) > 0:
+				b.oath_turns.append(int(e.oath_turn))
+			if int(e.transform_turn) > 0:
+				b.transform_turns.append(int(e.transform_turn))
+				out.transform_turns.append(int(e.transform_turn))
+			else:
+				b.never += 1
+			if int(e.transform_turn) <= 0 or int(e.transform_turn) > 14:
+				all_by_14 = false
+			out.nodes.append(e.nodes.size())
+			_bump(out.before_oath, str(int(e.ordinary_before_oath)))
+		if int(r.turns) >= 14:
+			out.reached_14 += 1
+			if all_by_14:
+				out.both_by_14 += 1
+		var key := "|".join(sides)
+		if not out.pairings.has(key):
+			out.pairings[key] = {"games": 0, "decisive": 0, "wins": {}}
+		var pr: Dictionary = out.pairings[key]
+		pr.games += 1
+		if decisive:
+			pr.decisive += 1
+			_bump(pr.wins, str(r.winner))
+		for sac in r.get("ruler_log", {}).get("sacrifices", []):
+			if not AscensionRules.opening_node(str(sac.mandate)).is_empty():
+				_bump(out.path_mandates, str(sac.mandate))
+				out.path_mandate_turns.append(int(sac.turn))
+	return out
+
+
+## A side of the fork by name ("Celestial Host"), or "no Oath" for "".
+static func side_name(branch_id: String) -> String:
+	return "no Oath" if branch_id.is_empty() else AscensionRules.branch_name(branch_id)
 
 
 ## {"n", "min", "median", "mean", "max"} of a list of numbers (all 0 when it is empty).
@@ -807,6 +906,9 @@ static func to_markdown(s: Dictionary) -> String:
 		var st := stats_of(ru.sacrifice_turns)
 		L.append("- **Mandate picks:** before the game %s; by sacrifice %s%s." % [_mandate_counts(ru.pregame_mandates),
 			_mandate_counts(ru.sacrificed_mandates), "" if st.n == 0 else " (turn %s median, %d-%d)" % [_num(st.median), st.min, st.max]])
+	var pa = s.get("paths", {})
+	if pa is Dictionary and int(pa.get("games", 0)) > 0:
+		L.append_array(_paths_lines(pa))
 	var v: Dictionary = s.violations
 	if v.count == 0:
 		L.append("- **Invariant violations:** 0.")
@@ -828,6 +930,44 @@ static func to_markdown(s: Dictionary) -> String:
 		L.append("- **Script errors during games:** %d in %d games (seeds %s). First: seed %d, turn %d: %s" % [se.count, se.games,
 			", ".join(se.seeds.map(func(x): return str(x))), first_se.seed, first_se.turn, first_se.detail])
 	return "\n".join(L)
+
+
+## The paths lines of to_markdown (M4-5).
+static func _paths_lines(pa: Dictionary) -> Array:
+	var L := []
+	var sides: Array = pa.by_branch.keys()
+	sides.sort_custom(func(a, b): return str(pa.by_branch[a].faction) + str(a) < str(pa.by_branch[b].faction) + str(b))
+	var parts := []
+	for side in sides:
+		var b: Dictionary = pa.by_branch[side]
+		var tt := stats_of(b.transform_turns)
+		var ot := stats_of(b.oath_turns)
+		parts.append("%s (%s) %d games, won %d of %d decisive (%s); Oath on turn %s median, transformed on turn %s median (%d-%d)%s" % [
+			side_name(str(side)), faction_name(str(b.faction)), b.games, b.wins, b.decisive, _pct(b.wins, b.decisive),
+			_num(ot.median), _num(tt.median), tt.min, tt.max, "" if int(b.never) == 0 else ", never transformed in %d" % b.never])
+	L.append("- **Paths, by side of the fork:** %s." % "; ".join(parts))
+	var keys: Array = pa.pairings.keys()
+	keys.sort()
+	var prs := []
+	for key in keys:
+		var pr: Dictionary = pa.pairings[key]
+		var wins := []
+		for fid in pr.wins:
+			wins.append("%s %d" % [faction_name(str(fid)), pr.wins[fid]])
+		wins.sort()
+		prs.append("%s: %d games, %s" % [" vs ".join(Array(str(key).split("|")).map(func(b): return side_name(str(b)))), pr.games,
+			"no decisive game" if wins.is_empty() else "wins " + ", ".join(wins)])
+	L.append("- **Paths, by pairing:** %s." % "; ".join(prs))
+	var all_t := stats_of(pa.transform_turns)
+	L.append("- **Transformations land:** turn %s median (%d-%d, %d transformations in %d games); both factions transformed by turn 14 in %d of the %d games that reached turn 14 (%s)." % [
+		_num(all_t.median), all_t.min, all_t.max, all_t.n, pa.games, pa.both_by_14, pa.reached_14, _pct(pa.both_by_14, pa.reached_14)])
+	var nodes := stats_of(pa.nodes)
+	var bo: Array = pa.before_oath.keys()
+	bo.sort()
+	L.append("- **Research:** %.1f nodes per faction by the end (max %d); ordinary nodes before the Oath: %s. **Path mandates by sacrifice:** %s%s." % [
+		nodes.mean, nodes.max, ", ".join(bo.map(func(k): return "%s: %d" % [k, pa.before_oath[k]])),
+		_mandate_counts(pa.path_mandates), "" if pa.path_mandate_turns.is_empty() else " (turn %s median)" % _num(stats_of(pa.path_mandate_turns).median)])
+	return L
 
 
 ## One markdown table row per game: seed, result, turns, battles, captures, gold left, problems.
