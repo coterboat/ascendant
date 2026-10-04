@@ -25,7 +25,150 @@ const ENTRIES := {
 	},
 	"fort": {
 		"title": "Fort",
-		"text": "Some provinces have a fort, drawn as a small tower on the map. An army holding a province with a fort gets +2 defense in battles there, on top of the terrain. Only the defender gets it, never armies that just arrived. A fort does not change income.",
+		"text": "Some provinces have a fort, drawn as a small tower on the map. An army holding a province with a fort gets +2 defense in battles there, on top of the terrain. Only the defender gets it, never armies that just arrived. A fort does not change income. In a game with forts and sieges (the M3c preview), a fort has a level (a palisade, a keep or a citadel) and walls instead: it is where you recruit, an enemy army that marches in besieges it instead of fighting while its walls stand, and its walls help a stormed garrison. See Fort levels, Walls and Siege.",
+	},
+	# --- forts and sieges (M3c S-1a, #98; design/M3C_SIEGES.md §9.6): only a game with sieges uses these rules. The
+	# numbers come from FortData, so a retuned fort shows up here by itself. Plain text: tooltips quote them.
+	"fort_levels": {
+		"title": "Fort levels",
+		"text": "In a game with forts and sieges, every fort has a level. A palisade has %d walls" % FortData.LEVELS[1].walls
+			+ " and takes %d recruits a turn, troops only;" % FortData.LEVELS[1].recruits
+			+ " a keep has %d walls" % FortData.LEVELS[2].walls + " and takes %d, commanders and siege engines too;" % FortData.LEVELS[2].recruits
+			+ " a citadel has %d walls" % FortData.LEVELS[3].walls + " and takes %d." % FortData.LEVELS[3].recruits
+			+ " Every capital starts as a citadel, and Stonegate and Blackwood as keeps. A Fortify order builds a palisade in a province you own, or turns a palisade into a keep; citadels stand only at capitals."
+			+ " Walls repair by the level each turn no enemy army is there: a palisade %d," % FortData.LEVELS[1].repair
+			+ " a keep %d," % FortData.LEVELS[2].repair + " a citadel %d." % FortData.LEVELS[3].repair,
+	},
+	"palisade": {
+		"title": "Palisade",
+		"text": "The first fort level: %d walls," % FortData.LEVELS[1].walls + " %d recruits a turn, troops only," % FortData.LEVELS[1].recruits
+			+ " and %d wall strength repaired a turn." % FortData.LEVELS[1].repair
+			+ " You build one with a Fortify order in a province you owned at the start of the turn, for %d gold" % FortData.LEVELS[1].cost
+			+ " and %d turns of work." % FortData.LEVELS[1].turns
+			+ " It is mainly a place to recruit nearer the front: its walls hold off a small raid for a few turns but barely slow a real army, and they make a storm only a little dearer.",
+	},
+	"keep": {
+		"title": "Keep (fort level)",
+		"text": "The second fort level: %d walls," % FortData.LEVELS[2].walls
+			+ " %d recruits a turn, commanders and siege engines included," % FortData.LEVELS[2].recruits
+			+ " and %d wall strength repaired a turn." % FortData.LEVELS[2].repair
+			+ " Stonegate and Blackwood start as keeps; anywhere else you build one by fortifying a palisade you own, for %d gold" % FortData.LEVELS[2].cost
+			+ " and %d turns of work." % FortData.LEVELS[2].turns + " A keep is the most a fort outside a capital can be.",
+	},
+	"citadel": {
+		"title": "Citadel",
+		"text": "The highest fort level, found only at capitals: %d walls," % FortData.LEVELS[3].walls
+			+ " %d recruits a turn," % FortData.LEVELS[3].recruits + " and %d wall strength repaired a turn." % FortData.LEVELS[3].repair
+			+ " Behind full walls a stormed garrison gets +%d defense." % (FortData.WALLS_DEFENSE_PER_STEP * ((FortData.LEVELS[3].walls + FortData.WALL_STEP - 1) / FortData.WALL_STEP))
+			+ " A citadel can't be built anywhere else.",
+	},
+	"recruit_at_forts": {
+		"title": "Recruiting at forts",
+		"text": "In a game with forts and sieges you recruit at any fort you own, not only at your capital. Each fort takes only so many recruits a turn, troops, commanders and siege engines all counting: a palisade %d," % FortData.LEVELS[1].recruits
+			+ " a keep %d," % FortData.LEVELS[2].recruits + " a citadel %d." % FortData.LEVELS[3].recruits
+			+ " Commanders and engines need a keep or a citadel. A fort you capture takes recruits from the turn after next (taken on turn 7, it recruits from turn %d)," % (7 + FortData.CAPTURE_WAIT + 1)
+			+ " but a fort of yours that you retake within %d turns of losing it recruits again at once." % FortData.RETAKE_TURNS
+			+ " A fort you build takes recruits from the turn after it stands. Nobody can recruit at a fort that was cut off by a siege at the start of the turn. Recruits join the first army of yours there, or form a new one, and every recruit and Fortify order is paid from one pool of gold, in the order you gave them.",
+	},
+	"fortify": {
+		"title": "Fortify",
+		"text": "A Fortify order builds the next fort level in a province you owned at the start of the turn: a palisade where there is no fort (%d gold," % FortData.LEVELS[1].cost
+			+ " %d turns of work)," % FortData.LEVELS[1].turns + " or a keep where there is a palisade (%d gold," % FortData.LEVELS[2].cost
+			+ " %d turns)." % FortData.LEVELS[2].turns
+			+ " It is paid with your recruits, from the same gold, and refused at no cost if you can't pay or lose the province that turn. You build one fort at a time, never at a capital, never beyond a keep, and never where an enemy army stands. Work starts the next turn; the new level stands at the end of its last turn of work, at full walls, and takes recruits from the turn after."
+			+ " A palisade ordered on turn 7 stands at the end of turn %d" % (7 + FortData.LEVELS[1].turns)
+			+ " and takes recruits from turn %d." % (8 + FortData.LEVELS[1].turns),
+	},
+	"construction": {
+		"title": "Construction",
+		"text": "A fort being built gets one turn of work each turn no enemy army stands in its province. While an enemy army is there work stops, but nothing done is lost. If the province is captured, the site is razed: the work and the gold are lost, and the province keeps the level it had. The construction chip shows how many turns of work are done.",
+	},
+	"walls": {
+		"title": "Walls",
+		"text": "Every fort has walls: a palisade %d," % FortData.LEVELS[1].walls + " a keep %d," % FortData.LEVELS[2].walls
+			+ " a citadel %d." % FortData.LEVELS[3].walls
+			+ " They drop only by siege damage, and rise only by repair or a finished level. While they stand, an enemy army that marches into the fort with a garrison inside besieges it instead of fighting."
+			+ " If the besiegers storm, every fighter of the garrison gets +%d defense" % FortData.WALLS_DEFENSE_PER_STEP
+			+ " for every %d wall strength still standing, rounded up." % FortData.WALL_STEP
+			+ " At 0 the fort is breached, and the battle there comes on its own.",
+	},
+	"repair": {
+		"title": "Repairing walls",
+		"text": "Each turn no army of another faction stands in a fort's province, its walls rise by the fort's level: a palisade +%d," % FortData.LEVELS[1].repair
+			+ " a keep +%d," % FortData.LEVELS[2].repair + " a citadel +%d, up to full." % FortData.LEVELS[3].repair
+			+ " So a breached fort is whole again in %d turns, whatever its level." % (FortData.LEVELS[1].walls / FortData.LEVELS[1].repair)
+			+ " Walls never repair under siege, and a captured fort keeps its walls as they were.",
+	},
+	"siege": {
+		"title": "Siege",
+		"text": "An army that ends its move at an enemy fort with standing walls and a garrison inside doesn't fight: it besieges. No order is needed, to besiege or to hold. The siege camp goes up at once, so the walls already drop that turn."
+			+ " From the siege's second turn the fort is cut off, if the besiegers have at least half as many troops as the garrison. The garrison can hold, sally out or leave; the besiegers can wait, storm or leave."
+			+ " A siege that is kept up always ends: the walls drop by at least %d a turn, and at 0 the fort is breached and the battle there comes on its own." % FortData.SIEGE.camp
+			+ " A siege is lifted when the besiegers are gone, and the fort falls when the garrison is gone.",
+	},
+	"inside_outside": {
+		"title": "Inside and outside the walls",
+		"text": "1. Walls help most if the enemy storms them: +%d defense" % FortData.WALLS_DEFENSE_PER_STEP
+			+ " for every %d wall strength left." % FortData.WALL_STEP
+			+ " 2. A sally, a relief army, armies arriving together, and the fight after the breach are all in the open: nobody gets walls or ground, but the garrison's own fighters keep +%d cover from their fort." % FortData.COVER_DEFENSE
+			+ " 3. An empty fort falls to whoever walks in. 4. From the turn after a real army besieges a fort, the fort is cut off: nobody can recruit there, and its income goes to the besiegers. A handful of pickets cuts nothing off."
+			+ " The garrison is the fort owner's armies that were there at the start of the turn and didn't move, a ruler's army too: they are inside the walls. Everyone else in the province is outside: enemy armies, and the owner's armies that arrive this turn, a relief army. If the owner's armies arrive while no enemy is there, they simply go in.",
+	},
+	"siege_damage": {
+		"title": "Siege damage",
+		"text": "Each turn of a siege the walls drop by the besiegers' siege damage: %d for the siege camp," % FortData.SIEGE.camp
+			+ " +%d" % FortData.SIEGE.engine + " for every %d troops," % FortData.SIEGE.per_troops
+			+ " rounded down, at most +%d," % FortData.SIEGE.troops_max
+			+ " and +%d for each siege engine they carry," % FortData.SIEGE.engine
+			+ " at most %d," % FortData.SIEGE.engines_max + " and at most one for every %d troops." % FortData.SIEGE.troops_per_engine
+			+ " Never more than %d a turn." % FortData.SIEGE.max
+			+ " So a raid drops the walls by %d a turn," % FortData.SIEGE.camp
+			+ " and %d troops or more" % (FortData.SIEGE.per_troops * FortData.SIEGE.troops_max) + " by %d." % (FortData.SIEGE.camp + FortData.SIEGE.troops_max)
+			+ " Troops are the units that fight; commanders, rulers and engines are not troops.",
+	},
+	"cut_off": {
+		"title": "Cut off",
+		"text": "From a siege's second turn, while the besiegers have at least half as many troops as the garrison (rounded up), the fort is cut off: nobody can recruit there, not even with a ruler; its base income goes to the besieging faction, and its owner's other income there is lost. It still counts as its owner's for research and victory."
+			+ " Besiegers with fewer troops than that are pickets: they still drop the walls, but cut nothing off. Lift the siege and the income returns that turn, and recruiting the next.",
+	},
+	"storm": {
+		"title": "Storm",
+		"text": "A Storm order sends every army of yours at an enemy fort against its garrison, your ruler's army too: to keep an army out, move it away. The garrison defends with its walls, +%d defense" % FortData.WALLS_DEFENSE_PER_STEP
+			+ " for every %d wall strength left, rounded up, and with its terrain." % FortData.WALL_STEP
+			+ " You can storm from the march, with armies that arrive this turn, and a storm is ordered once for each fort. Storming walls that still stand is costly: measured with the real battle rules, it takes about a third more army than winning in the open, and loses about twice as many fighters."
+			+ " If no army of yours is there after movement, or the garrison is gone, the storm is called off at no cost. Breached walls can't be stormed: the battle there comes on its own.",
+	},
+	"sally": {
+		"title": "Sally",
+		"text": "A Sally order brings one army of your besieged garrison out to attack every army outside the walls. It fights in the open: nobody defends, so nobody gets walls or terrain, but your fighters from inside keep +%d cover." % FortData.COVER_DEFENSE
+			+ " If the sally wins, the siege is lifted. If it loses, the armies that came out are destroyed; armies that stayed inside are unharmed, and if none stayed, the besiegers take the fort. An army with a move order is leaving, not sallying. A sally given with a relief army happens only if that relief army reaches the walls.",
+	},
+	"relief": {
+		"title": "Relief",
+		"text": "A relief army is your army arriving at your own besieged fort. It is outside the walls, so it meets the besiegers in the open, where nobody defends, and it gets no cover. Order the garrison to sally with it and they fight together; if they win, the siege is lifted and the relief army goes inside. If the relief never arrives, a sally tied to it is called off and the garrison stays inside.",
+	},
+	"breach": {
+		"title": "Breach",
+		"text": "At 0 wall strength a fort is breached. If the garrison and the enemy are both still there at the next battles, they fight on their own, with no order, in the open: nobody defends and nobody gets terrain, but the garrison's fighters keep +%d cover among the ruins." % FortData.COVER_DEFENSE
+			+ " An army arriving at a breached fort with a garrison fights it at once, with no siege. Storm and sally orders at a breached fort are refused. The walls repair once no enemy army is there.",
+	},
+	"empty_fort": {
+		"title": "Empty forts",
+		"text": "A fort with nobody inside falls to the first army that walks in, as any province does, with its level and its walls as they are; any construction there is razed. Its new owner can recruit there from the turn after next. If its owner's army and an enemy arrive together, they meet in the open and the winner holds it. A fort only delays an enemy if someone holds it.",
+	},
+	"trait_siege_engine": {
+		"title": "Siege Engine",
+		"text": FortData.ENGINE_RULE
+			+ " Engines are carried by an army, not units in it: they never fight, add no hit points and are never hit. Recruit them at a keep or a citadel, into an army of yours there that has a fighter;"
+			+ " at most %d ride with one army. They move with their army and are lost with it." % FortData.ARMY_ENGINES_MAX,
+	},
+	"unit_siege_ram": {
+		"title": "Siege Ram",
+		"text": "The Aurel Crown's siege engine, %d gold. " % FortData.ENGINES.kingdom.cost + FortData.ENGINES.kingdom.text,
+	},
+	"unit_wallbreakers": {
+		"title": "Wallbreakers",
+		"text": "The Thornmane Clans' siege engine, %d gold. " % FortData.ENGINES.beasts.cost + FortData.ENGINES.beasts.text,
 	},
 	"terrain_plains": {
 		"title": "Plains",
@@ -96,15 +239,15 @@ const ENTRIES := {
 	},
 	"phase_order": {
 		"title": "How a turn resolves",
-		"text": "Everyone gives orders first. Then the whole turn resolves at once, always in this order: 1. sacrifice: each ruler's Sacrifice order is checked and applied, faction by faction, so its new mandate already counts this turn; 2. orders: every other order is checked against the state after the sacrifices; 3. movement; 4. battles; 5. capture, then Sworn Vassals; 6. recruitment; 7. income; 8. rulers: Mending Light heals, rulers heal, then successors who are due arrive. Without rulers, steps 1 and 8 have nothing to do. In a game with paths (the M4 preview), research resolves between income and rulers: see the research phase. The same orders and seed always give the same result.",
+		"text": "Everyone gives orders first. Then the whole turn resolves at once, always in this order: 1. sacrifice: each ruler's Sacrifice order is checked and applied, faction by faction, so its new mandate already counts this turn; 2. orders: every other order is checked against the state after the sacrifices; 3. movement; 4. battles; 5. capture, then Sworn Vassals; 6. recruitment; 7. income; 8. rulers: Mending Light heals, rulers heal, then successors who are due arrive. Without rulers, steps 1 and 8 have nothing to do. In a game with paths (the M4 preview), research resolves between income and rulers: see the research phase. The same orders and seed always give the same result. In a game with forts and sieges (the M3c preview), sieges resolve between battles and capture: a siege starts or goes on and the walls drop, a siege is lifted or a fort falls, walls repair where no enemy stands and construction works; Fortify orders are paid with the recruits.",
 	},
 	"orders": {
 		"title": "Orders",
-		"text": "Each turn you can move each army once, to a province next to it, and recruit units at your capital. An army with no move order holds where it is. An order that breaks a rule is rejected, and the turn report says why. In a game with rulers there is more. With King's Roads an army can instead make a road move, two provinces through your own land. With Warband Muster you can also recruit with the Ninth Fang where it stands. And a living ruler can give one Sacrifice order per turn, giving up power for a new mandate: it resolves before every other order, so your other orders are checked as if it had already happened. In a game with paths, a research order chooses what your faction researches.",
+		"text": "Each turn you can move each army once, to a province next to it, and recruit units at your capital. An army with no move order holds where it is. An order that breaks a rule is rejected, and the turn report says why. In a game with rulers there is more. With King's Roads an army can instead make a road move, two provinces through your own land. With Warband Muster you can also recruit with the Ninth Fang where it stands. And a living ruler can give one Sacrifice order per turn, giving up power for a new mandate: it resolves before every other order, so your other orders are checked as if it had already happened. In a game with paths, a research order chooses what your faction researches. In a game with forts and sieges, you can also recruit at any fort you own, give a Fortify order to build or improve a fort, order your armies at an enemy fort to storm it, and order the armies of your besieged garrison to sally.",
 	},
 	"move": {
 		"title": "Moving",
-		"text": "An army moves one province per turn, to a neighbor of the province it is in. It arrives during this turn's resolution and is ready to act next turn. All armies move at the same time, so an army that leaves a province is gone before anyone arrives there. In a game with rulers, King's Roads let an army move two provinces instead, through a neighbor to a province next to that, when you owned both at the start of the turn. Such a road move never fights a border battle and never stops halfway.",
+		"text": "An army moves one province per turn, to a neighbor of the province it is in. It arrives during this turn's resolution and is ready to act next turn. All armies move at the same time, so an army that leaves a province is gone before anyone arrives there. In a game with rulers, King's Roads let an army move two provinces instead, through a neighbor to a province next to that, when you owned both at the start of the turn. Such a road move never fights a border battle and never stops halfway. In a game with forts and sieges, an army that moves into an enemy fort with standing walls and a garrison inside besieges it instead of fighting, unless you order a storm.",
 	},
 	"same_province": {
 		"title": "Armies meeting in a province",
@@ -120,7 +263,7 @@ const ENTRIES := {
 	},
 	"defended": {
 		"title": "Moving into a defended province",
-		"text": "Moving into a province where an enemy army is holding starts a battle there. The holding army defends and gets the province's terrain and fort bonuses.",
+		"text": "Moving into a province where an enemy army is holding starts a battle there. The holding army defends and gets the province's terrain and fort bonuses. In a game with forts and sieges, moving into an enemy fort with standing walls and a garrison inside starts a siege instead; the garrison defends only if you storm.",
 	},
 	"undefended": {
 		"title": "Moving into an undefended province",
@@ -272,15 +415,15 @@ const ENTRIES := {
 	},
 	"capture": {
 		"title": "Capturing provinces",
-		"text": "After battles, a province with armies of only one faction in it becomes that faction's. This happens whether it was neutral or an enemy's. Taking the enemy capital stops them from recruiting. In a game with paths, the Thornmane Clans' Raiding Parties also take gold when their armies capture a province: twice its income, once, right away, so they can spend it on this turn's recruits.",
+		"text": "After battles, a province with armies of only one faction in it becomes that faction's. This happens whether it was neutral or an enemy's. Taking the enemy capital stops them from recruiting. In a game with paths, the Thornmane Clans' Raiding Parties also take gold when their armies capture a province: twice its income, once, right away, so they can spend it on this turn's recruits. In a game with forts and sieges, an empty fort is captured with its level and walls, any construction there is razed, and a captured fort takes recruits from the turn after next. A fort with a garrison behind standing walls is besieged, not captured.",
 	},
 	"recruit": {
 		"title": "Recruiting",
-		"text": "Recruit units from your own roster at your capital. Each unit costs gold, paid in the order you gave the orders, from your gold before this turn's income. Recruiting happens after capture, so if your capital falls this turn your recruits are cancelled and you keep the gold. New units join your army at the capital, or form a new army if none is there. In a game with rulers, recruits never join the ruler's army: they join another army of yours there, or form a new one. With Muster Grounds every recruit costs less, and every price on screen already includes it. With Warband Muster the Ninth Fang can also recruit regular units where it starts the turn, a few each turn (more at a higher ability rank), paid from the same gold; they appear there at the end of the turn, and are cancelled and cost nothing if the Fang has fallen or that province isn't yours after the battles. In a game with paths, the Thornmane Clans' Blood Levy makes every regular recruit cost a quarter less and arrive missing a quarter of its hit points, rounded down, never below one, and recruits made with the Ninth Fang arrive wounded too. A transformation adds its new unit to your roster from the next turn, at your capital and with the Ninth Fang.",
+		"text": "Recruit units from your own roster at your capital. Each unit costs gold, paid in the order you gave the orders, from your gold before this turn's income. Recruiting happens after capture, so if your capital falls this turn your recruits are cancelled and you keep the gold. New units join your army at the capital, or form a new army if none is there. In a game with rulers, recruits never join the ruler's army: they join another army of yours there, or form a new one. With Muster Grounds every recruit costs less, and every price on screen already includes it. With Warband Muster the Ninth Fang can also recruit regular units where it starts the turn, a few each turn (more at a higher ability rank), paid from the same gold; they appear there at the end of the turn, and are cancelled and cost nothing if the Fang has fallen or that province isn't yours after the battles. In a game with paths, the Thornmane Clans' Blood Levy makes every regular recruit cost a quarter less and arrive missing a quarter of its hit points, rounded down, never below one, and recruits made with the Ninth Fang arrive wounded too. A transformation adds its new unit to your roster from the next turn, at your capital and with the Ninth Fang. In a game with forts and sieges, you recruit at any fort you own: each fort takes only so many recruits a turn, a captured fort takes recruits from the turn after next, and a fort cut off by a siege takes none.",
 	},
 	"income": {
 		"title": "Income",
-		"text": "At the end of the turn, each faction earns the income of every province it owns, after this turn's captures and recruits. In a game with rulers, two things can add to it. With Heavy Tithes every province you own earns more gold, the capital included. And King Corvane's Royal Court adds gold to the province he is in at the end of the turn, if you own it, as long as he lives. The income shown for each province and in the top bar already includes both; hover it to see each part.",
+		"text": "At the end of the turn, each faction earns the income of every province it owns, after this turn's captures and recruits. In a game with rulers, two things can add to it. With Heavy Tithes every province you own earns more gold, the capital included. And King Corvane's Royal Court adds gold to the province he is in at the end of the turn, if you own it, as long as he lives. The income shown for each province and in the top bar already includes both; hover it to see each part. In a game with forts and sieges, a fort cut off by a siege pays its owner nothing, and its base income goes to the besiegers instead.",
 	},
 	# --- game flow and winning (#7, #8): GameSession and VictoryCheck ---
 	"hotseat": {
@@ -293,7 +436,7 @@ const ENTRIES := {
 	},
 	"victory": {
 		"title": "Winning the game",
-		"text": "Capture the enemy capital to win. A capital is captured like any other province: after battles, if only your armies are in it, it becomes yours. The game ends when that turn finishes resolving, and the victory screen shows the turns played, the battles fought and how many provinces each side holds. In a game with rulers, a ruler's death never ends the game, however often it happens: a successor takes over at the capital, and only the capital decides who wins. The victory screen also shows each player's build.",
+		"text": "Capture the enemy capital to win. A capital is captured like any other province: after battles, if only your armies are in it, it becomes yours. The game ends when that turn finishes resolving, and the victory screen shows the turns played, the battles fought and how many provinces each side holds. In a game with rulers, a ruler's death never ends the game, however often it happens: a successor takes over at the capital, and only the capital decides who wins. The victory screen also shows each player's build. In a game with forts and sieges, a besieged capital is not captured: only taking it ends the game.",
 	},
 	"simultaneous_capture": {
 		"title": "Both capitals fall in the same turn",
@@ -622,7 +765,7 @@ const ENTRIES := {
 	},
 	"mandate_forge_tithe": {
 		"title": "Forge Tithe",
-		"text": "Aurel Crown mandate, 3 power, opened by Living Iron: it can be bought only by a sacrifice (4 power) once the Crown has become Living Iron, never before the game. Every province with a fort you own earns +4 gold per turn: Crownkeep, Stonegate, Blackwood and Fangridge have forts.",
+		"text": "Aurel Crown mandate, 3 power, opened by Living Iron: it can be bought only by a sacrifice (4 power) once the Crown has become Living Iron, never before the game. Every province with a fort you own earns +4 gold per turn: Crownkeep, Stonegate, Blackwood and Fangridge have forts. In a game with forts and sieges, only keeps and citadels pay, and not while a siege cuts them off.",
 	},
 	"mandate_deep_roots": {
 		"title": "Deep Roots",

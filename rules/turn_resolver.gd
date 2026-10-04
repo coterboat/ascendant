@@ -26,6 +26,21 @@ class_name TurnResolver
 ##                is paid for (AscensionRules; _research_phase). Research orders set the target in orders.
 ##   rulers       (games with rulers, M2) Mending Light heals, rulers heal, due successors arrive.
 ##
+## Forts and sieges (M3c, design/M3C_SIEGES.md §6; rules in SiegeRules; only in a game with sieges, so every
+## other game resolves exactly as before; phases(state) gives a game's list):
+##   orders       Fortify orders are checked (and paid in recruitment); storm and sally orders are checked and
+##                recorded after every move order of their faction, against all of its valid moves.
+##   battles      at a fort, SiegeRules.next_battle decides each battle: an army that marches into an enemy fort
+##                with standing walls and a garrison inside besieges it instead of fighting (§3.2).
+##   sieges       (new, between battles and capture) each fort in id order: a siege starts, the walls take
+##                siege damage and may be breached; a siege is lifted, or the fort falls; walls repair where no
+##                army of another faction stands; construction works where no enemy stands, and a level is done.
+##   capture      an empty fort is captured with its level and walls; construction there is razed; owned_since
+##                and the retake rule (§2.3), for Sworn Vassals too.
+##   recruitment  Fortify orders are paid and their sites started; recruits arrive at the fort they name (`at`),
+##                within its limit; siege engines join the first army there with a fighter.
+##   income       a cut-off province pays its base income to the besiegers and nothing to its owner.
+##
 ## Mandates and abilities on the map (M2-4, design/M2_RULER.md §1.4, §2.3; rules in RulerRules; only
 ## in a game with rulers, so an M1 game resolves exactly as before):
 ##   King's Roads    a move with a `via` is a road move: checked in orders, then it moves straight from
@@ -75,6 +90,17 @@ const PHASES := ["sacrifice", "orders", "movement", "battles", "capture", "recru
 ## The phases of a game with paths (M4, design/M4_ASCENSION.md §7): PHASES with "research" after income.
 ## PHASES itself stays the M1/M2 list, which a game without paths resolves exactly as before.
 const PATH_PHASES := ["sacrifice", "orders", "movement", "battles", "capture", "recruitment", "income", "research", "rulers"]
+## The phase a game with sieges adds after "battles" (M3c, §6). PHASES and PATH_PHASES stay as they are.
+const SIEGES_PHASE := "sieges"
+
+
+## The phases of `state`'s game, in order: PHASES, or PATH_PHASES with paths, and "sieges" after "battles"
+## when sieges are on (M3c, §6).
+static func phases(state: GameState) -> Array:
+	var out: Array = (PATH_PHASES if state != null and state.paths else PHASES).duplicate()
+	if state != null and state.sieges:
+		out.insert(out.find("battles") + 1, SIEGES_PHASE)
+	return out
 
 
 static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: int, battle_resolver: BattleResolver = null) -> Dictionary:
@@ -89,8 +115,9 @@ static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: 
 	_sacrifice_phase(s, orders_by_faction, events)  # M2-6: first, so every other order sees the new mandates
 
 	var moves: Array = []  # of {"army_id", "faction", "from", "to"}, one per army
-	var recruits := {}  # faction id -> Array of orders, in given order
-	_collect_orders(s, orders_by_faction, moves, recruits, events)
+	var recruits := {}  # faction id -> Array of orders, in given order (recruits and, M3c, Fortify orders)
+	var siege_orders := {"storms": {}, "sallies": {}}  # M3c: the storms and sallies that passed their checks
+	_collect_orders(s, orders_by_faction, moves, recruits, events, siege_orders)
 
 	var moved := {}  # army ids that left their province this turn (they are not holding)
 	for m in moves:
@@ -100,7 +127,8 @@ static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: 
 	var battle_sites := {}  # province id -> true where a province battle happened
 	for clash in clashes:
 		_border_battle(s, resolver, rng, clash, events)
-	_province_battles(s, resolver, rng, moved, battle_sites, events)
+	_province_battles(s, resolver, rng, moved, battle_sites, events, siege_orders)
+	_sieges_phase(s, battle_sites, events)  # M3c: games with sieges only
 	_capture(s, battle_sites, events)
 	_recruitment(s, recruits, events, state)  # Warband Muster gathers where the ruler started the turn
 	_income(s, events)
@@ -216,30 +244,51 @@ static func road_rule_name(rule: String) -> String:
 ## paid for this turn (Warband Muster's limit); price_recruits passes it. `start_state` is the state the
 ## turn started from, where a recruit with the ruler gathers (muster_province); `state` itself when null,
 ## which is the case whenever orders are checked before the turn resolves.
+## M3c, in a game with sieges (§2.3): a recruit is made at a fort, the capital ("" or its id) or another fort
+## you own (`at` = its id), within that fort's limit; `at_count` is how many recruits that faction already
+## ordered at the same fort this turn (price_recruits counts them). The fort rules are SiegeRules.check_recruit_at.
 static func check_recruit(state: GameState, faction_id: String, order, gold_available: int, with_ruler_before: int = 0,
-		start_state: GameState = null) -> Dictionary:
+		start_state: GameState = null, at_count: int = 0) -> Dictionary:
 	if not (order is RecruitOrder):
 		return _reject("unknown_order", "That is not an order this game knows. Orders are moves and recruits.")
 	var faction := state.find_faction(faction_id)
 	if faction == null:
 		return _reject("unknown_faction", "Those orders are for a faction that is not in this game.")
-	var ut := recruitable_type(faction, order.unit_type_id)
+	var ut := recruitable_type(faction, order.unit_type_id, state)
 	if ut == null:
 		for other in state.factions:
-			if recruitable_type(other, order.unit_type_id) != null:
-				var other_ut := recruitable_type(other, order.unit_type_id)
+			if recruitable_type(other, order.unit_type_id, state) != null:
+				var other_ut := recruitable_type(other, order.unit_type_id, state)
 				return _reject("not_in_roster", "%s belong to %s. %s can only recruit its own units." % [other_ut.name, other.faction_name, faction.faction_name])
 		return _reject("unknown_unit_type", "That is not a unit type in this game. Recruit from your faction's roster.")
-	if order.at == RecruitOrder.AT_RULER:
-		var field := _check_recruit_with_ruler(state, faction, ut, with_ruler_before, start_state if start_state != null else state)
+	var at := recruit_at(state, faction, order)
+	if at == RecruitOrder.AT_RULER:
+		var start := start_state if start_state != null else state
+		var field := _check_recruit_with_ruler(state, faction, ut, with_ruler_before, start)
 		if not field.is_empty():
 			return field
-	elif not order.at.is_empty():
-		return _reject("unknown_place", "Recruits are made at your capital, or with your ruler where it stands if it has Warband Muster.")
+		if state.sieges:  # M3c: no engines with the ruler, and nobody recruits where a siege cuts it off
+			if SiegeRules.is_engine(ut):
+				return _reject("engine_with_ruler", "%s are recruited only at a keep or a citadel, into an army there, not with %s." % [
+					SiegeRules.engine_plural(faction_id), RulerRules.current_name(state, faction_id)])
+			var muster := muster_province(start, faction_id)
+			if SiegeRules.is_cut_off(start, muster, state.current_turn + 1):
+				return _reject("fort_cut_off", "%s is cut off by a siege, so nobody can recruit there this turn, not even with %s; no gold is spent." % [
+					_province_name(state, muster), RulerRules.current_name(state, faction_id)])
+	elif not at.is_empty():
+		if not state.sieges:
+			return _reject("unknown_place", "Recruits are made at your capital, or with your ruler where it stands if it has Warband Muster.")
+		var fort := SiegeRules.check_recruit_at(state, faction_id, at, ut, at_count, start_state)
+		if not fort.is_empty():
+			return fort
 	else:
 		var capital := state.find_province(faction.capital)
 		if capital == null or capital.owner != faction_id:
 			return _reject("capital_not_held", "You don't hold your capital, %s, so you can't recruit. Retake it first." % _province_name(state, faction.capital))
+		if state.sieges:  # M3c: the capital is a fort too, a citadel with its own limit
+			var fort := SiegeRules.check_recruit_at(state, faction_id, faction.capital, ut, at_count, start_state)
+			if not fort.is_empty():
+				return fort
 	var price := RulerRules.recruit_price(state, faction_id, ut)
 	if price > gold_available:
 		return _reject("not_enough_gold", "%s cost %d gold, but you only have %d gold left." % [ut.name, price, gold_available])
@@ -299,14 +348,26 @@ static func _first_ruler_with(ability_id: String) -> String:
 	return ""
 
 
-## The unit type `faction` can recruit under this id (its roster or its commander), or null.
-static func recruitable_type(faction: Faction, unit_type_id: String) -> UnitType:
+## The unit type `faction` can recruit under this id (its roster or its commander), or null. M3c: with a
+## `state` that has sieges on, also its siege engine (SiegeRules.engine_type), which is never in a roster.
+static func recruitable_type(faction: Faction, unit_type_id: String, state: GameState = null) -> UnitType:
 	for ut in faction.unit_types:
 		if ut.id == unit_type_id:
 			return ut
 	if faction.commander_type and faction.commander_type.id == unit_type_id:
 		return faction.commander_type
+	if state != null and state.sieges and String(FortData.engine_for(faction.id).get("id", "")) == unit_type_id:
+		return SiegeRules.engine_type(faction.id)
 	return null
+
+
+## Where a recruit order is made (M3c, §2.3): its `at`, except that in a game with sieges an `at` naming the
+## faction's own capital is read as "" (the capital). Without sieges it is the order's `at` as given.
+static func recruit_at(state: GameState, faction: Faction, order) -> String:
+	var at: String = order.at if order is RecruitOrder else ""
+	if state != null and state.sieges and faction != null and at == faction.capital:
+		return ""
+	return at
 
 
 ## Gold cost of recruiting `unit_type_id` for `faction_id`, or -1 if they can't recruit that type.
@@ -316,7 +377,7 @@ static func recruit_cost(state: GameState, faction_id: String, unit_type_id: Str
 	var faction := state.find_faction(faction_id)
 	if faction == null:
 		return -1
-	var ut := recruitable_type(faction, unit_type_id)
+	var ut := recruitable_type(faction, unit_type_id, state)
 	return RulerRules.recruit_price(state, faction_id, ut) if ut else -1
 
 
@@ -328,37 +389,108 @@ static func recruit_cost(state: GameState, faction_id: String, unit_type_id: Str
 ## the order given; a recruit that fails a check costs nothing.
 ## Returns {"gold_before", "spent", "gold_after", "results": [per order: {"ok", "order", "at", and
 ## either "unit_type", "cost", "gold_after", "province" (where it appears) or "code", "reason"}]}.
+## M3c, in a game with sieges (§2.3, §2.4, §5): `orders` may mix in Fortify orders, paid in the same order from
+## the same gold (a result {"ok", "order", "kind": "fortify", "province", "to", "cost", "gold_after"}); recruits
+## are counted per fort against its limit (results add "fort", "count", "limit"); and a siege engine needs an
+## army with a fighter at its fort to carry it, one standing there now or one a recruit earlier in the list
+## forms, or it is refused at no cost.
 static func price_recruits(state: GameState, faction_id: String, orders: Array, start_state: GameState = null) -> Dictionary:
 	var start := start_state if start_state != null else state
 	var faction := state.find_faction(faction_id)
 	var gold_before := faction.gold if faction else 0
 	var gold := gold_before
 	var with_ruler := 0
+	var at_counts := {}  # M3c: fort province id -> recruits ordered there
+	var carriers := {}  # M3c: fort province id -> {"room": engines it can still take, "army": a non-ruler army is there}
+	var fortified := 0  # M3c: Fortify orders paid
 	var results := []
 	for order in orders:
-		var check := check_recruit(state, faction_id, order, gold, with_ruler, start)
+		if order is FortifyOrder:
+			var fortify := _price_fortify(state, faction_id, order, gold, fortified, start)
+			if fortify.ok:
+				gold = int(fortify.gold_after)
+				fortified += 1
+			results.append(fortify)
+			continue
+		var place := ""  # M3c: the fort a recruit is counted against ("" without sieges and with the ruler)
 		var at: String = order.at if order is RecruitOrder else ""
+		if state.sieges and order is RecruitOrder and faction != null and at != RecruitOrder.AT_RULER:
+			place = SiegeRules.recruit_place(state, faction, recruit_at(state, faction, order))
+		var check := check_recruit(state, faction_id, order, gold, with_ruler, start, int(at_counts.get(place, 0)))
+		var ut: UnitType = recruitable_type(faction, order.unit_type_id, state) if check.is_empty() else null
+		var engine := SiegeRules.is_engine(ut)
+		if engine and _carrier_room(state, faction_id, place, carriers) <= 0:
+			check = _reject("engine_no_army", "%s need an army at %s to carry them: recruit troops there first, or march an army in. No gold is spent." % [
+				SiegeRules.engine_plural(faction_id), _province_name(state, place)])
 		if check.is_empty():
-			var ut := recruitable_type(faction, order.unit_type_id)
 			var price := RulerRules.recruit_price(state, faction_id, ut)
 			gold -= price
 			var province := faction.capital
 			if at == RecruitOrder.AT_RULER:
 				with_ruler += 1
 				province = muster_province(start, faction_id)
+			elif not place.is_empty():
+				province = place
 			# M4-2: the hp it arrives with (Blood Levy: a quarter missing), as _add_recruit gives it.
-			var max_hp := int(RulerRules.unit_stats(state, faction_id, ut.id).hp)
-			results.append({"ok": true, "order": order, "at": at, "unit_type": ut.id, "cost": price, "gold_after": gold,
-				"province": province, "max_hp": max_hp, "hp": AscensionRules.arrival_hp(state, faction_id, ut, max_hp)})
+			var max_hp := 0 if engine else int(RulerRules.unit_stats(state, faction_id, ut.id).hp)
+			var result := {"ok": true, "order": order, "at": at, "unit_type": ut.id, "cost": price, "gold_after": gold,
+				"province": province, "max_hp": max_hp, "hp": 0 if engine else AscensionRules.arrival_hp(state, faction_id, ut, max_hp)}
+			if not place.is_empty():
+				at_counts[place] = int(at_counts.get(place, 0)) + 1
+				_carrier_room(state, faction_id, place, carriers)
+				if engine:
+					carriers[place].room = int(carriers[place].room) - 1
+				elif not bool(carriers[place].army):
+					carriers[place].army = true  # this recruit forms a new army there, which can carry engines
+					carriers[place].room = int(carriers[place].room) + FortData.ARMY_ENGINES_MAX
+				var level := start.find_province(place).fort_level if start.find_province(place) else 0
+				result["fort"] = place
+				result["count"] = at_counts[place]
+				result["limit"] = SiegeRules.recruit_limit(level)
+				result["engine"] = engine
+			results.append(result)
 		else:
 			results.append({"ok": false, "order": order, "at": at, "code": check.code, "reason": check.reason})
 	return {"gold_before": gold_before, "spent": gold_before - gold, "gold_after": gold, "results": results}
+
+
+## A Fortify order's price (M3c, §2.4): its checks (SiegeRules.check_fortify, against the start of the turn and,
+## for "still yours", `state`), then the gold. `fortified` counts the Fortify orders already paid this turn.
+static func _price_fortify(state: GameState, faction_id: String, order: FortifyOrder, gold: int, fortified: int, start: GameState) -> Dictionary:
+	var check := SiegeRules.check_fortify(state, faction_id, order.province, start, fortified)
+	var to := SiegeRules.fortify_level(start, order.province)
+	var cost := int(SiegeRules.level_data(to).cost)
+	if check.is_empty() and cost > gold:
+		check = _reject("not_enough_gold", "%s at %s costs %d gold, but you only have %d gold left." % [SiegeRules.level_name(to),
+			_province_name(state, order.province), cost, gold])
+	if not check.is_empty():
+		return {"ok": false, "order": order, "at": "", "kind": "fortify", "province": order.province, "code": check.code, "reason": check.reason}
+	return {"ok": true, "order": order, "at": "", "kind": "fortify", "province": order.province, "to": to, "cost": cost,
+		"gold_after": gold - cost}
+
+
+## How many more engines `faction_id`'s armies at `place` can carry (M3c, §5), worked out once from `state` and
+## then kept in `carriers` as recruits are priced.
+static func _carrier_room(state: GameState, faction_id: String, place: String, carriers: Dictionary) -> int:
+	if not carriers.has(place):
+		var room := 0
+		var army := false
+		for a in state.armies:
+			if a.owner == faction_id and a.location == place and a.ruler == null:
+				army = true
+				if SiegeRules.can_carry(a):
+					room += FortData.ARMY_ENGINES_MAX - a.engines
+		carriers[place] = {"room": room, "army": army}
+	return int(carriers[place].room)
 
 
 ## Income `faction_id` earns from the provinces it owns now: {"total", "by_province": {id: income},
 ## "base", "modifiers": {"heavy_tithes": gold, "royal_court": gold}, "court_at": province id or ""}.
 ## Each province's income is RulerRules.province_income_parts' total: its base income plus Heavy
 ## Tithes and Royal Court (M2). `ruler_at` ({faction id: province id}) moves a ruler for a forecast.
+## M3c, in a game with sieges (§3.3, §12): a cut-off province pays its owner nothing (its parts carry
+## "cut_off"), and its base income goes to the besieging faction, under the key BESIEGED_PREFIX + its id in
+## both "modifiers" and "by_province", so base plus every modifier is still the total on both sides.
 static func income_of(state: GameState, faction_id: String, ruler_at: Dictionary = {}) -> Dictionary:
 	var total := 0
 	var base := 0
@@ -375,7 +507,31 @@ static func income_of(state: GameState, faction_id: String, ruler_at: Dictionary
 				modifiers[m.key] = int(modifiers.get(m.key, 0)) + int(m.value)
 				if m.key == RulerRules.ROYAL_COURT:
 					court_at = p.id
+	if state.sieges:
+		for pid in besieged_income(state, faction_id):
+			var gold := int(state.find_province(pid).income)
+			total += gold
+			by_province[pid] = gold
+			modifiers[BESIEGED_PREFIX + pid] = gold
 	return {"total": total, "by_province": by_province, "base": base, "modifiers": modifiers, "court_at": court_at}
+
+
+## The key of a besieged province's income line on the besieger's side (M3c).
+const BESIEGED_PREFIX := "besieged:"
+
+
+## The provinces whose base income `faction_id` takes this turn because its siege cuts them off (M3c, §3.3), in
+## id order. Read after battles when resolving, at the start of the turn for a forecast.
+static func besieged_income(state: GameState, faction_id: String) -> Array:
+	var out := []
+	if not state.sieges:
+		return out
+	for p in _sorted_provinces(state):
+		if p.owner != faction_id and SiegeRules.is_besieged(state, p.id):
+			var cut := SiegeRules.cut_off_info(state, p.id)
+			if bool(cut.cut_off) and String(cut.besieger) == faction_id:
+				out.append(p.id)
+	return out
 
 
 # --- phases ---------------------------------------------------------------------------------------
@@ -408,7 +564,12 @@ static func _sacrifice_phase(s: GameState, orders_by_faction: Dictionary, events
 				RulerRules.sacrifice_text(s, fid, result), "sacrifice"))
 
 
-static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: Array, recruits: Dictionary, events: Array) -> void:
+## M3c: Fortify orders are checked here (SiegeRules.check_fortify) and join `recruits` to be paid in recruitment;
+## storm and sally orders are checked after every move order of their faction, against all of its valid moves,
+## and the ones that pass are recorded in `siege_orders` ({"storms": {province id: {faction id: true}},
+## "sallies": {army id: {"faction", "with"}}}) for the battles phase.
+static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: Array, recruits: Dictionary, events: Array,
+		siege_orders: Dictionary = {}) -> void:
 	var known := _faction_ids(s)
 	var unknown: Array = []
 	for key in orders_by_faction.keys():
@@ -427,6 +588,9 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 			continue
 		var ordered := {}
 		var research_given := ""  # M4: the node of this faction's research order this turn, if any
+		var fortify_given := 0  # M3c: Fortify orders that passed this turn
+		var valid_moves := []  # M3c: this faction's valid move orders, for its siege orders
+		var siege_list := []  # M3c: its storm and sally orders, checked after every move
 		recruits[fid] = []
 		for order in list:
 			if order is MoveOrder:
@@ -435,6 +599,7 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 					events.append(_rejected_event(s, fid, order, check, "orders"))
 					continue
 				ordered[order.army_id] = true
+				valid_moves.append(order)
 				var army := s.find_army(order.army_id)
 				# Label taken before anyone moves, so it names the province the army leaves from.
 				# "via" is set for a road move (King's Roads), "" for a one-step move.
@@ -442,6 +607,16 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 					"label": army_label(s, army), "via": order.via, "road": road_rule(s, fid, order)})
 			elif order is RecruitOrder:
 				recruits[fid].append(order)  # checked in the recruitment phase, against that phase's state
+			elif order is FortifyOrder:
+				# M3c: checked now, paid in the recruitment phase with the recruits, in the order given.
+				var check := SiegeRules.check_fortify(s, fid, order.province, null, fortify_given)
+				if not check.is_empty():
+					events.append(_rejected_event(s, fid, order, check, "orders"))
+					continue
+				fortify_given += 1
+				recruits[fid].append(order)
+			elif order is SiegeOrder:
+				siege_list.append(order)  # M3c: checked after every move of this faction, below
 			elif order is SacrificeOrder:
 				continue  # resolved in the sacrifice phase, before these checks (M2-6)
 			elif order is ResearchOrder:
@@ -455,6 +630,22 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 			else:
 				events.append(_rejected_event(s, fid, order,
 					_reject("unknown_order", "That is not an order this game knows. Orders are moves and recruits."), "orders"))
+		var given := []
+		if not siege_list.is_empty() and not siege_orders.has("storms"):
+			siege_orders["storms"] = {}
+			siege_orders["sallies"] = {}
+		for order in siege_list:
+			var check := SiegeRules.check_siege_order(s, fid, order, valid_moves, given)
+			if not check.is_empty():
+				events.append(_rejected_event(s, fid, order, check, "orders"))
+				continue
+			given.append(order)
+			if order.is_storm():
+				if not siege_orders.storms.has(order.province):
+					siege_orders.storms[order.province] = {}
+				siege_orders.storms[order.province][fid] = true
+			else:
+				siege_orders.sallies[order.army_id] = {"faction": fid, "with": order.with_army}
 
 
 ## Moves every army that isn't in a border clash. Returns the clashes, sorted by border key.
@@ -517,8 +708,12 @@ static func _border_battle(s: GameState, resolver: BattleResolver, rng: SeededRN
 			events.append(_moved_event(s, m, "won_border_battle"))
 
 
-static func _province_battles(s: GameState, resolver: BattleResolver, rng: SeededRNG, moved: Dictionary, battle_sites: Dictionary, events: Array) -> void:
+static func _province_battles(s: GameState, resolver: BattleResolver, rng: SeededRNG, moved: Dictionary, battle_sites: Dictionary, events: Array,
+		siege_orders: Dictionary = {}) -> void:
 	for p in _sorted_provinces(s):
+		if s.sieges and p.fort_level > 0:
+			_fort_battles(s, resolver, rng, p, moved, battle_sites, events, siege_orders)  # M3c
+			continue
 		var sides := {}
 		var holders := {}
 		for a in _sorted_armies(s):
@@ -534,6 +729,21 @@ static func _province_battles(s: GameState, resolver: BattleResolver, rng: Seede
 		var defender: String = holders.keys()[0] if holders.size() == 1 else ""
 		_fight(s, resolver, rng, "province", [p.id], sides, defender, events)
 		battle_sites[p.id] = true
+
+
+## The battles at a fort in a game with sieges (M3c, §3.9): SiegeRules.next_battle, asked again after each battle
+## on the armies still standing, decides whether there is one, who fights it and who defends. None at all means
+## an enemy besieges a garrison behind standing walls.
+static func _fort_battles(s: GameState, resolver: BattleResolver, rng: SeededRNG, p: Province, moved: Dictionary, battle_sites: Dictionary,
+		events: Array, siege_orders: Dictionary) -> void:
+	var fought := 0
+	while true:
+		var plan := SiegeRules.next_battle(s, p.id, moved, siege_orders, fought)
+		if plan.is_empty():
+			return
+		_fight(s, resolver, rng, "province", [p.id], plan.sides, String(plan.defender), events)
+		battle_sites[p.id] = true
+		fought += 1
 
 
 ## Runs one battle, destroys the losing armies, records the event and any ruler deaths (M2). Returns
@@ -840,6 +1050,87 @@ static func _rulers_phase(s: GameState, events: Array) -> void:
 			RulerRules.arrival_text(s, fid, int(info.kept_power), turn + 1), String(info.codex)))
 
 
+# --- the sieges phase (M3c, #98; design/M3C_SIEGES.md §3.3, §3.10, §2.4-§2.6, §6 step 5) -----------------
+# Games with sieges only, after battles and before capture. Each province in id order: SiegeRules.siege_step
+# (a siege starts or goes on and the walls drop; it is lifted; or the fort falls), then repair, then
+# construction (neither in a fort that fell). No randomness. Events (codex in brackets):
+#   siege_started       a siege began: the besiegers, the walls' drop, the cut-off from next turn, the breach turn [siege]
+#   walls_damaged       a siege went on and the walls dropped [walls]
+#   walls_breached      the walls reached 0 [breach]
+#   siege_lifted        only the owner's armies are left (the besiegers left or were beaten) [siege]
+#   siege_ended         only enemy armies are left: the fort falls, and capture hands it over [siege]
+#   walls_repaired      no army of another faction stands there, and the walls rose by the level [repair]
+#   construction_halted an enemy army stands at a construction site, so no work was done [construction]
+#   fort_built          the last turn of work was done: the new level stands at full walls [fort_levels]
+static func _sieges_phase(s: GameState, battle_sites: Dictionary, events: Array) -> void:
+	if not s.sieges:
+		return
+	var turn := s.current_turn + 1  # the turn being resolved, as players count it
+	for p in _sorted_provinces(s):
+		var step := SiegeRules.siege_step(s, p.id, turn, battle_sites)
+		var kind := String(step.get("kind", ""))
+		if not kind.is_empty():
+			_siege_events(s, step, turn, events)
+		if kind == "fallen":
+			continue  # no repair and no work: capture hands the fort over and razes any construction
+		var repaired := SiegeRules.repair_step(s, p.id)
+		if not repaired.is_empty():
+			events.append(_event("walls_repaired", SIEGES_PHASE, [p.id], [p.owner], [], "repair",
+				{"from": repaired.from, "to": repaired.to, "amount": repaired.amount, "walls_max": SiegeRules.walls_max(p.fort_level)},
+				SiegeRules.repaired_text(s, repaired), "repair"))
+		var work := SiegeRules.works_step(s, p.id)
+		match String(work.get("kind", "")):
+			"halted":
+				# With nobody of its owner there, capture razes the site this turn instead (construction_razed).
+				if not SiegeRules.owner_armies(s, p.id).is_empty():
+					events.append(_event("construction_halted", SIEGES_PHASE, [p.id], [String(work.faction)], [], "enemy_present",
+						{"to": work.to, "left": work.left, "turns": work.turns}, SiegeRules.works_text(s, work, turn), "construction"))
+			"built":
+				events.append(_event("fort_built", SIEGES_PHASE, [p.id], [String(work.faction)], [], "construction",
+					{"level": work.to, "walls": work.walls, "recruits": SiegeRules.recruit_limit(int(work.to)), "recruit_from": turn + 1},
+					SiegeRules.works_text(s, work, turn), "fort_levels"))
+
+
+## The events for one siege_step result (see _sieges_phase).
+static func _siege_events(s: GameState, step: Dictionary, turn: int, events: Array) -> void:
+	var pid := String(step.province)
+	var owner := String(step.owner)
+	var besieger := String(step.besieger)
+	var involved := [besieger, owner] if not besieger.is_empty() else [owner]
+	var outside := []
+	for a in SiegeRules.besiegers(s, pid):
+		outside.append(a.id)
+	var numbers := {"owner": owner, "besieger": besieger, "walls_before": step.walls_before, "walls": step.walls,
+		"walls_max": step.walls_max, "turn_of_siege": step.turn_of_siege}
+	var kind := String(step.kind)
+	if kind == "started" or kind == "damaged":
+		var dmg: Dictionary = step.damage
+		numbers["damage"] = dmg.total
+		numbers["damage_parts"] = dmg.parts.duplicate(true)
+		numbers["troops"] = dmg.troops
+		numbers["engines"] = dmg.engines
+		numbers["engines_counted"] = dmg.engines_counted
+		numbers["breach_turn"] = SiegeRules.breach_turn(int(step.walls), int(dmg.total), turn + 1) if int(step.walls) > 0 else turn
+		var cut := SiegeRules.cut_off_info(s, pid, turn + 1)
+		numbers["pickets"] = cut.pickets
+		numbers["cut_off_from"] = int(s.find_province(pid).siege_since) + 1 if not bool(cut.pickets) else 0
+		if kind == "started":
+			events.append(_event("siege_started", SIEGES_PHASE, [pid], involved, outside, kind, numbers, SiegeRules.step_text(s, step, turn),
+				"siege"))
+		else:
+			events.append(_event("walls_damaged", SIEGES_PHASE, [pid], involved, outside, kind, numbers, SiegeRules.step_text(s, step, turn),
+				"walls"))
+		if bool(step.breached):
+			events.append(_event("walls_breached", SIEGES_PHASE, [pid], involved, outside, "breached",
+				{"owner": owner, "besieger": besieger, "walls_max": step.walls_max, "battle_turn": turn + 1},
+				SiegeRules.breached_text(s, pid, turn), "breach"))
+		return
+	numbers["why"] = step.why
+	var ended := "siege_lifted" if kind == "lifted" else "siege_ended"
+	events.append(_event(ended, SIEGES_PHASE, [pid], involved, outside, String(step.why), numbers,
+		SiegeRules.step_text(s, step, turn), "siege"))
+
+
 static func _capture(s: GameState, battle_sites: Dictionary, events: Array) -> void:
 	for p in _sorted_provinces(s):
 		var occupants := {}
@@ -877,10 +1168,63 @@ static func _capture(s: GameState, battle_sites: Dictionary, events: Array) -> v
 		if not capital_of.is_empty():
 			text += " This is the capital of %s: they cannot recruit until they retake it." % _faction_name(s, capital_of)
 		var involved := [fid] if previous.is_empty() else [fid, previous]
-		events.append(_event("captured", "capture", [p.id], involved, army_ids, cause,
-			{"income": p.income, "is_capital": not capital_of.is_empty()}, text, "capture"))
+		var numbers := {"income": p.income, "is_capital": not capital_of.is_empty()}
+		var razed := {}
+		if s.sieges:
+			razed = _take_fort(s, p, fid, previous)  # M3c: owned_since, the retake rule, razing
+			if p.fort_level > 0:
+				text += " " + _fort_capture_text(s, p, fid)
+				numbers["fort_level"] = p.fort_level
+				numbers["walls"] = p.walls
+				numbers["recruit_from"] = maxi(recruit_from_turn(p), s.current_turn + 2)
+		events.append(_event("captured", "capture", [p.id], involved, army_ids, cause, numbers, text, "capture"))
+		if not razed.is_empty():
+			events.append(_event("construction_razed", "capture", [p.id], [fid, String(razed.faction)], army_ids, "captured",
+				{"to": razed.to, "left": razed.left, "level": p.fort_level},
+				_razed_text(s, p, fid, int(razed.to)), "construction"))
 		_raid(s, fid, p, army_ids, events)  # M4-2: Raiding Parties, for captures by armies only
 	_sworn_vassals(s, events)
+
+
+## M3c (§2.3, §2.5, §3.8): `fid` takes `p` from `previous` ("" for a neutral province). Sets owned_since to the
+## turn being resolved, or restores the old standing when `fid` lost it no more than FortData.RETAKE_TURNS turns
+## ago; records who lost it; razes a construction site. Returns the razed site ({} when there was none).
+static func _take_fort(s: GameState, p: Province, fid: String, previous: String) -> Dictionary:
+	var turn := s.current_turn + 1
+	var old_since := p.owned_since
+	var retaken := not p.lost.is_empty() and String(p.lost.get("faction", "")) == fid \
+		and turn <= int(p.lost.get("turn", 0)) + FortData.RETAKE_TURNS
+	p.owned_since = int(p.lost.get("owned_since", 0)) if retaken else turn
+	p.lost = {"faction": previous, "owned_since": old_since, "turn": turn} if not previous.is_empty() else {}
+	var razed := p.works.duplicate()
+	p.works = {}
+	return razed
+
+
+## The first turn the owner of `p` may recruit there by the wait after a capture (M3c, §2.3): 1 for an owner from
+## the start, otherwise owned_since + FortData.CAPTURE_WAIT + 1 (a fort taken on turn 7 takes recruits from 9).
+static func recruit_from_turn(p: Province) -> int:
+	return 1 if p.owned_since <= 0 else p.owned_since + FortData.CAPTURE_WAIT + 1
+
+
+## The captured event's fort clause (§9.4): "It came with its keep (walls 2 of 6): the Thornmane Clans can
+## recruit there from turn 9." A fort retaken in time can take recruits from next turn.
+static func _fort_capture_text(s: GameState, p: Province, fid: String) -> String:
+	var next := s.current_turn + 2
+	var from := recruit_from_turn(p)
+	var when := "from turn %d" % from
+	if from <= next:
+		when = "from next turn (%d), since they retook it within %d turns of losing it" % [next, FortData.RETAKE_TURNS]
+	return "It came with its %s (walls %d of %d): the %s can recruit there %s." % [SiegeRules.level_word(p.fort_level), p.walls,
+		SiegeRules.walls_max(p.fort_level), _faction_name(s, fid), when]
+
+
+## "The Thornmane Clans razed the half-built keep at Rivermarch when they took it. The palisade stands." (§2.5)
+static func _razed_text(s: GameState, p: Province, fid: String, to: int) -> String:
+	var text := "The %s razed the half-built %s at %s when they took it." % [_faction_name(s, fid), SiegeRules.level_word(to), p.name]
+	if p.fort_level > 0:
+		text += " The %s stands." % SiegeRules.level_word(p.fort_level)
+	return text
 
 
 ## Raiding Parties (M4-2, §3.6, §7 step 5): when `fid`'s armies capture `p`, it takes n x its base income in
@@ -910,6 +1254,8 @@ static func _sworn_vassals(s: GameState, events: Array) -> void:
 	for fid in joining:
 		var p := s.find_province(picks.joins[fid])
 		p.owner = fid
+		if s.sieges:
+			_take_fort(s, p, fid, "")  # M3c: Sworn Vassals sets owned_since too
 		var name := _faction_name(s, fid)
 		events.append(_event("vassal_joined", "capture", [p.id], [fid], [], "sworn_vassals", {"income": p.income},
 			"%s swore fealty to %s (Sworn Vassals) and joined it without a fight. It now pays %s %d gold per turn." % [
@@ -939,7 +1285,13 @@ static func _recruitment(s: GameState, recruits: Dictionary, events: Array, star
 			if not r.ok:
 				events.append(_rejected_event(s, fid, r.order, r, "recruitment"))
 				continue
-			var ut := recruitable_type(faction, r.unit_type)
+			if String(r.get("kind", "")) == "fortify":
+				_start_works(s, fid, r, events)  # M3c
+				continue
+			var ut := recruitable_type(faction, r.unit_type, s)
+			if SiegeRules.is_engine(ut):
+				_recruit_engine(s, faction, ut, r, events)  # M3c
+				continue
 			var with_ruler: bool = r.at == RecruitOrder.AT_RULER
 			var placed := _add_recruit(s, faction, ut, r.province)
 			var army: Army = placed.army
@@ -951,10 +1303,17 @@ static func _recruitment(s: GameState, recruits: Dictionary, events: Array, star
 			else:
 				joined = "They joined the %s." % army_label(s, army)
 			var how := "at %s" % _province_name(s, r.province)
+			if r.has("fort"):  # M3c: "at Stonegate (keep, 3 of 4 this turn)"
+				how = "at %s (%s, %d of %d this turn)" % [_province_name(s, r.province),
+					SiegeRules.level_word(start.find_province(r.province).fort_level if start != null else 0), int(r.count), int(r.limit)]
 			if with_ruler:
 				# Warband Muster (§7.5): still a "recruited" event, saying with whom and where they gathered.
 				how = "with %s at %s, where it started the turn," % [RulerRules.current_name(s, fid), _province_name(s, r.province)]
 			var numbers := {"cost": r.cost, "gold_after": r.gold_after, "new_army": placed.created}
+			if r.has("fort"):  # M3c: where it was made, and that fort's count this turn
+				numbers["fort"] = r.fort
+				numbers["count"] = r.count
+				numbers["limit"] = r.limit
 			var text := "%s recruited %s %s for %d gold (%d gold left). %s" % [faction.faction_name, ut.name, how, r.cost,
 				r.gold_after, joined]
 			if int(placed.hp) < int(placed.max_hp):
@@ -965,6 +1324,43 @@ static func _recruitment(s: GameState, recruits: Dictionary, events: Array, star
 				text += " " + AscensionRules.arrival_text(ut, int(placed.hp), int(placed.max_hp), int(numbers.blood_levy))
 			events.append(_event("recruited", "recruitment", [r.province], [fid], [army.id], "with_ruler" if with_ruler else "order",
 				numbers, text, "field_recruit" if with_ruler else "recruit"))
+
+
+## M3c (§2.4): a paid Fortify order starts its site, with all its turns of work left.
+##   construction_started  recruitment  the site, its cost, and when it stands and takes recruits. Codex "fortify".
+static func _start_works(s: GameState, fid: String, r: Dictionary, events: Array) -> void:
+	var p := s.find_province(String(r.province))
+	var to := int(r.to)
+	var turns := int(SiegeRules.level_data(to).turns)
+	var turn := s.current_turn + 1
+	p.works = {"faction": fid, "to": to, "left": turns, "turn": turn}
+	var stands := turn + turns
+	var text := "The %s began %s at %s for %d gold (%d gold left). It stands at the end of turn %d if no enemy army stands there meanwhile, and takes recruits from turn %d." % [
+		_faction_name(s, fid), SiegeRules.fort_phrase(to), p.name, int(r.cost), int(r.gold_after), stands, stands + 1]
+	events.append(_event("construction_started", "recruitment", [p.id], [fid], [], "order",
+		{"cost": r.cost, "gold_after": r.gold_after, "to": to, "left": turns, "stands": stands, "recruit_from": stands + 1},
+		text, "fortify"))
+
+
+## M3c (§5): a paid siege engine joins the first army of the faction at its fort that can carry it (a fighter,
+## not a ruler's army, fewer than FortData.ARMY_ENGINES_MAX engines). price_recruits only accepts it when there
+## is one.
+static func _recruit_engine(s: GameState, faction: Faction, ut: UnitType, r: Dictionary, events: Array) -> void:
+	var army: Army = null
+	for a in _sorted_armies(s):
+		if a.owner == faction.id and a.location == r.province and SiegeRules.can_carry(a):
+			army = a
+			break
+	if army == null:
+		return  # price_recruits refuses an engine with no army to carry it, so this can't happen
+	army.engines += 1
+	var text := "%s recruited %s%s at %s (%s, %d of %d this turn) for %d gold (%d gold left). It joined the %s, which now carries %s." % [
+		faction.faction_name, "" if ut.name.ends_with("s") else "a ", ut.name, _province_name(s, r.province), SiegeRules.level_word(s.find_province(r.province).fort_level),
+		int(r.get("count", 0)), int(r.get("limit", 0)), r.cost, r.gold_after, army_label(s, army), SiegeRules.engines_text(faction.id, army.engines)]
+	events.append(_event("recruited", "recruitment", [r.province], [faction.id], [army.id], "engine",
+		{"cost": r.cost, "gold_after": r.gold_after, "new_army": false, "engine": ut.id, "engines": army.engines,
+			"fort": r.get("fort", r.province), "count": r.get("count", 0), "limit": r.get("limit", 0)},
+		text, SiegeRules.engine_codex(ut.id)))
 
 
 ## Puts a new unit into the faction's first army (by id) at `location` (its capital by default), or a
@@ -1004,6 +1400,9 @@ static func _income(s: GameState, events: Array) -> void:
 		var inc := income_of(s, fid)
 		var before := faction.gold
 		faction.gold += inc.total
+		if s.sieges:
+			events.append(_siege_income_event(s, fid, inc, before))  # M3c: names cut-off and besieged provinces
+			continue
 		var parts := []
 		for pid in inc.by_province:
 			parts.append("%s %d" % [_province_name(s, pid), inc.by_province[pid]])
@@ -1017,6 +1416,71 @@ static func _income(s: GameState, events: Array) -> void:
 			numbers["base"] = inc.base
 			numbers["modifiers"] = inc.modifiers
 		events.append(_event("income", "income", inc.by_province.keys(), [fid], [], "owned_provinces", numbers, text, "income"))
+
+
+## The income event in a game with sieges (M3c, §9.4): the provinces that paid, then the besieged provinces whose
+## income the faction took, then each of its cut-off provinces: "Stonegate paid nothing: it is cut off, and its
+## 8 gold went to the Thornmane Clans." The numbers add "cut_off" and "besieged" ({province id: gold}).
+static func _siege_income_event(s: GameState, fid: String, inc: Dictionary, before: int) -> Dictionary:
+	var faction := s.find_faction(fid)
+	var parts := []
+	var paid := 0
+	var cut := {}
+	var taken := {}
+	for pid in inc.by_province:
+		if inc.modifiers.has(BESIEGED_PREFIX + pid):
+			taken[pid] = int(inc.by_province[pid])
+		elif SiegeRules.is_cut_off(s, pid):
+			cut[pid] = int(s.find_province(pid).income)
+		else:
+			parts.append("%s %d" % [_province_name(s, pid), inc.by_province[pid]])
+			paid += 1
+	var extra := ""
+	if not taken.is_empty():
+		var bits := []
+		for pid in taken:
+			bits.append("%d from besieged %s" % [taken[pid], _province_name(s, pid)])
+		extra = " and %s" % RulerRules._and_list(bits)
+	var text := "%s earned %d gold from %d %s%s%s. Gold: %d -> %d." % [faction.faction_name, inc.total, paid,
+		"province" if paid == 1 else "provinces", "" if parts.is_empty() else " (%s)" % ", ".join(parts), extra, before, faction.gold]
+	for pid in cut:
+		var info := SiegeRules.cut_off_info(s, pid)
+		text += " %s paid nothing: it is cut off, and its %d gold went to the %s." % [_province_name(s, pid), int(cut[pid]),
+			_faction_name(s, String(info.besieger))]
+	var numbers := {"income": inc.total, "gold_before": before, "gold_after": faction.gold, "by_province": inc.by_province}
+	if not inc.modifiers.is_empty():
+		var mods := income_modifiers_text(s, fid, inc, "was")
+		if not mods.is_empty():
+			text += " %s" % mods
+		numbers["base"] = inc.base
+		numbers["modifiers"] = inc.modifiers
+	if not cut.is_empty():
+		numbers["cut_off"] = cut
+	if not taken.is_empty():
+		numbers["besieged"] = taken
+	var involved := [fid]
+	for pid in cut:
+		var by := String(SiegeRules.cut_off_info(s, pid).besieger)
+		if not involved.has(by):
+			involved.append(by)
+	return _event("income", "income", inc.by_province.keys(), involved, [], "owned_provinces", numbers, text, "income" if cut.is_empty() and taken.is_empty() else "cut_off")
+
+
+## M3c, in a game with sieges (§9.2): "Stonegate pays you nothing: it is cut off, and its 8 gold goes to the
+## Thornmane Clans. You take 8 from besieged Blackwood." for an income_of result ("" when no siege touches it).
+## `verb_now` is true for a forecast ("pays", "goes", "take"), false for the turn report ("paid", "went", "took").
+static func siege_income_text(s: GameState, fid: String, inc: Dictionary, verb_now: bool = true) -> String:
+	if not s.sieges:
+		return ""
+	var bits := []
+	for pid in inc.by_province:
+		if inc.modifiers.has(BESIEGED_PREFIX + pid):
+			bits.append("You %s %d from besieged %s." % ["take" if verb_now else "took", int(inc.by_province[pid]), _province_name(s, pid)])
+		elif SiegeRules.is_cut_off(s, pid):
+			var info := SiegeRules.cut_off_info(s, pid)
+			bits.append("%s %s you nothing: it is cut off, and its %d gold %s to the %s." % [_province_name(s, pid), "pays" if verb_now else "paid",
+				s.find_province(pid).income, "goes" if verb_now else "went", _faction_name(s, String(info.besieger))])
+	return " ".join(bits)
 
 
 ## "That includes Heavy Tithes +5 (1 for each province) and Royal Court +2 at Crownkeep, where King
@@ -1034,8 +1498,8 @@ static func income_modifiers_text(s: GameState, fid: String, inc: Dictionary, ru
 			_province_name(s, inc.court_at), RulerRules.current_name(s, fid), ruler_verb])
 	var forge := int(inc.modifiers.get(RulerRules.FORGE_TITHE, 0))  # M4-2
 	if forge > 0:
-		parts.append("%s +%d (%d for each province with a fort)" % [RulerRules.mandate_name(RulerRules.FORGE_TITHE), forge,
-			AscensionRules.mandate_value(s, fid, "fort_income", 0)])
+		parts.append("%s +%d (%d for each %s)" % [RulerRules.mandate_name(RulerRules.FORGE_TITHE), forge,
+			AscensionRules.mandate_value(s, fid, "fort_income", 0), "keep or citadel" if s.sieges else "province with a fort"])
 	for key in inc.modifiers:  # M4: the path's income lines (Market Charters, Tithe of Light, ...)
 		if String(key).begins_with(AscensionRules.PART_PREFIX):
 			parts.append("%s %+d" % [AscensionRules.part_name(String(key)), int(inc.modifiers[key])])
@@ -1163,6 +1627,11 @@ static func _rejected_event(s: GameState, fid: String, order, check: Dictionary,
 			provinces = [f.capital]
 		order_dict = order.to_dict()
 		codex = "recruit"
+		if s.sieges and not recruit_at(s, f, order).is_empty() and order.at != RecruitOrder.AT_RULER:
+			# M3c: a recruit at a fort names it, and the event is placed there.
+			desc += " at %s" % _province_name(s, order.at)
+			provinces = [order.at]
+			codex = "recruit_at_forts"
 		if order.at == RecruitOrder.AT_RULER:
 			# Warband Muster: name the ruler and put the event where it stands, if it is on the map.
 			codex = "field_recruit"
@@ -1178,6 +1647,29 @@ static func _rejected_event(s: GameState, fid: String, order, check: Dictionary,
 		desc = "research %s" % node
 		order_dict = order.to_dict()
 		codex = "research_order"
+	elif order is FortifyOrder:
+		# M3c: "fortify Rivermarch (a palisade)".
+		desc = "fortify %s" % _province_name(s, order.province)
+		var p := s.find_province(order.province)
+		if p != null and p.fort_level < FortData.MAX_BUILT:
+			desc += " (%s)" % SiegeRules.fort_phrase(p.fort_level + 1)
+		provinces = [order.province] if p != null else []
+		order_dict = order.to_dict()
+		codex = "fortify"
+	elif order is SiegeOrder:
+		# M3c: "storm Stonegate", "sally out of Stonegate with the ...".
+		order_dict = order.to_dict()
+		if order.is_storm():
+			desc = "storm %s" % _province_name(s, order.province)
+			provinces = [order.province] if s.find_province(order.province) != null else []
+			codex = "storm"
+		else:
+			var army := s.find_army(order.army_id)
+			desc = "sally out with %s" % ("the " + army_label(s, army) if army else "an army that is not on the map")
+			if army:
+				provinces = [army.location]
+			armies = [order.army_id]
+			codex = "sally"
 	elif order is SacrificeOrder:
 		# M2-6: name the mandate (or quote an unknown id) and put the event where the ruler stands.
 		var mandate := RulerRules.mandate_name(order.mandate_id) if not RulerRules.mandate_data(order.mandate_id).is_empty() \
@@ -1300,10 +1792,11 @@ static func _province_name(s: GameState, pid: String) -> String:
 	return p.name if p else "a place not on the map"
 
 
-## Display name of a unit type from any faction's roster, for text about orders that may be invalid.
+## Display name of a unit type from any faction's roster, for text about orders that may be invalid. M3c: the
+## siege engines too, in a game with sieges.
 static func _unit_type_name(s: GameState, type_id: String) -> String:
 	for f in s.factions:
-		var ut := recruitable_type(f, type_id)
+		var ut := recruitable_type(f, type_id, s)
 		if ut:
 			return ut.name
 	return "an unknown unit type"
