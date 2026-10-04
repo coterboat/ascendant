@@ -154,8 +154,7 @@ func _add_siege(p: Province, viewer: String) -> void:
 		var turn := s.current_turn + 1
 		var bb := FortView.breach_breakdown(s, province_id, int(dmg.total), stay)
 		var end := int(bb.total)
-		var when := "at the end of this turn (%d)" % end if end <= turn else "at the end of turn %d (in %s)" % [end, _count(end - turn + 1, "turn")]
-		_number("BreachLabel", "The walls reach 0 %s, %s." % [when, stay], bb, UiPalette.GILT)
+		_number("BreachLabel", "The walls reach 0 %s, %s." % [TurnReportText.reader_end(end, turn), stay], bb, UiPalette.GILT)
 	else:
 		var l := _rules_line("BreachLabel", "Breached: no walls and no %s for anyone; the garrison fights with +%d cover. The battle comes on its own this turn, in the open, unless one side leaves." % [
 			p.terrain, FortData.COVER_DEFENSE], "The breach", RulesCodex.text("breach"), "breach", UiPalette.GILT)

@@ -585,7 +585,9 @@ func test_report_lines_and_needs_you_for_both_sides() -> void:
 	var dmg := SiegeRules.siege_damage_at(after, "blackwood")
 	var end := SiegeRules.breach_turn(p.walls, int(dmg.total), 2)
 	assert_true(String(needs[0].text).begins_with("Your fort at Blackwood is besieged"), needs[0].text)
-	assert_true(String(needs[0].text).contains("end of turn %d" % end) and String(needs[0].text).contains("Sally, send relief, or hold."), needs[0].text)
+	assert_true(String(needs[0].text).contains("its walls reach 0 %s, if" % TurnReportText.reader_end(end, 2)) \
+		and String(needs[0].text).contains("Sally, send relief, or hold."), needs[0].text)
+	assert_false(String(needs[0].text).contains("next turn (2)"), "turn 2 is the reader's turn: %s" % needs[0].text)
 	panel.show_siege_needs_you(needs)
 	assert_true(_node(panel, "SiegeNeedsYou").get_child_count() == 1)
 	var mine := FortView.needs_you(after, CROWN, 1)
@@ -595,7 +597,7 @@ func test_report_lines_and_needs_you_for_both_sides() -> void:
 	p.walls = 0
 	for fid in [CROWN, CLANS]:
 		var lines := FortView.needs_you(after, fid, 1)
-		assert_true(String(lines[0].text).begins_with("Blackwood's walls are down. Next turn (2) you fight there in the open, unless you leave"), lines[0].text)
+		assert_true(String(lines[0].text).begins_with("Blackwood's walls are down. This turn (2) you fight there in the open, unless you leave"), lines[0].text)
 	panel.free()
 
 
@@ -683,14 +685,12 @@ func test_battle_viewer_chips_for_storm_open_and_breach() -> void:
 	assert_eq(String(sally.text), "Outside the walls: nobody holds the ground; the garrison's fighters have +%d cover" % FortData.COVER_DEFENSE)
 	var relief := FortView.siege_chip({"kind": "open", "why": "relief", "walls": 4, "walls_max": 6, "walls_defense": 0, "cover_defense": 0})
 	assert_eq(String(relief.text), "Outside the walls: nobody holds the ground", "no cover line in a relief-only battle")
-	# The report line's "where they met" for each kind of battle at a fort.
+	# The report line's "where they met" for each kind of battle at a fort (TurnReportText).
 	var where := {"sally": "outside the walls, as the garrison sallied", "relief": "outside the walls, as a relief arrived",
 		"relief_sally": "outside the walls, as a relief arrived and the garrison sallied to join it", "rivals": "outside the walls"}
 	for why in where:
-		assert_eq(FortView.siege_battle_where(_siege_battle("open", why)), where[why], why)
-	assert_eq(FortView.siege_battle_where(_siege_battle("storm", "storm")), "", "a storm keeps its held / attacked line")
-	assert_eq(FortView.with_extra(_siege_battle("open", "sally"), "In Stonegate, where both arrived at the same time, X beat Y."),
-		"In Stonegate, outside the walls, as the garrison sallied, X beat Y.")
+		assert_eq(TurnReportText.siege_where(_siege_battle("open", why)), where[why], why)
+	assert_eq(TurnReportText.siege_where(_siege_battle("storm", "storm")), "", "a storm keeps its held / attacked line")
 	var breach := FortView.siege_chip({"kind": "breach", "why": "breach", "walls": 0, "walls_max": 6, "walls_defense": 0, "cover_defense": FortData.COVER_DEFENSE})
 	assert_eq(String(breach.text), "Through the breach: no walls, and nobody gets the hills")
 	# In the viewer, the storm chip replaces the old fort line. A real battle's report, with the siege block S-2
