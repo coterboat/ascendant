@@ -274,7 +274,7 @@ const ENTRIES := {
 		"title": "Battles",
 		"text": "A battle is fought in rounds, at most %d." % AutoBattleResolver.ROUND_CAP
 			+ " Each round every unit, commander and ruler attacks one enemy at the same time, so a fighter that falls still strikes that round. Attacks go at the enemy's front rank. Crossbowmen stand in the second rank, behind their other units, which shield them while at least as many of those stand as crossbowmen (Fangthrowers reach them anyway); commanders stand behind everyone and are only attacked once no unit is left in front of them. In a game with rulers, a ruler fights in its own rank: King Corvane, the Great Thornmane and the Ninth Fang in the front rank, the Ever-Regent in the second rank, where the same shield rule covers him. The battle ends when one side is wiped out or breaks and flees (a rout). If every side left breaks in the same round, the one with more of its strength left keeps the field. The winner keeps its wounded units; units that fell are gone, and a ruler that fell dies. The losing side loses every army it had in the battle, even units still standing: a side that routs is destroyed as it flees, and attackers who have not won after %d rounds are destroyed too. There are no retreats yet." % AutoBattleResolver.ROUND_CAP
-			+ " Watch any battle from the turn report: its Watch button plays the battle back, round by round, exactly as it was fought (see Watching a battle).",
+			+ " Watch any battle from the turn report: its Watch button plays the battle back, round by round, exactly as it was fought (see Watching a battle). Siege engines never fight: they are carried by their army, are never hit, and are lost with it.",
 	},
 	"battle_round_cap": {
 		"title": "When a battle runs out of time",
@@ -295,7 +295,7 @@ const ENTRIES := {
 		"text": "Only the defender, the side that was already holding the province, gets the ground: forest +%d defense," % AutoBattleResolver.TERRAIN.forest.defense
 			+ " hills +%d defense" % AutoBattleResolver.TERRAIN.hills.defense + " and +%d attack, plains nothing." % AutoBattleResolver.TERRAIN.hills.attack
 			+ " A fort adds +%d defense on top." % AutoBattleResolver.FORT_DEFENSE
-			+ " Border battles and armies that all arrived at once have no defender, so nobody gets terrain. Knights' charge is weaker in a forest.",
+			+ " Border battles and armies that all arrived at once have no defender, so nobody gets terrain. Knights' charge is weaker in a forest. In a game with forts and sieges the fort's flat bonus is gone: a stormed garrison gets its walls instead (Storming the walls), and every other battle at a fort is fought outside the walls, where nobody gets the ground.",
 	},
 	"battle_morale": {
 		"title": "Morale and routs",
@@ -412,6 +412,26 @@ const ENTRIES := {
 	"trait_lifedrinker": {
 		"title": "Lifedrinker (Bloodsworn)",
 		"text": AutoBattleResolver.TRAIT_TEXT["Lifedrinker"] + " It heals after the round's damage lands and before morale is checked, so a Bloodsworn that falls that round heals nothing. Like any wound, what it doesn't heal carries over after the battle.",
+	},
+	# --- battles at forts (M3c S-2, #100; design/M3C_SIEGES.md §4, §9.6): the numbers come from AutoBattleResolver's
+	# constants (FortData's), so a retuned wall step shows up here by itself.
+	"battle_walls": {
+		"title": "Storming the walls",
+		"text": "In a storm the garrison defends its walls: every fighter of the armies inside gets +%d defense" % AutoBattleResolver.WALLS_DEFENSE_PER_STEP
+			+ " for every %d wall strength still standing, rounded up," % AutoBattleResolver.WALL_STEP
+			+ " on top of its terrain and its own traits, and the stormers get nothing. The walls never change during a battle. In a game with forts and sieges this replaces the flat bonus a fort gives its defender in a game without them."
+			+ " Only a storm meets the walls: every other battle at a fort is fought outside the walls, and at the breach there are no walls left to stand on.",
+	},
+	"battle_open": {
+		"title": "Outside the walls",
+		"text": "Every battle at a fort except a storm is fought outside the walls: a sally, a relief army meeting the siege lines, armies arriving together, rival besiegers. Nobody defends, so nobody gets walls or terrain, and if nothing is decided by the round cap the side with more of its strength left wins."
+			+ " The garrison's fighters who come out keep +%d cover from their fort; a relief army gets none." % AutoBattleResolver.COVER_DEFENSE
+			+ " When a storm is ordered too, the battle outside comes first, and the storm follows only if the stormers won it.",
+	},
+	"battle_breach": {
+		"title": "Through the breach",
+		"text": "Once a fort's walls are at 0, the garrison and the enemy fight on their own, with no order, at the next battles: in the open, so nobody defends and nobody gets terrain, but the garrison's fighters keep +%d cover among the ruins." % AutoBattleResolver.COVER_DEFENSE
+			+ " A relief army arriving that turn fights beside the garrison, without cover. On hills the garrison trades its ground for the cover.",
 	},
 	"capture": {
 		"title": "Capturing provinces",

@@ -329,6 +329,12 @@ static func _worth_phrase(battle_log: Dictionary, id: String, si: int, worth: in
 			return "the %s was worth about %d damage to the defending %s" % [String(battle_log.terrain), worth, side]
 		"fort":
 			return "the fort was worth about %d damage to the defending %s" % [worth, side]
+		AutoBattleResolver.WALLS:  # M3c
+			var sg: Dictionary = battle_log.get("siege", {})
+			return "the walls (%d of %d) were worth about %d damage to the defending %s" % [int(sg.get("walls", 0)), int(sg.get("walls_max", 0)),
+				worth, side]
+		AutoBattleResolver.COVER:
+			return "the cover of the walls was worth about %d damage to %s garrison" % [worth, who]
 		"commander":
 			return "%s %s dealt about %d damage more than the same gold in ordinary units would have" % [who,
 				BattleExplain._bare(_commanders(battle_log, si, [])), worth]
