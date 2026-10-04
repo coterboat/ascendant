@@ -529,7 +529,8 @@ func test_event_text_uses_player_facing_names() -> void:
 	var moved: Dictionary = _events_of(r4.events, "army_moved")[0]
 	assert_eq(moved.text, "The second Aurel Crown army at Crownkeep (1 unit, no commander) moved to Westwatch.")
 	assert_eq(moved.armies, ["kingdom-2"], "the id stays in the structured field")
-	assert_true(_events_of(r4.events, "order_rejected")[0].reason.begins_with("The second Aurel Crown army at Crownkeep"))
+	# The order check names the army as the map and the turn report do (TurnReportText.army_name).
+	assert_true(_events_of(r4.events, "order_rejected")[0].reason.begins_with(RulerRules._cap(TurnReportText.army_name(twins, "kingdom-2")) + " already has a move order"))
 	assert_eq(TurnResolver.army_label(twins, twins.find_army("kingdom-1")), "first Aurel Crown army at Crownkeep (1 unit, no commander)")
 	assert_eq(TurnResolver.army_label(s, s.find_army("kingdom-1")), "Aurel Crown army at Crownkeep (1 unit, led by Knight Captain)")
 

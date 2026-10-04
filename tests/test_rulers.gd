@@ -398,7 +398,7 @@ func test_ruler_army_moves_captures_and_is_labelled_plainly() -> void:
 	assert_eq(TurnResolver.army_label(s, RulerRules.ruler_army(s, "beasts")), "Thornmane Clans ruler the Ninth Fang at Fangridge")
 	var session := GameSession.new(s, ["kingdom", "beasts"], 3, StubBattleResolver.new())
 	assert_eq(session.describe_order("kingdom", MoveOrder.new(king.id, "highcrag")),
-		"Move the Aurel Crown ruler King Corvane I at Crownkeep to Highcrag.")
+		"Move King Corvane I (ruler of the Aurel Crown) from Crownkeep to Highcrag.")
 	# Turn 1: the King rides out alone while army 1 stays home; a recruit joins army 1, never the King.
 	var result := TurnResolver.resolve(s, {"kingdom": [MoveOrder.new(king.id, "highcrag"), RecruitOrder.new("spearmen")]}, 1,
 		StubBattleResolver.new())
@@ -512,7 +512,7 @@ func test_ruler_army_on_the_map_reads_plainly_and_explains_every_number() -> voi
 	var panel := map.details.find_child("Army_kingdom-2", true, false)
 	assert_true(panel != null, "the ruler's army is listed in the side panel")
 	var header := panel.find_child("ArmyHeader", true, false) as Button
-	assert_eq(header.text, "Aurel Crown ruler the Ever-Regent at Crownkeep")
+	assert_eq(header.text, "The Ever-Regent (ruler of the Aurel Crown) at Crownkeep")
 	assert_eq(String(header.get_meta(CodexLink.META)), "ruler_army")
 	var numbers := 0
 	for node_name in ["RulerLabel", "RulerHpLabel", "RulerAttackLabel", "RulerDefenseLabel", "RulerMoraleLabel",
@@ -544,7 +544,7 @@ func test_ruler_army_on_the_map_reads_plainly_and_explains_every_number() -> voi
 	assert_eq(badges.size(), 2)
 	var ruler_badge: Button = badges.filter(func(b): return b.text == "Ruler")[0]
 	assert_eq(String(ruler_badge.get_meta(CodexLink.META)), "ruler_army")
-	assert_true(ruler_badge.tooltip_text.contains("Aurel Crown ruler the Ever-Regent at Crownkeep"), ruler_badge.tooltip_text)
+	assert_true(ruler_badge.tooltip_text.contains("The Ever-Regent (ruler of the Aurel Crown) at Crownkeep"), ruler_badge.tooltip_text)
 	assert_true(ruler_badge.tooltip_text.contains("Hit points 19 of 19, attack 13, defense 8"), ruler_badge.tooltip_text)
 	# Right-clicking a ruler number opens the codex there.
 	var kept_label := panel.find_child("KeptPowerLabel", true, false) as Label

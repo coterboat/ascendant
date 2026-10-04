@@ -50,7 +50,7 @@ const ENTRIES := {
 	# #55: the turn report names armies (TurnReportText.army_name); this says how.
 	"army_names": {
 		"title": "Army names",
-		"text": "The turn report calls every army by a name it keeps until it is gone, so you can follow it from line to line and from turn to turn. A ruler's army is named after its ruler, like King Corvane I. Every other army is named by its number, like the Crown's 3rd or the Clans' 12th: each faction numbers its own armies in the order it raises them, 1st, 2nd, 3rd, with no numbers skipped. A number is never given twice, and an army keeps its name wherever it goes, whoever joins it and whoever else falls. When the report first mentions an army in a line, it lists who is in it, like the Crown's 1st (Spearmen and Knight Captain).",
+		"text": "The turn report, the map's side panel, your orders and the battle reports call every army by a name it keeps until it is gone, so you can follow it from line to line, from turn to turn and from the report to the map. A ruler's army is named after its ruler, like King Corvane I. Every other army is named by its number, like the Crown's 3rd or the Clans' 12th. Each faction numbers its own armies in the order it raises them, 1st, 2nd, 3rd, with no numbers skipped, and never gives a number twice. An army keeps its name wherever it goes, whoever joins it and whoever else falls. The name comes with who is in the army, like the Crown's 1st (Spearmen and Knight Captain), and on the map with where it stands.",
 	},
 	"commander": {
 		"title": "Commander",

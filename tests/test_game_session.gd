@@ -199,7 +199,8 @@ func test_each_player_sees_and_edits_only_their_own_orders() -> void:
 	assert_eq(session.current_orders().size(), 2)
 	var lines := session.current_order_texts()
 	assert_eq(lines.size(), 2)
-	assert_true(lines[0].begins_with("Move the Aurel Crown army at Crownkeep"), lines[0])
+	# The army as the map and the turn report name it (TurnReportText.army_title), from where it stands.
+	assert_true(lines[0].begins_with("Move %s from Crownkeep to Westwatch" % TurnReportText.army_title(session.state(), session.state().find_army("kingdom-1"), false)), lines[0])
 	assert_eq(lines[1], "Recruit Spearmen at Crownkeep for 8 gold.")
 	for line in lines:
 		_assert_no_raw_ids(line, "order text")

@@ -28,14 +28,15 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 			enemies.append(a.owner)
 	enemies.sort()
 	var arrival := state.current_turn + 2
-	var label := TurnResolver.army_label(state, army)
-	var text := "The %s moves to %s and is there at the start of turn %d." % [label, dest.name, arrival]
+	# The army as the map and the turn report name it (TurnReportText.army_title), from where it stands.
+	var label := RulerRules._cap(TurnReportText.army_title(state, army, false))
+	var text := "%s moves from %s to %s and is there at the start of turn %d." % [label, here.name, dest.name, arrival]
 	if order.is_road_move() and TurnResolver.road_rule(state, faction_id, order) == "forest_stride":
 		# M4-2, Forest Stride (§4.8): a road move through a forest you own into another forest.
-		text = "The %s moves through the forest of %s (Forest Stride) and is at %s at the start of turn %d. On the way it never stops and never fights on a border; if an enemy army moves into %s too, you fight it there." % [
+		text = "%s moves through the forest of %s (Forest Stride) and is at %s at the start of turn %d. On the way it never stops and never fights on a border; if an enemy army moves into %s too, you fight it there." % [
 			label, state.find_province(order.via).name, dest.name, arrival, dest.name]
 	elif order.is_road_move():
-		text = "The %s moves by the King's Roads through %s and is at %s at the start of turn %d. On the road it never stops and never fights on a border; if an enemy army moves into %s too, you fight it there." % [
+		text = "%s moves by the King's Roads through %s and is at %s at the start of turn %d. On the road it never stops and never fights on a border; if an enemy army moves into %s too, you fight it there." % [
 			label, state.find_province(order.via).name, dest.name, arrival, dest.name]
 	var would_capture := false
 	if not enemies.is_empty():
