@@ -48,7 +48,12 @@ resolver's events.
   settings. The report opens after it. Every hotseat player sees it once, behind their own handoff.
 - **Covered, it stops rendering:** the SubViewport updates only while the board is visible and no
   handoff cover or modal overlay is up (`cover_check`); it then keeps its last frame.
-- **The quality ladder** (`world_view.gd set_quality`) steps down after 3 s under 40 fps.
+- **The quality ladder** (`world_view.gd set_quality`) steps down after 3 s under 40 fps. The woods drop
+  their ink outline beyond the near zoom (the spike's dearest whole-map pass), and the overlay re-places
+  its plates only when the camera moves, a turn plays or the map changes.
+- **Measured** (Apple M4, Metal, Look A, 1600 × 900 window, 3D at 1200 × 838, rung 0, vsync off, a shared
+  machine): orders 74 fps over the whole map, 96 panning at the default zoom, 85 close on a capital; a
+  turn's playback 61; 240-360 draw calls.
 - **Built off the main thread:** `Board3D.prebake()` (started by the `World3DLaunch` autoload at boot when
   the board is 3D) bakes the land, plans its trees and cottages (`WorldView.plan_of`) and loads the model
   table's meshes on a worker; the world's nodes are built in one go when the game screen shows it.
