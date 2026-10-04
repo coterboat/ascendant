@@ -106,14 +106,16 @@ func test_units_on_the_map_change_at_once_by_the_hp_rule() -> void:
 	var done: Array = r.events.filter(func(e): return e.type == "research_done")
 	assert_eq(int(done[0].numbers.units_changed), spears.size())
 	assert_true(String(done[0].text).contains("already on the map gained %d hit points in all" % (3 * spears.size())), done[0].text)
-	# The Blood Pact lowers Tuskers' max hp by 2: full ones lose 2, nobody drops below 1.
+	# The Blood Pact lowers Tuskers' max hp (by 4 since M4-6): full ones lose as much, nobody drops below 1.
+	var drop := -int(AscensionRules.node_effects("beasts_blood_pact").unit.tuskers.hp)
+	assert_true(drop > 0, "the Blood Pact lowers Tuskers' maximum hp")
 	var b := AscensionRules.with_nodes(_game(), CLANS, ["beasts_boar_hide", "beasts_raiding", "beasts_oath_blood"])
 	var tuskers := _units_of(b, CLANS, "tuskers")
 	assert_eq(tuskers[0].current_hp, _type(b, CLANS, "tuskers").hp + 3, "Boar Hide raised them by 3")
 	var full: int = tuskers[0].current_hp
 	var applied := AscensionRules.apply_node(b, CLANS, "beasts_blood_pact", 1)
-	assert_eq(tuskers[0].current_hp, full - 2)
-	assert_eq(int(applied.hp_total), -2 * tuskers.size())
+	assert_eq(tuskers[0].current_hp, full - drop)
+	assert_eq(int(applied.hp_total), -drop * tuskers.size())
 	var c := AscensionRules.with_nodes(_game(), CLANS, ["beasts_boar_hide", "beasts_raiding", "beasts_oath_blood"])
 	var hurt: Unit = _units_of(c, CLANS, "tuskers")[0]
 	hurt.current_hp = 2
@@ -203,7 +205,8 @@ func test_income_lines_are_named_parts_that_the_income_phase_pays() -> void:
 
 
 func test_the_spec_income_examples() -> void:
-	# §9.2: "Income of Crownkeep = base 12 + Tithe of Light 7 (7 provinces)", "Income of Westwatch 9 = base 6 + Deep Mines 3".
+	# §9.2: "Income of Crownkeep = base 12 + Tithe of Light 7 (7 provinces)", "Income of Westwatch 10 = base 6 + Deep Mines 4"
+	# (M4-6: Deep Mines +4 on hills, and no longer anything on forests).
 	var dawn := AscensionRules.with_nodes(_game(), CROWN, ["crown_drillyard", "crown_charters", "crown_oath_dawn"])
 	for pid in ["westwatch", "highcrag", "rivermarch", "stonegate", "greenglade", "thornvale"]:
 		dawn.find_province(pid).owner = CROWN
@@ -216,17 +219,22 @@ func test_the_spec_income_examples() -> void:
 	var forge := AscensionRules.with_nodes(_game(), CROWN, ["crown_drillyard", "crown_charters", "crown_oath_forge"])
 	forge.find_province("westwatch").owner = CROWN
 	forge.find_province("greenglade").owner = CROWN
+	var mines: Dictionary = AscensionRules.node_effects("crown_oath_forge").income_terrain
 	var ww := RulerRules.province_income_parts(forge, "westwatch")
-	assert_eq(int(ww.total), forge.find_province("westwatch").income + 3)
+	assert_eq(int(ww.total), forge.find_province("westwatch").income + int(mines.hills))
 	assert_eq(ww.mods[0].name, "Deep Mines")
 	var gg := RulerRules.province_income_parts(forge, "greenglade")
-	assert_eq(int(gg.total), forge.find_province("greenglade").income - 1, "forests earn 1 less")
-	# A province never earns less than 0: a line makes up the difference.
-	forge.find_province("greenglade").income = 0
-	var floor := RulerRules.province_income_parts(forge, "greenglade")
-	assert_eq(int(floor.total), 0)
-	var b := Breakdown.province_income(forge, "greenglade")
-	assert_eq(Breakdown.sum_of_lines(b), 0)
+	var on_forest := int(mines.get("forest", 0))
+	assert_eq(int(gg.total), forge.find_province("greenglade").income + on_forest, "forests earn %d" % on_forest)
+	if on_forest < 0:
+		# A province never earns less than 0: a line makes up the difference.
+		forge.find_province("greenglade").income = 0
+		var floor := RulerRules.province_income_parts(forge, "greenglade")
+		assert_eq(int(floor.total), 0)
+		var b := Breakdown.province_income(forge, "greenglade")
+		assert_eq(Breakdown.sum_of_lines(b), 0)
+	else:
+		assert_eq(gg.mods, [], "no Deep Mines line on a forest")
 	# A neutral province, or another faction's, gets nothing from your path.
 	assert_eq(RulerRules.province_income_parts(forge, "thornvale").mods, [])
 
@@ -240,13 +248,14 @@ func test_price_parts_change_what_recruits_cost() -> void:
 	assert_eq(RulerRules.recruit_price(stables, CROWN, k), knights_cost - 4)
 	assert_eq(RulerRules.price_text(stables, CROWN, k), "%d gold (%d - Remount Stables 4)" % [knights_cost - 4, knights_cost])
 	assert_eq(TurnResolver.recruit_cost(stables, CROWN, "knights"), knights_cost - 4)
+	var rise := int(AscensionRules.node_effects("crown_living_iron").unit.knights.cost)
 	var iron := AscensionRules.with_nodes(_game(), CROWN, ["crown_drillyard", "crown_charters", "crown_oath_forge", "crown_living_iron"])
-	assert_eq(RulerRules.price_text(iron, CROWN, k), "%d gold (%d + Living Iron 4)" % [knights_cost + 4, knights_cost])
+	assert_eq(RulerRules.price_text(iron, CROWN, k), "%d gold (%d + Living Iron %d)" % [knights_cost + rise, knights_cost, rise])
 	var both := AscensionRules.with_nodes(stables, CROWN, ["crown_oath_forge", "crown_living_iron"])
-	assert_eq(RulerRules.recruit_price(both, CROWN, k), knights_cost, "Remount Stables cancels the Iron Knights' price rise")
+	assert_eq(RulerRules.recruit_price(both, CROWN, k), knights_cost - 4 + rise, "Remount Stables and the Iron Knights' price rise add up")
 	var b := Breakdown.unit_stat(both, CROWN, "knights", "cost")
-	assert_eq(int(b.total), knights_cost)
-	assert_eq(Breakdown.sum_of_lines(b), knights_cost)
+	assert_eq(int(b.total), knights_cost - 4 + rise)
+	assert_eq(Breakdown.sum_of_lines(b), knights_cost - 4 + rise)
 	assert_eq(b.lines.map(func(l): return l.label), ["Knights", "Remount Stables", "Living Iron"])
 	# With Muster Grounds: a fifth of the base price, then the path's part.
 	var muster := AscensionRules.with_nodes(_game(7, {CROWN: {"ruler": "aurel_king", "mandates": ["muster_grounds"]}}), CROWN,
