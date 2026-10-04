@@ -5,7 +5,11 @@ class_name Art
 ## Lookups (lazy, cached, never an error): each returns the Texture2D, or null when the file is not
 ## there yet. A missing file is checked with ResourceLoader.exists() first, so nothing is printed.
 ##   portrait(unit_type_id, faction_id = "")   a unit's or commander's portrait (384x512, 3:4)
-##                                              assets/portraits/<faction>/<unit type id>.webp
+##                                              assets/portraits/<faction>/<unit type id>.webp (a transformation's
+##                                              new unit, data/paths.gd NEW_UNITS, is found by its id too)
+##   variant_portrait(unit_type_id, faction_id, transformation_id)   a transformation's look of a unit it
+##                                              changes (M4 §12.1: Sunspears for spearmen in the Celestial Host)
+##                                              assets/portraits/<faction>/<unit type id>__<transformation id>.webp
 ##   ruler_portrait(ruler_id)                   assets/portraits/rulers/<ruler id>.webp (data/rulers.gd ids;
 ##                                              they land in their own PR, the placeholder card shows until then)
 ##   banner(faction_id)                         assets/banners/<faction>.webp (256x384, hang point top centre)
@@ -25,6 +29,7 @@ class_name Art
 enum Crop { FULL, FACE }
 
 const PORTRAIT_PATH := "res://assets/portraits/%s/%s.webp"
+const VARIANT_PORTRAIT_PATH := "res://assets/portraits/%s/%s__%s.webp"
 const RULER_PORTRAIT_PATH := "res://assets/portraits/rulers/%s.webp"
 const BANNER_PATH := "res://assets/banners/%s.webp"
 const TERRAIN_PATH := "res://assets/terrain/%s.webp"
@@ -56,13 +61,19 @@ static func texture(path: String) -> Texture2D:
 	return tex
 
 
-## The faction a unit type belongs to ("kingdom" for "spearmen"), from the faction data; "" if none.
+## The faction a unit type belongs to ("kingdom" for "spearmen"), from the faction data, or for a
+## transformation's new unit ("seraphs") from the side of the fork that adds it; "" if none.
 static func unit_faction(unit_type_id: String) -> String:
 	if _unit_factions.is_empty():
 		for f in FactionData.FACTIONS:
 			for u in f.unit_types:
 				_unit_factions[String(u.id)] = String(f.id)
 			_unit_factions[String(f.commander.id)] = String(f.id)
+		for side in PathData.BRANCHES:
+			var b: Dictionary = PathData.BRANCHES[side]
+			var new_unit := String(AscensionRules.node_effects(String(b.get("transformation", ""))).get("new_unit", ""))
+			if not new_unit.is_empty():
+				_unit_factions[new_unit] = String(b.get("faction", ""))
 	return String(_unit_factions.get(unit_type_id, ""))
 
 
@@ -73,6 +84,15 @@ static func portrait(unit_type_id: String, faction_id: String = "") -> Texture2D
 	if fid.is_empty() or unit_type_id.is_empty():
 		return null
 	return texture(PORTRAIT_PATH % [fid, unit_type_id])
+
+
+## A transformation's look of a unit it changes ("spearmen" in "crown_celestial_host": the Sunspears), or
+## null when that portrait isn't there (or the transformation doesn't change the unit, so there is none).
+static func variant_portrait(unit_type_id: String, faction_id: String, transformation_id: String) -> Texture2D:
+	var fid := faction_id if not faction_id.is_empty() else unit_faction(unit_type_id)
+	if fid.is_empty() or unit_type_id.is_empty() or transformation_id.is_empty():
+		return null
+	return texture(VARIANT_PORTRAIT_PATH % [fid, unit_type_id, transformation_id])
 
 
 static func ruler_portrait(ruler_id: String) -> Texture2D:

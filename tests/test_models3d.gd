@@ -3,12 +3,16 @@ extends "res://tests/test_case.gd"
 ## every installed model, and every row's GLB loads as one textured mesh of the size it claims. Which
 ## models must exist comes from the data: every unit type and commander of every faction in
 ## data/factions.gd in all four poses, every ruler in data/rulers.gd, and a fortress and a fort for
-## every faction (data/map.gd's capitals and forts stand in them).
+## every faction (data/map.gd's capitals and forts stand in them). Batch asc-3d-paths (#73) adds every
+## transformation's new unit (data/paths.gd) in all four poses, in "units", and its look of each unit it
+## changes, in "variants" ("<unit>__<transformation id>"), which the board's table lists in an optional
+## "variants" object on the base unit's row.
 
 const DESCRIPTOR := "res://assets/models/models.json"
 const POSES := ["ready", "march", "strike", "fallen"]
 const RULER_POSES := ["ready", "march", "strike", "fallen", "cheer"]
-const KINDS := {"units": "unit", "rulers": "ruler", "extras": "extra", "buildings": "building", "props": "prop"}
+const KINDS := {"units": "unit", "rulers": "ruler", "variants": "variant", "extras": "extra", "buildings": "building", "props": "prop"}
+const Models := preload("res://world3d/models.gd")
 const AXES := ["height", "length", "width"]
 
 static var _models: Dictionary = {}
@@ -58,24 +62,42 @@ func test_descriptor_parses_and_every_row_is_well_formed() -> void:
 			assert_true(float(k["hue"]) >= 0.0 and float(k["hue"]) <= 1.0, "%s: hue key in 0..1" % where)
 			assert_true(float(k["width"]) > 0.0 and float(k["width"]) <= 0.06, "%s: hue key width in (0, 0.06]" % where)
 			assert_false(String(k.get("part", "")).is_empty(), "%s: hue key names its part" % where)
-		if r[0] in ["units", "rulers", "extras"]:
+		if r[0] in ["units", "rulers", "variants", "extras"]:
 			if r[0] != "extras":
 				assert_eq(String(e.get("pose", "")), String(r[2]), "%s: pose matches its key" % where)
-				assert_true((POSES if r[0] == "units" else RULER_POSES).has(String(r[2])), "%s: a known pose" % where)
+				assert_true((RULER_POSES if r[0] == "rulers" else POSES).has(String(r[2])), "%s: a known pose" % where)
 			assert_true(float(e.get("body_men", 0.0)) > 0.0, "%s: body height in men" % where)
 			assert_true(float(e.get("body_share", 0.0)) > 0.3 and float(e.get("body_share", 0.0)) <= 1.0, "%s: body share in (0.3, 1]" % where)
 			assert_eq(String(size["axis"]), "length" if String(r[2]) == "fallen" else "height", "%s: a fallen figure is sized by its length" % where)
 
 
+## Every transformation of data/paths.gd: [{"faction", "transformation", "new_unit", "changed": [unit ids]}].
+func _transformations() -> Array:
+	var out := []
+	for side in PathData.BRANCHES:
+		var b: Dictionary = PathData.BRANCHES[side]
+		var fx := AscensionRules.node_effects(String(b.transformation))
+		out.append({"faction": String(b.faction), "transformation": String(b.transformation),
+			"new_unit": String(fx.get("new_unit", "")), "changed": (fx.get("rename", {}) as Dictionary).keys()})
+	return out
+
+
 func test_every_unit_type_and_commander_has_all_four_poses() -> void:
 	var units: Dictionary = _desc().get("units", {})
 	var count := 0
+	var by_faction := {}
 	for f in FactionData.FACTIONS:
 		var ids := []
 		for u in f.unit_types:
 			ids.append(String(u.id))
 		ids.append(String(f.commander.id))
-		for id in ids:
+		by_faction[String(f.id)] = ids
+	## the transformations' new units (asc-3d-paths): recruitable once their transformation lands
+	for tr in _transformations():
+		assert_false(String(tr.new_unit).is_empty(), "%s adds a unit" % tr.transformation)
+		by_faction[tr.faction].append(String(tr.new_unit))
+	for f in FactionData.FACTIONS:
+		for id in by_faction[String(f.id)]:
 			count += 1
 			assert_true(units.has(id), "%s has models" % id)
 			if not units.has(id):
@@ -92,6 +114,33 @@ func test_every_unit_type_and_commander_has_all_four_poses() -> void:
 					body = float(e["body_men"])
 				assert_eq(float(e["body_men"]), body, "%s: every pose has the same body height" % id)
 	assert_eq(count, units.size(), "no models for unit types the data doesn't have")
+
+
+## Every unit a transformation changes (Spearmen into Sunspears, ...) has that look in all four poses,
+## at the base unit's body size, so a block of them stands as the base's would (STYLE_BIBLE §5).
+func test_every_changed_unit_has_its_transformation_look_in_all_four_poses() -> void:
+	var variants: Dictionary = _desc().get("variants", {})
+	var units: Dictionary = _desc().get("units", {})
+	var count := 0
+	for tr in _transformations():
+		assert_eq((tr.changed as Array).size(), 1, "%s changes one unit" % tr.transformation)
+		for type_id in tr.changed:
+			var key := "%s__%s" % [type_id, tr.transformation]
+			count += 1
+			assert_true(variants.has(key), "%s has its %s look" % [type_id, tr.transformation])
+			if not variants.has(key):
+				continue
+			for pose in POSES:
+				assert_true(variants[key].has(pose), "%s has a %s pose" % [key, pose])
+				if not variants[key].has(pose):
+					continue
+				var e: Dictionary = variants[key][pose]
+				assert_eq(String(e["base"]), String(type_id), "%s %s is a look of %s" % [key, pose, type_id])
+				assert_eq(String(e["transformation"]), String(tr.transformation), "%s %s: its transformation" % [key, pose])
+				assert_eq(String(e["faction"]), String(tr.faction), "%s %s belongs to %s" % [key, pose, tr.faction])
+				assert_eq(String(e["path"]), "res://assets/models/units/%s/%s_%s.glb" % [tr.faction, key, pose], "%s %s path" % [key, pose])
+				assert_eq(float(e["body_men"]), float(units[type_id]["ready"]["body_men"]), "%s %s: the base's body height" % [key, pose])
+	assert_eq(count, variants.size(), "no looks for units no transformation changes")
 
 
 func test_every_faction_has_its_army_extras() -> void:
@@ -204,3 +253,34 @@ func test_the_board_table_uses_the_ready_pose_and_lists_every_pose() -> void:
 			var poses: Dictionary = row.get("poses", {})
 			for pose in g[id]:
 				assert_eq(String(poses.get(pose, "")), String(g[id][pose]["path"]), "%s's board row lists its %s pose" % [id, pose])
+
+
+## A changed unit's board row carries its transformation looks in "variants" ({"<transformation id>":
+## {"model", "height", "yaw", "poses", "pose_size"}}), for the board to swap to when a transformation lands.
+## Until then world3d/models.gd ignores the field: the row still stands in its own ready model.
+func test_the_board_table_lists_each_look_under_its_base_units_row() -> void:
+	var board: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://world3d/models.json"))
+	assert_true(board is Dictionary, "world3d/models.json parses")
+	if not (board is Dictionary):
+		return
+	var figs: Dictionary = board.get("figures", {})
+	var variants: Dictionary = _desc().get("variants", {})
+	for key in variants:
+		var base := String(variants[key]["ready"]["base"])
+		var trans := String(variants[key]["ready"]["transformation"])
+		var vrow: Dictionary = (figs.get(base, {}) as Dictionary).get("variants", {}).get(trans, {})
+		assert_false(vrow.is_empty(), "%s's row lists its %s look" % [base, trans])
+		if vrow.is_empty():
+			continue
+		assert_eq(String(vrow.get("model", "")), String(variants[key]["ready"]["path"]), "%s: the look's ready model" % key)
+		assert_true(is_equal_approx(float(vrow.get("height", 0.0)), float(variants[key]["ready"]["size"]["men"])), "%s: its height in men" % key)
+		for pose in variants[key]:
+			assert_eq(String((vrow.get("poses", {}) as Dictionary).get(pose, "")), String(variants[key][pose]["path"]), "%s lists its %s pose" % [key, pose])
+			assert_true(ResourceLoader.exists(String(vrow["poses"][pose])), "%s %s is imported" % [key, pose])
+			assert_eq(String((vrow.get("pose_size", {}) as Dictionary).get(pose, {}).get("axis", "")), String(variants[key][pose]["size"]["axis"]), "%s %s is sized by its %s" % [key, pose, variants[key][pose]["size"]["axis"]])
+		## the board ignores the field: the base unit still stands in its own models
+		Models.clear_cache()
+		assert_eq(Models.pose_model_path(base, "ready"), String(figs[base]["model"]), "%s still stands in its own ready model" % base)
+		assert_eq(Models.pose_model_path(base, "strike"), String(figs[base]["poses"]["strike"]), "%s still strikes in its own model" % base)
+	assert_eq(Models.problems(), [], "the model table has no problems")
+	Models.clear_cache()
