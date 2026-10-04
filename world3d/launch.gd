@@ -13,7 +13,8 @@ func _ready() -> void:
 	if "--world3d" in OS.get_cmdline_user_args():
 		get_tree().change_scene_to_file.call_deferred(SCENE)
 	elif "--battle3d" in OS.get_cmdline_user_args():
-		Board3D.prebake()
+		if DisplayServer.get_name() != "headless":
+			Board3D.prebake() ## headless, the stage bakes the land itself when it first shows
 		get_tree().change_scene_to_file.call_deferred(BATTLE_SCENE)
 	elif DisplayServer.get_name() != "headless" and GameSettings.load_from().board == "3d":
 		Board3D.prebake()

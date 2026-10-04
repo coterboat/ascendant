@@ -787,7 +787,7 @@ func test_the_biggest_battle_plays_inside_the_cpu_budget() -> void:
 	print("     biggest fixture on the 3D stage at 4x, headless, %d frames: stage CPU avg %.2f ms, worst %.2f ms" % [times.size(), avg, worst])
 	assert_true(s.player.is_finished(), "the biggest battle plays to its end")
 	assert_perf(avg <= CPU_AVG_MS, "average %.2f ms per frame (budget %.1f ms)" % [avg, CPU_AVG_MS])
-	assert_perf(worst <= CPU_MAX_MS * 3.0, "worst frame %.2f ms (budget %.1f ms, x3 for the frames a seek rebuilds every figure)" % [worst, CPU_MAX_MS])
+	assert_perf(worst <= CPU_MAX_MS, "worst frame %.2f ms (budget %.1f ms)" % [worst, CPU_MAX_MS])
 	s.free()
 
 
