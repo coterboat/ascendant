@@ -6,13 +6,13 @@
 ## wear. Off the woods the ground is not the figures' green, so the board stays as it was.
 ##
 ## The board drives it (Board3D._camera): step(armies) once a frame rebuilds only when the armies change
-## (a new state, a plan, the end of a playback, a quality rung's musicians). The trays stand aside while a
-## turn plays (the figures march off their places) and once the far-zoom stands (stands.gd) have most of
-## the blend.
-## Pure reads of armies.gd's entries; it never changes them. Draw cost: one mesh for every tray on the board.
+## (a new state, a plan, the end of a playback, a quality rung's musicians, the toy scale). The trays stand
+## aside while a turn plays (the figures march off their places) and once the far-zoom stands (stands.gd)
+## have most of the blend. Pure reads of armies.gd's entries; it never changes them. Draw cost: one mesh for every tray on the board.
 extends Node3D
 
 const Kit := preload("res://world3d/kit.gd")
+const Models := preload("res://world3d/models.gd")
 
 const TERRAINS := ["forest"] ## where the trays go
 const MARGIN := 0.45 ## the tray reaches this far past its outer figures' slots (blocks stand 2 apart, ranks 1)
@@ -24,6 +24,7 @@ const STEP := 0.03 ## the rim and the gilt ring step down this much each from th
 const DEPTH := 0.8 ## it reaches this far under the feet, so a slope never shows under it
 const SHOW_AT := 0.5 ## the figures' share (armies.gd blend) under which the stands have the board
 const LINK_GAP := 2.5 ## figures of a group this much farther apart than their spacing stand on separate trays
+const WIDE := 1.3 ## a figure this much wider than its slot (at the toy scale) widens its block's tray to it
 const SHADE := 0.3 ## the tray's top is the owner's colour this much darker, so each figure's own base still pops
 const INK := Color("#1A1612")
 
@@ -44,8 +45,8 @@ func _init() -> void:
 ## have the board.
 func step(armies: Node3D) -> void:
 	var show: bool = enabled and armies.state != null and armies.blend > SHOW_AT and not armies.playing()
-	var sig := "%s|%d|%s|%d|%d" % [show, armies.state.get_instance_id() if armies.state != null else 0, armies._plan_key,
-		armies.armies.size(), armies.figure_count()]
+	var sig := "%s|%d|%s|%d|%d|%.2f" % [show, armies.state.get_instance_id() if armies.state != null else 0, armies._plan_key,
+		armies.armies.size(), armies.figure_count(), snappedf(float(armies.fig_scale), 0.05)]
 	if sig == _sig:
 		return
 	_sig = sig
@@ -62,7 +63,8 @@ func rebuild(armies: Node3D) -> void:
 		var e: Dictionary = armies.armies[id]
 		if bool(e.get("ghost", false)) or not in_woods(st, String(e["province"])):
 			continue
-		var list := trays_of(e, func(t: String) -> Vector2: return armies._spacing(t) * 0.5)
+		var list := trays_of(e, func(t: String) -> Vector2:
+			return reach_of(armies._spacing(t) * 0.5, model_half_width(armies, e, t)))
 		if not list.is_empty():
 			trays[id] = list
 	_draw_trays()
@@ -75,6 +77,23 @@ func tray_count() -> int:
 	return n
 
 
+## How far a figure needs its tray either way: its slot, half its spacing (a block is its slots:
+## Kit.formation_blocks), so one army's trays stand apart, as a tabletop's movement trays do; but a figure
+## WIDE times wider than its slot (a Briarwarden's canopy at the toy scale) widens it across to its own
+## width, so its tray still shows beside it (that block's tray may then meet its neighbour's).
+static func reach_of(slot_half: Vector2, model_half_width: float) -> Vector2:
+	return Vector2(model_half_width, slot_half.y) if model_half_width > slot_half.x * WIDE else slot_half
+
+
+## Half the width of type `t`'s ready figure in army entry `e` on the board now (its variant, the toy scale).
+static func model_half_width(armies: Node3D, e: Dictionary, t: String) -> float:
+	var te: Dictionary = e["types"].get(t, {})
+	var fm: Dictionary = Models.figure_mesh(t, armies.prefer_models, "ready", "", String(te.get("variant", "")))
+	if fm.get("mesh") == null:
+		return 0.0
+	return (fm["mesh"] as Mesh).get_aabb().size.x * 0.5 * float(armies.fig_scale)
+
+
 static func in_woods(st: GameState, province_id: String) -> bool:
 	var p: Province = st.find_province(province_id) if st != null else null
 	return p != null and TERRAINS.has(p.terrain)
@@ -82,10 +101,8 @@ static func in_woods(st: GameState, province_id: String) -> bool:
 
 ## An army entry's trays (pure): its figures grouped by block (a unit type's figures; the commander, ruler,
 ## bearer and musician together), each group split where its figures stand apart (a front-rank ruler, a
-## column's pairs), and a rounded box round each, in the figures' own frame. `reach` gives a type's slot,
-## half its spacing either way (a block is its slots: Kit.formation_blocks), so one army's trays stand apart,
-## as a tabletop's movement trays do. (A figure wider than its slot, a Briarwarden's canopy, overhangs its
-## tray as a miniature does; growing the tray to it would merge the blocks' trays, and gains a unit or so.)
+## column's pairs), and a rounded box round each, in the figures' own frame. `reach` gives how far a type's
+## figure needs its tray either way (reach_of).
 static func trays_of(e: Dictionary, reach: Callable) -> Array:
 	var groups := {}
 	var order: Array = []
@@ -138,18 +155,17 @@ static func _tray_round(figs: Array, reach: Callable, e: Dictionary) -> Dictiona
 	var lo := Vector2(INF, INF)
 	var hi := Vector2(-INF, -INF)
 	var y := INF
+	var types: Array = []
 	for f in figs:
 		var p: Vector2 = f["pos"]
 		var half: Vector2 = reach.call(String(f["type"]))
+		if not types.has(f["type"]):
+			types.append(f["type"])
 		var q := Vector2(p.dot(u), p.dot(v))
 		lo = Vector2(minf(lo.x, q.x - half.x), minf(lo.y, q.y - half.y))
 		hi = Vector2(maxf(hi.x, q.x + half.x), maxf(hi.y, q.y + half.y))
 		y = minf(y, float(f["y"]))
 	var mid := (lo + hi) * 0.5
-	var types: Array = []
-	for f in figs:
-		if not types.has(f["type"]):
-			types.append(f["type"])
 	return {"centre": u * mid.x + v * mid.y, "size": hi - lo + Vector2.ONE * MARGIN * 2.0, "yaw": yaw, "y": y,
 		"colour": e["colour"], "ruler": bool(e.get("ruler", false)), "types": types}
 

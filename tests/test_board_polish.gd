@@ -249,7 +249,7 @@ const THORN := ["beasts_boar_hide", "beasts_raiding", "beasts_oath_grove", "beas
 
 
 ## The Thorn Wild's Briarwardens and Thornthrowers in Greenglade, the Crown's blocks in Thornvale (both
-## forest) and in Rivermarch (plains), at the default zoom over Greenglade.
+## forest) and in Rivermarch (plains), at the default zoom over Greenglade (a glide's, Board3D.focus_on).
 func _forest_board() -> Board3D:
 	var st := PB.with_nodes(PB.game(), "beasts", THORN)
 	assert_eq(AscensionRules.transformation(st, "beasts"), "beasts_thorn_wild", "the Clans have become the Thorn Wild")
@@ -257,16 +257,22 @@ func _forest_board() -> Board3D:
 	PB.army(st, "kingdom", "kingdom-11", "thornvale", ["spearmen", "spearmen", "spearmen", "knights", "knights"])
 	PB.army(st, "kingdom", "kingdom-13", "rivermarch", ["spearmen", "spearmen"])
 	var b := _board_for(st)
-	b.zoom = 1.0
-	b.goal = b.rig_for(b.wv.terrain.centre_of("greenglade"), b.zoom)
-	b.wv.rig = b.goal.duplicate()
+	b.zoom = 0.0
+	b.focus_on("greenglade", true)
 	_run_camera(b, 0.5)
+	assert_eq(b.zoom, Board3D.FOCUS_ZOOM, "the default zoom")
 	return b
 
 
-## Whether figure `f` (its slot: half its spacing either way) stands inside `tray`.
-func _on_tray(b: Board3D, f: Dictionary, tray: Dictionary) -> bool:
-	var sp: Vector2 = b.armies._spacing(String(f["type"])) * 0.5
+## How far figure `f` of entry `e` needs its tray either way (its slot; a figure far wider than its slot, its
+## own width at the toy scale), and whether that widens its tray.
+func _reach(b: Board3D, e: Dictionary, t: String) -> Vector2:
+	return Trays.reach_of(b.armies._spacing(t) * 0.5, Trays.model_half_width(b.armies, e, t))
+
+
+## Whether figure `f` of entry `e` (as far as it reaches) stands inside `tray`.
+func _on_tray(b: Board3D, e: Dictionary, f: Dictionary, tray: Dictionary) -> bool:
+	var sp: Vector2 = _reach(b, e, String(f["type"]))
 	var yaw: float = tray["yaw"]
 	var u := Vector2(cos(yaw), -sin(yaw))
 	var v := Vector2(sin(yaw), cos(yaw))
@@ -309,16 +315,29 @@ func test_every_army_in_a_forest_stands_on_trays_in_its_owners_colour() -> void:
 		for t in trays:
 			assert_eq(t["colour"], e["colour"], "%s's trays wear its owner's colour" % a.id)
 			assert_eq(t["ruler"], bool(e["ruler"]), "a ruler's army's trays carry the gilt ring")
-		## every figure, its whole slot, stands on one of its army's trays
+		## every figure, its whole slot (a canopy far wider than its slot, its width), stands on one of its trays
 		for f in e["figs"]:
 			var on := false
 			for t in trays:
-				on = on or _on_tray(b, f, t)
+				on = on or _on_tray(b, e, f, t)
 			assert_true(on, "%s's %s stands on a tray" % [a.id, f["type"]])
-		## and its trays stand apart, a tray to a block
+		## and its trays of slot-sized figures stand apart, a tray to a block
+		var widened := func(t: Dictionary) -> bool:
+			for ty in t["types"]:
+				if _reach(b, e, String(ty)) != b.armies._spacing(String(ty)) * 0.5:
+					return true
+			return false
 		for i in trays.size():
 			for j in range(i + 1, trays.size()):
-				assert_false(_overlap(trays[i], trays[j]), "%s's trays %d and %d stand apart" % [a.id, i, j])
+				if not widened.call(trays[i]) and not widened.call(trays[j]):
+					assert_false(_overlap(trays[i], trays[j]), "%s's trays %d and %d stand apart" % [a.id, i, j])
+	## the Briarwardens' canopies are far wider than their slots: their tray reaches past them
+	var bw: Dictionary = b.armies.armies["beasts-12"]
+	var half_w: float = Trays.model_half_width(b.armies, bw, "briarwardens")
+	assert_true(half_w > b.armies._spacing("briarwardens").x * 0.5 * Trays.WIDE, "a Briarwarden's canopy (%.1f) overhangs its slot" % half_w)
+	for t in b.trays.trays["beasts-12"]:
+		if (t["types"] as Array).has("briarwardens"):
+			assert_true((t["size"] as Vector2).x >= half_w * 2.0, "the Briarwardens' tray is wider than a canopy")
 	assert_eq(b.trays.tray_count(), b.trays.trays["beasts-12"].size() + b.trays.trays["kingdom-11"].size(), "drawn: one mesh holds every tray")
 	assert_true(preload("res://world3d/board_overlay.gd").LEGEND.contains("stands on a tray in its owner's colour"), "the board's legend explains the trays")
 	_free_board(b)
@@ -335,8 +354,8 @@ func test_the_trays_step_aside_for_the_stands_and_the_playback() -> void:
 	assert_eq(b.stands.k, 1.0, "the stands are full")
 	assert_false(b.trays.visible, "no trays under the stands")
 	## close in again: back
-	b.goal = b.rig_for(b.wv.terrain.centre_of("greenglade"), 1.0)
-	b.wv.rig = b.goal.duplicate()
+	b.zoom = 0.0
+	b.focus_on("greenglade", true)
 	_run_camera(b, 1.0)
 	assert_true(b.trays.visible and b.trays.tray_count() == drawn, "close in, the trays are back")
 	## while a turn plays the figures march off their places: the trays wait for them to settle
