@@ -252,6 +252,7 @@ var _arrival := {}  # unit type id -> the hp a recruit of it arrives with
 var _standoff := {}  # standoff_info for us, or {} when there is no stand-off
 var _hunt := {}  # the enemy army a stand-off hunts (_choose_hunt): {"pid", "rate", "force"}, or {}
 var _sally_to := ""  # where the garrison sallies to this turn (_sally), or ""
+var _foe_cache := {}  # #131: _foe_side's cache of the foe summaries for _recruit_value, this plan only
 ## M3c S-6 (#104): forts and sieges (ai/ai_sieges.gd), called behind one `state.sieges` check each.
 var _sieges := AISieges.new()
 var _gold_reserved := 0  # M3c: gold set aside for Fortify and engines before the troops are planned (0 without sieges)
@@ -311,6 +312,7 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 	_threat_cache = {}
 	_arrival = {}
 	_hunt = {}
+	_foe_cache = {}
 	_sieges.end()
 	return out
 
@@ -431,6 +433,7 @@ func _begin(state: GameState, faction_id: String, rng: SeededRNG, difficulty: St
 	_standoff = {}
 	_hunt = {}
 	_sally_to = ""
+	_foe_cache = {}
 	_gold_reserved = 0
 	_me = state.find_faction(faction_id) if state != null else null
 	if _me == null:
@@ -487,6 +490,7 @@ func _rebase(state: GameState) -> void:
 	_vias = {}
 	_busy = {}
 	_collect_armies()
+	_foe_cache = {}
 	if _paths:
 		_build_ctx()  # a sacrifice can change unit numbers (Royal Armories, Veteran Levies)
 
@@ -1219,8 +1223,8 @@ func _recruit_value(units: Array, foe_units: Array) -> float:
 		return 0.0
 	var foes: Array = foe_units if not foe_units.is_empty() else _roster_units()
 	var share := float(_ctx.get("forest_share", 0.0))
-	if share <= 0.0 or share >= 1.0 or not (units + foes).any(func(u): return u.type.trait_id == AutoBattleResolver.ROOTED):
-		return _value_of(_side_summary(units, _ctx), _side_summary(foes, _ctx))
+	if share <= 0.0 or share >= 1.0 or not (_foe_side(foes).rooted or units.any(func(u): return u.type.trait_id == AutoBattleResolver.ROOTED)):
+		return _value_of(_side_summary(units, _ctx), _foe_summary(foes, "ctx", _ctx))
 	# #94: Rooted works in a forest battle or not at all, and defense is not worth the same for every point (hit
 	# chances stop at MIN_HIT, damage drops in steps of four), so half its ROOTED_DEFENSE on every battle misjudges
 	# it: the value is that of a forest battle and of an open one, weighted by the forest share of our front.
@@ -1228,8 +1232,26 @@ func _recruit_value(units: Array, foe_units: Array) -> float:
 	forest["forest_share"] = 1.0
 	var open := _ctx.duplicate()
 	open["forest_share"] = 0.0
-	return share * _value_of(_side_summary(units, forest), _side_summary(foes, forest)) \
-		+ (1.0 - share) * _value_of(_side_summary(units, open), _side_summary(foes, open))
+	return share * _value_of(_side_summary(units, forest), _foe_summary(foes, "forest", forest)) \
+		+ (1.0 - share) * _value_of(_side_summary(units, open), _foe_summary(foes, "open", open))
+
+
+## #131: the foe side of _recruit_value, summed once per plan instead of for every unit the planner tries. A
+## recruit plan tries every unit type up to 40 times against the same foe armies; with hundreds of foe units in a
+## stand-off, summing them again each time was most of a plan's time. Kept while `foes` is the same Array;
+## _begin, _rebase and the end of a plan clear it, so nothing carries over between plans.
+func _foe_side(foes: Array) -> Dictionary:
+	if not is_same(_foe_cache.get("foes"), foes):
+		_foe_cache = {"foes": foes, "rooted": foes.any(func(u): return u.type.trait_id == AutoBattleResolver.ROOTED)}
+	return _foe_cache
+
+
+## The cached _side_summary of `foes` under `ctx`, one per `variant` ("ctx", "forest", "open").
+func _foe_summary(foes: Array, variant: String, ctx: Dictionary) -> Dictionary:
+	var side := _foe_side(foes)
+	if not side.has(variant):
+		side[variant] = _side_summary(foes, ctx)
+	return side[variant]
 
 
 ## Our _trait_power over theirs.
