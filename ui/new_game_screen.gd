@@ -24,6 +24,9 @@ extends Control
 ## Paths (M4-1, #66): the "Paths (M4 preview)" box, off by default (launching with `-- --paths` ticks it).
 ## Paths need rulers, so ticking it ticks the rulers box too, and clearing the rulers box clears it.
 ## Ticked, config() adds "paths": true (GameScreen.starting_state then uses GameState.with_paths).
+## Forts & sieges (M3c S-1a, #98; design/M3C_SIEGES.md §1.3): the "Forts & sieges (M3c preview)" box, off by
+## default (launching with `-- --sieges` ticks it), independent of Rulers and Paths. Ticked, config() adds
+## "sieges": true (GameScreen.starting_state then uses GameState.with_sieges).
 ## Builds its children in code, so it works before it is in the tree (headless tests).
 ##
 ## API:
@@ -45,6 +48,7 @@ extends Control
 ##                                   its starting build, and a new seed (the victory screen's New game)
 ##   set_rulers(on), rulers_on()     the "Rulers" box (ticked by default)
 ##   set_paths(on), paths_on()       the "Paths (M4 preview)" box (M4-1); ticking it ticks rulers
+##   set_sieges(on), sieges_on()     the "Forts & sieges (M3c preview)" box (M3c), on its own
 ##   quick_start_config(rng) -> Dictionary   Quick start's config (static): a random faction for the person
 ##                                   in seat 1, the computer at Normal in seat 2, rulers on with the balanced
 ##                                   preset for the person, and a random seed
@@ -88,6 +92,7 @@ var back_button: Button
 var rulers_toggle: CheckBox  # "Rulers": on by default
 var rulers_label: Label  # what the box does, shown while it is ticked
 var paths_toggle: CheckBox  # M4-1: "Paths (M4 preview)": off by default; needs rulers
+var sieges_toggle: CheckBox  # M3c: "Forts & sieges (M3c preview)": off by default; independent of rulers and paths
 var build_screen: BuildScreen = null  # opened by Start while rulers are on; built on first use
 var _last_builds := {}  # faction id -> the last game's build of a human seat (rematch)
 var _model: GameState
@@ -134,6 +139,8 @@ func config() -> Dictionary:
 		out["rulers"] = true
 	if paths_on():
 		out["paths"] = true
+	if sieges_on():
+		out["sieges"] = true
 	return out
 
 
@@ -203,6 +210,10 @@ func prefill(last_game: Dictionary) -> void:
 		set_paths(true)
 	elif last_game.has("players"):
 		set_paths(_paths_by_default())
+	if last_game.get("sieges", false) == true:  # M3c
+		set_sieges(true)
+	elif last_game.has("players"):
+		set_sieges(_sieges_by_default())
 	new_seed(int(last_game.get("seed", -1)))
 
 
@@ -318,6 +329,21 @@ func paths_on() -> bool:
 ## Paths start ticked when the game was launched with `-- --paths` (GameScreen.starting_state).
 static func _paths_by_default() -> bool:
 	return OS.get_cmdline_user_args().has("--paths")
+
+
+## Ticks or clears the "Forts & sieges (M3c preview)" box (M3c). It needs neither rulers nor paths.
+func set_sieges(on: bool) -> void:
+	sieges_toggle.set_pressed_no_signal(on)
+	_refresh()
+
+
+func sieges_on() -> bool:
+	return sieges_toggle.button_pressed
+
+
+## Forts and sieges start ticked when the game was launched with `-- --sieges` (GameScreen.starting_state).
+static func _sieges_by_default() -> bool:
+	return OS.get_cmdline_user_args().has("--sieges")
 
 
 func build_screen_open() -> bool:
@@ -659,6 +685,7 @@ func _build() -> void:
 	rulers_label.visible = false
 	rulers_row.add_child(rulers_label)
 	_build_paths_row(box)
+	_build_sieges_row(box)
 
 	error_label = _label("ErrorLabel", "", 19, NEGATIVE)
 	error_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -713,6 +740,24 @@ func _build_paths_row(box: Container) -> void:
 		rulers_toggle.set_pressed_no_signal(true)
 	paths_toggle.toggled.connect(func(on: bool): set_paths(on))
 	row.add_child(paths_toggle)
+
+
+## M3c: the "Forts & sieges (M3c preview)" box under the paths box. It is independent of Rulers and Paths.
+func _build_sieges_row(box: Container) -> void:
+	var row := HBoxContainer.new()
+	row.name = "SiegesRow"
+	row.add_theme_constant_override("separation", 14)
+	box.add_child(row)
+	sieges_toggle = CheckBox.new()
+	sieges_toggle.name = "SiegesToggle"
+	sieges_toggle.text = "Forts & sieges (M3c preview)"
+	sieges_toggle.add_theme_font_size_override("font_size", 20)
+	sieges_toggle.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	sieges_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Forts & sieges (preview)",
+		"A preview of milestone 3c: forts have levels and walls, you recruit at any fort you own and can build more, and an army that marches into an enemy fort with a garrison inside besieges it instead of fighting, until it storms the walls or they fall. It works with or without Rulers and Paths. Forts and sieges are still being built, so the map and the panels may not show all of it yet. %s" % RulesCodex.text("fort_levels")), "fort_levels")
+	sieges_toggle.set_pressed_no_signal(_sieges_by_default())
+	sieges_toggle.toggled.connect(func(on: bool): set_sieges(on))
+	row.add_child(sieges_toggle)
 
 
 ## Human or Computer for seat `i` (0-based).

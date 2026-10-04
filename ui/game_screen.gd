@@ -316,10 +316,17 @@ func _cue_report(delay_s: float) -> void:
 
 ## The starting state for `game_config`: the M1 game, or with rulers when the config asks for them
 ## ("rulers": true, or "builds") or the game was launched with `-- --rulers`; with paths (M4-1) when it has
-## "paths": true or the game was launched with `-- --paths`. Factions without a
+## "paths": true or the game was launched with `-- --paths`; with forts and sieges (M3c) when it has "sieges": true or
+## the game was launched with `-- --sieges`. Factions without a
 ## build get their balanced preset. Null when a build is illegal (the session then explains).
 static func starting_state(game_config: Dictionary) -> GameState:
 	var seed_value := int(game_config.get("seed", 0))
+	var args := OS.get_cmdline_user_args()
+	if game_config.get("sieges", false) or args.has("--sieges"):
+		# M3c S-1a (#98): forts and sieges, with or without rulers and paths (GameState.with_sieges).
+		var paths: bool = game_config.get("paths", false) or args.has("--paths")
+		var rulers: bool = paths or game_config.get("rulers", false) or game_config.has("builds") or args.has("--rulers")
+		return GameState.with_sieges(seed_value, game_config.get("builds", {}), {"rulers": rulers, "paths": paths}, [])
 	if game_config.get("paths", false) or OS.get_cmdline_user_args().has("--paths"):
 		return GameState.with_paths(seed_value, game_config.get("builds", {}), [])  # M4-1: paths need rulers
 	if game_config.get("rulers", false) or game_config.has("builds") or OS.get_cmdline_user_args().has("--rulers"):

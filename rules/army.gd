@@ -9,6 +9,11 @@ var location: String  # province id
 var units: Array[Unit] = []
 var commander: Unit = null
 var ruler: Unit = null  # the faction's living ruler (its type is the faction's ruler_unit_type), or null
+## M3c: siege engines this army carries, 0..FortData.ARMY_ENGINES_MAX (design/M3C_SIEGES.md §5). Engines are
+## a count, never units: they don't fight, the battle code never sees them, and they are lost with the army.
+## Only an army with a fighter (a unit or a commander, not a ruler's army) carries any, and only in a game
+## with sieges. Saved only when above 0, so every other army saves exactly as before.
+var engines: int = 0
 
 ## The army in one line for players, with its name for life and no ids (TurnReportText.describe_army): "the
 ## Crown's 1st at Crownkeep: Spearmen, Crossbowmen, Knights and Knight Captain", or "King Corvane I, the Aurel
@@ -34,6 +39,8 @@ func to_dict() -> Dictionary:
 	}
 	if ruler:
 		d["ruler"] = ruler.to_dict()  # only ruler armies carry the key, so M1 armies save as before
+	if engines > 0:
+		d["engines"] = engines  # M3c: only armies carrying siege engines have the key
 	return d
 
 ## Returns null when the army is in an unknown province, holds an unknown unit type, or a field has the
@@ -79,4 +86,5 @@ static func from_dict(data: Dictionary, all_unit_types: Dictionary, province_ids
 		if a.ruler == null:
 			return null
 
+	a.engines = Serial.to_int(data.get("engines", 0))  # M3c; GameState.validate checks the count
 	return a
