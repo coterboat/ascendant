@@ -1674,8 +1674,10 @@ func _note_build() -> void:
 ## "home" (the ruler stays at or near the capital) or "field" (it goes with the strongest army): the
 ## preset's role, but a ruler keeping LOW_KEPT power or less always plays home.
 func _ruler_role() -> String:
-	if _preset.is_empty() or RulerRules.kept_power(_state, _fid) <= LOW_KEPT:
+	if _preset.is_empty():
 		return "home"
+	if String(_preset.get("id", "")).is_empty() and RulerRules.kept_power(_state, _fid) <= LOW_KEPT:
+		return "home"  # EXPERIMENT X1 (#131): only a build of its own keeps a weak ruler home; a preset's role stands
 	return String(_preset.get("ai_role", "home"))
 
 
