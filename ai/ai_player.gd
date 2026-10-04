@@ -8,7 +8,9 @@ extends RefCounted
 ##
 ## plan_orders reads the start-of-turn state (it never changes it) and returns MoveOrder and
 ## RecruitOrder objects for `faction_id`. Every move is pre-checked with TurnResolver.check_move and
-## every recruit with TurnResolver.price_recruits, so the rules accept each order it returns.
+## every recruit with TurnResolver.price_recruits, so the rules accept each order it returns. In a game
+## with sieges it also returns SiegeOrder and FortifyOrder objects (ai/ai_sieges.gd, design/M3C_SIEGES.md §8),
+## checked with SiegeRules.check_siege_order and TurnResolver.price_recruits.
 ## Determinism: the same state, rng state and difficulty always give the same orders. Armies,
 ## provinces and factions are walked in sorted id order, and every random choice (tie-breaks, and the
 ## easy level's skipped moves and recruits) comes from `rng`.
@@ -433,6 +435,8 @@ func _begin(state: GameState, faction_id: String, rng: SeededRNG, difficulty: St
 	_me = state.find_faction(faction_id) if state != null else null
 	if _me == null:
 		return
+	if state.sieges:
+		_sieges.attach(self)  # M3c: forts and sieges (ai/ai_sieges.gd) for this plan
 	_nbrs = {}
 	for p in state.provinces:
 		var n: Array = p.neighbors.duplicate()
@@ -829,7 +833,7 @@ func _field_moves() -> void:
 	if not _hunt.is_empty():
 		objective = String(_hunt.pid)  # #94: in a stand-off the main army marches on the army it hunts
 	elif _state.sieges:
-		objective = _sieges.target_from(main.loc, objective)  # M3c: an enemy fort on the road comes first
+		objective = _sieges.target_from(main.loc, objective, main.armies)  # M3c: a fort on the road we could take first
 	var claimed := {}
 	var main_dest: String = main.loc
 	# Mass before pushing: the main army waits while a big share of our strength is still on its way.
@@ -959,6 +963,10 @@ func _advance(g: Dictionary, objective: String) -> String:
 	var road := _road_step(here, objective, g.armies)  # King's Roads: two provinces through our own land
 	if not road.is_empty():
 		return road
+	if _state.sieges:
+		var around := _sieges.route_step(here, objective, g.armies)  # M3c: around armies we can't fight
+		if not around.is_empty():
+			return around
 	var options := []
 	for n in _nbrs[here]:
 		if _d(n, objective) == d_here - 1 and _foes_at(n).is_empty() and _safe_at(g.armies, n):
@@ -2188,7 +2196,7 @@ func _plan_standoff() -> void:
 	_standoff = standoff_info(_state, _fid)
 	_hunt = {}
 	if _state.sieges:
-		_sieges.begin(self)  # M3c: the main army's fort target; a stand-off's "siege" is a real one
+		_sieges.begin()  # M3c: the main army's fort target; a stand-off's "siege" is a real one
 	if _standoff.is_empty():
 		return
 	_stats.standoff = 1

@@ -43,9 +43,16 @@ const ODDS_BUDGET := {"easy": 50.0, "normal": 90.0}
 const ODDS_CALLS := {"easy": 5, "normal": 8}
 
 var ai = null  # the AIPlayer planning this turn (untyped: the two classes refer to each other)
-var state: GameState = null
-var fid := ""
-var me: Faction = null
+## The plan's state, faction id and faction, read through the AIPlayer, so a Sacrifice's rebase is seen too.
+var state: GameState:
+	get:
+		return ai._state if ai != null else null
+var fid: String:
+	get:
+		return String(ai._fid) if ai != null else ""
+var me: Faction:
+	get:
+		return ai._me if ai != null else null
 ## The main army's fort objective at the start of the plan (target_from), or "".
 var target := ""
 var calls := 0
@@ -64,13 +71,10 @@ var _fortify := ""
 var _reserved := 0  # gold set aside for Fortify and engines before the troops are planned
 
 
-## Called by AIPlayer._plan_standoff on every plan. It resets this plan's siege state and picks the main
-## army's fort objective. In a stand-off, #94's "siege" action becomes this real siege.
-func begin(p_ai) -> void:
+## Called by AIPlayer._begin on every plan of a game with sieges: it resets this plan's siege state. The
+## guesses (ground_bonus, defense_rate) work from here on, before the stand-off is read.
+func attach(p_ai) -> void:
 	ai = p_ai
-	state = ai._state
-	fid = ai._fid
-	me = ai._me
 	calls = 0
 	budget = float(ODDS_BUDGET[ai._level])
 	_cache = {}
@@ -83,26 +87,34 @@ func begin(p_ai) -> void:
 	_engines = {}
 	_fortify = ""
 	_reserved = 0
+	_main_loc = ""
+	_main = []
+	target = ""
+
+
+## Called by AIPlayer._plan_standoff on every plan: picks the main army's fort objective. In a stand-off,
+## #94's "siege" action becomes this real siege.
+func begin() -> void:
 	var groups: Array = ai._free_groups()
 	_main_loc = String(groups[0].loc) if not groups.is_empty() else ""
 	_main = groups[0].armies.duplicate() if not groups.is_empty() else []
-	target = target_from(_main_loc, "") if not _main_loc.is_empty() else ""
+	target = target_from(_main_loc, "", _main) if not _main_loc.is_empty() else ""
 
 
 ## Lets go of the plan's state (AIPlayer calls it when the plan is done).
 func end() -> void:
 	ai = null
-	state = null
-	me = null
 	_scratch = null
 	_cache = {}
 	_main = []
 
 
 ## §8.2 targets: the nearest enemy fort with a garrison on a shortest road from `loc` to `objective`, an enemy
-## capital (the nearest one when `objective` is ""). Returns the capital itself when no such fort stands on the
-## road. An empty fort is not a target, because the army walks into it on the way (_best_capture).
-func target_from(loc: String, objective: String) -> String:
+## capital (the nearest one when `objective` is ""), that `armies` could take by the rough guess (feasible).
+## Returns the capital itself when no such fort stands on the road, so a fort the enemy's whole army holds
+## sends the army around it (route_step) rather than to wait at its walls. An empty fort is not a target,
+## because the army walks into it on the way (_best_capture).
+func target_from(loc: String, objective: String, armies: Array = []) -> String:
 	var cap := objective if not objective.is_empty() else String(ai._objective_for(loc))
 	if cap.is_empty():
 		return objective
@@ -115,10 +127,63 @@ func target_from(loc: String, objective: String) -> String:
 		if SiegeRules.garrison(state, p.id).is_empty():
 			continue
 		var d: int = ai._d(loc, p.id)
-		if d < best_d and d + int(ai._d(p.id, cap)) == full:
+		if d < best_d and d + int(ai._d(p.id, cap)) == full and (armies.is_empty() or feasible(p.id, armies)):
 			best = p.id
 			best_d = d
 	return best
+
+
+## Whether `armies` could take the enemy fort `pid` by the rough guess (no forecast): storm it at the storm
+## threshold, or besiege it at the start threshold against its garrison plus every enemy army within REACH.
+func feasible(pid: String, armies: Array) -> bool:
+	var p := state.find_province(pid)
+	var held := SiegeRules.garrison(state, pid)
+	if held.is_empty() or p.walls <= 0:
+		return true
+	if _rough_rate(ai._ratio(armies, held, 1.0, _walls_factor(p.walls))) >= _storm_need(pid, []):
+		return true
+	var extra: Array = ai._foes.filter(func(e): return e.location != pid and int(ai._d(e.location, pid)) <= REACH and not _pinned(e))
+	return _rough_rate(ai._ratio(armies, ai._foes_at(pid) + extra, 1.0, _cover_factor())) >= _start_win()
+
+
+## AIPlayer._advance in a game with sieges, 3 or more moves from the objective: a step along the shortest route
+## through provinces these armies could stand in safely this turn (no enemy army in them, and safe from the
+## enemy armies that could reach them, counting the friends that will be there; the objective's own garrison is
+## left to the approach). So an army goes around an enemy army it can't fight. The last steps are
+## approach_step's and attack_forts'. "" when no such route leads there.
+func route_step(here: String, objective: String, armies: Array) -> String:
+	if objective.is_empty() or int(ai._d(here, objective)) < 3:
+		return ""
+	var dist := {objective: 0}
+	var queue: Array = [objective]
+	var i := 0
+	while i < queue.size():
+		var at: String = queue[i]
+		i += 1
+		for n in ai._nbrs[at]:
+			if dist.has(n) or (n != here and not _passable(n, objective, armies)):
+				continue
+			dist[n] = int(dist[at]) + 1
+			queue.append(n)
+	if not dist.has(here):
+		return ""
+	var options := []
+	for n in ai._nbrs[here]:
+		if dist.has(n) and n != objective and int(dist[n]) == int(dist[here]) - 1 and int(dist[n]) >= 1:
+			options.append(n)
+	if options.is_empty():
+		return ""
+	return ai._pick_step(options)
+
+
+func _passable(pid: String, objective: String, armies: Array) -> bool:
+	if not ai._foes_at(pid).is_empty():
+		return false
+	var threats: Array = ai._threats_to(pid).filter(func(e): return e.location != objective and not _pinned(e))
+	if threats.is_empty():
+		return true
+	var friends: Array = armies + ai._friends_ending_at(pid, armies)
+	return ai._ratio(friends, threats, ai._ground_bonus(pid), 1.0) >= AIPlayer.SAFE_RATIO
 
 
 # --- §8.3 defending forts ------------------------------------------------------------------------
