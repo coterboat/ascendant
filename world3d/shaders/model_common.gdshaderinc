@@ -12,6 +12,7 @@ uniform bool instanced_team = false;
 uniform float key_hue = -1.0;
 uniform float key_width = 0.06;
 uniform float tint = 1.0;   // a whole-model brightness (a stage's sunlit stone vs the shade)
+uniform vec3 stone_tint : source_color = vec3(1.0); // a kit variant's stone (multiplies the texture, not the keyed roofs)
 uniform float fade = 1.0;
 
 varying vec3 v_team;
@@ -32,16 +33,21 @@ vec3 model_albedo(vec4 vcol, vec2 uv) {
 	vec3 c = vcol.rgb;
 	if (use_tex) {
 		vec3 t = texture(albedo_tex, uv).rgb;
+		vec3 raw = t;
+		t *= stone_tint;
 		if (key_hue >= 0.0) {
-			vec3 hsv = rgb2hsv(t);
+			vec3 hsv = rgb2hsv(raw);
 			float dh = abs(hsv.x - key_hue);
 			dh = min(dh, 1.0 - dh);
 			float key = (1.0 - smoothstep(key_width, key_width * 1.8, dh)) * smoothstep(0.30, 0.45, hsv.y) * smoothstep(0.05, 0.12, hsv.z);
-			float l = dot(t, vec3(0.2126, 0.7152, 0.0722));
+			float l = dot(raw, vec3(0.2126, 0.7152, 0.0722));
 			float tl = max(dot(v_team, vec3(0.2126, 0.7152, 0.0722)), 0.02);
 			t = mix(t, clamp(v_team * (l / tl) * 1.1, 0.0, 1.0), key);
 		}
 		c *= t;
+	}
+	else {
+		c *= stone_tint;
 	}
 	c = mix(v_team, c, vcol.a);
 	return c * tint;

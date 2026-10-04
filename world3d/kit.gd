@@ -113,7 +113,17 @@ class Builder:
 
 # ------------------------------------------------------------------ figures
 
-static func figure(type_id: String) -> ArrayMesh:
+const FIGURES := ["spearmen", "crossbowmen", "knights", "knight_captain", "tuskers", "fangthrowers", "war_bear", "warchief", "bearer"]
+
+
+## True for a figure id figure() draws (anything else gets the generic figure).
+static func has_figure(type_id: String) -> bool:
+	return FIGURES.has(type_id)
+
+
+## A primitive figure. `s` scales the whole figure (a ruler or a monster stands bigger); `ruler` adds
+## the bible's second, gilt ring round the base (STYLE_BIBLE.md 2.4, "ruler present").
+static func figure(type_id: String, s: float = 1.0, ruler: bool = false) -> ArrayMesh:
 	var b := Builder.new()
 	match type_id:
 		"spearmen":
@@ -163,11 +173,14 @@ static func figure(type_id: String) -> ArrayMesh:
 			_human(b, LINEN, STEEL)
 		_:
 			_human(b, Color("#8D88A0"), STEEL)
-	_base(b, type_id)
+	if not is_equal_approx(s, 1.0):
+		for k in b.v.size():
+			b.v[k] = b.v[k] * s
+	_base(b, type_id, ruler, s)
 	return b.mesh()
 
 
-static func _base(b: Builder, type_id: String) -> void:
+static func _base(b: Builder, type_id: String, ruler: bool = false, s: float = 1.0) -> void:
 	## the miniature's base, in the player's colour (team part), with an ink-dark rim under it
 	var r := 1.35
 	var sc := Vector3.ONE
@@ -180,6 +193,7 @@ static func _base(b: Builder, type_id: String) -> void:
 		"war_bear":
 			r = 2.6
 			sc = Vector3(1.0, 1.0, 1.7)
+	r *= s
 	var m := CylinderMesh.new()
 	m.top_radius = r
 	m.bottom_radius = r * 1.06
@@ -187,6 +201,22 @@ static func _base(b: Builder, type_id: String) -> void:
 	m.radial_segments = 14
 	m.rings = 1
 	b.add(m, Transform3D(Basis().scaled(sc), Vector3(0, 0.19, 0)), TEAM, true)
+	if ruler:
+		## the ruler's gilt ring, just outside the player-coloured base, over an ink rim
+		var ink := CylinderMesh.new()
+		ink.top_radius = r * 1.32
+		ink.bottom_radius = r * 1.36
+		ink.height = 0.22
+		ink.radial_segments = 18
+		ink.rings = 1
+		b.add(ink, Transform3D(Basis().scaled(sc), Vector3(0, 0.11, 0)), Color("#1A1612"))
+		var gilt := CylinderMesh.new()
+		gilt.top_radius = r * 1.26
+		gilt.bottom_radius = r * 1.28
+		gilt.height = 0.3
+		gilt.radial_segments = 18
+		gilt.rings = 1
+		b.add(gilt, Transform3D(Basis().scaled(sc), Vector3(0, 0.15, 0)), GOLD)
 
 
 static func _human(b: Builder, coat: Color, helm: Color, trim := GOLD) -> void:
@@ -355,6 +385,29 @@ static func fort() -> ArrayMesh:
 	return b.mesh()
 
 
+## A ring of sharpened timber stakes round a fortress (the Clans' kit variant), open at the gate on -Z,
+## with bone-white tips and a low earth bank under it.
+static func palisade(radius: float) -> ArrayMesh:
+	var b := Builder.new()
+	var n: int = int(TAU * radius / 2.2)
+	for k in n:
+		var a: float = TAU * k / n
+		var dir := Vector2(sin(a), -cos(a)) ## a = 0 is the gate (-Z)
+		if absf(wrapf(a, -PI, PI)) < 0.24:
+			continue
+		var hgt: float = 6.2 + float(k % 3) * 0.7
+		var at := Vector3(dir.x * radius, 0.0, dir.y * radius)
+		b.cyl(0.62, 0.7, hgt, at + Vector3(0, hgt * 0.5, 0), WOOD, 6)
+		b.cyl(0.0, 0.62, 1.3, at + Vector3(0, hgt + 0.65, 0), BONE, 6)
+	for k in 24:
+		var a2: float = TAU * (k + 0.5) / 24.0
+		if absf(wrapf(a2, -PI, PI)) < 0.3:
+			continue
+		var d2 := Vector2(sin(a2), -cos(a2))
+		b.box(Vector3(TAU * radius / 24.0 + 1.0, 1.2, 3.4), Vector3(d2.x * radius, 0.4, d2.y * radius), Color("#8A6A44"), Basis(Vector3.UP, -a2))
+	return b.mesh()
+
+
 static func cottage(variant: int) -> ArrayMesh:
 	var b := Builder.new()
 	var walls: Color = [Color("#EFE3C8"), Color("#E3D2AE"), Color("#D9C7A5")][variant % 3]
@@ -462,3 +515,69 @@ static func formation_depth(slots: Array) -> float:
 	for s in slots:
 		d = maxf(d, (s["pos"] as Vector2).y + 3.0)
 	return d
+
+
+## The board's formation (design/3D_DIRECTION.md 6.1-6.2), in the army's own frame: facing -Z, the
+## front rank on z = 0, x centred. One block per unit type in `blocks` ([{"type", "n" figures, "rank"
+## 0 front / 1 second (Volley), "sp": Vector2 spacing}]), front rank first, packed into rows no wider
+## than `max_w`. `leaders` ([{"type", "role": "commander" or "ruler", "rank", "sp"}]) stand with their
+## rank: a front-rank ruler leads from the front, a commander (rank 2) stands at the back with the
+## banner bearer, who carries the army's banner in every army. Returns [{"type", "pos", "role"}].
+static func formation_blocks(blocks: Array, leaders: Array, max_w: float) -> Array:
+	var out: Array = []
+	var z := 0.0
+	var gap := 2.0
+	for rank in [0, 1, 2]:
+		var row_items: Array = []
+		for ld in leaders:
+			if int(ld.get("rank", 2)) == rank and rank < 2:
+				row_items.append({"type": ld["type"], "n": 1, "cols": 1, "sp": ld["sp"], "role": ld["role"]})
+		for bl in blocks:
+			if int(bl.get("rank", 0)) != rank:
+				continue
+			var n: int = int(bl["n"])
+			var big: bool = (bl["sp"] as Vector2).x > 5.0
+			var cols: int = n if n <= (3 if big else 4) else int(ceil(n / 2.0))
+			row_items.append({"type": bl["type"], "n": n, "cols": cols, "sp": bl["sp"], "role": "unit"})
+		if rank == 2:
+			for ld in leaders:
+				if int(ld.get("rank", 2)) >= 2:
+					row_items.append({"type": ld["type"], "n": 1, "cols": 1, "sp": ld["sp"], "role": ld["role"]})
+			row_items.append({"type": "bearer", "n": 1, "cols": 1, "sp": SPACING["bearer"], "role": "bearer"})
+		if row_items.is_empty():
+			continue
+		## pack this rank's blocks into lines no wider than max_w
+		var lines: Array = []
+		var cur: Array = []
+		var cur_w := 0.0
+		for it in row_items:
+			var w: float = int(it["cols"]) * (it["sp"] as Vector2).x
+			var need: float = w + (gap if not cur.is_empty() else 0.0)
+			if not cur.is_empty() and cur_w + need > max_w:
+				lines.append(cur)
+				cur = []
+				cur_w = 0.0
+				need = w
+			cur.append(it)
+			cur_w += need
+		if not cur.is_empty():
+			lines.append(cur)
+		for line in lines:
+			var lw := 0.0
+			var ld_depth := 0.0
+			for it in line:
+				var sp: Vector2 = it["sp"]
+				lw += int(it["cols"]) * sp.x
+				ld_depth = maxf(ld_depth, ceil(float(it["n"]) / int(it["cols"])) * sp.y)
+			lw += gap * (line.size() - 1)
+			var x: float = -lw * 0.5
+			for it in line:
+				var sp: Vector2 = it["sp"]
+				var cols: int = it["cols"]
+				for i in int(it["n"]):
+					var c: int = i % cols
+					var r: int = i / cols
+					out.append({"type": it["type"], "pos": Vector2(x + (c + 0.5) * sp.x, z + (r + 0.5) * sp.y), "role": it["role"]})
+				x += cols * sp.x + gap
+			z += ld_depth + 1.0
+	return out
