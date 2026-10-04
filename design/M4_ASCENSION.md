@@ -157,7 +157,7 @@ Every node effect is one of these, stored as data in `data/paths.gd` (`PathData`
 | `crown_arbalests` | Arbalests | tier II | 15 | Drillyard | Crossbowmen +2 attack (11 → 13). |
 | `crown_stables` | Remount Stables | tier II | 15 | Market Charters | Knights cost 4 less (20 → 16). |
 | `crown_oath_dawn` | Oath of the Dawn | Oath | 20 | any 2 ordinary | Swears to the **Celestial Host**. **Tithe of Light:** your capital earns +1 gold for every province you own. |
-| `crown_oath_forge` | Oath of the Forge | Oath | 20 | any 2 ordinary | Swears to **Living Iron**. **Deep Mines:** every hills province you own earns +3 gold, and every forest province you own earns 1 less. |
+| `crown_oath_forge` | Oath of the Forge | Oath | 20 | any 2 ordinary | Swears to **Living Iron**. **Deep Mines:** every hills province you own earns +4 gold. |
 | `crown_celestial_host` | Celestial Host | transformation | 30 | Oath of the Dawn | §4.1 |
 | `crown_living_iron` | Living Iron | transformation | 30 | Oath of the Forge | §4.2 |
 
@@ -170,7 +170,7 @@ Every node effect is one of these, stored as data in `data/paths.gd` (`PathData`
 | `beasts_bone_fangs` | Bone Fangs | tier II | 15 | Boar Hide | Fangthrowers +2 attack (11 → 13). |
 | `beasts_forest_stride` | Forest Stride | tier II | 15 | Raiding Parties | Your armies can move two provinces in a turn through a forest you own into another forest (§4.8). |
 | `beasts_oath_grove` | Oath of the Grove | Oath | 20 | any 2 ordinary | Swears to the **Thorn Wild**. **Bounty of the Wild:** every forest province you own earns +2 gold. |
-| `beasts_oath_blood` | Oath of Blood | Oath | 20 | any 2 ordinary | Swears to the **Blood Pact**. **Blood Levy:** your regular recruits cost a quarter less and arrive missing a quarter of their hp (§4.5). |
+| `beasts_oath_blood` | Oath of Blood | Oath | 20 | any 2 ordinary | Swears to the **Blood Pact**. **Blood Levy:** your regular recruits cost a fifth less and arrive missing a fifth of their hp (§4.5). |
 | `beasts_thorn_wild` | Thorn Wild | transformation | 30 | Oath of the Grove | §4.3 |
 | `beasts_blood_pact` | Blood Pact | transformation | 30 | Oath of Blood | §4.4 |
 
@@ -188,7 +188,7 @@ Each transformation changes four things, as the brief asks: **the roster** (one 
 | part | rule |
 |---|---|
 | changed unit | **Spearmen → Sunspears**: +2 max hp (8 → 10), +2 morale (6 → 8). Shield Wall stays. |
-| new unit | **Seraphs** (`seraphs`): hp 14, attack 13, defense 9, morale 12, cost 24, front rank, trait **Wings** (§4.9). |
+| new unit | **Seraphs** (`seraphs`): hp 16, attack 13, defense 9, morale 12, cost 22, front rank, trait **Wings** (§4.9). |
 | economy (from the Oath) | **Tithe of Light**: your capital earns +1 gold for every province you own (+7 with 7 provinces). |
 | provinces | **Hallowed Land**: at the end of every turn, each of your wounded units and commanders in a province you own heals 3 hp, up to its maximum. |
 | mandates | Opens **Hymn of Dawn** for sacrifice. Forswears **Heavy Tithes** ("the Host takes its tithe in light"). |
@@ -200,13 +200,13 @@ Each transformation changes four things, as the brief asks: **the roster** (one 
 
 | part | rule |
 |---|---|
-| changed unit | **Knights → Iron Knights**: +4 defense (9 → 13), +4 cost (20 → 24). Charge stays. |
-| new unit | **Iron Colossus** (`iron_colossus`): hp 26, attack 13, defense 9, morale 12, cost 30, front rank, trait **Iron Hide** (§4.9). |
-| economy (from the Oath) | **Deep Mines**: hills provinces you own earn +3 gold, forest provinces you own earn 1 less (+7 net with the Crown's home provinces). |
+| changed unit | **Knights → Iron Knights**: +4 defense (9 → 13), +1 cost (20 → 21). Charge stays. |
+| new unit | **Iron Colossus** (`iron_colossus`): hp 28, attack 15, defense 9, morale 12, cost 29, front rank, trait **Iron Hide** (§4.9). |
+| economy (from the Oath) | **Deep Mines**: hills provinces you own earn +4 gold (+12 with the Crown's home provinces). |
 | provinces | **The Forges**: at the end of every turn, each of your wounded units and commanders in a province **with a fort** that you own heals to full. |
 | mandates | Opens **Forge Tithe** for sacrifice. Forswears **King's Roads** ("iron does not march fast"). |
 | look | Iron Knights in dark riveted living iron with glowing orange seams (bible block **T-ironform**); the Iron Colossus generated in that style. Your forts glow at the seams on the map, and your banner gets a rivet frame (code-drawn). |
-| plays as | The anvil: armies that are slow to kill, a hills economy that wants Stonegate and Blackwood, and forts to fall back to and come out of whole. Remount Stables cancels the Iron Knights' price rise. |
+| plays as | The anvil: armies that are slow to kill, a hills economy that wants Stonegate and Blackwood, and forts to fall back to and come out of whole. With Remount Stables, Iron Knights cost 17. |
 
 ### 4.3 Thornmane Clans: the Thorn Wild
 *The clans give themselves to the old forest. The trees walk with them, the wild follows them into every land they hold, and the woods feed them.*
@@ -214,7 +214,7 @@ Each transformation changes four things, as the brief asks: **the roster** (one 
 | part | rule |
 |---|---|
 | changed unit | **Fangthrowers → Thornthrowers**: +3 defense (5 → 8). Skirmish stays. |
-| new unit | **Briarwardens** (`briarwardens`): hp 26, attack 11, defense 9, morale 10, cost 24, front rank, trait **Rooted** (§4.9). |
+| new unit | **Briarwardens** (`briarwardens`): hp 26, attack 11, defense 9, morale 10, cost 21, front rank, trait **Rooted** (§4.9). |
 | economy (from the Oath) | **Bounty of the Wild**: every forest province you own earns +2 gold. |
 | provinces | **The Wild Spreads** (§4.6): at the end of every turn, one province you own turns to forest, for good. |
 | mandates | Opens **Deep Roots** for sacrifice. Forswears **Blood Frenzy** ("the wild is patient"). |
@@ -226,19 +226,19 @@ Each transformation changes four things, as the brief asks: **the roster** (one 
 
 | part | rule |
 |---|---|
-| changed unit | **Tuskers → Bloodtuskers**: +2 attack (11 → 13), −2 max hp (14 → 12). Berserk stays. |
-| new unit | **Bloodsworn** (`bloodsworn`): hp 16, attack 13, defense 5, morale 9, cost 18, front rank, trait **Lifedrinker** (§4.9). |
-| economy (from the Oath) | **Blood Levy** (§4.5): regular recruits cost a quarter less and arrive missing a quarter of their hp. |
-| provinces | **Dread Lands** (§4.7): in a province battle in a province you own, every enemy side has 1 less morale. |
+| changed unit | **Tuskers → Bloodtuskers**: +2 attack (11 → 13), −4 max hp (14 → 10). Berserk stays. |
+| new unit | **Bloodsworn** (`bloodsworn`): hp 16, attack 13, defense 5, morale 9, cost 16, front rank, trait **Lifedrinker** (§4.9). |
+| economy (from the Oath) | **Blood Levy** (§4.5): regular recruits cost a fifth less and arrive missing a fifth of their hp. |
+| provinces | **Dread Lands** (§4.7): in a province battle in a province you own, every enemy side has 1 less morale, not on top of a ruler's Dread. |
 | mandates | Opens **Red Harvest** for sacrifice. Forswears **Feast of Victory** ("the pact wants wounds, not feasts"). |
 | look | Bloodtuskers in crimson and black with bone spurs and red eyes (bible block **T-bloodpact**); Bloodsworn generated in that style. Your provinces get a faint crimson vignette and your banner a blood-drip edge (code-drawn). |
 | plays as | Tempo and aggression. More, cheaper bodies that start every fight wounded, so Berserk and Blood Frenzy are on from round 1; Bloodsworn that heal by hitting; and a home that is costly to invade while the army is away. |
 
 ### 4.5 Blood Levy, exactly
-- Every **regular** recruit (not commanders) costs cost − floor(cost ÷ 4), computed from the type's base cost like Muster Grounds and added as its own part. Both together: Tuskers 11 − 2 − 2 = 7.
-- The recruit arrives with floor(max hp ÷ 4) hp missing, never below 1 hp. Max hp counts every part (Boar Hide, Veteran Levies, Bloodtuskers).
-- Prices: Tuskers 9, Fangthrowers 6, War Bear 17, Bloodsworn 14 (Bloodtuskers keep Tuskers' price).
-- Arriving hp: Tuskers 11 of 14, Bloodtuskers 9 of 12, Fangthrowers 6 of 8, War Bear 18 of 23, Bloodsworn 12 of 16.
+- Every **regular** recruit (not commanders) costs cost − floor(cost ÷ 5), computed from the type's base cost like Muster Grounds and added as its own part. Both together: Tuskers 11 − 2 − 2 = 7.
+- The recruit arrives with floor(max hp ÷ 5) hp missing, never below 1 hp. Max hp counts every part (Boar Hide, Veteran Levies, Bloodtuskers).
+- Prices: Tuskers 9, Fangthrowers 7, War Bear 18, Bloodsworn 13 (Bloodtuskers keep Tuskers' price).
+- Arriving hp: Tuskers 12 of 14, Bloodtuskers 8 of 10, Fangthrowers 7 of 8, War Bear 19 of 23, Bloodsworn 13 of 16.
 - It also applies to recruits made with the Ninth Fang (Warband Muster). They arrive wounded where the Fang started the turn.
 - Feast of Victory heals them to full after a win, which turns Berserk and Blood Frenzy off. That is the M2 tension, kept.
 
@@ -254,7 +254,7 @@ Each transformation changes four things, as the brief asks: **the roster** (one 
 - **Hallowed Land** (Celestial Host): research phase, after the Wild Spreads. Each of your wounded units and commanders in a province you own heals 3 hp (6 with Hymn of Dawn), up to its maximum. Rulers heal on their own (M2 §1.7) and are skipped. One `path_healed` event per faction, listing the provinces.
 - **The Forges** (Living Iron): research phase. Each of your wounded units and commanders in a province with a fort that you own heals to full. The forts are Crownkeep, Stonegate, Blackwood and Fangridge. Rulers are skipped.
 - Mending Light (rulers phase) still comes after both and still heals only up to the maximum.
-- **Dread Lands** (Blood Pact): in a **province** battle (not a border battle) in a province you owned at the start of the turn, every enemy side has 1 less morale for the whole battle, as a named morale part `Dread Lands`. It adds to Dread and Fury (§15 call 13).
+- **Dread Lands** (Blood Pact): in a **province** battle (not a border battle) in a province you owned at the start of the turn, every enemy side has 1 less morale for the whole battle, as a named morale part `Dread Lands`. It adds to Fury but not to Dread (M4-6 turned §15 call 13's knob): while an enemy ruler's Dread takes morale, Dread Lands takes only what goes beyond it, so with both at 1 it takes nothing until that ruler falls.
 
 ### 4.8 Forest Stride, exactly
 - A move order may name a `via` province, as King's Roads does: a road move from A through B to C.
@@ -405,8 +405,8 @@ Every number explains itself on hover, through `Breakdown` (lines sum to the tot
   - "Max hp 13 = Spearmen 8 + Drillyard 3 + Celestial Host 2"
   - "Morale 8 = Spearmen 6 + Celestial Host 2"
   - A changed unit's tooltip names both: "Sunspears (Spearmen of the Celestial Host)".
-- **Province income:** "Income of Westwatch 9 = base 6 + Deep Mines 3" and "Income of Crownkeep 21 = base 12 + Royal Court 2 + Tithe of Light 7 (7 provinces)".
-- **Recruit price and arriving hp:** "Tuskers 9 gold = 11 − Blood Levy 2" and "arrive with 11 of 14 hp (Blood Levy: a quarter missing, rounded down)".
+- **Province income:** "Income of Westwatch 10 = base 6 + Deep Mines 4" and "Income of Crownkeep 21 = base 12 + Royal Court 2 + Tithe of Light 7 (7 provinces)".
+- **Recruit price and arriving hp:** "Tuskers 9 gold = 11 − Blood Levy 2" and "arrive with 12 of 14 hp (Blood Levy: a fifth missing, rounded down)".
 - **Terrain** on a grown province: "Forest (grown by the Thorn Wild on turn 9; was hills)".
 - **Every node, transformation, trait, province rule and new mandate name,** wherever it appears: a tooltip with the exact effect, what it changes for you right now, and a codex link.
 
@@ -440,13 +440,13 @@ New event types, each with `codex` set:
 - `research_gained` (research): "The Aurel Crown gained 9 research (Crownkeep 5, 4 other provinces 4). Arbalests: 12 of 15 → done; 6 carry over." Or, when not done: "Celestial Host: 18 of 30, about 2 more turns." One per faction per turn.
 - `research_done` (research): "Arbalests researched: the Aurel Crown's Crossbowmen now have 13 attack (was 11)."
 - `oath_sworn` (research): the §5 text.
-- `transformed` (research), to the faction itself: "Your people have become the Celestial Host. Your Spearmen are Sunspears now (10 hp, morale 8). You can recruit Seraphs (14 hp, attack 13, Wings) at Crownkeep from turn 9. Your wounded heal 3 hp each turn in every province you own (Hallowed Land). Hymn of Dawn can now be bought by sacrifice; Heavy Tithes can't."
+- `transformed` (research), to the faction itself: "Your people have become the Celestial Host. Your Spearmen are Sunspears now (10 hp, morale 8). You can recruit Seraphs (16 hp, attack 13, Wings) at Crownkeep from turn 9. Your wounded heal 3 hp each turn in every province you own (Hallowed Land). Hymn of Dawn can now be bought by sacrifice; Heavy Tithes can't."
   - To the rival: "The Aurel Crown has become the Celestial Host: ..." with the same facts.
 - `wild_spread` (research): §4.6.
 - `path_healed` (research): "Hallowed Land: 5 wounded fighters of the Aurel Crown healed 13 hp at Highcrag and Thornvale." / "The Forges: 3 wounded fighters healed to full at Stonegate (+17 hp)."
 - `raided` (capture): "Raiding Parties: the Thornmane Clans took 18 gold from Rivermarch (twice its income). Gold: 31 → 49."
 - **Unchanged event types that gain a clause:**
-  - `recruited` events under Blood Levy: "... for 9 gold (Blood Levy). They arrive wounded, 11 of 14 hp, so Berserk is already on."
+  - `recruited` events under Blood Levy: "... for 9 gold (Blood Levy). They arrive wounded, 12 of 14 hp, so Berserk is already on."
   - Battle aftermath with Red Harvest: "Red Harvest: the Thornmane Clans took 23 gold from the 23 enemy fighters lost."
 - **"Needs you" line** when the target is empty and research is waiting: "Choose what to research: 14 research is waiting."
 
@@ -512,14 +512,50 @@ M4-6 may change these without asking, recording before → after in its PR and u
   - Market Charters +1 to +3
   - Raiding Parties 1-3 times income
   - Tithe of Light 1 a province, or capped at 5-8
-  - Deep Mines hills +2 to +4, forest 0 to −2
+  - Deep Mines hills +2 to +4, forest 0 to −2 (M4-6: +4, 0)
   - Bounty of the Wild +1 to +3
-  - Blood Levy divisor 3-5, the same for price and hp
-- **Province rules:** Hallowed Land 2-4 (Hymn of Dawn double), the Forges "to full" or 8 hp, the Wild Spreads every turn or every other turn, Dread Lands on or not stacking with Dread.
+  - Blood Levy divisor 3-5, the same for price and hp (M4-6: 5)
+- **Province rules:** Hallowed Land 2-4 (Hymn of Dawn double), the Forges "to full" or 8 hp, the Wild Spreads every turn or every other turn, Dread Lands on or not stacking with Dread (M4-6: not stacking).
 - **Traits:** Lifedrinker divisor 1-3. Wings "commanders first" on or off. Iron Hide and Rooted stay fixed (breakpoint values).
 - **New mandates:** cost ±1.
 
 Anything else, or a band that can't be met within these knobs, goes back to the director as a question for Alex.
+
+### 10.4 results (M4-6, #71)
+`autoplay.gd -- --matrix --paths --seed 1 --turn-cap 60` (tools/autoplay/path_matrix.gd): 1,800 path games plus band P7's 72 M2 games. No branch pairing had fewer than 120 decisive games, so none was doubled. Before is `main` at 26274a5, after is the tuning below.
+
+| band | target | before | after |
+|---|---|---|---|
+| P1 Crown: Celestial Host / Living Iron | each 40-60% | 54 / 46 pass | 47 / 53 pass |
+| P1 Clans: Thorn Wild / Blood Pact | each 40-60% | 37 / 63 **miss** | 50 / 50 pass |
+| P1d Celestial Host vs Thorn Wild / Blood Pact (Crown wins) | report | 45% / 34% | 45% / 45% |
+| P1d Living Iron vs Thorn Wild / Blood Pact (Crown wins) | report | 43% / 27% | 49% / 47% |
+| P2 no side above 65% against another | none | Blood Pact 73% against Living Iron, 2 of 4 over **miss** | worst Thorn Wild 55% against the Celestial Host, 0 of 4 pass |
+| P3 length | median decisive 12-25; at most 10% at the cap | 20; 301 of 1,800 at the cap (17%) **miss** | 18; 378 of 1,800 (21%) **miss** |
+| P4 transformations | median 7-11; both by turn 14 in 80%+ | turn 8; 100% pass | turn 8; 100% pass |
+| P5 a path effect in a battle's "why" | report (30%+) | 78% of games | 69% of games |
+| P6 Crown / Clans | report (40-60%) | 38 / 62 | 47 / 53 |
+| P7 M2 identical; band F with paths | all; 15-50% | 72 of 72; F 45% pass | 72 of 72; F 44% pass |
+| P8 integrity and research forecasts | 0 | 0; 252 of 252 replays; 0 of 19,496 forecast checks off pass | 0; 252 of 252; 0 of 19,542 pass |
+
+**Number changes** (all inside §10.3):
+
+| what | before → after | why |
+|---|---|---|
+| Blood Levy divisor | 4 → 5 (a quarter → a fifth) | The Blood Pact won 69% against the Crown, 73% against Living Iron. Prices: Fangthrowers 6 → 7, War Bear 17 → 18. |
+| Bloodtuskers' max hp part | −2 → −4 (14 → 10) | Blood Levy keeps every recruit wounded and the Blood Pact forswears Feast of Victory, so Berserk is always on; with a fifth instead of a quarter the Blood Pact still won 70% in a third-size run. With both: about 59%. |
+| Dread Lands and Dread | stack → don't stack | The −4 morale stack of call 13 (the Thornmane, a War Bear, Dread Lands at Fangridge): Beast-God Unbound with the Blood Pact won 88% of its decisive games, with 91 of 300 at the cap. |
+| Iron Knights' cost part | +4 → +1 (20 → 21; 17 with Remount Stables) | Living Iron was the weakest side (36%); #83 measured the +4 price costing 100-gold armies 15-24 points. |
+| Deep Mines | hills +3, forest −1 → hills +4, forest 0 | Living Iron's economy: +7 → +12 gold at home, and the Thorn Wild's spreading forests no longer cost it gold when taken. |
+| Iron Colossus | hp 26 → 28, attack 13 → 15, cost 30 → 29 | It lost every equal-gold pair (17% on average against the Clans' units); now 46%. |
+| Seraphs | hp 14 → 16, cost 24 → 22 | Still a commander hunter that loses straight fights (3% → 8%). A defense step (9 → 12) made them 36%, but then the computer bought three times as many in place of Sunspears and the Celestial Host won 4 points less. |
+| Briarwardens | cost 24 → 21 | 42% → 61% at equal gold, carried by forests: 0-63% against Sunspears, Crossbowmen and Knights on open ground, 63-100% in forests. |
+| Bloodsworn | cost 18 → 16 | 23% → 37% at equal gold (50% against Spearmen, 3% against Iron Knights). |
+
+**What the bands don't show, and why P3 still misses:**
+- **The turn cap is an AI deadlock.** In a capped game both sides stop attacking and stack every recruit at their capitals: by turn 60 one traced game (before tuning) had 292 Crown units at Crownkeep and 148 Clans units at Fangridge. Attacks into a fort capital with Dread, Fury and permanent Berserk lose, and the AI's odds rule keeps it from trying again. Regent's Court is in 226 of the 378 capped games and wins 93% of the games it finishes; its Mending Light and the Celestial Host's Hallowed Land keep its stack whole. M2 caps 33 of 450 games on the same seeds (7%); the Blood Pact and Regent's Court raise it. No knob in §10.3 breaks the deadlock: balancing the sides raised it slightly (17% → 21%), because fewer games end in a rout. It needs an AI rule (for example, attack a capital when our stack is far larger) or a stack cost; that goes back to the director.
+- **The computer doesn't buy the Clans' new units:** 316 Briarwardens and 1 Bloodsworn in 900 games each, against 7,616 Seraphs (5% of the Crown's regular recruits) and 2,045 Iron Colossi (2%), although Briarwardens now win 61% of their equal-gold pairs and Bloodsworn 37%. `AIPlayer._recruit_value` rates Tuskers higher per gold, counting Lifedrinker like Berserk and Rooted only by the forest share of the front. The Crown buys Seraphs (5%) and Iron Colossi (2%). Making the Clans' units attractive to that model would make them far stronger than their rivals in real battles (Bloodsworn with 18 hp at 15 gold won 88-100% of equal-gold pairs). An AI valuation follow-up.
+- **Rush vs round out** (P5) reads 69% vs 21%, but every round-out faction is Iron Crown or Clan Moot, the two weakest M2 presets; Iron Crown wins 10-13% with paths (about 22% without on the same seeds).
 
 ---
 
@@ -777,7 +813,7 @@ Github issues are to be cut once Alex has seen this. M4-n are placeholders, and 
 10. **Your research target is private; completed nodes, Oaths and transformations are public.** M4 has no fog, and battle odds must count enemy transformations, as M2 did for builds.
 11. **Four new traits:** Wings (attacks commanders first), Iron Hide, Rooted and Lifedrinker. Wings is also a deliberate answer to Iron Discipline builds, including Blood of the Fang (79% in #54).
 12. **The Wild Spreads changes terrain for good,** even after the province is lost: the map remembers who passed. Forests help whoever holds them.
-13. **Dread Lands stacks with Dread and Fury.** That can be −4 morale against a Clans home with the Thornmane and a War Bear. The knob to stop stacking is in §10.3.
+13. **Dread Lands stacks with Dread and Fury.** That can be −4 morale against a Clans home with the Thornmane and a War Bear. The knob to stop stacking is in §10.3. *(M4-6 turned it: Dread Lands no longer stacks with Dread; it still adds to Fury. §10.4.)*
 14. **The AI's fork is a seeded 50/50 roll per preset,** not a reaction to the rival. The AI doesn't seek out healing provinces in M4.
 15. **Fork balance is measured by Bradley-Terry against a common field,** like M2's band A, because the engine can't mirror a faction.
 16. **The path is finite.** With full research done around turn 11, the pool has nothing to buy until M5 adds magic research. That is acceptable for an MVP.

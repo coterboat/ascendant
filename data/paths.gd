@@ -88,15 +88,15 @@ const PATHS := {
 				"codex": "node_crown_celestial_host",
 				"text": "Spearmen become Sunspears (+2 maximum hit points, +2 morale), Seraphs join the roster, and your wounded heal 3 hit points a turn on your land (Hallowed Land)."},
 			{"id": "crown_oath_forge", "name": "Oath of the Forge", "kind": "oath", "cost": 20, "requires": [], "requires_any": 2,
-				"branch": "living_iron", "effects": {"income_terrain": {"hills": 3, "forest": -1}}, "codex": "node_crown_oath_forge",
-				"text": "Swears to Living Iron. Deep Mines: every hills province you own earns 3 more gold, and every forest province you own 1 less."},
+				"branch": "living_iron", "effects": {"income_terrain": {"hills": 4}}, "codex": "node_crown_oath_forge",
+				"text": "Swears to Living Iron. Deep Mines: every hills province you own earns 4 more gold."},
 			{"id": "crown_living_iron", "name": "Living Iron", "kind": "transformation", "cost": 30,
 				"requires": ["crown_oath_forge"], "requires_any": 0, "branch": "living_iron",
-				"effects": {"unit": {"knights": {"defense": 4, "cost": 4}}, "rename": {"knights": "Iron Knights"},
+				"effects": {"unit": {"knights": {"defense": 4, "cost": 1}}, "rename": {"knights": "Iron Knights"},
 					"new_unit": "iron_colossus", "province_rule": {"id": "forges", "value": 0},
 					"opens_mandate": "forge_tithe", "forswears": "kings_roads"},
 				"codex": "node_crown_living_iron",
-				"text": "Knights become Iron Knights (+4 defense, cost 4 gold more), the Iron Colossus joins the roster, and your wounded in your forts heal to full each turn (the Forges)."},
+				"text": "Knights become Iron Knights (+4 defense, cost 1 gold more), the Iron Colossus joins the roster, and your wounded in your forts heal to full each turn (the Forges)."},
 		],
 	},
 	"beasts": {
@@ -125,15 +125,15 @@ const PATHS := {
 				"codex": "node_beasts_thorn_wild",
 				"text": "Fangthrowers become Thornthrowers (+3 defense), Briarwardens join the roster, and one province you own turns to forest each turn (the Wild Spreads)."},
 			{"id": "beasts_oath_blood", "name": "Oath of Blood", "kind": "oath", "cost": 20, "requires": [], "requires_any": 2,
-				"branch": "blood_pact", "effects": {"blood_levy": 4}, "codex": "node_beasts_oath_blood",
-				"text": "Swears to the Blood Pact. Blood Levy: your regular recruits cost a quarter less and arrive missing a quarter of their hit points."},
+				"branch": "blood_pact", "effects": {"blood_levy": 5}, "codex": "node_beasts_oath_blood",
+				"text": "Swears to the Blood Pact. Blood Levy: your regular recruits cost a fifth less and arrive missing a fifth of their hit points."},
 			{"id": "beasts_blood_pact", "name": "Blood Pact", "kind": "transformation", "cost": 30,
 				"requires": ["beasts_oath_blood"], "requires_any": 0, "branch": "blood_pact",
-				"effects": {"unit": {"tuskers": {"attack": 2, "hp": -2}}, "rename": {"tuskers": "Bloodtuskers"},
+				"effects": {"unit": {"tuskers": {"attack": 2, "hp": -4}}, "rename": {"tuskers": "Bloodtuskers"},
 					"new_unit": "bloodsworn", "province_rule": {"id": "dread_lands", "value": 1},
 					"opens_mandate": "red_harvest", "forswears": "feast_of_victory"},
 				"codex": "node_beasts_blood_pact",
-				"text": "Tuskers become Bloodtuskers (+2 attack, 2 fewer maximum hit points), Bloodsworn join the roster, and invaders of your land have 1 less morale (Dread Lands)."},
+				"text": "Tuskers become Bloodtuskers (+2 attack, 4 fewer maximum hit points), Bloodsworn join the roster, and invaders of your land have 1 less morale (Dread Lands)."},
 		],
 	},
 }
@@ -141,10 +141,10 @@ const PATHS := {
 ## The units the transformations add (§4.1-4.4). M4-2 puts them on the roster and M4-3 gives their
 ## traits effects in battle; until then they are data only.
 const NEW_UNITS := {
-	"seraphs": {"id": "seraphs", "name": "Seraphs", "hp": 14, "attack": 13, "defense": 9, "morale": 12, "cost": 24, "trait": "Wings"},
-	"iron_colossus": {"id": "iron_colossus", "name": "Iron Colossus", "hp": 26, "attack": 13, "defense": 9, "morale": 12, "cost": 30, "trait": "Iron Hide"},
-	"briarwardens": {"id": "briarwardens", "name": "Briarwardens", "hp": 26, "attack": 11, "defense": 9, "morale": 10, "cost": 24, "trait": "Rooted"},
-	"bloodsworn": {"id": "bloodsworn", "name": "Bloodsworn", "hp": 16, "attack": 13, "defense": 5, "morale": 9, "cost": 18, "trait": "Lifedrinker"},
+	"seraphs": {"id": "seraphs", "name": "Seraphs", "hp": 16, "attack": 13, "defense": 9, "morale": 12, "cost": 22, "trait": "Wings"},
+	"iron_colossus": {"id": "iron_colossus", "name": "Iron Colossus", "hp": 28, "attack": 15, "defense": 9, "morale": 12, "cost": 29, "trait": "Iron Hide"},
+	"briarwardens": {"id": "briarwardens", "name": "Briarwardens", "hp": 26, "attack": 11, "defense": 9, "morale": 10, "cost": 21, "trait": "Rooted"},
+	"bloodsworn": {"id": "bloodsworn", "name": "Bloodsworn", "hp": 16, "attack": 13, "defense": 5, "morale": 9, "cost": 16, "trait": "Lifedrinker"},
 }
 
 ## The transformations' province rules (§4.6, §4.7), with their names for text. "value": Hallowed Land

@@ -516,7 +516,7 @@ const ENTRIES := {
 	},
 	"node_crown_stables": {
 		"title": "Remount Stables",
-		"text": "Aurel Crown path, tier II, 15 research, needs Market Charters. Knights cost 4 gold less (20 to 16). With Living Iron it cancels the Iron Knights' price rise.",
+		"text": "Aurel Crown path, tier II, 15 research, needs Market Charters. Knights cost 4 gold less (20 to 16). With Living Iron, Iron Knights cost 17 instead of 21.",
 	},
 	"node_crown_oath_dawn": {
 		"title": "Oath of the Dawn",
@@ -524,15 +524,15 @@ const ENTRIES := {
 	},
 	"node_crown_celestial_host": {
 		"title": "Celestial Host",
-		"text": "Aurel Crown transformation, 30 research, needs the Oath of the Dawn. Spearmen become Sunspears: 2 more maximum hit points (8 to 10) and 2 more morale (6 to 8); Shield Wall stays. Seraphs join the roster: 14 hit points, attack 13, defense 9, morale 12, 24 gold, trait Wings. Hallowed Land: at the end of every turn each of your wounded units and commanders in a province you own heals 3 hit points, up to its maximum. Opens Hymn of Dawn for sacrifice and forswears Heavy Tithes.",
+		"text": "Aurel Crown transformation, 30 research, needs the Oath of the Dawn. Spearmen become Sunspears: 2 more maximum hit points (8 to 10) and 2 more morale (6 to 8); Shield Wall stays. Seraphs join the roster: 16 hit points, attack 13, defense 9, morale 12, 22 gold, trait Wings. Hallowed Land: at the end of every turn each of your wounded units and commanders in a province you own heals 3 hit points, up to its maximum. Opens Hymn of Dawn for sacrifice and forswears Heavy Tithes.",
 	},
 	"node_crown_oath_forge": {
 		"title": "Oath of the Forge",
-		"text": "Aurel Crown path, Oath, 20 research, needs any two ordinary nodes. Swearing it leads to Living Iron and closes the Oath of the Dawn and the Celestial Host for the rest of the game. Its economy rule, Deep Mines, starts at once: every hills province you own earns 3 more gold, and every forest province you own 1 less.",
+		"text": "Aurel Crown path, Oath, 20 research, needs any two ordinary nodes. Swearing it leads to Living Iron and closes the Oath of the Dawn and the Celestial Host for the rest of the game. Its economy rule, Deep Mines, starts at once: every hills province you own earns 4 more gold.",
 	},
 	"node_crown_living_iron": {
 		"title": "Living Iron",
-		"text": "Aurel Crown transformation, 30 research, needs the Oath of the Forge. Knights become Iron Knights: 4 more defense (9 to 13) and a price 4 gold higher (20 to 24); Charge stays. The Iron Colossus joins the roster: 26 hit points, attack 13, defense 9, morale 12, 30 gold, trait Iron Hide. The Forges: at the end of every turn each of your wounded units and commanders in a province with a fort that you own heals to full. Opens Forge Tithe for sacrifice and forswears King's Roads.",
+		"text": "Aurel Crown transformation, 30 research, needs the Oath of the Forge. Knights become Iron Knights: 4 more defense (9 to 13) and a price 1 gold higher (20 to 21); Charge stays. The Iron Colossus joins the roster: 28 hit points, attack 15, defense 9, morale 12, 29 gold, trait Iron Hide. The Forges: at the end of every turn each of your wounded units and commanders in a province with a fort that you own heals to full. Opens Forge Tithe for sacrifice and forswears King's Roads.",
 	},
 	"node_beasts_boar_hide": {
 		"title": "Boar Hide",
@@ -556,15 +556,15 @@ const ENTRIES := {
 	},
 	"node_beasts_thorn_wild": {
 		"title": "Thorn Wild",
-		"text": "Thornmane Clans transformation, 30 research, needs the Oath of the Grove. Fangthrowers become Thornthrowers: 3 more defense (5 to 8); Skirmish stays. Briarwardens join the roster: 26 hit points, attack 11, defense 9, morale 10, 24 gold, trait Rooted. The Wild Spreads: at the end of every turn one province you own, next to one of your forests, turns to forest for good. Opens Deep Roots for sacrifice and forswears Blood Frenzy.",
+		"text": "Thornmane Clans transformation, 30 research, needs the Oath of the Grove. Fangthrowers become Thornthrowers: 3 more defense (5 to 8); Skirmish stays. Briarwardens join the roster: 26 hit points, attack 11, defense 9, morale 10, 21 gold, trait Rooted. The Wild Spreads: at the end of every turn one province you own, next to one of your forests, turns to forest for good. Opens Deep Roots for sacrifice and forswears Blood Frenzy.",
 	},
 	"node_beasts_oath_blood": {
 		"title": "Oath of Blood",
-		"text": "Thornmane Clans path, Oath, 20 research, needs any two ordinary nodes. Swearing it leads to the Blood Pact and closes the Oath of the Grove and the Thorn Wild for the rest of the game. Its economy rule, Blood Levy, starts at once: your regular recruits cost a quarter less and arrive missing a quarter of their hit points, never below 1.",
+		"text": "Thornmane Clans path, Oath, 20 research, needs any two ordinary nodes. Swearing it leads to the Blood Pact and closes the Oath of the Grove and the Thorn Wild for the rest of the game. Its economy rule, Blood Levy, starts at once: your regular recruits cost a fifth less and arrive missing a fifth of their hit points, never below 1.",
 	},
 	"node_beasts_blood_pact": {
 		"title": "Blood Pact",
-		"text": "Thornmane Clans transformation, 30 research, needs the Oath of Blood. Tuskers become Bloodtuskers: 2 more attack (11 to 13) and 2 fewer maximum hit points (14 to 12); Berserk stays. Bloodsworn join the roster: 16 hit points, attack 13, defense 5, morale 9, 18 gold, trait Lifedrinker. Dread Lands: in a province battle in a province you owned at the start of the turn, every enemy side has 1 less morale. Opens Red Harvest for sacrifice and forswears Feast of Victory.",
+		"text": "Thornmane Clans transformation, 30 research, needs the Oath of Blood. Tuskers become Bloodtuskers: 2 more attack (11 to 13) and 4 fewer maximum hit points (14 to 10); Berserk stays. Bloodsworn join the roster: 16 hit points, attack 13, defense 5, morale 9, 16 gold, trait Lifedrinker. Dread Lands: in a province battle in a province you owned at the start of the turn, every enemy side has 1 less morale, not on top of the Great Thornmane's Dread. Opens Red Harvest for sacrifice and forswears Feast of Victory.",
 	},
 	"tithe_of_light": {
 		"title": "Tithe of Light",
@@ -572,7 +572,7 @@ const ENTRIES := {
 	},
 	"deep_mines": {
 		"title": "Deep Mines",
-		"text": "The economy rule of the Oath of the Forge. In the income phase every hills province you own earns 3 more gold, and every forest province you own 1 less; a province never earns less than nothing. It shows in each province's income and in your gold.",
+		"text": "The economy rule of the Oath of the Forge. In the income phase every hills province you own earns 4 more gold. It shows in each province's income and in your gold.",
 	},
 	"bounty_of_the_wild": {
 		"title": "Bounty of the Wild",
@@ -583,7 +583,7 @@ const ENTRIES := {
 	# checks them.
 	"blood_levy": {
 		"title": "Blood Levy",
-		"text": "The economy rule of the Oath of Blood. Every regular recruit of yours costs a quarter less: a quarter of its base price, rounded down, comes off, as its own part next to Muster Grounds (Tuskers 9 gold instead of 11, 7 with Muster Grounds too). It arrives missing a quarter of its maximum hit points, rounded down, never below 1 (Tuskers 11 of 14), so Berserk and Blood Frenzy are on from its first battle. Recruits made with the Ninth Fang arrive wounded too. Commanders cost and arrive as usual. Every price and the recruit forecast show it.",
+		"text": "The economy rule of the Oath of Blood. Every regular recruit of yours costs a fifth less: a fifth of its base price, rounded down, comes off, as its own part next to Muster Grounds (Tuskers 9 gold instead of 11, 7 with Muster Grounds too). It arrives missing a fifth of its maximum hit points, rounded down, never below 1 (Tuskers 12 of 14), so Berserk and Blood Frenzy are on from its first battle. Recruits made with the Ninth Fang arrive wounded too. Commanders cost and arrive as usual. Every price and the recruit forecast show it.",
 	},
 	"raiding_parties": {
 		"title": "Raiding Parties",
@@ -607,7 +607,7 @@ const ENTRIES := {
 	},
 	"dread_lands": {
 		"title": "Dread Lands",
-		"text": "The province rule of the Blood Pact. In a province battle in a province you owned at the start of the turn, every enemy side has 1 less morale for the whole battle. It adds to the Great Thornmane's Dread. Not in border battles.",
+		"text": "The province rule of the Blood Pact. In a province battle in a province you owned at the start of the turn, every enemy side has 1 less morale for the whole battle. It doesn't add to the Great Thornmane's Dread: while he stands in the battle, his Dread takes the morale and Dread Lands takes no more; if he falls, Dread Lands takes its 1 again. Not in border battles.",
 	},
 	"mandate_hymn_of_dawn": {
 		"title": "Hymn of Dawn",

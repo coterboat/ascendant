@@ -32,7 +32,16 @@ extends RefCounted
 ## policy is told its seed and seat (configure), as AISeat tells a real computer seat. Results then carry
 ## "paths" ({faction id: {"branch", "oath_turn", "transform_turn", "nodes", "ordinary_before_oath"}}), and
 ## summarize() adds the wins by side of the fork and by pairing, when transformations land and the path
-## mandates bought by sacrifice. The full M4 balance bands (--matrix with paths) are M4-6's.
+## mandates bought by sacrifice. The M4 balance bands are tools/autoplay/path_matrix.gd (--matrix --paths, M4-6).
+##
+## Research forecasts (M4-6, #71, band P8): in a game with paths, every seat's Forecast.research for the orders it
+## queued is checked against what the research phase did. Results carry "research": {"turn_checks",
+## "turn_mismatches" (a turn the faction's provinces didn't change, so its rate held: the forecast said whether
+## the target is done this turn and what the pool holds after it), "target_checks", "target_mismatches" (a target
+## whose provinces held from the turn it was set until it was done must be done on the forecast's done_turn),
+## "first" (the first mismatch, in words)}. {"record_digest": true} adds "record_md5", the md5 of the game
+## record's JSON (band P7 compares M2 games with a fixture recorded on main). Paths games also carry "recruits":
+## {faction id: {unit type id: recruit orders accepted}}, so the report can say how often the new units are bought.
 
 const Policies := preload("res://tools/autoplay/policies.gd")
 
@@ -102,6 +111,10 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 		# M2-8: when each ruler died (and when its successor was due), arrived, and what was sacrificed.
 		"ruler_log": {"deaths": [], "arrivals": [], "sacrifices": [], "mandates": {}}, "successors_due": 0,
 		"replay": "", "paths": {},
+		# M4-6: research forecast checks (band P8), and the record digest (band P7).
+		"research": {"turn_checks": 0, "turn_mismatches": 0, "target_checks": 0, "target_mismatches": 0, "first": ""},
+		# M4-6: recruit orders the session accepted in a game with paths, {faction id: {unit type id: n}}.
+		"recruits": {},
 	}
 	if seat_factions.size() != policy_names.size():
 		_error(result, 0, "There are %d seats but %d policies." % [seat_factions.size(), policy_names.size()])
@@ -153,9 +166,11 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 	var gold_sum := {}
 	var quiet := 0
 	var prev := session.state()
+	var pending_research := {}  # M4-6: faction id -> the target being tracked since the turn it was set
 	while not session.is_over() and session.turns_played() < turn_cap:
 		var turn := session.turn_number()
 		var played_before := session.turns_played()
+		var forecasts := {}  # M4-6: faction id -> Forecast.research for the orders it queued this turn
 		for seat in seat_factions.size():
 			var fid := str(seat_factions[seat])
 			if session.phase() == GameSession.Phase.HANDOFF:
@@ -167,7 +182,14 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 					seat + 1, fid, session.current_player()])
 			var view := session.state()
 			var orders: Array = policies[seat].orders(view, fid, rngs[seat])
-			_queue(session, view, fid, orders, result)
+			var accepted := _queue(session, view, fid, orders, result)
+			if paths:
+				forecasts[fid] = Forecast.research(view, fid, accepted)
+				for o in accepted:
+					if o is RecruitOrder:
+						if not result.recruits.has(fid):
+							result.recruits[fid] = {}
+						_bump(result.recruits[fid], o.unit_type_id)
 			var ended := session.end_turn()
 			if not ended.is_empty():
 				_error(result, turn, "end_turn for seat %d: %s" % [seat + 1, ended])
@@ -177,6 +199,8 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 		var state := session.state()
 		var events: Array = session.turn_report().get("events", [])
 		var found := check_invariants(prev, state, events)
+		if paths:
+			check_research(prev, state, turn, forecasts, pending_research, result.research)
 		for v in found:
 			result.violations.append({"seed": game_seed, "turn": turn, "check": v.check, "detail": v.detail})
 		var logged: Array = Array(probe.call()) if probe.is_valid() else []
@@ -237,7 +261,67 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 	_log_paths(result, final_state)
 	if options.get("replay_check", false):
 		result.replay = replay_check(session)
+	if options.get("record_digest", false):
+		result["record_md5"] = JSON.stringify(session.record()).md5_text()
 	return result
+
+
+## M4-6 (band P8, design/M4_ASCENSION.md §2.3 "forecast equals result"): checks this turn's research
+## forecasts (`forecasts`: faction id -> Forecast.research made from the start-of-turn state with the orders
+## that faction queued) against `state`, the state after the turn. Only factions whose provinces didn't change
+## hands this turn are checked, because their research rate held. Per turn: the forecast said whether the
+## target is done at the end of this turn, and the pool after it (pool + rate, less the cost if done).
+## Per target: one whose faction's provinces held from the turn it was set until it was done must be done on
+## the forecast's done_turn. `pending` carries each faction's tracked target from turn to turn; `out` is a
+## result's "research" counters.
+static func check_research(prev: GameState, state: GameState, turn: int, forecasts: Dictionary, pending: Dictionary, out: Dictionary) -> void:
+	var ids: Array = forecasts.keys()
+	ids.sort()
+	for fid in ids:
+		var fc: Dictionary = forecasts[fid]
+		var target := String(fc.get("target", ""))
+		var steady := _owned(prev, fid) == _owned(state, fid)
+		if target.is_empty() or not bool(fc.get("ok", false)) or int(fc.get("eta", 0)) < 1:
+			pending.erase(fid)
+			continue
+		var p: Dictionary = pending.get(fid, {})
+		if p.is_empty() or String(p.target) != target:
+			p = {"target": target, "done_turn": int(fc.done_turn), "set_turn": turn, "steady": true}
+			pending[fid] = p
+		if not steady:
+			p.steady = false
+		var done_at := AscensionRules.researched_turn(state, fid, target)
+		if steady:
+			out.turn_checks += 1
+			var expect_done := int(fc.eta) == 1
+			var pool_after := int(fc.pool) + int(fc.rate) - (int(fc.cost) if expect_done else 0)
+			var pool_now := AscensionRules.research_points(state, fid)
+			if expect_done != (done_at == turn) or pool_now != pool_after:
+				out.turn_mismatches += 1
+				if String(out.first).is_empty():
+					out.first = "turn %d, %s: the forecast said %s would %sbe done with %d research left, but it was %sdone with %d." % [turn, fid,
+						target, "" if expect_done else "not ", pool_after, "" if done_at == turn else "not ", pool_now]
+		if done_at > 0:
+			if bool(p.steady):
+				out.target_checks += 1
+				if done_at != int(p.done_turn):
+					out.target_mismatches += 1
+					if String(out.first).is_empty():
+						out.first = "%s: %s was set on turn %d with done_turn %d, and done on turn %d with no province changing hands." % [fid,
+							target, int(p.set_turn), int(p.done_turn), done_at]
+			pending.erase(fid)
+
+
+## The ids of the provinces `faction_id` owns, sorted ([] for a null state).
+static func _owned(state: GameState, faction_id: String) -> Array:
+	var out := []
+	if state == null:
+		return out
+	for p in state.provinces:
+		if p.owner == faction_id:
+			out.append(p.id)
+	out.sort()
+	return out
 
 
 ## M2-8: the sacrifices and mandates of every faction with a ruler, and how many successors fell due
@@ -994,8 +1078,9 @@ static func game_lines(results: Array) -> String:
 # --- internals ------------------------------------------------------------------------------------
 
 ## Queues `orders` for `fid` through the session; counts each refusal under its rules code (the code
-## OrderBook.check_order gives it against the orders accepted so far, sacrifices included).
-static func _queue(session: GameSession, view: GameState, fid: String, orders: Array, result: Dictionary) -> void:
+## OrderBook.check_order gives it against the orders accepted so far, sacrifices included). Returns the
+## orders the session accepted.
+static func _queue(session: GameSession, view: GameState, fid: String, orders: Array, result: Dictionary) -> Array:
 	var accepted := []
 	for order in orders:
 		result.orders += 1
@@ -1004,6 +1089,7 @@ static func _queue(session: GameSession, view: GameState, fid: String, orders: A
 			accepted.append(order)
 			continue
 		_bump(result.rejections, str(OrderBook.check_order(view, fid, order, accepted).get("code", "unclassified")))
+	return accepted
 
 
 static func _battle_record(turn: int, e: Dictionary) -> Dictionary:
