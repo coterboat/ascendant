@@ -168,6 +168,9 @@ const WINGS := "Wings"
 const IRON_HIDE := "Iron Hide"
 const ROOTED := "Rooted"
 const LIFEDRINKER := "Lifedrinker"
+## M3c: the siege engines' trait (FortData.ENGINES). Engines never fight, so no fighter carries it in battle;
+## its text is here so every trait the game shows has its rules' own words (codex trait_siege_engine).
+const SIEGE_ENGINE := FortData.ENGINE_TRAIT
 ## The traits of the transformations' new units (M4-3): a battle with one of them on the field is a path
 ## battle even without a game state.
 const PATH_TRAITS := [WINGS, IRON_HIDE, ROOTED, LIFEDRINKER]
@@ -188,6 +191,7 @@ const TRAIT_TEXT := {
 	IRON_HIDE: "Every hit on it deals %d less damage" % IRON_HIDE_DAMAGE + ", but always at least %d." % MIN_DAMAGE,
 	ROOTED: "Gets +%d defense in a battle in a forest province, whoever holds it. Not in a battle on a border." % ROOTED_DEFENSE,
 	LIFEDRINKER: "At the end of each round, if it still stands, it heals %s of the damage its hits dealt that round (rounded up), up to its maximum." % SHARE_WORDS[LIFEDRINK_DIVISOR],
+	SIEGE_ENGINE: FortData.ENGINE_RULE,
 }
 ## One-line summaries of TRAIT_TEXT, for odds reasons and compact lists.
 const TRAIT_SHORT := {
@@ -203,6 +207,7 @@ const TRAIT_SHORT := {
 	IRON_HIDE: "-%d damage from every hit" % IRON_HIDE_DAMAGE,
 	ROOTED: "+%d defense in a forest" % ROOTED_DEFENSE,
 	LIFEDRINKER: "heals %s of the damage it deals" % SHARE_WORDS[LIFEDRINK_DIVISOR],
+	SIEGE_ENGINE: "+%d siege damage while besieging; never fights" % FortData.SIEGE.engine,
 }
 
 ## M2-2: the ruler's morale part and its "why" factor id, Dread's morale part, and the prefix of every
@@ -323,13 +328,26 @@ static func estimate(sides: Array, ctx: Dictionary, perspective: String) -> Dict
 		var r := fight(sides, ctx, SeededRNG.new(odds_seed(i)))
 		if r.result.winner == perspective:
 			wins += 1
-		for f in r.result.report.all_factors:
-			if f.id == "luck":
-				continue
-			var key: String = "%s|%s" % [f.id, f.faction]
-			var signed: float = f.impact if f.faction == perspective else -f.impact
-			scores[key] = scores.get(key, 0.0) + signed
-			briefs[key] = f.brief
+		add_odds_factors(r.result.report, perspective, scores, briefs)
+	return odds_summary(wins, scores, briefs, perspective, ctx.get("state"))
+
+
+## Adds one test battle's "why" factors to `scores` (factor key -> summed impact from `perspective`'s point of view,
+## luck left out) and `briefs` (factor key -> its seed-free phrase). estimate() and the fort odds (M3c,
+## Forecast.storm_odds and the others, which fight a chain of battles on each seed) both use it.
+static func add_odds_factors(report: Dictionary, perspective: String, scores: Dictionary, briefs: Dictionary) -> void:
+	for f in report.all_factors:
+		if f.id == "luck":
+			continue
+		var key: String = "%s|%s" % [f.id, f.faction]
+		var signed: float = f.impact if f.faction == perspective else -f.impact
+		scores[key] = scores.get(key, 0.0) + signed
+		briefs[key] = f.brief
+
+
+## The odds of `perspective` from `wins` of ODDS_SAMPLES test battles and the summed factors (add_odds_factors):
+## {"win_rate", "wins", "samples", "label", "reasons", "text"}.
+static func odds_summary(wins: int, scores: Dictionary, briefs: Dictionary, perspective: String, state) -> Dictionary:
 	var rate := float(wins) / ODDS_SAMPLES
 	var label := "close"
 	if rate >= LIKELY_WIN:
@@ -354,7 +372,7 @@ static func estimate(sides: Array, ctx: Dictionary, perspective: String) -> Dict
 			reasons.append(briefs[pos[0]])
 		if not neg.is_empty():
 			reasons.append(briefs[neg[0]])
-	var name := _faction_name(perspective, ctx.get("state"))
+	var name := _faction_name(perspective, state)
 	var text := "%s: %s won %d of %d test battles fought with these armies (%d%%)." % [
 		_cap(label), name, wins, ODDS_SAMPLES, roundi(rate * 100)]
 	if not reasons.is_empty():
@@ -409,6 +427,7 @@ static func fight(sides_in: Array, ctx: Dictionary, rng: SeededRNG, record := fa
 	var env := {"terrain": terrain, "fort": fort, "kind": kind}
 	if ctx.has("siege"):
 		env["siege"] = ctx.siege  # M3c: walls and cover replace the flat fort bonus (_defense)
+		env["place_name"] = province.name if province != null else "the fort"  # for the walls and cover factors
 	# M3-1: the recorder, {"log", "cap"}, or null when not recording.
 	var rec = null
 	if record:
@@ -1350,6 +1369,8 @@ static func _log_header(sides: Array, sides_in: Array, ctx: Dictionary, env: Dic
 		"sides": side_logs, "fighters": fighters, "events": [], "truncated": false}
 	if paths:
 		out["paths"] = true  # M4-3: the path additions below are in this log (BattleLog: "paths")
+	if env.has("siege"):
+		out["siege"] = env.siege.duplicate(true)  # M3c (§4.4): what kind of battle at a fort, and what the walls did
 	return out
 
 
@@ -1524,12 +1545,21 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 
 	var lines := []
 	var who := []
-	for s in sides:
+	var siege: Dictionary = env.get("siege", {})
+	for si in sides.size():
+		var s: Dictionary = sides[si]
 		var role := "defending" if s.is_defender else ("attacking" if not String(ctx.get("defender", "")).is_empty() else "arrived")
+		if not siege.is_empty():
+			role = _siege_role(siege, si, s)  # M3c: "defending the walls", "sallying", "relief", "outside the walls", ...
 		if not s.people.is_empty():
 			role = "%s, %s" % [s.people.name, role]  # M4-3: "Aurel Crown (Celestial Host, attacking)"
 		who.append("%s (%s) with the %s" % [s.name, role, " and the ".join(s.armies)])
-	lines.append("Battle %s. %s." % [where, "; ".join(who)])
+	if siege.is_empty():
+		lines.append("Battle %s. %s." % [where, "; ".join(who)])
+	else:
+		# M3c (§4.5): the first line names the kind of battle at the fort.
+		var names := sides.map(func(x): return String(x.name))
+		lines.append("%s %s." % [siege_sentence(siege, String(env.get("place_name", "the fort")), names), "; ".join(who)])
 	var paths_line := _paths_line(sides)
 	if not paths_line.is_empty():
 		lines.append(paths_line)
@@ -1601,11 +1631,73 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 		if f.has("codex"):
 			fo["codex"] = f.codex
 		all_out.append(fo)
-	return {"kind": env.kind, "provinces": ctx.get("province_ids", []).duplicate(), "place": where,
+	var out := {"kind": env.kind, "provinces": ctx.get("province_ids", []).duplicate(), "place": where,
 		"terrain": env.terrain, "fort": env.fort, "defender": ctx.get("defender", ""), "winner": winner.faction,
 		"winner_name": winner.name, "end": end, "rounds_fought": n, "round_cap": ROUND_CAP,
 		"rounds": rounds.duplicate(true), "sides": side_reports, "factors": chosen_out, "all_factors": all_out,
 		"why": why, "summary": summary, "lines": lines}
+	if not siege.is_empty():
+		out["siege"] = siege.duplicate(true)  # M3c (§4.5): the same block as the log's, for the viewer's walls chip
+	return out
+
+
+## M3c (§4.3, §4.5): the sentence that names a battle at a fort, from its siege block (SiegeRules.siege_block),
+## the province's name and the sides' names in side order: "The Thornmane Clans stormed the walls of Crownkeep
+## (9 of 9: +6 defense) on the second turn of the siege." / "Through the breach at Stonegate, the Aurel Crown's
+## garrison met the Thornmane Clans in the open: ...". TurnResolver's battle event starts with it too.
+static func siege_sentence(siege: Dictionary, place: String, names: Array) -> String:
+	var gi := int(siege.get("garrison", -1))
+	var owner := String(names[gi]) if gi >= 0 and gi < names.size() else ""
+	var others := []
+	for i in names.size():
+		if i != gi:
+			others.append(String(names[i]))
+	var them := " and ".join(others)
+	var everyone := " and ".join(names)
+	var theirs := _poss(them) if not them.is_empty() else "enemy"
+	var own := _poss(owner) if not owner.is_empty() else "the"
+	match String(siege.get("why", "")):
+		"storm":
+			var n := int(siege.get("turn_of_siege", 0))
+			var when := "from the march, with no siege before" if n <= 0 else "on the %s turn of the siege" % RulerRules.ordinal_word(n).to_lower()
+			return "The %s stormed the walls of %s (%d of %d: +%d defense) %s." % [them, place, int(siege.walls), int(siege.walls_max),
+				int(siege.walls_defense), when]
+		"sally":
+			return "At %s, the %s garrison sallied out against the %s siege lines. Outside the walls nobody holds the ground." % [place, own, theirs]
+		"gate":
+			return "At %s, the %s stormers met the sallying garrison at the gate. Outside the walls nobody holds the ground." % [place, theirs]
+		"relief":
+			return "At %s, a relief army of the %s met the %s siege lines outside the walls, where nobody holds the ground." % [place, owner, theirs]
+		"relief_sally":
+			return "At %s, a relief army of the %s reached the walls and met the %s siege lines, and the garrison sallied to join it. Outside the walls nobody holds the ground." % [
+				place, owner, theirs]
+		"rivals":
+			return "At %s, the %s met outside the walls, where nobody holds the ground." % [place, everyone]
+		"empty":
+			return "At %s, the %s arrived together before the empty fort, where nobody holds the ground." % [place, everyone]
+		"breach":
+			return "Through the breach at %s, the %s garrison met the %s in the open: nobody holds the ground, and the garrison keeps +%d cover among the ruins." % [
+				place, own, them, int(siege.get("cover_defense", 0))]
+	return "At %s, the %s met outside the walls." % [place, everyone]
+
+
+## A side's role in a battle at a fort (M3c), for the report's first line.
+static func _siege_role(siege: Dictionary, si: int, s: Dictionary) -> String:
+	var garrison := si == int(siege.get("garrison", -1))
+	var inside := false
+	for f in s.fighters:
+		if Array(siege.get("from_inside", [])).has(f.army):
+			inside = true
+	match String(siege.get("kind", "")):
+		SiegeRules.STORM:
+			return "defending the walls" if garrison else "storming"
+		SiegeRules.BREACH:
+			return "garrison, in the breach" if garrison else "attacking through the breach"
+	if garrison:
+		if inside and String(siege.get("why", "")) == "relief_sally":
+			return "relief and sallying garrison"
+		return "sallying garrison" if inside else "relief"
+	return "outside the walls"
 
 
 ## One side's losses for the casualty line, in plain words:
@@ -1693,6 +1785,23 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 					c = "the fort gave the defending %s +%d defense, worth about %d damage" % [s.name, FORT_DEFENSE, dmg] if won \
 						else "even though the fort gave the defending %s +%d defense" % [s.name, FORT_DEFENSE]
 					brief = "the fort gives the defending %s +%d defense" % [s.name, FORT_DEFENSE]
+				WALLS:
+					# M3c (§4.5): what the walls saved a stormed garrison, measured like terrain.
+					var sg: Dictionary = env.siege
+					var walls := "the walls of %s (%d of %d)" % [String(env.place_name), int(sg.walls), int(sg.walls_max)]
+					c = "%s gave the defending %s +%d defense, worth about %d damage" % [walls, s.name, int(sg.walls_defense), dmg] if won \
+						else "even though %s gave the defending %s +%d defense" % [walls, s.name, int(sg.walls_defense)]
+					brief = "%s give the defending %s +%d defense" % [walls, s.name, int(sg.walls_defense)]
+					codex = "battle_walls"
+				COVER:
+					# M3c (§4.5): the cover the fighters from inside keep in a sally or at the breach.
+					var sg: Dictionary = env.siege
+					var breach: bool = String(sg.kind) == SiegeRules.BREACH
+					var cover := "the cover of %s %swalls (+%d defense)" % [_poss(String(env.place_name)), "ruined " if breach else "", int(sg.cover_defense)]
+					var garrison := "%s garrison %s" % [who, "in the breach" if breach else "as it sallied"]
+					c = "%s was worth about %d damage to %s" % [cover, dmg, garrison] if won else "even though %s helped %s" % [cover, garrison]
+					brief = "%s for %s" % [cover, garrison]
+					codex = "battle_breach" if breach else "battle_open"
 				"commander":
 					# v is the damage beyond what the same gold in ordinary units would have dealt.
 					var cname := _commander_name(s)

@@ -34,7 +34,9 @@ extends SceneTree
 ##                    pass/miss table for bands P1-P8 (tools/autoplay/path_matrix.gd). --branches doesn't apply
 ##   --record-m2 PATH with --matrix --paths, play only band P7's M2 games (paths off) and write their record
 ##                    digests to PATH: the fixture P7 compares against (tests/fixtures/m2_matrix_digests.json).
-##                    Run it on main only, and only when an M2 change is intended
+##                    Run it on main only, and only when an M2 change is intended: a rules change, or (#94) an
+##                    AI change that shifts the computer's M2 games, re-recorded in a commit of its own
+##   --note TEXT      with --record-m2, why the digests were re-recorded, added to the fixture's note
 ##   --jobs N         with --matrix, games run in N headless Godot processes at once (default: the
 ##                    processor count, at most 8). The results are the same for any N
 ##   --scale F        with --matrix, play F times the games of every band (default 1; 0.25 for a quick look)
@@ -144,7 +146,7 @@ func _parse(args: PackedStringArray) -> Dictionary:
 	var opts := {"games": 50, "seed": 1, "policies": ["greedy", "greedy"], "seats": FACTIONS.duplicate(),
 		"turn_cap": Simulator.TURN_CAP, "out": "", "list": false, "rulers": false, "builds": ["", ""], "paths": false, "branches": ["", ""],
 		"matrix": false, "jobs": clampi(OS.get_processor_count(), 1, MAX_JOBS), "scale": 1.0, "work_dir": "user://autoplay_matrix",
-		"worker": false, "cell": "", "from": 0, "count": 0, "only": "", "record_m2": ""}
+		"worker": false, "cell": "", "from": 0, "count": 0, "only": "", "record_m2": "", "note": ""}
 	var builds_arg := ""
 	var branches_arg := ""
 	var i := 0
@@ -213,6 +215,8 @@ func _parse(args: PackedStringArray) -> Dictionary:
 				opts.only = value
 			"--record-m2":
 				opts.record_m2 = value
+			"--note":
+				opts.note = value
 			"--cell":  # worker processes only
 				opts.cell = value
 			"--from":
@@ -239,6 +243,8 @@ func _parse(args: PackedStringArray) -> Dictionary:
 			opts.builds[seat] = pid
 	if not str(opts.record_m2).is_empty() and not (opts.matrix and opts.paths):
 		return {"error": "--record-m2 needs --matrix --paths"}
+	if not str(opts.note).is_empty() and str(opts.record_m2).is_empty():
+		return {"error": "--note needs --record-m2"}
 	if not branches_arg.is_empty():
 		if not opts.paths:
 			return {"error": "--branches needs --paths"}
@@ -323,8 +329,11 @@ func _run_path_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
 	if recording:
 		var stray_rec := catcher.take()
 		OS.remove_logger(catcher)
+		var note := "Record digests of M2 matrix games (paths off), %d per cell, written by autoplay.gd --matrix --paths --record-m2 for band P7 (#71)." % PathMatrix.M2_PER_CELL
+		if not str(opts.note).is_empty():
+			note += " Re-recorded: %s" % opts.note
 		var data := PathMatrix.fixture_from(results, int(fixture.get("seed", 1)), int(fixture.get("turn_cap", Simulator.TURN_CAP)),
-			"Record digests of M2 matrix games (paths off), %d per cell, written by autoplay.gd --matrix --paths --record-m2 for band P7 (#71). Do not edit by hand." % PathMatrix.M2_PER_CELL)
+			note + " Do not edit by hand.")
 		var f := FileAccess.open(opts.record_m2, FileAccess.WRITE)
 		if f == null:
 			printerr("autoplay: could not write %s" % opts.record_m2)

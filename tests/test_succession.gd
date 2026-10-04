@@ -252,13 +252,13 @@ func test_a_ruler_on_the_losing_side_is_lost_with_its_army() -> void:
 	assert_true(death_at > 0 and types[death_at - 1] == "battle", "the death is recorded right after its battle: %s" % str(types))
 	var e: Dictionary = r.events[death_at]
 	assert_eq([e.phase, e.cause, e.codex, e.provinces, e.factions], ["battles", "lost_with_side", "ruler_death", ["blackwood"], ["kingdom"]])
-	assert_eq(e.armies, ["kingdom-3"], "the ruler's army")
+	assert_eq(e.armies, ["kingdom-2"], "the ruler's army")
 	assert_false(e.numbers.won)
 	assert_eq(e.numbers.winner, "beasts")
 	assert_eq([e.numbers.successor_turn, e.numbers.successor_power, e.numbers.heir_name], [6, 5, "Corvane II"])
 	assert_eq(e.text, "King Corvane I was lost when the Aurel Crown lost the battle at Blackwood. A ruler on a losing side is lost with its army; there are no retreats yet. The line goes on: Corvane II will be crowned at Crownkeep at the end of turn 6, ready for orders on turn 7, with 5 kept power (half of 10, rounded down). Until then the Aurel Crown has no ruler: no Royal Court, no ruler in battle and no sacrifices.")
 	var after: GameState = r.new_state
-	assert_eq(after.find_army("kingdom-3"), null, "the ruler's army was destroyed with its side")
+	assert_eq(after.find_army("kingdom-2"), null, "the ruler's army was destroyed with its side")
 	assert_true(after.validate([]))
 	_assert_plain(r.events)
 
@@ -290,7 +290,7 @@ func test_a_ruler_that_falls_while_its_side_wins_dies_too() -> void:
 	assert_eq(e.text, "King Corvane I fell in the battle at Blackwood, though the Aurel Crown won it. The line goes on: Corvane II will be crowned at Crownkeep at the end of turn 7, ready for orders on turn 8, with 2 kept power (half of 4, rounded down). Until then the Aurel Crown has no ruler: no Royal Court, no ruler in battle and no sacrifices.")
 	var after: GameState = r.new_state
 	assert_eq(after.find_faction("kingdom").ruler_status, RulerRules.DEAD)
-	assert_eq(after.find_army("kingdom-3"), null, "the fallen ruler's army is removed")
+	assert_eq(after.find_army("kingdom-2"), null, "the fallen ruler's army is removed")
 	assert_eq(after.find_army("kingdom-1").location, "blackwood", "the rest of the winning side holds the field")
 	assert_eq(after.find_province("blackwood").owner, "kingdom")
 	assert_true(after.validate([]))
@@ -354,7 +354,7 @@ func test_the_successor_arrives_at_full_hp_in_a_new_army_at_the_capital() -> voi
 	var f := state.find_faction("kingdom")
 	var army := RulerRules.ruler_army(state, "kingdom")
 	assert_true(army != null, "Corvane II was crowned")
-	assert_false(["kingdom-1", "kingdom-3"].has(army.id), "in a new army (%s)" % army.id)
+	assert_false(["kingdom-1", "kingdom-2"].has(army.id), "in a new army (%s)" % army.id)
 	assert_eq(army.location, "crownkeep")
 	assert_true(army.units.is_empty() and army.commander == null, "a ruler's army holds only the ruler")
 	assert_eq(army.ruler.current_hp, 28, "King Corvane II at 5 kept power, at his full 28 hp")
@@ -400,8 +400,8 @@ func test_succession_waits_until_the_faction_holds_its_capital() -> void:
 		assert_eq(problems, [], "waiting for the capital is not an overdue successor")
 	# Turn 8: the Clans leave and an Aurel army retakes the capital; the heir is crowned that evening.
 	state.armies.erase(state.find_army("beasts-30"))
-	_army(state, "kingdom-31", "kingdom", "westwatch", ["spearmen"])
-	var back := _resolve(state, {"kingdom": [MoveOrder.new("kingdom-31", "crownkeep")]})
+	_army(state, "kingdom-21", "kingdom", "westwatch", ["spearmen"])
+	var back := _resolve(state, {"kingdom": [MoveOrder.new("kingdom-21", "crownkeep")]})
 	state = back.new_state
 	assert_eq(state.find_province("crownkeep").owner, "kingdom")
 	var arrived := _events_of(back.events, "ruler_arrived")
@@ -511,7 +511,7 @@ func test_every_new_event_type_carries_an_existing_codex_entry_and_plain_text() 
 		w = r.new_state
 	var falls := _ruler_at("beasts", "thornmane_avatar", 10, 2)
 	var orders := _ambush(falls, "beasts")
-	falls.find_army("beasts-2").location = "stonegate"
+	falls.find_army("beasts-1").location = "stonegate"
 	all_events.append_array(_resolve(falls, orders, RulerFallsResolver.new()).events)
 	for e in all_events:
 		seen[e.type] = true
@@ -557,7 +557,7 @@ func test_death_texts_for_each_kind() -> void:
 	assert_eq(e.text, "The Great Thornmane's body was destroyed when the Thornmane Clans lost the battle at Stonegate. A ruler on a losing side is lost with its army; there are no retreats yet. The god takes a new body at Fangridge at the end of turn 6, ready for orders on turn 7, weaker for good: 4 kept power instead of 7 (3 less, never below 0). Until then the Thornmane Clans has no ruler: no Dread, no ruler in battle and no sacrifices. Its mandates stay.")
 	var spent := _ruler_at("beasts", "thornmane_avatar", 0, 5)
 	var orders := _ambush(spent, "beasts")
-	spent.find_army("beasts-2").location = "stonegate"
+	spent.find_army("beasts-1").location = "stonegate"
 	e = _events_of(_resolve(spent, orders, RulerFallsResolver.new()).events, "ruler_died")[0]
 	assert_true(String(e.text).begins_with("The Great Thornmane's body was slain in the battle at Stonegate, though the Thornmane Clans won it. The god takes a new body at Fangridge at the end of turn 6, ready for orders on turn 7, with 0 kept power: it had none left to lose"), e.text)
 	var fang := _ruler_at("beasts", "fang_chieftain", 3, 5)
@@ -579,8 +579,8 @@ func _session_with_deaths(game_seed: int) -> Dictionary:
 	var session := GameSession.new(start, ["kingdom", "beasts"], game_seed, AutoBattleResolver.new())
 	assert_eq(session.setup_errors(), [])
 	var script := [
-		[[MoveOrder.new("kingdom-3", "highcrag")], []],  # turn 1: the 0-kept King rides into the war band
-		[[RecruitOrder.new("spearmen")], [MoveOrder.new("beasts-4", "ironspike")]],  # turn 2: the 1-kept god charges the host
+		[[MoveOrder.new("kingdom-2", "highcrag")], []],  # turn 1: the 0-kept King rides into the war band
+		[[RecruitOrder.new("spearmen")], [MoveOrder.new("beasts-2", "ironspike")]],  # turn 2: the 1-kept god charges the host
 		[[], []],
 		[[], [RecruitOrder.new("tuskers")]],
 		[[], []],
@@ -674,8 +674,8 @@ func test_the_victory_summary_lists_each_build() -> void:
 func test_a_session_with_rulers_ends_with_the_builds_on_the_victory_screen_text() -> void:
 	var start := _rulers({}, 1, 13)
 	_army(start, "kingdom-12", "kingdom", "ebonpeak", ["knights", "knights"])
+	start.find_army("beasts-1").location = "bloodfen"
 	start.find_army("beasts-2").location = "bloodfen"
-	start.find_army("beasts-4").location = "bloodfen"
 	var session := GameSession.new(start, ["kingdom", "beasts"], 13, StubBattleResolver.new())
 	assert_eq(session.queue_move("kingdom-12", "fangridge"), "")
 	assert_eq(session.end_turn(), "")
@@ -719,7 +719,7 @@ func test_simulator_catches_broken_ruler_armies_and_successions() -> void:
 	var regent := RulerRules.ruler_army(bad, "kingdom")
 	regent.units.append(Unit.new(bad.find_faction("kingdom").unit_types[0], "kingdom"))
 	var twin := Army.new()
-	twin.id = "beasts-40"
+	twin.id = "beasts-20"
 	twin.owner = "beasts"
 	twin.location = "ebonpeak"
 	twin.ruler = Unit.new(bad.find_faction("beasts").ruler_unit_type, "beasts")
