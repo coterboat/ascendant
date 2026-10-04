@@ -33,7 +33,7 @@ const ENTRIES := {
 	},
 	"terrain_forest": {
 		"title": "Forest",
-		"text": "Dense woodland. An army holding a forest province gets +2 defense in battles there; armies that just arrived get nothing. Knights' charge is weaker in a forest. Terrain does not change movement or income.",
+		"text": "Dense woodland. An army holding a forest province gets +2 defense in battles there; armies that just arrived get nothing. Knights' charge is weaker in a forest. Terrain does not change movement or income. In a game with paths, the Thorn Wild's Wild Spreads can turn other provinces to forest for good.",
 	},
 	"terrain_hills": {
 		"title": "Hills",
@@ -247,11 +247,11 @@ const ENTRIES := {
 	},
 	"capture": {
 		"title": "Capturing provinces",
-		"text": "After battles, a province with armies of only one faction in it becomes that faction's. This happens whether it was neutral or an enemy's. Taking the enemy capital stops them from recruiting.",
+		"text": "After battles, a province with armies of only one faction in it becomes that faction's. This happens whether it was neutral or an enemy's. Taking the enemy capital stops them from recruiting. In a game with paths, the Thornmane Clans' Raiding Parties also take gold when their armies capture a province: twice its income, once, right away, so they can spend it on this turn's recruits.",
 	},
 	"recruit": {
 		"title": "Recruiting",
-		"text": "Recruit units from your own roster at your capital. Each unit costs gold, paid in the order you gave the orders, from your gold before this turn's income. Recruiting happens after capture, so if your capital falls this turn your recruits are cancelled and you keep the gold. New units join your army at the capital, or form a new army if none is there. In a game with rulers, recruits never join the ruler's army: they join another army of yours there, or form a new one. With Muster Grounds every recruit costs less, and every price on screen already includes it. With Warband Muster the Ninth Fang can also recruit regular units where it starts the turn, a few each turn (more at a higher ability rank), paid from the same gold; they appear there at the end of the turn, and are cancelled and cost nothing if the Fang has fallen or that province isn't yours after the battles.",
+		"text": "Recruit units from your own roster at your capital. Each unit costs gold, paid in the order you gave the orders, from your gold before this turn's income. Recruiting happens after capture, so if your capital falls this turn your recruits are cancelled and you keep the gold. New units join your army at the capital, or form a new army if none is there. In a game with rulers, recruits never join the ruler's army: they join another army of yours there, or form a new one. With Muster Grounds every recruit costs less, and every price on screen already includes it. With Warband Muster the Ninth Fang can also recruit regular units where it starts the turn, a few each turn (more at a higher ability rank), paid from the same gold; they appear there at the end of the turn, and are cancelled and cost nothing if the Fang has fallen or that province isn't yours after the battles. In a game with paths, the Thornmane Clans' Blood Levy makes every regular recruit cost a quarter less and arrive missing a quarter of its hit points, rounded down, never below one, and recruits made with the Ninth Fang arrive wounded too. A transformation adds its new unit to your roster from the next turn, at your capital and with the Ninth Fang.",
 	},
 	"income": {
 		"title": "Income",
@@ -334,7 +334,7 @@ const ENTRIES := {
 	},
 	"sacrifice": {
 		"title": "Sacrifice",
-		"text": "During the game a living ruler can give up kept power for a new mandate with a Sacrifice order: open the ruler panel (Ruler in the top bar) and press Sacrifice for a mandate. It costs the mandate's price plus 1, so Royal Armories costs 4. The mandate must be on your faction's list and not yours yet, the ruler must be alive and keep at least that much power, and you can give one Sacrifice order per turn. It resolves first in the turn, before any other order is checked, so the new mandate already counts in that turn's moves, battles, recruits and income: King's Roads bought this way allows a road move the same turn. Kept power drops for good, and with it the ruler's hit points, attack, defense and ability rank; its current hit points drop by as much as its maximum, never below 1. Your other orders are checked as if the sacrifice had already happened. If you cancel it, any order that relied on it is removed, and your orders list says why. Before you confirm, the dialog shows every number of yours it changes, before and after, and your queued attacks fought again. The other player learns of it from the turn report.",
+		"text": "During the game a living ruler can give up kept power for a new mandate with a Sacrifice order: open the ruler panel (Ruler in the top bar) and press Sacrifice for a mandate. It costs the mandate's price plus 1, so Royal Armories costs 4. The mandate must be on your faction's list and not yours yet, the ruler must be alive and keep at least that much power, and you can give one Sacrifice order per turn. It resolves first in the turn, before any other order is checked, so the new mandate already counts in that turn's moves, battles, recruits and income: King's Roads bought this way allows a road move the same turn. Kept power drops for good, and with it the ruler's hit points, attack, defense and ability rank; its current hit points drop by as much as its maximum, never below 1. Your other orders are checked as if the sacrifice had already happened. If you cancel it, any order that relied on it is removed, and your orders list says why. Before you confirm, the dialog shows every number of yours it changes, before and after, and your queued attacks fought again. The other player learns of it from the turn report. In a game with paths, a transformation opens one new mandate that only a sacrifice can buy, and forswears one mandate, which can no longer be bought; mandates you already have stay.",
 	},
 	"build": {
 		"title": "Builds",
@@ -422,7 +422,7 @@ const ENTRIES := {
 	},
 	"road_move": {
 		"title": "Road moves",
-		"text": "With King's Roads, a move order can name a province to go through: from A through B to C, where B is next to A, C is next to B, C is not A, and you owned both B and C at the start of the turn. The army moves straight from A to C during movement. It never fights a border battle and never stops in B. If enemies are in C after movement, there is a battle there as usual: an enemy army that arrived too fights you with nobody defending. When two ways through are open, the order line has a button to take the other one; it arrives at the same time either way. The forecast says which way it goes and when it arrives.",
+		"text": "With King's Roads, a move order can name a province to go through: from A through B to C, where B is next to A, C is next to B, C is not A, and you owned both B and C at the start of the turn. The army moves straight from A to C during movement. It never fights a border battle and never stops in B. If enemies are in C after movement, there is a battle there as usual: an enemy army that arrived too fights you with nobody defending. When two ways through are open, the order line has a button to take the other one; it arrives at the same time either way. The forecast says which way it goes and when it arrives. In a game with paths, the Thornmane Clans' Forest Stride allows the same road move through a forest you owned at the start of the turn into another forest next to it, whoever owns that one: it never fights on a border either, and into an occupied forest it fights there. With both rules, either one is enough.",
 	},
 	"field_recruit": {
 		"title": "Recruiting in the field",
@@ -559,6 +559,53 @@ const ENTRIES := {
 	"bounty_of_the_wild": {
 		"title": "Bounty of the Wild",
 		"text": "The economy rule of the Oath of the Grove. In the income phase every forest province you own earns 2 more gold. It shows in each province's income and in your gold.",
+	},
+	# --- M4-2 (#67): transformations on the map. The rules PathData names, and the mandates a transformation
+	# opens (data/mandates.gd PATH_MANDATES). Numbers match PathData and MandateData; tests/test_transformations.gd
+	# checks them.
+	"blood_levy": {
+		"title": "Blood Levy",
+		"text": "The economy rule of the Oath of Blood. Every regular recruit of yours costs a quarter less: a quarter of its base price, rounded down, comes off, as its own part next to Muster Grounds (Tuskers 9 gold instead of 11, 7 with Muster Grounds too). It arrives missing a quarter of its maximum hit points, rounded down, never below 1 (Tuskers 11 of 14), so Berserk and Blood Frenzy are on from its first battle. Recruits made with the Ninth Fang arrive wounded too. Commanders cost and arrive as usual. Every price and the recruit forecast show it.",
+	},
+	"raiding_parties": {
+		"title": "Raiding Parties",
+		"text": "A Thornmane Clans path node. In the capture phase, when your armies capture a province, neutral or enemy, you take gold equal to twice its base income, once, at once: 18 gold for a province earning 9. Provinces that join you by Sworn Vassals give nothing. The gold comes before recruitment, so you can spend it that same turn. The move forecast says how much a capture would bring, and the turn report names each raid.",
+	},
+	"forest_stride": {
+		"title": "Forest Stride",
+		"text": "A Thornmane Clans path node. A move order can go two provinces in one turn, from A through B to C, when B and C are both forest, B is next to A, C is next to B and you owned B at the start of the turn. C can belong to anyone. From then on it is a road move like King's Roads: it never stops in B, never fights a border battle, and in C it arrives like any other army, so an enemy army there fights you there. Select an army to see the forests it can reach this way; the forecast names the forest it goes through. The Thorn Wild grows new forests, and with them new lanes.",
+	},
+	"hallowed_land": {
+		"title": "Hallowed Land",
+		"text": "The province rule of the Celestial Host. At the end of every turn, in the research phase, each of your wounded units and commanders in a province you own heals 3 hit points, up to its maximum (6 with Hymn of Dawn). Rulers heal on their own and are skipped. An army that will heal shows it in its tooltip, if it ends the turn there and you still hold the province; the turn report says who healed where.",
+	},
+	"the_forges": {
+		"title": "The Forges",
+		"text": "The province rule of Living Iron. At the end of every turn, in the research phase, each of your wounded units and commanders in a province with a fort that you own heals to full. The forts are Crownkeep, Stonegate, Blackwood and Fangridge. Rulers heal on their own and are skipped. An army that will heal shows it in its tooltip, if it ends the turn there and you still hold the fort.",
+	},
+	"wild_spreads": {
+		"title": "The Wild Spreads",
+		"text": "The province rule of the Thorn Wild. At the end of every turn, in the research phase, one province you own turns to forest for good, even if you lose it later: among your provinces that are not forest, not a capital and next to a forest you own, the one with the highest base income, ties going to the one first in alphabetical order. With Deep Roots two grow, one after the other, so the second may grow from the first. If none qualifies, nothing grows. Its income stays the same, but whoever holds it now defends with the forest's +2 defense, Knights charge there for +3 instead of +4, Bounty of the Wild pays for it and Forest Stride can use it. The map marks the province that will grow this turn.",
+	},
+	"dread_lands": {
+		"title": "Dread Lands",
+		"text": "The province rule of the Blood Pact. In a province battle in a province you owned at the start of the turn, every enemy side has 1 less morale for the whole battle. It adds to the Great Thornmane's Dread. Not in border battles.",
+	},
+	"mandate_hymn_of_dawn": {
+		"title": "Hymn of Dawn",
+		"text": "Aurel Crown mandate, 3 power, opened by the Celestial Host: it can be bought only by a sacrifice (4 power) once the Crown has become the Celestial Host, never before the game. Hallowed Land heals 6 hit points a turn instead of 3.",
+	},
+	"mandate_forge_tithe": {
+		"title": "Forge Tithe",
+		"text": "Aurel Crown mandate, 3 power, opened by Living Iron: it can be bought only by a sacrifice (4 power) once the Crown has become Living Iron, never before the game. Every province with a fort you own earns +4 gold per turn: Crownkeep, Stonegate, Blackwood and Fangridge have forts.",
+	},
+	"mandate_deep_roots": {
+		"title": "Deep Roots",
+		"text": "Thornmane Clans mandate, 3 power, opened by the Thorn Wild: it can be bought only by a sacrifice (4 power) once the Clans have become the Thorn Wild, never before the game. The Wild Spreads grows two provinces each turn instead of one, the second picked after the first has grown.",
+	},
+	"mandate_red_harvest": {
+		"title": "Red Harvest",
+		"text": "Thornmane Clans mandate, 3 power, opened by the Blood Pact: it can be bought only by a sacrifice (4 power) once the Clans have become the Blood Pact, never before the game. After each battle you win, you gain 1 gold for every enemy fighter lost in it, fallen or destroyed with its army.",
 	},
 }
 
