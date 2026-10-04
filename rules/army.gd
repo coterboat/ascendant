@@ -14,6 +14,15 @@ var ruler: Unit = null  # the faction's living ruler (its type is the faction's 
 ## Only an army with a fighter (a unit or a commander, not a ruler's army) carries any, and only in a game
 ## with sieges. Saved only when above 0, so every other army saves exactly as before.
 var engines: int = 0
+## M5 fog of war (design/M5_MAGIC_FOG.md §2.7): the view note on a stand-in in a player's view (GameState.is_view),
+## {"level": "clear" | "glimpse" | "memory", "turn", "counts": {type id: round count}, "total": round count,
+## "blessed": n}, where a round count is {"shown", "low", "high", "text"} (FogRules.round_count). A true state
+## never has one (GameState.validate); saved only when set.
+var seen: Dictionary = {}
+
+## The view note's keys, in the order they are saved.
+const SEEN_KEYS := ["level", "turn", "counts", "total", "blessed"]
+const ROUND_COUNT_KEYS := ["shown", "low", "high", "text"]
 
 ## The army in one line for players, with its name for life and no ids (TurnReportText.describe_army): "the
 ## Crown's 1st at Crownkeep: Spearmen, Crossbowmen, Knights and Knight Captain", or "King Corvane I, the Aurel
@@ -41,6 +50,8 @@ func to_dict() -> Dictionary:
 		d["ruler"] = ruler.to_dict()  # only ruler armies carry the key, so M1 armies save as before
 	if engines > 0:
 		d["engines"] = engines  # M3c: only armies carrying siege engines have the key
+	if not seen.is_empty():
+		d["seen"] = seen_copy(seen)  # M5: only stand-ins in a view carry a note
 	return d
 
 ## Returns null when the army is in an unknown province, holds an unknown unit type, or a field has the
@@ -87,4 +98,106 @@ static func from_dict(data: Dictionary, all_unit_types: Dictionary, province_ids
 			return null
 
 	a.engines = Serial.to_int(data.get("engines", 0))  # M3c; GameState.validate checks the count
+	var note = Serial.expect(data, "seen", TYPE_DICTIONARY, errors, who, {})  # M5: views only; GameState.validate checks it
+	if note == null:
+		return null
+	a.seen = seen_copy(note)
 	return a
+
+
+## Checks this army's view note (seen) has the fixed shape of §2.7: exactly SEEN_KEYS, a known level, whole
+## numbers from 0 and round counts of exactly ROUND_COUNT_KEYS, so a view carries nothing else. Appends plain
+## reasons to `errors` (or push_error when it isn't an Array). Only for a view: GameState.validate rejects a
+## note in a true state before asking.
+func validate_seen(errors = null) -> bool:
+	var problems := []
+	for key in SEEN_KEYS:
+		if not seen.has(key):
+			problems.append("has no '%s'" % key)
+	for key in seen:
+		if not SEEN_KEYS.has(str(key)):
+			problems.append("holds '%s', which a view note never holds" % key)
+	var level = seen.get("level", "")
+	if seen.has("level") and not (level is String and ["clear", "glimpse", "memory"].has(level)):
+		problems.append("has the level '%s', but a note is clear, glimpse or memory" % str(level))
+	for key in ["turn", "blessed"]:
+		if seen.has(key) and not (seen[key] is int and int(seen[key]) >= 0):
+			problems.append("has '%s' %s, but it is a whole number from 0" % [key, str(seen[key])])
+	if seen.has("total"):
+		problems.append_array(_round_count_problems(seen.total, "its total"))
+	if seen.has("counts"):
+		if seen.counts is Dictionary:
+			for type_id in seen.counts:
+				problems.append_array(_round_count_problems(seen.counts[type_id], "its count of '%s'" % type_id))
+		else:
+			problems.append("has counts that are not a group of round counts by unit type")
+	for p in problems:
+		Serial.report(errors, "The view note of army '%s' %s." % [id, p])
+	return problems.is_empty()
+
+
+static func _round_count_problems(value, what: String) -> Array:
+	if not (value is Dictionary):
+		return ["has %s as %s, not a round count" % [what, str(value)]]
+	var out := []
+	for key in ROUND_COUNT_KEYS:
+		if not value.has(key):
+			out.append("has no '%s' in %s" % [key, what])
+		elif key == "text":
+			if not (value[key] is String):
+				out.append("has a '%s' in %s that is not text" % [key, what])
+		elif not (value[key] is int and int(value[key]) >= 0):
+			out.append("has '%s' %s in %s, but it is a whole number from 0" % [key, str(value[key]), what])
+	for key in value:
+		if not ROUND_COUNT_KEYS.has(str(key)):
+			out.append("holds '%s' in %s, which a round count never holds" % [key, what])
+	return out
+
+
+## A copy of view note `note` in its saved form: its keys in SEEN_KEYS order (any others after them), its
+## numbers as ints (JSON reads them back as floats) and its texts as text. A value of the wrong kind is kept as
+## it is, so GameState.validate can name it.
+static func seen_copy(note: Dictionary) -> Dictionary:
+	var out := {}
+	var keys: Array = SEEN_KEYS.filter(func(k): return note.has(k))
+	for k in note:
+		if not SEEN_KEYS.has(str(k)):
+			keys.append(k)
+	for k in keys:
+		var value = note[k]
+		match str(k):
+			"level":
+				out["level"] = String(value) if value is String or value is StringName else value
+			"turn", "blessed":
+				out[str(k)] = Serial.to_int(value) if typeof(value) in [TYPE_INT, TYPE_FLOAT] else value
+			"total":
+				out["total"] = _round_count_copy(value)
+			"counts":
+				if value is Dictionary:
+					var counts := {}
+					for type_id in value:
+						counts[str(type_id)] = _round_count_copy(value[type_id])
+					out["counts"] = counts
+				else:
+					out["counts"] = value
+			_:
+				out[str(k)] = value.duplicate(true) if value is Dictionary or value is Array else value
+	return out
+
+
+## A round count ({"shown", "low", "high", "text"}) with its numbers as ints, or `value` itself when it isn't one.
+static func _round_count_copy(value):
+	if not (value is Dictionary):
+		return value
+	var out := {}
+	for k in ROUND_COUNT_KEYS:
+		if value.has(k):
+			var v = value[k]
+			if k == "text":
+				out[k] = String(v) if v is String or v is StringName else v
+			else:
+				out[k] = Serial.to_int(v) if typeof(v) in [TYPE_INT, TYPE_FLOAT] else v
+	for k in value:
+		if not ROUND_COUNT_KEYS.has(str(k)):
+			out[str(k)] = value[k]
+	return out
