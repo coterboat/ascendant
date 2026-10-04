@@ -34,7 +34,7 @@ static func besieged_keep(rulers: bool = false) -> GameState:
 		if a.owner == CROWN:
 			a.location = "stonegate"  # the King sits in the besieged keep
 		s.armies.append(a)
-	s.next_army_id = 20
+	s.next_army_ids = {"kingdom": 20, "beasts": 20}
 	s.find_province("stonegate").owner = CROWN
 	s.find_province("westwatch").owner = CROWN
 	var p := s.find_province("stonegate")
