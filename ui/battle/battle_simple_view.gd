@@ -30,12 +30,17 @@ extends Control
 ##   show_event(event, seats = []) -> String         a battle event (numbers.log + numbers.report)
 ##   show_battle(log, report = {}, seats = [], event = {}) -> String
 ##        both return "" when it plays, or the plain reason it can't be watched (shown on screen instead)
+##   play(log, report, state, seats) -> String   M3-5: the battle view contract BattleHost drives (see
+##        ui/battle/README.md); the Simple view ignores `state`, which the 3D stage needs for the land
 ##   tick(delta)        advances the player and every motion; _process calls it, headless tests call it
 ##   player             the BattlePlayer (play(), set_speed(), seek()...; the buttons and keys drive it)
 ##   controls, why_panel, legend, selection   the M3-4 components
 ##   card(fid)          a fighter's BattleCard;  bar(si) a side's BattleStrengthBar
 ##   visible_texts()    every text a player can see or hover (for the no-raw-ids test)
-##   signals closed, codex_requested(key), report_requested(event)
+##   signals closed, finished (M3-5: the result card is up, at the end or after Skip), codex_requested(key),
+##        report_requested(event)
+## M3-5: in a host's queue (controls.set_queue) the result card adds Next battle, or Back to the report on
+## the last battle (both ask the host through controls.next_requested).
 ## Keys (§5.3): Space play/pause, 1 2 3 speed, Left/Right round, comma/period step (paused), Home/End,
 ## M next key moment, Tab / Shift+Tab select a fighter, Enter pin it (opens the why panel), L legend,
 ## W why panel (all BattleControls.handle_key); R watch again (on the result card); F1 the codex for what
@@ -45,6 +50,8 @@ extends Control
 ## panel, the legend and the first-visit hint are remembered there (BattleControls, BattleFx.save_settings).
 
 signal closed
+## M3-5: the playback reached the result (the result card is up).
+signal finished
 signal codex_requested(key: String)
 signal report_requested(event: Dictionary)
 
@@ -163,6 +170,12 @@ func _process(delta: float) -> void:
 
 
 # --- showing a battle -----------------------------------------------------------------------------
+
+## The battle view contract (M3-5, ui/battle/README.md): plays `battle_log` with its `report`. `state` (the
+## game state, for the 3D stage's land) is not needed here.
+func play(battle_log: Dictionary, report: Dictionary, _state: GameState = null, seats: Array = []) -> String:
+	return show_battle(battle_log, report, seats)
+
 
 func show_event(event: Dictionary, seats: Array = []) -> String:
 	var numbers: Dictionary = event.get("numbers", {})
@@ -902,8 +915,18 @@ func _show_message(text: String) -> void:
 # --- the result card ------------------------------------------------------------------------------
 
 func _show_end_card() -> void:
+	# M3-5: in a host's queue, Next battle (or Back to the report on the last one) joins the card.
+	var queue := controls.queue_count >= 2
+	buttons.next_battle_card.visible = queue
+	buttons.end_close.visible = not queue or controls.has_next_battle()
+	if queue:
+		buttons.next_battle_card.text = "Next battle (%d of %d) ▸" % [controls.queue_position + 2, controls.queue_count] if controls.has_next_battle() \
+			else "Back to the report"
+		buttons.next_battle_card.tooltip_text = "Watch the next battle (%s)." % BattleControls.KEYS.next_battle if controls.has_next_battle() \
+			else "That was the last battle: go back to the turn report (%s)." % BattleControls.KEYS.next_battle
 	end_card.visible = true
 	end_card.reset_size()
+	finished.emit()
 
 
 ## Fills the result card when the battle loads (its content is fixed per battle), so the end beat only
@@ -1377,6 +1400,8 @@ func _build_end_card() -> void:
 	col.add_child(row)
 	buttons.again = _button(row, "Watch again", "Watch this battle again from the start (R).", _watch_again)
 	buttons.report = _button(row, "Full report", "Open the full battle report.", func(): report_requested.emit(_event_for_report()))
+	buttons.next_battle_card = _button(row, "Next battle ▸", "Watch the next battle (N).", func(): controls.next_requested.emit())
+	buttons.next_battle_card.visible = false
 	buttons.end_close = _button(row, "Close", "Close the battle (Esc).", close)
 
 

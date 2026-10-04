@@ -66,7 +66,10 @@ class_name TurnResolver
 ##   {"type", "phase", "provinces": [ids], "factions": [ids], "armies": [ids], "cause",
 ##    "numbers": {...}, "text": plain-language sentence for the turn report, "codex": RulesCodex id}
 ## Ids stay in the structured fields. `text` and rejection reasons only use player-facing names:
-## faction and province display names, and armies as army_label() describes them.
+## faction and province display names, and armies as army_label() describes them. `text` is the record's
+## sentence and stays exactly as it is (the recorded games' digests hold it, tests/fixtures/main_records.json);
+## the turn report writes its own lines from these fields when it is shown (TurnReportText, #55): armies by
+## their names for life, battles by the units that fought, and the result of every rejected order.
 
 const PHASES := ["sacrifice", "orders", "movement", "battles", "capture", "recruitment", "income", "rulers"]
 ## The phases of a game with paths (M4, design/M4_ASCENSION.md §7): PHASES with "research" after income.
@@ -124,7 +127,7 @@ static func check_move(state: GameState, faction_id: String, order: MoveOrder, a
 		return _reject("unknown_faction", "Those orders are for a faction that is not in this game.")
 	var army := state.find_army(order.army_id)
 	if army == null:
-		return _reject("unknown_army", "That army no longer exists. It may have been destroyed.")
+		return _reject("unknown_army", "There is no such army on the map. It may have been destroyed, or the order names an army this game never had.")
 	if army.owner != faction_id:
 		return _reject("not_your_army", "The army at %s belongs to %s, not to %s." % [_province_name(state, army.location), _faction_name(state, army.owner), faction.faction_name])
 	var dest := state.find_province(order.to)
@@ -1144,7 +1147,7 @@ static func _rejected_event(s: GameState, fid: String, order, check: Dictionary,
 	var codex := "orders"
 	if order is MoveOrder:
 		var army := s.find_army(order.army_id)
-		desc = "move %s to %s" % ["the " + army_label(s, army) if army else "an army that no longer exists",
+		desc = "move %s to %s" % ["the " + army_label(s, army) if army else "an army that is not on the map",
 			_province_name(s, order.to)]
 		provinces = [order.to]
 		armies = [order.army_id]

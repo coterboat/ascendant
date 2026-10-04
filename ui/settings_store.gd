@@ -3,8 +3,10 @@ extends RefCounted
 ## The player's settings, kept in a small ConfigFile (user://settings.cfg by default):
 ##   window_mode          "windowed" or "fullscreen"
 ##   ui_scale             100 or 125 (percent): how big the whole interface is drawn
-##   auto_watch_battles   false by default. Stored now for milestone 3, when battles play out on screen:
-##                        then each battle of a turn will play by itself as the report opens.
+##   auto_watch_battles   false by default. M3-5: "Watch my battles at the start of each turn": the game
+##                        screen plays the player's battles (BattleHost) once the turn report has opened,
+##                        after the board's playback and any handoff. The battle screen's own settings
+##                        (battle view, speed, reduced motion, screen shake) are in [battle] (BattleFx).
 ##   board                "3d" (default) or "2d": the map as the 3D world (M3a.1, world3d/board3d.gd) or as
 ##                        the 2D map. The 2D map stays a setting until M3a.1 is accepted.
 ##   playback_speed       1, 2 or 4: how fast a resolved turn plays out on the 3D board (remembered).

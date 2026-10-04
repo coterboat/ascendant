@@ -17,12 +17,25 @@ extends PanelContainer
 ## style bible's deep indigo.
 ## M3a.2: on the 3D board a "Watch this turn again" button by the header (set_watch_again) asks the host
 ## to play the turn on the land once more (watch_again_requested); the report opens again after it.
+## M3-5 (#60, design/M3_BATTLES.md §6): every battle row gets **Watch** beside "Battle report"
+## (watch_requested(event)), disabled with the reason when the battle can't be played back
+## (BattleHost.watch_problem); the computer's battles are watchable like anyone's. The header gets **Watch
+## your battles (N)** (watch_battles_requested(events)): the viewer's battles in report order, or "Watch
+## the battles (N)" when nobody in particular reads the report (watch mode, game over).
+## #55: with the state after the turn (show_report always has it), the rows read as TurnReportText writes
+## them: armies by their names for life ("the Crown's 3rd"), battles by the units that fought and how each
+## side came out, captures by what became of the defenders, rejected orders by their result, and the moves
+## of the movement phase grouped by destination. A row naming armies says how they are named in its tooltip.
+## Without a state (show_report_data's default) the rows are the events' own text, in resolver order.
 
 signal province_focus_requested(province_id: String)
 signal battle_report_requested(event: Dictionary)
 signal codex_requested(key: String)
 ## M3a.2: "Watch this turn again" was pressed (only shown while the host can replay the turn on the board).
 signal watch_again_requested
+## M3-5: a battle row's Watch, and "Watch your battles (N)" (the battles in report order).
+signal watch_requested(event: Dictionary)
+signal watch_battles_requested(events: Array)
 
 const PHASE_TITLES := {
 	"orders": "Orders",
@@ -43,6 +56,12 @@ const NOTE_CHARS_PER_LINE := 105
 
 var header_label: Label
 var watch_again_button: Button  # M3a.2: hidden unless the host can replay the turn (set_watch_again)
+var watch_battles_button: Button  # M3-5: "Watch your battles (N)"; hidden when the report has none
+## M3-5: whether a battle whose log isn't kept can be rebuilt (the host has the game record): show_report
+## sets it when it has a session (show_report_data's `rebuild`).
+var can_rebuild := false
+var _watch_buttons: Array[Button] = []
+var _watch_queue: Array = []  # the battles "Watch your battles" plays, in report order
 var seats_box: HBoxContainer  # the seats, with the computer tag; only in games with a computer seat
 var empty_label: Label
 var victory_box: PanelContainer
@@ -76,16 +95,20 @@ func show_report(session: GameSession, computer_notes: Array = []) -> void:
 	var viewer := ""
 	if session != null and session.phase() == GameSession.Phase.ORDERS and not session.is_computer(session.current_player()):
 		viewer = session.current_player()
-	show_report_data(session.turn_report() if session != null else {}, viewer)
+	show_report_data(session.turn_report() if session != null else {}, viewer, session != null,
+		session.state() if session != null else null)
 	if not viewer.is_empty():
 		show_needs_you(PathView.needs_you(session.state(), viewer))
 	_show_seats(session)
 	show_computer_notes(computer_notes)
 
 
-## Rebuilds the panel from a report dictionary shaped like GameSession.turn_report().
-func show_report_data(report: Dictionary, viewer: String = "") -> void:
+## Rebuilds the panel from a report dictionary shaped like GameSession.turn_report(). `rebuild` (M3-5): a
+## battle log that isn't kept can be rebuilt from the game record (show_report has the session). `state`
+## (#55): the state after the turn, which the rows' wording reads (TurnReportText.rows).
+func show_report_data(report: Dictionary, viewer: String = "", rebuild: bool = false, state: GameState = null) -> void:
 	_viewer = viewer
+	can_rebuild = rebuild
 	_clear_rows()
 	_clear_seats()
 	show_computer_notes([])
@@ -101,14 +124,16 @@ func show_report_data(report: Dictionary, viewer: String = "") -> void:
 	victory_box.visible = not victory_texts.is_empty()
 
 	var current_phase := ""
-	for e in events:
+	for row in TurnReportText.rows(events, state, viewer):
+		var e: Dictionary = row.event
 		if _is_game_over(e):
 			continue
 		var phase := str(e.get("phase", ""))
 		if phase != current_phase:
 			current_phase = phase
 			rows_box.add_child(_phase_heading(phase))
-		rows_box.add_child(_event_row(e))
+		rows_box.add_child(_event_row(e, String(row.text), state != null))
+	_show_watch_battles(events)
 	visible = true
 
 
@@ -119,6 +144,16 @@ func event_rows() -> Array[Button]:
 
 func battle_buttons() -> Array[Button]:
 	return _battle_buttons
+
+
+## M3-5: every battle row's Watch button, in display order (meta "event": its battle event).
+func watch_buttons() -> Array[Button]:
+	return _watch_buttons
+
+
+## M3-5: the battles "Watch your battles (N)" plays, in report order.
+func watch_queue() -> Array:
+	return _watch_queue.duplicate(true)
 
 
 ## The "?" buttons, in display order. Each has meta "codex_key" naming its RulesCodex entry.
@@ -249,8 +284,9 @@ func _phase_heading(phase: String) -> Label:
 	return l
 
 
-## One event: [the event text button, its "Battle report" button] in an inner box, then the "?".
-func _event_row(e: Dictionary) -> HBoxContainer:
+## One event: [the event text button, its "Battle report" button] in an inner box, then the "?". `text` is
+## its line (TurnReportText); `named` says the line calls armies by their names.
+func _event_row(e: Dictionary, text: String, named: bool = false) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	var content := HBoxContainer.new()
@@ -266,13 +302,15 @@ func _event_row(e: Dictionary) -> HBoxContainer:
 		row.move_child(card, 0)
 
 	var b := Button.new()
-	b.text = event_text(e, _viewer)
+	b.text = text
 	b.flat = true
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.add_theme_font_size_override("font_size", 18)
 	var tip := RulesCodex.text(str(e.get("codex", "")))
+	if named and TurnReportText.NAMES_ARMIES.has(str(e.get("type", ""))):
+		tip = ("%s\n\n" % tip if not tip.is_empty() else "") + TurnReportText.NAMES_HINT
 	if not provinces.is_empty():
 		tip = ("%s\n\n" % tip if not tip.is_empty() else "") + "Click to show this on the map."
 	b.tooltip_text = tip
@@ -282,6 +320,7 @@ func _event_row(e: Dictionary) -> HBoxContainer:
 	_event_rows.append(b)
 
 	if GameSession.BATTLE_TYPES.has(e.get("type", "")):
+		content.add_child(_watch_button(e))
 		var battle := Button.new()
 		battle.text = "Battle report"
 		battle.tooltip_text = "Open the full report for this battle: who fought, the odds, and the losses."
@@ -298,13 +337,9 @@ func _event_row(e: Dictionary) -> HBoxContainer:
 
 ## The text of event `e` as `viewer` reads it (M4-4): a faction's own transformation speaks to it ("Your
 ## people have become the Celestial Host. ...", the event's numbers.own_text); everything else as it is.
+## The rows read TurnReportText's lines, which use this for the events whose own text they keep.
 static func event_text(e: Dictionary, viewer: String = "") -> String:
-	var factions: Array = e.get("factions", [])
-	if str(e.get("type", "")) == "transformed" and not viewer.is_empty() and not factions.is_empty() and str(factions[0]) == viewer:
-		var own := str(e.get("numbers", {}).get("own_text", ""))
-		if not own.is_empty():
-			return own
-	return str(e.get("text", ""))
+	return TurnReportText.own_text(e, viewer)
 
 
 ## The "needs you" line (M4-4, design/M4_ASCENSION.md §9.5) at the top of the report: nothing is being
@@ -353,6 +388,56 @@ static func recruited_unit(e: Dictionary) -> String:
 	return ""
 
 
+## M3-5: a battle row's Watch: plays the battle back, or says why it can't.
+func _watch_button(e: Dictionary) -> Button:
+	var w := Button.new()
+	w.name = "WatchButton"
+	w.text = "Watch"
+	w.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	w.set_meta("event", e)
+	var why := BattleHost.watch_problem(e, can_rebuild)
+	w.disabled = not why.is_empty()
+	if why.is_empty():
+		var tip := "Play this battle back. The playback shows exactly what the report describes, and watching never changes anything."
+		if BattleHost.needs_rebuild(e):
+			tip += " Its playback is rebuilt from the game record first, which takes a moment."
+		w.tooltip_text = TooltipText.plain("Watch this battle", tip)
+	else:
+		w.tooltip_text = TooltipText.plain("Can't watch this battle", why)
+	w.pressed.connect(func(): watch_requested.emit(e.duplicate(true)))
+	_watch_buttons.append(w)
+	return w
+
+
+## M3-5: "Watch your battles (N)" at the top: the viewer's battles that can be played back, in report order
+## ("Watch the battles (N)" for nobody in particular). Hidden when the viewer fought none.
+func _show_watch_battles(events: Array) -> void:
+	var theirs := BattleHost.battles_of(events, _viewer)
+	_watch_queue = BattleHost.watchable(theirs, can_rebuild)
+	watch_battles_button.visible = not theirs.is_empty()
+	if theirs.is_empty():
+		return
+	var n := _watch_queue.size()
+	var whose := "your" if not _viewer.is_empty() else "the"
+	watch_battles_button.text = "Watch %s battles (%d)" % [whose, n]
+	watch_battles_button.disabled = n == 0
+	var left_out := theirs.size() - n
+	var why := ""
+	for e in theirs:
+		why = BattleHost.watch_problem(e, can_rebuild)
+		if not why.is_empty():
+			break
+	if n == 0:
+		watch_battles_button.tooltip_text = TooltipText.plain("Can't watch these battles", why)
+		return
+	var what := "%s battle of this turn back" % whose if n == 1 \
+		else "%s %d battles of this turn back, one after another, in the order this report lists them" % [whose, n]
+	var tip := "Play %s. Next battle moves on, and the last one brings you back here; Esc comes back at any time. Watching never changes anything." % what
+	if left_out > 0:
+		tip += " %s can't be played back: %s" % [TooltipText.count(left_out, "more battle"), why]
+	watch_battles_button.tooltip_text = TooltipText.plain("Watch %s battles" % whose, tip)
+
+
 func _codex_button(key: String) -> Button:
 	var q := Button.new()
 	q.name = "CodexButton"
@@ -385,6 +470,8 @@ func _clear_rows() -> void:
 	needs_you_label = null  # freed with the rows below
 	_event_rows.clear()
 	_battle_buttons.clear()
+	_watch_buttons.clear()
+	_watch_queue = []
 	_codex_buttons.clear()
 	for c in rows_box.get_children():
 		rows_box.remove_child(c)
@@ -411,6 +498,15 @@ func _build() -> void:
 	header_label.add_theme_font_size_override("font_size", 32)
 	header_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head_row.add_child(header_label)
+	watch_battles_button = Button.new()
+	watch_battles_button.name = "WatchBattlesButton"
+	watch_battles_button.text = "Watch your battles"
+	watch_battles_button.visible = false
+	watch_battles_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	watch_battles_button.add_theme_font_size_override("font_size", 18)
+	watch_battles_button.add_theme_color_override("font_color", UiPalette.GILT)
+	watch_battles_button.pressed.connect(func(): watch_battles_requested.emit(_watch_queue.duplicate(true)))
+	head_row.add_child(watch_battles_button)
 	watch_again_button = Button.new()
 	watch_again_button.name = "WatchAgainButton"
 	watch_again_button.text = "Watch this turn again"

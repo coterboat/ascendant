@@ -135,8 +135,8 @@ func test_same_province_collision_fights_with_no_defender() -> void:
 	_assert_event_shape(r.events)
 
 
-func test_same_province_tie_with_no_defender_uses_seeded_roll() -> void:
-	# Spearmen (16) vs fangthrowers (16), both arriving: the seeded roll decides.
+func test_same_province_tie_with_no_defender_uses_a_50_50_roll() -> void:
+	# Spearmen (16) vs fangthrowers (16), both arriving: a 50/50 roll from the turn's seed decides.
 	var s := _state([
 		["kingdom-1", "kingdom", "highcrag", ["spearmen"]],
 		["beasts-2", "beasts", "wildmoor", ["fangthrowers"]],
@@ -430,7 +430,7 @@ func test_invalid_orders_are_rejected_with_reasons() -> void:
 	var cases := [
 		[MoveOrder.new("kingdom-1", "thornvale"), "not_adjacent", "Thornvale is not next to Crownkeep"],
 		[MoveOrder.new("beasts-2", "ebonpeak"), "not_your_army", "belongs to Thornmane Clans"],
-		[MoveOrder.new("kingdom-9", "westwatch"), "unknown_army", "That army no longer exists"],
+		[MoveOrder.new("kingdom-9", "westwatch"), "unknown_army", "There is no such army on the map"],
 		[MoveOrder.new("kingdom-1", "atlantis"), "unknown_province", "not a province on the map"],
 		[MoveOrder.new("kingdom-1", "crownkeep"), "already_there", "already in Crownkeep"],
 	]

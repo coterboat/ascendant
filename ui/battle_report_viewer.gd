@@ -26,6 +26,12 @@ extends Control
 ##   section(name) -> Control                  one section's node, or null
 ##   side_color(faction_id) -> Color           the colour a side is drawn in
 ##   signal codex_requested(key)               a section heading or the "why" was right-clicked (or F1)
+##   signal watch_requested(event)             M3-5: Watch in the header (beside Close) was pressed
+##   watch_button                              M3-5: shown for a battle event (show_event), disabled with the
+##                                             reason when it can't be played back (BattleHost.watch_problem);
+##                                             hidden for a bare report (show_report)
+##   can_rebuild                               M3-5: a log that isn't kept can be rebuilt (the host has the
+##                                             game record), so such a battle's Watch stays enabled
 ## `seats` is the seat order (GameSession.players()): player colours follow the seat, the same way the
 ## map draws them (UiPalette.faction_color). Without it, the state's faction order stands in.
 ## Art (#10): each "Who fought" card flies its side's banner and shows its roster as portrait cards (a
@@ -35,6 +41,8 @@ extends Control
 signal closed
 ## A linked heading or the "why" was right-clicked: open the codex at `key` (the host does).
 signal codex_requested(key: String)
+## M3-5: Watch in the header: play this battle back (the host opens BattleHost).
+signal watch_requested(event: Dictionary)
 
 const SECTION_ORDER := ["why", "sides", "terrain", "rounds", "casualties", "routs", "hits", "round_cap"]
 const NO_REPORT_TEXT := "No detailed report for this battle."
@@ -71,6 +79,8 @@ const MORALE_PART_NAMES := {
 
 var title_label: Label
 var close_button: Button
+var watch_button: Button  # M3-5
+var can_rebuild := false  # M3-5: see the class comment
 var message_label: Label
 var scroll: ScrollContainer
 var content: VBoxContainer
@@ -101,11 +111,13 @@ func _unhandled_input(event: InputEvent) -> void:
 func show_event(event: Dictionary, state: GameState = null, seats: Array = []) -> bool:
 	_event = event.duplicate(true)
 	_seats = seats.duplicate()
+	_show_watch(_event)
 	var numbers: Dictionary = event.get("numbers", {})
 	var report: Dictionary = numbers.get("report", {})
 	if report.is_empty():
 		_state = state
-		_show_no_report(str(event.get("text", "")))
+		# #55: the battle in the turn report's words (TurnReportText), when the state is at hand.
+		_show_no_report(TurnReportText.line(event, [event], state) if state != null else str(event.get("text", "")))
 		return false
 	return _show(report, state)
 
@@ -114,11 +126,24 @@ func show_event(event: Dictionary, state: GameState = null, seats: Array = []) -
 func show_report(report: Dictionary, state: GameState = null, seats: Array = []) -> bool:
 	_event = {}
 	_seats = seats.duplicate()
+	_show_watch({})
 	if report.is_empty():
 		_state = state
 		_show_no_report("")
 		return false
 	return _show(report, state)
+
+
+## M3-5: Watch for `event` (hidden for {}), or why it can't be watched.
+func _show_watch(event: Dictionary) -> void:
+	watch_button.visible = not event.is_empty()
+	if event.is_empty():
+		return
+	var why := BattleHost.watch_problem(event, can_rebuild)
+	watch_button.disabled = not why.is_empty()
+	watch_button.tooltip_text = TooltipText.plain("Watch this battle",
+		"Play this battle back. The playback shows exactly what the report describes, and watching never changes anything.") \
+		if why.is_empty() else TooltipText.plain("Can't watch this battle", why)
 
 
 ## Hides the viewer and tells the host, which can free it or give focus back.
@@ -235,9 +260,14 @@ func _add_sides() -> void:
 		name_label.name = "SideName"
 		_text(titles, _role_text(sr), _role_tooltip(sr), 18, UiPalette.TEXT_SECONDARY)
 		col.add_child(_roster_strip(sr))
-		for label in sr.get("armies", []):
-			_text(col, "Army: %s" % label, _tip("Army",
-				"An army on this side when the battle began: how many units it had (its commander is not counted as a unit) and who led it."), 17)
+		var names := _army_names(String(sr.get("faction", "")))
+		var armies: Array = sr.get("armies", [])
+		for i in armies.size():
+			var army_line := "Army: %s" % armies[i]
+			if i < names.size() and not names[i].is_empty():
+				army_line = "Army: %s · %s" % [names[i], armies[i]]  # #55: the name the turn report calls it by
+			_text(col, army_line, _tip("Army",
+				"An army on this side when the battle began: its name, where it stood, how many units it had (its commander is not counted as a unit) and who led it. %s" % TurnReportText.NAMES_HINT), 17)
 		var roster: Dictionary = sr.get("roster", {})
 		if not String(roster.get("text", "")).is_empty():
 			var roster_label := _text(col, "Roster: %s" % roster.text, _tip("Roster",
@@ -356,7 +386,7 @@ func _add_terrain() -> void:
 	var terrain := String(_report.get("terrain", ""))
 	var defender := _defender_side()
 	if _report.get("kind", "province") == "border":
-		_text(box, "This was a border battle: the armies met between two provinces while swapping places, so nobody was defending and nobody got terrain or fort bonuses.",
+		_text(box, "This was a border battle: the armies tried to swap places and met between the two provinces, so nobody was defending and nobody got terrain or fort bonuses.",
 			_tip("Armies swapping places", RulesCodex.text("swap")))
 		return
 	if not terrain.is_empty():
@@ -547,7 +577,7 @@ func _add_round_cap() -> void:
 		_text(box, "Nobody was defending, so %s won by having the larger share of its starting hit points left." % who, tip, 18)
 	var numbers: Dictionary = _event.get("numbers", {})
 	if numbers.get("tie_break", "") == "roll":
-		_text(box, "The shares were exactly equal, so a seeded roll picked the winner.", tip, 17, UiPalette.TEXT_SECONDARY)
+		_text(box, "The shares were exactly equal, so %s picked the winner." % TurnReportText.tie_roll(_report.get("sides", []).size()), tip, 17, UiPalette.TEXT_SECONDARY)
 
 
 # --- text -----------------------------------------------------------------------------------------
@@ -576,7 +606,7 @@ func _why_tooltip() -> String:
 
 func _role_text(sr: Dictionary) -> String:
 	if _report.get("kind", "province") == "border":
-		return "Met the enemy on the border while swapping places."
+		return "Met the enemy on the border as both tried to swap places."
 	if sr.get("defender", false):
 		return "Defending: it was already holding the province."
 	if _defender_side().is_empty():
@@ -686,6 +716,26 @@ static func _cap(text: String) -> String:
 
 
 # --- report helpers -------------------------------------------------------------------------------
+
+## #55: the names (TurnReportText.army_name) of `faction_id`'s armies in this battle, in the report's army
+## order, from the battle log of the event shown (its sides list each army's id beside its label). A ruler's
+## army gets "" (its label already names the ruler). [] for a bare report or a battle without a log.
+func _army_names(faction_id: String) -> Array:
+	var battle_log = _event.get("numbers", {}).get("log", {})
+	var out := []
+	if not (battle_log is Dictionary):
+		return out
+	for side in battle_log.get("sides", []):
+		if String(side.get("faction", "")) != faction_id:
+			continue
+		for a in side.get("armies", []):
+			var id := String(a.get("id", "")) if a is Dictionary else ""
+			var army: Army = _state.find_army(id) if _state != null else null
+			var is_ruler := String(a.get("label", "")).contains(" ruler ") if a is Dictionary else false
+			out.append("" if id.is_empty() or is_ruler or (army != null and army.ruler != null) \
+				else TurnReportText.army_name(_state, id, faction_id))
+	return out
+
 
 func _sides() -> Array:
 	return _report.get("sides", [])
@@ -811,6 +861,17 @@ func _build() -> void:
 	title_label.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
 	title_label.text = "Battle report"
 	header.add_child(title_label)
+	watch_button = Button.new()
+	watch_button.name = "WatchButton"
+	watch_button.text = "Watch"
+	watch_button.visible = false
+	watch_button.custom_minimum_size = Vector2(120, 44)
+	watch_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	watch_button.add_theme_font_size_override("font_size", 22)
+	watch_button.add_theme_color_override("font_color", UiPalette.GILT)
+	watch_button.pressed.connect(func(): watch_requested.emit(_event.duplicate(true)))
+	header.add_child(watch_button)
+	header.add_theme_constant_override("separation", 12)
 	close_button = Button.new()
 	close_button.name = "CloseButton"
 	close_button.text = "Close"

@@ -7,7 +7,10 @@ extends Control
 ##          moment. Click or drag anywhere to see that point at once; on release, playback resumes from the
 ##          start of the nearest round's attacks if it was playing (§5.1).
 ##   row 2  Restart · Play/Pause · 1x 2x 4x · Skip to end | First to fall · Charge · Ruler falls · Turning
-##          point · Rout (disabled with the reason when the battle has none) | Legend · Why · Close
+##          point · Rout (disabled with the reason when the battle has none) | Legend · Why · Settings · Close
+##          (Settings only once a host offers it: show_settings(true), M3-5)
+##   row 3  M3-5, only while a host plays a queue of battles (set_queue): ◂ Previous battle · "Battle 2 of 3:
+##          Battle of Thornvale" · Next battle ▸ (on the last battle: Back to the report)
 ## Every button's tooltip names its key (KEYS), and the buttons never take keyboard focus: every one has
 ## its own key, and Tab selects fighters (§5.3).
 ##
@@ -20,9 +23,14 @@ extends Control
 ##   bar.choose_speed(s), bar.set_legend(on), bar.set_why(on)   a player's choices: remembered in the
 ##                                       settings file ([battle] speed, legend_open, why_panel_open) unless
 ##                                       `remember` is false
+##   bar.set_queue(position, count, title)   M3-5: shows row 3 for battle `position` (0-based) of `count`
+##                                       (hidden when count < 2); the host (BattleHost) calls it
+##   bar.show_settings(on)               M3-5: shows the Settings button (the host opens the settings panel)
 ##   signals legend_toggled(on), why_toggled(on), close_requested, pin_requested(fid) (Enter),
 ##           reframe_requested (F, only when reframe_key is set: the 3D stage's camera, 3D_DIRECTION §7.4),
-##           codex_requested(key) (right-click or F1 on a jump button: Key moments)
+##           codex_requested(key) (right-click or F1 on a jump button: Key moments),
+##           next_requested (N, Next battle) and previous_requested (Shift+N), settings_requested (S, while
+##           the Settings button shows) (M3-5)
 
 signal legend_toggled(on: bool)
 signal why_toggled(on: bool)
@@ -30,6 +38,10 @@ signal close_requested
 signal pin_requested(fid: int)
 signal reframe_requested
 signal codex_requested(key: String)
+## M3-5: the queue's Next battle (N) and Previous battle (Shift+N), and the Settings button.
+signal next_requested
+signal previous_requested
+signal settings_requested
 
 const SIZE := Vector2(1600, 148)
 ## How close to a round's start (s at 1x) counts as sitting on it, for ← and →.
@@ -39,6 +51,7 @@ const KEYS := {
 	"play": "Space", "speed1": "1", "speed2": "2", "speed4": "3", "previous_round": "Left", "next_round": "Right",
 	"step_back": ",", "step": ".", "restart": "Home", "skip": "End", "next_moment": "M", "select_next": "Tab",
 	"select_previous": "Shift+Tab", "pin": "Enter", "legend": "L", "why": "W", "close": "Esc",
+	"next_battle": "N", "previous_battle": "Shift+N", "settings": "S",
 }
 
 var player: BattlePlayer = null
@@ -54,6 +67,11 @@ var remember := true
 var settings_path := ""
 ## F asks for a reframe (the 3D stage's camera); off in the Simple view, where the camera is fixed.
 var reframe_key := false
+## M3-5: the queue row (set_queue): which battle of how many, 0-based; count < 2 hides the row.
+var queue_position := 0
+var queue_count := 0
+var queue_row: HBoxContainer
+var queue_label: Label
 var _resume_after_drag := false
 var _tail_t := 0.0
 
@@ -197,9 +215,55 @@ func handle_key(event: InputEvent) -> bool:
 			if not reframe_key:
 				return false
 			reframe_requested.emit()
+		KEY_S:
+			if not buttons.settings.visible:
+				return false
+			settings_requested.emit()
+		KEY_N:
+			if queue_count < 2:
+				return false
+			if k.shift_pressed:
+				if queue_position <= 0:
+					return false
+				previous_requested.emit()
+			else:
+				next_requested.emit()
 		_:
 			return false
 	return true
+
+
+# --- the queue (M3-5) -------------------------------------------------------------------------------
+
+## Shows row 3 for battle `position` (0-based) of `count` in the host's queue, titled `title` (the
+## battle's place, e.g. "Battle of Thornvale"). Fewer than two battles hide it.
+func set_queue(position: int, count: int, title: String = "") -> void:
+	queue_count = count
+	queue_position = clampi(position, 0, maxi(count - 1, 0))
+	queue_row.visible = count >= 2
+	if count < 2:
+		return
+	queue_label.text = "Battle %d of %d%s" % [queue_position + 1, count, (": " + title) if not title.is_empty() else ""]
+	queue_label.tooltip_text = TooltipText.plain("Watching a queue of battles",
+		"These are the turn's battles in the order the report lists them. Next battle (%s) moves on; the last one leads back to the report, and so does Close (%s) at any time." % [KEYS.next_battle, KEYS.close])
+	var first := queue_position == 0
+	var last := queue_position == count - 1
+	buttons.previous_battle.disabled = first
+	buttons.previous_battle.tooltip_text = "This is the first battle of the queue." if first \
+		else "Watch the battle before this one (%s)." % KEYS.previous_battle
+	buttons.next_battle.text = "Back to the report" if last else "Next battle ▸"
+	buttons.next_battle.tooltip_text = "This was the last battle: go back to the turn report (%s)." % KEYS.next_battle if last \
+		else "Watch the next battle, %d of %d (%s)." % [queue_position + 2, count, KEYS.next_battle]
+
+
+## True when Next battle leads to another battle (not back to the report).
+func has_next_battle() -> bool:
+	return queue_count >= 2 and queue_position < queue_count - 1
+
+
+## Shows or hides the Settings button (a host that can open the settings panel shows it).
+func show_settings(on: bool) -> void:
+	buttons.settings.visible = on
 
 
 ## ← : the last round start before the playhead (before round 1, the start of the battle). Sitting on a
@@ -282,10 +346,15 @@ func _update_buttons() -> void:
 func visible_texts() -> Array:
 	var out := []
 	for b in buttons.values() + moment_buttons.values():
+		if not (b as Button).visible or (b.get_parent() == queue_row and not queue_row.visible):
+			continue
 		out.append((b as Button).text)
 		out.append((b as Button).tooltip_text)
 	for m in scrubber.marks:
 		out.append(String(m.text))
+	if queue_row.visible:
+		out.append(queue_label.text)
+		out.append(queue_label.tooltip_text)
 	return out
 
 
@@ -324,7 +393,34 @@ func _build() -> void:
 	buttons.why = _button(row, "Why", "The why panel: what is happening now, and why (%s). Click a fighter or press %s to pin its explanation there." % [KEYS.why, KEYS.select_next],
 		func(): set_why(not why_open))
 	buttons.why.toggle_mode = true
+	buttons.settings = _button(row, "Settings", "The settings (%s): the battle view, watching your battles at the start of each turn, the speed, reduced motion and screen shake." % KEYS.settings,
+		func(): settings_requested.emit())
+	buttons.settings.visible = false
 	buttons.close = _button(row, "Close", "Close the battle (%s)." % KEYS.close, func(): close_requested.emit())
+	# Row 3 (M3-5): the host's queue of battles, shown by set_queue.
+	queue_row = HBoxContainer.new()
+	queue_row.name = "Queue"
+	queue_row.add_theme_constant_override("separation", 16)
+	queue_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	queue_row.position = Vector2(12, 110)
+	queue_row.size = Vector2(SIZE.x - 24, 36)
+	queue_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	queue_row.visible = false
+	add_child(queue_row)
+	buttons.previous_battle = _button(queue_row, "◂ Previous battle", "", func(): previous_requested.emit())
+	buttons.previous_battle.custom_minimum_size = Vector2(170, 34)
+	queue_label = Label.new()
+	queue_label.name = "QueueLabel"
+	queue_label.custom_minimum_size = Vector2(520, 0)
+	queue_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	queue_label.clip_text = true
+	queue_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	queue_label.add_theme_font_size_override("font_size", 16)
+	queue_label.add_theme_color_override("font_color", UiPalette.GILT)
+	queue_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	queue_row.add_child(queue_label)
+	buttons.next_battle = _button(queue_row, "Next battle ▸", "", func(): next_requested.emit())
+	buttons.next_battle.custom_minimum_size = Vector2(170, 34)
 
 
 func _button(parent: Control, text: String, tip: String, action: Callable) -> Button:
