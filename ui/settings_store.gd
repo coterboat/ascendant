@@ -5,6 +5,9 @@ extends RefCounted
 ##   ui_scale             100 or 125 (percent): how big the whole interface is drawn
 ##   auto_watch_battles   false by default. Stored now for milestone 3, when battles play out on screen:
 ##                        then each battle of a turn will play by itself as the report opens.
+##   board                "3d" (default) or "2d": the map as the 3D world (M3a.1, world3d/board3d.gd) or as
+##                        the 2D map. The 2D map stays a setting until M3a.1 is accepted.
+##   playback_speed       1, 2 or 4: how fast a resolved turn plays out on the 3D board (remembered).
 ## A missing or unreadable file, or a value this game doesn't know, gives the defaults for those values.
 ## apply(tree) puts window_mode and ui_scale into effect (the title screen does it once at start-up,
 ## and the settings panel after every change). Tests pass their own file; tests/runner.gd points
@@ -14,6 +17,9 @@ const SECTION := "settings"
 const WINDOW_MODES := ["windowed", "fullscreen"]
 const WINDOW_MODE_NAMES := ["Windowed", "Fullscreen"]
 const UI_SCALES := [100, 125]
+const BOARDS := ["3d", "2d"]
+const BOARD_NAMES := ["3D world", "2D map"]
+const PLAYBACK_SPEEDS := [1, 2, 4]
 
 static var default_path := "user://settings.cfg"
 static var _applied_at_start := false
@@ -22,6 +28,8 @@ var path := ""
 var window_mode := "windowed"
 var ui_scale := 100
 var auto_watch_battles := false
+var board := "3d"
+var playback_speed := 1
 
 
 func _init(file_path: String = "") -> void:
@@ -43,6 +51,12 @@ static func load_from(file_path: String = "") -> GameSettings:
 	var watch = cfg.get_value(SECTION, "auto_watch_battles", false)
 	if watch is bool:
 		settings.auto_watch_battles = watch
+	var board_value = cfg.get_value(SECTION, "board", "3d")
+	if board_value is String and BOARDS.has(board_value):
+		settings.board = board_value
+	var speed_value = cfg.get_value(SECTION, "playback_speed", 1)
+	if (speed_value is int or speed_value is float) and PLAYBACK_SPEEDS.has(int(speed_value)):
+		settings.playback_speed = int(speed_value)
 	return settings
 
 
@@ -52,6 +66,8 @@ func save() -> String:
 	cfg.set_value(SECTION, "window_mode", window_mode)
 	cfg.set_value(SECTION, "ui_scale", ui_scale)
 	cfg.set_value(SECTION, "auto_watch_battles", auto_watch_battles)
+	cfg.set_value(SECTION, "board", board)
+	cfg.set_value(SECTION, "playback_speed", playback_speed)
 	var folder := path.get_base_dir()
 	if not folder.is_empty() and not DirAccess.dir_exists_absolute(folder):
 		DirAccess.make_dir_recursive_absolute(folder)
@@ -69,6 +85,20 @@ func set_ui_scale(percent: int) -> bool:
 	if not UI_SCALES.has(percent):
 		return false
 	ui_scale = percent
+	return true
+
+
+func set_board(value: String) -> bool:
+	if not BOARDS.has(value):
+		return false
+	board = value
+	return true
+
+
+func set_playback_speed(value: int) -> bool:
+	if not PLAYBACK_SPEEDS.has(value):
+		return false
+	playback_speed = value
 	return true
 
 

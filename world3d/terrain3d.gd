@@ -64,6 +64,7 @@ var lo := 0.0
 var hi := 0.0
 var millis := 0
 var seed_value := 7
+var plan := {} ## the world's pure placement (trees, cottages, grain), filled once by world_view.gd plan_of()
 
 
 static func build(p_cell: float = 2.5, p_seed: int = 7) -> RefCounted:

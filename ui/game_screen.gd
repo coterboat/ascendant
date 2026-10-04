@@ -64,6 +64,12 @@ extends Control
 ##   computer             the AISeat playing the computer seats (it has none in a hotseat game).
 ##   save_store           where saves go (SaveStore, user://saves unless set before the game starts).
 ##   next_scene           the screen this one switched to (SceneFlow), e.g. the title after "New game".
+##
+## The 3D board (M3a.1): with Settings "Board: 3D world" (the default), the map is drawn as the 3D world
+## (Board3D, world3d/board3d.gd) once this screen is in the tree; "2D map" keeps the 2D board. After a
+## turn resolves, its moves, battles and captures play out on the board (from the start-of-turn state
+## and the report's events) before the turn report opens. The board stops rendering while the handoff
+## cover or a modal overlay covers it. use_board("3d" / "2d") switches it (tests and tools).
 
 const SCENE := "res://ui/game_screen.tscn"
 const CODEX_SCENE := "res://ui/codex_panel.tscn"
@@ -113,12 +119,15 @@ var _snapshot := {}  # SaveGame.computer_snapshot from the start of the turn bei
 var _turn_start_turns := -1  # session.turns_played() when the current turn started (and was autosaved)
 var _last_autosave_turn := 0  # the turn the last autosave was made at the start of (0: none)
 var _bound := false
+var _turn_before: GameState = null  # M3a.1: the start-of-turn state of the turn being resolved, for its playback
+var _played_for := {}  # M3a.1: faction id -> the report turn already played out on the board for them
 
 
 func _ready() -> void:
 	_bind()
 	if session == null:
 		start_game(default_config())
+	_apply_board_setting()
 
 
 ## Every faction in data order, and a random seed.
@@ -149,6 +158,8 @@ func start_game(game_config: Dictionary = {}) -> void:
 		config.ai = ai
 	_reset_screens()
 	loaded_header = {}
+	_turn_before = null
+	_played_for = {}
 	# The state's seed and the game seed are the same, so GameSession's turn seeds match TurnResolver's.
 	session = GameSession.new(starting_state(config), config.players, config.seed, AutoBattleResolver.new(), ai)
 	computer = AISeat.new(session, config.seed)
@@ -173,6 +184,8 @@ func load_game(save: Dictionary) -> String:
 	if not restored.errors.is_empty():
 		return SaveGame.error_text(restored.errors)
 	_reset_screens()
+	_turn_before = null
+	_played_for = {}
 	config = restored.config
 	loaded_header = restored.header
 	session = restored.session
@@ -261,6 +274,7 @@ func end_turn() -> String:
 		return "No game is running."
 	if is_watching():
 		return next_turn()
+	_turn_before = session.state()  # M3a.1: the board plays the turn from here if this End turn resolves it
 	var why := session.end_turn()
 	if not why.is_empty():
 		map.set_hint(why)
@@ -278,13 +292,14 @@ func next_turn() -> String:
 	if not is_watching():
 		return "Next turn is only for games where the computer plays every seat."
 	_close_overlays()
+	_turn_before = session.state()
 	computer.play(session)
 	_check_turn_start()
 	if session.is_over():
 		_show_game_over()
 		return ""
 	_show_watch()
-	open_turn_report()
+	_open_report_when_played()
 	return ""
 
 
@@ -346,7 +361,7 @@ func _advance() -> void:
 				return
 			_show_current_player()
 			if session.human_seats() == 1 and session.turn_report().turn > _report_seen:
-				open_turn_report()
+				_open_report_when_played()
 		GameSession.Phase.GAME_OVER:
 			_show_game_over()
 
@@ -357,6 +372,7 @@ func _show_current_player() -> void:
 	map.selected_army_id = ""
 	map.selected_province_id = ""
 	map.set_state(session.state(), fid)
+	_play_on_board(fid)
 	var f := map.state.find_faction(fid)
 	var capital: Province = map.state.find_province(f.capital) if f else null
 	if capital and capital.owner == fid:
@@ -370,6 +386,7 @@ func _show_watch() -> void:
 	map.selected_army_id = ""
 	map.selected_province_id = ""
 	map.set_state(session.state(), "")
+	_play_on_board("")
 	map.faction_label.text = "Watching"
 	map.faction_label.tooltip_text = TooltipText.plain("Watching the computer play",
 		"The computer plays every seat, so you only watch. Press Next turn to have each computer give its orders and resolve the turn. The turn report shows what each one was thinking.")
@@ -388,7 +405,7 @@ func _show_handoff() -> void:
 func _on_handoff_acknowledged() -> void:
 	_show_current_player()
 	if session.turn_report().turn > 0:
-		open_turn_report()
+		_open_report_when_played()
 
 
 ## The final map, seen by nobody in particular, under the victory screen.
@@ -397,11 +414,15 @@ func _show_game_over() -> void:
 	map.selected_army_id = ""
 	map.selected_province_id = ""
 	map.set_state(session.state(), "")
+	var played := _play_on_board("")
 	map.faction_label.text = "Game over"
 	map.faction_label.tooltip_text = TooltipText.plain("Game over", "Nobody gives orders any more. The map shows the final positions.")
 	CodexLink.attach(map.faction_label, TooltipText.codex_for("draw" if session.victory().get("draw", false) else "game_over"), open_codex)
 	_update_hud()
-	_show_victory(session.victory())
+	if played:
+		map.board.playback_finished.connect(func(): _show_victory(session.victory()), CONNECT_ONE_SHOT)
+	else:
+		_show_victory(session.victory())
 
 
 ## Clicking a report line closes the report and shows that province on the map.
@@ -889,6 +910,7 @@ func _build_overlays() -> void:
 	overlays.add_child(load_screen)
 
 	settings_panel = SettingsPanel.new()
+	settings_panel.closed.connect(_apply_board_setting)
 	overlays.add_child(settings_panel)
 
 	_build_notice()
@@ -1104,3 +1126,51 @@ func _label(node_name: String, font_size: int, color: Color) -> Label:
 	l.add_theme_font_size_override("font_size", font_size)
 	l.add_theme_color_override("font_color", color)
 	return l
+
+
+# --- the 3D board (M3a.1) ---------------------------------------------------------------------------
+
+## Draws the map as the 3D world ("3d") or the 2D map ("2d"). The 3D board needs a viewport, so outside
+## the tree (headless tests that never add the screen) the map stays 2D.
+func use_board(kind: String) -> void:
+	_bind()
+	if kind == "3d" and map.board == null:
+		var b := Board3D.new()
+		b.cover_check = _board_covered
+		map.set_board(b)
+	elif kind != "3d" and map.board != null:
+		map.set_board(null)
+
+
+## Settings "Board" (default 3D), when the screen enters the tree and when the settings close.
+func _apply_board_setting() -> void:
+	if not is_inside_tree():
+		return
+	use_board(GameSettings.load_from().board)
+
+
+## True while the handoff cover or a modal overlay hides the board (it then stops rendering).
+func _board_covered() -> bool:
+	return handoff.visible or _top_overlay() != null
+
+
+## If the turn just resolved hasn't been played out for `faction_id` yet, plays it on the 3D board: from
+## the start-of-turn state, through the report's events, to the state the map now shows. True if it plays.
+func _play_on_board(faction_id: String) -> bool:
+	if map.board == null or session == null or _turn_before == null:
+		return false
+	var report := session.turn_report()
+	if report.turn == 0 or _turn_before.current_turn != report.turn - 1 or int(_played_for.get(faction_id, 0)) == report.turn:
+		return false
+	_played_for[faction_id] = report.turn
+	return map.board.play_turn(_turn_before, report.events, map.state)
+
+
+## Opens the turn report, after the board's playback when one is running.
+func _open_report_when_played() -> void:
+	if map.board != null and map.board.is_playing():
+		map.board.playback_finished.connect(func():
+			if session != null and session.turn_report().turn > 0:
+				open_turn_report(), CONNECT_ONE_SHOT)
+		return
+	open_turn_report()

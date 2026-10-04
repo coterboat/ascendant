@@ -10,6 +10,7 @@ uniform sampler2D weights_tex : filter_linear, repeat_disable;
 uniform sampler2D data_n : filter_nearest, repeat_disable; // r: province index (255 sea)
 uniform sampler2D data_l : filter_linear, repeat_disable;  // g: coast distance, b: border distance, a: wall
 uniform sampler2D owner_tex : filter_nearest, repeat_disable; // 16x1: rgb owner colour, a owned
+uniform sampler2D mark_tex : filter_nearest, repeat_disable; // 16x1: r road target, g move target, b focus flash
 uniform sampler2D tile_plains : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D tile_forest : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D tile_hills : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -106,19 +107,48 @@ Ground paint_ground() {
 	g.owner = st.rgb;
 	g.owned = (g.id < 255) ? st.a : 0.0;
 	if (g.owned > 0.5 && rocky < 0.5) {
-		float edge = 1.0 - smoothstep(0.0, 9.0, g.bdist);
 		float px = max(length(fwidth(mp)), 0.05);
-		float iw = clamp(px * 3.2, 0.5, 2.6);
-		float inner = 1.0 - smoothstep(iw * 0.4, iw, g.bdist);
+		float ed = min(g.bdist, max(g.coast, 0.0));
 		float k = sand * (1.0 - rocky * 2.0);
-		col = mix(col, st.rgb, (edge * edge * wash + 0.05) * k);
-		col = mix(col, st.rgb * 1.05, inner * 0.6 * k);
+		// the bible's owner tint (2.2: a 30% multiply toward the owner's colour) over the whole province,
+		// a stronger wash toward its edges, and the owner's inner band at about 4 px at any zoom, with an
+		// ink keyline on its inside (STYLE_BIBLE.md 8.1), so ownership reads from the whole-map zoom
+		col *= mix(vec3(1.0), clamp(st.rgb * 1.25, 0.0, 1.0), 0.3 * k);
+		float edge = 1.0 - smoothstep(0.0, 16.0, ed);
+		col = mix(col, st.rgb, edge * edge * wash * k);
+		float band = 1.0 - smoothstep(px * 4.2, px * 5.0, ed);
+		float keyl = (1.0 - smoothstep(px * 5.0, px * 6.0, ed)) * smoothstep(px * 4.2, px * 5.0, ed);
+		col = mix(col, st.rgb * 1.05, band * 0.85 * k);
+		col = mix(col, vec3(0.102, 0.086, 0.071), keyl * 0.55 * k);
 	}
-	if (g.id == select_id) {
-		col = col * 1.12 + vec3(0.03, 0.025, 0.0);
-	}
-	if (g.id == hover_id) {
-		col = col * 1.07 + vec3(0.012);
+	// the board's highlights, drawn on the ground in code (STYLE_BIBLE.md 8.1: selection a white band,
+	// hover a cream one, at a constant screen width inside the province's edge, its coast included)
+	if (g.id < 255) {
+		float pxw = max(length(fwidth(mp)), 0.05);
+		float edge_d = min(g.bdist, max(g.coast, 0.0));
+		vec4 mk = texture(mark_tex, vec2((float(g.id) + 0.5) / 16.0, 0.5));
+		if (g.id == select_id) {
+			float band = (1.0 - smoothstep(pxw * 4.0, pxw * 5.0, edge_d)) * smoothstep(pxw * 1.1, pxw * 1.7, edge_d);
+			col = col * 1.10 + vec3(0.03, 0.025, 0.0);
+			col = mix(col, vec3(1.0), band * 0.95);
+		} else if (g.id == hover_id) {
+			float band = (1.0 - smoothstep(pxw * 2.8, pxw * 3.6, edge_d)) * smoothstep(pxw * 1.1, pxw * 1.7, edge_d);
+			col = col * 1.06 + vec3(0.012);
+			col = mix(col, vec3(0.945, 0.925, 0.878), band * 0.8);
+		}
+		if (mk.r > 0.5) {
+			// a King's Roads destination: a dashed gilt band over ink, inside the edge
+			float band = (1.0 - smoothstep(pxw * 9.0, pxw * 10.5, edge_d)) * smoothstep(pxw * 5.5, pxw * 6.5, edge_d);
+			float dash = step(0.45, fract((mp.x + mp.y) / (pxw * 20.0)));
+			col = mix(col, vec3(0.102, 0.086, 0.071), band * 0.85);
+			col = mix(col, vec3(0.902, 0.722, 0.306), band * dash);
+		}
+		if (mk.g > 0.5) {
+			// a province the selected army can move to: a gilt glow inside its edge, about 16 px wide
+			float glow = 1.0 - smoothstep(pxw * 2.0, pxw * 13.0, edge_d);
+			col = mix(col, vec3(0.98, 0.80, 0.36), glow * glow * 0.6);
+		}
+		col = mix(col, vec3(1.0), mk.b * 0.4);
 	}
 	g.col = col;
 	return g;

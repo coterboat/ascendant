@@ -18,6 +18,10 @@ extends Control
 ##   open_sacrifice_dialog(mandate_id)     the sacrifice dialog over it; queue_sacrifice(mandate_id) queues one
 ##   signal province_selected(id), signal army_selected(id), signal orders_changed
 ##   signal codex_requested(key)           a linked number or term was right-clicked (or F1)
+##   set_board(board)                      M3a.1: draws the map as the 3D world (world3d/board3d.gd) instead of
+##                                         the 2D regions; null puts the 2D map back. The board picks
+##                                         provinces and armies and calls this screen's own API, and
+##                                         this screen calls board.sync() whenever what it shows changes.
 ##
 ## Hooks for the game screen (#7), which hosts this screen for the player at the controls:
 ##   session                    set it before set_state(): orders then go through GameSession's books
@@ -81,6 +85,9 @@ var hover_label: Label
 var own_codex: CodexPanel = null  # map preview only: opened when no game screen listens for codex_requested
 var ruler_panel: RulerPanel = null  # M2-6: opened by open_ruler_panel(), over the map and the side panel
 var sacrifice_dialog: SacrificeDialog = null  # M2-6: opened from the ruler panel
+## M3a.1: the 3D board (Board3D) drawn in the map view instead of the 2D regions, or null for the 2D map.
+## The regions are still built (hidden): they keep the tooltips and marks the board mirrors.
+var board: Control = null
 
 # Scene nodes, looked up by _bind() rather than @onready so the screen also works before it is in
 # the tree (tests build it headless, and callers may set_state() before adding it).
@@ -144,6 +151,7 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 	_update_map_marks()
 	_show_details()
 	_follow_ruler_panel()
+	_sync_board()
 
 
 func select_province(province_id: String) -> void:
@@ -166,6 +174,7 @@ func select_province(province_id: String) -> void:
 		regions[id].selected = id == province_id
 	_update_road_targets()
 	_show_details()
+	_sync_board()
 	province_selected.emit(province_id)
 
 
@@ -341,10 +350,40 @@ func _raise_own_codex() -> void:
 ## Selects a province and flashes its region so the eye finds it (e.g. from a turn report line).
 func focus_province(province_id: String) -> void:
 	select_province(province_id)
+	if board != null:
+		board.focus_on(province_id)  # M3a.1: the camera glides there, and the land flashes
 	var region: ProvinceRegion = regions.get(province_id)
 	if region and region.is_inside_tree():
 		region.modulate = Color(1.6, 1.6, 1.6)
 		create_tween().tween_property(region, "modulate", Color.WHITE, 0.6)
+
+
+# --- the 3D board (M3a.1) -------------------------------------------------------------------------
+
+## Draws the map as the 3D world `new_board` (a Board3D), or as the 2D regions again with null. The
+## board fills the map view under the hover preview; the regions and the 2D arrows are hidden but kept,
+## so every API, tooltip and mark still works through them.
+func set_board(new_board: Control) -> void:
+	_bind()
+	if new_board == board:
+		return
+	if board != null and is_instance_valid(board):
+		board.get_parent().remove_child(board)
+		board.queue_free()
+	board = new_board
+	map_canvas.visible = board == null
+	arrow_layer.visible = board == null
+	if board != null:
+		map_view.add_child(board)
+		map_view.move_child(board, 0)
+		board.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		board.map = self
+		_sync_board()
+
+
+func _sync_board() -> void:
+	if board != null:
+		board.sync()
 
 
 # --- layout ---------------------------------------------------------------------------------------
@@ -614,6 +653,7 @@ func _orders_changed() -> void:
 	_show_details()
 	if ruler_panel != null and ruler_panel.visible:
 		ruler_panel.refresh()  # a queued or cancelled sacrifice shows there
+	_sync_board()
 	orders_changed.emit()
 
 
