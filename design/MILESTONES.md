@@ -4,6 +4,21 @@ Every milestone ends in something Alex can play. Alex approves each milestone's 
 
 ---
 
+## 3D restructure (proposed by the director, 2026-10-04)
+Alex decided on 2026-10-04 that the game goes 3D with a 2D interface. Full direction: `design/3D_DIRECTION.md`. Its §11 has the restructure and its §14 the calls to review first. **This restructure is a proposal until Alex approves it.** The sections below stay as written; M3's is superseded in part.
+
+- **Now:** M3-1 (#56, event log) and M3-2 (#57, captions and explanations) continue unchanged. They are renderer-agnostic. The 3D spike, the look A/B and the lore writers' room (6 factions) run alongside.
+- **M3a.1 the world:** Forward+ and a quality ladder; the 3D world in a SubViewport under the 2D UI; terrain, borders, territory wash, roads and rivers from the M1 map; fortress kits; villages; the camera; orders on the 3D board; armies as blocks of ready poses. *Play:* an M2 game on the 3D board, with every order and tooltip working as on the 2D map.
+- **M3a.2 the armies:** full pose families, formations, muster yards and war camps, the fortress close-up, and the turn's playback (march-out, border clashes, captures, recruits mustering). Independents, if approved. *Play:* watch each turn resolve on the land, and predict the next battle from what you saw muster.
+- **M3b battles on the land:** M3's event log, timeline, controls, why panel and approachability drive a 3D stage on the province. #58 is re-scoped; #61, #62, #63 and #64 are rewritten for 3D. *Play:* M3's own goals.
+- **Forts and sieges** (proposal): sieges, walls, and building and upgrading fortresses.
+- **M4 in 3D:** M4's rules as built, with transformed model families and a 3D turntable in the lock-in preview.
+- **M5 magic and fog:** magic, fog of war on the world's vision mask, and seasons if approved.
+- **M6 six factions and bigger maps:** the lore room's factions 3-6, generated maps for 2-6 players, and battles with more than two sides.
+- **Art:** about 200 Ludo credits per faction planned (about 300 with reserve). About 1,465 planned and 2,170 with reserve in all, about 540 of it in the M3 steps. This replaces M3's sprite plan and M4's phase-2 battle figures.
+
+---
+
 ## milestone 1: playable skeleton
 Status: **Scope APPROVED by Alex, 2026-09-30. Built; awaiting Alex's playtest.** Code tickets #1-#8 closed (2026-10-02), balanced by #41, plus Computer seats (#42). The art batch (#10, PR #14) is waiting for Alex. Open design calls are in #25.
 
@@ -100,6 +115,8 @@ Budget: 50 Ludo credits for the milestone (4 portraits plus re-rolls).
 
 ## milestone 3: battles worth watching
 Status: **PROPOSED by the director (Claude session, 2026-10-02). Not yet approved by Alex; nothing will be built until Alex has played M1/M2 and approves.**
+
+**Superseded in part by `design/3D_DIRECTION.md` (2026-10-04), after Alex's call to go 3D.** Still valid: the event log, the pure helpers, the controls, the why panel, the entry points, approachability and the goals. Superseded: the 2D field and sprites, the fixed camera, the GL Compatibility / integrated-graphics performance target, and the sprite art batch. Battles become a 3D stage on the province (M3b in the restructure above). Ticket changes are in `3D_DIRECTION.md` §7.6: #56 and #57 unchanged; #58 re-scoped; #59 and #60 small additions; #61, #62, #63 and #64 rewritten.
 
 Full spec, with every number, schema and acceptance criterion: `design/M3_BATTLES.md`. Its §12 lists the director's calls to review first.
 
