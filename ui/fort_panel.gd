@@ -217,9 +217,10 @@ func _add_sally(p: Province, viewer: String) -> void:
 			_reason("SallyReason_%s" % a.id.validate_node_name(), String(check.reason))
 	var risk := FortView.staying_breakdown(s, province_id, inside, ticked)
 	_number("SallyRisk", FortView.risk_text(s, province_id, inside, ticked), risk, UiPalette.TEXT_SECONDARY)
-	var odds := FortView.odds_text(FortView.siege_odds("sally", s, viewer, province_id, o.orders()))
+	var sally_odds := FortView.siege_odds("sally", s, viewer, province_id, o.orders())
+	var odds := FortView.odds_text(sally_odds)
 	if not odds.is_empty() and not ticked.is_empty():
-		_rules_line("SallyOdds", "Sallying now: %s." % odds, "Sally odds", RulesCodex.text("battle_odds"), "battle_odds", UiPalette.GILT)
+		_number("SallyOdds", "Sallying now: %s." % odds, FortView.odds_breakdown(sally_odds, "Sally odds"), UiPalette.GILT)
 	var relief := o.relief_into(province_id)
 	var text := ""
 	if not relief.is_empty():
@@ -283,9 +284,10 @@ func _add_storm(p: Province, viewer: String) -> void:
 		text = "%s %s at %s go%s: %s. To keep an army out, move it away." % [lead, who, p.name,
 			", your ruler's included" if ruler else "", _names(armies)]
 	_number("StormNote", text, b, UiPalette.TEXT_SECONDARY)
-	var odds := FortView.odds_text(FortView.siege_odds("storm", s, viewer, province_id, o.orders()))
+	var storm_odds := FortView.siege_odds("storm", s, viewer, province_id, o.orders())
+	var odds := FortView.odds_text(storm_odds)
 	if not odds.is_empty():
-		_rules_line("StormOdds", "Storming now: %s." % odds, "Storm odds", RulesCodex.text("battle_odds"), "battle_odds", UiPalette.GILT)
+		_number("StormOdds", "Storming now: %s." % odds, FortView.odds_breakdown(storm_odds, "Storm odds"), UiPalette.GILT)
 
 
 func _add_fortify(p: Province) -> void:

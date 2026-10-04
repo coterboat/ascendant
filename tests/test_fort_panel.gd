@@ -807,4 +807,8 @@ func test_the_odds_seam_shows_no_odds_until_s2_plugs_in() -> void:
 	for kind in ["storm", "sally", "relief"]:
 		assert_eq(FortView.siege_odds(kind, s, CLANS, "stonegate", []), {}, "%s odds wait for S-2" % kind)
 	assert_eq(FortView.odds_text({}), "", "no odds, no line")
-	assert_eq(FortView.odds_text({"ok": true, "label": "likely win", "wins": 21, "samples": 24}), "likely win (21 of 24 test battles)")
+	var fake := {"ok": true, "label": "likely win", "wins": 21, "samples": 24, "text": "Odds.", "reasons": ["more fighters"]}
+	assert_eq(FortView.odds_text(fake), "likely win (21 of 24 test battles)")
+	var b := FortView.odds_breakdown(fake, "Storm odds")
+	assert_eq(int(b.total), 21, "the breakdown's total is the battles won")
+	assert_eq(Breakdown.sum_of_lines(b), 21)

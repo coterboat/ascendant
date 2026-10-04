@@ -40,6 +40,18 @@ static func odds_text(odds: Dictionary) -> String:
 	return "%s (%d of %d test battles)" % [String(odds.label), int(odds.get("wins", 0)), int(odds.get("samples", 0))]
 
 
+## siege_odds' result as a breakdown whose total is the test battles won (the number odds_text shows), with the
+## odds' own text and reasons in its description and the battle odds entry as its codex.
+static func odds_breakdown(odds: Dictionary, title: String) -> Dictionary:
+	var wins := int(odds.get("wins", 0))
+	var samples := int(odds.get("samples", 0))
+	var desc := String(odds.get("text", ""))
+	if odds.get("reasons") is Array and not (odds.reasons as Array).is_empty():
+		desc += " Main reasons: %s." % "; ".join(odds.reasons)
+	return _coded(_make(title, "%s %s" % [desc, RulesCodex.text("battle_odds")], [_line("Test battles fought", samples, "the real battle rules, on fixed seeds"),
+		_line("Test battles lost", wins - samples, "")], "Test battles won", wins), "battle_odds")
+
+
 # --- the fort's state --------------------------------------------------------------------------------
 
 ## The fort's state in a few words, for chips and panels: "besieged", "breached", "building", "quiet" or "".
