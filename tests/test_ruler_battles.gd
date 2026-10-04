@@ -32,7 +32,10 @@ const M1_LINES := [
 ]
 const M1_FACTORS := "Berserk|beasts|7.6;Pack Leader|beasts|5.2;Skirmish|beasts|2.6;Charge|kingdom|2.6;Shield Wall|kingdom|1.5;Volley|kingdom|4.4;commander|kingdom|5.1;terrain|kingdom|6.8;rout|beasts|11.0;Fury|beasts|22.0;morale_commander|kingdom|22.0;morale_Inspire|kingdom|22.0;numbers|beasts|8.2;luck|beasts|2.4;"
 const M1_ODDS := "Likely win: Thornmane Clans won 16 of 24 test battles fought with these armies (67%). Main reasons: Thornmane Clans' Warchief (+2 morale); Thornmane Clans has the bigger force (90 hp against 68). Each real battle still has its own rolls."
-const M1_STATE_SHA := "27f8a807d8da7993553fbcb7ab06286a81371dd952c50a0f302a80269d14348f"
+## #94: the state saves each faction's army count ("next_army_ids") in place of one map-wide counter; with the old
+## counter in its place the state hashes to 27f8a807d8da7993553fbcb7ab06286a81371dd952c50a0f302a80269d14348f, as
+## before, so nothing else about the M1 battle or its state changed.
+const M1_STATE_SHA := "cb680d2587343b48165ed854c8427e60c227646876d187d62039627688086ea2"
 
 
 # --- fixtures -------------------------------------------------------------------------------------

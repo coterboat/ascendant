@@ -424,7 +424,7 @@ func test_raiding_parties_take_gold_on_capture_as_the_move_forecast_says() -> vo
 	var s := AscensionRules.with_nodes(_game(7, {CLANS: "beast_god_unbound"}), CLANS, ["beasts_raiding"])
 	var times := int(AscensionRules.node_effects("beasts_raiding").capture_gold)
 	var bloodfen := s.find_province("bloodfen")
-	var move := MoveOrder.new("beasts-2", "bloodfen")
+	var move := MoveOrder.new("beasts-1", "bloodfen")
 	var fc := Forecast.move(s, CLANS, move)
 	assert_true(String(fc.text).contains("and %d gold at once (Raiding Parties: twice its income)" % (times * bloodfen.income)), fc.text)
 	var gold_before := s.find_faction(CLANS).gold
@@ -454,39 +454,39 @@ func _stride_game() -> GameState:
 	var s := AscensionRules.with_nodes(_game(7, {CLANS: "beast_god_unbound"}), CLANS, ["beasts_raiding", "beasts_forest_stride"])
 	s.find_province("bloodfen").owner = CLANS
 	s.find_province("deepwood").owner = CLANS
-	s.find_army("beasts-2").location = "bloodfen"
+	s.find_army("beasts-1").location = "bloodfen"
 	return s
 
 
 func test_forest_stride_legality_reasons_and_forecast() -> void:
 	var s := _stride_game()
-	assert_eq(TurnResolver.check_move(s, CLANS, MoveOrder.new("beasts-2", "wildmoor", "deepwood")), {}, "through your forest into a neutral forest")
-	assert_eq(TurnResolver.check_move(s, CLANS, MoveOrder.new("beasts-2", "greenglade", "deepwood")), {})
-	assert_eq(RulerRules.road_destinations(s, CLANS, "beasts-2"), {"greenglade": ["deepwood"], "wildmoor": ["deepwood"]})
-	var fc := Forecast.move(s, CLANS, MoveOrder.new("beasts-2", "wildmoor", "deepwood"))
+	assert_eq(TurnResolver.check_move(s, CLANS, MoveOrder.new("beasts-1", "wildmoor", "deepwood")), {}, "through your forest into a neutral forest")
+	assert_eq(TurnResolver.check_move(s, CLANS, MoveOrder.new("beasts-1", "greenglade", "deepwood")), {})
+	assert_eq(RulerRules.road_destinations(s, CLANS, "beasts-1"), {"greenglade": ["deepwood"], "wildmoor": ["deepwood"]})
+	var fc := Forecast.move(s, CLANS, MoveOrder.new("beasts-1", "wildmoor", "deepwood"))
 	assert_true(String(fc.text).contains("moves through the forest of Deepwood (Forest Stride) and is at Wildmoor at the start of turn %d" % (s.current_turn + 2)), fc.text)
-	assert_eq(TurnResolver.road_rule(s, CLANS, MoveOrder.new("beasts-2", "wildmoor", "deepwood")), "forest_stride")
+	assert_eq(TurnResolver.road_rule(s, CLANS, MoveOrder.new("beasts-1", "wildmoor", "deepwood")), "forest_stride")
 	# Through a forest you don't own.
 	var foreign := s.deep_copy([])
 	foreign.find_province("deepwood").owner = ""
-	var c := TurnResolver.check_move(foreign, CLANS, MoveOrder.new("beasts-2", "wildmoor", "deepwood"))
+	var c := TurnResolver.check_move(foreign, CLANS, MoveOrder.new("beasts-1", "wildmoor", "deepwood"))
 	assert_eq(c.code, "stride_not_forest")
 	assert_true(String(c.reason).contains("Deepwood is not yours"), c.reason)
 	# Through a province that is not forest, or into one.
-	var plains := TurnResolver.check_move(s, CLANS, MoveOrder.new("beasts-4", "deepwood", "bloodfen"))
+	var plains := TurnResolver.check_move(s, CLANS, MoveOrder.new("beasts-2", "deepwood", "bloodfen"))
 	assert_true(String(plains.reason).contains("Bloodfen is plains"), plains.reason)
 	var wood := s.deep_copy([])
-	wood.find_army("beasts-2").location = "wildmoor"
-	var into := TurnResolver.check_move(wood, CLANS, MoveOrder.new("beasts-2", "bloodfen", "deepwood"))
+	wood.find_army("beasts-1").location = "wildmoor"
+	var into := TurnResolver.check_move(wood, CLANS, MoveOrder.new("beasts-1", "bloodfen", "deepwood"))
 	assert_true(String(into.reason).contains("ends only in another forest, and Bloodfen is plains"), into.reason)
 	# Without the node, the M2 reason, plus a word on Forest Stride in a game with paths.
 	var without := _game(7, {CLANS: "beast_god_unbound"})
 	without.find_province("deepwood").owner = CLANS
-	without.find_army("beasts-2").location = "bloodfen"
-	var no := TurnResolver.check_move(without, CLANS, MoveOrder.new("beasts-2", "wildmoor", "deepwood"))
+	without.find_army("beasts-1").location = "bloodfen"
+	var no := TurnResolver.check_move(without, CLANS, MoveOrder.new("beasts-1", "wildmoor", "deepwood"))
 	assert_eq(no.code, "no_kings_roads")
 	assert_true(String(no.reason).contains("Forest Stride, on your path"), no.reason)
-	assert_eq(RulerRules.road_destinations(without, CLANS, "beasts-2"), {})
+	assert_eq(RulerRules.road_destinations(without, CLANS, "beasts-1"), {})
 
 
 func test_a_forest_stride_move_never_fights_on_a_border_and_fights_in_an_occupied_forest() -> void:
@@ -494,25 +494,25 @@ func test_a_forest_stride_move_never_fights_on_a_border_and_fights_in_an_occupie
 	var s := _stride_game()
 	s.find_province("wildmoor").owner = CROWN
 	var crown := _army(s, CROWN, "wildmoor", ["spearmen"])
-	var r := _resolve(s, {CLANS: [MoveOrder.new("beasts-2", "wildmoor", "deepwood")], CROWN: [MoveOrder.new(crown.id, "deepwood")]})
+	var r := _resolve(s, {CLANS: [MoveOrder.new("beasts-1", "wildmoor", "deepwood")], CROWN: [MoveOrder.new(crown.id, "deepwood")]})
 	assert_true(_events(r.events, "border_battle").is_empty(), "a Forest Stride move never fights on a border")
 	assert_true(_events(r.events, "battle").is_empty())
-	assert_eq(r.new_state.find_army("beasts-2").location, "wildmoor")
+	assert_eq(r.new_state.find_army("beasts-1").location, "wildmoor")
 	assert_eq(r.new_state.find_army(crown.id).location, "deepwood")
 	var moved: Array = _events(r.events, "army_moved", CLANS)
-	assert_eq(String(moved[0].text), "The %s moved to Wildmoor through the forest of Deepwood (Forest Stride)." % TurnResolver.army_label(s, s.find_army("beasts-2")))
+	assert_eq(String(moved[0].text), "The %s moved to Wildmoor through the forest of Deepwood (Forest Stride)." % TurnResolver.army_label(s, s.find_army("beasts-1")))
 	assert_eq(String(moved[0].codex), "forest_stride")
 	# Into an occupied forest: the army holding it defends, and they fight there.
 	var o := _stride_game()
 	o.find_province("wildmoor").owner = CROWN
 	var holder := _army(o, CROWN, "wildmoor", ["spearmen"])
-	var r2 := _resolve(o, {CLANS: [MoveOrder.new("beasts-2", "wildmoor", "deepwood")]})
+	var r2 := _resolve(o, {CLANS: [MoveOrder.new("beasts-1", "wildmoor", "deepwood")]})
 	assert_true(_events(r2.events, "border_battle").is_empty())
 	var battles := _events(r2.events, "battle")
 	assert_eq(battles.size(), 1, "one battle, in the forest")
 	assert_eq(battles[0].provinces, ["wildmoor"])
 	assert_eq(String(battles[0].numbers.report.defender), CROWN, "the holder defends")
-	assert_true(r2.new_state.find_army(holder.id) == null or r2.new_state.find_army("beasts-2") == null, "the battle was fought")
+	assert_true(r2.new_state.find_army(holder.id) == null or r2.new_state.find_army("beasts-1") == null, "the battle was fought")
 
 
 # --- mandates opened and forsworn (acceptance: forsworn rejected with its reason; an owned one stays) ---
@@ -698,8 +698,8 @@ func test_without_paths_the_mandate_lists_and_checks_are_as_before() -> void:
 func test_the_map_marks_the_wild_the_heals_and_forest_stride_destinations() -> void:
 	var s := _wild_board(["wildmoor", "ironspike", "blackwood", "deepwood", "bloodfen"])
 	s = AscensionRules.with_nodes(s, CLANS, ["beasts_forest_stride"])
-	s.find_army("beasts-2").location = "bloodfen"
-	s.find_army("beasts-2").units[0].current_hp = 1
+	s.find_army("beasts-1").location = "bloodfen"
+	s.find_army("beasts-1").units[0].current_hp = 1
 	var screen: MapScreen = load("res://ui/map_screen.tscn").instantiate()
 	screen.set_state(s, CLANS)
 	(Engine.get_main_loop() as SceneTree).root.add_child(screen)
@@ -710,7 +710,7 @@ func test_the_map_marks_the_wild_the_heals_and_forest_stride_destinations() -> v
 		assert_eq(marked, picks.has(id), "%s: the sprout marks exactly the province that grows" % id)
 	var mark: Control = screen.regions[picks[0]].wild_marker
 	assert_true(mark.tooltip_text.replace("\n", " ").contains("turns to forest at the end of this turn"), mark.tooltip_text)
-	screen.select_army("beasts-2")
+	screen.select_army("beasts-1")
 	var region: ProvinceRegion = screen.regions["wildmoor"]
 	assert_true(region.road_target, "Forest Stride reaches Wildmoor through Deepwood")
 	assert_true(region.tooltip_text.replace("\n", " ").contains("Forest Stride: the selected army can reach this province this turn through Deepwood"), region.tooltip_text)

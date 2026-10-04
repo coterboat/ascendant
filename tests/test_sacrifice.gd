@@ -160,7 +160,7 @@ func test_a_sacrifice_resolves_first_with_the_spec_numbers() -> void:
 	assert_eq(e.codex, "sacrifice")
 	assert_eq(e.factions, ["kingdom"])
 	assert_eq(e.provinces, ["crownkeep"])
-	assert_eq(e.armies, ["kingdom-3"], "the ruler's army")
+	assert_eq(e.armies, ["kingdom-2"], "the ruler's army")
 	assert_eq(e.text, "King Corvane I gave up 4 power for Royal Armories (3, +1 for a mid-game sacrifice). Kept power 10 → 6: hit points 38 of 38 → 30 of 30, attack 14 → 12, defense 13 → 11, Royal Court rank 4 → 3 (+4 gold). Every regular unit of the Aurel Crown now has +1 attack.")
 	assert_eq([e.numbers.kept_before, e.numbers.kept_after, e.numbers.cost, e.numbers.price, e.numbers.premium], [10, 6, 4, 3, 1])
 	var k: Faction = result.new_state.find_faction("kingdom")
@@ -259,14 +259,14 @@ func test_cancelling_the_sacrifice_removes_the_road_move_that_relied_on_it() -> 
 	var book := OrderBook.new()
 	assert_eq(book.submit(s, "kingdom", SacrificeOrder.new("kings_roads")), "")
 	assert_eq(book.submit(s, "kingdom", MoveOrder.new("kingdom-1", "stonegate", "westwatch")), "")
-	assert_eq(book.submit(s, "kingdom", MoveOrder.new("kingdom-3", "highcrag")), "", "the ruler's own move doesn't need roads")
+	assert_eq(book.submit(s, "kingdom", MoveOrder.new("kingdom-2", "highcrag")), "", "the ruler's own move doesn't need roads")
 	var dropped := book.cancel(s, "kingdom", 0)
 	assert_eq(dropped.size(), 1)
 	assert_eq(dropped[0].text, "Road move to Stonegate through Westwatch removed: you no longer have King's Roads.")
 	assert_eq(dropped[0].code, "no_kings_roads")
 	var left := book.orders_for("kingdom")
 	assert_eq(left.size(), 1)
-	assert_eq(left[0].army_id, "kingdom-3", "the move that never needed the sacrifice stays")
+	assert_eq(left[0].army_id, "kingdom-2", "the move that never needed the sacrifice stays")
 	assert_eq(book.last_dropped().size(), 1)
 	# Cancelling an order nothing depends on removes nothing else.
 	assert_eq(book.cancel(s, "kingdom", 0), [])
@@ -406,7 +406,7 @@ func test_the_preview_equals_the_resolved_result() -> void:
 func test_the_preview_counts_queued_orders() -> void:
 	# A queued recruit pays the Muster Grounds price the preview shows; the King marching off takes Royal Court with him.
 	var s := _king_keeps_all()
-	var out := _assert_preview_is_the_result(s, "kingdom", "muster_grounds", [RecruitOrder.new("knights"), MoveOrder.new("kingdom-3", "westwatch")],
+	var out := _assert_preview_is_the_result(s, "kingdom", "muster_grounds", [RecruitOrder.new("knights"), MoveOrder.new("kingdom-2", "westwatch")],
 		false)
 	var recruited: Array = _of_type(out.result.events, "recruited")
 	assert_eq(recruited[0].numbers.cost, out.preview.after.units.knights.cost, "the recruit paid the previewed price")
