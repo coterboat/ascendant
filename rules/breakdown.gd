@@ -64,6 +64,10 @@ static func _modifier_rule(key: String) -> String:
 			return "Heavy Tithes: every province you own earns %d more gold." % RulerRules.TITHE_GOLD
 		RulerRules.ROYAL_COURT:
 			return "Royal Court: the province the King is in earns more gold, if you own it, so it follows him when he moves."
+		"income_floor":
+			return "A province never earns less than nothing."
+	if key.begins_with(AscensionRules.PART_PREFIX):
+		return AscensionRules.part_rule(key)  # M4: Market Charters, Tithe of Light, Deep Mines, Bounty of the Wild
 	return ""
 
 
@@ -244,7 +248,8 @@ static func ability_rank(state: GameState, faction_id: String) -> Dictionary:
 
 ## A roster unit's or commander's stat with the faction's mandates (§7.1): "hp" (maximum hit
 ## points), "attack", "defense" or "cost", e.g. "Defense 6 = Spearmen 5 + Royal Armories 1" or
-## "Knights 16 gold = 20 - Muster Grounds 4". From RulerRules.unit_stats.
+## "Knights 16 gold = 20 - Muster Grounds 4". From RulerRules.unit_stats. M4: in a game with paths the
+## path's parts are lines too ("Max hp 11 = Spearmen 8 + Drillyard 3"), and "morale" is a stat.
 static func unit_stat(state: GameState, faction_id: String, unit_type_id: String, stat: String) -> Dictionary:
 	var us := RulerRules.unit_stats(state, faction_id, unit_type_id)
 	var label := String(RulerRules.STAT_NAMES.get(stat, stat))
@@ -252,12 +257,19 @@ static func unit_stat(state: GameState, faction_id: String, unit_type_id: String
 		return _make(label, "This faction can't recruit that unit type.", [], label, 0)
 	var lines := [_line(us.name, us.base[stat], "its own %s" % label.to_lower())]
 	var names := []
+	var path_names := []
 	for m in us.mods[stat]:
+		if m.has("node"):  # M4: a path part
+			lines.append(_line(m.name, m.value, String(m.get("note", "path"))))
+			path_names.append(m.name)
+			continue
 		lines.append(_line(m.name, m.value, "mandate"))
 		names.append(m.name)
 	var desc := "%s %s" % [UnitType.describe(stat), "No mandate of yours changes it." if names.is_empty()
 		else "Your mandates change it: %s." % ", ".join(names)]
-	return _coded(_make("%s of %s" % [label, us.name], desc, lines, label, us[stat]), "mandates")
+	if not path_names.is_empty():
+		desc += " Your path changes it: %s. %s" % [", ".join(path_names), RulesCodex.text("path_node")]
+	return _coded(_make("%s of %s" % [label, us.name], desc, lines, label, us[stat]), "mandates" if path_names.is_empty() else "path_node")
 
 
 # --- mid-game sacrifice and succession countdown (M2-6, #34) ---------------------------------------
@@ -333,6 +345,54 @@ static func successor_countdown(state: GameState, faction_id: String) -> Diction
 	var desc := "%s %s" % [RulerRules.successor_sentence(info), RulesCodex.text(String(info.codex))]
 	return _coded(_make("Successor of %s" % String(info.name), desc, lines, "Turns until it arrives, this one included", total),
 		String(info.codex))
+
+
+# --- research (M4-1, #66; design/M4_ASCENSION.md §9.2) ---------------------------------------------
+
+## Research per turn (§2.1): "Research 11 a turn = Crownkeep (capital) 5 + 6 other provinces 6", from
+## AscensionRules.research_rate, the number the research phase adds.
+static func research_rate(state: GameState, faction_id: String) -> Dictionary:
+	var f := state.find_faction(faction_id)
+	if f == null or not AscensionRules.has_paths(state):
+		return _coded(_make("Research per turn", "This game has no paths, so nobody researches.", [], "Research per turn", 0), "research_points")
+	var rate := AscensionRules.research_rate(state, faction_id)
+	var lines := []
+	for part in rate.parts:
+		lines.append(_line(String(part.name), int(part.value), String(part.note)))
+	var desc := RulesCodex.text("research_points")
+	return _coded(_make("Research per turn of the %s" % f.faction_name, desc, lines, "Research per turn", int(rate.rate)),
+		"research_points")
+
+
+## The research pool after this turn's research phase (§9.2): "Research after this turn 21 = pool now 12
+## + this turn 9". The description says what the node (`node_id`, default the faction's target, or the
+## target `orders` set) needs: "Arbalests needs 15, so it is done at the end of turn 5 and 6 carry over."
+## From Forecast.research, so it matches the forecast and the research phase.
+static func research_progress(state: GameState, faction_id: String, orders: Array = [], node_id: String = "") -> Dictionary:
+	var f := state.find_faction(faction_id)
+	if f == null or not AscensionRules.has_paths(state):
+		return _coded(_make("Research", "This game has no paths, so nobody researches.", [], "Research after this turn", 0), "research")
+	var fc := Forecast.research(state, faction_id, orders, node_id)
+	var pool := AscensionRules.research_points(state, faction_id)
+	var gain := int(AscensionRules.research_rate(state, faction_id).rate)
+	var lines := [_line("Research saved now", pool, "spare points are never lost"),
+		_line("This turn's research", gain, String(AscensionRules.research_rate(state, faction_id).short))]
+	var desc := RulesCodex.text("research_phase")
+	var target := String(fc.get("target", ""))
+	if fc.get("ok", false) and not target.is_empty():
+		var name := AscensionRules.node_name(target)
+		var cost := int(fc.cost)
+		if int(fc.eta) == 1:
+			desc = "%s needs %d, so it is done at the end of turn %d and %d carry over. %s" % [name, cost, int(fc.done_turn),
+				pool + gain - cost, desc]
+		elif int(fc.eta) > 1:
+			desc = "%s needs %d, so it is done at the end of turn %d, in %d turns. %s" % [name, cost, int(fc.done_turn),
+				int(fc.eta), desc]
+		else:
+			desc = "%s needs %d, and at this pace it is never done. %s" % [name, cost, desc]
+	elif not String(fc.get("reason", "")).is_empty():
+		desc = "%s %s" % [String(fc.reason), desc]
+	return _coded(_make("Research of the %s" % f.faction_name, desc, lines, "Research after this turn", pool + gain), "research_phase")
 
 
 ## Sum of the line values. Equal to the breakdown's total by construction; tests check it.

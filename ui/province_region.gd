@@ -1,8 +1,10 @@
 class_name ProvinceRegion
 extends Control
-## One province on the map: a placeholder region filled with its terrain colour, ringed in its
-## owner's seat colour (UiPalette: colours follow the seat), with markers for capital and fort, its
-## name, its income and its armies.
+## One province on the map: a region painted with its terrain tile (Art.terrain, UV-tiled in the map's
+## design space so neighbouring provinces line up seamlessly, TERRAIN_TILE units per tile), tinted 30%
+## toward its owner's seat colour (STYLE_BIBLE.md 2.2) and ringed in that colour (UiPalette: colours
+## follow the seat), with an inner edge shade, markers for capital and fort, its name on an ink plaque,
+## its income and its armies. Without terrain art it falls back to the flat terrain colour.
 ## Colour is never the only channel (design/STYLE_BIBLE.md 1.1): the owner ring carries the owner's
 ## seat emblem (Player 1 circle, Player 2 square, nobody a slate shield) and every army badge carries
 ## its owner's emblem as a light glyph (SeatEmblem).
@@ -24,6 +26,11 @@ const BADGE_EMBLEM_SIZE := 16.0
 ## The ruler's gilt ring: how far outside the badge it sits, and its width (design space).
 const RULER_RING_GAP := 3.0
 const RULER_RING_WIDTH := 3.0
+## One terrain tile covers this many design-space units (the map view scales them about 1.2x at
+## 1600x900, so a 512 px tile shows at about 260 px: forest canopies read as trees, not noise).
+const TERRAIN_TILE := 215.0
+## The owner tint: a multiply toward the seat colour (STYLE_BIBLE.md 2.2, "30% multiply tint").
+const OWNER_TINT := 0.3
 
 var province_id := ""
 var selected := false:
@@ -39,6 +46,9 @@ var road_target := false
 var _road_via := ""  # the way-through name the road tooltip shows
 var _polygon := PackedVector2Array()
 var _fill := Color.WHITE
+var _terrain_texture: Texture2D = null  # Art.terrain(p.terrain), or null: then the flat _fill colour
+var _uvs := PackedVector2Array()  # the polygon's points in tile space, so the texture tiles across the map
+var _owned := false
 var _is_capital := false
 var _has_fort := false
 var _east := false
@@ -67,6 +77,13 @@ func setup(state: GameState, p: Province, center: Vector2, seats: Array = []) ->
 	custom_minimum_size = size
 	_polygon = MapLayout.region_polygon(p.id, Vector2(r, r), r)
 	_fill = UiPalette.terrain_color(p.terrain)
+	_terrain_texture = Art.terrain(p.terrain)
+	_uvs = PackedVector2Array()
+	for pt in _polygon:
+		_uvs.append((position + pt) / TERRAIN_TILE)
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_owned = not p.owner.is_empty()
 	ring_color = UiPalette.owner_color(state, p.owner, seats)
 	owner_seat = UiPalette.seat_index(state, p.owner, seats)
 	_is_capital = p.is_capital
@@ -91,11 +108,22 @@ func setup(state: GameState, p: Province, center: Vector2, seats: Array = []) ->
 	name_label = _label(p.name, 17, UiPalette.TEXT_PRIMARY)
 	name_label.name = "NameLabel"
 	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	name_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	# An ink plaque under the name, so it reads on any terrain tile (STYLE_BIBLE.md 2.5: text >= 4.5:1).
+	var plaque := StyleBoxFlat.new()
+	plaque.bg_color = Color(UiPalette.KEYLINE_INK, 0.62)
+	plaque.set_corner_radius_all(6)
+	plaque.content_margin_left = 7
+	plaque.content_margin_right = 7
+	plaque.content_margin_top = 0
+	plaque.content_margin_bottom = 1
+	name_label.add_theme_stylebox_override("normal", plaque)
 	box.add_child(name_label)
 
 	# What the province earns its owner: its base income, plus Heavy Tithes and Royal Court (M2).
 	var income := Breakdown.province_income(state, p.id)
-	income_label = _label("%d gold" % int(income.total), 14, UiPalette.GILT)
+	income_label = _label("%d gold" % int(income.total), 15, UiPalette.GILT)
+	income_label.add_theme_constant_override("outline_size", 6)
 	income_label.name = "IncomeLabel"
 	income_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	income_label.tooltip_text = TooltipText.from_breakdown(income)
@@ -315,9 +343,14 @@ func _gui_input(event: InputEvent) -> void:
 func _draw() -> void:
 	if _polygon.is_empty():
 		return
-	draw_colored_polygon(_polygon, _fill)
+	if _terrain_texture != null:
+		var tint := Color.WHITE.lerp(ring_color, OWNER_TINT) if _owned else Color.WHITE
+		draw_colored_polygon(_polygon, tint, _uvs, _terrain_texture)
+	else:
+		draw_colored_polygon(_polygon, _fill if not _owned else _fill * Color.WHITE.lerp(ring_color, OWNER_TINT))
 	var closed := _polygon.duplicate()
 	closed.append(_polygon[0])
+	_draw_edge_shade(closed)
 	# Owner ring with the bible's keylines: ink inside, halo outside, so the colour reads on any terrain.
 	draw_polyline(closed, UiPalette.KEYLINE_HALO, 9.0, true)
 	draw_polyline(closed, ring_color, 6.0, true)
@@ -337,6 +370,34 @@ func _draw() -> void:
 	if _has_fort:
 		_draw_fort(Vector2(r * (1.58 if _east else 0.42), r * 1.55))
 	SeatEmblem.draw_emblem(self, emblem_position(), RING_EMBLEM_RADIUS, owner_seat)
+
+
+## Edge shading: a soft ink band just inside the ring, darker towards the lower right (light comes from
+## the upper left, STYLE_BIBLE.md §6.1), so the region reads as a raised painted piece, not a flat box.
+func _draw_edge_shade(closed: PackedVector2Array) -> void:
+	var c := size / 2.0
+	for step in [[0.95, 9.0, 0.16], [0.9, 6.0, 0.08]]:
+		var ring := PackedVector2Array()
+		for pt in closed:
+			ring.append(c + (pt - c) * step[0])
+		draw_polyline(ring, Color(UiPalette.KEYLINE_INK, step[2]), step[1], true)
+	# A lit rim on the upper left half, a shadowed rim on the lower right.
+	for i in closed.size() - 1:
+		var a := closed[i]
+		var b := closed[i + 1]
+		var mid := ((a + b) / 2.0 - c).normalized()
+		var light := mid.dot(Vector2(-0.7, -0.7).normalized())
+		var inset_a := c + (a - c) * 0.965
+		var inset_b := c + (b - c) * 0.965
+		if light > 0.2:
+			draw_line(inset_a, inset_b, Color(1, 1, 1, 0.16 * light), 4.0, true)
+		elif light < -0.2:
+			draw_line(inset_a, inset_b, Color(UiPalette.KEYLINE_INK, 0.2 * -light), 5.0, true)
+
+
+## True when the region is painted with its terrain tile (false: the flat terrain colour fallback).
+func has_terrain_texture() -> bool:
+	return _terrain_texture != null
 
 
 ## King's Roads destination: a dashed gilt ring just inside the owner ring, over an ink keyline, so it

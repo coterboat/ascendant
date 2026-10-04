@@ -29,6 +29,13 @@ extends Control
 ## Colour is never the only channel (design/STYLE_BIBLE.md 1.1): every owner ring and army badge also
 ## carries the seat's emblem (SeatEmblem: Player 1 circle, Player 2 square, nobody a slate shield), and
 ## so does the viewing player's name in the top bar.
+##
+## Art (#10, through Art): the map is one painted board: a sea with shallows and wave marks, one
+## landmass under every province (its coast keylined in map ink, land bridges along the roads), sandy
+## roads, and each province painted with its terrain tile over a soft drop shadow. The viewing faction's
+## banner stands by its name in the top bar (with the seat emblem on it), the selected province's
+## header is painted with its terrain and flies its owner's banner, and units show their portraits in
+## the army list and on the recruit buttons.
 
 signal province_selected(province_id: String)
 signal army_selected(army_id: String)
@@ -40,6 +47,20 @@ signal back_requested
 signal codex_requested(key: String)
 
 const SIDE_PANEL_WIDTH := 400
+## The board under the provinces (STYLE_BIBLE.md 1.2: sea, deep sea, map ink; fog veil for the roads).
+const SEA_DEEP := Color("#244E6E")
+const SEA := Color("#2F7A93")
+const ROAD := Color("#E6D9BC")
+## How far the landmass and the shallows reach past each province, as a multiple of its radius, and
+## how wide the land bridges along the roads are (design space).
+const LAND_GROW := 1.3
+const SHALLOW_GROW := [1.78, 1.52]
+const LAND_BRIDGE := 58.0
+## The land between provinces: the plains tile, dimmed and greyed so the provinces stand out on it.
+const LAND_TINT := Color(0.5, 0.55, 0.43)
+const LAND_TILE := 260.0
+## Portrait sizes in the side panel: army rows and recruit buttons.
+const ROW_PORTRAIT := Vector2(44, 44)
 const TITLE_SCENE := "res://ui/title_screen.tscn"
 const CODEX_SCENE := "res://ui/codex_panel.tscn"
 ## Added to the army strength tooltip: the number is a size guide, the move forecast has the odds.
@@ -67,7 +88,9 @@ var map_view: Control
 var map_canvas: Control
 var details: VBoxContainer
 var faction_label: Label
-var faction_emblem: SeatEmblem  # the viewing player's seat emblem, left of their name
+var faction_emblem: SeatEmblem  # the viewing player's seat emblem, on their banner left of their name
+var faction_crest: Control  # the viewing faction's banner (Art) with the seat emblem on it
+var faction_banner: Art.BannerCard
 var gold_label: Label  # hidden when nobody's gold is shown (game over, spectator)
 var turn_label: Label
 var hint_label: Label  # wraps to at most two lines
@@ -338,12 +361,36 @@ func _bind() -> void:
 	turn_label = %TurnLabel
 	hint_label = get_node("Layout/TopBar/Row/Hint")
 	back_button = %BackButton
-	faction_emblem = SeatEmblem.new(-1, SeatEmblem.Look.TOKEN, 24.0)
+	# The crest: the faction's banner with the seat emblem pinned to its lower right corner.
+	faction_crest = Control.new()
+	faction_crest.name = "FactionCrest"
+	faction_crest.custom_minimum_size = Vector2(46, 46)
+	faction_crest.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	faction_crest.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	faction_crest.visible = false
+	faction_banner = Art.banner_card("", 46.0)
+	faction_banner.name = "FactionBanner"
+	faction_banner.position = Vector2(-2, 0)
+	faction_banner.size = Vector2(31, 46)
+	faction_crest.add_child(faction_banner)
+	faction_emblem = SeatEmblem.new(-1, SeatEmblem.Look.TOKEN, 22.0)
 	faction_emblem.name = "FactionEmblem"
 	faction_emblem.visible = false
-	faction_label.get_parent().add_child(faction_emblem)
-	faction_label.get_parent().move_child(faction_emblem, 0)
+	faction_emblem.position = Vector2(24, 23)
+	faction_crest.add_child(faction_emblem)
+	faction_label.get_parent().add_child(faction_crest)
+	faction_label.get_parent().move_child(faction_crest, 0)
+	# A slightly tighter top bar than the scene's, so the banner fits and the hint keeps two full lines
+	# even with the game screen's Ruler button.
+	var bar_row := back_button.get_parent() as HBoxContainer
+	bar_row.add_theme_constant_override("separation", 12)
+	for l: Label in [faction_label, gold_label, turn_label]:
+		l.add_theme_font_size_override("font_size", 19)
+		l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	map_view.resized.connect(_fit_map)
+	(map_view as ColorRect).color = SEA_DEEP
+	map_canvas.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	map_canvas.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	map_canvas.draw.connect(_draw_links)
 	back_button.pressed.connect(_on_back_pressed)
 	# Order arrows sit above the map canvas (same transform, see _fit_map) so regions don't hide them.
@@ -396,17 +443,86 @@ func _fit_map() -> void:
 	arrow_layer.position = map_canvas.position
 
 
-## Roads between neighbouring provinces, drawn under the regions.
+## The board under the regions: sea and shallows, the landmass with its inked coast and land bridges,
+## the roads between neighbouring provinces, and each province's drop shadow.
 func _draw_links() -> void:
 	if state == null:
 		return
+	var links := road_links()
+	_draw_waves(links)
+	# Shallows, then the coast keyline, then the land: each layer is opaque, so overlaps never show.
+	for i in SHALLOW_GROW.size():
+		var colour: Color = SEA_DEEP.lerp(SEA, 0.55 + 0.45 * i)
+		_draw_land_layer(links, SHALLOW_GROW[i], LAND_BRIDGE * (2.3 - 0.5 * i), colour, null)
+	_draw_land_layer(links, LAND_GROW + 0.04, LAND_BRIDGE + 8.0, UiPalette.MAP_INK, null)
+	_draw_land_layer(links, LAND_GROW, LAND_BRIDGE, LAND_TINT, Art.terrain("plains"))
+	for l in links:
+		map_canvas.draw_line(l[0], l[1], Color(UiPalette.MAP_INK, 0.85), 11.0, true)
+		map_canvas.draw_line(l[0], l[1], ROAD.darkened(0.08), 6.0, true)
+		map_canvas.draw_dashed_line(l[0], l[1], ROAD.lightened(0.3), 2.0, 9.0, true)
+	for p in state.provinces:
+		if MapLayout.has_position(p.id):
+			var shadow := MapLayout.region_polygon(p.id, MapLayout.position_of(p.id) + Vector2(4, 7), MapLayout.radius_of(p))
+			map_canvas.draw_colored_polygon(shadow, Color(UiPalette.KEYLINE_INK, 0.42))
+
+
+## Every road between two placed provinces once, as [from, to] in design space.
+func road_links() -> Array:
+	var out := []
+	if state == null:
+		return out
 	for p in state.provinces:
 		for n in p.neighbors:
 			if p.id < n and MapLayout.has_position(p.id) and MapLayout.has_position(n):
-				var a := MapLayout.position_of(p.id)
-				var b := MapLayout.position_of(n)
-				map_canvas.draw_line(a, b, UiPalette.KEYLINE_HALO, 9.0, true)
-				map_canvas.draw_line(a, b, UiPalette.MAP_INK, 5.0, true)
+				out.append([MapLayout.position_of(p.id), MapLayout.position_of(n)])
+	return out
+
+
+## One layer of the landmass: every province grown by `grow`, and a band `bridge` wide along every road,
+## in `colour` (multiplying `texture`, tiled across the board, when there is one).
+func _draw_land_layer(links: Array, grow: float, bridge: float, colour: Color, texture: Texture2D) -> void:
+	var shapes := []
+	for p in state.provinces:
+		if MapLayout.has_position(p.id):
+			shapes.append(MapLayout.region_polygon(p.id, MapLayout.position_of(p.id), MapLayout.radius_of(p) * grow))
+	for l in links:
+		var a: Vector2 = l[0]
+		var b: Vector2 = l[1]
+		var n := (b - a).normalized().orthogonal() * bridge / 2.0
+		shapes.append(PackedVector2Array([a + n, b + n, b - n, a - n]))
+	for poly: PackedVector2Array in shapes:
+		if texture == null:
+			map_canvas.draw_colored_polygon(poly, colour)
+			continue
+		var uvs := PackedVector2Array()
+		for pt in poly:
+			uvs.append(pt / LAND_TILE)
+		map_canvas.draw_colored_polygon(poly, colour, uvs, texture)
+
+
+## Small cel wave marks on the open sea, on a jittered grid that keeps clear of the land. Deterministic,
+## so the board never shimmers between redraws.
+func _draw_waves(links: Array) -> void:
+	var colour := Color(SEA.lightened(0.25), 0.45)
+	for gx in range(-8, 26):
+		for gy in range(-4, 16):
+			var h := absi(hash(Vector2i(gx, gy)))
+			var at := Vector2(gx * 52.0 + float(h % 23), gy * 46.0 + float((h / 23) % 19))
+			if (gx + gy) % 2 == 0 or not _open_sea(at, links):
+				continue
+			var r := 7.0 + float(h % 4)
+			map_canvas.draw_arc(at, r, PI * 1.15, PI * 1.85, 8, colour, 2.0, true)
+			map_canvas.draw_arc(at + Vector2(r * 1.25, 0), r, PI * 1.15, PI * 1.85, 8, colour, 2.0, true)
+
+
+func _open_sea(at: Vector2, links: Array) -> bool:
+	for p in state.provinces:
+		if MapLayout.has_position(p.id) and at.distance_to(MapLayout.position_of(p.id)) < MapLayout.radius_of(p) * 1.95:
+			return false
+	for l in links:
+		if Geometry2D.get_closest_point_to_segment(at, l[0], l[1]).distance_to(at) < LAND_BRIDGE * 1.4:
+			return false
+	return true
 
 
 # --- top bar --------------------------------------------------------------------------------------
@@ -421,6 +537,8 @@ func _update_top_bar() -> void:
 	CodexLink.detach(faction_label)
 	faction_emblem.seat = seat
 	faction_emblem.visible = f != null and seat >= 0
+	faction_banner.texture = Art.banner(viewing_faction_id) if f else null
+	faction_crest.visible = f != null
 	if f:
 		var colour := "" if seat < 0 else " You are Player %d: your provinces and armies are drawn in %s, with a %s emblem." % [
 			seat + 1, UiPalette.seat_color_name(seat), SeatEmblem.shape_of(seat)]
@@ -657,8 +775,7 @@ func _add_orders_section() -> void:
 			b.text = "Recruit %s (%d gold)" % [ut.name, orders.recruit_cost(ut.id)]
 			b.tooltip_text = TooltipText.from_breakdown(orders.recruit_breakdown(ut.id))
 			_link(b, "recruit")
-			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			b.focus_mode = Control.FOCUS_NONE
+			_style_unit_button(b, ut.id, f.id)
 			b.pressed.connect(queue_recruit.bind(ut.id))
 			details.add_child(b)
 	_add_ruler_recruit_section()
@@ -683,12 +800,40 @@ func _add_ruler_recruit_section() -> void:
 		b.text = "Recruit %s with %s (%d gold)" % [ut.name, info.ruler, orders.recruit_cost(ut.id)]
 		b.tooltip_text = TooltipText.from_breakdown(orders.recruit_breakdown(ut.id, RecruitOrder.AT_RULER))
 		_link(b, "field_recruit")
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		_style_unit_button(b, ut.id, viewing_faction_id)
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		b.focus_mode = Control.FOCUS_NONE
 		b.disabled = info.left <= 0
 		b.pressed.connect(queue_recruit_with_ruler.bind(ut.id))
 		details.add_child(b)
+
+
+## A recruit button: the unit's portrait (its face) at the left, then "Recruit <unit> (<cost> gold)",
+## on a raised card that lights its border gilt on hover.
+func _style_unit_button(b: Button, unit_type_id: String, faction_id: String) -> void:
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(0, ROW_PORTRAIT.y + 10)
+	b.icon = Art.face(Art.portrait(unit_type_id, faction_id))
+	b.expand_icon = false
+	b.add_theme_constant_override("icon_max_width", int(ROW_PORTRAIT.x))
+	b.add_theme_constant_override("h_separation", 12)
+	b.add_theme_font_size_override("font_size", 17)
+	b.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	for state_name in ["normal", "hover", "pressed", "disabled"]:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = UiPalette.PANEL_RAISED.lightened(0.06 if state_name == "hover" else 0.0)
+		sb.border_color = UiPalette.GILT if state_name in ["hover", "pressed"] else UiPalette.PANEL_BORDER
+		sb.set_border_width_all(2 if state_name in ["hover", "pressed"] else 1)
+		sb.set_corner_radius_all(6)
+		sb.content_margin_left = 5
+		sb.content_margin_right = 10
+		sb.content_margin_top = 5
+		sb.content_margin_bottom = 5
+		if state_name == "disabled":
+			sb.bg_color = UiPalette.PANEL_BG
+		b.add_theme_stylebox_override(state_name, sb)
+	b.add_theme_color_override("font_hover_color", UiPalette.GILT)
+	b.add_theme_color_override("icon_disabled_color", Color(1, 1, 1, 0.4))
 
 
 func _show_details() -> void:
@@ -708,7 +853,7 @@ func _show_province_details() -> void:
 			"", UiPalette.TEXT_SECONDARY)
 		return
 
-	_add_heading(p.name, 28)
+	_add_province_header(p)
 	var owner_name := "Nobody (neutral)" if p.owner.is_empty() else state.find_faction(p.owner).faction_name
 	var seats := seat_order()
 	var owner_seat := UiPalette.seat_index(state, p.owner, seats)
@@ -765,6 +910,49 @@ func _show_province_details() -> void:
 		_link(none, "no_armies")
 
 
+## The selected province's header: its name on a strip painted with its terrain tile, with its owner's
+## banner at the right (no banner for a neutral province).
+func _add_province_header(p: Province) -> void:
+	var header := PanelContainer.new()
+	header.name = "ProvinceHeader"
+	var tex := Art.terrain(p.terrain)
+	if tex != null:
+		var sb := StyleBoxTexture.new()
+		sb.texture = tex
+		sb.axis_stretch_horizontal = StyleBoxTexture.AXIS_STRETCH_MODE_TILE
+		sb.axis_stretch_vertical = StyleBoxTexture.AXIS_STRETCH_MODE_TILE
+		sb.region_rect = Rect2(0, 0, 512, 160)
+		sb.modulate_color = Color(0.72, 0.72, 0.72)
+		sb.set_content_margin_all(10)
+		sb.content_margin_left = 14
+		header.add_theme_stylebox_override("panel", sb)
+	else:
+		var flat := StyleBoxFlat.new()
+		flat.bg_color = UiPalette.terrain_color(p.terrain).darkened(0.3)
+		flat.set_content_margin_all(10)
+		header.add_theme_stylebox_override("panel", flat)
+	details.add_child(header)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	header.add_child(row)
+	var title := Label.new()
+	title.name = "ProvinceName"
+	title.text = p.name
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.add_theme_font_size_override("font_size", 30)
+	title.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
+	title.add_theme_color_override("font_outline_color", UiPalette.KEYLINE_INK)
+	title.add_theme_constant_override("outline_size", 8)
+	row.add_child(title)
+	if not p.owner.is_empty():
+		var banner := Art.banner_card(p.owner, 60.0)
+		banner.name = "OwnerBanner"
+		row.add_child(banner)
+	header.custom_minimum_size = Vector2(0, 80)
+
+
 func _add_army(a: Army) -> void:
 	var panel := PanelContainer.new()
 	panel.name = "Army_%s" % a.id.validate_node_name()
@@ -819,8 +1007,10 @@ func _add_army(a: Army) -> void:
 	_link(strength, "army_strength", sb)
 	var commander_label: Label
 	if a.commander:
+		var row := _unit_row(box, a.commander.type.id, a.owner, 1)
 		commander_label = _add_text("Commander: %s" % a.commander.type.name, TooltipText.plain("Commander: %s" % a.commander.type.name,
-			Breakdown.unit_type_description(a.commander.type, RulerRules.price_text(state, a.owner, a.commander.type))), UiPalette.TEXT_PRIMARY, box)
+			Breakdown.unit_type_description(a.commander.type, RulerRules.price_text(state, a.owner, a.commander.type))), UiPalette.GILT, row)
+		commander_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	else:
 		commander_label = _add_text("Commander: none", TooltipText.plain("No commander", "This army has no commander to lead it."),
 			UiPalette.TEXT_SECONDARY, box)
@@ -832,10 +1022,25 @@ func _add_army(a: Army) -> void:
 			continue
 		seen.append(u.type.name)
 		var b := Breakdown.unit_count(state, a.id, u.type.name)
-		var count_label := _add_text("    %s x%d" % [u.type.name, b.total], TooltipText.from_breakdown(b), UiPalette.TEXT_SECONDARY, box)
+		var row := _unit_row(box, u.type.id, a.owner, int(b.total))
+		var count_label := _add_text("%s ×%d" % [u.type.name, b.total], TooltipText.from_breakdown(b), UiPalette.TEXT_PRIMARY, row)
 		count_label.name = "UnitCount"
+		count_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		# The count's tooltip has the unit's stats and trait; its entry is Units, which links on to each.
 		_link(count_label, "unit_count", b)
+
+
+## A row in the army list: the unit's portrait (its face, with a count badge for more than one), then
+## the caller's label. Returns the row.
+func _unit_row(parent: Control, unit_type_id: String, faction_id: String, count: int) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = "UnitRow_%s" % unit_type_id.validate_node_name()
+	row.add_theme_constant_override("separation", 10)
+	parent.add_child(row)
+	var card := Art.portrait_card(unit_type_id, ROW_PORTRAIT, faction_id, Art.Crop.FACE)
+	card.count = count
+	row.add_child(card)
+	return row
 
 
 ## Links a side panel label to the codex entry for its kind of number (TooltipText.CODEX).

@@ -7,6 +7,8 @@ extends Control
 ## tooltip ends with its codex entry: right-click (or F1) emits codex_requested(key) for the host.
 ## Seat colours come from UiPalette.seat_color: Player 1 Vermilion, Player 2 Cobalt, whatever faction.
 ## Builds its children in code, so it works before it is in the tree (headless tests).
+## Art (#10): the winner's banner hangs large beside the headline (both banners, smaller, on a draw),
+## and each faction's row in "Provinces held" flies its banner by its seat emblem.
 ##
 ## API:
 ##   show_for(session) -> bool    shows session.victory(); false (and hidden) while the game runs
@@ -32,6 +34,10 @@ signal title_requested
 signal codex_requested(key: String)
 
 const BACKGROUND := Color("#14131F")  # a shade under UiPalette.PANEL_BG, so the screen reads as a full page
+## The winner's banner (STYLE_BIBLE.md 2.1: 192 px tall in panels), and each banner on a draw.
+const WINNER_BANNER_HEIGHT := 210.0
+const DRAW_BANNER_HEIGHT := 150.0
+const ROW_BANNER_HEIGHT := 40.0
 
 var victory := {}
 var caption_label: Label
@@ -46,6 +52,7 @@ var captures_heading: Label
 var new_game_button: Button
 var title_button: Button
 var actions_row: HBoxContainer  # add_action() buttons; hidden while empty
+var banner_box: HBoxContainer  # the winner's banner (both on a draw), left of the headline
 var _province_labels: Array[Label] = []
 var _capture_labels: Array[Label] = []
 
@@ -84,6 +91,12 @@ func show_victory(summary: Dictionary, state: GameState = null, players: Array =
 	caption_label.tooltip_text = TooltipText.plain("Game over", "The game ended when turn %d finished resolving. %s" % [turn, rule.get("text", "")])
 	_link(caption_label, rule_kind)
 	var seat := seats.find(winner)
+	_clear_banners()
+	for fid in (seats if is_draw else [winner]):
+		var b := Art.banner_card(String(fid), DRAW_BANNER_HEIGHT if is_draw else WINNER_BANNER_HEIGHT)
+		b.name = "Banner_%s" % String(fid).validate_node_name()
+		banner_box.add_child(b)
+	banner_box.visible = banner_box.get_child_count() > 0
 	if is_draw:
 		headline_label.text = "It's a draw"
 		headline_label.add_theme_color_override("font_color", UiPalette.GILT)
@@ -119,6 +132,9 @@ func show_victory(summary: Dictionary, state: GameState = null, players: Array =
 		var count := int(held.get(fid, 0))
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
+		var row_banner := Art.banner_card(fid, ROW_BANNER_HEIGHT)
+		row_banner.name = "RowBanner"
+		row.add_child(row_banner)
 		row.add_child(seat_emblem(i))
 		var l := _label("%s: %s" % [_faction_name(fid, state), TooltipText.count(count, "province")], 22,
 			seat_color(i).lightened(0.3))
@@ -279,6 +295,12 @@ func _link(l: Control, kind: String) -> void:
 	CodexLink.attach(l, TooltipText.codex_for(kind), codex_requested.emit)
 
 
+func _clear_banners() -> void:
+	for c in banner_box.get_children():
+		banner_box.remove_child(c)
+		c.queue_free()
+
+
 func _clear(box: Container, list: Array[Label]) -> void:
 	list.clear()
 	for c in box.get_children():
@@ -331,18 +353,37 @@ func _build() -> void:
 	box.add_theme_constant_override("separation", 14)
 	panel.add_child(box)
 
+	# The hero: the winner's banner, then the caption, the headline and who won.
+	var hero := HBoxContainer.new()
+	hero.name = "Hero"
+	hero.add_theme_constant_override("separation", 28)
+	box.add_child(hero)
+	banner_box = HBoxContainer.new()
+	banner_box.name = "Banners"
+	banner_box.add_theme_constant_override("separation", 12)
+	banner_box.visible = false
+	hero.add_child(banner_box)
+	var titles := VBoxContainer.new()
+	titles.name = "Titles"
+	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	titles.alignment = BoxContainer.ALIGNMENT_CENTER
+	titles.add_theme_constant_override("separation", 8)
+	hero.add_child(titles)
 	caption_label = _label("Game over", 22, UiPalette.TEXT_SECONDARY)
 	caption_label.name = "CaptionLabel"
 	caption_label.mouse_filter = Control.MOUSE_FILTER_PASS
-	box.add_child(caption_label)
+	titles.add_child(caption_label)
 	headline_label = _label("", 60, UiPalette.GILT)
 	headline_label.name = "HeadlineLabel"
 	headline_label.mouse_filter = Control.MOUSE_FILTER_PASS
-	box.add_child(headline_label)
+	headline_label.add_theme_color_override("font_outline_color", UiPalette.KEYLINE_INK)
+	headline_label.add_theme_constant_override("outline_size", 6)
+	titles.add_child(headline_label)
 	seat_label = _label("", 24, UiPalette.TEXT_PRIMARY)
 	seat_label.name = "SeatLabel"
 	seat_label.mouse_filter = Control.MOUSE_FILTER_PASS
-	box.add_child(seat_label)
+	titles.add_child(seat_label)
+	box.add_child(HSeparator.new())
 	summary_label = _label("", 20, UiPalette.TEXT_SECONDARY)
 	summary_label.name = "SummaryLabel"
 	summary_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

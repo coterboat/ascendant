@@ -1,6 +1,30 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://ui/title_screen.gd" id="1_title"]
+[ext_resource type="Texture2D" path="res://assets/terrain/hills.webp" id="2_hills"]
+[ext_resource type="Texture2D" path="res://assets/banners/kingdom.webp" id="3_kingdom"]
+[ext_resource type="Texture2D" path="res://assets/banners/beasts.webp" id="4_beasts"]
+
+[sub_resource type="Gradient" id="Gradient_vignette"]
+offsets = PackedFloat32Array(0, 0.55, 1)
+colors = PackedColorArray(0.0784314, 0.0745098, 0.121569, 0.35, 0.0784314, 0.0745098, 0.121569, 0.72, 0.0784314, 0.0745098, 0.121569, 0.97)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_vignette"]
+gradient = SubResource("Gradient_vignette")
+width = 256
+height = 256
+fill = 1
+fill_from = Vector2(0.5, 0.45)
+fill_to = Vector2(1.05, 1.05)
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font_size = 112
+font_color = Color(0.901961, 0.721569, 0.305882, 1)
+outline_size = 10
+outline_color = Color(0.101961, 0.0862745, 0.0705882, 1)
+shadow_size = 18
+shadow_color = Color(0, 0, 0, 0.55)
+shadow_offset = Vector2(0, 6)
 
 [node name="TitleScreen" type="Control"]
 layout_mode = 3
@@ -20,6 +44,91 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0.0784314, 0.0745098, 0.121569, 1)
 
+[node name="Backdrop" type="TextureRect" parent="."]
+modulate = Color(0.38, 0.36, 0.52, 1)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_hills")
+expand_mode = 1
+stretch_mode = 1
+
+[node name="Vignette" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("GradientTexture2D_vignette")
+expand_mode = 1
+
+[node name="KingdomBanner" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = 96.0
+offset_top = -300.0
+offset_right = 396.0
+offset_bottom = 150.0
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("3_kingdom")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="KingdomCaption" type="Label" parent="KingdomBanner"]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 8.0
+offset_bottom = 40.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.741176, 0.713725, 0.811765, 1)
+theme_override_font_sizes/font_size = 20
+horizontal_alignment = 1
+
+[node name="BeastsBanner" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 6
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -396.0
+offset_top = -300.0
+offset_right = -96.0
+offset_bottom = 150.0
+grow_horizontal = 0
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("4_beasts")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="BeastsCaption" type="Label" parent="BeastsBanner"]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 8.0
+offset_bottom = 40.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.741176, 0.713725, 0.811765, 1)
+theme_override_font_sizes/font_size = 20
+horizontal_alignment = 1
+
 [node name="Center" type="CenterContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
@@ -30,54 +139,104 @@ grow_vertical = 2
 
 [node name="Box" type="VBoxContainer" parent="Center"]
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 10
 alignment = 1
 
 [node name="Title" type="Label" parent="Center/Box"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.901961, 0.721569, 0.305882, 1)
-theme_override_font_sizes/font_size = 72
 text = "ASCENDANT"
+label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
 
 [node name="Subtitle" type="Label" parent="Center/Box"]
+custom_minimum_size = Vector2(620, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.945098, 0.92549, 0.878431, 1)
-theme_override_font_sizes/font_size = 20
-text = "A strategy game where every rule is visible."
+theme_override_colors/font_outline_color = Color(0.101961, 0.0862745, 0.0705882, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 22
+text = "Simultaneous-turn fantasy strategy where every rule is visible."
 horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Divider" type="ColorRect" parent="Center/Box"]
+custom_minimum_size = Vector2(260, 2)
+layout_mode = 2
+size_flags_horizontal = 4
+color = Color(0.901961, 0.721569, 0.305882, 0.7)
 
 [node name="Gap" type="Control" parent="Center/Box"]
-custom_minimum_size = Vector2(0, 12)
+custom_minimum_size = Vector2(0, 14)
 layout_mode = 2
 
-[node name="NewGameButton" type="Button" parent="Center/Box"]
-custom_minimum_size = Vector2(300, 64)
+[node name="ContinueButton" type="Button" parent="Center/Box"]
+visible = false
+custom_minimum_size = Vector2(340, 60)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.901961, 0.721569, 0.305882, 1)
-theme_override_font_sizes/font_size = 30
-tooltip_text = "Set up a hotseat game on this computer: choose which player plays which faction, and a seed."
-text = "New game"
+theme_override_font_sizes/font_size = 28
+text = "Continue"
 
-[node name="QuickStartButton" type="Button" parent="Center/Box"]
-custom_minimum_size = Vector2(300, 52)
+[node name="NewGameButton" type="Button" parent="Center/Box"]
+custom_minimum_size = Vector2(340, 52)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 24
-tooltip_text = "Start a hotseat game on this computer right away, with every faction in play and a random seed. Players take turns at the same screen; each player's orders stay hidden from the others."
+tooltip_text = "Set up a game: who plays which faction (you against the computer by default, or two people at one computer), rulers, and a seed."
+text = "New game"
+
+[node name="LoadGameButton" type="Button" parent="Center/Box"]
+custom_minimum_size = Vector2(340, 52)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 24
+tooltip_text = "Pick a saved game to play on. The game saves itself at the start of every turn."
+text = "Load game"
+
+[node name="QuickStartButton" type="Button" parent="Center/Box"]
+custom_minimum_size = Vector2(340, 52)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 24
+tooltip_text = "Play right away against the computer (Normal), with a random faction, rulers on and a random seed. Your ruler starts with its balanced build."
 text = "Quick start"
 
 [node name="CodexButton" type="Button" parent="Center/Box"]
-custom_minimum_size = Vector2(300, 52)
+custom_minimum_size = Vector2(340, 52)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 24
 tooltip_text = "Every rule of the game in plain language, searchable. You can also open it from inside a game."
 text = "Codex"
 
+[node name="SettingsButton" type="Button" parent="Center/Box"]
+custom_minimum_size = Vector2(340, 52)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 24
+tooltip_text = "Window or fullscreen, and how big the interface is drawn."
+text = "Settings"
+
+[node name="QuitButton" type="Button" parent="Center/Box"]
+custom_minimum_size = Vector2(340, 52)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 24
+tooltip_text = "Close the game. Games in progress are saved at the start of every turn."
+text = "Quit"
+
+[node name="ErrorLabel" type="Label" parent="Center/Box"]
+visible = false
+custom_minimum_size = Vector2(620, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.941176, 0.415686, 0.392157, 1)
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 1
+autowrap_mode = 3
+
 [node name="DevGap" type="Control" parent="Center/Box"]
-custom_minimum_size = Vector2(0, 28)
+custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 
 [node name="MapPreviewButton" type="Button" parent="Center/Box"]
@@ -86,7 +245,21 @@ size_flags_horizontal = 4
 focus_mode = 0
 theme_override_colors/font_color = Color(0.494118, 0.470588, 0.588235, 1)
 theme_override_colors/font_hover_color = Color(0.741176, 0.713725, 0.811765, 1)
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 14
 tooltip_text = "Developer preview: the map screen on a fresh game, to look around. No turns, nothing is saved. Use New game to play."
 text = "Map preview (dev)"
 flat = true
+
+[node name="Version" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = -36.0
+offset_right = 420.0
+offset_bottom = -12.0
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.494118, 0.470588, 0.588235, 1)
+theme_override_font_sizes/font_size = 14
+text = "MVP build"
