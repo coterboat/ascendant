@@ -185,6 +185,7 @@ func _add_cut_off(p: Province) -> void:
 func _add_sally(p: Province, viewer: String) -> void:
 	var s := map.state
 	var o := map.orders
+	_add_garrison_odds(p, viewer)
 	_heading("SallyHeading", "Sally: come out and fight", "sally")
 	var inside := SiegeRules.garrison(s, province_id)
 	var ticked := []
@@ -241,6 +242,32 @@ func _add_sally(p: Province, viewer: String) -> void:
 	l.set_meta(REASON, true)
 
 
+## The garrison's odds lines (S-2, §9.2), before its choices: holding a storm, a sally with every army but the
+## ruler's, and a relief with that sally.
+func _add_garrison_odds(p: Province, viewer: String) -> void:
+	var s := map.state
+	var fc := FortView.siege_forecast(s, viewer, province_id, map.orders.orders())
+	if not fc.has("storm_odds") and not fc.has("sally_odds"):
+		return
+	_heading("OddsHeading", "Your odds this turn", "battle_odds")
+	_odds_line("HoldOdds", "If they storm this turn, your odds of holding: %s.", fc.get("storm_odds", {}), "If they storm")
+	var others := SiegeRules.garrison(s, province_id).filter(func(a): return a.ruler == null).size()
+	_odds_line("SallyAllOdds", "Sallying with %s: %%s." % ("your army" if others == 1 else "all %d armies but your ruler's" % others),
+		fc.get("sally_odds", {}), "Sally odds")
+	if not Array(fc.get("reach", [])).is_empty():
+		var ra := s.find_army(String(fc.reach[0]))
+		_odds_line("ReliefOdds", "Relief from %s, with that sally: %%s." % s.find_province(ra.location).name, fc.get("relief_odds", {}),
+			"Relief odds")
+
+
+## An odds line, "<text with the verdict>", explained by its test battles; nothing when there are no odds.
+func _odds_line(node_name: String, text: String, odds: Dictionary, title: String) -> void:
+	var words := FortView.odds_text(odds)
+	if words.is_empty():
+		return
+	_number(node_name, text % words, FortView.odds_breakdown(odds, title), UiPalette.GILT)
+
+
 func _add_storm(p: Province, viewer: String) -> void:
 	var s := map.state
 	var o := map.orders
@@ -257,7 +284,7 @@ func _add_storm(p: Province, viewer: String) -> void:
 	if not check.is_empty():
 		toggle.disabled = true
 		tip = "%s\n\n%s" % [String(check.reason), tip]
-	var fc := Forecast.siege(s, viewer, province_id, o.orders())
+	var fc := FortView.siege_forecast(s, viewer, province_id, o.orders())  # S-2's §9.2 text, odds included
 	if fc.ok and not String(fc.text).is_empty():
 		tip += " " + String(fc.text)
 	toggle.tooltip_text = TooltipText.plain("Storm", tip)
@@ -284,10 +311,14 @@ func _add_storm(p: Province, viewer: String) -> void:
 		text = "%s %s at %s go%s: %s. To keep an army out, move it away." % [lead, who, p.name,
 			", your ruler's included" if ruler else "", _names(armies)]
 	_number("StormNote", text, b, UiPalette.TEXT_SECONDARY)
-	var storm_odds := FortView.siege_odds("storm", s, viewer, province_id, o.orders())
-	var odds := FortView.odds_text(storm_odds)
-	if not odds.is_empty():
-		_number("StormOdds", "Storming now: %s." % odds, FortView.odds_breakdown(storm_odds, "Storm odds"), UiPalette.GILT)
+	# S-2's odds lines (§9.2): storm now, or wait for the breach, and what a relief of theirs would change.
+	_odds_line("StormOdds", "Storming now: %s.", fc.get("storm_odds", {}), "Storm odds")
+	_odds_line("BreachOdds", "Waiting instead, against their garrison with its +%d cover (a sally or the breach): %%s." % FortData.COVER_DEFENSE,
+		fc.get("breach_odds", {}), "Odds at the breach")
+	if not Array(fc.get("reach", [])).is_empty():
+		var ra := s.find_army(String(fc.reach[0]))
+		_odds_line("ReliefStormOdds", "Storming with their army from %s arriving too: %%s." % s.find_province(ra.location).name,
+			fc.get("relief_storm_odds", {}), "Storm odds with their relief")
 
 
 func _add_fortify(p: Province) -> void:

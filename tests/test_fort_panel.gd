@@ -305,6 +305,7 @@ func test_storm_now_on_a_move_into_an_enemy_fort() -> void:
 	assert_false(preview.contains("+2 fort") or preview.contains("its fort gives"), "no promise of the old fort bonus: %s" % preview)
 	var fc := Forecast.siege(s, CLANS, "stonegate", [MoveOrder.new("beasts-9", "stonegate")])
 	assert_true(preview.contains("reach 0"), "with the siege forecast: %s" % preview)
+	assert_true(preview.contains("Storming now: "), "and S-2's odds lines: %s" % preview)
 	assert_true(preview.contains(str(int(fc.breach_turn))), "the breach turn from Forecast.siege: %s" % preview)
 	assert_eq(map.queue_move("beasts-9", "stonegate"), "")
 	assert_true(map.orders.order_texts()[0].begins_with("Join the siege of Stonegate: the Clans' 9th"), map.orders.order_texts()[0])
@@ -719,6 +720,13 @@ func test_a_real_storm_shows_its_walls_chip_teaches_and_counts() -> void:
 	var chip := viewer.find_children("SiegeChip", "", true, false)
 	assert_eq(chip.size(), 1, "the viewer reads the event's siege block")
 	assert_eq((chip[0] as Label).text, "Walls: +%d defense (%d of %d)" % [SiegeRules.walls_defense(walls), walls, walls])
+	var texts := viewer.find_children("*", "Label", true, false).map(func(l): return (l as Label).text)
+	var part := BattleExplain.part_name(battles[0].numbers.report, AutoBattleResolver.WALLS)
+	assert_eq(part, "walls (%d of %d)" % [walls, walls], "S-2 names the walls' part")
+	assert_true(texts.any(func(t): return t.begins_with("Walls (%d of %d): changed" % [walls, walls])), "the trigger line names it: %s" % [texts])
+	assert_eq(BattleReportViewer._factor_entry(AutoBattleResolver.WALLS), BattleExplain.factor_entry(AutoBattleResolver.WALLS))
+	assert_eq(BattleReportViewer._factor_entry(AutoBattleResolver.WALLS), "battle_walls", "the walls factor links Storming the walls")
+	assert_eq(BattleReportViewer._factor_entry(AutoBattleResolver.COVER), "battle_open")
 	viewer.free()
 	var c := SiegeChronicle.new()
 	c.add_turn(1, result.events)
@@ -802,13 +810,50 @@ func test_the_victory_screen_counts_forts_built_sieges_won_and_storms() -> void:
 
 # --- the S-2 seam -------------------------------------------------------------------------------------
 
-func test_the_odds_seam_shows_no_odds_until_s2_plugs_in() -> void:
+func test_the_odds_come_from_s2s_forecast_through_the_seam() -> void:
 	var s := besieged_keep()
-	for kind in ["storm", "sally", "relief"]:
-		assert_eq(FortView.siege_odds(kind, s, CLANS, "stonegate", []), {}, "%s odds wait for S-2" % kind)
+	var storm := FortView.siege_odds("storm", s, CLANS, "stonegate", [])
+	assert_eq(storm, Forecast.storm_odds(s, CLANS, "stonegate", []), "the storm odds are Forecast.storm_odds")
+	assert_true(bool(storm.ok) and not FortView.odds_text(storm).is_empty(), "with a verdict: %s" % FortView.odds_text(storm))
+	assert_eq(FortView.odds_text(storm), "%s (%d of %d test battles)" % [storm.label, int(storm.wins), int(storm.samples)])
+	var sally_orders := [SiegeOrder.sally("kingdom-3")]
+	assert_eq(FortView.siege_odds("sally", s, CROWN, "stonegate", sally_orders), Forecast.sally_odds(s, CROWN, ["kingdom-3"], sally_orders),
+		"the sally odds are Forecast.sally_odds for the armies ticked")
+	assert_eq(FortView.siege_odds("sally", s, CROWN, "stonegate", []), {}, "no sally ticked, no odds")
+	var move := MoveOrder.new("kingdom-7", "stonegate")
+	var relief_orders := [move, SiegeOrder.sally("kingdom-3", "kingdom-7")]
+	assert_eq(FortView.siege_odds("relief", s, CROWN, "stonegate", relief_orders), Forecast.relief_odds(s, CROWN, move, ["kingdom-3"], relief_orders),
+		"the relief odds are Forecast.relief_odds with the tied sallies")
 	assert_eq(FortView.odds_text({}), "", "no odds, no line")
-	var fake := {"ok": true, "label": "likely win", "wins": 21, "samples": 24, "text": "Odds.", "reasons": ["more fighters"]}
-	assert_eq(FortView.odds_text(fake), "likely win (21 of 24 test battles)")
-	var b := FortView.odds_breakdown(fake, "Storm odds")
-	assert_eq(int(b.total), 21, "the breakdown's total is the battles won")
-	assert_eq(Breakdown.sum_of_lines(b), 21)
+	var b := FortView.odds_breakdown(storm, "Storm odds")
+	assert_eq(int(b.total), int(storm.wins), "the odds line's breakdown totals the battles won")
+	assert_eq(Breakdown.sum_of_lines(b), int(storm.wins))
+	# On screen: the Storm toggle's odds, the besiege preview's, and the relief preview's (counting the sallies the
+	# click ties to it).
+	var them := _map(s, CLANS)
+	them.select_province("stonegate")
+	assert_eq(_node(_fort(them), "StormOdds").text, "Storming now: %s." % FortView.odds_text(storm))
+	them.free()
+	# The garrison's view: S-2's odds lines (Forecast.siege with its odds), each explained by its test battles.
+	var fc := Forecast.siege(s, CROWN, "stonegate", [], true)
+	var mine := _map(s, CROWN)
+	mine.select_province("stonegate")
+	var fort := _fort(mine)
+	for pair in [["HoldOdds", "storm_odds"], ["SallyAllOdds", "sally_odds"], ["ReliefOdds", "relief_odds"]]:
+		var l := _node(fort, pair[0]) as Label
+		assert_true(l.text.contains(FortView.odds_text(fc[pair[1]])), "%s shows Forecast.siege's %s: %s" % [pair[0], pair[1], l.text])
+		assert_eq(int(l.get_meta(FortPanel.BREAKDOWN).total), int(fc[pair[1]].wins))
+	assert_true(_node(fort, "ReliefOdds").text.begins_with("Relief from Westwatch"), _node(fort, "ReliefOdds").text)
+	_assert_every_number_explained(fort, "garrison odds")
+	# The besiegers' view: storm now, or wait for the breach.
+	var them2 := _map(s, CLANS)
+	them2.select_province("stonegate")
+	var bfc := Forecast.siege(s, CLANS, "stonegate", [], true)
+	assert_true(_node(_fort(them2), "BreachOdds").text.contains(FortView.odds_text(bfc.breach_odds)), _node(_fort(them2), "BreachOdds").text)
+	_assert_every_number_explained(_fort(them2), "besieger odds")
+	them2.free()
+	mine.select_army("kingdom-7")
+	var preview := mine.preview_move("stonegate")
+	var want := FortView.odds_text(Forecast.relief_odds(s, CROWN, move, ["kingdom-3"], relief_orders))
+	assert_true(preview.contains("Odds: %s." % want), "the relief preview's odds: %s" % preview)
+	mine.free()

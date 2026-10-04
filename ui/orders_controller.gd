@@ -555,14 +555,14 @@ func siege_move_text(army_id: String, to: String, others: Array, queued: bool, q
 	var with_move: Array = others + [move]
 	match kind:
 		"besiege":
-			var fc := Forecast.siege(view, faction_id, to, with_move)
+			var fc := FortView.siege_forecast(view, faction_id, to, with_move)  # with S-2's odds lines: they are on screen
 			var storm_odds := FortView.odds_text(FortView.siege_odds("storm", view, faction_id, to, with_move))
-			var odds := " Storming now: %s." % storm_odds if not storm_odds.is_empty() else ""
+			var odds := ""  # the forecast's own lines carry the storm, the breach and a relief's odds
 			if queued and storm_index(to) >= 0:
 				var ruler := storm_armies(to).any(func(a): return a.ruler != null)
 				return "Storm %s from the march: %s Every army of yours there attacks its garrison behind its walls (%d of %d: +%d defense)%s.%s" % [
 					p.name, _decap(arrive), p.walls, SiegeRules.walls_max(p.fort_level), SiegeRules.walls_defense(p.walls),
-					", your ruler's included" if ruler else "", odds]
+					", your ruler's included" if ruler else "", " Odds: %s." % storm_odds if not storm_odds.is_empty() else ""]
 			var joins := SiegeRules.besiegers(view, to).any(func(a): return a.owner == faction_id)
 			var verb := "Join the siege of %s" % p.name if joins else "Besiege %s" % p.name
 			if queued:
@@ -610,7 +610,9 @@ func _relief_text(army_id: String, to: String, arrive: String, with_move: Array,
 		text += ". " + ("Untick %s in %s's fort panel to keep %s in." % [them, p.name, them] if not queued else "If the relief doesn't arrive, %s inside." % ("they stay" if out.size() > 1 else "it stays"))
 	elif not stay.is_empty():
 		text += " The garrison stays inside: %s. Tick a sally in %s's fort panel to bring an army out with you." % [names.call(stay), p.name]
-	var odds := FortView.odds_text(FortView.siege_odds("relief", view, faction_id, to, with_move))
+	# A preview's odds count the sallies the click will tie to the relief.
+	var odds_orders: Array = with_move if queued else with_move + out.map(func(a): return SiegeOrder.sally(a.id, army_id))
+	var odds := FortView.odds_text(FortView.siege_odds("relief", view, faction_id, to, odds_orders))
 	if not odds.is_empty():
 		text += " Odds: %s." % odds
 	return text

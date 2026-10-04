@@ -18,19 +18,71 @@ const IF_YOU_STAY := "if you stay as you are"
 
 # --- the S-2 seam --------------------------------------------------------------------------------------
 
-## THE S-2 SEAM (one function): the odds of a storm, a sally or a relief at `province_id` for `faction_id`,
-## with its queued `orders`, as Forecast.storm_odds, Forecast.sally_odds and Forecast.relief_odds will give them
-## (design/M3C_SIEGES.md §9.2): {"ok", "label", "wins", "samples", ...} like Forecast.battle_odds, or {} while
-## there are none. Until S-2 (#100) lands this returns {} and every siege control shows its forecast without
-## odds. S-2 replaces the body, e.g.
-##     match kind:
-##         "storm": return Forecast.storm_odds(state, faction_id, province_id, orders)
-##         "sally": return Forecast.sally_odds(state, faction_id, province_id, orders)
-##         "relief": return Forecast.relief_odds(state, faction_id, province_id, orders)
-## and every caller (the fort panel's Storm toggle and Sally ticks, the move preview's Besiege / Storm now and
-## relief, the order lines, the "needs you" lines) starts showing them through odds_text.
-static func siege_odds(_kind: String, _state: GameState, _faction_id: String, _province_id: String, _orders: Array) -> Dictionary:
-	return {}
+## THE S-2 SEAM (one function): the odds of a storm, a sally, a relief or the battle through the breach at
+## `province_id` for `faction_id`, with its queued `orders`, from Forecast.storm_odds, sally_odds, relief_odds and
+## breach_odds (S-2, design/M3C_SIEGES.md §9.2), which fight the real resolver through SiegeRules.next_battle:
+## {"ok", "label", "wins", "samples", ...} like Forecast.battle_odds, or {} when there is nothing to fight. The
+## sally is every queued sally of an army at the fort; the relief is the queued move into it, with the sallies
+## tied to it. Each call fights dozens of test battles, so the answers are kept per state, side, place and orders.
+## Every caller (the fort panel's Storm toggle and Sally ticks, the move preview's Besiege / Storm now and relief,
+## the order lines, the breach "needs you" line) prints them through odds_text.
+static var _odds_cache := {}
+
+
+static func siege_odds(kind: String, state: GameState, faction_id: String, province_id: String, orders: Array) -> Dictionary:
+	if state == null or not state.sieges or state.find_province(province_id) == null:
+		return {}
+	var key := "%s|%d|%d|%s|%s|%s" % [kind, state.get_instance_id(), state.current_turn, faction_id, province_id,
+		JSON.stringify(orders.map(func(o): return o.to_dict()))]
+	if _odds_cache.has(key):
+		return _odds_cache[key]
+	var out := {}
+	match kind:
+		"storm":
+			out = Forecast.storm_odds(state, faction_id, province_id, orders)
+		"breach":
+			out = Forecast.breach_odds(state, faction_id, province_id, orders)
+		"sally":
+			var ids := _sallies_at(state, province_id, orders)
+			if not ids.is_empty():
+				out = Forecast.sally_odds(state, faction_id, ids, orders)
+		"relief":
+			for o in orders:
+				var a: Army = state.find_army(o.army_id) if o is MoveOrder else null
+				if a != null and o.to == province_id and a.owner == faction_id and a.location != province_id:
+					out = Forecast.relief_odds(state, faction_id, o, _sallies_at(state, province_id, orders, o.army_id), orders)
+					break
+	if _odds_cache.size() > 256:
+		_odds_cache.clear()
+	_odds_cache[key] = out
+	return out
+
+
+## Forecast.siege with its odds lines (S-2, §9.2), for a place where the odds are on screen (the fort panel, the
+## besiege preview and its order line): the besiegers' storming now, against the garrison's cover (a sally or the
+## breach) and storming with their relief arriving; the garrison's odds of holding a storm, of a sally with every
+## army but the ruler's, and of a relief with that sally. Kept like siege_odds.
+static func siege_forecast(state: GameState, faction_id: String, province_id: String, orders: Array) -> Dictionary:
+	if state == null:
+		return {}
+	var key := "siege|%d|%d|%s|%s|%s" % [state.get_instance_id(), state.current_turn, faction_id, province_id,
+		JSON.stringify(orders.map(func(o): return o.to_dict()))]
+	if not _odds_cache.has(key):
+		if _odds_cache.size() > 256:
+			_odds_cache.clear()
+		_odds_cache[key] = Forecast.siege(state, faction_id, province_id, orders, true)
+	return _odds_cache[key]
+
+
+## The armies at `province_id` with a sally in `orders` (only those tied to `relief_id` when it is given).
+static func _sallies_at(state: GameState, province_id: String, orders: Array, relief_id: String = "") -> Array:
+	var out := []
+	for o in orders:
+		if o is SiegeOrder and o.is_sally() and (relief_id.is_empty() or o.with_army == relief_id):
+			var a := state.find_army(o.army_id)
+			if a != null and a.location == province_id:
+				out.append(a.id)
+	return out
 
 
 ## "likely win (21 of 24 test battles)" for siege_odds' result; "" when there are no odds.
