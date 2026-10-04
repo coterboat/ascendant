@@ -457,7 +457,7 @@ func _begin(state: GameState, faction_id: String, rng: SeededRNG, difficulty: St
 	_arrival = {}
 	if _paths:
 		_branch = _plan_branch()
-		_build_ctx()
+	_build_ctx()  # #131: every game, not only with paths: the battle rules' numbers are the same
 
 
 ## Sorts the state's armies into ours (_mine, without our ruler's army), our ruler's army and the foes'.
@@ -491,8 +491,7 @@ func _rebase(state: GameState) -> void:
 	_busy = {}
 	_collect_armies()
 	_foe_cache = {}
-	if _paths:
-		_build_ctx()  # a sacrifice can change unit numbers (Royal Armories, Veteran Levies)
+	_build_ctx()  # a sacrifice can change unit numbers (Royal Armories, Veteran Levies)
 
 
 func _bfs(from_id: String) -> Dictionary:
@@ -2000,11 +1999,16 @@ func _build_ctx() -> void:
 			forest += 1
 	var disciplined := {}
 	var frenzy := {}
+	var base_hit := {}
+	var dread := {}
 	for f in _state.factions:
 		var fx := RulerRules.battle_effects(_state, f.id)
 		disciplined[f.id] = fx.iron_discipline
 		frenzy[f.id] = int(fx.wounded_attack)  # #94: Blood Frenzy, for every fighter below its maximum hp
+		base_hit[f.id] = int(fx.base_hit)  # #131: Drilled Ranks
+		dread[f.id] = RulerRules.dread_value(_state, f.id)  # #131: its ruler's Dread, while it stands
 	_ctx = {"stats": stats, "front": front.size(), "forest": forest, "iron_discipline": disciplined, "frenzy": frenzy,
+		"base_hit": base_hit, "dread": dread,
 		"forest_share": float(forest) / float(front.size()) if not front.is_empty() else 0.0}
 
 
@@ -2020,8 +2024,6 @@ func _eff(u: Unit) -> Dictionary:
 ## with paths at the hp the recruitment phase gives it (its maximum with every part, less Blood Levy's share).
 func _recruit_unit(ut: UnitType) -> Unit:
 	var u := Unit.new(ut, _fid)
-	if not _paths:
-		return u
 	if not _arrival.has(ut.id):
 		_arrival[ut.id] = AscensionRules.arrival_hp(_state, _fid, ut, RulerRules.unit_max_hp(_state, u))
 	u.current_hp = int(_arrival[ut.id])
@@ -2033,8 +2035,6 @@ func _recruit_unit(ut: UnitType) -> Unit:
 ## their side). Without paths exactly _foes_next_to.
 func _threats_to(pid: String) -> Array:
 	var near := _foes_next_to(pid)
-	if not _paths:
-		return near
 	if _threat_cache.has(pid):
 		return _threat_cache[pid].duplicate()
 	var by_road := {}
@@ -2466,55 +2466,57 @@ func _scratch_with(placed: Array, pid: String) -> GameState:
 func _power_units(units: Array, foe_units: Array) -> float:
 	if units.is_empty():
 		return 0.0
-	if _paths:
-		return _power_units_paths(units, foe_units)
-	var foe_def := _avg_defense(foe_units)
-	var hp := 0.0
-	var dmg := 0.0
-	var morale := 0.0
-	var regulars := 0
-	var led := false
-	for u in units:
-		hp += u.current_hp
-		dmg += _pressure(u.type.attack, foe_def)
-		if u.type.is_commander:
-			led = true
-		else:
-			morale += u.type.morale
-			regulars += 1
-	var m := morale / regulars if regulars > 0 else 10.0
-	if led:
-		m += 2.0
-	return hp * clampf(0.2 + 0.05 * m, 0.25, 0.95) * dmg
-
-
-## _power_units in a game with paths (M4): the same guess with each type's numbers from RulerRules.unit_stats
-## (mandates and path parts: Iron Knights' +4 defense, Arbalests' +2 attack, Sunspears' +2 morale, ...).
-func _power_units_paths(units: Array, foe_units: Array) -> float:
 	var hp := 0.0
 	var def_total := 0.0
+	var foe_bears := 0
+	var foe_dread := 0
 	for u in foe_units:
 		hp += u.current_hp
 		def_total += u.current_hp * int(_eff(u).defense)
+		if u.type.trait_id == AutoBattleResolver.FURY:
+			foe_bears += 1
+		if u.type.is_ruler:
+			foe_dread = maxi(foe_dread, int(_ctx.get("dread", {}).get(u.owner, 0)))
 	var foe_def := def_total / hp if hp > 0.0 else 0.0
+	var fid: String = units[0].owner
+	var base_hit := int(_ctx.get("base_hit", {}).get(fid, AutoBattleResolver.BASE_HIT))
 	hp = 0.0
 	var dmg := 0.0
 	var morale := 0.0
 	var regulars := 0
+	var best := 0
 	var led := false
+	var inspire := false
+	var ruler := false
 	for u in units:
 		var st := _eff(u)
 		hp += u.current_hp
-		dmg += _pressure(int(st.attack) + _wounded_attack(u), foe_def)
-		if u.type.is_commander:
+		dmg += _pressure(int(st.attack) + _wounded_attack(u), foe_def, base_hit)
+		if u.type.is_ruler:
+			ruler = true
+			best = maxi(best, int(st.morale))
+		elif u.type.is_commander:
 			led = true
+			inspire = inspire or u.type.trait_id == AutoBattleResolver.INSPIRE
+			best = maxi(best, int(st.morale))
 		else:
 			morale += int(st.morale)
 			regulars += 1
-	var m := morale / regulars if regulars > 0 else 10.0
+	# #131: the morale the battle rules give a side (AutoBattleResolver._morale): its commander's, Inspire's and its
+	# ruler's, less the foe's Fury and Dread. They decide when a side breaks, and the rough guess used to leave them out.
+	var m := morale / regulars if regulars > 0 else float(best)
 	if led:
-		m += 2.0
-	return hp * clampf(0.2 + 0.05 * m, 0.25, 0.95) * dmg
+		m += AutoBattleResolver.COMMANDER_MORALE
+	if inspire:
+		m += AutoBattleResolver.INSPIRE_MORALE
+	if ruler:
+		m += RulerData.RULER_MORALE
+	m -= mini(AutoBattleResolver.FURY_MAX, AutoBattleResolver.FURY_MORALE * foe_bears) + foe_dread
+	var hold := clampf(AutoBattleResolver.BREAK_BASE_PCT + AutoBattleResolver.MORALE_PCT_PER_POINT * m,
+		AutoBattleResolver.MIN_BREAK_PCT, AutoBattleResolver.MAX_BREAK_PCT) / 100.0
+	if led and bool(_ctx.get("iron_discipline", {}).get(fid, false)):
+		hold = AutoBattleResolver.MAX_BREAK_PCT / 100.0  # Iron Discipline: no rout while a commander stands
+	return hp * hold * dmg
 
 
 ## The attack a unit gets for being below its maximum hp now (paths, #94): Berserk's BERSERK_ATTACK and its
@@ -2529,10 +2531,10 @@ func _wounded_attack(u: Unit) -> int:
 	return bonus
 
 
-## Rough expected damage of one attack with `attack` against `foe_def` defense.
-static func _pressure(attack: int, foe_def: float) -> float:
+## Rough expected damage of one attack with `attack` against `foe_def` defense, with `base_hit` (Drilled Ranks).
+static func _pressure(attack: int, foe_def: float, base_hit: int = AutoBattleResolver.BASE_HIT) -> float:
 	var atk := float(attack)
-	var hit := clampf(0.6 + 0.04 * (atk - foe_def), 0.3, 0.9)
+	var hit := clampf(base_hit / 100.0 + 0.04 * (atk - foe_def), 0.3, 0.9)
 	return hit * maxf(1.0, ceilf(atk * 0.5) - floorf(foe_def * 0.25))
 
 
