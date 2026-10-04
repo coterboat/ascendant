@@ -138,12 +138,16 @@ func test_full_turn_through_ui_then_report_lists_every_event_and_focuses_provinc
 	assert_eq(panel.header_label.text, report.header)
 	var rows := panel.event_rows()
 	assert_eq(rows.size(), events.size(), "one row per event")
+	# #55: each row reads as TurnReportText writes its event, in its display order (moves grouped by destination).
+	var lines := TurnReportText.rows(events, session.state(), session.current_player())
+	events = lines.map(func(r): return r.event)
 	for i in events.size():
-		assert_eq(rows[i].text, events[i].text, "row %d follows resolver order" % i)
+		assert_eq(rows[i].text, lines[i].text, "row %d is its event's line" % i)
+		assert_eq(rows[i].get_meta("event"), events[i], "row %d carries its event" % i)
 	var text := _visible_text(panel)
-	for e in events:
-		assert_true(text.contains(e.text), "report shows: %s" % e.text)
-		assert_true(text.contains(TurnReportPanel.phase_title(e.phase)), "has a heading for %s" % e.phase)
+	for i in events.size():
+		assert_true(text.contains(lines[i].text), "report shows: %s" % lines[i].text)
+		assert_true(text.contains(TurnReportPanel.phase_title(events[i].phase)), "has a heading for %s" % events[i].phase)
 	_assert_no_raw_ids(text, "turn report")
 
 	# Headings group the rows: each heading comes right before the first event of its phase.

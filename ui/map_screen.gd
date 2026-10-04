@@ -1079,7 +1079,7 @@ func _add_army(a: Army) -> void:
 
 	var header := Button.new()
 	header.name = "ArmyHeader"
-	header.text = TurnResolver.army_label(state, a)
+	header.text = RulerRules._cap(TurnReportText.army_title(state, a))  # the turn report's name for it (#55)
 	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	header.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	header.focus_mode = Control.FOCUS_NONE

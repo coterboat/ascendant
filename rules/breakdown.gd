@@ -94,7 +94,7 @@ static func army_units(state: GameState, army_id: String) -> Dictionary:
 		desc += " The %s leads the army and is not counted as a unit." % army.commander.type.name
 	else:
 		desc += " This army has no commander."
-	return _make("Units in the %s" % TurnResolver.army_label(state, army), desc, lines, "Units", army.units.size())
+	return _make("Units in %s" % TurnReportText.army_name(state, army.id, army.owner), desc, lines, "Units", army.units.size())
 
 
 ## An army's strength: attack + defense of every unit and its commander (StubBattleResolver.army_strength).
@@ -109,7 +109,7 @@ static func army_strength(state: GameState, army_id: String) -> Dictionary:
 	if army.commander:
 		var c := army.commander.type
 		lines.append(_line("%s (commander)" % c.name, c.attack + c.defense, "attack %d + defense %d" % [c.attack, c.defense]))
-	return _make("Strength of the %s" % TurnResolver.army_label(state, army), RulesCodex.text("army_strength"),
+	return _make("Strength of %s" % TurnReportText.army_name(state, army.id, army.owner), RulesCodex.text("army_strength"),
 		lines, "Strength", StubBattleResolver.army_strength(army))
 
 

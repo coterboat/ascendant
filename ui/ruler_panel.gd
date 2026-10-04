@@ -213,7 +213,7 @@ func _living(col: VBoxContainer, f: Faction) -> void:
 	var fid := f.id
 	var army := RulerRules.ruler_army(state, fid)
 	var status := _text(col, "Alive at %s" % _province_name(state, army.location), TooltipText.plain("Where the ruler is",
-		"%s %s" % [TurnResolver.army_label(state, army), RulesCodex.text("ruler_army")]))
+		"%s. %s" % [RulerRules._cap(TurnReportText.army_title(state, army)), RulesCodex.text("ruler_army")]))
 	status.name = "StatusLabel"
 	_codex_link(status, "ruler_army")
 	var hp := Breakdown.ruler_stat(state, fid, "hp")
@@ -425,7 +425,7 @@ static func badge_text(_army: Army) -> String:
 
 
 ## A few lines about the ruler for the badge and the side panel header:
-##   Aurel Crown ruler King Corvane I at Crownkeep
+##   King Corvane I (ruler of the Aurel Crown) at Crownkeep
 ##     mortal line, fights in the front rank
 ##     Hit points 46 of 46, attack 14, defense 13, morale 10 (+2 to its side while it stands)
 ##     Kept power 10 of 10, ability rank 4: Royal Court +5 gold
@@ -436,10 +436,10 @@ static func summary(state: GameState, army: Army) -> String:
 		return ""
 	var f := state.find_faction(army.owner)
 	if f == null or not f.has_ruler():
-		return TurnResolver.army_label(state, army)
+		return RulerRules._cap(TurnReportText.army_title(state, army))
 	var s := RulerRules.ruler_stats(f.ruler_type, f.kept_power, f.ruler_generation)
 	var lines := PackedStringArray()
-	lines.append(TurnResolver.army_label(state, army))
+	lines.append(RulerRules._cap(TurnReportText.army_title(state, army)))  # as the map and the turn report name it
 	lines.append("  %s" % RulerRules.kind_line(f.ruler_type))
 	lines.append("  Hit points %d of %d, attack %d, defense %d, morale %d (+%d to its side while it stands)" % [
 		army.ruler.current_hp, s.hp, s.attack, s.defense, s.morale, s.morale_bonus])

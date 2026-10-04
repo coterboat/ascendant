@@ -63,7 +63,8 @@ static func apply_events(model: Dictionary, events: Array) -> Dictionary:
 ## The beats of a turn, in the order they play:
 ##   "marches"   [{"army", "owner", "hops": [province ids from start to end], "to_border": bool
 ##                (a border battle's loser: it marches to the crossing and falls there), "survived"}]
-##   "battles"   [{"kind", "provinces", "winner", "destroyed": [army ids], "armies": [army ids], "text"}]
+##   "battles"   [{"kind", "provinces", "winner", "destroyed": [army ids], "armies": [army ids], "text" (the turn
+##                report's own line for it, TurnReportText.line, so the board and the report say the same)}]
 ##   "captures"  [{"province", "owner", "battle": index into battles or -1}]
 ##   "recruits"  [{"army", "province", "new_army": bool}]
 ##   "arrivals"  [{"army", "province"}] (a successor ruler at the capital)
@@ -86,7 +87,7 @@ static func plan(before: GameState, events: Array, after: GameState) -> Dictiona
 			var n: Dictionary = e.get("numbers", {})
 			var bi := battles.size()
 			battles.append({"kind": t, "provinces": provs.duplicate(), "winner": String(n.get("winner", "")),
-				"destroyed": (n.get("destroyed", []) as Array).duplicate(), "armies": ids.duplicate(), "text": String(e.get("text", ""))})
+				"destroyed": (n.get("destroyed", []) as Array).duplicate(), "armies": ids.duplicate(), "text": TurnReportText.line(e, events, after)})
 			for aid in n.get("destroyed", []):
 				fallen[aid] = bi
 			if t == "battle" and not provs.is_empty():

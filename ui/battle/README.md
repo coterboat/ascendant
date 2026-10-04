@@ -39,9 +39,9 @@ host.next(); host.previous(); host.close()
 - Battles that can't be watched say why, both on the Watch buttons (`BattleHost.watch_problem(event)`) and in
   the host if one is opened anyway: fought with the test rules (no log), more than two sides, a log cut short
   at `BattleLog.MAX_EVENTS`, or a log that isn't kept and can't be rebuilt.
-- The view comes from the setting **Battle view** (`[battle] view` in `user://settings.cfg`: `simple`, the
-  default for now, or `3d`). Until the 3D stage exists at `BattleHost.stage_3d_path`, `3d` plays in the Simple
-  view and the host shows a short note saying so.
+- The view comes from the setting **Battle view** (`[battle] view` in `user://settings.cfg`: `3d`, the default
+  since M3b, or `simple`). The 3D stage is `world3d/battle_stage.tscn` (`BattleStage3D`, see `world3d/README.md`);
+  if `BattleHost.stage_3d_path` is missing, `3d` plays in the Simple view and the host shows a short note.
 
 ## The battle view contract (what the 3D stage implements)
 
@@ -84,9 +84,10 @@ What the host does with the contract, so the view doesn't have to:
 - the victory and defeat stings on `finished`, from the viewer's side;
 - the fallback to the Simple view, and the messages for battles that can't be played.
 
-**To plug the 3D stage in:** put its scene at `res://world3d/battle_stage.tscn` (or set
-`BattleHost.stage_3d_path`), keep the contract above, and choose Settings > Battle view > 3D on the land.
-`tests/test_battle_host.gd` has a stand-in stage that shows what the host expects.
+**The 3D stage (M3b)** is at `res://world3d/battle_stage.tscn`: `BattleStage3D` extends `BattleSimpleView`, so it
+inherits `play()`, `finished`, the result card's Next battle and every shared component, and swaps the card field
+for the land. `tests/test_battle_host.gd` has a stand-in stage that shows what the host expects;
+`tests/test_battle_stage3d.gd` runs the real stage through the host.
 
 ## Where battles are opened from (M3-5)
 

@@ -20,6 +20,12 @@ void vertex() {
 	// abs: the projection's y scale is negative on some backends (Metal/Vulkan flip y)
 	float px_world = 2.0 * dist / (abs(PROJECTION_MATRIX[1][1]) * screen.y);
 	float w = mix(width_px, far_px, smoothstep(80.0, far_dist, dist));
+	// M3b: the sun's shadow passes draw with an orthographic projection, where this pixel width means a push
+	// of the light's whole view: every hull blew up over the shadow map (a 277-fighter battle ran at 4 fps).
+	// The ink never casts a shadow of its own, so there it keeps the model's shape.
+	if (PROJECTION_MATRIX[3][3] > 0.5) {
+		w = 0.0;
+	}
 	float model_scale = length(MODEL_MATRIX[0].xyz);
 	VERTEX += normalize(NORMAL) * w * px_world / max(model_scale, 1e-4);
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;

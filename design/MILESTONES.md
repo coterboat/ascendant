@@ -11,7 +11,7 @@ Alex decided on 2026-10-04 that the game goes 3D with a 2D interface. Full direc
 - **M3a.1 the world:** Forward+ and a quality ladder; the 3D world in a SubViewport under the 2D UI; terrain, borders, territory wash, roads and rivers from the M1 map; fortress kits; villages; the camera; orders on the 3D board; armies as blocks of ready poses. *Play:* an M2 game on the 3D board, with every order and tooltip working as on the 2D map.
 - **M3a.2 the armies:** full pose families, formations, muster yards and war camps, the fortress close-up, and the turn's playback (march-out, border clashes, captures, recruits mustering). Independents, if approved. *Play:* watch each turn resolve on the land, and predict the next battle from what you saw muster.
 - **M3b battles on the land:** M3's event log, timeline, controls, why panel and approachability drive a 3D stage on the province. #58 is re-scoped; #61, #62, #63 and #64 are rewritten for 3D. *Play:* M3's own goals.
-- **Forts and sieges** (proposal): sieges, walls, and building and upgrading fortresses.
+- **Forts and sieges** (proposal): sieges, walls, and building and upgrading fortresses. Specced as **M3c**: see "milestone 3c" below and `design/M3C_SIEGES.md`.
 - **M4 in 3D:** M4's rules as built, with transformed model families and a 3D turntable in the lock-in preview.
 - **M5 magic and fog:** magic, fog of war on the world's vision mask, and seasons if approved.
 - **M6 six factions and bigger maps:** the lore room's factions 3-6, generated maps for 2-6 players, and battles with more than two sides.
@@ -175,6 +175,23 @@ Budget: 500 Ludo credits for the milestone (321 planned, 482 with the re-roll re
 
 ---
 
+## milestone 3c: forts and sieges
+Status: **PROPOSED by the director (Claude session, 2026-10-04). Built provisionally under Alex's 10-4 'build an MVP you'd want to play'. Alex can change anything.**
+
+Full spec, with every number, rule, ticket (S-1 to S-9) and the art budget (155 Ludo credits): `design/M3C_SIEGES.md`. Read its §16 (director's calls) and §17 (questions for Alex) first.
+
+### goal
+Fortresses are where armies muster and wars are decided. You recruit at the forts you own (palisade, keep, citadel), build forward ones, and take an enemy fort by besieging it until its walls are breached, or by storming the walls at a cost; the defender sallies, sends relief or waits. Walls always fall, which gives #94's capital stand-off a clock. Opt-in behind "Forts & sieges (M3c preview)"; off, M1, M2 and M4 replay byte-identically.
+
+### what to play and what to feel for (at the end)
+Play two games against the AI with sieges on, one pushing for its capital and one holding yours. Feel for four things:
+- You can watch the enemy gather at its forward fort and guess where it will strike.
+- Storm or wait, sally or hold, is a real decision each turn, and the forecast lets you make it without guessing at the rules.
+- A siege of your capital is tense but readable: you know when the walls fall and what relief would do.
+- Games don't stall: someone always has a reason to march.
+
+---
+
 ## milestone 4: paths of ascension
 Status: **PROPOSED by the director (Claude session, 2026-10-04). Built provisionally under Alex's 10-4 'build an MVP you'd want to play'. Alex can change anything.**
 
@@ -230,5 +247,87 @@ Budget: 300 Ludo credits for the milestone (190 planned, 285 with the re-roll re
 
 ---
 
-## later milestones (outline, not approved)
-- **M5: magic.** Magic schools, rituals, battle spells, and fog of war.
+## milestone 5: magic and fog of war
+Status: **PROPOSED by the director (Claude session, 2026-10-04). Built provisionally under Alex's 10-4 'build an MVP you'd want to play'. Alex can change anything.**
+
+The full spec, with every number, rule and acceptance criterion, is `design/M5_MAGIC_FOG.md`. Read its §19 (director's calls) and §20 (questions only Alex can answer) first.
+
+### goal
+Each faction learns its own magic down two schools. It casts spells in battle that you can watch and understand. It casts rituals on the map that bless, curse, summon and scout.
+
+As a separate switch, the world goes dark beyond your borders. You see your own land exactly, your neighbours roughly, and the rest only as you last saw it. A rival's muster has to be scouted, or found with Far Sight.
+
+This milestone proves two things:
+- magic can be deep without being opaque
+- fog makes simultaneous turns a guessing game without letting a player, or the computer, cheat
+
+### what's in
+- **Two switches, both off by default:**
+  - **Magic (M5 preview)** needs Paths.
+  - **Fog of war (M5 preview)** works with any game.
+  - With both off, M1, M2 and M4 games are byte-identical.
+- **Fog is a lens, not a rule.** The resolver never reads it.
+  - **What you see:**
+    - in clear sight: where you own land or stand
+    - glimpsed: one province beyond, or two from forts, commanders, rulers and scouts; the total is rounded and shared out by type ("about 20 fighters: about 15 Tuskers, about 5 Fangthrowers")
+    - out of sight: everything else, drawn from what you last saw
+  - **What stays public:** owners, terrain, forts, rosters and heralds (Oaths, transformations, deaths, successions).
+  - **What is learned** when you fight, see or read it: mandates, kept power and spells.
+  - **One input for everything:** every screen, forecast, the 3D board and the AI read one view state built by allow-list.
+  - **The proof:** four indistinguishability tests show that changing anything hidden from a viewer changes nothing they see, and nothing the computer orders.
+- **Four schools:**
+  - the Aurel Crown has Sun and Law; the Thornmane Clans have the Wild and Blood
+  - each school has a battle spell, a ritual, a mastery node and a greater working that its aligned Oath opens
+  - a new Magic tab holds 115 research of arcana, and research turns into gold once nothing is left
+- **Casters:**
+  - Sunstone Adepts and Thornmane Shamans fight from the second rank
+  - the Ever-Regent casts Sunlance from turn 1
+  - the Great Thornmane and the Ninth Fang cast rituals
+  - King Corvane casts nothing
+  - kept power raises mastery and spell resistance
+- **Battle spells cast themselves and never roll dice.** Casters spread over a spellbook you order before battle. Every cast is a `cast` event in the log, a "why" factor, a caption and a line in the why panel.
+- **Eight rituals**, paid in gold:
+  - they resolve before movement, wards first
+  - a ritual turned aside costs half its price
+  - curses and blessings move a fixed number of hp a turn
+  - Far Sight scouts and reads a rival capital
+  - two summoned creatures
+- **Tithe of Blood:** a Clans mandate that lets a mage's own army pay in blood. It can't be held with Feast of Victory.
+- **AI:** deterministic research and ritual plans. Under fog it gets only its own view.
+- **3D:** a vision mask beside the owner wash, and spell effects that the quality ladder thins.
+- **Explanations for all of it:** forecasts that say what they assume, "what you didn't see" after a surprise, a cast dialog, spellbook previews, codex entries and captions.
+- **An autoplay balance check** with 14 bands.
+
+### what's out (later milestones)
+- Seasons (a question for Alex).
+- A third school per faction, dispelling, magic items, magic sites or gems.
+- Mage commanders.
+- Fog for battles you didn't fight (M6), per-player saves and online play.
+- AI difficulty levels, and the open questions in #25.
+
+### what to play and what to feel for (at the end)
+Play a magic game against the AI with each faction, then a hotseat game with fog. Feel for four things:
+- **At the moment it matters,** you can say what every spell and ritual will do: the card, the cast dialog and the battle caption all agree.
+- **The schools and the Oath matter:** the two games feel different because of the magic you chose.
+- **Under fog,** you have to guess and scout, and the forecast tells you honestly what it assumed. When you are surprised, the report says why.
+- **In hotseat,** nothing on your screen tells you what the fog says you shouldn't know.
+
+### tickets (github issues to be cut; M5-n are placeholders)
+M5-0 goes first: a scaffold of the shared state fields and the fixture, about a day. Then the fog lane (1, then 2, 3 and 4) and the magic lane (5, then 6 and 7, then 8, 9 and 10) run in parallel. M5-11 closes the milestone. M5-12 can start now.
+
+0. M5-0 `code` Scaffold: every new state field with gated saving, the M4-aware replay fixture, stubs. (needs M4)
+1. M5-1 `code` `hard` Fog rules model: sight, estimates, memory, intel, the view state, per-viewer reports, the indistinguishability tests. (needs 0)
+2. M5-2 `code` Fog on screen: every UI through the view, the per-viewer report, the Vision mode, forecast texts, the hotseat handoff. (needs 1)
+3. M5-3 `code` Fog on the 3D board: the vision mask, stand-ins and ghosts, per-viewer playback. (needs 1)
+4. M5-4 `code` AI under fog: the AI handed only its view, scouting, the proof tests. (needs 1)
+5. M5-5 `code` `hard` Magic rules model: data, the arcana, mages, mastery, cast and spellbook orders, the running budget, Tithe of Blood. (needs 0)
+6. M5-6 `code` `hard` Rituals on the map: the rituals and enchantments phases and every ritual. (needs 5)
+7. M5-7 `code` `hard` Battle spells: the cast step, the five spells, the log, captions and the why panel. (needs 5)
+8. M5-8 `code` Magic on screen: the Magic tab, the spellbook, the cast dialog, badges. (needs 5, 6)
+9. M5-9 `code` Magic in 3D: ritual beats, decals, summons, battle spell effects on the quality ladder. (needs 3, 6, 7)
+10. M5-10 `code` AI with magic: research, mages, the ritual rules. (needs 6, 7; 4 for Far Sight)
+11. M5-11 `code` Autoplay balance check for magic and fog against the bands in `design/M5_MAGIC_FOG.md` §13. (needs 4, 6, 7, 10)
+12. M5-12 `design` Art lead: M5 manifest rows and glyphs. (no code dependencies)
+13. M5-13 `asset` Asset builder: 4 figures, 4 portraits, 14 icons, 5 VFX sheets. (needs 12, and the lore room's looks)
+
+Budget: 180 Ludo credits for the milestone (118 planned, 177 with the re-roll reserve). The cheaper option is figures and portraits only (104).

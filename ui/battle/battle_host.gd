@@ -6,8 +6,8 @@ extends Control
 ## back to whatever opened it (the turn report). It never reads or changes anything but the events it was
 ## given: playback is a pure function of each battle's log (M3 §2.1).
 ##
-## The view: the setting "Battle view" ([battle] view in the settings file: "simple", the default for now,
-## or "3d") picks who draws the battle. The Simple view (BattleSimpleView) is always there; the 3D stage on
+## The view: the setting "Battle view" ([battle] view in the settings file: "3d", the default since M3b,
+## or "simple") picks who draws the battle. The Simple view (BattleSimpleView) is always there; the 3D stage on
 ## the land (M3b) is loaded from stage_3d_path when that file exists. Until it does, choosing 3D falls back
 ## to the Simple view with a short note. Any view keeps the battle view contract in ui/battle/README.md:
 ##   func play(log, report, state: GameState, seats: Array) -> String   "" or why it can't be played
@@ -466,7 +466,7 @@ static func battle_title(event: Dictionary) -> String:
 	return "Battle at %s" % " and ".join(PackedStringArray(names))
 
 
-## The Battle view setting: "simple" (the default) or "3d".
+## The Battle view setting: "3d" (the default since M3b) or "simple".
 static func chosen_view(path: String = "") -> String:
 	return String(BattleFx.settings(path).get("view", VIEW_SIMPLE))
 

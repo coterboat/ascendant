@@ -116,7 +116,8 @@ func show_event(event: Dictionary, state: GameState = null, seats: Array = []) -
 	var report: Dictionary = numbers.get("report", {})
 	if report.is_empty():
 		_state = state
-		_show_no_report(str(event.get("text", "")))
+		# #55: the battle in the turn report's words (TurnReportText), when the state is at hand.
+		_show_no_report(TurnReportText.line(event, [event], state) if state != null else str(event.get("text", "")))
 		return false
 	return _show(report, state)
 
@@ -259,9 +260,15 @@ func _add_sides() -> void:
 		name_label.name = "SideName"
 		_text(titles, _role_text(sr), _role_tooltip(sr), 18, UiPalette.TEXT_SECONDARY)
 		col.add_child(_roster_strip(sr))
-		for label in sr.get("armies", []):
-			_text(col, "Army: %s" % label, _tip("Army",
-				"An army on this side when the battle began: how many units it had (its commander is not counted as a unit) and who led it."), 17)
+		# #55: each army by the name the turn report and the map call it, with who was in it, and in a border battle
+		# where it came from (TurnReportText.log_armies). A bare report, with no battle log, has only its labels.
+		var named := TurnReportText.log_armies(_event.get("numbers", {}).get("log", {}), String(sr.get("faction", "")), _state)
+		var lines: Array = named.map(func(a): return "Army: %s" % a.title + (", from %s" % a.from if not String(a.from).is_empty() else ""))
+		if lines.is_empty():
+			lines = sr.get("armies", []).map(func(label): return "Army: %s" % label)
+		for army_line in lines:
+			_text(col, army_line, _tip("Army",
+				"An army on this side when the battle began: its name, who was in it, and in a border battle the province it came from. %s" % TurnReportText.NAMES_HINT), 17)
 		var roster: Dictionary = sr.get("roster", {})
 		if not String(roster.get("text", "")).is_empty():
 			var roster_label := _text(col, "Roster: %s" % roster.text, _tip("Roster",
@@ -380,7 +387,7 @@ func _add_terrain() -> void:
 	var terrain := String(_report.get("terrain", ""))
 	var defender := _defender_side()
 	if _report.get("kind", "province") == "border":
-		_text(box, "This was a border battle: the armies met between two provinces while swapping places, so nobody was defending and nobody got terrain or fort bonuses.",
+		_text(box, "This was a border battle: the armies tried to swap places and met between the two provinces, so nobody was defending and nobody got terrain or fort bonuses.",
 			_tip("Armies swapping places", RulesCodex.text("swap")))
 		return
 	if not terrain.is_empty():
@@ -571,7 +578,7 @@ func _add_round_cap() -> void:
 		_text(box, "Nobody was defending, so %s won by having the larger share of its starting hit points left." % who, tip, 18)
 	var numbers: Dictionary = _event.get("numbers", {})
 	if numbers.get("tie_break", "") == "roll":
-		_text(box, "The shares were exactly equal, so a seeded roll picked the winner.", tip, 17, UiPalette.TEXT_SECONDARY)
+		_text(box, "The shares were exactly equal, so %s picked the winner." % TurnReportText.tie_roll(_report.get("sides", []).size()), tip, 17, UiPalette.TEXT_SECONDARY)
 
 
 # --- text -----------------------------------------------------------------------------------------
@@ -600,7 +607,7 @@ func _why_tooltip() -> String:
 
 func _role_text(sr: Dictionary) -> String:
 	if _report.get("kind", "province") == "border":
-		return "Met the enemy on the border while swapping places."
+		return "Met the enemy on the border as both tried to swap places."
 	if sr.get("defender", false):
 		return "Defending: it was already holding the province."
 	if _defender_side().is_empty():

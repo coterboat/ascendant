@@ -6,8 +6,8 @@ extends BattleResolver
 ##   - Each side's strength = sum of attack + defense of every unit and commander in its armies.
 ##   - Highest strength wins. The winner takes no losses; every losing army is destroyed.
 ##   - Tie: the defender (a faction that was already in the province and held) wins.
-##   - Tie with no defender among the tied sides (both arrived, or a border battle): one seeded roll
-##     rng.randi_range(0, tied - 1) over the tied factions sorted by id picks the winner.
+##   - Tie with no defender among the tied sides (both arrived, or a border battle): one roll from the
+##     battle's rng, rng.randi_range(0, tied - 1), over the tied factions sorted by id picks the winner.
 
 
 static func army_strength(army: Army) -> int:
@@ -44,4 +44,4 @@ func resolve_battle(battle: Dictionary, rng: SeededRNG) -> Dictionary:
 			"why": "strengths were tied, and ties go to the defender who was already holding the province"}
 	var roll := rng.randi_range(0, tied.size() - 1)
 	return {"winner": tied[roll], "strengths": strengths, "tie_break": "roll", "roll": roll,
-		"why": "strengths were tied and nobody was defending, so a seeded roll picked the winner"}
+		"why": "strengths were tied and nobody was defending, so %s picked the winner" % TurnReportText.tie_roll(tied.size())}
