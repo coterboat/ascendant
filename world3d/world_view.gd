@@ -236,7 +236,7 @@ func set_quality(q: int) -> void:
 	env.ssil_enabled = false
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if quality < 2 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	for mi in props.get_children():
-		if mi is GeometryInstance3D:
+		if mi is GeometryInstance3D and not mi.has_meta("chunk"):
 			(mi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if quality < 2 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var vp := get_viewport()
 	if vp:
@@ -492,6 +492,9 @@ func _build_prop_models(pl: Dictionary) -> void:
 			mi.material_override = mat
 			mi.visible = false
 			mi.set_meta("chunk", true)
+			## close-in woods cast no shadow: the four shadow splits over every tree model were the
+			## board's dearest pass (measured); the canopy tile under them and the cel ramp keep the depth
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			props.add_child(mi)
 			_prop_chunks.append(mi)
 
@@ -507,6 +510,19 @@ func set_prop_models(on: bool) -> void:
 		(mi as Node3D).visible = not on
 	for mi in _prop_chunks:
 		(mi as Node3D).visible = on
+
+
+## Villages, landmarks and forts cast shadows only from the default zoom in (the board calls this with
+## the figures'): far out they are a few pixels across and their shadow splits cost the most.
+func set_building_shadows(on: bool) -> void:
+	var mode := GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for n in buildings.get_children():
+		if n is MultiMeshInstance3D and String(n.name).begins_with("Village"):
+			(n as GeometryInstance3D).cast_shadow = mode
+	for id in forts.keys():
+		for ch in (forts[id]["node"] as Node).get_children():
+			if ch is GeometryInstance3D:
+				(ch as GeometryInstance3D).cast_shadow = mode
 
 
 ## The yard's light in the fortress close-up: a little more ambient, so the walls' shade never darkens
@@ -795,6 +811,10 @@ func _place_villages() -> void:
 		mi.name = "Village_" + path.get_file().get_basename()
 		mi.multimesh = mm
 		mi.material_override = model_mat(Color.WHITE, glb["tex"], -1.0, true, float(row.get("tint", 0.92)), Color.WHITE, float(row.get("grade", BUILDING_GRADE)))
+		## like the woods, a village's ink outline only close in (the overdraw costs the most far out)
+		_prop_mats.append(mi.material_override)
+		if not prop_outlines:
+			(mi.material_override as ShaderMaterial).next_pass = null
 		buildings.add_child(mi)
 
 

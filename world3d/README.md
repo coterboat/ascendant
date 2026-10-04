@@ -115,6 +115,13 @@ The goal: watch each turn resolve on the land and predict the next battle from w
   `model_cel`), so a face under a brim stays readable; pale near-neutral stone on every building is
   pulled to a warm grey of compressed lightness (`stone_grade`), so Look A's sun neither blows it out
   nor tints it pink. Figures cast shadows only from the default zoom in.
+- **Measured** (Apple M4, Metal, Look A, 1600 × 900 window, 3D at 1200 × 846, rung 0, vsync off, #91's
+  models, a 14-turn computer-vs-computer game, a shared machine at load average 25-30): a turn's playback
+  71-85 fps with the camera on the action (404-421 draw calls, 2.2 M triangles, 134-141 figures); the
+  whole map 27.5 fps (644 draw calls), where main measured 19 at the same load. Shadows are the frame's
+  main cost: the model woods cast none and show only at the near zoom; figures, villages, landmarks and
+  forts cast none far out; regenerated LODs on every rebuilt model. The quality ladder is unchanged.
+  The headless playback step: 0.6-1.5 ms on average (design 3.5: 2 ms).
 - **Tests**: `tests/test_armies3d.gd` (poses and motion, pose models and their MultiMeshes, the muster
   layout's determinism, fit and overflow, ghosts' slots, the board's camps, gather cues, hotseat privacy,
   the close-up, phases, captions and beats, the battle exchange, sound never changing anything, capture

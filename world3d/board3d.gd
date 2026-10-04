@@ -741,16 +741,19 @@ func _camera(delta: float) -> void:
 	var px_per_unit: float = size.y / maxf(float(r["span"]), 1.0)
 	var min_scale: float = clampf(MIN_FIG_PX / (Armies.Kit.FIG * maxf(px_per_unit, 0.01)), 1.0, MAX_PIECE_SCALE)
 	armies.set_fig_scale(maxf(lerpf(2.4, 1.0, smoothstep(0.0, 0.8, z)), min_scale))
-	## the model woods and rocks from the default zoom in, on the upper quality rungs (hysteresis)
-	if wv.prop_models and (z < 0.5 or wv.quality >= 2):
+	## the model woods and rocks only at the near zoom, on the upper quality rungs (hysteresis): from the
+	## default zoom they put two million triangles on screen for little you can see (measured)
+	if wv.prop_models and (z < 0.76 or wv.quality >= 2):
 		wv.set_prop_models(false)
-	elif not wv.prop_models and z > 0.56 and wv.quality < 2:
+	elif not wv.prop_models and z > 0.82 and wv.quality < 2:
 		wv.set_prop_models(true)
 	## the figures' shadows only from the default zoom in (hysteresis)
 	if armies.fig_shadows and z < 0.4:
 		armies.set_fig_shadows(false)
+		wv.set_building_shadows(false)
 	elif not armies.fig_shadows and z > 0.46:
 		armies.set_fig_shadows(true)
+		wv.set_building_shadows(true)
 	## the woods' ink outlines only close in (hysteresis, so a zoom never flickers them)
 	if wv.prop_outlines and z < 0.62:
 		wv.set_prop_outlines(false)

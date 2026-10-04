@@ -366,7 +366,7 @@ static func _glb_figure(path: String, type_id: String, row: Dictionary, pose: St
 		for k in pv.size():
 			b.idx.append(k)
 	Kit._base(b, String(row.get("fallback", type_id)), bool(row.get("ruler", false)))
-	return {"mesh": b.mesh(), "tex": src["tex"], "source": "model"}
+	return {"mesh": with_lods(b.mesh()), "tex": src["tex"], "source": "model"}
 
 
 static func _load_first_mesh(path: String) -> Dictionary:
@@ -409,4 +409,22 @@ static func _vertex_white(mesh: Mesh) -> ArrayMesh:
 	arr[Mesh.ARRAY_COLOR] = cols
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-	return am
+	return with_lods(am)
+
+
+## A one-surface mesh with its levels of detail generated again (bible 8.4: about 25% and 6% of LOD0),
+## so a far figure, an army's MultiMesh seen from the whole map, or a far building draws a fraction of
+## its triangles. A model rebuilt from its arrays loses the import's LODs; this puts them back.
+## Meshes too small to need them come back as they are.
+static func with_lods(mesh: ArrayMesh) -> ArrayMesh:
+	if mesh == null or mesh.get_surface_count() != 1:
+		return mesh
+	var arr: Array = mesh.surface_get_arrays(0)
+	var idx = arr[Mesh.ARRAY_INDEX]
+	if idx == null or (idx as PackedInt32Array).size() < 3000:
+		return mesh
+	var im := ImporterMesh.new()
+	im.add_surface(Mesh.PRIMITIVE_TRIANGLES, arr)
+	im.generate_lods(25.0, 60.0, [])
+	var out: ArrayMesh = im.get_mesh()
+	return out if out != null and out.get_surface_count() == 1 else mesh
