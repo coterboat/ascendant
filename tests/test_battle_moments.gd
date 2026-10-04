@@ -29,7 +29,7 @@ const PINNED := {
 	"dread_feast_frenzy": {"charge": [1], "first_blood": [1], "rout": [4]},
 	"round_cap_defender": {},
 	"border": {"charge": [1], "first_blood": [1], "turning_point": [2], "rout": [5]},
-	"biggest": {"charge": [1], "first_blood": [1], "rout": [4]},
+	"biggest": {"charge": [1], "first_blood": [1], "rout": [3]},  # #94: its game's armies were renamed; rout in round 3 now
 	"one_round": {"first_blood": [1], "rout": [1]},
 	"mutual_rout": {"first_blood": [1], "rout": [2, 2]},
 }
@@ -456,7 +456,7 @@ func test_explain_attack_lines_sum_to_the_attacks_own_chance_and_damage() -> voi
 			for bd in [x.chance, x.damage, x.attack, x.defense]:
 				_assert_codex(String(bd.codex), what)
 				assert_true(TooltipText.from_breakdown(bd).contains("= %s: %d" % [bd.total_label, int(bd.total)]), "%s: renders as a tooltip" % what)
-			if i % 7 == 0:  # the words, on a sample (the biggest battle has 898 attacks)
+			if i % 7 == 0:  # the words, on a sample (the biggest battle has 742 attacks)
 				for t in [x.chance.description, x.damage.description, x.attack.description, x.defense.description, x.roll, x.target_text, x.summary]:
 					_assert_plain(String(t), lg, what)
 	assert_true(clamped > 0, "the fixtures have clamped hit chances")

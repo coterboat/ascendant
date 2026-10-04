@@ -45,8 +45,9 @@ func _initialize() -> void:
 	var games := []
 	for g in GAMES:
 		games.append(_play(g))
+	var checked: String = old.text if old.ok else "Written with --force: %s" % old.text
 	var out := {"note": FIRST_NOTE if note.is_empty() else "%s Re-recorded: %s %s Do not edit by hand." % [
-		FIRST_NOTE.trim_suffix(" Do not edit by hand."), note, old.text], "games": games}
+		FIRST_NOTE.trim_suffix(" Do not edit by hand."), note, checked], "games": games}
 	var f := FileAccess.open(OUT, FileAccess.WRITE)
 	f.store_string(JSON.stringify(out) + "\n")
 	f.close()
