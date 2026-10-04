@@ -32,6 +32,13 @@ var research_target: String = ""  # the node being researched (PathData id), or 
 var researched: Array = []  # [{"node": PathData id, "turn": the turn it was done at the end of}], in order
 var path_branch: String = ""  # the side of the fork its Oath swore to ("celestial_host", ...), or ""
 
+# --- magic (M5, design/M5_MAGIC_FOG.md §5.1, §6.4, §14). Rules: MagicRules. ---
+# Magic is opt-in at game setup (GameState.magic): in a game without it these stay at their defaults and are never
+# serialized (GameState.to_dict passes with_magic), so M1, M2 and M4 games save as before.
+var spellbook: Dictionary = {}  # the battle spellbook (SpellbookOrder): {} for the default, or {"order": [spell ids], "off": [spell ids]}
+var enchant_counter: int = 0  # how many enchantments it has begun; its ids count per faction ("beasts-e3")
+var bastions: Array = []  # province ids Bastion has raised a fort in, ever (for the cap)
+
 
 func has_ruler() -> bool:
 	return not ruler_type.is_empty()
@@ -46,8 +53,9 @@ static func describe(stat: String) -> String:
 		_: return ""
 
 ## `with_path` (GameState.to_dict passes GameState.paths) adds the research and path fields; without it
-## they are left out, so a game without paths saves exactly as before.
-func to_dict(with_path: bool = false) -> Dictionary:
+## they are left out, so a game without paths saves exactly as before. `with_magic` (GameState.magic) adds the
+## magic fields the same way.
+func to_dict(with_path: bool = false, with_magic: bool = false) -> Dictionary:
 	var ut_dicts := []
 	for ut in unit_types:
 		ut_dicts.append(ut.to_dict())
@@ -81,7 +89,26 @@ func to_dict(with_path: bool = false) -> Dictionary:
 		d["research_target"] = research_target
 		d["researched"] = done
 		d["path_branch"] = path_branch
+	if with_magic:
+		d["spellbook"] = spellbook_copy(spellbook)
+		d["enchant_counter"] = enchant_counter
+		d["bastions"] = bastions.duplicate()
 	return d
+
+
+## A copy of spellbook `book` in its saved form: {} stays {}; otherwise {"order": [...], "off": [...]} with the
+## ids as text. A value of the wrong kind is kept as it is, so MagicRules.validate can name it.
+static func spellbook_copy(book: Dictionary) -> Dictionary:
+	if book.is_empty():
+		return {}
+	var out := {}
+	for key in ["order", "off"]:
+		var ids = book.get(key, [])
+		out[key] = Serial.to_string_array(ids) if ids is Array else ids
+	for key in book:
+		if not ["order", "off"].has(str(key)):
+			out[str(key)] = book[key]
+	return out
 
 ## Returns null when a field has the wrong type, with a plain-language reason in `errors` (Serial load
 ## checks). `who` names the faction in it; GameState.from_dict passes "faction 'kingdom'".
@@ -138,6 +165,21 @@ static func from_dict(data: Dictionary, errors = null, who: String = "") -> Fact
 			return null
 		f.researched.append({"node": String(node), "turn": Serial.to_int(done_list[i].get("turn", 0))})
 	f.research_points = Serial.to_int(data.get("research_points", 0))
+
+	# Magic (M5): only present in a game with magic (see to_dict). MagicRules.validate checks them against
+	# GameState.magic.
+	var book = Serial.expect(data, "spellbook", TYPE_DICTIONARY, errors, who, {})
+	if book == null:
+		return null
+	for key in ["order", "off"]:
+		if Serial.expect(book, key, TYPE_ARRAY, errors, "the spellbook of %s" % who, []) == null:
+			return null
+	f.spellbook = spellbook_copy(book)
+	var raised = Serial.expect(data, "bastions", TYPE_ARRAY, errors, who, [])
+	if raised == null:
+		return null
+	f.bastions = Serial.to_string_array(raised)
+	f.enchant_counter = Serial.to_int(data.get("enchant_counter", 0))
 
 	# The other ruler fields are only present for a faction with a ruler (see to_dict). GameState.from_dict
 	# checks them and rebuilds ruler_unit_type.

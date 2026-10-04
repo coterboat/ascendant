@@ -14,6 +14,9 @@ var is_commander: bool = false
 ## A ruler's stats (M2): built by RulerRules from the ruler and its kept power, never recruited
 ## (cost 0, no trait). Rulers are not "units" for mandates and traits that name units.
 var is_ruler: bool = false
+## A summoned creature's type (M5 magic, design/M5_MAGIC_FOG.md §6.2): never recruited, and skipped by mandates
+## and path parts as rulers are. Only in a game with magic (MagicRules.validate); saved only when true.
+var summoned: bool = false
 
 # Short plain-language descriptions for tooltips/codex. Matches acceptance criterion for every stat.
 static func describe(stat: String) -> String:
@@ -48,6 +51,8 @@ func to_dict() -> Dictionary:
 	}
 	if is_ruler:
 		d["is_ruler"] = true  # only rulers carry the key, so M1 data saves exactly as before
+	if summoned:
+		d["summoned"] = true  # M5: only summoned creatures carry the key
 	return d
 
 ## Returns null when a field has the wrong type, with a plain-language reason in `errors` (Serial load
@@ -61,7 +66,7 @@ static func from_dict(data: Dictionary, errors = null, who: String = "") -> Unit
 		if text[key] == null:
 			return null
 	var flags := {}
-	for key in ["is_commander", "is_ruler"]:
+	for key in ["is_commander", "is_ruler", "summoned"]:
 		flags[key] = Serial.expect(data, key, TYPE_BOOL, errors, who, false)
 		if flags[key] == null:
 			return null
@@ -77,4 +82,5 @@ static func from_dict(data: Dictionary, errors = null, who: String = "") -> Unit
 	ut.trait_description = text.trait_description if data.has("trait_description") else text.trait_desc
 	ut.is_commander = flags.is_commander
 	ut.is_ruler = flags.is_ruler
+	ut.summoned = flags.summoned
 	return ut
