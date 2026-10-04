@@ -322,6 +322,14 @@ func test_the_preview_shows_gains_losses_new_unit_and_was_now_numbers() -> void:
 				assert_true(was != null, "%s: %s %s shows what it was" % [side, type_id, stat])
 		var portraits := preview.look_box.find_children("PathPortrait_*", "", true, false)
 		assert_eq(portraits.size(), 2, "%s: the changed and the new unit in the fork's frame" % side)
+		## M4's portraits (asc-3d-paths): the changed unit in its own look, the new unit in its portrait
+		for pp in portraits:
+			assert_true((pp as PathPortrait).has_art(), "%s: %s shows a portrait, not the placeholder" % [side, pp.name])
+		for type_id in fx.rename:
+			var changed := preview.look_box.find_child("PathPortrait_%s" % type_id, true, false) as PathPortrait
+			assert_true(changed != null and changed.shows_variant, "%s: %s shows its %s look" % [side, type_id, trans])
+		var added := preview.look_box.find_child("PathPortrait_%s" % String(fx.new_unit), true, false) as PathPortrait
+		assert_true(added != null and not added.shows_variant, "%s: the new unit shows its own portrait" % side)
 		assert_true(_assert_numbers_explained(preview, "%s preview" % side) >= 20, "%s: the preview's numbers were checked" % side)
 		_assert_no_raw_ids(_visible_text(preview), "%s preview" % side)
 		preview.free()
