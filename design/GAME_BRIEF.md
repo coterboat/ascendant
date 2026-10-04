@@ -15,7 +15,7 @@ We keep the feel, not the rulebook: wildly asymmetric factions, a build decision
 ## pillars
 1. **Power is a budget you spend on your people.** Your ruler's personal might and your faction's strength come from the same pool. Every point you keep for yourself is a point your nation doesn't get.
 2. **Commit and become.** Your faction develops down branching paths that lock in. Big forks change what your people are, not just what they have. No two games of the same faction need to end the same way.
-3. **Preparation wins battles, and battles are worth watching.** You choose the army, commanders, formation, and simple orders. The autobattle plays out from that with great sprite animation and spell effects, and the report tells you exactly why you won or lost.
+3. **Preparation wins battles, and battles are worth watching.** You choose the army, commanders, formation, and simple orders. The autobattle plays out from that as a 3D battle on the land, with great animation and spell effects, and the report tells you exactly why you won or lost.
 4. **Nothing hidden that matters.** Every number explains itself on hover. Every order and every lock-in shows its outcome before you commit. Randomness is shown as odds and ranges.
 5. **Simultaneous turns, readable results.** Everyone orders at once, then everything resolves together in one deterministic pass, and the turn report explains every change as cause and effect.
 6. **Polish over breadth.** Fewer factions, units, and spells, each distinct and well explained. UI/UX and battle presentation are features, not a finishing pass.
@@ -72,7 +72,7 @@ Research is organized into **paths** per faction: military doctrine, society and
 - **Roster bloat:** curated units and spells, each with a distinct job.
 - **Busywork:** gem and resource shuffling, repetitive recruitment, and army bookkeeping get sensible defaults and repeat-last-turn options.
 - **Ambiguous resolution order:** fixed, documented, and visible.
-- **Dated battle presentation:** readable, animated sprites with strong spell and impact effects.
+- **Dated battle presentation:** readable, animated 3D battles with strong spell and impact effects.
 
 ## battle presentation
 - Autobattles are resolved by pure rules code first, then played back in 3D from the result. The playback never changes the outcome.
