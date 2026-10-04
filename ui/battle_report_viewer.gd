@@ -28,6 +28,9 @@ extends Control
 ##   signal codex_requested(key)               a section heading or the "why" was right-clicked (or F1)
 ## `seats` is the seat order (GameSession.players()): player colours follow the seat, the same way the
 ## map draws them (UiPalette.faction_color). Without it, the state's faction order stands in.
+## Art (#10): each "Who fought" card flies its side's banner and shows its roster as portrait cards (a
+## count badge on each, commanders framed in gilt, a ruler's card last; Art falls back to a placeholder
+## card for any portrait that has not landed yet), above the roster in words.
 
 signal closed
 ## A linked heading or the "why" was right-clicked: open the codex at `key` (the host does).
@@ -36,6 +39,9 @@ signal codex_requested(key: String)
 const SECTION_ORDER := ["why", "sides", "terrain", "rounds", "casualties", "routs", "hits", "round_cap"]
 const NO_REPORT_TEXT := "No detailed report for this battle."
 const NEGATIVE := UiPalette.NEGATIVE  # design/STYLE_BIBLE.md 1.3 "negative"
+## Portrait cards in "Who fought" (3:4), and the banner beside each side's name.
+const ROSTER_PORTRAIT := Vector2(78, 104)
+const SIDE_BANNER_HEIGHT := 84.0
 
 ## RulesCodex entry that explains each deciding factor of the "why" (factor ids from the report). A
 ## mandate's factor id ("mandate_royal_armories") is its own entry (_factor_entry).
@@ -212,9 +218,22 @@ func _add_sides() -> void:
 		var card := _card(_side_color(sr))
 		row.add_child(card)
 		var col: VBoxContainer = card.get_child(0)
-		var name_label := _text(col, String(sr.get("name", "")), _role_tooltip(sr), 24, _side_color(sr).lightened(0.3))
+		var head := HBoxContainer.new()
+		head.name = "SideHeader"
+		head.add_theme_constant_override("separation", 12)
+		col.add_child(head)
+		var banner := Art.banner_card(String(sr.get("faction", "")), SIDE_BANNER_HEIGHT)
+		banner.name = "SideBanner"
+		head.add_child(banner)
+		var titles := VBoxContainer.new()
+		titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		titles.alignment = BoxContainer.ALIGNMENT_CENTER
+		titles.add_theme_constant_override("separation", 2)
+		head.add_child(titles)
+		var name_label := _text(titles, String(sr.get("name", "")), _role_tooltip(sr), 26, _side_color(sr).lightened(0.3))
 		name_label.name = "SideName"
-		_text(col, _role_text(sr), _role_tooltip(sr), 18, UiPalette.TEXT_SECONDARY)
+		_text(titles, _role_text(sr), _role_tooltip(sr), 18, UiPalette.TEXT_SECONDARY)
+		col.add_child(_roster_strip(sr))
 		for label in sr.get("armies", []):
 			_text(col, "Army: %s" % label, _tip("Army",
 				"An army on this side when the battle began: how many units it had (its commander is not counted as a unit) and who led it."), 17)
@@ -243,6 +262,39 @@ func _add_sides() -> void:
 			if f.get("id", "") == AutoBattleResolver.SKIRMISH and f.get("faction", "") == sr.get("faction", ""):
 				_text(col, "Skirmish: %s." % _cap(String(f.get("brief", ""))),
 					_tip(String(RulesCodex.entry("trait_skirmish").get("title", "Skirmish")), RulesCodex.text("trait_skirmish")), 17, UiPalette.TEXT_SECONDARY)
+
+
+## A side's fighters as portrait cards: each unit type with its count, then its commanders (gilt
+## frame), then its ruler. Hovering a card names it. Art.portrait_card shows a placeholder card when a
+## portrait is missing (rulers have none yet).
+func _roster_strip(sr: Dictionary) -> HFlowContainer:
+	var strip := HFlowContainer.new()
+	strip.name = "RosterPortraits"
+	strip.add_theme_constant_override("h_separation", 8)
+	strip.add_theme_constant_override("v_separation", 8)
+	var roster: Dictionary = sr.get("roster", {})
+	var fid := String(sr.get("faction", ""))
+	for u in roster.get("units", []):
+		var n := int(u.get("count", 1))
+		var card := Art.portrait_card(String(u.get("id", "")), ROSTER_PORTRAIT, fid)
+		card.count = n
+		_name_card(card, String(u.get("name", "")) if n == 1 else "%s ×%d" % [u.get("name", ""), n], "A unit on this side when the battle began.")
+		strip.add_child(card)
+	for c in roster.get("commanders", []):
+		var card := Art.portrait_card(String(c.get("id", "")), ROSTER_PORTRAIT, fid)
+		_name_card(card, String(c.get("name", "")), "The commander who led this side. %s" % RulesCodex.text("battle_commanders"))
+		strip.add_child(card)
+	var ruler: Dictionary = roster.get("ruler", {})
+	if not ruler.is_empty():
+		var card := Art.ruler_card(String(ruler.get("id", "")), String(ruler.get("name", "")), ROSTER_PORTRAIT)
+		_name_card(card, _cap(String(ruler.get("name", ""))), "This side's ruler fought in person. %s" % RulesCodex.text("ruler_in_battle"))
+		strip.add_child(card)
+	return strip
+
+
+func _name_card(card: Control, title: String, description: String) -> void:
+	card.tooltip_text = _tip(title, description)
+	card.mouse_filter = Control.MOUSE_FILTER_PASS
 
 
 ## The side's ruler in "Who fought" (M2-2): its rank and numbers, then how it ended, and its Dread when
