@@ -9,11 +9,20 @@
 ## primitive "fallback" (a Kit.figure id) at the row's "scale". A unit type with no row at all stands as
 ## Kit's generic figure, so a new unit never breaks the board.
 ##
+## Poses (M3a.2, design/3D_DIRECTION.md 7.3 and 9.3): a row may name a model per pose in "poses"
+## ({"ready", "march", "strike", "fallen"}, each a path or {"model": path}), sized by "pose_size"
+## ({pose: {"axis": "height" or "length", "men": n}}). figure_mesh(type, prefer, pose) draws that pose's
+## model, or, when it has none on disk, the ready model (or the primitive) with procedural motion on top
+## (world3d/choreo.gd). A pose with no model of its own shares the ready pose's mesh, so the armies draw
+## one MultiMesh per distinct pose mesh only.
+##
 ## Pure lookups (no nodes); the meshes are built once and cached per run.
 extends RefCounted
 
 const Kit := preload("res://world3d/kit.gd")
 const TABLE_PATH := "res://world3d/models.json"
+## The pose models a unit can have (rulers may add "cheer"; it falls back to "ready" here).
+const POSES := ["ready", "march", "strike", "fallen"]
 
 static var _table: Dictionary = {}
 static var _meshes: Dictionary = {} ## cache key -> {"mesh": Mesh, "tex": Texture2D or null, "source": "model"/"primitive"}
@@ -95,23 +104,75 @@ static func figure_model_path(type_id: String) -> String:
 	return ""
 
 
-## The mesh a figure of `type_id` is drawn with: feet at y = 0, facing -Z, Kit.FIG units to a man, with
-## a base whose team part takes the player's colour (and a gilt ring for a ruler). `prefer_model` false
-## always gives the primitive. Returns {"mesh", "tex", "source"}.
-static func figure_mesh(type_id: String, prefer_model: bool = true) -> Dictionary:
-	var key := "fig:%s:%s" % [type_id, prefer_model]
+## The GLB a row names for `pose` ("" when it names none, or the file is missing): the row's
+## "poses"[pose] (a path, or {"model": path}); for "ready" also the row's "model" and the bible's
+## convention (figure_model_path); for any other pose the convention <unit>_<pose>.glb.
+static func pose_model_path(type_id: String, pose: String) -> String:
+	var row := figure_row(type_id)
+	var p := _pose_entry_path((row.get("poses", {}) as Dictionary).get(pose, ""))
+	if not p.is_empty() and ResourceLoader.exists(p):
+		return p
+	if pose == "ready":
+		return figure_model_path(type_id)
+	var faction := String(row.get("faction", ""))
+	if not faction.is_empty():
+		var conv := "res://assets/models/%s/%s/%s_%s.glb" % [faction, type_id, type_id, pose]
+		if ResourceLoader.exists(conv):
+			return conv
+	return ""
+
+
+static func _pose_entry_path(entry: Variant) -> String:
+	if entry is Dictionary:
+		return String((entry as Dictionary).get("model", ""))
+	return String(entry) if entry != null else ""
+
+
+## True when `pose` has a model of its own (otherwise the ready mesh stands in, moved in code).
+static func has_pose_model(type_id: String, pose: String, prefer_model: bool = true) -> bool:
+	if not prefer_model or pose == "ready":
+		return false
+	return String((figure_mesh(type_id, prefer_model, pose) as Dictionary).get("pose", "ready")) == pose
+
+
+## Every pose a type can stand in: pose -> its figure_mesh() dictionary. Poses without a model of their
+## own map to the ready pose's dictionary (the same mesh), so callers group by mesh.
+static func pose_meshes(type_id: String, prefer_model: bool = true) -> Dictionary:
+	var out := {}
+	for pose in POSES:
+		out[pose] = figure_mesh(type_id, prefer_model, pose)
+	return out
+
+
+## The mesh a figure of `type_id` is drawn with in `pose`: feet at y = 0, facing -Z, Kit.FIG units to a
+## man, with a base whose team part takes the player's colour (and a gilt ring for a ruler).
+## `prefer_model` false always gives the primitive. A pose with no model of its own returns the ready
+## pose's dictionary (the same mesh). Returns {"mesh", "tex", "source", "pose"}.
+static func figure_mesh(type_id: String, prefer_model: bool = true, pose: String = "ready") -> Dictionary:
+	var key := "fig:%s:%s:%s" % [type_id, prefer_model, pose]
 	if _meshes.has(key):
 		return _meshes[key]
 	var row := figure_row(type_id)
 	var out := {}
-	var path := figure_model_path(type_id) if prefer_model else ""
+	if pose != "ready":
+		var pp := pose_model_path(type_id, pose) if prefer_model else ""
+		if not pp.is_empty() and pp != pose_model_path(type_id, "ready"):
+			out = _glb_figure(pp, type_id, row, pose)
+		if out.is_empty():
+			out = figure_mesh(type_id, prefer_model, "ready")
+		else:
+			out["pose"] = pose
+		_meshes[key] = out
+		return out
+	var path := pose_model_path(type_id, "ready") if prefer_model else ""
 	if not path.is_empty():
-		out = _glb_figure(path, type_id, row)
+		out = _glb_figure(path, type_id, row, "ready")
 	if out.is_empty():
 		var fb := String(row.get("fallback", type_id))
 		var s := float(row.get("scale", 1.0))
 		var m: ArrayMesh = Kit.figure(fb, s, bool(row.get("ruler", false)))
 		out = {"mesh": m, "tex": null, "source": "primitive"}
+	out["pose"] = "ready"
 	_meshes[key] = out
 	return out
 
@@ -171,6 +232,14 @@ static func problems() -> Array:
 		var p := String(row.get("model", ""))
 		if not p.is_empty() and not ResourceLoader.exists(p):
 			out.append("figure %s: its model %s is missing" % [id, p])
+		var poses: Variant = row.get("poses", {})
+		if not (poses is Dictionary):
+			out.append("figure %s: its poses must be an object of pose -> model" % id)
+		else:
+			for pose in (poses as Dictionary).keys():
+				var pp := _pose_entry_path((poses as Dictionary)[pose])
+				if not pp.is_empty() and not ResourceLoader.exists(pp):
+					out.append("figure %s: its %s pose %s is missing" % [id, pose, pp])
 		if float(row.get("height", 1.0)) <= 0.0:
 			out.append("figure %s: its height must be above 0" % id)
 	var blds: Dictionary = table().get("buildings", {})
@@ -192,7 +261,17 @@ static func clear_cache() -> void:
 
 # ------------------------------------------------------------------ GLB normalising
 
-static func _glb_figure(path: String, type_id: String, row: Dictionary) -> Dictionary:
+## How a pose's model is sized: {"axis": "height" (its AABB's height), "length" (its longest horizontal
+## side: a fallen figure lies along it) or "width", "men": that size in men}. The row's "pose_size"[pose]
+## when it gives one; else the row's height (for a fallen pose, its length).
+static func pose_size(row: Dictionary, pose: String) -> Dictionary:
+	var ps: Variant = (row.get("pose_size", {}) as Dictionary).get(pose)
+	if ps is Dictionary and float((ps as Dictionary).get("men", 0.0)) > 0.0:
+		return {"axis": String((ps as Dictionary).get("axis", "height")), "men": float((ps as Dictionary).get("men"))}
+	return {"axis": "length" if pose == "fallen" else "height", "men": float(row.get("height", 1.0))}
+
+
+static func _glb_figure(path: String, type_id: String, row: Dictionary, pose: String = "ready") -> Dictionary:
 	var src := _load_first_mesh(path)
 	if src.is_empty():
 		return {}
@@ -200,9 +279,18 @@ static func _glb_figure(path: String, type_id: String, row: Dictionary) -> Dicti
 	var aabb: AABB = mesh.get_aabb()
 	if aabb.size.y <= 0.0001:
 		return {}
-	## scaled from its AABB to the row's height in men, feet on y = 0, turned by the row's yaw so it
-	## faces -Z (glTF faces +Z: yaw 180), on a base in the player's colour
-	var s: float = float(row.get("height", 1.0)) * Kit.FIG / aabb.size.y
+	## scaled from its AABB to the pose's size in men (the ready pose: the row's height), feet on y = 0,
+	## turned by the row's yaw so it faces -Z (glTF faces +Z: yaw 180), on a base in the player's colour
+	var size := pose_size(row, pose)
+	var along: float = aabb.size.y
+	match String(size["axis"]):
+		"length":
+			along = maxf(aabb.size.x, aabb.size.z)
+		"width":
+			along = minf(aabb.size.x, aabb.size.z)
+	if along <= 0.0001:
+		return {}
+	var s: float = float(size["men"]) * Kit.FIG / along
 	var c: Vector3 = aabb.get_center()
 	var yaw := deg_to_rad(float(row.get("yaw", 180.0)))
 	var xf := Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * s), Vector3.ZERO) * Transform3D(Basis(), Vector3(-c.x, -aabb.position.y, -c.z))

@@ -20,8 +20,20 @@ extends Control
 ## cursor with the pitch easing from 60 degrees over the whole map to 42 close in, WASD or the arrows
 ## pan, double-click glides to a province, C (or Home) to your capital, F frames the whole map, L
 ## switches Look A (Bright Cel) and Look B (lit painted). The whole map is framed on start.
-## Playback: play_turn(before, events, after) plays the turn on the land (armies.gd); Space or a click
-## skips it; its speed is a setting (GameSettings.playback_speed).
+## Playback: play_turn(before, events, after) plays the turn on the land (armies.gd) in the report's
+## phases, under their captions (Movement, Battles, Captures, Recruits), with a sound at each beat
+## (march, clash, strike, fall, the capture fanfare, recruit: GameAudio.sfx, varied by the beat's index,
+## never by a random number); Space or a click skips it; its speed is a setting
+## (GameSettings.playback_speed). A capture's new colour sweeps out from the arriving column.
+##
+## Planning (M3a.2, the viewing player's own orders only, so nothing of another seat's ever shows):
+## queued recruits stand as ghosts in the yard slots they will take, armies ordered to march gather at
+## their gate (or their stage's edge) facing the road, and the yard closes ranks behind them.
+##
+## The fortress close-up (M3a.2, design/3D_DIRECTION.md 8.3): View fortress in the recruit panel, or a
+## double-click on a fortress, swoops the camera down into the yard (turned to look in through the gate);
+## each queued recruit appears there at once as a ghost. Esc, zooming out, F, C or selecting another
+## province leaves it.
 ##
 ## Rendering: the SubViewport renders only while the board is visible and not covered (cover_check:
 ## the handoff cover, a modal overlay); covered, it keeps its last frame. The quality ladder steps down
@@ -30,6 +42,8 @@ extends Control
 signal ready_to_show
 signal playback_started
 signal playback_finished
+## The fortress close-up opened on a province, or closed ("").
+signal closeup_changed(province_id: String)
 
 const Terrain3D := preload("res://world3d/terrain3d.gd")
 const WorldView := preload("res://world3d/world_view.gd")
@@ -37,6 +51,8 @@ const Armies := preload("res://world3d/armies.gd")
 const BoardOverlay := preload("res://world3d/board_overlay.gd")
 const Playback := preload("res://world3d/playback.gd")
 const Models := preload("res://world3d/models.gd")
+const Muster := preload("res://world3d/muster.gd")
+const Choreo := preload("res://world3d/choreo.gd")
 
 const SPAN_NEAR := 70.0
 const PITCH_FAR := 60.0
@@ -47,6 +63,10 @@ const LAND := Rect2(-6, -6, 1012, 618) ## what "the whole map" frames (design un
 const FOCUS_ZOOM := 0.55
 const MAX_PX := 2.0 ## the 3D renders at most at 2 physical pixels per screen pixel
 const SEA_VEIL := Color("#244E6E")
+const CLOSE_PITCH := 52.0 ## the fortress close-up's pitch (design 8.1: about 35); the gate side is cut away so the walls never hide the yard
+const CLOSE_SPAN := 62.0 ## the close-up frames the yard, its gate and the camp's edge
+const CLOSE_MIN_SPAN := 34.0
+const BATTLE_ZOOM := 0.8 ## the playback camera leans in this far on each battle
 
 static var _terrain: RefCounted = null
 static var _task := -1
@@ -78,6 +98,9 @@ var _flash := {} ## province id -> 0..1, the focus flash
 var _slow := 0.0
 var _live := false
 var _playing := false
+var closeup := "" ## the fortress whose yard the close-up shows ("" none)
+var _pre_closeup := {} ## the camera before the close-up: {"goal", "zoom"}
+var sounds: Array = [] ## (tests) the beats' sounds this board asked for, in order
 
 
 func _init() -> void:
@@ -113,7 +136,7 @@ static func _bake() -> void:
 	for f in FactionData.FACTIONS:
 		Models.building_model("fortress", String(f.id))
 	for type_id in (Models.table().get("figures", {}) as Dictionary).keys():
-		Models.figure_mesh(type_id)
+		Models.pose_meshes(type_id)
 	_terrain = t
 
 
@@ -161,7 +184,9 @@ func _build_world() -> void:
 	armies.wv = wv
 	wv.add_child(armies)
 	armies.captured.connect(_on_captured)
-	armies.clash_started.connect(func(_label): GameAudio.sfx("battle_clash"))
+	armies.capture_swept.connect(_on_capture_swept)
+	armies.beat.connect(_on_beat)
+	armies.clash_started.connect(_on_clash_started)
 	armies.playback_finished.connect(_on_playback_finished)
 	overlay = BoardOverlay.new()
 	overlay.board = self
@@ -184,8 +209,10 @@ func sync() -> void:
 	var st: GameState = map.state
 	if st != null and st != shown and not _playing:
 		stand(st)
+	if not closeup.is_empty() and map.selected_province_id != closeup:
+		exit_closeup()
 	_sync_marks()
-	_sync_ghosts()
+	_sync_plan()
 	if overlay != null:
 		overlay.refresh()
 
@@ -235,29 +262,57 @@ func _sync_marks() -> void:
 	wv.set_marks(road, move, _flash, grown)
 
 
-## Queued recruits stand as ghosts where they will join (only the viewing player's orders).
-func _sync_ghosts() -> void:
-	var list: Array = []
-	var st: GameState = map.state
-	if map.orders != null and st != null and not _playing:
-		var fid: String = map.viewing_faction_id
-		var f := st.find_faction(fid)
-		var by_place := {}
-		for o in map.orders.orders():
-			if not (o is RecruitOrder):
-				continue
-			var where := f.capital if f != null else ""
-			if o.is_with_ruler():
-				var ra := RulerRules.ruler_army(st, fid)
-				where = ra.location if ra != null else ""
-			if where.is_empty():
-				continue
-			if not by_place.has(where):
-				by_place[where] = []
-			by_place[where].append(o.unit_type_id)
-		for where in by_place.keys():
-			list.append({"province": where, "owner": fid, "types": by_place[where]})
-	armies.show_ghosts(list)
+## The viewing player's plan on the board (their own orders only): queued recruits as ghosts in the
+## slots they will take, armies ordered to march gathered at their gate.
+func _sync_plan() -> void:
+	if _playing:
+		return
+	armies.show_plan(plan_of_orders())
+
+
+## The plan the viewing player's orders draw: {"departing": {army id: {"to", "via"}}, "ghosts":
+## [{"province", "owner", "types"}], "owner"}. Never another seat's orders: the map's OrdersController
+## is the viewing faction's own.
+func plan_of_orders() -> Dictionary:
+	var st: GameState = map.state if map != null else null
+	if map == null or map.orders == null or st == null or map.viewing_faction_id.is_empty():
+		return {}
+	var fid: String = map.viewing_faction_id
+	var f := st.find_faction(fid)
+	if f == null:
+		return {}
+	var by_place := {}
+	var order: Array = []
+	var departing := {}
+	for o in map.orders.orders():
+		if o is MoveOrder:
+			var a := st.find_army(o.army_id)
+			if a != null and a.owner == fid:
+				departing[o.army_id] = {"to": o.to, "via": o.via if o.is_road_move() else ""}
+			continue
+		if not (o is RecruitOrder):
+			continue
+		var where := f.capital
+		if o.is_with_ruler():
+			var ra := RulerRules.ruler_army(st, fid)
+			where = ra.location if ra != null else ""
+		if where.is_empty():
+			continue
+		if not by_place.has(where):
+			by_place[where] = []
+			order.append(where)
+		by_place[where].append(o.unit_type_id)
+	var ghosts: Array = []
+	for where in order:
+		ghosts.append({"province": where, "owner": fid, "types": by_place[where]})
+	var ctx := {}
+	if not departing.is_empty():
+		ctx["departing"] = departing
+	if not ghosts.is_empty():
+		ctx["ghosts"] = ghosts
+	if not ctx.is_empty():
+		ctx["owner"] = fid
+	return ctx
 
 
 # ------------------------------------------------------------------ turn playback
@@ -272,16 +327,16 @@ func play_turn(before: GameState, events: Array, after: GameState) -> bool:
 	if plan["marches"].is_empty() and plan["battles"].is_empty() and plan["recruits"].is_empty() \
 			and plan["arrivals"].is_empty() and plan["captures"].is_empty():
 		return false
+	exit_closeup(true)
 	shown = before
 	seats = map.seat_order() if map != null else UiPalette.seat_order(after)
 	armies.speed = float(GameSettings.load_from().playback_speed)
-	armies.show_state(before, seats)
+	armies.seats = seats
+	wv.clear_sweeps()
 	_paint_owners(before)
 	_playing = true
 	armies.play(plan, before, after)
 	_frame_action(plan)
-	if not plan["marches"].is_empty():
-		GameAudio.sfx("march", 0.2)
 	_sync_marks()
 	if overlay != null:
 		overlay.begin_playback(plan, after)
@@ -341,6 +396,31 @@ func set_playback_speed(v: float) -> void:
 		s.save()
 
 
+## A beat of the playback: its sound (Choreo.sound_for: the kind, varied by the beat's index). Sound only
+## reads the beat; it never changes the board or the game.
+func _on_beat(kind: String, index: int) -> void:
+	var ev := Choreo.sound_for(kind, index)
+	if ev.is_empty():
+		return
+	sounds.append(ev)
+	GameAudio.sfx(ev)
+
+
+## A battle's exchange begins: the playback camera leans in on it (it eases there; any pan takes over).
+func _on_clash_started(_label: String) -> void:
+	var cl: Array = armies.clashes_now()
+	if cl.is_empty():
+		return
+	var at: Vector3 = cl[cl.size() - 1]["at"]
+	zoom = maxf(zoom, BATTLE_ZOOM)
+	goal = rig_for(Vector2(at.x, at.z) + Vector2(0, 6), zoom)
+
+
+## A capture's sweep begins: the wash's old colour stays outside a front running out from `from`.
+func _on_capture_swept(province_id: String, _owner_id: String, from: Vector2) -> void:
+	wv.start_sweep(province_id, from, wv.old_owner_colour(province_id))
+
+
 func _on_captured(province_id: String, owner_id: String) -> void:
 	var st: GameState = shown
 	var c: Color = UiPalette.owner_color(st, owner_id, seats) if st != null else UiPalette.NEUTRAL
@@ -351,6 +431,7 @@ func _on_captured(province_id: String, owner_id: String) -> void:
 
 func _on_playback_finished() -> void:
 	_playing = false
+	wv.clear_sweeps()
 	shown = armies.state
 	if shown != null:
 		_paint_owners(shown)
@@ -359,7 +440,7 @@ func _on_playback_finished() -> void:
 	if map != null and map.state != null and map.state != shown:
 		stand(map.state)
 	_sync_marks()
-	_sync_ghosts()
+	_sync_plan()
 	if overlay != null:
 		overlay.refresh()
 	playback_finished.emit()
@@ -462,6 +543,10 @@ func rig_for(target: Vector2, z: float, yaw := 0.0) -> Dictionary:
 
 ## Frames the whole map in the board (fit on start, F).
 func fit_whole(instant: bool = false) -> void:
+	if not closeup.is_empty():
+		wv.set_cutaway(closeup, false)
+		closeup = ""
+		closeup_changed.emit("")
 	zoom = 0.0
 	goal = rig_for(LAND.get_center(), 0.0)
 	if instant:
@@ -472,6 +557,8 @@ func fit_whole(instant: bool = false) -> void:
 func focus_on(province_id: String, instant: bool = false) -> void:
 	if not prepared or wv.terrain.index_of(province_id) < 0:
 		return
+	if not closeup.is_empty():
+		exit_closeup(true)
 	zoom = maxf(zoom, FOCUS_ZOOM)
 	goal = rig_for(wv.terrain.centre_of(province_id) + Vector2(0, 6), zoom)
 	_flash[province_id] = 1.0
@@ -491,6 +578,66 @@ func focus_capital() -> void:
 func _snap_rig() -> void:
 	wv.rig = goal.duplicate()
 	wv.apply_rig()
+
+
+# ------------------------------------------------------------------ the fortress close-up (M3a.2)
+
+## True when `province_id` has a fortress yard the close-up can show.
+func can_closeup(province_id: String) -> bool:
+	return prepared and wv.fortresses.has(province_id)
+
+
+## Swoops the camera into the yard of the fortress at `province_id` (View fortress, a double-click):
+## turned to look in through the gate, steep enough that the walls never hide a block. The recruit panel
+## stays 2D beside it; queued recruits stand as ghosts in their slots. Returns false when there is none.
+func enter_closeup(province_id: String, instant: bool = false) -> bool:
+	if not can_closeup(province_id) or _playing:
+		return false
+	if closeup.is_empty():
+		_pre_closeup = {"goal": goal.duplicate(), "zoom": zoom}
+	if not closeup.is_empty() and closeup != province_id:
+		wv.set_cutaway(closeup, false)
+	closeup = province_id
+	goal = closeup_rig(province_id)
+	zoom = 1.0
+	wv.set_cutaway(province_id, true)
+	if instant:
+		_snap_rig()
+	if overlay != null:
+		overlay.refresh()
+	closeup_changed.emit(province_id)
+	return true
+
+
+## Leaves the close-up: the camera goes back where it was, north up again.
+func exit_closeup(instant: bool = false) -> void:
+	if closeup.is_empty():
+		return
+	wv.set_cutaway(closeup, false)
+	closeup = ""
+	var back: Dictionary = _pre_closeup.get("goal", {})
+	if back.is_empty():
+		back = rig_for(LAND.get_center(), 0.0)
+	goal = back.duplicate()
+	goal["yaw"] = 0.0
+	zoom = float(_pre_closeup.get("zoom", 0.0))
+	if instant:
+		_snap_rig()
+	if overlay != null:
+		overlay.refresh()
+	closeup_changed.emit("")
+
+
+## The close-up's rig for a fortress: over its yard's slots, a little toward the gate (the gathered
+## columns and the camp's edge in view), the camera on the gate's side looking in.
+func closeup_rig(province_id: String) -> Dictionary:
+	var fr: Dictionary = armies.yard_frame(province_id)
+	var size: Vector2 = Muster.grid_size(fr["grid"])
+	var facing: Vector2 = wv.fortresses[province_id]["gate_dir"]
+	var c: Vector2 = (fr["o"] as Vector2) + (fr["z"] as Vector2) * (size.y * 0.5) + facing * 9.0
+	var t = wv.terrain
+	var y: float = t.stage_h[t.index_of(province_id)] + float(wv.fortresses[province_id]["floor"])
+	return {"target": Vector3(c.x, y, c.y), "pitch": CLOSE_PITCH, "yaw": rad_to_deg(atan2(facing.x, facing.y)), "fov": FOV, "span": CLOSE_SPAN}
 
 
 ## The span that fits the whole land in the board at the far pitch.
@@ -528,6 +675,13 @@ func _move_goal(v: Vector2) -> void:
 
 
 func zoom_at(local: Vector2, dz: float) -> void:
+	if not closeup.is_empty():
+		## in the close-up the wheel leans in a little; zooming out leaves it
+		if dz < 0.0:
+			exit_closeup()
+		else:
+			goal["span"] = maxf(CLOSE_MIN_SPAN, float(goal["span"]) * 0.9)
+		return
 	## zoom to the cursor: the ground under it stays under it
 	_snap_rig()
 	var g0 := unproject(local)
@@ -553,7 +707,12 @@ func _camera(delta: float) -> void:
 		if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
 			pan.x += 1
 	if pan != Vector2.ZERO:
-		_move_goal(pan.normalized() * float(goal["span"]) * 0.85 * delta)
+		## screen directions, whichever way the camera is turned (the close-up turns it)
+		var yr: float = deg_to_rad(float(goal["yaw"]))
+		var right := Vector2(cos(yr), -sin(yr))
+		var back := Vector2(sin(yr), cos(yr))
+		var v: Vector2 = (right * pan.x + back * pan.y).normalized()
+		_move_goal(v * float(goal["span"]) * 0.85 * delta)
 	var k: float = 1.0 - exp(-delta * 7.0)
 	var r: Dictionary = wv.rig
 	r["target"] = (r["target"] as Vector3).lerp(goal["target"], k)
@@ -564,6 +723,11 @@ func _camera(delta: float) -> void:
 	## far out the figures stand taller (toy scale) so every army reads as a marker over the map
 	var z: float = clampf((log(float(r["span"])) - log(_span_fit)) / (log(SPAN_NEAR) - log(_span_fit)), 0.0, 1.0)
 	armies.set_fig_scale(lerpf(2.4, 1.0, smoothstep(0.0, 0.8, z)))
+	## the figures' shadows only from the default zoom in (hysteresis)
+	if armies.fig_shadows and z < 0.4:
+		armies.set_fig_shadows(false)
+	elif not armies.fig_shadows and z > 0.46:
+		armies.set_fig_shadows(true)
 	## the woods' ink outlines only close in (hysteresis, so a zoom never flickers them)
 	if wv.prop_outlines and z < 0.62:
 		wv.set_prop_outlines(false)
@@ -604,6 +768,8 @@ func _process(delta: float) -> void:
 	if overlay != null and (hover_id != "" or _playing):
 		overlay.queue_redraw()
 	_camera(delta)
+	if not wv.sweeps.is_empty():
+		wv.step_sweeps(delta * (armies.speed if _playing else 1.0))
 	if not _flash.is_empty():
 		for id in _flash.keys():
 			_flash[id] = float(_flash[id]) - delta * 1.6
@@ -677,7 +843,11 @@ func _gui_input(event: InputEvent) -> void:
 				_drag_ground = unproject(mb.position)
 				if mb.double_click and not _playing:
 					var pid := province_at(mb.position)
-					if not pid.is_empty():
+					if can_closeup(pid):
+						if map != null and map.selected_province_id != pid:
+							map.select_province(pid)
+						enter_closeup(pid)
+					elif not pid.is_empty():
 						focus_on(pid)
 			else:
 				if _press and not _drag:
@@ -799,11 +969,16 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if k == null or not k.pressed or k.echo or not prepared or not _keys_allowed():
 		return
 	match k.keycode:
+		KEY_ESCAPE:
+			if not closeup.is_empty():
+				exit_closeup()
+				get_viewport().set_input_as_handled()
 		KEY_SPACE:
 			if _playing:
 				skip_playback()
 				get_viewport().set_input_as_handled()
 		KEY_C, KEY_HOME:
+			exit_closeup(true)
 			focus_capital()
 			get_viewport().set_input_as_handled()
 		KEY_F:

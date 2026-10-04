@@ -9,7 +9,12 @@
 ##   * the order arrows: every queued move drawn as a ribbon along the roads it marches (a King's Roads
 ##     move bends through its middle province's centre, ringed in gilt), and a dashed preview of the
 ##     move a click would order while you hover;
-##   * during a turn's playback: a clash marker at each battle, and the playback bar (speed, skip);
+##   * during a turn's playback: a clash marker at each battle, the phase's caption (Movement, Battles,
+##     Captures, Recruits, as the turn report's headings) with what is happening, and the playback bar
+##     (its phases, speed, skip);
+##   * M3a.2: a gathered army's plate carries a march mark (ordered to march: it waits at the gate); a
+##     ghost block's plate the gold left; the fortress close-up's chip (Esc or zoom out to leave) and a
+##     compass while the view is turned;
 ##   * the board's legend in the corner, whose tooltip explains every mark on the land.
 ## Reads the map screen (state, selection, orders, regions' marks) and never changes the game.
 extends Control
@@ -17,9 +22,10 @@ extends Control
 const Terrain3D := preload("res://world3d/terrain3d.gd")
 const Playback := preload("res://world3d/playback.gd")
 const Models := preload("res://world3d/models.gd")
+const Choreo := preload("res://world3d/choreo.gd")
 const ARROW := Color("#FFFFFF")
 const ARROW_HALO := Color(0.102, 0.086, 0.071, 0.85)
-const LEGEND := "The 3D board, what you see:\n- A province's colour wash and inner border: its owner, in their player colour.\n- A white band inside a province: the one you selected. A cream band: the one under the mouse.\n- A soft gilt glow at the edges: where your selected army can march this turn.\n- A dashed gilt band: a King's Roads destination two provinces away.\n- Figures: each army as blocks of its units (a block per unit type, %s), its commander and banner bearer at the back. The plate above gives the exact count.\n- Translucent figures in a yard: the recruits you queued. Only you see them.\n- White arrows along the roads: your queued moves.\n- Crossed swords during a turn's playback: a battle. The turn report has the full story.\n\nDrag or WASD to pan, the wheel to zoom, double-click to glide to a province, C your capital, F the whole map, L Look A or B. Settings can switch to the 2D map."
+const LEGEND := "The 3D board, what you see:\n- A province's colour wash and inner border: its owner, in their player colour.\n- A white band inside a province: the one you selected. A cream band: the one under the mouse.\n- A soft gilt glow at the edges: where your selected army can march this turn.\n- A dashed gilt band: a King's Roads destination two provinces away.\n- Figures: each army as blocks of its units (a block per unit type, %s), its commander and banner bearer at the back. The plate above gives the exact count.\n- A fortress's muster yard: its armies stand a block to a slot (a capital holds 6 blocks), facing the gate. An army the yard can't hold musters in the war camp outside the walls: tents, a fire and its smoke. A big camp means a big muster: war is coming.\n- Translucent figures in a yard: the recruits you queued, in the slot each will take. Only you see them.\n- An army in a column at its gate (or the edge of its province), facing a road, with a gilt arrow on its plate: one you ordered to march. It leaves when the turn ends. Only you see it gathered.\n- White arrows along the roads: your queued moves.\n- During a turn's playback the captions follow the turn report's phases: Movement, Battles, Captures, Recruits. Crossed swords mark a battle: the lines trade blows and the fallen lie where they fell. A capture's colour sweeps out from the arriving column.\n- View fortress (in the recruit panel) or a double-click on a fortress: a close-up of its yard. Esc or zooming out leaves it.\n\nDrag or WASD to pan, the wheel to zoom, double-click to glide to a province, C your capital, F the whole map, L Look A or B. Settings can switch to the 2D map."
 
 var board: Control ## board3d.gd
 var _plates := {} ## province id -> {"root": Control, "name": Label, "income": Label, "glyph": Control, "pennant": Control, "badge": Label}
@@ -32,6 +38,12 @@ var _play_bar: PanelContainer
 var _play_label: Label
 var _speed_buttons := {}
 var _legend: Label
+var _caption: PanelContainer
+var _caption_title: Label
+var _caption_detail: Label
+var _phase_label: Label
+var _closeup_chip: PanelContainer
+var _closeup_label: Label
 var _playing := false
 var _last_view := Transform3D() ## the camera when the plates were last placed
 var _dirty := true ## something changed: place the plates and redraw this frame
@@ -42,6 +54,8 @@ func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_legend()
 	_build_play_bar()
+	_build_caption()
+	_build_closeup_chip()
 
 
 func _ready() -> void:
@@ -60,7 +74,7 @@ func refresh() -> void:
 		_build_province_plates()
 	_update_province_marks()
 	_dirty = true
-	var sig := "%s|%s|%s" % [map.state.get_instance_id(), map.selected_army_id, board.armies.armies.size()]
+	var sig := "%s|%s|%s|%s" % [map.state.get_instance_id(), map.selected_army_id, board.armies.armies.size(), JSON.stringify(board.armies.gathered)]
 	if sig != _army_sig and not _playing:
 		_army_sig = sig
 		_build_army_plates()
@@ -71,15 +85,19 @@ func refresh() -> void:
 	if gsig != _ghost_sig:
 		_ghost_sig = gsig
 		_build_ghost_plates(ghosts)
-	## the legend and the playback bar stay above every plate
+	_update_closeup_chip()
+	## the legend, the playback bar, the caption and the close-up chip stay above every plate
 	move_child(_legend, get_child_count() - 1)
 	move_child(_play_bar, get_child_count() - 1)
+	move_child(_caption, get_child_count() - 1)
+	move_child(_closeup_chip, get_child_count() - 1)
 	queue_redraw()
 
 
 ## A small dashed plate over each block of queued recruits: how many, and what they are.
 func _build_ghost_plates(ghosts: Array) -> void:
 	for g in _ghost_plates:
+		remove_child(g)
 		(g as Node).queue_free()
 	_ghost_plates.clear()
 	var map: Control = board.map
@@ -97,6 +115,9 @@ func _build_ghost_plates(ghosts: Array) -> void:
 			parts.append("%d %s" % [counts[t], _unit_name(st, String(g["owner"]), t)])
 		var p := st.find_province(g["province"])
 		var where: String = p.name if p != null else "your capital"
+		var gold_left := -1
+		if map.orders != null:
+			gold_left = int(map.orders.gold_after_recruits().get("gold_after", -1))
 		var pc := PanelContainer.new()
 		pc.name = "GhostPlate_%s" % String(g["province"])
 		var sb := StyleBoxFlat.new()
@@ -108,14 +129,15 @@ func _build_ghost_plates(ghosts: Array) -> void:
 		sb.content_margin_right = 6
 		pc.add_theme_stylebox_override("panel", sb)
 		var lb := Label.new()
-		lb.text = "+%d queued" % (g["types"] as Array).size()
+		lb.text = ("+%d queued" % (g["types"] as Array).size()) + ("  ·  %d gold left" % gold_left if gold_left >= 0 else "")
 		lb.add_theme_font_size_override("font_size", 13)
 		lb.add_theme_color_override("font_color", UiPalette.GILT)
 		lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		pc.add_child(lb)
 		pc.mouse_filter = Control.MOUSE_FILTER_PASS
 		pc.tooltip_text = TooltipText.plain("Queued recruits: %s" % ", ".join(parts),
-			"They are paid when the turn ends and join your armies at %s. The translucent figures show where they will muster; only you see them, and cancelling the order in the side panel removes them." % where)
+			"They are paid when the turn ends and join your armies at %s. The translucent figures stand in the yard slot each will take (beside the army it joins, or a slot of its own; in the war camp outside the walls when the yard is full). Only you see them, and cancelling the order in the side panel removes them.%s" % [where,
+				(" After them you have %d gold left." % gold_left) if gold_left >= 0 else ""])
 		CodexLink.attach(pc, TooltipText.codex_for("recruit"), map.request_codex)
 		add_child(pc)
 		_ghost_plates.append(pc)
@@ -266,6 +288,7 @@ func _update_province_marks() -> void:
 
 func _build_army_plates() -> void:
 	for p in _army_plates.values():
+		remove_child(p)
 		(p as Node).queue_free()
 	_army_plates.clear()
 	var map: Control = board.map
@@ -305,6 +328,14 @@ func _build_army_plates() -> void:
 		lb.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
 		lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		hb.add_child(lb)
+		if board.armies.gathered.has(a.id):
+			## ordered to march: it waits gathered at the gate (only its player sees this)
+			var mk := _MarchMark.new()
+			mk.name = "MarchMark"
+			mk.custom_minimum_size = Vector2(16, 14)
+			mk.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			mk.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			hb.add_child(mk)
 		pc.tooltip_text = army_tooltip(a.id, false)
 		pc.mouse_filter = Control.MOUSE_FILTER_PASS  ## the wheel and drags go on to the board
 		pc.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -375,7 +406,32 @@ func army_tooltip(aid: String, with_link: bool = true) -> String:
 		text = RulerPanel.summary(st, a) if a.ruler != null else TooltipText.from_breakdown(Breakdown.army_units(st, a.id))
 	if a.ruler == null:
 		text += "\n\n" + TooltipText.wrap_text("Its figures stand in a block per unit type (%s); the plate has the exact number." % Models.block_rule_text())
+	var where_note := standing_note(aid)
+	if not where_note.is_empty():
+		text += "\n\n" + TooltipText.wrap_text(where_note)
 	return CodexLink.with_link(text, key) if with_link else text
+
+
+## Where an army stands, in words, when the board says something by it: gathered at its gate (your march
+## order), in a fortress's yard, or in the war camp outside it. "" otherwise.
+func standing_note(aid: String) -> String:
+	var map: Control = board.map
+	var st: GameState = map.state
+	var a: Army = st.find_army(aid)
+	if a == null:
+		return ""
+	var gathered: Dictionary = board.armies.gathered
+	if gathered.has(aid):
+		var to := st.find_province(String(gathered[aid]))
+		return "Ordered to march to %s: it has gathered in a column at %s, facing the road it will take, and leaves when the turn ends. Only you see it gathered." % [
+			to.name if to != null else "its destination", "its gate" if board.wv.fortresses.has(a.location) else "the edge of its province"]
+	if not board.wv.fortresses.has(a.location):
+		return ""
+	var p := st.find_province(a.location)
+	var m: Dictionary = board.armies.layout_of(st, board.armies.plan_ctx)["musters"].get(a.location, {})
+	if (m.get("camp", {}) as Dictionary).has(aid):
+		return "%s's yard is full, so this army musters in the war camp outside its walls (a tent behind every block). A camp outgrowing its fortress is a muster getting ready for war." % (p.name if p != null else "The fortress")
+	return "It musters in %s's yard, a block to a slot, facing the gate it will march out of." % (p.name if p != null else "the fortress")
 
 
 # ------------------------------------------------------------------ every frame
@@ -451,6 +507,7 @@ func _process(_delta: float) -> void:
 		gp.visible = s3.x > -100 and s3.x < vp.x + 100 and s3.y > -50 and s3.y < vp.y + 50
 	if _playing:
 		_play_label.text = _play_text()
+		_update_caption()
 	queue_redraw()
 
 
@@ -477,6 +534,10 @@ func _draw() -> void:
 	if _playing:
 		for c in board.armies.clashes_now():
 			_draw_clash(board.project3(c["at"] + Vector3(0, 10, 0)), float(c["k"]), String(c["label"]))
+	## a compass whenever the view is turned (the close-up looks in through the gate)
+	var yaw: float = float(board.wv.rig.get("yaw", 0.0))
+	if absf(wrapf(yaw, -180.0, 180.0)) > 2.0:
+		_draw_compass(Vector2(size.x - 44.0, size.y - 52.0), deg_to_rad(yaw))
 
 
 ## A move along the roads: [army's province, (the way through), destination], each hop centre to the
@@ -583,6 +644,18 @@ func _dashed(pts: PackedVector2Array, col: Color, w: float) -> void:
 		acc += a.distance_to(b)
 
 
+## A compass rose: the needle points to north on the screen (the view is turned by `yaw`).
+func _draw_compass(at: Vector2, yaw: float) -> void:
+	draw_circle(at, 22.0, Color(UiPalette.PANEL_BG, 0.85))
+	draw_arc(at, 22.0, 0, TAU, 32, UiPalette.GILT, 1.5, true)
+	var d := Vector2(sin(yaw), -cos(yaw))
+	var side := Vector2(-d.y, d.x)
+	draw_colored_polygon(PackedVector2Array([at + d * 17.0, at + side * 5.0, at - side * 5.0]), UiPalette.NEGATIVE)
+	draw_colored_polygon(PackedVector2Array([at - d * 17.0, at + side * 5.0, at - side * 5.0]), UiPalette.TEXT_SECONDARY)
+	var f := get_theme_default_font()
+	draw_string(f, at + d * 27.0 + Vector2(-5, 5), "N", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UiPalette.TEXT_PRIMARY)
+
+
 ## A battle's clash marker: crossed swords in a pulsing ring, with its label.
 func _draw_clash(at: Vector2, k: float, label: String) -> void:
 	if at.x < -9999:
@@ -614,16 +687,130 @@ func begin_playback(plan: Dictionary, after: GameState) -> void:
 	_play_bar.set_meta("turn", int(plan.get("turn", after.current_turn)))
 	_play_bar.set_meta("battles", (plan.get("battles", []) as Array).size())
 	_play_bar.visible = true
+	_closeup_chip.visible = false
 	_mark_speed(board.armies.speed)
 	_play_label.text = _play_text()
+	_update_caption()
 	queue_redraw()
 
 
 func end_playback() -> void:
 	_playing = false
 	_play_bar.visible = false
+	_caption.visible = false
 	_army_sig = ""
 	queue_redraw()
+
+
+## The turn's phases on the playback bar ("Movement  ›  [Battles]  ›  Recruits", the one playing now in
+## brackets); the caption under the bar names the phase and what is happening in it.
+func _update_caption() -> void:
+	var now: Dictionary = board.armies.phase_now()
+	var parts: Array = []
+	for p in board.armies.phases():
+		parts.append(("[%s]" % p["caption"]) if not now.is_empty() and int(p["index"]) == int(now["index"]) else String(p["caption"]))
+	_phase_label.text = "  ›  ".join(parts)
+	_phase_label.visible = not parts.is_empty()
+	if now.is_empty():
+		_caption.visible = false
+		return
+	_caption.visible = true
+	_caption_title.text = String(now["caption"])
+	_caption_detail.text = String(now["detail"])
+	_caption_detail.visible = not _caption_detail.text.is_empty()
+	_caption.tooltip_text = TooltipText.plain(String(now["caption"]), String(Choreo.CAPTION_HELP.get(now["key"], "")))
+	_caption.reset_size()
+	_caption.position = Vector2(round((size.x - _caption.size.x) * 0.5), _play_bar.position.y + _play_bar.size.y + 10.0)
+
+
+## The phase the caption shows now ({} between phases, or when nothing plays).
+func caption_now() -> Dictionary:
+	return board.armies.phase_now() if _playing else {}
+
+
+func _build_caption() -> void:
+	_caption = PanelContainer.new()
+	_caption.name = "PhaseCaption"
+	_caption.visible = false
+	_caption.mouse_filter = Control.MOUSE_FILTER_PASS
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(UiPalette.KEYLINE_INK, 0.62)
+	style.set_corner_radius_all(8)
+	style.content_margin_left = 18
+	style.content_margin_right = 18
+	style.content_margin_top = 4
+	style.content_margin_bottom = 6
+	_caption.add_theme_stylebox_override("panel", style)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", -4)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_caption.add_child(box)
+	_caption_title = Label.new()
+	_caption_title.name = "CaptionTitle"
+	_caption_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_caption_title.add_theme_font_size_override("font_size", 30)
+	_caption_title.add_theme_color_override("font_color", UiPalette.GILT)
+	_caption_title.add_theme_color_override("font_outline_color", UiPalette.KEYLINE_INK)
+	_caption_title.add_theme_constant_override("outline_size", 6)
+	box.add_child(_caption_title)
+	_caption_detail = Label.new()
+	_caption_detail.name = "CaptionDetail"
+	_caption_detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_caption_detail.add_theme_font_size_override("font_size", 17)
+	_caption_detail.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
+	_caption_detail.add_theme_color_override("font_outline_color", UiPalette.KEYLINE_INK)
+	_caption_detail.add_theme_constant_override("outline_size", 4)
+	box.add_child(_caption_detail)
+	add_child(_caption)
+
+
+## The fortress close-up's chip at the top: which yard, and how to leave (Esc, zoom out, or its button).
+func _build_closeup_chip() -> void:
+	_closeup_chip = PanelContainer.new()
+	_closeup_chip.name = "CloseupChip"
+	_closeup_chip.visible = false
+	_closeup_chip.mouse_filter = Control.MOUSE_FILTER_STOP
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(UiPalette.PANEL_BG, 0.92)
+	style.border_color = UiPalette.GILT
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(6)
+	_closeup_chip.add_theme_stylebox_override("panel", style)
+	_closeup_chip.anchor_left = 0.5
+	_closeup_chip.anchor_right = 0.5
+	_closeup_chip.offset_top = 12
+	_closeup_chip.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	_closeup_chip.add_child(row)
+	_closeup_label = Label.new()
+	_closeup_label.name = "CloseupLabel"
+	_closeup_label.add_theme_font_size_override("font_size", 16)
+	_closeup_label.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
+	_closeup_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(_closeup_label)
+	var leave := Button.new()
+	leave.name = "LeaveCloseup"
+	leave.text = "Back to the map (Esc)"
+	leave.focus_mode = Control.FOCUS_NONE
+	leave.add_theme_font_size_override("font_size", 15)
+	leave.add_theme_color_override("font_color", UiPalette.GILT)
+	leave.tooltip_text = "Leave the fortress view: the camera goes back where it was. Zooming out or pressing Esc does the same."
+	leave.pressed.connect(func(): board.exit_closeup())
+	row.add_child(leave)
+	_closeup_chip.tooltip_text = TooltipText.plain("Fortress view",
+		"A close look at this fortress's muster yard: every army stands a block to a slot, facing the gate, and an army the yard can't hold musters in the war camp outside. Each recruit you queue in the side panel appears at once as a translucent figure in the slot it will take; armies you ordered to march wait in a column at the gate. Esc or zooming out goes back to the map.")
+	add_child(_closeup_chip)
+
+
+func _update_closeup_chip() -> void:
+	var pid: String = board.closeup
+	_closeup_chip.visible = not pid.is_empty() and not _playing
+	if pid.is_empty():
+		return
+	var p: Province = board.map.state.find_province(pid) if board.map != null and board.map.state != null else null
+	_closeup_label.text = "Fortress view: %s's muster yard" % (p.name if p != null else "the")
 
 
 func _play_text() -> String:
@@ -655,12 +842,25 @@ func _build_play_bar() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	_play_bar.add_child(row)
+	var labels := VBoxContainer.new()
+	labels.add_theme_constant_override("separation", -2)
+	labels.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(labels)
 	_play_label = Label.new()
 	_play_label.name = "PlaybackLabel"
 	_play_label.add_theme_font_size_override("font_size", 17)
 	_play_label.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
-	_play_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(_play_label)
+	labels.add_child(_play_label)
+	_phase_label = Label.new()
+	_phase_label.name = "PhaseLabel"
+	_phase_label.add_theme_font_size_override("font_size", 14)
+	_phase_label.add_theme_color_override("font_color", UiPalette.GILT)
+	_phase_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	var help: Array = []
+	for k in Choreo.PHASES:
+		help.append("%s: %s" % [Choreo.caption(k), Choreo.CAPTION_HELP[k]])
+	_phase_label.tooltip_text = TooltipText.plain("The turn's phases", "They play in the turn report's order; a phase with nothing in it is skipped.\n\n" + "\n".join(help))
+	labels.add_child(_phase_label)
 	for v in GameSettings.PLAYBACK_SPEEDS:
 		var b := Button.new()
 		b.name = "Speed%d" % v
@@ -712,6 +912,18 @@ func _build_legend() -> void:
 		lines.append(TooltipText.wrap_text(line) if line.begins_with("- ") or line.length() > TooltipText.WRAP else line)
 	_legend.tooltip_text = "\n".join(lines)
 	add_child(_legend)
+
+
+## The march mark on a gathered army's plate: a small gilt arrow (ordered to march, waiting at the gate).
+class _MarchMark extends Control:
+	func _draw() -> void:
+		var c := size * 0.5
+		var pts := PackedVector2Array([c + Vector2(-6, -2), c + Vector2(1, -2), c + Vector2(1, -6), c + Vector2(7, 0),
+			c + Vector2(1, 6), c + Vector2(1, 2), c + Vector2(-6, 2)])
+		draw_colored_polygon(pts, UiPalette.GILT)
+		var closed := pts.duplicate()
+		closed.append(pts[0])
+		draw_polyline(closed, UiPalette.KEYLINE_INK, 1.2, true)
 
 
 ## A crown (a capital) or a tower (a fort), as the 2D map draws them.

@@ -14,6 +14,22 @@ uniform float key_width = 0.06;
 uniform float tint = 1.0;   // a whole-model brightness (a stage's sunlit stone vs the shade)
 uniform vec3 stone_tint : source_color = vec3(1.0); // a kit variant's stone (multiplies the texture, not the keyed roofs)
 uniform float fade = 1.0;
+// M3a.2: pale, near-neutral stone in a building (a texture's walls, or a primitive's vertex colours)
+// is pulled down toward a warm grey, so Look A's bright sun doesn't blow it out or tint it pink. Only
+// low-saturation texels move; roofs, timber, gold and grass keep their colour. 0 for figures.
+uniform float stone_grade = 0.0;
+uniform vec3 stone_grey = vec3(1.10, 1.0, 0.82); // the warm grey's balance (luminance 1)
+uniform float grade_knee = 0.10; // linear luminance where the pull starts
+uniform float grade_keep = 0.34; // how much of the luminance above the knee stays
+// M3a.2: the fortress close-up's cutaway. Fragments on the camera's side of the plane (xyz its normal,
+// w its offset) and above cut_y are not drawn, so the gate side's walls never hide the muster yard.
+uniform vec4 cut_plane = vec4(0.0);
+uniform float cut_y = 0.0;
+varying vec3 v_world;
+
+bool cut_away() {
+	return dot(cut_plane.xyz, cut_plane.xyz) > 0.25 && dot(cut_plane.xyz, v_world) > cut_plane.w && v_world.y > cut_y;
+}
 
 varying vec3 v_team;
 varying float v_mask;
@@ -29,11 +45,24 @@ vec3 rgb2hsv(vec3 c) {
 
 // (each shader's vertex() sets v_team: instanced_team ? INSTANCE_CUSTOM.rgb : team)
 
+// Pale near-neutral colour -> a warm grey of compressed luminance (stone_grade), linear in and out.
+vec3 grade_stone(vec3 c) {
+	if (stone_grade <= 0.0) {
+		return c;
+	}
+	vec3 hsv = rgb2hsv(c);
+	float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+	float neutral = 1.0 - smoothstep(0.16, 0.34, hsv.y);
+	float l2 = lum > grade_knee ? grade_knee + (lum - grade_knee) * grade_keep : lum;
+	return mix(c, l2 * stone_grey, neutral * stone_grade);
+}
+
 vec3 model_albedo(vec4 vcol, vec2 uv) {
 	vec3 c = vcol.rgb;
 	if (use_tex) {
 		vec3 t = texture(albedo_tex, uv).rgb;
 		vec3 raw = t;
+		t = grade_stone(t);
 		t *= stone_tint;
 		if (key_hue >= 0.0) {
 			vec3 hsv = rgb2hsv(raw);
@@ -47,6 +76,7 @@ vec3 model_albedo(vec4 vcol, vec2 uv) {
 		c *= t;
 	}
 	else {
+		c = vcol.a > 0.5 ? grade_stone(c) : c;
 		c *= stone_tint;
 	}
 	c = mix(v_team, c, vcol.a);

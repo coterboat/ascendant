@@ -17,6 +17,9 @@ const SH_OUTLINE := preload("res://world3d/shaders/outline.gdshader")
 const SH_WATER := preload("res://world3d/shaders/water.gdshader")
 const SH_BANNER := preload("res://world3d/shaders/banner.gdshader")
 const FORTRESS_SIDE := 76.0
+const SWEEP_TIME := 1.2 ## a capture's colour sweep, seconds at 1x
+const SWEEP_REACH := 170.0 ## how far the sweep's front runs from the arriving column
+const BUILDING_GRADE := 1.0 ## pale stone pulled to a warm grey on every building (a row's "grade" overrides)
 
 var terrain: RefCounted
 var look := "cel"
@@ -40,12 +43,15 @@ var buildings: Node3D
 var fortresses := {} ## province id -> {"node": Node3D, "gate_dir": Vector2, "yaw": float, "mat": ShaderMaterial, "court": Rect2 (local), "frame": Transform3D}
 var _model_mats: Array = [] ## every model ShaderMaterial, so a look change swaps their shader
 var _prop_mats: Array = [] ## the woods', rocks' and cottages' materials: their ink outline only close in
+var _own_outline := {} ## material -> its own outline material (a fortress's, which the close-up cuts away)
+var _outlines: Array = [] ## every outline material (the camera keeps their screen size)
 var prop_outlines := true
 var _banner_mats: Array = []
 var quality := 0
 var fog_k := 1.0
 var view_size := Vector2(1600, 900) ## the size of the viewport the camera draws into (Board3D keeps it)
 var cam_xform := Transform3D() ## the camera's transform, as apply_rig() set it
+var sweeps: Array = [] ## M3a.2: captures sweeping in: [{"i": province index, "from": Vector2, "t": seconds, "old": Color}]
 
 ## the camera rig: looks at `target` from `pitch` degrees above the horizon, from `yaw` degrees
 ## round from the south, framing `span` world units top to bottom
@@ -103,6 +109,7 @@ func _build_ground() -> void:
 	gmat.set_shader_parameter("origin", Terrain3D.ORIGIN)
 	gmat.set_shader_parameter("extent", Terrain3D.EXTENT)
 	gmat.set_shader_parameter("cell", terrain.cell)
+	_push_sweeps()
 	var pm := PlaneMesh.new()
 	pm.size = Terrain3D.EXTENT
 	pm.subdivide_width = terrain.w - 1
@@ -187,7 +194,7 @@ func set_look(p_look: String) -> void:
 	wmat.set_shader_parameter("toon", 1.0 if cel else 0.0)
 	for m in _model_mats:
 		(m as ShaderMaterial).shader = SH_MODEL_CEL if cel else SH_MODEL_LIT
-		(m as ShaderMaterial).next_pass = outline_mat if cel and (prop_outlines or not _prop_mats.has(m)) else null
+		(m as ShaderMaterial).next_pass = _own_outline.get(m, outline_mat) if cel and (prop_outlines or not _prop_mats.has(m)) else null
 	for m in _banner_mats:
 		(m as ShaderMaterial).set_shader_parameter("cel", 1.0 if cel else 0.0)
 	if cel:
@@ -259,7 +266,7 @@ func set_effects(on: bool) -> void:
 
 ## A model material in the current look. `team` is the player's colour for team parts; `tex` an
 ## albedo map (a probe GLB's); `key_hue` repaints that hue of the map in the team colour.
-func model_mat(team: Color, tex: Texture2D = null, key_hue := -1.0, instanced := false, tint := 1.0, stone := Color.WHITE) -> ShaderMaterial:
+func model_mat(team: Color, tex: Texture2D = null, key_hue := -1.0, instanced := false, tint := 1.0, stone := Color.WHITE, grade := 0.0) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	m.shader = SH_MODEL_CEL if look == "cel" else SH_MODEL_LIT
 	m.next_pass = outline_mat if look == "cel" else null
@@ -267,6 +274,7 @@ func model_mat(team: Color, tex: Texture2D = null, key_hue := -1.0, instanced :=
 	m.set_shader_parameter("instanced_team", instanced)
 	m.set_shader_parameter("tint", tint)
 	m.set_shader_parameter("stone_tint", stone)
+	m.set_shader_parameter("stone_grade", grade)
 	if tex != null:
 		m.set_shader_parameter("albedo_tex", tex)
 		m.set_shader_parameter("use_tex", true)
@@ -367,6 +375,64 @@ func set_fortress_colour(province_id: String, team: Color) -> void:
 		(fortresses[province_id]["mat"] as ShaderMaterial).set_shader_parameter("team", team)
 		for bm in fortresses[province_id].get("banners", []):
 			(bm as ShaderMaterial).set_shader_parameter("colour", team)
+
+
+# ------------------------------------------------------------------ capture sweeps (M3a.2)
+
+## A capture's sweep: the province's new owner colour (already painted, set_owners/paint_owner) runs out
+## from `from` (the arriving column) over SWEEP_TIME, over its `old` colour (alpha 0: nobody's), with a
+## gilt front. At most 4 at once (the oldest gives way).
+func start_sweep(province_id: String, from: Vector2, old: Color) -> void:
+	var i: int = terrain.index_of(province_id)
+	if i < 0:
+		return
+	for sw in sweeps:
+		if int(sw["i"]) == i:
+			sweeps.erase(sw)
+			break
+	if sweeps.size() >= 4:
+		sweeps.pop_front()
+	sweeps.append({"i": i, "from": from, "t": 0.0, "old": old})
+	_push_sweeps()
+
+
+## Advances the sweeps by `delta` seconds (the board steps them at the playback's speed).
+func step_sweeps(delta: float) -> void:
+	if sweeps.is_empty():
+		return
+	for sw in sweeps.duplicate():
+		sw["t"] = float(sw["t"]) + delta
+		if float(sw["t"]) >= SWEEP_TIME:
+			sweeps.erase(sw)
+	_push_sweeps()
+
+
+func clear_sweeps() -> void:
+	sweeps.clear()
+	_push_sweeps()
+
+
+## The old owner colour of the province index's sweep (for tests: what a province shows outside a front).
+func old_owner_colour(province_id: String) -> Color:
+	return owner_img.get_pixel(terrain.index_of(province_id), 0)
+
+
+func _push_sweeps() -> void:
+	var a := PackedVector4Array()
+	var o := PackedVector4Array()
+	for k in 4:
+		if k < sweeps.size():
+			var sw: Dictionary = sweeps[k]
+			var r: float = SWEEP_REACH * smoothstep(0.0, 1.0, clampf(float(sw["t"]) / SWEEP_TIME, 0.0, 1.0))
+			var from: Vector2 = sw["from"]
+			var c: Color = sw["old"]
+			a.append(Vector4(from.x, from.y, r, float(sw["i"])))
+			o.append(Vector4(c.r, c.g, c.b, c.a))
+		else:
+			a.append(Vector4(0, 0, 0, -1))
+			o.append(Vector4(0, 0, 0, 0))
+	gmat.set_shader_parameter("sweep_a", a)
+	gmat.set_shader_parameter("sweep_old", o)
 
 
 # ------------------------------------------------------------------ woods, rocks, cottages
@@ -477,7 +543,7 @@ func _build_settlements() -> void:
 			var f := MeshInstance3D.new()
 			f.name = "Fort_" + id
 			f.mesh = Models.building_primitive("fort")
-			f.material_override = model_mat(Color.WHITE, null, -1.0, false, 0.9)
+			f.material_override = model_mat(Color.WHITE, null, -1.0, false, 0.9, Color.WHITE, BUILDING_GRADE)
 			## beside the stage, on the side away from the roads
 			var at: Vector2 = c - gate * 30.0
 			f.position = t.ground_at(at) - Vector3(0, 0.3, 0)
@@ -486,6 +552,8 @@ func _build_settlements() -> void:
 	var houses: Array = plan_of(t)["houses"]
 	for v in 3:
 		var mi := _multi(Kit.cottage(v), houses[v], "Cottages%d" % v)
+		## the cottages' pale walls are buildings' stone too: graded, so Look A's sun doesn't blow them out
+		(mi.material_override as ShaderMaterial).set_shader_parameter("stone_grade", BUILDING_GRADE)
 		props.remove_child(mi)
 		buildings.add_child(mi)
 
@@ -564,7 +632,8 @@ func _place_fortress(id: String, c: Vector2, gate: Vector2) -> void:
 	if not glb.is_empty():
 		var mi := MeshInstance3D.new()
 		mi.mesh = glb["mesh"]
-		mat = model_mat(Color.WHITE, glb["tex"], float(row.get("key_hue", -1.0)), false, tint, stone)
+		mat = model_mat(Color.WHITE, glb["tex"], float(row.get("key_hue", -1.0)), false, tint, stone, float(row.get("grade", BUILDING_GRADE)))
+		_give_own_outline(mat)
 		mi.material_override = mat
 		var aabb: AABB = glb["aabb"]
 		var s: float = side / maxf(aabb.size.x, aabb.size.z)
@@ -589,14 +658,18 @@ func _place_fortress(id: String, c: Vector2, gate: Vector2) -> void:
 		var mi := MeshInstance3D.new()
 		mi.mesh = Models.building_primitive("fortress", variant)
 		## the primitive's pale stone is drawn a little darker, so Look A's light doesn't blow it out
-		mat = model_mat(Color.WHITE, null, -1.0, false, 0.72 * tint, stone)
+		mat = model_mat(Color.WHITE, null, -1.0, false, 0.86 * tint, stone, float(row.get("grade", BUILDING_GRADE)))
+		_give_own_outline(mat)
 		mi.material_override = mat
 		root.add_child(mi)
+	var pal_mat: ShaderMaterial = null
 	if bool(row.get("palisade", false)):
 		## the Clans' kit variant: a ring of sharpened stakes round the walls, open at the gate
 		var pal := MeshInstance3D.new()
 		pal.mesh = Kit.palisade(side * 0.5 + 7.0)
-		pal.material_override = model_mat(Color.WHITE)
+		pal_mat = model_mat(Color.WHITE)
+		_give_own_outline(pal_mat)
+		pal.material_override = pal_mat
 		root.add_child(pal)
 	## banners on the gate towers, in the owner's colour
 	for gx in [-1.0, 1.0]:
@@ -605,8 +678,51 @@ func _place_fortress(id: String, c: Vector2, gate: Vector2) -> void:
 		root.add_child(bn)
 		banners.append(bn.get_child(1).material_override)
 	fortresses[id] = {"node": root, "gate_dir": gate, "yaw": yaw, "mat": mat, "court": court,
-		"frame": root.transform, "banners": banners, "gate_z": gate_z,
+		"frame": root.transform, "banners": banners, "gate_z": gate_z, "pal_mat": pal_mat,
 		"floor": floor_y} ## the courtyard's floor over the stage
+
+
+func _give_own_outline(m: ShaderMaterial) -> void:
+	var om := ShaderMaterial.new()
+	om.shader = SH_OUTLINE
+	om.set_shader_parameter("screen", view_size)
+	_own_outline[m] = om
+	_outlines.append(om)
+	if m.next_pass != null:
+		m.next_pass = om
+
+
+## The fortress close-up's cutaway (M3a.2): on, the gate side of the fortress at `province_id` (its walls,
+## gatehouse and towers in front of the yard, and a Clans palisade) stops `above` units over the yard's
+## floor, so the camera sees every block of the muster; off, it stands whole again. Its gate banners hide
+## while it is cut.
+func set_cutaway(province_id: String, on: bool, above: float = 2.6) -> void:
+	if not fortresses.has(province_id):
+		return
+	var f: Dictionary = fortresses[province_id]
+	var plane := Vector4.ZERO
+	var y := 0.0
+	if on:
+		var root: Node3D = f["node"]
+		var court: Rect2 = f["court"]
+		var front: Vector3 = root.transform * Vector3(court.get_center().x, 0.0, court.position.y - 1.5)
+		var n: Vector2 = f["gate_dir"]
+		plane = Vector4(n.x, 0.0, n.y, n.x * front.x + n.y * front.z)
+		y = root.position.y + float(f["floor"]) + above
+	for m in [f["mat"], f.get("pal_mat")]:
+		if m == null:
+			continue
+		(m as ShaderMaterial).set_shader_parameter("cut_plane", plane)
+		(m as ShaderMaterial).set_shader_parameter("cut_y", y)
+		var om: ShaderMaterial = _own_outline.get(m)
+		if om != null:
+			om.set_shader_parameter("cut_plane", plane)
+			om.set_shader_parameter("cut_y", y)
+	var root2: Node3D = f["node"]
+	for ch in root2.get_children():
+		if ch is Node3D and not (ch is MeshInstance3D):
+			(ch as Node3D).visible = not on
+	f["cut"] = on
 
 
 static func _first_mesh(n: Node) -> MeshInstance3D:
@@ -651,6 +767,8 @@ func apply_rig() -> void:
 		return
 	if outline_mat != null:
 		outline_mat.set_shader_parameter("screen", view_size)
+		for om in _outlines:
+			(om as ShaderMaterial).set_shader_parameter("screen", view_size)
 	var fov: float = rig["fov"]
 	var d: float = float(rig["span"]) / (2.0 * tan(deg_to_rad(fov) * 0.5))
 	var pitch: float = deg_to_rad(rig["pitch"])

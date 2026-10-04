@@ -15,10 +15,14 @@ extends PanelContainer
 ## Reads the session only and never changes rules state. Builds its children in code.
 ## Art (#10): a recruitment row shows the recruited unit's face at its left (Art), and the panel uses the
 ## style bible's deep indigo.
+## M3a.2: on the 3D board a "Watch this turn again" button by the header (set_watch_again) asks the host
+## to play the turn on the land once more (watch_again_requested); the report opens again after it.
 
 signal province_focus_requested(province_id: String)
 signal battle_report_requested(event: Dictionary)
 signal codex_requested(key: String)
+## M3a.2: "Watch this turn again" was pressed (only shown while the host can replay the turn on the board).
+signal watch_again_requested
 
 const PHASE_TITLES := {
 	"orders": "Orders",
@@ -38,6 +42,7 @@ const NOTE_LINE_HEIGHT := 25
 const NOTE_CHARS_PER_LINE := 105
 
 var header_label: Label
+var watch_again_button: Button  # M3a.2: hidden unless the host can replay the turn (set_watch_again)
 var seats_box: HBoxContainer  # the seats, with the computer tag; only in games with a computer seat
 var empty_label: Label
 var victory_box: PanelContainer
@@ -119,6 +124,11 @@ func battle_buttons() -> Array[Button]:
 ## The "?" buttons, in display order. Each has meta "codex_key" naming its RulesCodex entry.
 func codex_buttons() -> Array[Button]:
 	return _codex_buttons
+
+
+## Shows or hides "Watch this turn again" (the host shows it while the 3D board can replay the turn).
+func set_watch_again(enabled: bool) -> void:
+	watch_again_button.visible = enabled
 
 
 static func phase_title(phase: String) -> String:
@@ -392,10 +402,25 @@ func _build() -> void:
 	box.add_theme_constant_override("separation", 14)
 	add_child(box)
 
+	var head_row := HBoxContainer.new()
+	head_row.name = "HeadRow"
+	head_row.add_theme_constant_override("separation", 16)
+	box.add_child(head_row)
 	header_label = Label.new()
 	header_label.name = "HeaderLabel"
 	header_label.add_theme_font_size_override("font_size", 32)
-	box.add_child(header_label)
+	header_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head_row.add_child(header_label)
+	watch_again_button = Button.new()
+	watch_again_button.name = "WatchAgainButton"
+	watch_again_button.text = "Watch this turn again"
+	watch_again_button.visible = false
+	watch_again_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	watch_again_button.add_theme_font_size_override("font_size", 18)
+	watch_again_button.tooltip_text = TooltipText.plain("Watch this turn again",
+		"Close the report and play this turn on the board once more: the marches, the battles, the captures and the recruits, exactly as the rules decided them. Watching never changes anything. The report opens again when it ends.")
+	watch_again_button.pressed.connect(func(): watch_again_requested.emit())
+	head_row.add_child(watch_again_button)
 
 	seats_box = HBoxContainer.new()
 	seats_box.name = "Seats"
