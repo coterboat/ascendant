@@ -27,9 +27,8 @@ extends PanelContainer
 ## side came out, captures by what became of the defenders, rejected orders by their result, and the moves
 ## of the movement phase grouped by destination. A row naming armies says how they are named in its tooltip.
 ## Without a state (show_report_data's default) the rows are the events' own text, in resolver order.
-## M3c S-3 (#101, design/M3C_SIEGES.md §9.4, §9.5), in a game with sieges: the Sieges phase gets its heading; a
-## recruit's line names its fort and count and a capture's says the fort came with it (FortView.with_extra puts
-## back what the rewritten line left out); the "needs you" lines at the top name the viewer's besieged forts, the
+## M3c S-3 (#101, design/M3C_SIEGES.md §9.4, §9.5), in a game with sieges: the Sieges phase gets its heading (the
+## lines themselves, fort clauses and the reader's turn words included, are TurnReportText's); the "needs you" lines at the top name the viewer's besieged forts, the
 ## forts it besieges and any breach (show_siege_needs_you, FortView.needs_you); and with the game screen's
 ## chronicle set, the first siege, storm, sally and breach of the game each get two plain sentences under their
 ## line, with a codex link, once per player (SiegeChronicle.teach).
@@ -145,8 +144,7 @@ func show_report_data(report: Dictionary, viewer: String = "", rebuild: bool = f
 		if phase != current_phase:
 			current_phase = phase
 			rows_box.add_child(_phase_heading(phase))
-		var text := FortView.with_extra(e, String(row.text)) if sieges else String(row.text)  # M3c: the fort clauses
-		rows_box.add_child(_event_row(e, text, state != null))
+		rows_box.add_child(_event_row(e, String(row.text), state != null))
 		for t in teach:
 			if is_same(t.event, e):
 				rows_box.add_child(_teach_row(t))  # M3c: the first siege, storm, sally or breach of the game

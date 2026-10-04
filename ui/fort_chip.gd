@@ -113,8 +113,9 @@ static func tooltip_for(state: GameState, province_id: String) -> String:
 		else:
 			var dmg := SiegeRules.siege_damage_at(state, province_id)
 			var end := SiegeRules.breach_turn(p.walls, int(dmg.total), state.current_turn + 1)
-			more.append("Besieged by the %s (turn %d of the siege): the walls drop by %d a turn and reach 0 at the end of turn %d, %s." % [
-				who, SiegeRules.turn_of_siege(state, province_id), int(dmg.total), end, FortView.IF_THEY_STAY])
+			more.append("Besieged by the %s (turn %d of the siege): the walls drop by %d a turn and reach 0 %s, %s." % [
+				who, SiegeRules.turn_of_siege(state, province_id), int(dmg.total), TurnReportText.reader_end(end, state.current_turn + 1),
+				FortView.IF_THEY_STAY])
 		var cut := SiegeRules.cut_off_info(state, province_id)
 		if bool(cut.cut_off):
 			more.append("Cut off: nobody can recruit here, and its %d gold a turn goes to the %s." % [p.income, who])
