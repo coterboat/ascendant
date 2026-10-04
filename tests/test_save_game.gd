@@ -342,3 +342,8 @@ func test_a_save_holds_only_the_record_never_reports_or_battle_logs() -> void:
 	for fid in save.computer.get("notes", {}):
 		for line in save.computer.notes[fid]:
 			assert_eq(typeof(line), TYPE_STRING, "the computer's notes are plain lines")
+	# Loading resolves the turns again, so the last turn's battles have their logs back, the same as live.
+	var session: GameSession = g[0]
+	var loaded := SaveGame.restore(save, AutoBattleResolver.new())
+	assert_eq(var_to_str(loaded.session.turn_report().events), var_to_str(session.turn_report().events),
+		"the same last-turn report, battle logs included")
