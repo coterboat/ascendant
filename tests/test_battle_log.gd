@@ -283,16 +283,25 @@ func test_the_biggest_fixture_fits_the_size_budget() -> void:
 
 
 func test_recording_adds_at_most_a_quarter_to_the_biggest_battle() -> void:
-	# Wall-clock timing on a shared machine only ever runs slow, so the fastest run of each is compared,
-	# with up to three tries.
+	# Wall-clock, so the budget is checked only with --perf (test_case.gd's assert_perf); without it the
+	# biggest battle is still fought once each way inside its real turn. The reading is a ratio within one
+	# call (off and on interleaved, alternating which goes first) of the fastest run of each, since timing
+	# on a shared machine only ever runs slow; the best of up to three tries counts.
 	var ratio := INF
-	var t := {}
-	for attempt in 3:
-		t = Scenarios.time_recording("biggest", 5)
-		ratio = minf(ratio, float(t.on_min) / float(t.off_min))
+	var best := {}
+	for attempt in perf_runs(3):
+		var t := Scenarios.time_recording("biggest", perf_runs(5))
+		assert_true(float(t.off_min) > 0.0 and float(t.on_min) > 0.0, "the battle was fought with recording off and on")
+		if float(t.off_min) <= 0.0:
+			return
+		var r := float(t.on_min) / float(t.off_min)
+		if r < ratio:
+			ratio = r
+			best = t
 		if ratio <= TIME_BUDGET:
 			break
-	assert_true(ratio <= TIME_BUDGET, "recording adds %.0f%% (off %.1f ms, on %.1f ms)" % [100.0 * (ratio - 1.0), t.off_min, t.on_min])
+	assert_perf(ratio <= TIME_BUDGET, "recording adds %.0f%% (off %.1f ms, on %.1f ms; budget +%.0f%%)" % [100.0 * (ratio - 1.0),
+		best.off_min, best.on_min, 100.0 * (TIME_BUDGET - 1.0)])
 
 
 func test_a_lowered_cap_truncates_the_log_and_changes_nothing() -> void:

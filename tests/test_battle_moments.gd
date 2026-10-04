@@ -5,7 +5,8 @@ extends "res://tests/test_case.gd"
 ## "none" case of the turning point; every round has a caption whose numbers are the log's or the report's;
 ## the explanations' lines add up to the log's own chance, damage, morale and break %; the break threshold
 ## follows the resolver's rule; no text carries a raw id and every one links a codex entry that exists; a
-## log cut short degrades gracefully; the same log gives the same words; and the biggest battle is quick.
+## log cut short degrades gracefully; the same log gives the same words; and the biggest battle is quick
+## (its time budgets are checked with --perf only).
 
 const Scenarios := preload("res://tools/battle_log/scenarios.gd")
 const Dump := preload("res://tools/battle_log/dump.gd")
@@ -657,22 +658,39 @@ func test_the_dump_tool_prints_captions_and_moments() -> void:
 
 
 func test_moments_and_captions_for_the_biggest_battle_fit_the_budget() -> void:
+	# The budgets are wall-clock, so they are checked only with --perf (test_case.gd's assert_perf). The
+	# work runs either way and its results are checked; the time is the fastest of five runs after a warm-up.
 	var fx := _fixture("biggest")
-	var best := INF
-	for run in 3:
-		var t0 := Time.get_ticks_usec()
-		BattleMoments.key_moments(fx.log)
-		BattleMoments.missing(fx.log)
-		BattleCaptions.all_rounds(fx.log, fx.report)
-		best = minf(best, (Time.get_ticks_usec() - t0) / 1000.0)
-	assert_true(best <= MOMENTS_BUDGET_MS, "moments and captions for 277 fighters took %.1f ms (budget %.0f ms)" % [best, MOMENTS_BUDGET_MS])
+	var built := {}
+	var build := func() -> void:
+		built["moments"] = BattleMoments.key_moments(fx.log)
+		built["missing"] = BattleMoments.missing(fx.log)
+		built["captions"] = BattleCaptions.all_rounds(fx.log, fx.report)
+	var ms := best_ms(build, 5)
+	var got := {}
+	for m in built.moments:
+		if not got.has(m.kind):
+			got[m.kind] = []
+		got[m.kind].append(int(m.round))
+	assert_eq(got, PINNED.biggest, "the biggest battle's key moments")
+	for kind in BattleMoments.KINDS:
+		assert_eq(built.missing.has(kind), not PINNED.biggest.has(kind), "%s is missing exactly when it has no moment" % kind)
+	assert_eq(built.captions.size(), int(fx.report.rounds_fought), "a caption for every round")
+	assert_perf(ms <= MOMENTS_BUDGET_MS, "moments and captions for 277 fighters took %.1f ms (budget %.0f ms)" % [ms, MOMENTS_BUDGET_MS])
+
 	var tl := BattleTimeline.build(fx.log)
 	var i := tl.round_start(3) + 50
 	var state := tl.state_at(i)
-	var hover := INF
-	for run in 3:
-		var t0 := Time.get_ticks_usec()
-		for fid in range(0, fx.log.fighters.size(), 10):
-			BattleExplain.explain_fighter(tl, fid, i, state)
-		hover = minf(hover, (Time.get_ticks_usec() - t0) / 1000.0 / ceili(fx.log.fighters.size() / 10.0))
-	assert_true(hover <= HOVER_BUDGET_MS, "one hover explanation took %.2f ms (budget %.1f ms)" % [hover, HOVER_BUDGET_MS])
+	var fids := range(0, fx.log.fighters.size(), 10)
+	var shown := []
+	var hover_all := func() -> void:
+		shown.clear()
+		for fid in fids:
+			shown.append(BattleExplain.explain_fighter(tl, fid, i, state))
+	var hover := best_ms(hover_all, 5) / fids.size()
+	assert_eq(shown.size(), fids.size(), "every hovered fighter was explained")
+	for k in mini(shown.size(), fids.size()):
+		var fid: int = fids[k]
+		assert_eq(int(shown[k].hp_value), int(state.fighters[fid].hp), "fighter %d: the hover shows its hp" % fid)
+		assert_false((shown[k].lines as Array).is_empty(), "fighter %d: the hover has lines" % fid)
+	assert_perf(hover <= HOVER_BUDGET_MS, "one hover explanation took %.2f ms (budget %.1f ms)" % [hover, HOVER_BUDGET_MS])
