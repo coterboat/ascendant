@@ -190,6 +190,61 @@ func setup_sieges(errors = null) -> bool:
 	return validate(errors)
 
 
+## The paths game (with_paths) plus magic (M5-5, design/M5_MAGIC_FOG.md §1.3): setup_magic() puts each faction's
+## mage on its roster. Magic needs paths, and paths need rulers. A build may hold a mandate of magic (Tithe of Blood,
+## MandateData.MAGIC_MANDATES): magic is only on once paths are, so such a build is applied after setup_magic.
+## Returns null when a build is illegal, with the reasons in `errors`, as with_paths does. For magic with forts and
+## sieges, call setup_sieges() on the result.
+static func with_magic(map_seed: int = 12345, builds: Dictionary = {}, errors = null) -> GameState:
+	var plain := {}  # each build without its mandates of magic, which need magic to be on first
+	var later := {}  # the builds that hold one, applied whole once magic is on
+	for fid in builds:
+		var b := RulerRules.normalize_build(builds[fid])
+		var kept: Array = b.mandates.filter(func(m): return RulerRules.mandate_data(String(m)).get("magic", false) != true)
+		if kept.size() == b.mandates.size():
+			plain[fid] = builds[fid]
+		else:
+			plain[fid] = {"ruler": b.ruler, "mandates": kept}
+			later[fid] = builds[fid]
+	var state := with_paths(map_seed, plain, errors)
+	if state == null or not state.setup_magic(errors):
+		return null
+	var problems := []
+	for fid in later:
+		problems.append_array(RulerRules.apply_build(state, String(fid), later[fid]))
+	for msg in problems:
+		_report(errors, msg)
+	if not problems.is_empty() or not state.validate(errors):
+		return null
+	return state
+
+
+## Turns magic on before turn 1 for a game with paths (setup_paths first, §1.3): `magic` turns true and every
+## faction's mage joins its roster (recruitable once it knows a spell, MagicRules.knows_a_spell), with the default
+## spellbook, no enchantments and no Bastion forts. Returns false, with plain reasons in `errors`, when it is too
+## late or the game has no paths.
+func setup_magic(errors = null) -> bool:
+	var problems := []
+	if current_turn != 0:
+		problems.append("Magic is chosen before the game starts.")
+	if not paths:
+		problems.append("Magic needs paths (and paths need rulers). Set up paths first.")
+	for msg in problems:
+		_report(errors, msg)
+	if not problems.is_empty():
+		return false
+	magic = true
+	enchantments = []
+	for f in factions:
+		f.spellbook = {}
+		f.enchant_counter = 0
+		f.bastions = []
+		var mage := MagicRules.mage_type(f.id)
+		if mage != null and TurnResolver.recruitable_type(f, mage.id) == null:
+			f.unit_types.append(mage)
+	return validate(errors)
+
+
 ## Hands out `faction_id`'s next army id, e.g. "kingdom-3": its own count (next_army_ids), skipping ids
 ## already in use.
 func new_army_id(faction_id: String) -> String:
@@ -466,6 +521,11 @@ static func from_dict(data, errors = null) -> GameState:
 			return null
 		RulerRules.refresh_ruler_type(f)
 		all_unit_types[f.ruler_unit_type.id] = f.ruler_unit_type
+	if state.magic:  # M5-5: summoned creatures are never on a roster, so their types come from MagicData
+		var summons := MagicRules.summon_types()
+		for sid in summons:
+			if not all_unit_types.has(sid):
+				all_unit_types[sid] = summons[sid]
 	if not RulerRules.validate_factions(state, errors):
 		return null
 

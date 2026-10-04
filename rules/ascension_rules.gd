@@ -83,7 +83,9 @@ static func node_ids(faction_id: String) -> Array:
 	return out
 
 
-## The node with this id, with its "faction" added, or {}.
+## The node with this id, with its "faction" added, or {}. M5-5: the arcana's nodes (MagicData.ARCANA, each
+## faction's magic research) are found here too, through this lookup; their kinds ("spell", "mastery") are their own,
+## so is_ordinary, requires_any, node_ids and path_complete still count path nodes only.
 static func node_data(node_id: String) -> Dictionary:
 	if _nodes_by_id.is_empty():
 		for fid in PathData.PATHS:
@@ -91,7 +93,23 @@ static func node_data(node_id: String) -> Dictionary:
 				var copy: Dictionary = n.duplicate(true)
 				copy["faction"] = fid
 				_nodes_by_id[n.id] = copy
+		for fid in MagicData.ARCANA:
+			for n in MagicData.ARCANA[fid]:
+				var copy: Dictionary = n.duplicate(true)
+				copy["faction"] = fid
+				_nodes_by_id[n.id] = copy
 	return _nodes_by_id.get(node_id, {})
+
+
+## True for an arcana node (a spell or a mastery node, M5-5), false for a path node.
+static func is_arcana(node_id: String) -> bool:
+	var kind := node_kind(node_id)
+	return kind == MagicData.SPELL or kind == MagicData.MASTERY_KIND
+
+
+## The faction's arcana node ids (§4 of design/M5_MAGIC_FOG.md), in the Magic tab's order.
+static func arcana_ids(faction_id: String) -> Array:
+	return MagicRules.arcana_ids(faction_id)
 
 
 static func node_name(node_id: String) -> String:
@@ -106,8 +124,11 @@ static func node_kind(node_id: String) -> String:
 	return String(node_data(node_id).get("kind", ""))
 
 
-## "tier I", "tier II", "Oath" or "transformation".
+## "tier I", "tier II", "Oath" or "transformation"; for the arcana "tier I spell", "tier II ritual", "mastery" or
+## "tier III greater working".
 static func kind_name(node_id: String) -> String:
+	if is_arcana(node_id):
+		return String(MagicData.KIND_NAMES.get(String(node_data(node_id).get("tier", "")), ""))
 	return String(PathData.KIND_NAMES.get(node_kind(node_id), ""))
 
 
@@ -206,6 +227,20 @@ static func research_target(state: GameState, faction_id: String) -> String:
 	return f.research_target if f else ""
 
 
+## M5-5: true when nothing at all is left to research: the path is complete and, in a game with magic, every arcana
+## node is researched or closed too. Research is then sold for gold, in magic games only (MagicRules.research_sold).
+static func all_complete(state: GameState, faction_id: String) -> bool:
+	if not path_complete(state, faction_id):
+		return false
+	if not MagicRules.has_magic(state):
+		return true
+	for nid in arcana_ids(faction_id):
+		var st := String(node_state(state, faction_id, nid).state)
+		if st != RESEARCHED and st != CLOSED:
+			return false
+	return true
+
+
 ## True when nothing is left to research: every node is researched or closed (§2.2: "Path complete").
 static func path_complete(state: GameState, faction_id: String) -> bool:
 	if not has_paths(state) or path_data(faction_id).is_empty():
@@ -278,6 +313,8 @@ static func node_state(state: GameState, faction_id: String, node_id: String) ->
 	var n := node_data(node_id)
 	if n.is_empty():
 		return _st(CLOSED, "unknown_node", "'%s' is not something to research in this game." % node_id)
+	if is_arcana(node_id) and not MagicRules.has_magic(state):  # M5-5: the arcana are magic's research
+		return _st(CLOSED, "no_magic", "%s is magic, and this game is played without magic. Magic is a preview: tick Magic (M5 preview) when you set up a new game." % node_name(node_id))
 	if String(n.faction) != faction_id:
 		return _st(CLOSED, "foreign_node", "%s is on the path of the %s, not of the %s." % [_cap(node_ref(node_id)),
 			_faction_name(state, String(n.faction)), f.faction_name])
@@ -288,6 +325,11 @@ static func node_state(state: GameState, faction_id: String, node_id: String) ->
 	var sworn := f.path_branch
 	if not String(n.branch).is_empty() and not sworn.is_empty() and String(n.branch) != sworn:
 		return _st(CLOSED, "closed", closed_reason(state, faction_id))
+	var opener := String(n.get("oath_branch", ""))  # M5-5: only its school's aligned Oath opens a greater working
+	if not opener.is_empty() and not sworn.is_empty() and opener != sworn:
+		return _st(CLOSED, "closed", "Closed: you swore %s on turn %d, and only %s opens %s, the greater working of %s." % [
+			node_ref(String(branch_data(sworn).get("oath", ""))), researched_turn(state, faction_id, String(branch_data(sworn).get("oath", ""))),
+			node_ref(String(branch_data(opener).get("oath", ""))), node_name(node_id), MagicRules.school_name(String(n.get("school", "")))])
 	var missing := []
 	for r in n.requires:
 		if not has_node(state, faction_id, String(r)):
@@ -397,6 +439,7 @@ static func research_step(state: GameState, faction_id: String, turn: int) -> Di
 		"pool_before": before, "gained": int(rate.rate), "pool_after": f.research_points, "target_before": target,
 		"done": "", "cost": 0, "sworn": "", "target_after": target, "applied": {}}
 	if target.is_empty() or not check_research(state, faction_id, target).is_empty():
+		_sell_research(state, f, out)  # M5-5: with nothing left to research, research becomes gold
 		return out
 	var cost := node_cost(target)
 	if f.research_points < cost:
@@ -411,7 +454,24 @@ static func research_step(state: GameState, faction_id: String, turn: int) -> Di
 		f.research_target = String(branch_data(out.sworn).get("transformation", ""))
 	out.pool_after = f.research_points
 	out.target_after = f.research_target
+	_sell_research(state, f, out)
 	return out
+
+
+## M5-5 (design/M5_MAGIC_FOG.md §4): once nothing is left to research, in a game with magic, the pool is sold at
+## MagicData.RESEARCH_SOLD research a gold, rounded down, the spare points carried. Adds "sold" (MagicRules.
+## research_sold, plus "pool") to the research step's result when anything was sold.
+static func _sell_research(state: GameState, f: Faction, out: Dictionary) -> void:
+	if not MagicRules.has_magic(state) or not all_complete(state, f.id):
+		return
+	var sold := MagicRules.research_sold(f.research_points)
+	if int(sold.gold) <= 0:
+		return
+	sold["pool"] = f.research_points
+	f.research_points = int(sold.left)
+	f.gold += int(sold.gold)
+	out["sold"] = sold
+	out.pool_after = f.research_points
 
 
 ## Records `node_id` as researched at the end of `turn` and starts its effects (§3.4): an Oath swears its
@@ -491,7 +551,7 @@ static func with_nodes(state: GameState, faction_id: String, ids: Array, turn: i
 ## Empty for commanders, rulers and games without paths. RulerRules.unit_stats adds these.
 static func unit_parts(state: GameState, faction_id: String, ut: UnitType) -> Dictionary:
 	var out := {"hp": [], "attack": [], "defense": [], "morale": []}
-	if ut == null or ut.is_commander or ut.is_ruler or not has_paths(state):
+	if ut == null or ut.is_commander or ut.is_ruler or ut.summoned or not has_paths(state):  # M5-5: never summoned creatures
 		return out
 	for nid in researched(state, faction_id):
 		var bonus: Dictionary = node_effects(nid).get("unit", {}).get(ut.id, {})
@@ -849,7 +909,7 @@ static func blood_levy_divisor(state: GameState, faction_id: String) -> int:
 ## forecast both call this.
 static func arrival_hp(state: GameState, faction_id: String, ut: UnitType, max_hp: int) -> int:
 	var n := blood_levy_divisor(state, faction_id)
-	if n <= 0 or ut == null or ut.is_commander or ut.is_ruler:
+	if n <= 0 or ut == null or ut.is_commander or ut.is_ruler or ut.summoned:  # M5-5: summoned creatures arrive whole
 		return max_hp
 	return maxi(1, max_hp - floori(float(max_hp) / n))
 

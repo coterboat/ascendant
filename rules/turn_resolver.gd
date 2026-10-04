@@ -263,6 +263,8 @@ static func check_recruit(state: GameState, faction_id: String, order, gold_avai
 				var other_ut := recruitable_type(other, order.unit_type_id, state)
 				return _reject("not_in_roster", "%s belong to %s. %s can only recruit its own units." % [other_ut.name, other.faction_name, faction.faction_name])
 		return _reject("unknown_unit_type", "That is not a unit type in this game. Recruit from your faction's roster.")
+	if MagicRules.is_mage(ut) and not MagicRules.knows_a_spell(state, faction_id):  # M5-5: the mage gate (§3.2)
+		return _reject("mage_needs_spell", MagicRules.mage_gate_reason(state, faction_id, ut))
 	var at := recruit_at(state, faction, order)
 	if at == RecruitOrder.AT_RULER:
 		var start := start_state if start_state != null else state
@@ -396,10 +398,10 @@ static func recruit_cost(state: GameState, faction_id: String, unit_type_id: Str
 ## are counted per fort against its limit (results add "fort", "count", "limit"); and a siege engine needs an
 ## army with a fighter at its fort to carry it, one standing there now or one a recruit earlier in the list
 ## forms, or it is refused at no cost.
-static func price_recruits(state: GameState, faction_id: String, orders: Array, start_state: GameState = null) -> Dictionary:
+static func price_recruits(state: GameState, faction_id: String, orders: Array, start_state: GameState = null, reserved: int = 0) -> Dictionary:
 	var start := start_state if start_state != null else state
 	var faction := state.find_faction(faction_id)
-	var gold_before := faction.gold if faction else 0
+	var gold_before := (faction.gold if faction else 0) - reserved  # M5-5: gold queued rituals reserve comes off first
 	var gold := gold_before
 	var with_ruler := 0
 	var at_counts := {}  # M3c: fort province id -> recruits ordered there
@@ -590,6 +592,7 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 			continue
 		var ordered := {}
 		var research_given := ""  # M4: the node of this faction's research order this turn, if any
+		var spellbook_given := false  # M5-5: whether this faction's spellbook order passed this turn
 		var fortify_given := 0  # M3c: Fortify orders that passed this turn
 		var valid_moves := []  # M3c: this faction's valid move orders, for its siege orders
 		var siege_list := []  # M3c: its storm and sally orders, checked after every move
@@ -621,6 +624,20 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 				siege_list.append(order)  # M3c: checked after every move of this faction, below
 			elif order is SacrificeOrder:
 				continue  # resolved in the sacrifice phase, before these checks (M2-6)
+			elif order is SpellbookOrder:
+				# M5-5: the battle spellbook applies in the orders phase, so this turn's battles use it. One per turn.
+				var check := MagicRules.check_spellbook(s, fid, order)
+				if check.is_empty() and spellbook_given:
+					check = _reject("second_spellbook", "You already set your spellbook this turn. Only one spellbook order counts each turn: setting it again replaces it before you end the turn.")
+				if not check.is_empty():
+					events.append(_rejected_event(s, fid, order, check, "orders"))
+					continue
+				spellbook_given = true
+				MagicRules.set_spellbook(s, fid, order)
+			elif order is CastOrder:
+				# M5-5: casts are checked and queued (OrderBook), but the rituals phase that resolves them comes with M5-6.
+				events.append(_rejected_event(s, fid, order, _reject("rituals_not_ready",
+					"Rituals don't take effect in this version of the game yet, so nothing was cast and nothing was paid."), "orders"))
 			elif order is ResearchOrder:
 				# M4: sets the research target (silently: the target is private). One per turn.
 				var check := _check_research_order(s, fid, order, research_given)
@@ -1596,6 +1613,8 @@ static func _check_research_order(s: GameState, fid: String, order: ResearchOrde
 ## Then the transformation's province rules (M4-2, §2.2 step 4, AscensionRules.province_rules_step):
 ##   wild_spread      research   the Wild Spreads turned a province to forest. Codex "wild_spreads".
 ##   path_healed      research   Hallowed Land or the Forges healed wounded fighters. One per faction.
+##   research_sold    research   (M5-5, magic games) nothing was left to research, so the pool was sold for gold
+##                               (MagicRules.research_sold): 2 research a gold, the spare points carried.
 static func _research_phase(s: GameState, events: Array) -> void:
 	if not AscensionRules.has_paths(s):
 		return
@@ -1607,6 +1626,12 @@ static func _research_phase(s: GameState, events: Array) -> void:
 			AscensionRules.gained_text(s, fid, step), "research_points"))
 		if not String(step.done).is_empty():
 			_research_done_event(s, fid, step, turn, events)
+		if step.has("sold"):
+			# M5-5 (design/M5_MAGIC_FOG.md §4): nothing left to research, so the pool was sold for gold. Its own event.
+			var sold: Dictionary = step.sold
+			events.append(_event("research_sold", "research", [], [fid], [], "research_sold",
+				{"research": int(sold.research), "gold": int(sold.gold), "carried": int(sold.left), "pool": int(sold.pool)},
+				MagicRules.sold_text(sold), "research_sold"))
 		_province_rules(s, fid, events)
 
 
@@ -1731,6 +1756,22 @@ static func _rejected_event(s: GameState, fid: String, order, check: Dictionary,
 				provinces = [army.location]
 			armies = [order.army_id]
 			codex = "sally"
+	elif order is SpellbookOrder:
+		desc = "set the battle spellbook"  # M5-5
+		order_dict = order.to_dict()
+		codex = "spellbook"
+	elif order is CastOrder:
+		# M5-5: "cast Bloodrot on Crownkeep from the Clans' 2nd".
+		var army := s.find_army(order.army_id)
+		desc = "cast %s" % (MagicRules.spell_name(order.ritual) if not MagicRules.spell_data(order.ritual).is_empty() else "'%s'" % order.ritual)
+		if s.find_province(order.target) != null:
+			desc += " on %s" % _province_name(s, order.target)
+			provinces = [order.target]
+		desc += " from %s" % ("the " + army_label(s, army) if army else "an army that is not on the map")
+		if army:
+			armies = [order.army_id]
+		order_dict = order.to_dict()
+		codex = "cast_order"
 	elif order is SacrificeOrder:
 		# M2-6: name the mandate (or quote an unknown id) and put the event where the ruler stands.
 		var mandate := RulerRules.mandate_name(order.mandate_id) if not RulerRules.mandate_data(order.mandate_id).is_empty() \
