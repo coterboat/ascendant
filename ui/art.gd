@@ -10,6 +10,8 @@ class_name Art
 ##   variant_portrait(unit_type_id, faction_id, transformation_id)   a transformation's look of a unit it
 ##                                              changes (M4 §12.1: Sunspears for spearmen in the Celestial Host)
 ##                                              assets/portraits/<faction>/<unit type id>__<transformation id>.webp
+##   unit_portrait(state, faction_id, unit_type_id)   the portrait a faction's unit wears in `state`: its
+##                                              transformation's look once researched, else portrait()
 ##   ruler_portrait(ruler_id)                   assets/portraits/rulers/<ruler id>.webp (data/rulers.gd ids;
 ##                                              they land in their own PR, the placeholder card shows until then)
 ##   banner(faction_id)                         assets/banners/<faction>.webp (256x384, hang point top centre)
@@ -93,6 +95,20 @@ static func variant_portrait(unit_type_id: String, faction_id: String, transform
 	if fid.is_empty() or unit_type_id.is_empty() or transformation_id.is_empty():
 		return null
 	return texture(VARIANT_PORTRAIT_PATH % [fid, unit_type_id, transformation_id])
+
+
+## The portrait `faction_id`'s unit wears in `state`: once the faction has researched a transformation that
+## changes the unit (the Celestial Host makes its Spearmen Sunspears), that look; else its own portrait.
+static func unit_portrait(state: GameState, faction_id: String, unit_type_id: String) -> Texture2D:
+	var fid := faction_id if not faction_id.is_empty() else unit_faction(unit_type_id)
+	for side in PathData.BRANCHES:
+		var trans := String(PathData.BRANCHES[side].get("transformation", ""))
+		if (AscensionRules.node_effects(trans).get("rename", {}) as Dictionary).has(unit_type_id) \
+				and AscensionRules.has_node(state, fid, trans):
+			var look := variant_portrait(unit_type_id, fid, trans)
+			if look != null:
+				return look
+	return portrait(unit_type_id, fid)
 
 
 static func ruler_portrait(ruler_id: String) -> Texture2D:

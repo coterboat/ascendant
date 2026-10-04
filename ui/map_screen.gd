@@ -923,7 +923,7 @@ func _style_unit_button(b: Button, unit_type_id: String, faction_id: String) -> 
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(0, ROW_PORTRAIT.y + 10)
-	b.icon = Art.face(Art.portrait(unit_type_id, faction_id))
+	b.icon = Art.face(Art.unit_portrait(state, faction_id, unit_type_id))
 	b.expand_icon = false
 	b.add_theme_constant_override("icon_max_width", int(ROW_PORTRAIT.x))
 	b.add_theme_constant_override("h_separation", 12)
@@ -1148,6 +1148,7 @@ func _unit_row(parent: Control, unit_type_id: String, faction_id: String, count:
 	row.add_theme_constant_override("separation", 10)
 	parent.add_child(row)
 	var card := Art.portrait_card(unit_type_id, ROW_PORTRAIT, faction_id, Art.Crop.FACE)
+	card.texture = Art.unit_portrait(state, faction_id, unit_type_id)
 	card.count = count
 	row.add_child(card)
 	return row
