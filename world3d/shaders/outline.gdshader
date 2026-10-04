@@ -8,7 +8,7 @@ uniform float width_px = 2.0;
 uniform float far_px = 1.0;
 uniform float far_dist = 900.0;
 uniform vec2 screen = vec2(1600.0, 900.0); // world_view.gd keeps it at the viewport's size
-// M3a.2: the fortress close-up's cutaway (model_common.gdshaderinc), on the fortress's own outline
+// M3a.2: the fortress close-up's see-through walls (model_common.gdshaderinc): no ink on the ghost part
 uniform vec4 cut_plane = vec4(0.0);
 uniform float cut_y = 0.0;
 varying vec3 v_world;

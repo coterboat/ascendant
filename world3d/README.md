@@ -58,6 +58,69 @@ resolver's events.
   the board is 3D) bakes the land, plans its trees and cottages (`WorldView.plan_of`) and loads the model
   table's meshes on a worker; the world's nodes are built in one go when the game screen shows it.
 
+## The armies (M3a.2)
+
+The goal: watch each turn resolve on the land and predict the next battle from what mustered.
+
+- **Pose swaps** (`models.gd`, `choreo.gd`): a figure stands in one of four poses, each its own GLB when the
+  row has one: `ready` (standing, holding, re-forming), `march` (filing out, on the road, marching in,
+  gathered), `strike` (a clash's blow), `fallen` (the dead). Procedural motion goes on top: a march hops
+  and sways, a strike lunges a quarter of the gap and back, a struck figure recoils, the dead topple
+  about the feet and then lie in the fallen pose, winners cheer. A pose with no model shares the ready
+  mesh. Each army draws **one MultiMesh per unit type and distinct pose mesh**, compacted every sync
+  (`visible_instance_count`), so a pose draws only its own figures. Variety comes from hashes of ids.
+- **Muster yards** (`muster.gd`, pure): a capital's yard is a grid of block slots sized from its
+  courtyard (3 across, 2 deep: 6 blocks of up to 8 at drill spacing; a big or large block takes the next
+  slots). An army takes its slots in id order, whole: its **colour party** (ruler or commander, the
+  standard bearer, the musician) first, then its blocks by battle rank. Only the owner's armies use the
+  yard. Every army the yard can't hold musters in the **war camp** outside the gate, beside the road: a
+  tent behind every block (the row `camp.<faction>`'s model, else a primitive tent), a fire and its smoke
+  for every army there (`shaders/smoke.gdshader`, billboards rising by TIME and instance hash).
+- **Planning cues, the viewing player's own orders only** (`Board3D.plan_of_orders`, `Armies.show_plan`):
+  each queued recruit stands as a ghost in the slot it will take (the next place in its army's block, or
+  a slot of its own, or the camp when the yard is full); an army ordered to march **gathers in a column at
+  its gate** (or its stage's edge), banner at the head, facing its road, with a gilt arrow on its plate;
+  the rest of the yard closes ranks. Another seat's orders never reach the board (tested: seat 2's board
+  is identical whatever seat 1 queued).
+- **The fortress close-up** (`Board3D.enter_closeup`): View fortress in the recruit panel (or a
+  double-click on a fortress) swoops the camera into the yard, turned to look in through the gate, with
+  a compass. The gate side's walls turn into a sparse dither and cast no shadow (`model_common`
+  `cut_plane`), so every block reads; the yard gets a little more ambient light. The recruit panel stays
+  2D and each queued recruit appears at once. Esc, zooming out, F, C, selecting another province or a
+  playback leaves it.
+- **Turn playback in the report's phases** (`armies.play`): **Movement** (columns file out of the gate
+  and march; armies bound for a battle stop at its front), **Battles** (in the report's order: defenders
+  step out to their line, before their gate at a fortress; a side's armies stand shoulder to shoulder; the
+  lines trade alternating volleys of strike poses and lunges, the struck recoil, the dead topple and lie,
+  the winners cheer; a border battle's winners then march on), **Captures** (the new owner's colour
+  sweeps out from the arriving column with a gilt front, `ground_common` `sweep_a`), **Recruits**
+  (recruits march in through the gate, or appear at the edge of the formation elsewhere, and everyone
+  settles). Each phase shows a caption with what is happening and pips on the playback bar; empty phases
+  are skipped. The camera leans in on each battle.
+- **Sounds at their beats** (`Board3D._on_beat`, `Choreo.sound_for`): march, battle_clash, strikes
+  alternating battle_hit and battle_clash by the beat's index, unit_fall, the capture fanfare
+  (capital_captured) and recruit, through `GameAudio.sfx`. Never an RNG; sound never changes anything.
+- **Watch this turn again**: the turn report's button replays the turn on the board, then reopens the
+  report. The game screen keeps the turn's start with its report, so every hotseat seat sees the
+  playback behind its own handoff.
+- **The world from the model table**: forts (the nearest capital's faction's `fort.<faction>`, beside the
+  stage, roofs in the owner's colour), a village per province (`village_<terrain>`, the variant by a hash
+  of the province id) and landmarks (a mill on the plains, a watchtower in the hills, standing stones in
+  the woods, on two provinces in three by hash), the trees and rocks as models close in (normalised to
+  their primitives' size, in 200-unit chunks the camera culls; the primitives stay the far LOD and the
+  quality ladder's fallback from rung 2), the standard bearer and musician per faction (`models`,
+  `model_height`).
+- **Readability**: a man-sized figure never stands under 26 px on the board (piece scale grows as the
+  camera rises, `Board3D.MIN_FIG_PX`); figures get a higher shadow floor and a soft rim (`fig_lift` in
+  `model_cel`), so a face under a brim stays readable; pale near-neutral stone on every building is
+  pulled to a warm grey of compressed lightness (`stone_grade`), so Look A's sun neither blows it out
+  nor tints it pink. Figures cast shadows only from the default zoom in.
+- **Tests**: `tests/test_armies3d.gd` (poses and motion, pose models and their MultiMeshes, the muster
+  layout's determinism, fit and overflow, ghosts' slots, the board's camps, gather cues, hotseat privacy,
+  the close-up, phases, captions and beats, the battle exchange, sound never changing anything, capture
+  sweeps, every seat's playback and Watch again, no random numbers in `world3d/`, the playback's CPU),
+  and `test_board3d.gd`'s playback = state over three games with a plan standing before each turn.
+
 ### Camera and keys
 
 Drag (or the middle button) pans with the ground under the hand; the wheel (or + and -) zooms to the
@@ -87,6 +150,17 @@ fails on a unit type without a row or a row whose model is missing).
           "ruler": false                   // a ruler: the gilt ring round its base
         }
       },
+          // M3a.2, optional:
+          "poses": {"ready": "res://...", "march": "...", "strike": "...", "fallen": "..."},
+                                           // a GLB per pose (or {"model": path}); a pose without one draws the
+                                           // ready model; rulers may add "cheer" (shown as ready for now)
+          "pose_size": {"<pose>": {"axis": "height" | "length" | "width", "men": 1.1}},
+                                           // each pose's own scale (a lunge or a lying figure keeps the ready
+                                           // pose's body size); without it: the row's height (fallen: its length)
+          "models": {"<faction id>": "res://..."}, "model_height": {"<faction id>": 1.2}
+                                           // army extras (bearer, musician): the model per owner's faction
+        }
+      },
       "buildings": {
         "<kind>[.<faction id>]": {         // "fortress.beasts" is the Clans' kit variant of "fortress"
           "model": "res://assets/models/probe/crownkeep.glb", "fallback": "fortress",   // fortress, fort, cottage, broadleaf, pine, rock
@@ -95,13 +169,22 @@ fails on a unit type without a row or a row whose model is missing).
           "tint": 0.86,                    // whole-model brightness (keeps pale stone from blowing out in Look A)
           "stone": "#C98F5E",              // multiplies the texture (not the keyed roofs): a kit variant's stone
           "palisade": true,                // a ring of stakes round the walls (the Clans' variant)
-          "court": [x, z, w, d], "gate_z": [inner, outer], "banner_at": [x, height], "floor": 0.25   // the yard, in the model's frame
+          "court": [x, z, w, d], "gate_z": [inner, outer], "banner_at": [x, height], "floor": 0.25,  // the yard, in the model's frame
+          // M3a.2, optional:
+          "muster": {"slots": 6},          // a fortress yard's block slots (default 6, or what the court fits)
+          "grade": 1.0,                    // pale stone pulled to a warm grey (0 off; buildings default 1)
+          "variants": ["res://..._a.glb", "res://..._b.glb"]   // interchangeable models (villages): one per
+                                           // province by a hash of its id
         }
       }
     }
 
-- **Lookup order for a figure:** the row's `model` if the file exists; else the bible's path convention
-  `assets/models/<faction>/<unit>/<unit>_ready.glb` (STYLE_BIBLE.md 8.10); else the primitive `fallback`.
+- **Lookup order for a figure:** the row's `model` (or `poses.ready`) if the file exists; else the bible's
+  path convention `assets/models/<faction>/<unit>/<unit>_<pose>.glb` (STYLE_BIBLE.md 8.10); else the
+  primitive `fallback`. An extra (bearer, musician) uses `models[<owner's faction>]` first.
+- **Kinds the board reads (M3a.2):** `fortress[.<faction>]`, `fort.<faction>`, `camp.<faction>`,
+  `village_<plains|forest|hills>` (with `variants`), `mill`, `watchtower`, `standing_stones`,
+  `tree_broadleaf`, `tree_pine`, `rock`. A missing model always falls back to the primitive.
   A unit type with no row stands as Kit's generic figure.
 - A model is normalised from its AABB (feet at y = 0, facing -Z, `height` men tall), keeps only its base
   colour texture (drawn with the game's cel or lit material and the ink outline), and gets a base in the

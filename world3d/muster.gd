@@ -67,7 +67,8 @@ static func army_slots(d: Dictionary) -> Array:
 	var party: Array = []
 	for ld in d.get("leaders", []):
 		party.append({"type": ld["type"], "role": ld["role"], "sp": ld["sp"]})
-	party.append({"type": "bearer", "role": "bearer", "sp": Vector2(4.0, 4.0)})
+	for ex in d.get("extras", ["bearer"]):
+		party.append({"type": ex, "role": ex, "sp": Vector2(4.0, 4.0)})
 	out.append({"kind": PARTY, "leaders": party})
 	for bl in d.get("blocks", []):
 		var fit := slot_fit(bl["sp"])

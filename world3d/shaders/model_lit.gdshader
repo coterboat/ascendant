@@ -10,11 +10,17 @@ void vertex() {
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
+uniform float fig_lift = 0.0;
+
 void fragment() {
-	if (cut_away()) {
+	if (cut_away() && (IN_SHADOW_PASS || ghost_drop(FRAGCOORD.xy))) {
 		discard;
 	}
 	ALBEDO = model_albedo(COLOR, UV);
+	if (fig_lift > 0.0) {
+		float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.5);
+		EMISSION = ALBEDO * (0.06 + rim * 0.25) * fig_lift;
+	}
 	ROUGHNESS = 0.78;
 	SPECULAR = 0.35;
 	METALLIC = 0.0;

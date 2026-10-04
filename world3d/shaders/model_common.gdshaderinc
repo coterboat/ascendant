@@ -21,14 +21,21 @@ uniform float stone_grade = 0.0;
 uniform vec3 stone_grey = vec3(1.10, 1.0, 0.82); // the warm grey's balance (luminance 1)
 uniform float grade_knee = 0.10; // linear luminance where the pull starts
 uniform float grade_keep = 0.34; // how much of the luminance above the knee stays
-// M3a.2: the fortress close-up's cutaway. Fragments on the camera's side of the plane (xyz its normal,
-// w its offset) and above cut_y are not drawn, so the gate side's walls never hide the muster yard.
+// M3a.2: the fortress close-up's see-through walls. On the camera's side of the plane (xyz its normal,
+// w its offset) and above cut_y, a wall is drawn as a sparse dither (a ghost of itself) and casts no
+// shadow, so the gate side's walls never hide or darken the muster yard.
 uniform vec4 cut_plane = vec4(0.0);
 uniform float cut_y = 0.0;
 varying vec3 v_world;
 
 bool cut_away() {
 	return dot(cut_plane.xyz, cut_plane.xyz) > 0.25 && dot(cut_plane.xyz, v_world) > cut_plane.w && v_world.y > cut_y;
+}
+
+// The ghost wall's dither: one pixel in three on a diagonal screen pattern is kept.
+bool ghost_drop(vec2 frag) {
+	ivec2 q = ivec2(frag);
+	return (q.x + q.y * 2) % 3 != 0;
 }
 
 varying vec3 v_team;

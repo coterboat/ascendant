@@ -21,8 +21,8 @@ extends RefCounted
 
 const Kit := preload("res://world3d/kit.gd")
 const TABLE_PATH := "res://world3d/models.json"
-## The pose models a unit can have (rulers may add "cheer"; it falls back to "ready" here).
-const POSES := ["ready", "march", "strike", "fallen"]
+## The pose models a figure can have (rulers add "cheer"; without a model a pose draws the ready one).
+const POSES := ["ready", "march", "strike", "fallen", "cheer"]
 
 static var _table: Dictionary = {}
 static var _meshes: Dictionary = {} ## cache key -> {"mesh": Mesh, "tex": Texture2D or null, "source": "model"/"primitive"}
@@ -104,6 +104,19 @@ static func figure_model_path(type_id: String) -> String:
 	return ""
 
 
+## An army extra's model for a faction (the standard bearer, the musician: design 6.2): the row's
+## "models"[faction] when it is on disk, else "". Its height in men is "model_height"[faction].
+static func extra_model_path(type_id: String, faction: String) -> String:
+	var models: Dictionary = figure_row(type_id).get("models", {})
+	var p := String(models.get(faction, ""))
+	return p if not p.is_empty() and ResourceLoader.exists(p) else ""
+
+
+## True when the table has a row for the army's musician (it then stands in every army's colour party).
+static func has_musician() -> bool:
+	return not figure_row("musician").is_empty()
+
+
 ## The GLB a row names for `pose` ("" when it names none, or the file is missing): the row's
 ## "poses"[pose] (a path, or {"model": path}); for "ready" also the row's "model" and the bible's
 ## convention (figure_model_path); for any other pose the convention <unit>_<pose>.glb.
@@ -137,10 +150,10 @@ static func has_pose_model(type_id: String, pose: String, prefer_model: bool = t
 
 ## Every pose a type can stand in: pose -> its figure_mesh() dictionary. Poses without a model of their
 ## own map to the ready pose's dictionary (the same mesh), so callers group by mesh.
-static func pose_meshes(type_id: String, prefer_model: bool = true) -> Dictionary:
+static func pose_meshes(type_id: String, prefer_model: bool = true, faction: String = "") -> Dictionary:
 	var out := {}
 	for pose in POSES:
-		out[pose] = figure_mesh(type_id, prefer_model, pose)
+		out[pose] = figure_mesh(type_id, prefer_model, pose, faction)
 	return out
 
 
@@ -148,11 +161,25 @@ static func pose_meshes(type_id: String, prefer_model: bool = true) -> Dictionar
 ## man, with a base whose team part takes the player's colour (and a gilt ring for a ruler).
 ## `prefer_model` false always gives the primitive. A pose with no model of its own returns the ready
 ## pose's dictionary (the same mesh). Returns {"mesh", "tex", "source", "pose"}.
-static func figure_mesh(type_id: String, prefer_model: bool = true, pose: String = "ready") -> Dictionary:
+static func figure_mesh(type_id: String, prefer_model: bool = true, pose: String = "ready", faction: String = "") -> Dictionary:
+	var row := figure_row(type_id)
+	## an army extra (bearer, musician) wears its faction's model, in every pose
+	var extra := extra_model_path(type_id, faction) if prefer_model and not faction.is_empty() else ""
+	if not extra.is_empty():
+		var ekey := "fig:%s:%s" % [type_id, faction]
+		if not _meshes.has(ekey):
+			var erow := row.duplicate()
+			erow["height"] = float((row.get("model_height", {}) as Dictionary).get(faction, row.get("height", 1.0)))
+			erow.erase("pose_size")
+			var got := _glb_figure(extra, type_id, erow, "ready")
+			if got.is_empty():
+				got = figure_mesh(type_id, false, "ready")
+			got["pose"] = "ready"
+			_meshes[ekey] = got
+		return _meshes[ekey]
 	var key := "fig:%s:%s:%s" % [type_id, prefer_model, pose]
 	if _meshes.has(key):
 		return _meshes[key]
-	var row := figure_row(type_id)
 	var out := {}
 	if pose != "ready":
 		var pp := pose_model_path(type_id, pose) if prefer_model else ""
@@ -206,7 +233,11 @@ static func building_primitive(kind: String, variant: String = "") -> Mesh:
 ## "tex", "aabb"}, or {} when the row has no model on disk.
 static func building_model(kind: String, variant: String = "") -> Dictionary:
 	var row := building_row(kind, variant)
-	var p := String(row.get("model", ""))
+	return model_at(String(row.get("model", "")))
+
+
+## Any building or prop GLB by path, as building_model() gives it ({} when it isn't on disk).
+static func model_at(p: String) -> Dictionary:
 	if p.is_empty() or not ResourceLoader.exists(p):
 		return {}
 	var key := "bldm:" + p
@@ -218,6 +249,21 @@ static func building_model(kind: String, variant: String = "") -> Dictionary:
 	var out := {"mesh": _vertex_white(src["mesh"]), "tex": src["tex"], "aabb": (src["mesh"] as Mesh).get_aabb()}
 	_meshes[key] = out
 	return out
+
+
+## A building kind's interchangeable models (a village's "variants", else its one "model"), those on
+## disk, in the row's order. Pick one with variant_for().
+static func building_variants(kind: String) -> Array:
+	var row := building_row(kind)
+	var list: Array = row.get("variants", [])
+	if list.is_empty() and not String(row.get("model", "")).is_empty():
+		list = [row["model"]]
+	return list.filter(func(p): return ResourceLoader.exists(String(p)))
+
+
+## Which of `n` variants a province shows: a hash of its id (the same every game, never the dice).
+static func variant_for(province_id: String, n: int) -> int:
+	return 0 if n <= 1 else absi(hash("variant:" + province_id)) % n
 
 
 ## Every row's problems, in plain words (tests: a row's fallback must exist and its model, when named,
@@ -232,6 +278,10 @@ static func problems() -> Array:
 		var p := String(row.get("model", ""))
 		if not p.is_empty() and not ResourceLoader.exists(p):
 			out.append("figure %s: its model %s is missing" % [id, p])
+		for fac in (row.get("models", {}) as Dictionary).keys():
+			var mp := String(row["models"][fac])
+			if not mp.is_empty() and not ResourceLoader.exists(mp):
+				out.append("figure %s: its %s model %s is missing" % [id, fac, mp])
 		var poses: Variant = row.get("poses", {})
 		if not (poses is Dictionary):
 			out.append("figure %s: its poses must be an object of pose -> model" % id)
@@ -250,6 +300,9 @@ static func problems() -> Array:
 		var p := String(row.get("model", ""))
 		if not p.is_empty() and not ResourceLoader.exists(p):
 			out.append("building %s: its model %s is missing" % [id, p])
+		for vp in row.get("variants", []):
+			if not ResourceLoader.exists(String(vp)):
+				out.append("building %s: its variant %s is missing" % [id, vp])
 	return out
 
 

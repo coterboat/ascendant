@@ -689,6 +689,94 @@ func test_playback_cpu_stays_inside_the_budget_on_a_big_turn() -> void:
 		b.armies.step_playback(1.0 / 60.0)
 		steps += 1
 	var avg_ms: float = (Time.get_ticks_usec() - t0) / 1000.0 / maxf(steps, 1)
-	print("     playback step: %.2f ms on average over %d steps, %d figures" % [avg_ms, steps, b.armies.figure_count()])
-	assert_true(avg_ms < 20.0, "a playback step stays cheap (%.2f ms)" % avg_ms)
+	assert_false(b.is_playing(), "the big turn plays to its end")
+	assert_perf(avg_ms < 4.0, "a playback step: %.2f ms on average over %d steps, %d figures (budget 4 ms; design 3.5 asks 2 ms on the build box)" % [avg_ms, steps, b.armies.figure_count()])
 	_free_board(b)
+
+
+# --- the world from the model table (PR #91's rows) -------------------------------------------------
+
+func test_every_army_carries_its_factions_bearer_and_musician() -> void:
+	var st := GameState.with_rulers(11, {}, [])
+	var b := _board_for(st)
+	var extras: Array = b.armies.extras()
+	assert_true(extras.has("bearer"), "every army has a standard bearer")
+	assert_eq(extras.has("musician"), Models.has_musician(), "and a musician when the table has one")
+	for a in st.armies:
+		var roles: Array = (b.armies.armies[a.id]["figs"] as Array).map(func(f): return f["role"])
+		for ex in extras:
+			assert_eq(roles.count(ex), 1, "%s stands with one %s" % [a.id, ex])
+		var figs := 0
+		for f in b.armies.armies[a.id]["figs"]:
+			if f["role"] == "unit":
+				figs += 1
+		var want := 0
+		var counts := {}
+		for u in a.units:
+			counts[u.type.id] = int(counts.get(u.type.id, 0)) + 1
+		for t in counts.keys():
+			want += Models.block_size(counts[t])
+		assert_eq(figs, want, "%s: the extras never count as its units" % a.id)
+	for f in FactionData.FACTIONS:
+		var path := Models.extra_model_path("bearer", String(f.id))
+		if not path.is_empty():
+			assert_eq(Models.figure_mesh("bearer", true, "ready", String(f.id))["source"], "model", "the %s bearer wears its faction's model" % f.id)
+	_free_board(b)
+
+
+func test_the_board_reads_forts_villages_landmarks_and_props() -> void:
+	var st := GameState.new(4242)
+	var b := _board_for(st)
+	var t = b.wv.terrain
+	for i in t.ids.size():
+		if t.has_fort[i] and not t.is_capital[i]:
+			assert_true(b.wv.forts.has(t.ids[i]), "%s has its fort" % t.ids[i])
+	## villages: at most one per province, of its terrain's kind, its variant from a hash of its id
+	var villages: Array = b.wv.plan_of(t)["villages"]
+	var seen := {}
+	for v in villages:
+		var kind: String = v["kind"]
+		if kind.begins_with("village_"):
+			assert_false(seen.has(v["province"]), "one village per province")
+			seen[v["province"]] = true
+			assert_eq(kind, "village_" + String(t.terrain_of[t.index_of(v["province"])]), "a village of its province's terrain")
+		assert_true(t.province_at(v["pos"]) == v["province"], "%s stands on its own province" % kind)
+	if not Models.building_variants("village_plains").is_empty():
+		assert_true(villages.size() >= 8, "most provinces have a village (%d)" % villages.size())
+	var n: int = Models.building_variants("village_plains").size()
+	assert_eq(Models.variant_for("thornvale", n), Models.variant_for("thornvale", n), "a province always shows the same variant")
+	## the trees and rocks as models close in, primitives far out
+	if not b.wv._prop_chunks.is_empty():
+		b.wv.set_prop_models(true)
+		assert_true(b.wv.prop_models)
+		for mi in b.wv._prop_prims:
+			assert_false((mi as Node3D).visible, "close in, the primitive woods hide")
+		b.wv.set_prop_models(false)
+		for mi in b.wv._prop_chunks:
+			assert_false((mi as Node3D).visible, "far out, the model woods hide")
+	## the fort's roofs follow its owner
+	for id in b.wv.forts.keys():
+		var p := st.find_province(id)
+		var want: Color = UiPalette.owner_color(st, p.owner, b.seats) if not p.owner.is_empty() else UiPalette.NEUTRAL
+		var got: Color = (b.wv.forts[id]["mat"] as ShaderMaterial).get_shader_parameter("team")
+		assert_true(got.is_equal_approx(want), "%s's fort roofs are its owner's colour" % id)
+	_free_board(b)
+
+
+func test_a_figure_never_stands_shorter_than_the_minimum_on_screen() -> void:
+	var game := _game_with_board()
+	var b: Board3D = game.map.board
+	for z in [0.0, 0.3, Board3D.FOCUS_ZOOM, 1.0]:
+		b.zoom = z
+		b.goal = b.rig_for(Vector2(500, 300), z)
+		b._snap_rig()
+		b._camera(0.016)
+		var px_per_unit: float = b.size.y / float(b.wv.rig["span"])
+		var px: float = b.armies.fig_scale * Board3D.Armies.Kit.FIG * px_per_unit
+		if is_equal_approx(b.armies.fig_scale, Board3D.MAX_PIECE_SCALE):
+			## the whole map: piece scale stops where blocks would pile into each other (the far-zoom
+			## stand of design 6.1 takes over from there; the count plates carry the army meanwhile)
+			assert_true(z < 0.2, "only the whole-map end hits the piece-scale cap (zoom %.2f)" % z)
+			continue
+		assert_true(px >= Board3D.MIN_FIG_PX - 0.5, "at zoom %.2f a man-sized figure stands %.1f px tall (at least %.0f)" % [z, px, Board3D.MIN_FIG_PX])
+	game.free()

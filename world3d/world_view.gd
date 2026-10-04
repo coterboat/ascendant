@@ -52,6 +52,11 @@ var fog_k := 1.0
 var view_size := Vector2(1600, 900) ## the size of the viewport the camera draws into (Board3D keeps it)
 var cam_xform := Transform3D() ## the camera's transform, as apply_rig() set it
 var sweeps: Array = [] ## M3a.2: captures sweeping in: [{"i": province index, "from": Vector2, "t": seconds, "old": Color}]
+var forts := {} ## M3a.2: province id -> {"node", "mat"}: the fort models (their roofs take the owner's colour)
+var prop_models := false ## M3a.2: the woods and rocks drawn with the model table's GLBs (close in), else primitives
+var _prop_prims: Array = [] ## the primitive woods' and rocks' MultiMeshes (one each, the whole map)
+var _prop_chunks: Array = [] ## the model woods' and rocks' MultiMeshes, in chunks the camera culls
+const PROP_CHUNK := 200.0 ## world units a side of a model-props chunk
 
 ## the camera rig: looks at `target` from `pitch` degrees above the horizon, from `yaw` degrees
 ## round from the south, framing `span` world units top to bottom
@@ -439,23 +444,100 @@ func _push_sweeps() -> void:
 
 func _grow_props() -> void:
 	var pl: Dictionary = plan_of(terrain)
-	_multi(Models.building_primitive("tree_broadleaf"), pl["broad"], "Broadleaf")
-	_multi(Models.building_primitive("tree_pine"), pl["pine"], "Pines")
-	_multi(Models.building_primitive("rock"), pl["rocks"], "Rocks")
+	_prop_prims = [
+		_multi(Models.building_primitive("tree_broadleaf"), pl["broad"], "Broadleaf"),
+		_multi(Models.building_primitive("tree_pine"), pl["pine"], "Pines"),
+		_multi(Models.building_primitive("rock"), pl["rocks"], "Rocks")]
+	_build_prop_models(pl)
+
+
+## M3a.2: the model table's tree and rock GLBs over the same placement, each normalised to its
+## primitive's size (a one-for-one swap, so a wood never grows tall enough to hide a column), in chunks
+## of PROP_CHUNK so the camera culls what it doesn't see. Shown close in (set_prop_models); the
+## primitives stay the far LOD and the low quality rungs' fallback.
+func _build_prop_models(pl: Dictionary) -> void:
+	for spec in [["tree_broadleaf", "broad", "y"], ["tree_pine", "pine", "y"], ["rock", "rocks", "xz"]]:
+		var glb: Dictionary = Models.building_model(spec[0])
+		if glb.is_empty():
+			continue
+		var row: Dictionary = Models.building_row(spec[0])
+		var prim: AABB = Models.building_primitive(spec[0]).get_aabb()
+		var a: AABB = glb["aabb"]
+		var s: float = (prim.size.y / maxf(a.size.y, 0.001)) if spec[2] == "y" else (maxf(prim.size.x, prim.size.z) / maxf(maxf(a.size.x, a.size.z), 0.001))
+		var yaw := deg_to_rad(float(row.get("yaw", 180.0)))
+		var c: Vector3 = a.get_center()
+		var base := Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * s), Vector3.ZERO) * Transform3D(Basis(), Vector3(-c.x, -a.position.y, -c.z))
+		var chunks := {}
+		for xf in pl[spec[1]]:
+			var o: Vector3 = (xf as Transform3D).origin
+			var key := Vector2i(int(floor(o.x / PROP_CHUNK)), int(floor(o.z / PROP_CHUNK)))
+			if not chunks.has(key):
+				chunks[key] = []
+			chunks[key].append((xf as Transform3D) * base)
+		var mat := model_mat(Color.WHITE, glb["tex"], -1.0, true)
+		_prop_mats.append(mat)
+		for key in chunks.keys():
+			var list: Array = chunks[key]
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.use_custom_data = true
+			mm.mesh = glb["mesh"]
+			mm.instance_count = list.size()
+			for i in list.size():
+				mm.set_instance_transform(i, list[i])
+				mm.set_instance_custom_data(i, Color(1, 1, 1, 1))
+			var mi := MultiMeshInstance3D.new()
+			mi.name = "%s_%d_%d" % [spec[0], key.x, key.y]
+			mi.multimesh = mm
+			mi.material_override = mat
+			mi.visible = false
+			mi.set_meta("chunk", true)
+			props.add_child(mi)
+			_prop_chunks.append(mi)
+
+
+## Close in, the woods and rocks are the model table's GLBs (culled by chunk); far out, and on the
+## quality ladder's lower rungs, the cheap primitives.
+func set_prop_models(on: bool) -> void:
+	on = on and not _prop_chunks.is_empty()
+	if on == prop_models:
+		return
+	prop_models = on
+	for mi in _prop_prims:
+		(mi as Node3D).visible = not on
+	for mi in _prop_chunks:
+		(mi as Node3D).visible = on
+
+
+## The yard's light in the fortress close-up: a little more ambient, so the walls' shade never darkens
+## a block (design 8.3, "a fill light keeps the yard bright").
+func set_yard_light(on: bool) -> void:
+	if look == "cel":
+		env.ambient_light_energy = 0.24 + (0.2 if on else 0.0)
+	else:
+		env.ambient_light_energy = 0.7 + (0.25 if on else 0.0)
 
 
 ## The land's pure placement (trees, rocks, cottages) and the ground's grain, computed once per land:
 ## on the bake's worker thread when the board prebakes (Board3D.prebake), or here on first use.
 static func plan_of(t) -> Dictionary:
 	if not t.plan.has("broad"):
-		t.plan.merge(plan_props(t), true)
-		t.plan["houses"] = plan_houses(t)
+		t.plan["villages"] = plan_villages(t)
+		t.plan.merge(plan_props(t, t.plan["villages"]), true)
+		t.plan["houses"] = plan_houses(t, not (t.plan["villages"] as Array).is_empty())
 		t.plan["grain"] = make_grain()
 	return t.plan
 
 
-static func plan_props(t) -> Dictionary:
+static func plan_props(t, villages: Array = []) -> Dictionary:
 	var rng := _Hash.new(4242) ## cosmetic: a hash of the cell and the map seed, never the game's dice
+	var keep_clear: Array = [] ## [centre, radius]: villages, landmarks and forts stand in clearings
+	for v in villages:
+		keep_clear.append([v["pos"], float(v["r"]) + 3.0])
+	for i in t.ids.size():
+		if t.has_fort[i] and not t.is_capital[i]:
+			var fs: Array = fort_spot(t, i)
+			keep_clear.append([fs[0], float(fs[1]) + 3.0])
 	var broad: Array = []
 	var pine: Array = []
 	var rocks: Array = []
@@ -470,6 +552,13 @@ static func plan_props(t) -> Dictionary:
 			if c < 4.0:
 				continue
 			if _near_stage(t, p, 1.15) or t.road_at(p) < 7.0:
+				continue
+			var clear := false
+			for kc in keep_clear:
+				if p.distance_to(kc[0]) < float(kc[1]):
+					clear = true
+					break
+			if clear:
 				continue
 			var hv: float = t.height_at(p)
 			var n: Vector3 = t.normal_at(p)
@@ -524,7 +613,7 @@ func _multi(mesh: Mesh, xfs: Array, nm: String) -> MultiMeshInstance3D:
 func prop_count() -> int:
 	var n := 0
 	for mi in props.get_children():
-		if mi is MultiMeshInstance3D:
+		if mi is MultiMeshInstance3D and not mi.has_meta("chunk"):
 			n += (mi as MultiMeshInstance3D).multimesh.instance_count
 	return n
 
@@ -540,15 +629,8 @@ func _build_settlements() -> void:
 		if t.is_capital[i]:
 			_place_fortress(id, c, gate)
 		elif t.has_fort[i]:
-			var f := MeshInstance3D.new()
-			f.name = "Fort_" + id
-			f.mesh = Models.building_primitive("fort")
-			f.material_override = model_mat(Color.WHITE, null, -1.0, false, 0.9, Color.WHITE, BUILDING_GRADE)
-			## beside the stage, on the side away from the roads
-			var at: Vector2 = c - gate * 30.0
-			f.position = t.ground_at(at) - Vector3(0, 0.3, 0)
-			f.rotation.y = atan2(gate.x, gate.y)
-			buildings.add_child(f)
+			_place_fort(id, i, gate)
+	_place_villages()
 	var houses: Array = plan_of(t)["houses"]
 	for v in 3:
 		var mi := _multi(Kit.cottage(v), houses[v], "Cottages%d" % v)
@@ -558,9 +640,167 @@ func _build_settlements() -> void:
 		buildings.add_child(mi)
 
 
+## A fort province's fort (M3a.2: the model table's fort of the faction whose capital is nearest, its
+## gate turned to the stage; else the primitive), beside the stage on the side away from the roads. Its
+## roofs take the owner's colour (set_fort_colour).
+func _place_fort(id: String, i: int, gate: Vector2) -> void:
+	var t = terrain
+	var variant := nearest_capital_faction(t, i)
+	var row: Dictionary = Models.building_row("fort", variant)
+	var glb: Dictionary = Models.building_model("fort", variant)
+	var fs: Array = fort_spot(t, i)
+	var at: Vector2 = fs[0]
+	var root := Node3D.new()
+	root.name = "Fort_" + id
+	root.position = t.ground_at(at) - Vector3(0, 0.3, 0)
+	root.rotation.y = atan2(-gate.x, -gate.y) + PI ## its gate (local -Z) faces the stage
+	buildings.add_child(root)
+	var mi := MeshInstance3D.new()
+	var mat: ShaderMaterial
+	if not glb.is_empty():
+		var aabb: AABB = glb["aabb"]
+		var side: float = float(row.get("side", 26.0))
+		var s: float = side / maxf(aabb.size.x, aabb.size.z)
+		mi.mesh = glb["mesh"]
+		mi.scale = Vector3.ONE * s
+		mi.rotation.y = deg_to_rad(float(row.get("yaw", 180.0)))
+		var centre: Vector3 = aabb.get_center()
+		mi.position = (Basis(Vector3.UP, mi.rotation.y) * Vector3(-centre.x, -aabb.position.y, -centre.z)) * s
+		mi.position.y -= float(row.get("sink", 0.0))
+		mat = model_mat(Color.WHITE, glb["tex"], float(row.get("key_hue", -1.0)), false, float(row.get("tint", 0.9)), Color.WHITE, float(row.get("grade", BUILDING_GRADE)))
+	else:
+		mi.mesh = Models.building_primitive("fort")
+		mi.rotation.y = PI
+		mat = model_mat(Color.WHITE, null, -1.0, false, 0.9, Color.WHITE, BUILDING_GRADE)
+	mi.material_override = mat
+	root.add_child(mi)
+	forts[id] = {"node": root, "mat": mat}
+
+
+## Repaints a fort's keyed roofs in its owner's colour.
+func set_fort_colour(province_id: String, team: Color) -> void:
+	if forts.has(province_id):
+		(forts[province_id]["mat"] as ShaderMaterial).set_shader_parameter("team", team)
+
+
+## The faction whose capital is nearest province index `i` (a fort's builder; captured, it keeps its look).
+static func nearest_capital_faction(t, i: int) -> String:
+	var best := ""
+	var best_d := 1.0e18
+	for f in FactionData.FACTIONS:
+		var ci: int = t.index_of(String(f.capital))
+		if ci < 0:
+			continue
+		var d: float = (t.centres[ci] as Vector2).distance_squared_to(t.centres[i])
+		if d < best_d:
+			best_d = d
+			best = String(f.id)
+	return best
+
+
+## Where province index `i`'s fort stands: [centre, radius], beside the stage away from the roads,
+## pulled in until it stands on its own land.
+static func fort_spot(t, i: int) -> Array:
+	var id: String = t.ids[i]
+	var c: Vector2 = t.centres[i]
+	var gate := gate_dir_of(t, id)
+	var row: Dictionary = Models.building_row("fort", nearest_capital_faction(t, i))
+	var r: float = float(row.get("side", 26.0)) * 0.5 if not String(row.get("model", "")).is_empty() else 13.0
+	var d: float = t.stage_r[i] + r - 2.0
+	while d > t.stage_r[i] * 0.6 and t.province_at(c - gate * d) != id:
+		d -= 3.0
+	return [c - gate * d, r]
+
+
+## Every province's village (M3a.2: the model table's village of its terrain, a variant by a hash of its
+## id) and, for some, a landmark (a mill on the plains, a watchtower in the hills, standing stones in the
+## woods), off the roads and the stage. Pure: [{"province", "kind", "pos", "yaw", "r"}].
+static func plan_villages(t) -> Array:
+	var out: Array = []
+	var rng := _Hash.new(271)
+	var landmark := {"plains": "mill", "hills": "watchtower", "forest": "standing_stones"}
+	for i in t.ids.size():
+		if t.is_capital[i]:
+			continue
+		var id: String = t.ids[i]
+		var kinds: Array = []
+		var vk := "village_" + String(t.terrain_of[i])
+		if not Models.building_variants(vk).is_empty():
+			kinds.append(vk)
+		var lk := String(landmark.get(String(t.terrain_of[i]), ""))
+		if not lk.is_empty() and absi(hash("landmark:" + id)) % 3 != 0 and not Models.building_variants(lk).is_empty():
+			kinds.append(lk)
+		var c: Vector2 = t.centres[i]
+		var taken: Array = []
+		if t.has_fort[i]:
+			taken.append(fort_spot(t, i))
+		for kind in kinds:
+			var r: float = float(Models.building_row(kind).get("side", 24.0)) * 0.5
+			var tries := 0
+			while tries < 80:
+				tries += 1
+				var a: float = rng.next01() * TAU
+				var p: Vector2 = c + Vector2(cos(a), sin(a)) * (t.stage_r[i] + r + rng.range01(2.0, 16.0))
+				if t.province_at(p) != id or t.road_at(p) < r * 0.75 or t.border_at(p) < r + 3.0 or t.coast_at(p) < r:
+					continue
+				if (1.0 - t.normal_at(p).y) > 0.16:
+					continue
+				var clash := false
+				for tk in taken:
+					if p.distance_to(tk[0]) < float(tk[1]) + r + 2.0:
+						clash = true
+				if clash:
+					continue
+				var to_c: Vector2 = (c - p).normalized()
+				out.append({"province": id, "kind": kind, "pos": p, "yaw": atan2(to_c.x, to_c.y) + PI, "r": r})
+				taken.append([p, r])
+				break
+	return out
+
+
+## The planned villages and landmarks, each its model (a MultiMesh per GLB): buildings, graded like stone.
+func _place_villages() -> void:
+	var t = terrain
+	var by_path := {}
+	for v in plan_of(t)["villages"]:
+		var paths: Array = Models.building_variants(v["kind"])
+		if paths.is_empty():
+			continue
+		var path: String = paths[Models.variant_for(v["province"], paths.size())]
+		if not by_path.has(path):
+			by_path[path] = {"kind": v["kind"], "list": []}
+		by_path[path]["list"].append(v)
+	for path in by_path.keys():
+		var glb: Dictionary = Models.model_at(path)
+		if glb.is_empty():
+			continue
+		var row: Dictionary = Models.building_row(by_path[path]["kind"])
+		var aabb: AABB = glb["aabb"]
+		var s: float = float(row.get("side", 24.0)) / maxf(aabb.size.x, aabb.size.z)
+		var c: Vector3 = aabb.get_center()
+		var yaw0 := deg_to_rad(float(row.get("yaw", 180.0)))
+		var list: Array = by_path[path]["list"]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_custom_data = true
+		mm.mesh = glb["mesh"]
+		mm.instance_count = list.size()
+		for k in list.size():
+			var v: Dictionary = list[k]
+			var b := Basis(Vector3.UP, float(v["yaw"]) + yaw0).scaled(Vector3.ONE * s)
+			var at: Vector3 = t.ground_at(v["pos"]) - Vector3(0, 0.25, 0)
+			mm.set_instance_transform(k, Transform3D(b, at) * Transform3D(Basis(), Vector3(-c.x, -aabb.position.y, -c.z)))
+			mm.set_instance_custom_data(k, Color(1, 1, 1, 1))
+		var mi := MultiMeshInstance3D.new()
+		mi.name = "Village_" + path.get_file().get_basename()
+		mi.multimesh = mm
+		mi.material_override = model_mat(Color.WHITE, glb["tex"], -1.0, true, float(row.get("tint", 0.92)), Color.WHITE, float(row.get("grade", BUILDING_GRADE)))
+		buildings.add_child(mi)
+
+
 ## A hamlet of cottages round every stage, off the roads (pure): three lists of transforms, one per
-## cottage variant.
-static func plan_houses(t) -> Array:
+## cottage variant. With village models (`villages`), only the capitals keep their cottages.
+static func plan_houses(t, villages: bool = false) -> Array:
 	var rng := _Hash.new(99)
 	var houses: Array = [[], [], []]
 	for i in t.ids.size():
@@ -569,7 +809,7 @@ static func plan_houses(t) -> Array:
 		var gate := gate_dir_of(t, id)
 		var placed := 0
 		var tries := 0
-		var n_house: int = 3 if t.is_capital[i] else 5
+		var n_house: int = 3 if t.is_capital[i] else (0 if villages else 5)
 		while placed < n_house and tries < 60:
 			tries += 1
 			var a: float = rng.next01() * TAU
@@ -577,7 +817,7 @@ static func plan_houses(t) -> Array:
 			var p: Vector2 = c + Vector2(cos(a), sin(a)) * r
 			if t.province_at(p) != id or t.road_at(p) < 9.0 or t.woods_at(p) > 0.2 or t.border_at(p) < 12.0:
 				continue
-			if t.has_fort[i] and p.distance_to(c - gate * 30.0) < 20.0:
+			if t.has_fort[i] and p.distance_to(fort_spot(t, i)[0]) < float(fort_spot(t, i)[1]) + 6.0:
 				continue
 			if (1.0 - t.normal_at(p).y) > 0.18:
 				continue
@@ -692,10 +932,10 @@ func _give_own_outline(m: ShaderMaterial) -> void:
 		m.next_pass = om
 
 
-## The fortress close-up's cutaway (M3a.2): on, the gate side of the fortress at `province_id` (its walls,
-## gatehouse and towers in front of the yard, and a Clans palisade) stops `above` units over the yard's
-## floor, so the camera sees every block of the muster; off, it stands whole again. Its gate banners hide
-## while it is cut.
+## The fortress close-up's see-through walls (M3a.2): on, the gate side of the fortress at `province_id`
+## (its walls, gatehouse and towers in front of the yard, and a Clans palisade) is drawn as a sparse
+## dither from `above` units over the yard's floor up, casting no shadow, so the camera sees every block
+## of the muster through it; off, it stands solid again. Its gate banners hide meanwhile.
 func set_cutaway(province_id: String, on: bool, above: float = 2.6) -> void:
 	if not fortresses.has(province_id):
 		return
@@ -705,7 +945,7 @@ func set_cutaway(province_id: String, on: bool, above: float = 2.6) -> void:
 	if on:
 		var root: Node3D = f["node"]
 		var court: Rect2 = f["court"]
-		var front: Vector3 = root.transform * Vector3(court.get_center().x, 0.0, court.position.y - 1.5)
+		var front: Vector3 = root.transform * Vector3(court.get_center().x, 0.0, court.position.y + 5.0)
 		var n: Vector2 = f["gate_dir"]
 		plane = Vector4(n.x, 0.0, n.y, n.x * front.x + n.y * front.z)
 		y = root.position.y + float(f["floor"]) + above

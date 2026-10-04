@@ -64,9 +64,11 @@ const FOCUS_ZOOM := 0.55
 const MAX_PX := 2.0 ## the 3D renders at most at 2 physical pixels per screen pixel
 const SEA_VEIL := Color("#244E6E")
 const CLOSE_PITCH := 52.0 ## the fortress close-up's pitch (design 8.1: about 35); the gate side is cut away so the walls never hide the yard
-const CLOSE_SPAN := 62.0 ## the close-up frames the yard, its gate and the camp's edge
+const CLOSE_SPAN := 56.0 ## the close-up frames the yard, its gate and the camp's edge
 const CLOSE_MIN_SPAN := 34.0
 const BATTLE_ZOOM := 0.8 ## the playback camera leans in this far on each battle
+const MIN_FIG_PX := 26.0 ## a man-sized figure never stands shorter than this on the board (design 6.1: 24 px at 1080p)
+const MAX_PIECE_SCALE := 3.2 ## past this the blocks pile into each other: the far-zoom stand's job (design 6.1)
 
 static var _terrain: RefCounted = null
 static var _task := -1
@@ -134,9 +136,15 @@ static func _bake() -> void:
 	var t: RefCounted = Terrain3D.build()
 	WorldView.plan_of(t)
 	for f in FactionData.FACTIONS:
-		Models.building_model("fortress", String(f.id))
+		for kind in ["fortress", "fort", "camp"]:
+			Models.building_model(kind, String(f.id))
+		for extra in ["bearer", "musician"]:
+			Models.figure_mesh(extra, true, "ready", String(f.id))
 	for type_id in (Models.table().get("figures", {}) as Dictionary).keys():
 		Models.pose_meshes(type_id)
+	for kind in (Models.table().get("buildings", {}) as Dictionary).keys():
+		for path in Models.building_variants(String(kind)):
+			Models.model_at(String(path))
 	_terrain = t
 
 
@@ -234,6 +242,9 @@ func _paint_owners(st: GameState) -> void:
 	for id in wv.fortresses.keys():
 		var p := st.find_province(id)
 		wv.set_fortress_colour(id, UiPalette.owner_color(st, p.owner, seats) if p != null and not p.owner.is_empty() else UiPalette.NEUTRAL)
+	for id in wv.forts.keys():
+		var p2 := st.find_province(id)
+		wv.set_fort_colour(id, UiPalette.owner_color(st, p2.owner, seats) if p2 != null and not p2.owner.is_empty() else UiPalette.NEUTRAL)
 
 
 func _sync_marks() -> void:
@@ -427,6 +438,7 @@ func _on_captured(province_id: String, owner_id: String) -> void:
 	wv.paint_owner(province_id, c, not owner_id.is_empty())
 	if wv.fortresses.has(province_id):
 		wv.set_fortress_colour(province_id, c)
+	wv.set_fort_colour(province_id, c)
 
 
 func _on_playback_finished() -> void:
@@ -545,6 +557,7 @@ func rig_for(target: Vector2, z: float, yaw := 0.0) -> Dictionary:
 func fit_whole(instant: bool = false) -> void:
 	if not closeup.is_empty():
 		wv.set_cutaway(closeup, false)
+		wv.set_yard_light(false)
 		closeup = ""
 		closeup_changed.emit("")
 	zoom = 0.0
@@ -601,6 +614,7 @@ func enter_closeup(province_id: String, instant: bool = false) -> bool:
 	goal = closeup_rig(province_id)
 	zoom = 1.0
 	wv.set_cutaway(province_id, true)
+	wv.set_yard_light(true)
 	if instant:
 		_snap_rig()
 	if overlay != null:
@@ -614,6 +628,7 @@ func exit_closeup(instant: bool = false) -> void:
 	if closeup.is_empty():
 		return
 	wv.set_cutaway(closeup, false)
+	wv.set_yard_light(false)
 	closeup = ""
 	var back: Dictionary = _pre_closeup.get("goal", {})
 	if back.is_empty():
@@ -720,9 +735,17 @@ func _camera(delta: float) -> void:
 	r["pitch"] = lerpf(r["pitch"], goal["pitch"], k)
 	r["yaw"] = float(r["yaw"]) + wrapf(float(goal["yaw"]) - float(r["yaw"]), -180.0, 180.0) * k
 	wv.apply_rig()
-	## far out the figures stand taller (toy scale) so every army reads as a marker over the map
+	## far out the figures stand taller (toy scale) so every army reads as a marker over the map, and a
+	## man-sized figure never stands shorter than MIN_FIG_PX on screen (design 6.1, piece scale)
 	var z: float = clampf((log(float(r["span"])) - log(_span_fit)) / (log(SPAN_NEAR) - log(_span_fit)), 0.0, 1.0)
-	armies.set_fig_scale(lerpf(2.4, 1.0, smoothstep(0.0, 0.8, z)))
+	var px_per_unit: float = size.y / maxf(float(r["span"]), 1.0)
+	var min_scale: float = clampf(MIN_FIG_PX / (Armies.Kit.FIG * maxf(px_per_unit, 0.01)), 1.0, MAX_PIECE_SCALE)
+	armies.set_fig_scale(maxf(lerpf(2.4, 1.0, smoothstep(0.0, 0.8, z)), min_scale))
+	## the model woods and rocks from the default zoom in, on the upper quality rungs (hysteresis)
+	if wv.prop_models and (z < 0.5 or wv.quality >= 2):
+		wv.set_prop_models(false)
+	elif not wv.prop_models and z > 0.56 and wv.quality < 2:
+		wv.set_prop_models(true)
 	## the figures' shadows only from the default zoom in (hysteresis)
 	if armies.fig_shadows and z < 0.4:
 		armies.set_fig_shadows(false)

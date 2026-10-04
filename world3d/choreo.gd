@@ -7,6 +7,7 @@
 ##   march    filing out of the gate, marching the roads, marching in through the gate, gathering
 ##   strike   the blow of a clash (a short lunge toward the enemy)
 ##   fallen   the dead: after the topple, the figure lies in its fallen pose (or the ready model on its back)
+##   cheer    a winner's cheer (rulers have a model for it; everyone else cheers in the ready model)
 ##
 ## Motion (motion()): a march hops and sways; a strike lunges a quarter of the gap and back; a recoil
 ## knocks back for 0.15 s; a fall topples about the feet, then the fallen pose takes over; a cheer hops.
@@ -32,7 +33,7 @@ const CAPTION_HELP := {
 
 ## The kinds of beat the playback has, and the pose each one shows.
 const BEAT_POSES := {
-	"stand": "ready", "idle": "ready", "hold": "ready", "recoil": "ready", "reform": "ready", "cheer": "ready",
+	"stand": "ready", "idle": "ready", "hold": "ready", "recoil": "ready", "reform": "ready", "cheer": "cheer",
 	"topple": "ready",
 	"march": "march", "file_out": "march", "march_in": "march", "gather": "march", "deploy": "march", "rout": "march",
 	"strike": "strike", "lunge": "strike",

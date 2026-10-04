@@ -223,7 +223,13 @@ func _desc_of(a: Army) -> Dictionary:
 		var ct: String = a.commander.type.id
 		leaders.append({"type": ct, "role": "commander", "rank": 2, "sp": _spacing(ct)})
 	return {"id": a.id, "owner": a.owner, "location": a.location, "blocks": blocks, "leaders": leaders,
-		"units": a.units.size(), "ruler": a.ruler != null}
+		"units": a.units.size(), "ruler": a.ruler != null, "extras": extras()}
+
+
+## The army's cosmetic extras (design 6.2): the standard bearer, and the musician when the model table
+## has one. They never count; the plate's number leaves them out.
+static func extras() -> Array:
+	return ["bearer", "musician"] if Models.has_musician() else ["bearer"]
 
 
 func _spacing(t: String) -> Vector2:
@@ -430,7 +436,7 @@ func _layout_stage(pid: String, list0: Array, ghosts: Array, out: Dictionary) ->
 	var depth := 0.0
 	var basis := Basis.looking_at(Vector3(facing.x, 0, facing.y), Vector3.UP)
 	for d in list:
-		var slots: Array = Kit.formation_blocks(d["blocks"], d["leaders"], 44.0)
+		var slots: Array = Kit.formation_blocks(d["blocks"], d["leaders"], 44.0, d.get("extras", ["bearer"]))
 		var placed: Array = []
 		for sl in slots:
 			var lp: Vector2 = sl["pos"]
@@ -439,7 +445,7 @@ func _layout_stage(pid: String, list0: Array, ghosts: Array, out: Dictionary) ->
 			placed.append({"type": sl["type"], "role": sl["role"], "pos": p, "yaw": atan2(-facing.x, -facing.y), "y": maxf(t.height_at(p), 0.0)})
 		depth += Kit.formation_depth(slots) + 2.0
 		if d["id"] == "~ghost":
-			var gf: Array = placed.filter(func(sl): return sl["role"] != "bearer")
+			var gf: Array = placed.filter(func(sl): return sl["role"] != "bearer" and sl["role"] != "musician")
 			out["ghosts"].append({"province": pid, "owner": d["owner"], "types": d["types"], "figs": gf})
 		else:
 			out["places"][d["id"]] = placed
@@ -506,7 +512,7 @@ func _base_order(d: Dictionary, in_fort: bool) -> Array:
 		for i in slots.size():
 			centres.append(Vector2.ZERO)
 		return Muster.figures_at(slots, centres)
-	return Kit.formation_blocks(d["blocks"], d["leaders"], 44.0)
+	return Kit.formation_blocks(d["blocks"], d["leaders"], 44.0, d.get("extras", ["bearer"]))
 
 
 # ------------------------------------------------------------------ entries: figures in MultiMeshes
@@ -536,7 +542,7 @@ func _fill_entry(e: Dictionary, placed: Array, ghost: bool = false) -> void:
 	var lin: Color = col.srgb_to_linear()
 	var parent: Node = ghost_root if ghost else self
 	for t in order:
-		var pm: Dictionary = {"ready": Models.figure_mesh(t, prefer_models)} if ghost else Models.pose_meshes(t, prefer_models)
+		var pm: Dictionary = {"ready": Models.figure_mesh(t, prefer_models)} if ghost else Models.pose_meshes(t, prefer_models, String(e["owner"]))
 		var groups := {}
 		var mis: Array = []
 		var by_mesh := {}
@@ -598,7 +604,9 @@ func _fill_entry(e: Dictionary, placed: Array, ghost: bool = false) -> void:
 func _figure_mat(tex: Texture2D) -> ShaderMaterial:
 	var key := "fig:%d" % (tex.get_instance_id() if tex != null else 0)
 	if not _mats.has(key):
-		_mats[key] = wv.model_mat(Color.WHITE, tex, -1.0, true)
+		var m: ShaderMaterial = wv.model_mat(Color.WHITE, tex, -1.0, true)
+		m.set_shader_parameter("fig_lift", 1.0)
+		_mats[key] = m
 	return _mats[key]
 
 
@@ -808,9 +816,11 @@ func ghost_list() -> Array:
 			n += 1
 		if n == 0:
 			continue
-		var mid: Vector3 = sum / float(n)
+		## the plate stands over the first ghost (the slot the first queued recruit takes)
+		var f0: Dictionary = g["figs"][0]
+		var p0: Vector2 = f0["pos"]
 		out.append({"province": g["province"], "owner": g["owner"], "types": g.get("types_list", []),
-			"anchor": Vector3(mid.x, top + 10.0 * fig_scale, mid.z), "where": g.get("where", "yard")})
+			"anchor": Vector3(p0.x, top + 10.0 * fig_scale, p0.y), "where": g.get("where", "yard")})
 	return out
 
 
@@ -1775,8 +1785,9 @@ func _fig_step(f: Dictionary, now: float) -> void:
 				f["tilt"] = mr["tilt"]
 		var ch: float = float(bt["cheer"])
 		if ch >= 0.0 and now >= ch and now < ch + 0.55:
-			f["hop"] = Choreo.motion("cheer", now - ch, float(f["phase"]))["hop"]
-			f["pose"] = "ready"
+			var mc := Choreo.motion("cheer", now - ch, float(f["phase"]))
+			f["hop"] = mc["hop"]
+			f["pose"] = mc["pose"]
 
 
 ## A leg at `now`: [pos, y, direction of motion, moving].

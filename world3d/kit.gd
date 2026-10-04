@@ -559,8 +559,9 @@ static func formation_depth(slots: Array) -> float:
 ## 0 front / 1 second (Volley), "sp": Vector2 spacing}]), front rank first, packed into rows no wider
 ## than `max_w`. `leaders` ([{"type", "role": "commander" or "ruler", "rank", "sp"}]) stand with their
 ## rank: a front-rank ruler leads from the front, a commander (rank 2) stands at the back with the
-## banner bearer, who carries the army's banner in every army. Returns [{"type", "pos", "role"}].
-static func formation_blocks(blocks: Array, leaders: Array, max_w: float) -> Array:
+## banner bearer, who carries the army's banner in every army, and the army's other `extras` (M3a.2:
+## its musician). Returns [{"type", "pos", "role"}].
+static func formation_blocks(blocks: Array, leaders: Array, max_w: float, extras: Array = ["bearer"]) -> Array:
 	var out: Array = []
 	var z := 0.0
 	var gap := 2.0
@@ -580,7 +581,8 @@ static func formation_blocks(blocks: Array, leaders: Array, max_w: float) -> Arr
 			for ld in leaders:
 				if int(ld.get("rank", 2)) >= 2:
 					row_items.append({"type": ld["type"], "n": 1, "cols": 1, "sp": ld["sp"], "role": ld["role"]})
-			row_items.append({"type": "bearer", "n": 1, "cols": 1, "sp": SPACING["bearer"], "role": "bearer"})
+			for ex in extras:
+				row_items.append({"type": ex, "n": 1, "cols": 1, "sp": SPACING["bearer"], "role": ex})
 		if row_items.is_empty():
 			continue
 		## pack this rank's blocks into lines no wider than max_w
