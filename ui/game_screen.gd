@@ -1,7 +1,7 @@
 class_name GameScreen
 extends Control
 ## The one main screen of a hotseat game (#6, #7, #8). It hosts the MapScreen for the player at the
-## controls and adds a HUD to its top bar (Results, Turn report, Codex, End turn, Quit to title). On
+## controls and adds a HUD to its top bar (Results, Turn report, Codex, End turn, Menu). On
 ## top of the map it shows the turn report at the start of each player's turn, the battle report
 ## viewer, the codex, the victory screen and the handoff cover between players.
 ## Everything goes through GameSession: this screen reads the session and calls its API. It never
@@ -11,9 +11,20 @@ extends Control
 ## Layers, bottom to top:
 ##   the map (this Control)
 ##   Overlays (CanvasLayer 10): victory screen, turn report, battle report viewer, codex, setup errors,
-##             quit confirmation. Each opens on top of whatever is already open (_raise), so the codex
-##             opened from a report's "?" sits above the report, and closing it shows the report again.
+##             quit confirmation, the game menu, the save dialog, the load screen and settings. Each opens
+##             on top of whatever is already open (_raise), so the codex opened from a report's "?" sits
+##             above the report, and closing it shows the report again.
+##   NoticeLayer (CanvasLayer 15): a small notice under the top bar ("Game saved", "Game loaded"). It
+##             never blocks the map, and it sits under the handoff cover.
 ##   HandoffLayer (CanvasLayer 20): the handoff cover, above everything, so nothing leaks between players.
+##
+## Saving (SaveGame, SaveStore): the game saves itself at the start of every turn, once the last turn
+## has resolved and before any computer seat plans the new one (and at the start of turn 1); the store
+## keeps the last three autosaves. Menu (the top bar, or Esc) has Save game (name it, or keep the
+## timestamped default), Load game, Settings and Quit to title. A save is always the game as it stood at
+## the start of the turn, with the computer's dice from that moment, so orders queued during a turn are
+## not saved: the save dialog, the quit question and the load notice all say so. Loading (load_game)
+## replays the save into a new session; a hotseat game comes back behind the handoff cover.
 ##
 ## Codex links (#8): every number on the map (and in the reports and the victory screen) names its
 ## codex entry in its tooltip; right-click or F1 while hovering opens the codex there (CodexLink).
@@ -38,6 +49,10 @@ extends Control
 ##                        "rulers": true, or "builds": {faction id: build or preset id}, or the
 ##                        `-- --rulers` command-line switch for playtests (starting_state()).
 ##                        If the screen enters the tree without start_game(), it starts a default game.
+##   load_game(save)      plays on from a save (SaveGame): "" or why it can't be loaded, in plain words.
+##                        Used by SceneFlow.make_loaded_game and by Menu > Load game (in place).
+##   save_game(name)      Menu > Save game: a manual save. "" or why not. autosave() is the turn-start one.
+##   open_menu()          the Menu button and Esc: Resume, Save game, Load game, Settings, Quit to title.
 ##   end_turn()           the End turn button: hands off to the next player, or resolves the turn. With
 ##                        computer seats, the computer then plays at once. In watch mode: next_turn().
 ##   next_turn()          watch mode only: both computers give their orders and the turn resolves.
@@ -47,6 +62,7 @@ extends Control
 ##   open_ruler_panel()   the Ruler button (M2-6, games with rulers only): the map's ruler panel.
 ##   session              the GameSession being played. Read it; act through the API above.
 ##   computer             the AISeat playing the computer seats (it has none in a hotseat game).
+##   save_store           where saves go (SaveStore, user://saves unless set before the game starts).
 ##   next_scene           the screen this one switched to (SceneFlow), e.g. the title after "New game".
 
 const SCENE := "res://ui/game_screen.tscn"
@@ -56,6 +72,9 @@ var session: GameSession = null
 var computer: AISeat = null  # plays the computer seats of `session`
 var config := {}  # the config the running game was started with (defaults filled in)
 var next_scene: Node = null  # the screen this one handed over to (SceneFlow.switch)
+var save_store: SaveStore = null  # SaveStore.new() unless set before start_game / load_game
+var autosave_enabled := true
+var loaded_header := {}  # the header of the save this game was loaded from ({} for a new game)
 
 # Nodes. Bound or built by _bind(), so the screen also works before it is in the tree (tests).
 var map: MapScreen
@@ -76,7 +95,23 @@ var error_title: Label
 var error_label: Label
 var quit_overlay: Control
 var opponent_box: HBoxContainer  # top bar: the computer seats, each with its tag (#35)
+var menu_overlay: Control  # Menu: Resume, Save game, Load game, Settings, Quit to title
+var menu_text: Label
+var menu_save_button: Button
+var save_overlay: Control  # the save dialog
+var save_name_edit: LineEdit
+var save_note: Label
+var save_error: Label
+var load_screen: LoadScreen
+var settings_panel: SettingsPanel
+var quit_text: Label
+var notice_panel: PanelContainer  # on the NoticeLayer: "Game saved", "Game loaded"
+var notice_title: Label
+var notice_label: Label
 var _report_seen := 0  # the last turn report shown to the only human, so each one opens once
+var _snapshot := {}  # SaveGame.computer_snapshot from the start of the turn being played
+var _turn_start_turns := -1  # session.turns_played() when the current turn started (and was autosaved)
+var _last_autosave_turn := 0  # the turn the last autosave was made at the start of (0: none)
 var _bound := false
 
 
@@ -112,11 +147,8 @@ func start_game(game_config: Dictionary = {}) -> void:
 		config.erase("ai")  # a hotseat game's config stays {"players", "seed"}
 	else:
 		config.ai = ai
-	_close_overlays()
-	victory_screen.visible = false
-	error_overlay.visible = false
-	handoff.visible = false
-	_report_seen = 0
+	_reset_screens()
+	loaded_header = {}
 	# The state's seed and the game seed are the same, so GameSession's turn seeds match TurnResolver's.
 	session = GameSession.new(starting_state(config), config.players, config.seed, AutoBattleResolver.new(), ai)
 	computer = AISeat.new(session, config.seed)
@@ -125,7 +157,89 @@ func start_game(game_config: Dictionary = {}) -> void:
 	if session.phase() == GameSession.Phase.INVALID or not ai_errors.is_empty():
 		_show_setup_errors(ai_errors + session.setup_errors())
 		return
+	_turn_start_turns = -1
+	_check_turn_start()  # the turn-1 autosave, before a computer in seat 1 plans
 	_advance()
+
+
+## Plays on from `save` (SaveGame): the record is replayed into a new session at the start of the
+## saved turn, and each computer seat gets its dice back, so the game goes on exactly as it would have.
+## A game with two people opens on the handoff cover; otherwise the player at the controls gets the
+## last turn's report and a notice that orders given during the turn were not saved. Returns "" or why
+## the save can't be loaded, in plain words (the running game, if any, is then left as it was).
+func load_game(save: Dictionary) -> String:
+	_bind()
+	var restored := SaveGame.restore(save, AutoBattleResolver.new())
+	if not restored.errors.is_empty():
+		return SaveGame.error_text(restored.errors)
+	_reset_screens()
+	config = restored.config
+	loaded_header = restored.header
+	session = restored.session
+	computer = restored.computer
+	map.session = session
+	_build_opponent_tag()
+	# The save is the start of this turn: it counts as this turn's autosave.
+	_turn_start_turns = session.turns_played()
+	_snapshot = SaveGame.computer_snapshot(computer, session)
+	_last_autosave_turn = session.turn_number()
+	_advance()
+	var saved_name := String(loaded_header.get("name", "your save"))
+	show_notice("Game loaded", "\"%s\": the start of turn %d. %s" % [saved_name, session.turn_number(), SaveGame.ORDERS_NOTE])
+	return ""
+
+
+## Saves the game as it stood at the start of this turn, under `save_name` ("" gives "Saved <date and
+## time>"). Returns "" or why it could not be saved.
+func save_game(save_name: String = "") -> String:
+	var why := _cannot_save()
+	if not why.is_empty():
+		return why
+	var result := _store().write(SaveGame.make(session, _snapshot, SaveGame.MANUAL, save_name, _now()))
+	return String(result.error)
+
+
+## The start-of-turn autosave. Returns "" or why it could not be saved.
+func autosave() -> String:
+	var why := _cannot_save()
+	if not why.is_empty():
+		return why
+	var result := _store().write(SaveGame.make(session, _snapshot, SaveGame.AUTO, "", _now()))
+	if String(result.error).is_empty():
+		_last_autosave_turn = session.turn_number()
+	return String(result.error)
+
+
+## "" when the game can be saved now, otherwise why not.
+func _cannot_save() -> String:
+	if session == null or session.phase() == GameSession.Phase.INVALID:
+		return "There is no game to save."
+	if session.is_over():
+		return "The game is over, so there is nothing left to save."
+	return ""
+
+
+func _store() -> SaveStore:
+	if save_store == null:
+		save_store = SaveStore.new()
+	return save_store
+
+
+static func _now() -> int:
+	return int(Time.get_unix_time_from_system())
+
+
+## A new turn has started when the session has resolved more turns than when the last one started:
+## take the computer's snapshot for saves (no computer seat has planned the new turn yet) and autosave.
+func _check_turn_start() -> void:
+	if session == null or session.turns_played() == _turn_start_turns:
+		return
+	_turn_start_turns = session.turns_played()
+	_snapshot = SaveGame.computer_snapshot(computer, session)
+	if autosave_enabled and not session.is_over():
+		var why := autosave()
+		if not why.is_empty():
+			show_notice("Autosave failed", why)
 
 
 ## The starting state for `game_config`: the M1 game, or with rulers when the config asks for them
@@ -148,7 +262,9 @@ func end_turn() -> String:
 	if not why.is_empty():
 		map.set_hint(why)
 		return why
+	_check_turn_start()  # the last seat's End turn resolved the turn: autosave before a computer plans
 	_close_overlays()
+	notice_panel.visible = false
 	_advance()
 	return ""
 
@@ -160,6 +276,7 @@ func next_turn() -> String:
 		return "Next turn is only for games where the computer plays every seat."
 	_close_overlays()
 	computer.play(session)
+	_check_turn_start()
 	if session.is_over():
 		_show_game_over()
 		return ""
@@ -216,6 +333,7 @@ func show_results() -> void:
 func _advance() -> void:
 	if session.human_seats() > 0:
 		computer.play(session)
+		_check_turn_start()  # a computer in the last seat resolved the turn
 	match session.phase():
 		GameSession.Phase.HANDOFF:
 			_show_handoff()
@@ -291,10 +409,95 @@ func _on_report_focus(province_id: String) -> void:
 
 
 func _on_quit_requested() -> void:
-	if session == null or session.is_over():
+	if session == null or session.is_over() or session.phase() == GameSession.Phase.INVALID:
 		_go_to_title()
 		return
+	quit_text.text = _saved_text() + " Orders you have given this turn are not saved."
 	_raise(quit_overlay)
+
+
+## "The game saved itself at the start of turn 4." (or that it has not been saved yet).
+func _saved_text() -> String:
+	if session != null and _last_autosave_turn == session.turn_number():
+		return "The game saved itself at the start of turn %d." % _last_autosave_turn
+	return "This turn has not been saved."
+
+
+# --- the menu, saving and loading -----------------------------------------------------------------
+
+## The Menu button (and Esc with nothing open): Resume, Save game, Load game, Settings, Quit to title.
+func open_menu() -> void:
+	_bind()
+	var why := _cannot_save()
+	menu_save_button.disabled = not why.is_empty()
+	menu_save_button.tooltip_text = why if not why.is_empty() else "Save this game under a name of your choice. %s" % SaveGame.ORDERS_NOTE
+	menu_text.text = why
+	if why.is_empty():
+		menu_text.text = "Turn %d. %s" % [session.turn_number(),
+			"Autosaved when it began." if _last_autosave_turn == session.turn_number() else "Not saved yet."]
+	_raise(menu_overlay)
+
+
+func close_menu() -> void:
+	menu_overlay.visible = false
+
+
+## Menu > Save game: the dialog with a name box (empty keeps the timestamped default).
+func open_save_dialog() -> void:
+	_bind()
+	var why := _cannot_save()
+	if not why.is_empty():
+		show_notice("Can't save", why)
+		return
+	save_name_edit.text = ""
+	save_name_edit.placeholder_text = SaveGame.default_name(SaveGame.MANUAL, _now())
+	save_note.text = "Saves the game as it stood at the start of turn %d. Orders you have given this turn are not saved: when you load it, turn %d starts again from the beginning." % [
+		session.turn_number(), session.turn_number()]
+	save_error.visible = false
+	_raise(save_overlay)
+	if save_name_edit.is_inside_tree():
+		save_name_edit.grab_focus.call_deferred()
+
+
+## The save dialog's Save button (or Enter in the name box).
+func confirm_save() -> String:
+	var typed := save_name_edit.text.strip_edges()
+	var why := save_game(typed)
+	if not why.is_empty():
+		save_error.text = why
+		save_error.visible = true
+		return why
+	save_overlay.visible = false
+	menu_overlay.visible = false
+	show_notice("Game saved", "Saved as \"%s\". %s" % [typed if not typed.is_empty() else save_name_edit.placeholder_text, SaveGame.ORDERS_NOTE])
+	return ""
+
+
+## Menu > Load game: every save; loading one replaces this game (load_game).
+func open_load_screen() -> void:
+	_bind()
+	_raise(load_screen)
+	load_screen.open(_store())
+
+
+func _on_load_requested(save: Dictionary) -> void:
+	var why := load_game(save)
+	if not why.is_empty():
+		load_screen.show_error(why)
+
+
+func open_settings() -> void:
+	_bind()
+	_raise(settings_panel)
+	settings_panel.open()
+
+
+## A small notice under the top bar that never blocks the map. OK hides it, and so does End turn.
+func show_notice(title: String, text: String) -> void:
+	_bind()
+	notice_title.text = title
+	notice_label.text = text
+	notice_panel.visible = true
 
 
 func _go_to_title() -> void:
@@ -316,8 +519,22 @@ func _close_overlays() -> void:
 	report_overlay.visible = false
 	battle_viewer.visible = false
 	quit_overlay.visible = false
+	menu_overlay.visible = false
+	save_overlay.visible = false
+	load_screen.visible = false
+	settings_panel.visible = false
 	if codex.visible:
 		codex.close()
+
+
+## Before a game starts or loads: nothing of the last game stays on screen.
+func _reset_screens() -> void:
+	_close_overlays()
+	victory_screen.visible = false
+	error_overlay.visible = false
+	handoff.visible = false
+	notice_panel.visible = false
+	_report_seen = 0
 
 
 ## Shows an overlay above every other overlay: the last one opened is always on top.
@@ -348,14 +565,19 @@ func _top_overlay() -> Control:
 	return null
 
 
-## Esc closes the topmost plain overlay (the report, the quit question). The battle report viewer and
-## the codex close themselves, and the victory screen stays.
+## Esc closes the topmost plain overlay (the report, the quit question, the menu, the save dialog), or
+## opens the menu when nothing is open. The battle report viewer, the codex, the load screen and the
+## settings close themselves, the victory screen stays, and under the handoff cover Esc does nothing.
 func _unhandled_input(event: InputEvent) -> void:
-	if not event.is_action_pressed("ui_cancel"):
+	if not event.is_action_pressed("ui_cancel") or handoff.visible:
 		return
 	var top := _top_overlay()
-	if top != null and (top == quit_overlay or top == report_overlay):
+	if top != null and top in [quit_overlay, report_overlay, menu_overlay, save_overlay]:
 		top.visible = false
+		if is_inside_tree():
+			get_viewport().set_input_as_handled()
+	elif top == null and session != null:
+		open_menu()
 		if is_inside_tree():
 			get_viewport().set_input_as_handled()
 
@@ -503,7 +725,7 @@ func _bind() -> void:
 	handoff = $HandoffLayer/Handoff
 	handoff.acknowledged.connect(_on_handoff_acknowledged)
 	map.intercept_back = true
-	map.back_requested.connect(_on_quit_requested)
+	map.back_requested.connect(open_menu)
 	map.orders_changed.connect(_update_hud)
 	map.codex_requested.connect(open_codex)
 	_build_hud()
@@ -531,9 +753,9 @@ func _build_hud() -> void:
 	end_turn_button.add_theme_font_size_override("font_size", 18)
 	end_turn_button.add_theme_color_override("font_color", UiPalette.GILT)
 	map.add_top_bar_control(end_turn_button)
-	map.back_button.text = "Quit to title"
-	map.back_button.tooltip_text = TooltipText.plain("Quit to title",
-		"Leave this game and go back to the title screen. You are asked to confirm first: games are not saved yet.")
+	map.back_button.text = "Menu"
+	map.back_button.tooltip_text = TooltipText.plain("Menu",
+		"Save the game, load another, change the settings or quit to the title screen (Esc). The game also saves itself at the start of every turn.")
 	# The computer seats sit right after the player's own name, in its group (#35); filled per game.
 	opponent_box = HBoxContainer.new()
 	opponent_box.name = "OpponentTag"
@@ -649,12 +871,119 @@ func _build_overlays() -> void:
 	var qtitle := _label("QuitTitle", 30, UiPalette.GILT)
 	qtitle.text = "Quit to the title screen?"
 	q[1].add_child(qtitle)
-	var qtext := _label("QuitText", 20, UiPalette.TEXT_PRIMARY)
-	qtext.text = "Games are not saved yet, so this game will be lost."
-	q[1].add_child(qtext)
+	quit_text = _label("QuitText", 20, UiPalette.TEXT_PRIMARY)
+	quit_text.text = "This turn has not been saved."
+	q[1].add_child(quit_text)
 	var qrow := _button_row(q[1])
 	_overlay_button(qrow, "KeepPlayingButton", "Keep playing", func(): quit_overlay.visible = false, "Go back to the game.")
-	_overlay_button(qrow, "ConfirmQuitButton", "Quit to title", _go_to_title, "Leave this game for the title screen.")
+	_overlay_button(qrow, "ConfirmQuitButton", "Quit to title", _go_to_title, "Leave this game for the title screen. Continue on the title screen brings back the latest save.")
+
+	_build_menu()
+	_build_save_dialog()
+
+	load_screen = LoadScreen.new()
+	load_screen.load_requested.connect(_on_load_requested)
+	overlays.add_child(load_screen)
+
+	settings_panel = SettingsPanel.new()
+	overlays.add_child(settings_panel)
+
+	_build_notice()
+
+
+## Menu: Resume, Save game, Load game, Settings, Quit to title.
+func _build_menu() -> void:
+	var m := _overlay("GameMenu", Vector2(460, 0))
+	menu_overlay = m[0]
+	var title := _label("MenuTitle", 34, UiPalette.GILT)
+	title.text = "Menu"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	m[1].add_child(title)
+	menu_text = _label("MenuText", 17, UiPalette.TEXT_SECONDARY)
+	menu_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	m[1].add_child(menu_text)
+	_menu_button(m[1], "ResumeButton", "Resume", close_menu, "Back to the game (Esc).")
+	menu_save_button = _menu_button(m[1], "SaveGameButton", "Save game", open_save_dialog, "")
+	_menu_button(m[1], "LoadGameButton", "Load game", open_load_screen, "Play on from a saved game instead of this one.")
+	_menu_button(m[1], "SettingsButton", "Settings", open_settings, "Window or fullscreen, and how big the interface is drawn.")
+	_menu_button(m[1], "QuitToTitleButton", "Quit to title", _on_quit_requested, "Leave this game for the title screen. You are asked to confirm first.")
+
+
+func _menu_button(box: VBoxContainer, node_name: String, text: String, action: Callable, tooltip: String) -> Button:
+	var b := Button.new()
+	b.name = node_name
+	b.text = text
+	b.tooltip_text = tooltip
+	b.custom_minimum_size = Vector2(0, 48)
+	b.add_theme_font_size_override("font_size", 22)
+	b.pressed.connect(func(): action.call())
+	box.add_child(b)
+	return b
+
+
+## The save dialog: a name (empty keeps the timestamped default), what is saved, Cancel and Save.
+func _build_save_dialog() -> void:
+	var d := _overlay("SaveDialog", Vector2(640, 0))
+	save_overlay = d[0]
+	var title := _label("SaveTitle", 32, UiPalette.GILT)
+	title.text = "Save game"
+	d[1].add_child(title)
+	save_name_edit = LineEdit.new()
+	save_name_edit.name = "SaveNameEdit"
+	save_name_edit.custom_minimum_size = Vector2(0, 46)
+	save_name_edit.add_theme_font_size_override("font_size", 20)
+	save_name_edit.max_length = 60
+	save_name_edit.tooltip_text = "Name this save, or leave it empty to name it after the date and time."
+	save_name_edit.text_submitted.connect(func(_t: String): confirm_save())
+	d[1].add_child(save_name_edit)
+	save_note = _label("SaveNote", 17, UiPalette.TEXT_SECONDARY)
+	d[1].add_child(save_note)
+	save_error = _label("SaveError", 18, UiPalette.NEGATIVE)
+	save_error.visible = false
+	d[1].add_child(save_error)
+	var row := _button_row(d[1])
+	_overlay_button(row, "CancelSaveButton", "Cancel", func(): save_overlay.visible = false, "Don't save.")
+	_overlay_button(row, "ConfirmSaveButton", "Save", func(): confirm_save(), "Save the game under this name.")
+
+
+## The NoticeLayer's notice: a title, a line and OK, under the top bar.
+func _build_notice() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "NoticeLayer"
+	layer.layer = 15
+	add_child(layer)
+	notice_panel = PanelContainer.new()
+	notice_panel.name = "Notice"
+	notice_panel.visible = false
+	notice_panel.anchor_left = 0.5
+	notice_panel.anchor_right = 0.5
+	notice_panel.offset_left = -400
+	notice_panel.offset_right = 400
+	notice_panel.offset_top = 84
+	notice_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	var style := UiPalette.panel_style(16)
+	style.border_color = UiPalette.GILT
+	notice_panel.add_theme_stylebox_override("panel", style)
+	layer.add_child(notice_panel)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	notice_panel.add_child(row)
+	var text := VBoxContainer.new()
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(text)
+	notice_title = _label("NoticeTitle", 20, UiPalette.GILT)
+	text.add_child(notice_title)
+	notice_label = _label("NoticeText", 17, UiPalette.TEXT_PRIMARY)
+	text.add_child(notice_label)
+	var ok := Button.new()
+	ok.name = "NoticeOkButton"
+	ok.text = "OK"
+	ok.custom_minimum_size = Vector2(80, 40)
+	ok.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	ok.add_theme_font_size_override("font_size", 18)
+	ok.tooltip_text = "Hide this notice."
+	ok.pressed.connect(func(): notice_panel.visible = false)
+	row.add_child(ok)
 
 
 ## The turn report panel in a modal frame with a footer: a hint and a Close button.
