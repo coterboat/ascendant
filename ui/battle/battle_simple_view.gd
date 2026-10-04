@@ -1,0 +1,1299 @@
+class_name BattleSimpleView
+extends Control
+## The Simple view: a battle played back as two armies of portrait cards facing each other (M3-3, #58, as
+## re-scoped by design/3D_DIRECTION.md §7.6; design/M3_BATTLES.md §3-§5, §7.4). It is one subscriber of a
+## BattlePlayer: the player owns the clock, the beats and the state, and this view only draws them, so the
+## 3D stage can replace the field later and keep the same player. It reads the log, the report, static data
+## (Art, RulesCodex, the resolver's constants) and its own settings, and never changes the game.
+##
+## Screen (1600 x 900 base, centred when the window is wider or taller), as M3 §3.1 without the why panel:
+##   top bar      0-88     the title, each side's plaque (emblem, name, attacking / defending / arrived, the
+##                         terrain and fort chips) and strength bar with its break notch and numbers, the round
+##   field        88-688   backdrop and cards (BattleLayout), effects, the round banner
+##   caption      688-752  the round's caption (BattleCaptions), each line linked to its codex entry
+##   controls     752-900  the scrubber with round ticks and key-moment markers; Restart, Play/Pause, 1x 2x 4x,
+##                         Skip to end, a jump button per key-moment kind, Close
+## The result card comes up over the field at the end: the result, the why with its factor chips, each
+## side's losses, the ruler, feast and aftermath lines, and Watch again / Full report / Close.
+##
+## API:
+##   show_event(event, seats = []) -> String         a battle event (numbers.log + numbers.report)
+##   show_battle(log, report = {}, seats = [], event = {}) -> String
+##        both return "" when it plays, or the plain reason it can't be watched (shown on screen instead)
+##   tick(delta)        advances the player and every motion; _process calls it, headless tests call it
+##   player             the BattlePlayer (play(), set_speed(), seek()...; the buttons and keys drive it)
+##   card(fid)          a fighter's BattleCard;  bar(si) a side's BattleStrengthBar
+##   visible_texts()    every text a player can see or hover (for the no-raw-ids test)
+##   signals closed, codex_requested(key), report_requested(event)
+## Keys (§5.3): Space play/pause, 1 2 3 speed, Left/Right round, comma/period step (paused), Home/End,
+## M next key moment, R watch again (on the result card), Esc close.
+## Settings: reduced motion and screen shake come from the [battle] section of the settings file
+## (BattleFx.settings); set reduced_motion / screen_shake before show_*() to override.
+
+signal closed
+signal codex_requested(key: String)
+signal report_requested(event: Dictionary)
+
+const BASE := Vector2(1600, 900)
+const TOP_H := 88.0
+const FIELD_H := 600.0
+const CAPTION_H := 64.0
+## A side with more fighters than this is massed (§3.4): numbers only for big and killing hits and the
+## hovered fighter, status glyphs only on rulers, commanders and the hovered fighter.
+const MASSED := 40
+## Floating numbers (§4.1 asks 16 / 22 / 14 px; a little larger here, since they sit on top of portraits).
+const NUMBER_SIZE := 20
+const BIG_NUMBER_SIZE := 26
+const MISS_SIZE := 16
+const BANNER_TIME := 0.8
+const TAG_TIME := 2.5
+const MOMENT_TOAST := 1.8
+const FIRST_HINT := "The bars show hit points left; the white notch is where a side breaks. Hover anyone to see what it's doing and why."
+const TOOLTIP_WRAP := 72
+
+var player: BattlePlayer = null
+var reduced_motion := false
+var screen_shake := true
+var layout: Dictionary = {}
+
+var _settings_read := false
+var _log: Dictionary = {}
+var _report: Dictionary = {}
+var _event: Dictionary = {}
+var _seats: Array = []
+var _side_seat: Array = [0, 1]
+var _massed: Array = [false, false]
+var _cards: Array = []
+var _glyph_cards: Array = []  # the cards that can show status glyphs (on a massed side: rulers and commanders)
+var _animating: Dictionary = {}
+var _flash := BattleFx.FlashLimiter.new()
+var _shake := BattleFx.ShakeLimiter.new()
+var _real := 0.0
+var _last_time := 0.0
+var _bars_dirty := true
+var _glyphs_dirty := true
+var _held_by: Array = [-1, -1]
+var _shake_t := -1.0
+var _shake_amp := 0.0
+var _shake_dur := 0.0
+var _shake_phase := 0.0
+var _banner_t := -1.0
+var _toast_t := -1.0
+var _tag_t: Array = [-1.0, -1.0]
+var _resume_after_drag := false
+var _hovered := -1
+
+# Nodes.
+var frame: Control
+var stage: Control
+var backdrop: BattleBackdrop
+var cards_layer: Control
+var effects: BattleEffects
+var banner_label: Label
+var toast_label: Label
+var title_label: Label
+var round_label: Label
+var plaque_labels: Array = []
+var chip_boxes: Array = []
+var bars: Array = []
+var bar_texts: Array = []
+var tag_labels: Array = []
+var center_chip: Label
+var caption_labels: Array = []
+var scrubber: BattleScrubber
+var buttons: Dictionary = {}
+var moment_buttons: Dictionary = {}
+var end_card: PanelContainer
+var end_result: Label
+var end_why: Label
+var end_chips: HFlowContainer
+var end_lines: VBoxContainer
+var message_panel: PanelContainer
+var message_label: Label
+
+
+func _init() -> void:
+	name = "BattleSimpleView"
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	focus_mode = Control.FOCUS_ALL
+	size = BASE
+	_build()
+
+
+func _ready() -> void:
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	resized.connect(_center_frame)
+	_center_frame()
+
+
+func _process(delta: float) -> void:
+	if visible and player != null:
+		tick(delta)
+
+
+# --- showing a battle -----------------------------------------------------------------------------
+
+func show_event(event: Dictionary, seats: Array = []) -> String:
+	var numbers: Dictionary = event.get("numbers", {})
+	return show_battle(numbers.get("log", {}), numbers.get("report", {}), seats, event)
+
+
+func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array = [], event: Dictionary = {}) -> String:
+	if not _settings_read:
+		_settings_read = true
+		var st := BattleFx.settings()
+		reduced_motion = reduced_motion or bool(st.reduced_motion)
+		screen_shake = screen_shake and bool(st.screen_shake)
+	visible = true
+	var problem := BattlePlayer.playback_problem(battle_log)
+	if problem.is_empty() and battle_log.get("sides", []).size() != 2:
+		problem = "Battles with more than two sides can't be watched yet."
+	if not problem.is_empty():
+		_show_message(problem)
+		return problem
+	message_panel.visible = false
+	_log = battle_log
+	_report = report
+	_event = event
+	_seats = seats.duplicate()
+	var order := _seats if not _seats.is_empty() else UiPalette.seat_order()
+	_side_seat = []
+	_massed = []
+	for s in _log.sides:
+		_side_seat.append(order.find(String(s.faction)))
+		_massed.append(s.fighters.size() > MASSED)
+	_held_by = [-1, -1]
+	if player != null:
+		_disconnect_player()
+	player = BattlePlayer.new(_log, _report)
+	player.reduced_motion = reduced_motion
+	player.beat.connect(_on_beat)
+	player.seeked.connect(_on_seeked)
+	player.playing_changed.connect(func(_p): _update_buttons())
+	player.speed_changed.connect(func(_s): _update_buttons())
+	player.set_speed(int(BattleFx.settings().speed))
+	_shake.enabled = screen_shake and not reduced_motion
+	_flash.reset()
+	_shake.reset()
+	_build_field()
+	_fill_top_bar()
+	_fill_controls()
+	_fill_end_card()
+	end_card.visible = false
+	_set_caption([])
+	_last_time = 0.0
+	_on_seeked(player.live_state())
+	return ""
+
+
+func _disconnect_player() -> void:
+	for c in player.beat.get_connections():
+		player.beat.disconnect(c.callable)
+	for c in player.seeked.get_connections():
+		player.seeked.disconnect(c.callable)
+
+
+func close() -> void:
+	if player != null:
+		player.pause()
+	visible = false
+	closed.emit()
+
+
+func card(fid: int) -> BattleCard:
+	return _cards[fid] if fid >= 0 and fid < _cards.size() else null
+
+
+func bar(si: int) -> BattleStrengthBar:
+	return bars[_slot_of_side(si)]
+
+
+## The left (0) or right (1) slot of the top bar where side `si` is shown.
+func _slot_of_side(si: int) -> int:
+	return 0 if si == int(layout.get("left", 0)) else 1
+
+
+# --- the clock and motion -------------------------------------------------------------------------
+
+func tick(delta: float) -> void:
+	if player == null:
+		return
+	_real += delta
+	player.advance(delta)
+	var now := player.time()
+	var dt := maxf(0.0, now - _last_time)
+	_last_time = now
+	if dt > 0.0 and not _animating.is_empty():
+		var done := []
+		for c in _animating:
+			if not (c as BattleCard).animate(dt):
+				done.append(c)
+		for c in done:
+			_animating.erase(c)
+	effects.step(dt, player.is_playing())
+	for b in bars:
+		(b as BattleStrengthBar).animate(dt)
+	if _glyphs_dirty:
+		_refresh_glyphs()
+	if _bars_dirty:
+		_refresh_bars()
+	_tick_labels(dt)
+	_tick_shake(delta)
+	scrubber.time = now
+
+
+func _tick_labels(dt: float) -> void:
+	if _banner_t >= 0.0:
+		_banner_t += dt
+		banner_label.modulate.a = clampf(1.0 - (_banner_t - BANNER_TIME * 0.5) / (BANNER_TIME * 0.5), 0.0, 1.0)
+		if _banner_t >= BANNER_TIME:
+			_banner_t = -1.0
+			banner_label.visible = false
+	if _toast_t >= 0.0:
+		_toast_t += dt
+		if _toast_t >= MOMENT_TOAST:
+			_toast_t = -1.0
+			toast_label.visible = false
+	for k in 2:
+		if _tag_t[k] >= 0.0:
+			_tag_t[k] += dt
+			if _tag_t[k] >= TAG_TIME:
+				_tag_t[k] = -1.0
+				tag_labels[k].text = ""
+
+
+func _tick_shake(real_delta: float) -> void:
+	if _shake_t < 0.0:
+		return
+	if not player.is_playing():
+		_shake_t = -1.0
+		stage.position = Vector2.ZERO
+		return
+	_shake_t += real_delta
+	var k := 1.0 - _shake_t / _shake_dur
+	if k <= 0.0:
+		_shake_t = -1.0
+		stage.position = Vector2.ZERO
+		return
+	var a := _shake_amp * k
+	var w := _shake_t * 55.0 + _shake_phase
+	stage.position = Vector2(sin(w) * a * 2.0 / 3.0, cos(w * 1.3) * a / 3.0)
+
+
+func _try_shake(spec: Dictionary, event_index: int) -> void:
+	if spec.is_empty() or not player.is_playing() or scrubber.is_dragging():
+		return
+	if not _shake.allow(_real):
+		return
+	_shake_t = 0.0
+	_shake_amp = float(spec.amp)
+	_shake_dur = float(spec.dur)
+	_shake_phase = float(event_index % 7) * 0.9
+
+
+func _animate(c: BattleCard) -> void:
+	if c != null and c.is_animating():
+		_animating[c] = true
+
+
+# --- beats ----------------------------------------------------------------------------------------
+
+func _on_beat(b: Dictionary, st: Dictionary) -> void:
+	match String(b.kind):
+		"deploy":
+			for c in _cards:
+				if c != null and int(_log.fighters[c.fid].tier) == 0:
+					c.deploy(BattlePlayer.DEPLOY)
+					_animate(c)
+		"round_start":
+			banner_label.text = String(b.data.banner)
+			banner_label.visible = true
+			banner_label.modulate.a = 1.0
+			_banner_t = 0.0
+			_update_round_label(st)
+			_glyphs_dirty = true
+		"attack_started":
+			_attack_started(b)
+		"attack_landed":
+			_attack_landed(b, st)
+		"wound":
+			var c := card(int(b.fighter))
+			c.sync(st.fighters[c.fid], c.glyphs)
+			_bars_dirty = true
+		"death":
+			var c := card(int(b.fighter))
+			c.sync(st.fighters[c.fid], [])
+			c.die()
+			_animate(c)
+			effects.add_dust(_feet(c), _scale())
+			if b.data.ruler:
+				effects.add_impact(_upper(c), _scale() * 1.2, true, not reduced_motion and _flash.allow(_real), reduced_motion)
+				_try_shake(b.data.shake, int(b.event))
+			_glyphs_dirty = true
+			_bars_dirty = true
+		"morale":
+			var si := int(b.side)
+			if b.data.result == "held":
+				_held_by[si] = int(b.data.held_by)
+			else:
+				_held_by[si] = -1
+			var words := {"holds": "Morale check: holds", "breaks": "Morale check: breaks", "held": "Morale check: held by Iron Discipline"}
+			var change: Dictionary = b.data.change
+			var text := String(words.get(String(b.data.result), ""))
+			if not change.is_empty():
+				text = "%s. %s" % [String(change.text), text]
+			_show_tag(si, text)
+			bars[_slot_of_side(si)].set_strength(player.strength(si), true)
+			_glyphs_dirty = true
+		"caption":
+			_set_caption(b.data.lines)
+		"rout":
+			for fid in b.data.fled:
+				var c := card(int(fid))
+				if c != null and c.visible:
+					c.rout()
+					_animate(c)
+			_bars_dirty = true
+			_show_tag(int(b.side), "%s broke and fled." % String(_log.sides[int(b.side)].name))
+		"destroyed":
+			_bars_dirty = true
+			_show_tag(int(b.side), "No one of %s is left standing." % String(_log.sides[int(b.side)].name))
+		"moment":
+			toast_label.text = String(b.data.text)
+			toast_label.visible = true
+			_toast_t = 0.0
+		"end":
+			_update_round_label(st)
+			if b.data.how == "mutual":
+				for fid in _log.sides[int(b.data.winner)].fighters:
+					var c := card(int(fid))
+					if c != null and st.fighters[int(fid)].alive:
+						c.snap(st.fighters[int(fid)], c.glyphs)
+						_animating.erase(c)
+			_bars_dirty = true
+		"feast":
+			for h in b.data.healed:
+				var c := card(int(h[0]))
+				if c != null:
+					c.sync(st.fighters[c.fid], c.glyphs)
+					effects.add_number(_upper(c), "+%d hp" % (int(h[2]) - int(h[1])), UiPalette.POSITIVE, _number_size(false))
+			_bars_dirty = true
+		"aftermath":
+			for fid in b.data.lost:
+				var c := card(int(fid))
+				if c != null and c.visible:
+					c.fade_out()
+					_animate(c)
+		"result":
+			_show_end_card()
+
+
+func _attack_started(b: Dictionary) -> void:
+	var a := card(int(b.fighter))
+	var t := card(int(b.target))
+	if a == null or t == null:
+		return
+	var proj := String(b.data.projectile)
+	if proj.is_empty():
+		a.lunge(_center(t))
+		_animate(a)
+	else:
+		var arc := 0.0 if reduced_motion else float(b.data.arc)
+		effects.add_projectile(_upper(a), _upper(t), float(b.data.delay), arc, proj, bool(b.data.hit), _scale())
+
+
+func _attack_landed(b: Dictionary, st: Dictionary) -> void:
+	var t := card(int(b.target))
+	if t == null:
+		return
+	var si := int(_log.fighters[t.fid].side)
+	var fs: Dictionary = st.fighters[t.fid]
+	var shown: bool = not _massed[si] or t.fid == _hovered
+	if b.data.hit:
+		t.hit()
+		_animate(t)
+		t.sync(fs, t.glyphs)
+		var big: bool = b.data.big
+		var kills := int(fs.pending) >= int(fs.hp) and int(fs.pending) - int(b.data.damage) < int(fs.hp)
+		effects.add_impact(_upper(t), _scale(), big, not reduced_motion and _flash.allow(_real), reduced_motion)
+		if shown or big or kills:
+			effects.add_number(_upper(t) - Vector2(0, 8), str(int(b.data.damage)), UiPalette.TEXT_PRIMARY, _number_size(big))
+		_try_shake(b.data.shake, int(b.event))
+		_bars_dirty = true
+	elif shown:
+		effects.add_number(_upper(t) - Vector2(0, 8), "miss", UiPalette.TEXT_SECONDARY, maxi(12, int(round(MISS_SIZE * _scale()))))
+
+
+func _on_seeked(st: Dictionary) -> void:
+	effects.clear()
+	_animating.clear()
+	_shake_t = -1.0
+	stage.position = Vector2.ZERO
+	_banner_t = -1.0
+	banner_label.visible = false
+	_toast_t = -1.0
+	toast_label.visible = false
+	for k in 2:
+		_tag_t[k] = -1.0
+		tag_labels[k].text = ""
+	_last_time = player.time()
+	_held_by = _held_by_at(st)
+	for c in _cards:
+		if c != null:
+			c.snap(st.fighters[c.fid], _glyphs_for(c.fid, st))
+	for si in _log.sides.size():
+		bars[_slot_of_side(si)].set_strength(player.strength(si), false)
+		bars[_slot_of_side(si)].tooltip_text = ""
+	_refresh_bar_texts()
+	_bars_dirty = false
+	_glyphs_dirty = false
+	var lines := []
+	var next := player.next_beat()
+	var beats := player.beats()
+	for k in range(next - 1, -1, -1):
+		if beats[k].kind == "caption":
+			lines = beats[k].data.lines
+			break
+	_set_caption(lines)
+	_update_round_label(st)
+	end_card.visible = false
+	scrubber.time = player.time()
+
+
+## Who Iron Discipline held each side with at `st` (the side's last morale check before it).
+func _held_by_at(st: Dictionary) -> Array:
+	var out := [-1, -1]
+	var events: Array = _log.events
+	for i in mini(int(st.event), events.size()):
+		var e: Dictionary = events[i]
+		if e.t == "morale":
+			out[int(e.side)] = int(e.held_by) if e.result == "held" else -1
+	return out
+
+
+func _refresh_bars() -> void:
+	_bars_dirty = false
+	var strengths := []
+	for si in _log.sides.size():
+		var b: BattleStrengthBar = bars[_slot_of_side(si)]
+		var st := player.strength(si)
+		strengths.append(st)
+		# Keep a sliding notch where it is going: only the morale beat moves it.
+		b.fill = clampf(float(st.fill), 0.0, 1.0)
+		b.pending_share = clampf(float(st.pending) / maxf(1.0, float(st.hp_start)), 0.0, b.fill)
+		b.out = String(st.out)
+		b.held = bool(st.held)
+		b.queue_redraw()
+	_refresh_bar_texts(strengths)
+
+
+func _refresh_bar_texts(strengths: Array = []) -> void:
+	for si in _log.sides.size():
+		var k := _slot_of_side(si)
+		var st: Dictionary = strengths[si] if si < strengths.size() else player.strength(si)
+		var text := String(st.text)
+		if bar_texts[k].text == text and not bars[k].tooltip_text.is_empty():
+			continue
+		bar_texts[k].text = text
+		var tip := CodexLink.with_link(TooltipText.plain("Strength of %s" % String(_log.sides[si].name),
+			"%s. The bar is the hit points this side has left of what it started with. The white notch is where it breaks; hatched red is damage that lands at the end of this round. Whoever stays further above their notch is winning." % text), "battle_strength")
+		bars[k].tooltip_text = tip
+		bar_texts[k].tooltip_text = tip
+
+
+func _refresh_glyphs() -> void:
+	_glyphs_dirty = false
+	var st := player.live_state()
+	for c in _glyph_cards:
+		if c.alive:
+			c.sync(st.fighters[c.fid], _glyphs_for(c.fid, st))
+
+
+## The status glyphs fighter `fid` shows at `st` (BattleTimeline.statuses, plus exposed, auras and Iron
+## Discipline). On a massed side only rulers, commanders and the hovered fighter show them (§3.4).
+func _glyphs_for(fid: int, st: Dictionary) -> Array:
+	var f: Dictionary = _log.fighters[fid]
+	var si := int(f.side)
+	var fs: Dictionary = st.fighters[fid]
+	if not fs.alive or fs.fled:
+		return []
+	if _massed[si] and f.role == "unit" and fid != _hovered:
+		return []
+	var s := player.timeline().statuses(st, fid)
+	var out := []
+	if _held_by[si] == fid:
+		out.append("iron")
+	for a in s.auras:
+		var kind := "aura_down" if a == AutoBattleResolver.FURY or a == AutoBattleResolver.DREAD else "aura_up"
+		if not out.has(kind):
+			out.append(kind)
+	if s.shield_wall:
+		out.append("shield_wall")
+	if s.berserk:
+		out.append("berserk")
+	if s.blood_frenzy:
+		out.append("blood_frenzy")
+	if s.pack_leader:
+		out.append("pack_leader")
+	if int(f.tier) >= 1 and int(st.round) >= 1:
+		out.append("shielded" if s.shielded else "exposed")
+	return out
+
+
+# --- geometry helpers -----------------------------------------------------------------------------
+
+func _scale() -> float:
+	return float(layout.get("scale", 1.0))
+
+
+func _center(c: BattleCard) -> Vector2:
+	return c.home + c.size / 2.0
+
+
+func _upper(c: BattleCard) -> Vector2:
+	return c.home + Vector2(c.size.x / 2.0, c.size.y * 0.38)
+
+
+func _feet(c: BattleCard) -> Vector2:
+	return c.home + Vector2(c.size.x / 2.0, c.size.y)
+
+
+func _number_size(big: bool) -> int:
+	return maxi(12, int(round((BIG_NUMBER_SIZE if big else NUMBER_SIZE) * _scale())))
+
+
+# --- hover ----------------------------------------------------------------------------------------
+
+## The hover text of fighter `fid` now: BattleExplain.explain_fighter's lines, each wrapped to keep the
+## tooltip narrow. Every number in it is BattleExplain's.
+func fighter_tooltip(fid: int) -> String:
+	return tooltip_of(player.explain(fid))
+
+
+static func tooltip_of(explain: Dictionary) -> String:
+	var out := []
+	for l in explain.get("lines", []):
+		var line := String(l)
+		var indent := line.length() - line.lstrip(" ").length()
+		var pad := " ".repeat(indent)
+		var wrapped := TooltipText.wrap_text(line.strip_edges(), TOOLTIP_WRAP - indent)
+		for w in wrapped.split("\n"):
+			out.append(pad + w)
+	return "\n".join(out)
+
+
+func _on_card_hover(fid: int, on: bool) -> void:
+	_hovered = fid if on else (-1 if _hovered == fid else _hovered)
+	var c := card(fid)
+	if c != null and player != null:
+		c.sync(player.live_state().fighters[fid], _glyphs_for(fid, player.live_state()))
+
+
+# --- input ----------------------------------------------------------------------------------------
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not visible or player == null:
+		return
+	if CodexLink.is_open_key(event) and _hovered >= 0:
+		codex_requested.emit(card(_hovered).codex_key)
+		_handled()
+		return
+	var k := event as InputEventKey
+	if k == null or not k.pressed or k.echo:
+		return
+	match k.keycode:
+		KEY_SPACE:
+			player.toggle()
+		KEY_1:
+			player.set_speed(1)
+		KEY_2:
+			player.set_speed(2)
+		KEY_3:
+			player.set_speed(4)
+		KEY_LEFT:
+			if player.round_now() <= 1 or not player.seek_round(player.round_now() - 1):
+				player.restart()
+		KEY_RIGHT:
+			if not player.seek_round(player.round_now() + 1):
+				player.skip_to_end()
+		KEY_COMMA:
+			if not player.is_playing():
+				player.step_back()
+		KEY_PERIOD:
+			if not player.is_playing():
+				player.step()
+		KEY_HOME:
+			player.restart()
+		KEY_END:
+			player.skip_to_end()
+		KEY_M:
+			player.next_moment()
+		KEY_R:
+			if end_card.visible:
+				_watch_again()
+		KEY_ESCAPE:
+			close()
+		_:
+			return
+	_handled()
+
+
+func _handled() -> void:
+	if is_inside_tree():
+		get_viewport().set_input_as_handled()
+
+
+func _watch_again() -> void:
+	end_card.visible = false
+	player.restart()
+	player.play()
+
+
+# --- texts ----------------------------------------------------------------------------------------
+
+## Every text on screen or in a tooltip a player can reach now: labels, buttons, chips, cards' hover text,
+## the scrubber's marks and the result card. For the no-raw-ids test.
+func visible_texts() -> Array:
+	var out := []
+	_collect_texts(self, out)
+	for c in _cards:
+		if c != null:
+			out.append(fighter_tooltip(c.fid))
+	for m in scrubber.marks:
+		out.append(String(m.text))
+	return out
+
+
+func _collect_texts(n: Node, out: Array) -> void:
+	if n is Label and not (n as Label).text.is_empty():
+		out.append((n as Label).text)
+	if n is Button and not (n as Button).text.is_empty():
+		out.append((n as Button).text)
+	if n is Control and not (n as Control).tooltip_text.is_empty() and not (n is BattleCard):
+		out.append((n as Control).tooltip_text)
+	for ch in n.get_children():
+		_collect_texts(ch, out)
+
+
+func _set_caption(lines: Array) -> void:
+	for k in 2:
+		var l: Label = caption_labels[k]
+		CodexLink.detach(l)
+		if k < lines.size():
+			l.text = String(lines[k].text)
+			l.tooltip_text = TooltipText.plain("Round caption", "What mattered most this round, worked out from the battle's own numbers.")
+			CodexLink.attach(l, String(lines[k].codex), codex_requested.emit)
+		elif k == 0 and lines.is_empty():
+			l.text = FIRST_HINT
+			l.tooltip_text = TooltipText.plain("Watching a battle", "The battle was already fought; this plays it back with the same rolls as the report, so watching can never change it. A caption after every round says what mattered most.")
+			CodexLink.attach(l, "battle_playback", codex_requested.emit)
+		else:
+			l.text = ""
+			l.tooltip_text = ""
+
+
+func _show_tag(si: int, text: String) -> void:
+	var k := _slot_of_side(si)
+	tag_labels[k].text = text
+	_tag_t[k] = 0.0
+
+
+func _update_round_label(st: Dictionary) -> void:
+	var n := int(st.round)
+	var cap := int(_log.get("round_cap", 8))
+	if int(st.winner) >= 0 or st.beat == "end":
+		round_label.text = "Battle over after %d %s" % [n, "round" if n == 1 else "rounds"]
+	elif n <= 0:
+		round_label.text = "The armies deploy"
+	else:
+		round_label.text = "Round %d of at most %d" % [n, cap]
+
+
+func _show_message(text: String) -> void:
+	message_label.text = text
+	message_panel.visible = true
+	end_card.visible = false
+
+
+# --- the result card ------------------------------------------------------------------------------
+
+func _show_end_card() -> void:
+	end_card.visible = true
+
+
+## Fills the result card when the battle loads (its content is fixed per battle), so the end beat only
+## shows it.
+func _fill_end_card() -> void:
+	end_result.text = _result_sentence()
+	var why := String(_report.get("why", ""))
+	end_why.text = "Why: %s." % _cap(why) if not why.is_empty() else "Why: the report gives no single reason."
+	end_why.tooltip_text = TooltipText.plain("Why", "The biggest reasons this battle went the way it did, from the battle report.")
+	var entry := "battle_rounds"
+	for f in _report.get("factors", []):
+		var e := BattleExplain.factor_entry(String(f.get("id", "")))
+		if RulesCodex.ENTRIES.has(e):
+			entry = e
+			break
+	CodexLink.attach(end_why, entry, codex_requested.emit)
+	for c in end_chips.get_children():
+		end_chips.remove_child(c)
+		c.queue_free()
+	var seen := {}
+	for f in _report.get("factors", []):
+		var key := BattleExplain.factor_entry(String(f.get("id", "")))
+		var title := String(RulesCodex.entry(key).get("title", "")) if RulesCodex.ENTRIES.has(key) else ""
+		if title.is_empty() or seen.has(title):
+			continue
+		seen[title] = true
+		var chip := _chip(title, TooltipText.wrap_text(_cap(String(f.get("text", "")))) if not String(f.get("text", "")).is_empty() else title)
+		end_chips.add_child(chip)
+		CodexLink.attach(chip, key, codex_requested.emit)
+	for c in end_lines.get_children():
+		end_lines.remove_child(c)
+		c.queue_free()
+	for line in end_card_lines():
+		var l := _label(String(line), 17, UiPalette.TEXT_PRIMARY)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		end_lines.add_child(l)
+	buttons.report.disabled = _report.is_empty()
+	buttons.report.tooltip_text = "Open the full battle report: every round, loss and morale check in words." if not _report.is_empty() \
+		else "This battle has no written report."
+
+
+## The result card's lines under the why: each side's losses, the ruler lines, the feast and the aftermath.
+func end_card_lines() -> Array:
+	var out := []
+	var fin := player.timeline().final_state()
+	for si in _log.sides.size():
+		var side: Dictionary = _log.sides[si]
+		var lost := 0
+		for fid in side.fighters:
+			var fs: Dictionary = fin.fighters[int(fid)]
+			if not fs.alive or fs.fled or fs.lost:
+				lost += 1
+		var sr := {}
+		for r in _report.get("sides", []):
+			if String(r.get("faction", "")) == String(side.faction):
+				sr = r
+		if not sr.is_empty():
+			lost = int(sr.get("fighters_lost", lost))
+		out.append("%s: lost %d of %d fighters · %d of %d hp left" % [side.name, lost, side.fighters.size(), int(fin.sides[si].hp), int(side.hp_start)])
+	for e in _log.events:
+		if e.t == "death" and _log.fighters[int(e.f)].role == "ruler":
+			out.append("%s fell in round %d." % [_cap(String(_log.fighters[int(e.f)].name)), int(e.n)])
+		elif e.t == "feast":
+			# The aftermath sentence names the feast when there is one; say it here only if it doesn't.
+			var feast := RulerRules.mandate_name(RulerRules.FEAST_OF_VICTORY)
+			var after := BattleLog.find_event(_log, "aftermath")
+			if after < 0 or not String(_log.events[after].get("text", "")).contains(feast):
+				var healed := 0
+				for h in e.healed:
+					healed += int(h[2]) - int(h[1])
+				out.append("%s healed %d hp after the battle." % [feast, healed])
+		elif e.t == "aftermath" and not String(e.get("text", "")).is_empty():
+			out.append(String(e.text))
+	return out
+
+
+func _result_sentence() -> String:
+	for line in _report.get("lines", []):
+		if String(line).begins_with("Result: "):
+			return String(line).trim_prefix("Result: ")
+	var end_i := BattleLog.find_event(_log, "end")
+	if end_i < 0:
+		return "The playback stops here: this battle's log was cut short."
+	var e: Dictionary = _log.events[end_i]
+	var n := int(e.rounds)
+	return "%s won after %d %s." % [_log.sides[int(e.winner)].name, n, "round" if n == 1 else "rounds"]
+
+
+static func _cap(text: String) -> String:
+	return text if text.is_empty() else text[0].to_upper() + text.substr(1)
+
+
+# --- building -------------------------------------------------------------------------------------
+
+func _center_frame() -> void:
+	if frame == null:
+		return
+	var s := size if size.x > 10.0 else BASE
+	frame.position = ((s - BASE) / 2.0).floor().max(Vector2.ZERO)
+
+
+func _build_field() -> void:
+	for c in cards_layer.get_children():
+		cards_layer.remove_child(c)
+		c.queue_free()
+	effects.clear()
+	layout = BattleLayout.build(_log, Vector2(BASE.x, FIELD_H))
+	_cards = []
+	_cards.resize(_log.fighters.size())
+	_glyph_cards = []
+	var order := []
+	for f in _log.fighters:
+		var slot: Dictionary = layout.slots[int(f.id)]
+		var c := BattleCard.new()
+		c.reduced_motion = reduced_motion
+		c.setup(f, _side_seat[int(f.side)], slot.rect, int(slot.dir), float(layout.scale), bool(layout.bar_on_top), float(layout.bar_h),
+			float(slot.back_x))
+		var fid := int(f.id)
+		c.explain_source = func(): return fighter_tooltip(fid)
+		c.codex_requested.connect(codex_requested.emit)
+		c.mouse_entered.connect(_on_card_hover.bind(fid, true))
+		c.mouse_exited.connect(_on_card_hover.bind(fid, false))
+		_cards[fid] = c
+		order.append(c)
+		if not _massed[int(f.side)] or f.role != "unit":
+			_glyph_cards.append(c)
+	# Lower rows draw in front (a crowd overlaps upward).
+	order.sort_custom(func(a, b): return a.home.y < b.home.y if a.home.y != b.home.y else a.fid < b.fid)
+	for c in order:
+		cards_layer.add_child(c)
+	# A defended fort stands behind the defender's half.
+	var on := ""
+	for side in _log.sides:
+		if side.get("defender", false):
+			on = "left" if int(side.index) == int(layout.left) else "right"
+	backdrop.setup(_log, on)
+
+
+func _fill_top_bar() -> void:
+	var place := String(_report.get("place", ""))
+	if place.is_empty():
+		var pids: Array = _log.get("provinces", [])
+		place = "at %s" % BattleBackdrop.province_name(String(pids[0])) if not pids.is_empty() else "in the field"
+	var turn := int(_log.get("turn", 0))
+	title_label.text = "Battle %s%s" % [place, " · turn %d" % turn if turn > 0 else ""]
+	_fit(title_label, 20, 13)
+	var border: bool = _log.get("kind", "province") == "border"
+	var defender := String(_log.get("defender", ""))
+	for si in _log.sides.size():
+		var k := _slot_of_side(si)
+		var side: Dictionary = _log.sides[si]
+		var role := "on the border" if border else ("defending" if side.get("defender", false) else ("attacking" if not defender.is_empty() else "arrived"))
+		plaque_labels[k].text = "%s · %s" % [side.name, role]
+		plaque_labels[k].tooltip_text = TooltipText.plain(String(side.name), "%s, %s. %s" % [SeatEmblem.describe(_side_seat[si]).capitalize(),
+			_role_words(side, border, defender), _army_words(side)])
+		var b: BattleStrengthBar = bars[k]
+		b.seat = _side_seat[si]
+		b.mirrored = k == 1
+		for c in chip_boxes[k].get_children():
+			chip_boxes[k].remove_child(c)
+			c.queue_free()
+		if side.get("defender", false) and not border:
+			var terrain := String(_log.get("terrain", ""))
+			var bonus: Dictionary = AutoBattleResolver.TERRAIN.get(terrain, {})
+			if int(bonus.get("defense", 0)) > 0:
+				var text := "%s: +%d defense" % [terrain.capitalize(), int(bonus.defense)]
+				if int(bonus.get("attack", 0)) > 0:
+					text += " and +%d attack" % int(bonus.attack)
+				var chip := _chip(text, TooltipText.plain("Terrain", "The defender of a %s province gets %s." % [terrain, text.substr(text.find(":") + 2)]))
+				chip_boxes[k].add_child(chip)
+				CodexLink.attach(chip, TooltipText.codex_for(TooltipText.terrain_kind(terrain)), codex_requested.emit)
+			if _log.get("fort", false):
+				var fchip := _chip("Fort: +%d defense" % AutoBattleResolver.FORT_DEFENSE, TooltipText.plain("Fort", "Only a defender gets a fort's bonus: +%d defense to every fighter." % AutoBattleResolver.FORT_DEFENSE))
+				chip_boxes[k].add_child(fchip)
+				CodexLink.attach(fchip, "fort", codex_requested.emit)
+	if border:
+		center_chip.text = "Border battle: nobody defends, no terrain bonus"
+	elif defender.is_empty():
+		center_chip.text = "Nobody was defending: no terrain bonus"
+	else:
+		center_chip.text = ""
+	center_chip.visible = not center_chip.text.is_empty()
+	center_chip.tooltip_text = TooltipText.plain("Terrain", "Only a side that already held the province gets its terrain and fort bonus. Here nobody did.") if center_chip.visible else ""
+	if center_chip.visible:
+		CodexLink.attach(center_chip, "battle_terrain", codex_requested.emit)
+
+
+func _role_words(side: Dictionary, border: bool, defender: String) -> String:
+	if border:
+		return "met the enemy on the border while both armies swapped places"
+	if side.get("defender", false):
+		return "defending: it already held the province"
+	if defender.is_empty():
+		return "arrived at the same time as the enemy, so nobody defends"
+	return "attacking: it marched in"
+
+
+func _army_words(side: Dictionary) -> String:
+	var labels := []
+	for a in side.armies:
+		labels.append(String(a.label))
+	return "%s: %d fighters, %d hp, morale %d." % [", ".join(labels), side.fighters.size(), int(side.hp_start), int(side.start_morale.morale)]
+
+
+func _fill_controls() -> void:
+	var marks := []
+	for m in player.moments():
+		marks.append({"t": player.moment_time(m), "kind": String(m.kind), "text": String(m.text)})
+	scrubber.duration = player.duration()
+	scrubber.rounds = player.round_times()
+	scrubber.marks = marks
+	scrubber.queue_redraw()
+	var missing := player.missing_moments()
+	for kind in BattleMoments.KINDS:
+		var b: Button = moment_buttons[kind]
+		var have := player.moments().filter(func(m): return m.kind == kind)
+		b.disabled = have.is_empty()
+		if have.is_empty():
+			b.tooltip_text = TooltipText.wrap_text(String(missing.get(kind, "Not in this battle.")))
+		else:
+			var tip := String(have[0].text)
+			if have.size() > 1:
+				tip += " (%d in this battle: press again for the next.)" % have.size()
+			b.tooltip_text = TooltipText.wrap_text(tip + " M jumps to the next key moment of any kind.")
+	_update_buttons()
+
+
+func _update_buttons() -> void:
+	if player == null:
+		return
+	buttons.play.text = "Pause" if player.is_playing() else "Play"
+	for s in BattlePlayer.SPEEDS:
+		(buttons["speed%d" % s] as Button).button_pressed = player.speed() == s
+
+
+func _build() -> void:
+	var bg := ColorRect.new()
+	bg.name = "Background"
+	bg.color = UiPalette.PANEL_BG
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(bg)
+	frame = Control.new()
+	frame.name = "Frame"
+	frame.size = BASE
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(frame)
+
+	# The field: a clipping window, a stage inside it that shakes.
+	var field := Control.new()
+	field.name = "Field"
+	field.position = Vector2(0, TOP_H)
+	field.size = Vector2(BASE.x, FIELD_H)
+	field.clip_contents = true
+	field.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(field)
+	stage = Control.new()
+	stage.name = "Stage"
+	stage.size = field.size
+	stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	field.add_child(stage)
+	stage.position = Vector2.ZERO
+	backdrop = BattleBackdrop.new()
+	backdrop.name = "Backdrop"
+	backdrop.size = field.size
+	stage.add_child(backdrop)
+	cards_layer = Control.new()
+	cards_layer.name = "Cards"
+	cards_layer.size = field.size
+	cards_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage.add_child(cards_layer)
+	effects = BattleEffects.new()
+	effects.name = "Effects"
+	effects.size = field.size
+	effects.z_index = 2
+	stage.add_child(effects)
+	banner_label = _label("", 30, UiPalette.TEXT_PRIMARY)
+	banner_label.name = "Banner"
+	banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	banner_label.position = Vector2(0, 14)
+	banner_label.size = Vector2(BASE.x, 40)
+	banner_label.add_theme_color_override("font_outline_color", UiPalette.KEYLINE_INK)
+	banner_label.add_theme_constant_override("outline_size", 8)
+	banner_label.visible = false
+	banner_label.z_index = 3
+	field.add_child(banner_label)
+	toast_label = _label("", 18, UiPalette.GILT)
+	toast_label.name = "MomentToast"
+	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	toast_label.position = Vector2(200, 54)
+	toast_label.size = Vector2(BASE.x - 400, 28)
+	toast_label.add_theme_color_override("font_outline_color", UiPalette.KEYLINE_INK)
+	toast_label.add_theme_constant_override("outline_size", 4)
+	toast_label.visible = false
+	toast_label.z_index = 3
+	field.add_child(toast_label)
+	_build_top_bar()
+	_build_caption()
+	_build_controls()
+	_build_end_card()
+	_build_message()
+
+
+func _build_top_bar() -> void:
+	var top := ColorRect.new()
+	top.name = "TopBar"
+	top.color = UiPalette.PANEL_RAISED
+	top.size = Vector2(BASE.x, TOP_H)
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(top)
+	title_label = _label("", 20, UiPalette.TEXT_PRIMARY)
+	title_label.name = "Title"
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.position = Vector2(560, 6)
+	title_label.size = Vector2(480, 26)
+	title_label.clip_text = true
+	title_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	top.add_child(title_label)
+	round_label = _label("", 18, UiPalette.GILT)
+	round_label.name = "RoundLabel"
+	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	round_label.position = Vector2(560, 34)
+	round_label.size = Vector2(480, 24)
+	round_label.tooltip_text = TooltipText.plain("Rounds", "A battle is fought in rounds. Every fighter attacks once a round, damage lands at the end of the round, then each side checks its morale.")
+	round_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	top.add_child(round_label)
+	CodexLink.attach(round_label, "battle_rounds", codex_requested.emit)
+	center_chip = _label("", 13, UiPalette.TEXT_SECONDARY)
+	center_chip.name = "TerrainNote"
+	center_chip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	center_chip.position = Vector2(560, 60)
+	center_chip.size = Vector2(480, 20)
+	center_chip.mouse_filter = Control.MOUSE_FILTER_PASS
+	top.add_child(center_chip)
+	for k in 2:
+		var x := 24.0 if k == 0 else BASE.x - 24.0 - 520.0
+		var plaque := _label("", 18, UiPalette.TEXT_PRIMARY)
+		plaque.name = "Plaque%d" % k
+		plaque.position = Vector2(x + (30.0 if k == 0 else 0.0), 4)
+		plaque.size = Vector2(300, 26)
+		plaque.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if k == 0 else HORIZONTAL_ALIGNMENT_RIGHT
+		if k == 1:
+			plaque.position.x = x + 520.0 - 30.0 - 300.0
+		plaque.mouse_filter = Control.MOUSE_FILTER_PASS
+		top.add_child(plaque)
+		plaque_labels.append(plaque)
+		var chips := HBoxContainer.new()
+		chips.name = "Chips%d" % k
+		chips.add_theme_constant_override("separation", 6)
+		chips.position = Vector2(x + (330.0 if k == 0 else 0.0), 6)
+		chips.size = Vector2(190, 22)
+		chips.alignment = BoxContainer.ALIGNMENT_BEGIN if k == 0 else BoxContainer.ALIGNMENT_END
+		top.add_child(chips)
+		chip_boxes.append(chips)
+		var b := BattleStrengthBar.new()
+		b.name = "StrengthBar%d" % k
+		b.position = Vector2(x, 34)
+		b.size = Vector2(520, 22)
+		top.add_child(b)
+		bars.append(b)
+		var t := _label("", 14, UiPalette.TEXT_SECONDARY)
+		t.name = "StrengthText%d" % k
+		t.position = Vector2(x + (30.0 if k == 0 else 0.0), 60)
+		t.size = Vector2(490, 20)
+		t.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if k == 0 else HORIZONTAL_ALIGNMENT_RIGHT
+		t.mouse_filter = Control.MOUSE_FILTER_PASS
+		top.add_child(t)
+		bar_texts.append(t)
+		CodexLink.attach(b, "battle_strength", func(key): codex_requested.emit(key))
+		CodexLink.attach(t, "battle_strength", func(key): codex_requested.emit(key))
+		var tag := _label("", 16, UiPalette.GILT)
+		tag.name = "MoraleTag%d" % k
+		tag.position = Vector2(x, TOP_H + 4.0)
+		tag.size = Vector2(520, 22)
+		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if k == 0 else HORIZONTAL_ALIGNMENT_RIGHT
+		tag.add_theme_color_override("font_outline_color", UiPalette.KEYLINE_INK)
+		tag.add_theme_constant_override("outline_size", 4)
+		tag.z_index = 3
+		frame.add_child(tag)
+		tag_labels.append(tag)
+
+
+func _build_caption() -> void:
+	var strip := PanelContainer.new()
+	strip.name = "CaptionStrip"
+	strip.position = Vector2(0, TOP_H + FIELD_H)
+	strip.size = Vector2(BASE.x, CAPTION_H)
+	var style := StyleBoxFlat.new()
+	style.bg_color = UiPalette.PANEL_BG
+	style.border_color = UiPalette.PANEL_BORDER
+	style.border_width_top = 2
+	style.border_width_bottom = 2
+	style.content_margin_left = 24
+	style.content_margin_right = 24
+	style.content_margin_top = 6
+	style.content_margin_bottom = 6
+	strip.add_theme_stylebox_override("panel", style)
+	frame.add_child(strip)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 2)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	strip.add_child(col)
+	for k in 2:
+		var l := _label("", 18, UiPalette.TEXT_PRIMARY if k == 0 else UiPalette.TEXT_SECONDARY)
+		l.name = "Caption%d" % k
+		l.clip_text = true
+		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		l.mouse_filter = Control.MOUSE_FILTER_PASS
+		col.add_child(l)
+		caption_labels.append(l)
+
+
+func _build_controls() -> void:
+	var y0 := TOP_H + FIELD_H + CAPTION_H
+	scrubber = BattleScrubber.new()
+	scrubber.name = "Scrubber"
+	scrubber.position = Vector2(200, y0 + 6)
+	scrubber.size = Vector2(1200, 40)
+	scrubber.scrubbed.connect(_on_scrub)
+	scrubber.released.connect(_on_scrub_released)
+	frame.add_child(scrubber)
+	var row := HBoxContainer.new()
+	row.name = "Buttons"
+	row.add_theme_constant_override("separation", 8)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.position = Vector2(16, y0 + 60)
+	row.size = Vector2(BASE.x - 32, 48)
+	frame.add_child(row)
+	buttons.restart = _button(row, "Restart", "Watch from the start (Home).", func(): player.restart())
+	buttons.play = _button(row, "Play", "Play or pause (Space).", func(): player.toggle())
+	buttons.play.custom_minimum_size.x = 96
+	for s in BattlePlayer.SPEEDS:
+		var key: String = {1: "1", 2: "2", 4: "3"}[s]
+		var b := _button(row, "%d×" % s, "Play at %d× speed (%s)." % [s, key], func(): player.set_speed(s))
+		b.toggle_mode = true
+		b.custom_minimum_size.x = 52
+		buttons["speed%d" % s] = b
+	buttons.skip = _button(row, "Skip to end", "Skip to the result (End).", func(): player.skip_to_end())
+	row.add_child(VSeparator.new())
+	for kind in BattleMoments.KINDS:
+		moment_buttons[kind] = _button(row, String(BattleMoments.TITLES[kind]), "", func(): player.jump_to_moment(kind))
+	row.add_child(VSeparator.new())
+	buttons.close = _button(row, "Close", "Close the battle (Esc).", close)
+
+
+func _build_end_card() -> void:
+	end_card = PanelContainer.new()
+	end_card.name = "ResultCard"
+	end_card.position = Vector2(300, TOP_H + 40)
+	end_card.size = Vector2(1000, 0)
+	end_card.custom_minimum_size = Vector2(1000, 0)
+	var style := StyleBoxFlat.new()
+	style.bg_color = UiPalette.PANEL_BG
+	style.border_color = UiPalette.GILT
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(22)
+	end_card.add_theme_stylebox_override("panel", style)
+	end_card.visible = false
+	end_card.z_index = 4
+	frame.add_child(end_card)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 10)
+	end_card.add_child(col)
+	end_result = _label("", 26, UiPalette.GILT)
+	end_result.name = "ResultLabel"
+	end_result.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	end_result.custom_minimum_size.x = 950
+	col.add_child(end_result)
+	end_why = _label("", 18, UiPalette.TEXT_PRIMARY)
+	end_why.name = "WhyLabel"
+	end_why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	end_why.custom_minimum_size.x = 950
+	end_why.mouse_filter = Control.MOUSE_FILTER_PASS
+	col.add_child(end_why)
+	end_chips = HFlowContainer.new()
+	end_chips.name = "WhyChips"
+	end_chips.add_theme_constant_override("h_separation", 8)
+	col.add_child(end_chips)
+	end_lines = VBoxContainer.new()
+	end_lines.name = "Lines"
+	end_lines.add_theme_constant_override("separation", 4)
+	col.add_child(end_lines)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	col.add_child(row)
+	buttons.again = _button(row, "Watch again", "Watch this battle again from the start (R).", _watch_again)
+	buttons.report = _button(row, "Full report", "Open the full battle report.", func(): report_requested.emit(_event_for_report()))
+	buttons.end_close = _button(row, "Close", "Close the battle (Esc).", close)
+
+
+func _event_for_report() -> Dictionary:
+	if not _event.is_empty():
+		return _event
+	return {"type": "battle", "numbers": {"report": _report, "log": _log}}
+
+
+func _build_message() -> void:
+	message_panel = PanelContainer.new()
+	message_panel.name = "Message"
+	message_panel.position = Vector2(400, 300)
+	message_panel.custom_minimum_size = Vector2(800, 0)
+	message_panel.add_theme_stylebox_override("panel", UiPalette.panel_style(24))
+	message_panel.visible = false
+	message_panel.z_index = 4
+	frame.add_child(message_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 16)
+	message_panel.add_child(col)
+	message_label = _label("", 22, UiPalette.TEXT_PRIMARY)
+	message_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	message_label.custom_minimum_size.x = 750
+	col.add_child(message_label)
+	_button(col, "Close", "Close (Esc).", close)
+
+
+## Shrinks `l`'s font from `largest` down to `smallest` until its text fits its width (then trims).
+func _fit(l: Label, largest: int, smallest: int) -> void:
+	var font := l.get_theme_default_font() if l.get_theme_font("font") == null else l.get_theme_font("font")
+	var fs := largest
+	while fs > smallest and font.get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > l.size.x:
+		fs -= 1
+	l.add_theme_font_size_override("font_size", fs)
+
+
+func _label(text: String, font_size: int, col: Color) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", font_size)
+	l.add_theme_color_override("font_color", col)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+
+func _chip(text: String, tip: String) -> Label:
+	var l := _label(text, 13, UiPalette.TEXT_PRIMARY)
+	var style := StyleBoxFlat.new()
+	style.bg_color = UiPalette.PANEL_BG
+	style.border_color = UiPalette.GILT
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(4)
+	style.content_margin_left = 6
+	style.content_margin_right = 6
+	style.content_margin_top = 1
+	style.content_margin_bottom = 1
+	l.add_theme_stylebox_override("normal", style)
+	l.tooltip_text = tip
+	l.mouse_filter = Control.MOUSE_FILTER_PASS
+	return l
+
+
+func _button(parent: Control, text: String, tip: String, action: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.tooltip_text = tip
+	b.custom_minimum_size = Vector2(0, 44)
+	b.add_theme_font_size_override("font_size", 17)
+	b.focus_mode = Control.FOCUS_ALL
+	b.pressed.connect(action)
+	parent.add_child(b)
+	return b
+
+
+# --- scrubbing ------------------------------------------------------------------------------------
+
+func _on_scrub(t: float) -> void:
+	if player == null:
+		return
+	if not _resume_after_drag and player.is_playing():
+		_resume_after_drag = true
+		player.pause()
+	player.seek_time(t)
+
+
+func _on_scrub_released() -> void:
+	if _resume_after_drag:
+		_resume_after_drag = false
+		player.play()
