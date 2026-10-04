@@ -161,7 +161,7 @@ func test_a_road_move_arrives_in_one_turn_as_forecast() -> void:
 	# The order survives a record round trip, and a replay gives the same state.
 	var session := GameSession.new(s, ["kingdom", "beasts"], 4, StubBattleResolver.new())
 	assert_eq(session.describe_order("kingdom", order),
-		"Move the Aurel Crown army at Crownkeep (3 units, led by Knight Captain) to Stonegate by the King's Roads through Westwatch.")
+		"Move %s from Crownkeep to Stonegate by the King's Roads through Westwatch." % TurnReportText.army_title(s, s.find_army(order.army_id), false))
 	assert_eq(session.queue_order(order), "")
 	assert_eq(session.end_turn(), "")
 	assert_eq(session.acknowledge_handoff(), "")

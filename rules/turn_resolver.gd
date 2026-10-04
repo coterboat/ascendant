@@ -148,7 +148,8 @@ static func seed_for_turn(state: GameState) -> int:
 # --- shared rule checks (also used by OrderBook and Forecast) --------------------------------------
 
 ## Checks a move order for `faction_id`. Returns {} when valid, otherwise {"code", "reason"} with a
-## plain-language reason. `already_ordered` holds army ids that already have a move this turn.
+## plain-language reason. `already_ordered` holds army ids that already have a move this turn. The reasons
+## name armies as the map and the turn report do (TurnReportText.army_name: "the Crown's 3rd").
 static func check_move(state: GameState, faction_id: String, order: MoveOrder, already_ordered: Dictionary = {}) -> Dictionary:
 	var faction := state.find_faction(faction_id)
 	if faction == null:
@@ -157,12 +158,13 @@ static func check_move(state: GameState, faction_id: String, order: MoveOrder, a
 	if army == null:
 		return _reject("unknown_army", "There is no such army on the map. It may have been destroyed, or the order names an army this game never had.")
 	if army.owner != faction_id:
-		return _reject("not_your_army", "The army at %s belongs to %s, not to %s." % [_province_name(state, army.location), _faction_name(state, army.owner), faction.faction_name])
+		return _reject("not_your_army", "%s at %s belongs to %s, not to %s." % [_army_name(state, army, true), _province_name(state, army.location),
+			_faction_name(state, army.owner), faction.faction_name])
 	var dest := state.find_province(order.to)
 	if dest == null:
 		return _reject("unknown_province", "That destination is not a province on the map.")
 	if dest.id == army.location:
-		return _reject("already_there", "The %s is already in %s. To stay put, give it no move order." % [army_label(state, army), dest.name])
+		return _reject("already_there", "%s is already in %s. To stay put, give it no move order." % [_army_name(state, army, true), dest.name])
 	var here := state.find_province(army.location)
 	if not order.via.is_empty():
 		var road := _check_road_move(state, faction, army, here, dest, order.via)
@@ -176,7 +178,7 @@ static func check_move(state: GameState, faction_id: String, order: MoveOrder, a
 			why += " Forest Stride adds a second province only through a forest you own into another forest."
 		return _reject("not_adjacent", why)
 	if already_ordered.has(army.id):
-		return _reject("duplicate_move", "The %s already has a move order this turn. Each army moves once per turn." % army_label(state, army))
+		return _reject("duplicate_move", "%s already has a move order this turn. Each army moves once per turn." % _army_name(state, army, true))
 	return {}
 
 
@@ -187,11 +189,11 @@ static func check_move(state: GameState, faction_id: String, order: MoveOrder, a
 ## both forest and B is a province it owned at the start of the turn (C may belong to anyone). With both
 ## rules, either is enough, and the reason names both.
 static func _check_road_move(state: GameState, faction: Faction, army: Army, here: Province, dest: Province, via_id: String) -> Dictionary:
-	var label := army_label(state, army)
+	var label := _army_name(state, army)
 	var kings := RulerRules.has_mandate(state, faction.id, RulerRules.KINGS_ROADS)
 	var stride := AscensionRules.has_forest_stride(state, faction.id)
 	if not kings and not stride:
-		var why := "Only a faction with King's Roads can move an army two provinces in one turn, so the %s can't go through %s to %s. Armies move one neighboring province per turn." % [
+		var why := "Only a faction with King's Roads can move an army two provinces in one turn, so %s can't go through %s to %s. Armies move one neighboring province per turn." % [
 			label, _province_name(state, via_id), dest.name]
 		if AscensionRules.has_paths(state) and AscensionRules.path_has_forest_stride(faction.id):
 			why += " Forest Stride, on your path, lets armies move through a forest you own into another forest."
@@ -1710,7 +1712,16 @@ static func _moved_event(s: GameState, m: Dictionary, cause: String) -> Dictiona
 		[m.army_id], cause, {}, text, "move")
 
 
-## Player-facing name for an army, used in every event text and reason instead of its id:
+## An army's name for the order checks' reasons: its name for life, as the map and the turn report call it
+## (TurnReportText.army_name, #55), capitalized when it starts the sentence.
+static func _army_name(state: GameState, army: Army, start: bool = false) -> String:
+	var name := TurnReportText.army_name(state, army.id, army.owner)
+	return RulerRules._cap(name) if start else name
+
+
+## The record's name for an army, used in every event text instead of its id. The record's event text keeps
+## it so recorded games replay byte for byte; the turn report, the map and the order checks call armies by
+## their names for life instead (TurnReportText):
 ##   "Aurel Crown army at Crownkeep (3 units, led by Knight Captain)"
 ##   "Thornmane Clans army at Wildmoor (1 unit, no commander)"
 ##   "Thornmane Clans army at Fangridge (Warchief alone)"

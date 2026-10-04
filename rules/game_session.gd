@@ -213,20 +213,22 @@ func current_order_texts() -> Array:
 	return out
 
 
-## One order in plain language, using display names only:
-##   "Move the Aurel Crown army at Crownkeep (3 units, led by Knight Captain) to Westwatch."
+## One order in plain language, using display names only, with the army as the map and the turn report name
+## it (TurnReportText.army_title):
+##   "Move the Crown's 1st (Spearmen, Crossbowmen, Knights and Knight Captain) from Crownkeep to Westwatch."
 ##   "Recruit Spearmen at Crownkeep for 8 gold."
 func describe_order(faction_id: String, order) -> String:
 	if order is MoveOrder:
 		var army := _state.find_army(order.army_id)
-		var who := "the %s" % TurnResolver.army_label(_state, army) if army else "an army that no longer exists"
+		var to := TurnResolver._province_name(_state, order.to)
+		if army == null:  # as the order check says it (TurnResolver.check_move's "unknown_army")
+			return "Move an army that is not on the map to %s." % to
+		var who := "%s from %s" % [TurnReportText.army_title(_state, army, false), TurnResolver._province_name(_state, army.location)]
 		if order.is_road_move() and TurnResolver.road_rule(_state, faction_id, order) == "forest_stride":  # M4-2
-			return "Move %s to %s through the forest of %s (Forest Stride)." % [who, TurnResolver._province_name(_state, order.to),
-				TurnResolver._province_name(_state, order.via)]
+			return "Move %s to %s through the forest of %s (Forest Stride)." % [who, to, TurnResolver._province_name(_state, order.via)]
 		if order.is_road_move():  # King's Roads (M2-4)
-			return "Move %s to %s by the King's Roads through %s." % [who, TurnResolver._province_name(_state, order.to),
-				TurnResolver._province_name(_state, order.via)]
-		return "Move %s to %s." % [who, TurnResolver._province_name(_state, order.to)]
+			return "Move %s to %s by the King's Roads through %s." % [who, to, TurnResolver._province_name(_state, order.via)]
+		return "Move %s to %s." % [who, to]
 	if order is RecruitOrder:
 		var faction := _state.find_faction(faction_id)
 		var ut: UnitType = TurnResolver.recruitable_type(faction, order.unit_type_id, _state) if faction else null

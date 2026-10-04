@@ -260,14 +260,15 @@ func _add_sides() -> void:
 		name_label.name = "SideName"
 		_text(titles, _role_text(sr), _role_tooltip(sr), 18, UiPalette.TEXT_SECONDARY)
 		col.add_child(_roster_strip(sr))
-		var names := _army_names(String(sr.get("faction", "")))
-		var armies: Array = sr.get("armies", [])
-		for i in armies.size():
-			var army_line := "Army: %s" % armies[i]
-			if i < names.size() and not names[i].is_empty():
-				army_line = "Army: %s · %s" % [names[i], armies[i]]  # #55: the name the turn report calls it by
+		# #55: each army by the name the turn report and the map call it, with who was in it, and in a border battle
+		# where it came from (TurnReportText.log_armies). A bare report, with no battle log, has only its labels.
+		var named := TurnReportText.log_armies(_event.get("numbers", {}).get("log", {}), String(sr.get("faction", "")), _state)
+		var lines: Array = named.map(func(a): return "Army: %s" % a.title + (", from %s" % a.from if not String(a.from).is_empty() else ""))
+		if lines.is_empty():
+			lines = sr.get("armies", []).map(func(label): return "Army: %s" % label)
+		for army_line in lines:
 			_text(col, army_line, _tip("Army",
-				"An army on this side when the battle began: its name, where it stood, how many units it had (its commander is not counted as a unit) and who led it. %s" % TurnReportText.NAMES_HINT), 17)
+				"An army on this side when the battle began: its name, who was in it, and in a border battle the province it came from. %s" % TurnReportText.NAMES_HINT), 17)
 		var roster: Dictionary = sr.get("roster", {})
 		if not String(roster.get("text", "")).is_empty():
 			var roster_label := _text(col, "Roster: %s" % roster.text, _tip("Roster",
@@ -716,26 +717,6 @@ static func _cap(text: String) -> String:
 
 
 # --- report helpers -------------------------------------------------------------------------------
-
-## #55: the names (TurnReportText.army_name) of `faction_id`'s armies in this battle, in the report's army
-## order, from the battle log of the event shown (its sides list each army's id beside its label). A ruler's
-## army gets "" (its label already names the ruler). [] for a bare report or a battle without a log.
-func _army_names(faction_id: String) -> Array:
-	var battle_log = _event.get("numbers", {}).get("log", {})
-	var out := []
-	if not (battle_log is Dictionary):
-		return out
-	for side in battle_log.get("sides", []):
-		if String(side.get("faction", "")) != faction_id:
-			continue
-		for a in side.get("armies", []):
-			var id := String(a.get("id", "")) if a is Dictionary else ""
-			var army: Army = _state.find_army(id) if _state != null else null
-			var is_ruler := String(a.get("label", "")).contains(" ruler ") if a is Dictionary else false
-			out.append("" if id.is_empty() or is_ruler or (army != null and army.ruler != null) \
-				else TurnReportText.army_name(_state, id, faction_id))
-	return out
-
 
 func _sides() -> Array:
 	return _report.get("sides", [])
