@@ -1,8 +1,8 @@
 class_name TitleScreen
 extends Control
 ## The title screen, the front door and the hub of the game flow (#8). See SceneFlow for every screen
-## change. ASCENDANT large over a dimmed terrain backdrop, the tagline from the game brief, and both
-## faction banners.
+## change. ASCENDANT large over a backdrop (Art.title_backdrop when it exists, otherwise the hills
+## terrain dimmed to indigo), the tagline from the game brief, and both faction banners.
 ##   Continue     only when there is a save: loads the newest one that can be read (SaveStore.latest)
 ##                and switches to its game screen (SceneFlow.make_loaded_game). A save that turns out
 ##                to be damaged is explained under the buttons instead.
@@ -71,6 +71,7 @@ func _bind() -> void:
 	error_label = $Center/Box/ErrorLabel
 	for b in [continue_button, new_game_button, load_button, quick_start_button, codex_button, settings_button, quit_button]:
 		_style_menu_button(b, b == continue_button)
+	_use_backdrop_art()
 	var model := GameState.new()
 	for node_name in BANNERS:
 		var f := model.find_faction(BANNERS[node_name])
@@ -228,6 +229,18 @@ func _raise(overlay: Control) -> void:
 func _focus_first() -> void:
 	if is_inside_tree():
 		(continue_button if continue_button.visible else new_game_button).grab_focus.call_deferred()
+
+
+## The painted title backdrop (Art.title_backdrop) once it is in the game, covering the screen under
+## the vignette; until then the hills terrain, tiled and dimmed to the panel indigo.
+func _use_backdrop_art() -> void:
+	var art := Art.title_backdrop()
+	if art == null:
+		return
+	var backdrop := $Backdrop as TextureRect
+	backdrop.texture = art
+	backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	backdrop.modulate = Color(0.8, 0.8, 0.86)
 
 
 ## The title's menu buttons: deep indigo plates with a thin border that turns gilt on hover and focus.

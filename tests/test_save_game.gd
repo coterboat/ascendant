@@ -323,3 +323,22 @@ func test_from_record_rebuilds_what_replay_rebuilds() -> void:
 	assert_eq(rebuilt.errors, [])
 	assert_eq(var_to_str(rebuilt.session.state().to_dict()), var_to_str(replayed.state.to_dict()))
 	assert_eq(rebuilt.session.record(), session.record(), "the rebuilt session records the same game")
+
+
+func test_a_save_holds_only_the_record_never_reports_or_battle_logs() -> void:
+	# Battle events can carry a full battle log; a save keeps only the orders and seeds and replays them.
+	var g := _game(_vs_computer(13))
+	var save := _play_and_save(g[0], g[1], 6)
+	var keys := save.keys()
+	keys.sort()
+	assert_eq(keys, ["computer", "format", "header", "record", "version"])
+	for entry in save.record.history:
+		var entry_keys: Array = entry.keys()
+		entry_keys.sort()
+		assert_eq(entry_keys, ["orders", "seed", "turn"], "a turn is its orders and seed only")
+	var text := JSON.stringify(save)
+	assert_false(text.contains("\"log\""), "no battle log in the save")
+	assert_false(text.contains("\"events\""), "no turn report in the save")
+	for fid in save.computer.get("notes", {}):
+		for line in save.computer.notes[fid]:
+			assert_eq(typeof(line), TYPE_STRING, "the computer's notes are plain lines")
