@@ -1,8 +1,131 @@
-# 3D world map spike (`spike-3d-world`)
+# The 3D world (`world3d/`)
+
+The game's map as a living 3D board (design/3D_DIRECTION.md). Since **M3a.1** it is the map of every game:
+the map screen's 2D UI sits over it, every order and tooltip works through it, and each resolved turn plays
+out on the land before the turn report opens. Settings → Board switches back to the 2D map. The rules
+(`rules/`, `data/`, `ai/`) don't know it exists: the board only reads the state, the orders and the
+resolver's events.
+
+## The board in the game (M3a.1)
+
+    GameScreen (ui/game_screen.gd)
+      Map (MapScreen, ui/map_screen.gd): top bar, side panel, orders, hover preview: unchanged 2D
+        MapView
+          Board3D (world3d/board3d.gd, a Control under everything else in the map view)
+            World (SubViewport, own World3D, at the screen's physical pixels; renders only while live)
+              WorldView (world_view.gd): land, sea, sun, woods, villages, fortresses, the camera rig
+                Armies (armies.gd): formations, ghost recruits, turn playback
+            BoardOverlay (board_overlay.gd): names, incomes, count plates, ghost plates, order arrows,
+                                            clash markers, the playback bar, the legend: 2D, projected
+          MapCanvas (the 2D regions: hidden, but kept for their tooltips and marks), HoverPreview
+
+- **Who knows the game:** the map screen. The board picks what is under the mouse (the territory id of
+  the land at the unprojected point; an army whose figures' screen box holds the point) and calls the
+  map's own `select_province`, `select_army`, `preview_move`, `request_codex`, so the signals, two-click
+  moves, King's Roads, forecasts and the codex work exactly as on the 2D map. The map calls
+  `board.sync()` whenever its state, selection or orders change; the board mirrors them: owners
+  (`set_owners`), the ground's highlights (`set_highlights`, `set_marks`), the armies, ghost recruits.
+- **Picking and projection** are computed in `world_view.gd` (`project3`, `screen_ray`, `unproject`) from
+  the rig, not asked of the Camera3D, so they work headless (tests) exactly as windowed.
+- **Highlights on the ground** (ground shader, constant screen width): the selected province's white band,
+  the hovered one's cream band, a gilt glow inside the provinces the selected army can march to, a dashed
+  gilt band on King's Roads destinations, a white flash when the camera glides to a province (a turn
+  report line). The owner's wash (a 30% multiply) and a keylined 4 px inner band in the owner's colour.
+- **The 2D over it** stays minimal (the 3D armies are the markers): a name plate per province (crown on a
+  capital, tower on a fort) with its income (breakdown and codex link on hover), a count plate per army
+  (emblem and units, the 2D badge's tooltip; a click selects), a "+N queued" plate over ghost recruits,
+  the order arrows (each queued move drawn along the roads it marches, a King's Roads move through its
+  middle province's centre, ringed in gilt; a dashed gilt preview of the move a click would order), Sworn
+  Vassals pennants and heir countdowns mirrored from the map's regions, and the legend (its tooltip
+  explains every mark on the land).
+- **Turn playback** (`GameScreen._play_on_board`, `Board3D.play_turn`): from the start-of-turn state,
+  through the report's events, to the state after. `playback.gd` turns the events into beats: marches
+  (out of the gate two abreast, along the roads, a road move through its middle province), border
+  battles' losers marching to the crossing, battles (a clash marker at the site; the losers topple),
+  captures (the land recolours as the new owner's column arrives), recruits and new rulers (they fade
+  in as everyone re-forms in their place of the state after). The camera frames the battles (or the
+  player's own columns). Space or a click skips; 1×/2×/4× on the playback bar, remembered in the
+  settings. The report opens after it. Every hotseat player sees it once, behind their own handoff.
+- **Covered, it stops rendering:** the SubViewport updates only while the board is visible and no
+  handoff cover or modal overlay is up (`cover_check`); it then keeps its last frame.
+- **The quality ladder** (`world_view.gd set_quality`) steps down after 3 s under 40 fps. The woods drop
+  their ink outline beyond the near zoom (the spike's dearest whole-map pass), and the overlay re-places
+  its plates only when the camera moves, a turn plays or the map changes.
+- **Measured** (Apple M4, Metal, Look A, 1600 × 900 window, 3D at 1200 × 838, rung 0, vsync off, a shared
+  machine): orders 74 fps over the whole map, 96 panning at the default zoom, 85 close on a capital; a
+  turn's playback 61; 240-360 draw calls.
+- **Built off the main thread:** `Board3D.prebake()` (started by the `World3DLaunch` autoload at boot when
+  the board is 3D) bakes the land, plans its trees and cottages (`WorldView.plan_of`) and loads the model
+  table's meshes on a worker; the world's nodes are built in one go when the game screen shows it.
+
+### Camera and keys
+
+Drag (or the middle button) pans with the ground under the hand; the wheel (or + and -) zooms to the
+cursor, the pitch easing from 60° over the whole map to 42° close in; WASD or the arrows pan;
+double-click glides to a province; **C** (or Home) your capital; **F** the whole map; **L** Look A (Bright
+Cel, the default) or Look B (lit painted). Look A borrows Look B's glossy sea close in. The whole map is
+framed on start. Figures stand up to 2.4× taller far out (toy scale), so every army reads as a marker.
+
+### The model table (`world3d/models.json`)
+
+One descriptor table maps every unit type and building kind to a model or a primitive piece, so the
+generation job's GLBs drop in without code changes (`world3d/models.gd` reads it; `tests/test_board3d.gd`
+fails on a unit type without a row or a row whose model is missing).
+
+    {
+      "block": {"per_unit": 1.0, "min": 2, "max": 8},
+      "figures": {
+        "<unit type id>": {
+          "faction": "kingdom",            // for the path convention below
+          "model": "res://assets/models/kingdom/spearmen/spearmen_ready.glb",   // "" = primitive
+          "height": 1.3,                   // the model's full height (AABB, weapon included) in men; a man is 6 world units
+          "yaw": 180,                      // degrees to turn it to face -Z (glTF faces +Z: 180)
+          "fallback": "spearmen",          // the Kit.figure drawn when there is no model
+          "scale": 1.0,                    // scales the fallback (a ruler or a monster stands bigger)
+          "rank": 0,                       // the block's battle rank: 0 front, 1 second (Volley), 2 back (commanders)
+          "large": false,                  // mounted or beast: wider spacing
+          "ruler": false                   // a ruler: the gilt ring round its base
+        }
+      },
+      "buildings": {
+        "<kind>[.<faction id>]": {         // "fortress.beasts" is the Clans' kit variant of "fortress"
+          "model": "res://assets/models/probe/crownkeep.glb", "fallback": "fortress",   // fortress, fort, cottage, broadleaf, pine, rock
+          "side": 76.0, "yaw": 180, "sink": 2.0,       // footprint (world units), turn, how far its slab sinks into the stage
+          "key_hue": 0.62,                 // the hue repainted in the owner's colour (the roofs); -1 none
+          "tint": 0.86,                    // whole-model brightness (keeps pale stone from blowing out in Look A)
+          "stone": "#C98F5E",              // multiplies the texture (not the keyed roofs): a kit variant's stone
+          "palisade": true,                // a ring of stakes round the walls (the Clans' variant)
+          "court": [x, z, w, d], "gate_z": [inner, outer], "banner_at": [x, height], "floor": 0.25   // the yard, in the model's frame
+        }
+      }
+    }
+
+- **Lookup order for a figure:** the row's `model` if the file exists; else the bible's path convention
+  `assets/models/<faction>/<unit>/<unit>_ready.glb` (STYLE_BIBLE.md 8.10); else the primitive `fallback`.
+  A unit type with no row stands as Kit's generic figure.
+- A model is normalised from its AABB (feet at y = 0, facing -Z, `height` men tall), keeps only its base
+  colour texture (drawn with the game's cel or lit material and the ink outline), and gets a base in the
+  player's colour (and a gilt ring for a ruler): identity is drawn in code, never in the art.
+- **Blocks:** one block per unit type in an army, `ceil(count × per_unit)` figures between `min` and
+  `max` (the direction doc proposes one figure per two units; the table ships one per unit, at least 2,
+  so an early army of 3 units reads as an army). The plate carries the exact count.
+
+### Tests
+
+`tests/test_board3d.gd`: the model table; project/unproject round trips and a click on every province and
+army at three zooms; selection through the board driving the map screen's signals, two-click move, hover
+preview, tooltips and codex; owners, armies and ghost recruits following the state and the orders; the
+handoff and overlays covering it; the 2D board setting; **playback = state** (applying each turn's events to
+the board model of the state before gives the board model of the state after, 5 seeds × 12 turns with and
+without rulers; a played board stands exactly as one built from the state after; the states are deep-equal
+before and after); a game where the report waits for the playback; and a static check that the board's
+code never rolls dice or resolves a turn. `tests/test_world3d.gd` keeps the spike's land tests.
+
+# The spike (PR #81, `spike-3d-world`)
 
 A real 3D world map for ascendant, built from the real rules, to judge the look and the cost before the art
-budget is committed. It is a dev preview: nothing in `rules/`, `ui/` or `data/` changed, and the 2D game
-still runs as before (now under Forward+).
+budget is committed. It was a dev preview; the preview scene is still there for looking at the land on its
+own.
 
 ## Run it
 
@@ -10,11 +133,11 @@ still runs as before (now under Forward+).
     godot --path . res://world3d/world_preview.tscn      # or straight in
 
 Options after `--`: `--look=cel|painted`, `--start` (turn 0 instead of a mid-game), `--turns=N`,
-`--probe` (the Ludo probe's figures), `--primitive-fort`, `--shots=DIR` (the evidence screenshots, then quit),
+`--primitive` (primitive figures instead of the model table's GLBs), `--primitive-fort`, `--shots=DIR` (the evidence screenshots, then quit),
 `--perf=FILE [--stress=2.0] [--quick]` (fps, then quit).
 
 Keys: **1** whole map, **2** Crownkeep, **3** Fangridge, **Space** play the next real turn, **R** reset,
-**L** look A/B, **P** probe figures, **F** Ludo/primitive fortress, **Q** quality step, **E** effects,
+**L** look A/B, **P** model table figures or primitives, **F** Ludo/primitive fortress, **Q** quality step, **E** effects,
 **O** orbit (then right-drag turns), **Esc** title. Drag pans (the ground stays under the hand), the wheel
 zooms to the cursor.
 

@@ -5,6 +5,9 @@ extends RefCounted
 ##   ui_scale             100 or 125 (percent): how big the whole interface is drawn
 ##   auto_watch_battles   false by default. Stored now for milestone 3, when battles play out on screen:
 ##                        then each battle of a turn will play by itself as the report opens.
+##   board                "3d" (default) or "2d": the map as the 3D world (M3a.1, world3d/board3d.gd) or as
+##                        the 2D map. The 2D map stays a setting until M3a.1 is accepted.
+##   playback_speed       1, 2 or 4: how fast a resolved turn plays out on the 3D board (remembered).
 ##   master_volume, music_volume, sfx_volume, ambiance_volume
 ##                        0 to 100 (percent, 100 by default): the Master, Music, SFX and Ambiance buses
 ##                        (GameAudio). The mix itself lives in assets/audio/audio.json.
@@ -19,6 +22,9 @@ const SECTION := "settings"
 const WINDOW_MODES := ["windowed", "fullscreen"]
 const WINDOW_MODE_NAMES := ["Windowed", "Fullscreen"]
 const UI_SCALES := [100, 125]
+const BOARDS := ["3d", "2d"]
+const BOARD_NAMES := ["3D world", "2D map"]
+const PLAYBACK_SPEEDS := [1, 2, 4]
 ## Each volume setting and the bus it sets.
 const VOLUME_BUSES := {"master_volume": "Master", "music_volume": "Music", "sfx_volume": "SFX", "ambiance_volume": "Ambiance"}
 const VOLUME_NAMES := {"master_volume": "Master", "music_volume": "Music", "sfx_volume": "Effects", "ambiance_volume": "Ambiance"}
@@ -30,6 +36,8 @@ var path := ""
 var window_mode := "windowed"
 var ui_scale := 100
 var auto_watch_battles := false
+var board := "3d"
+var playback_speed := 1
 var master_volume := 100
 var music_volume := 100
 var sfx_volume := 100
@@ -56,6 +64,12 @@ static func load_from(file_path: String = "") -> GameSettings:
 	var watch = cfg.get_value(SECTION, "auto_watch_battles", false)
 	if watch is bool:
 		settings.auto_watch_battles = watch
+	var board_value = cfg.get_value(SECTION, "board", "3d")
+	if board_value is String and BOARDS.has(board_value):
+		settings.board = board_value
+	var speed_value = cfg.get_value(SECTION, "playback_speed", 1)
+	if (speed_value is int or speed_value is float) and PLAYBACK_SPEEDS.has(int(speed_value)):
+		settings.playback_speed = int(speed_value)
 	for key in VOLUME_BUSES:
 		var v = cfg.get_value(SECTION, key, 100)
 		if (v is int or v is float) and v >= 0 and v <= 100:
@@ -72,6 +86,8 @@ func save() -> String:
 	cfg.set_value(SECTION, "window_mode", window_mode)
 	cfg.set_value(SECTION, "ui_scale", ui_scale)
 	cfg.set_value(SECTION, "auto_watch_battles", auto_watch_battles)
+	cfg.set_value(SECTION, "board", board)
+	cfg.set_value(SECTION, "playback_speed", playback_speed)
 	for key in VOLUME_BUSES:
 		cfg.set_value(SECTION, key, int(get(key)))
 	cfg.set_value(SECTION, "muted", muted)
@@ -92,6 +108,20 @@ func set_ui_scale(percent: int) -> bool:
 	if not UI_SCALES.has(percent):
 		return false
 	ui_scale = percent
+	return true
+
+
+func set_board(value: String) -> bool:
+	if not BOARDS.has(value):
+		return false
+	board = value
+	return true
+
+
+func set_playback_speed(value: int) -> bool:
+	if not PLAYBACK_SPEEDS.has(value):
+		return false
+	playback_speed = value
 	return true
 
 

@@ -8,6 +8,7 @@ extends Node3D
 
 const Terrain3D := preload("res://world3d/terrain3d.gd")
 const Kit := preload("res://world3d/kit.gd")
+const Models := preload("res://world3d/models.gd")
 const SH_GROUND_CEL := preload("res://world3d/shaders/ground_cel.gdshader")
 const SH_GROUND_LIT := preload("res://world3d/shaders/ground_lit.gdshader")
 const SH_MODEL_CEL := preload("res://world3d/shaders/model_cel.gdshader")
@@ -15,7 +16,6 @@ const SH_MODEL_LIT := preload("res://world3d/shaders/model_lit.gdshader")
 const SH_OUTLINE := preload("res://world3d/shaders/outline.gdshader")
 const SH_WATER := preload("res://world3d/shaders/water.gdshader")
 const SH_BANNER := preload("res://world3d/shaders/banner.gdshader")
-const LUDO_FORTRESS := "res://assets/models/probe/crownkeep.glb"
 const FORTRESS_SIDE := 76.0
 
 var terrain: RefCounted
@@ -31,14 +31,21 @@ var wmat: ShaderMaterial
 var outline_mat: ShaderMaterial
 var owner_img: Image
 var owner_tex: ImageTexture
+var mark_img: Image ## 16 x 1: r a King's Roads destination, g a legal move target, b a focus flash
+var mark_tex: ImageTexture
+var capital_of := {} ## province id -> the faction whose capital it is in the map data (picks the fortress kit)
+var _banner_n := 0
 var props: Node3D
 var buildings: Node3D
 var fortresses := {} ## province id -> {"node": Node3D, "gate_dir": Vector2, "yaw": float, "mat": ShaderMaterial, "court": Rect2 (local), "frame": Transform3D}
 var _model_mats: Array = [] ## every model ShaderMaterial, so a look change swaps their shader
+var _prop_mats: Array = [] ## the woods', rocks' and cottages' materials: their ink outline only close in
+var prop_outlines := true
 var _banner_mats: Array = []
-var _ludo_fortress: Dictionary = {} ## {"mesh", "tex", "aabb"} once loaded
 var quality := 0
 var fog_k := 1.0
+var view_size := Vector2(1600, 900) ## the size of the viewport the camera draws into (Board3D keeps it)
+var cam_xform := Transform3D() ## the camera's transform, as apply_rig() set it
 
 ## the camera rig: looks at `target` from `pitch` degrees above the horizon, from `yaw` degrees
 ## round from the south, framing `span` world units top to bottom
@@ -48,6 +55,8 @@ var rig := {"target": Vector3(500, 0, 300), "pitch": 58.0, "yaw": 0.0, "fov": 30
 func setup(p_terrain: RefCounted, p_look: String = "cel") -> void:
 	terrain = p_terrain
 	look = p_look
+	for f in FactionData.FACTIONS:
+		capital_of[String(f.capital)] = String(f.id)
 	_build_ground()
 	_build_water()
 	_build_light()
@@ -82,12 +91,15 @@ func _build_ground() -> void:
 	owner_img = Image.create(16, 1, false, Image.FORMAT_RGBA8)
 	owner_tex = ImageTexture.create_from_image(owner_img)
 	gmat.set_shader_parameter("owner_tex", owner_tex)
+	mark_img = Image.create(16, 1, false, Image.FORMAT_RGBA8)
+	mark_tex = ImageTexture.create_from_image(mark_img)
+	gmat.set_shader_parameter("mark_tex", mark_tex)
 	for t in ["plains", "forest", "hills"]:
 		var tex: Texture2D = load("res://assets/terrain/%s.webp" % t)
 		gmat.set_shader_parameter("tile_" + t, tex)
 		if t != "forest":
 			gmat.set_shader_parameter("mean_" + t, _mean_colour(tex))
-	gmat.set_shader_parameter("grain_tex", _grain())
+	gmat.set_shader_parameter("grain_tex", ImageTexture.create_from_image(plan_of(terrain)["grain"]))
 	gmat.set_shader_parameter("origin", Terrain3D.ORIGIN)
 	gmat.set_shader_parameter("extent", Terrain3D.EXTENT)
 	gmat.set_shader_parameter("cell", terrain.cell)
@@ -175,7 +187,7 @@ func set_look(p_look: String) -> void:
 	wmat.set_shader_parameter("toon", 1.0 if cel else 0.0)
 	for m in _model_mats:
 		(m as ShaderMaterial).shader = SH_MODEL_CEL if cel else SH_MODEL_LIT
-		(m as ShaderMaterial).next_pass = outline_mat if cel else null
+		(m as ShaderMaterial).next_pass = outline_mat if cel and (prop_outlines or not _prop_mats.has(m)) else null
 	for m in _banner_mats:
 		(m as ShaderMaterial).set_shader_parameter("cel", 1.0 if cel else 0.0)
 	if cel:
@@ -221,6 +233,16 @@ func set_quality(q: int) -> void:
 	apply_rig()
 
 
+## The woods', rocks' and cottages' ink outlines (Look A): the board keeps them only close in, where
+## they read; far out they are the dearest pass for the least (the spike's measurement, README).
+func set_prop_outlines(on: bool) -> void:
+	if on == prop_outlines:
+		return
+	prop_outlines = on
+	for m in _prop_mats:
+		(m as ShaderMaterial).next_pass = outline_mat if on and look == "cel" else null
+
+
 ## Effects on/off for the performance probe: SSAO, glow, fog, shadows, MSAA/FXAA together.
 func set_effects(on: bool) -> void:
 	env.ssao_enabled = on and look == "painted" and quality < 1
@@ -237,12 +259,14 @@ func set_effects(on: bool) -> void:
 
 ## A model material in the current look. `team` is the player's colour for team parts; `tex` an
 ## albedo map (a probe GLB's); `key_hue` repaints that hue of the map in the team colour.
-func model_mat(team: Color, tex: Texture2D = null, key_hue := -1.0, instanced := false) -> ShaderMaterial:
+func model_mat(team: Color, tex: Texture2D = null, key_hue := -1.0, instanced := false, tint := 1.0, stone := Color.WHITE) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	m.shader = SH_MODEL_CEL if look == "cel" else SH_MODEL_LIT
 	m.next_pass = outline_mat if look == "cel" else null
 	m.set_shader_parameter("team", team)
 	m.set_shader_parameter("instanced_team", instanced)
+	m.set_shader_parameter("tint", tint)
+	m.set_shader_parameter("stone_tint", stone)
 	if tex != null:
 		m.set_shader_parameter("albedo_tex", tex)
 		m.set_shader_parameter("use_tex", true)
@@ -257,7 +281,8 @@ func banner_mat(team: Color, emblem: int) -> ShaderMaterial:
 	m.set_shader_parameter("colour", team)
 	m.set_shader_parameter("emblem", emblem)
 	m.set_shader_parameter("cel", 1.0 if look == "cel" else 0.0)
-	m.set_shader_parameter("phase", randf() * TAU)
+	_banner_n += 1
+	m.set_shader_parameter("phase", _h01(_banner_n, 7) * TAU) ## cosmetic: a hash, never the game's dice
 	_banner_mats.append(m)
 	return m
 
@@ -300,6 +325,43 @@ func set_owners(colours: Dictionary) -> void:
 	owner_tex.update(owner_img)
 
 
+## Repaints one province's owner wash (a capture during the turn's playback).
+func paint_owner(province_id: String, colour: Color, owned: bool = true) -> void:
+	var i: int = terrain.index_of(province_id)
+	if i < 0:
+		return
+	var c := colour
+	c.a = 1.0 if owned else 0.0
+	owner_img.set_pixel(i, 0, c if owned else Color(0, 0, 0, 0))
+	owner_tex.update(owner_img)
+
+
+## The owner wash as {province id: Color (alpha 0: nobody)}, for comparing two boards.
+func owners_painted() -> Dictionary:
+	var out := {}
+	for i in terrain.ids.size():
+		var c: Color = owner_img.get_pixel(i, 0)
+		out[terrain.ids[i]] = c if c.a > 0.5 else Color(0, 0, 0, 0)
+	return out
+
+
+## The ground's highlights: the selected and hovered province (drawn in the ground shader), and per
+## province marks: road targets (a dashed gilt band), legal move targets (a gilt glow at the edge),
+## a focus flash (0..1), and `grown`: provinces the rules have turned to forest since the land was
+## baked (the Wild Spreads, M4-2), painted with the forest's canopy so the land shows the rule.
+func set_highlights(select_id: String, hover_id: String) -> void:
+	gmat.set_shader_parameter("select_id", terrain.index_of(select_id) if not select_id.is_empty() else -1)
+	gmat.set_shader_parameter("hover_id", terrain.index_of(hover_id) if not hover_id.is_empty() else -1)
+
+
+func set_marks(road: Dictionary, move: Dictionary, flash: Dictionary, grown: Dictionary = {}) -> void:
+	for i in terrain.ids.size():
+		var id: String = terrain.ids[i]
+		mark_img.set_pixel(i, 0, Color(1.0 if road.has(id) else 0.0, 1.0 if move.has(id) else 0.0,
+			clampf(float(flash.get(id, 0.0)), 0.0, 1.0), 1.0 if grown.has(id) else 0.0))
+	mark_tex.update(mark_img)
+
+
 func set_fortress_colour(province_id: String, team: Color) -> void:
 	if fortresses.has(province_id):
 		(fortresses[province_id]["mat"] as ShaderMaterial).set_shader_parameter("team", team)
@@ -310,9 +372,24 @@ func set_fortress_colour(province_id: String, team: Color) -> void:
 # ------------------------------------------------------------------ woods, rocks, cottages
 
 func _grow_props() -> void:
-	var t = terrain
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 4242
+	var pl: Dictionary = plan_of(terrain)
+	_multi(Models.building_primitive("tree_broadleaf"), pl["broad"], "Broadleaf")
+	_multi(Models.building_primitive("tree_pine"), pl["pine"], "Pines")
+	_multi(Models.building_primitive("rock"), pl["rocks"], "Rocks")
+
+
+## The land's pure placement (trees, rocks, cottages) and the ground's grain, computed once per land:
+## on the bake's worker thread when the board prebakes (Board3D.prebake), or here on first use.
+static func plan_of(t) -> Dictionary:
+	if not t.plan.has("broad"):
+		t.plan.merge(plan_props(t), true)
+		t.plan["houses"] = plan_houses(t)
+		t.plan["grain"] = make_grain()
+	return t.plan
+
+
+static func plan_props(t) -> Dictionary:
+	var rng := _Hash.new(4242) ## cosmetic: a hash of the cell and the map seed, never the game's dice
 	var broad: Array = []
 	var pine: Array = []
 	var rocks: Array = []
@@ -321,44 +398,42 @@ func _grow_props() -> void:
 	while y < Terrain3D.ORIGIN.y + Terrain3D.EXTENT.y:
 		var x := Terrain3D.ORIGIN.x + step * 0.5
 		while x < Terrain3D.ORIGIN.x + Terrain3D.EXTENT.x:
-			var p := Vector2(x + rng.randf_range(-0.45, 0.45) * step, y + rng.randf_range(-0.45, 0.45) * step)
+			var p := Vector2(x + rng.range01(-0.45, 0.45) * step, y + rng.range01(-0.45, 0.45) * step)
 			x += step
 			var c: float = t.coast_at(p)
 			if c < 4.0:
 				continue
-			if _near_stage(p, 1.15) or t.road_at(p) < 7.0:
+			if _near_stage(t, p, 1.15) or t.road_at(p) < 7.0:
 				continue
 			var hv: float = t.height_at(p)
 			var n: Vector3 = t.normal_at(p)
 			var wd: float = t.woods_at(p)
-			var r := rng.randf()
+			var r := rng.next01()
 			var steep: float = 1.0 - n.y
 			if steep > 0.3:
 				if r < 0.05:
-					rocks.append(_xf(p, hv, rng, rng.randf_range(1.2, 2.4)))
+					rocks.append(_xf(p, hv, rng, rng.range01(1.2, 2.4)))
 				continue
 			if wd > 0.25 and r < wd * 0.42:
-				var tall: bool = hv > 18.0 or rng.randf() < 0.3
-				(pine if tall else broad).append(_xf(p, hv, rng, rng.randf_range(1.1, 1.6)))
+				var tall: bool = hv > 18.0 or rng.next01() < 0.3
+				(pine if tall else broad).append(_xf(p, hv, rng, rng.range01(1.1, 1.6)))
 			elif r < 0.006:
-				broad.append(_xf(p, hv, rng, rng.randf_range(0.8, 1.1)))
+				broad.append(_xf(p, hv, rng, rng.range01(0.8, 1.1)))
 			elif hv > 16.0 and r < 0.03:
-				(pine if rng.randf() < 0.6 else rocks).append(_xf(p, hv, rng, rng.randf_range(0.8, 1.6)))
+				(pine if rng.next01() < 0.6 else rocks).append(_xf(p, hv, rng, rng.range01(0.8, 1.6)))
 		y += step
-	_multi(Kit.broadleaf(), broad, "Broadleaf")
-	_multi(Kit.pine(), pine, "Pines")
-	_multi(Kit.rock(), rocks, "Rocks")
+	return {"broad": broad, "pine": pine, "rocks": rocks}
 
 
-func _near_stage(p: Vector2, k: float) -> bool:
-	for i in terrain.ids.size():
-		if p.distance_to(terrain.centres[i]) < terrain.stage_r[i] * k + 6.0:
+static func _near_stage(t, p: Vector2, k: float) -> bool:
+	for i in t.ids.size():
+		if p.distance_to(t.centres[i]) < t.stage_r[i] * k + 6.0:
 			return true
 	return false
 
 
-func _xf(p: Vector2, hv: float, rng: RandomNumberGenerator, s: float) -> Transform3D:
-	var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.85, 1.2), s))
+static func _xf(p: Vector2, hv: float, rng: _Hash, s: float) -> Transform3D:
+	var b := Basis(Vector3.UP, rng.next01() * TAU).scaled(Vector3(s, s * rng.range01(0.85, 1.2), s))
 	return Transform3D(b, Vector3(p.x, hv - 0.3, p.y))
 
 
@@ -375,6 +450,7 @@ func _multi(mesh: Mesh, xfs: Array, nm: String) -> MultiMeshInstance3D:
 	mi.name = nm
 	mi.multimesh = mm
 	mi.material_override = model_mat(Color.WHITE, null, -1.0, true)
+	_prop_mats.append(mi.material_override)
 	props.add_child(mi)
 	return mi
 
@@ -391,9 +467,6 @@ func prop_count() -> int:
 
 func _build_settlements() -> void:
 	var t = terrain
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 99
-	var houses: Array = [[], [], []]
 	for i in t.ids.size():
 		var id: String = t.ids[i]
 		var c: Vector2 = t.centres[i]
@@ -403,21 +476,36 @@ func _build_settlements() -> void:
 		elif t.has_fort[i]:
 			var f := MeshInstance3D.new()
 			f.name = "Fort_" + id
-			f.mesh = Kit.fort()
-			f.material_override = model_mat(Color.WHITE)
+			f.mesh = Models.building_primitive("fort")
+			f.material_override = model_mat(Color.WHITE, null, -1.0, false, 0.9)
 			## beside the stage, on the side away from the roads
 			var at: Vector2 = c - gate * 30.0
 			f.position = t.ground_at(at) - Vector3(0, 0.3, 0)
 			f.rotation.y = atan2(gate.x, gate.y)
 			buildings.add_child(f)
-		## a hamlet of cottages round the stage, off the roads
+	var houses: Array = plan_of(t)["houses"]
+	for v in 3:
+		var mi := _multi(Kit.cottage(v), houses[v], "Cottages%d" % v)
+		props.remove_child(mi)
+		buildings.add_child(mi)
+
+
+## A hamlet of cottages round every stage, off the roads (pure): three lists of transforms, one per
+## cottage variant.
+static func plan_houses(t) -> Array:
+	var rng := _Hash.new(99)
+	var houses: Array = [[], [], []]
+	for i in t.ids.size():
+		var id: String = t.ids[i]
+		var c: Vector2 = t.centres[i]
+		var gate := gate_dir_of(t, id)
 		var placed := 0
 		var tries := 0
 		var n_house: int = 3 if t.is_capital[i] else 5
 		while placed < n_house and tries < 60:
 			tries += 1
-			var a: float = rng.randf() * TAU
-			var r: float = t.stage_r[i] + rng.randf_range(8.0, 26.0)
+			var a: float = rng.next01() * TAU
+			var r: float = t.stage_r[i] + rng.range01(8.0, 26.0)
 			var p: Vector2 = c + Vector2(cos(a), sin(a)) * r
 			if t.province_at(p) != id or t.road_at(p) < 9.0 or t.woods_at(p) > 0.2 or t.border_at(p) < 12.0:
 				continue
@@ -425,20 +513,20 @@ func _build_settlements() -> void:
 				continue
 			if (1.0 - t.normal_at(p).y) > 0.18:
 				continue
-			var v: int = rng.randi() % 3
+			var v: int = rng.next_int() % 3
 			var to_c: Vector2 = (c - p).normalized()
-			var b := Basis(Vector3.UP, atan2(to_c.x, to_c.y) + PI).scaled(Vector3.ONE * rng.randf_range(0.85, 1.1))
+			var b := Basis(Vector3.UP, atan2(to_c.x, to_c.y) + PI).scaled(Vector3.ONE * rng.range01(0.85, 1.1))
 			houses[v].append(Transform3D(b, t.ground_at(p) - Vector3(0, 0.2, 0)))
 			placed += 1
-	for v in 3:
-		var mi := _multi(Kit.cottage(v), houses[v], "Cottages%d" % v)
-		props.remove_child(mi)
-		buildings.add_child(mi)
+	return houses
 
 
 ## The way a province's gate faces: toward the mean of its roads.
 func gate_dir(id: String) -> Vector2:
-	var t = terrain
+	return gate_dir_of(terrain, id)
+
+
+static func gate_dir_of(t, id: String) -> Vector2:
 	var i: int = t.index_of(id)
 	var c: Vector2 = t.centres[i]
 	var sum := Vector2.ZERO
@@ -459,96 +547,70 @@ func _place_fortress(id: String, c: Vector2, gate: Vector2) -> void:
 	root.position = Vector3(c.x, t.stage_h[i] - 0.15, c.y)
 	root.rotation.y = yaw
 	buildings.add_child(root)
+	## the kit comes from the model table: the faction whose capital this is picks its variant (a
+	## captured fortress keeps its look, design/3D_DIRECTION.md 5.3)
+	var variant: String = capital_of.get(id, "")
+	var row: Dictionary = Models.building_row("fortress", variant)
+	var side: float = float(row.get("side", FORTRESS_SIDE))
+	var tint: float = float(row.get("tint", 1.0))
+	var stone := Color(String(row.get("stone", "#FFFFFF")))
 	var mat: ShaderMaterial
-	var court: Rect2 = Kit.courtyard_rect(FORTRESS_SIDE)
-	var gate_z := Vector2(-FORTRESS_SIDE * 0.5 + 8.0, -FORTRESS_SIDE * 0.5 - 8.0) ## inner, outer (local z)
+	var court: Rect2 = Kit.courtyard_rect(side)
+	var gate_z := Vector2(-side * 0.5 + 8.0, -side * 0.5 - 8.0) ## inner, outer (local z)
 	var banner_at := Vector2(8.5, 13.0) ## gate towers: x either side, height
+	var floor_y := 1.45
 	var banners: Array = []
-	if fortress_style == "ludo" and _load_ludo_fortress():
+	var glb: Dictionary = Models.building_model("fortress", variant) if fortress_style == "ludo" else {}
+	if not glb.is_empty():
 		var mi := MeshInstance3D.new()
-		mi.mesh = _ludo_fortress["mesh"]
-		mat = model_mat(Color.WHITE, _ludo_fortress["tex"], 0.62)
+		mi.mesh = glb["mesh"]
+		mat = model_mat(Color.WHITE, glb["tex"], float(row.get("key_hue", -1.0)), false, tint, stone)
 		mi.material_override = mat
-		var aabb: AABB = _ludo_fortress["aabb"]
-		var s: float = FORTRESS_SIDE / maxf(aabb.size.x, aabb.size.z)
+		var aabb: AABB = glb["aabb"]
+		var s: float = side / maxf(aabb.size.x, aabb.size.z)
 		mi.scale = Vector3.ONE * s
-		## the model's own frame (measured off its top view): gate on +X, keep at the back
-		mi.rotation.y = _ludo_fortress["yaw"]
+		## the model's own frame (measured off its top view): gate on +Z in glTF, turned by the row's yaw
+		mi.rotation.y = deg_to_rad(float(row.get("yaw", 180.0)))
 		var centre: Vector3 = aabb.get_center()
 		mi.position = (Basis(Vector3.UP, mi.rotation.y) * Vector3(-centre.x, -aabb.position.y, -centre.z)) * s
-		mi.position.y -= float(_ludo_fortress["sink"]) ## its grass slab's top flush with the stage
+		mi.position.y -= float(row.get("sink", 0.0)) ## its grass slab's top flush with the stage
 		root.add_child(mi)
-		court = _ludo_fortress["court"]
-		gate_z = _ludo_fortress["gate_z"]
-		banner_at = _ludo_fortress["banner_at"]
+		var cr: Array = row.get("court", [])
+		if cr.size() == 4:
+			court = Rect2(Vector2(cr[0], cr[1]), Vector2(cr[2], cr[3]))
+		var gz: Array = row.get("gate_z", [])
+		if gz.size() == 2:
+			gate_z = Vector2(gz[0], gz[1])
+		var ba: Array = row.get("banner_at", [])
+		if ba.size() == 2:
+			banner_at = Vector2(ba[0], ba[1])
+		floor_y = float(row.get("floor", 0.25))
 	else:
 		var mi := MeshInstance3D.new()
-		mi.mesh = Kit.fortress(FORTRESS_SIDE)
-		mat = model_mat(Color.WHITE)
+		mi.mesh = Models.building_primitive("fortress", variant)
+		## the primitive's pale stone is drawn a little darker, so Look A's light doesn't blow it out
+		mat = model_mat(Color.WHITE, null, -1.0, false, 0.72 * tint, stone)
 		mi.material_override = mat
 		root.add_child(mi)
+	if bool(row.get("palisade", false)):
+		## the Clans' kit variant: a ring of sharpened stakes round the walls, open at the gate
+		var pal := MeshInstance3D.new()
+		pal.mesh = Kit.palisade(side * 0.5 + 7.0)
+		pal.material_override = model_mat(Color.WHITE)
+		root.add_child(pal)
 	## banners on the gate towers, in the owner's colour
 	for gx in [-1.0, 1.0]:
 		var bn := make_banner(Color.WHITE, 0, 8.0, Vector2(4.0, 2.6))
-		bn.position = Vector3(gx * banner_at.x, banner_at.y, gate_z.x - 8.0 if fortress_style == "ludo" else -FORTRESS_SIDE * 0.5 + 1.0)
+		bn.position = Vector3(gx * banner_at.x, banner_at.y, gate_z.x - 8.0 if not glb.is_empty() else -side * 0.5 + 1.0)
 		root.add_child(bn)
 		banners.append(bn.get_child(1).material_override)
 	fortresses[id] = {"node": root, "gate_dir": gate, "yaw": yaw, "mat": mat, "court": court,
 		"frame": root.transform, "banners": banners, "gate_z": gate_z,
-		"floor": 0.25 if fortress_style == "ludo" else 1.45} ## the courtyard's floor over the stage
-
-
-func _load_ludo_fortress() -> bool:
-	if not _ludo_fortress.is_empty():
-		return true
-	if not ResourceLoader.exists(LUDO_FORTRESS):
-		return false
-	var scene: PackedScene = load(LUDO_FORTRESS)
-	if scene == null:
-		return false
-	var inst := scene.instantiate()
-	var mi := _first_mesh(inst)
-	if mi == null:
-		inst.free()
-		return false
-	var mesh: Mesh = mi.mesh
-	var tex: Texture2D = null
-	var sm := mesh.surface_get_material(0)
-	if sm is BaseMaterial3D:
-		tex = (sm as BaseMaterial3D).albedo_texture
-	var aabb: AABB = mesh.get_aabb()
-	inst.free()
-	## measured off the model's vertices (world3d/README.md): glTF front, the gate in the +Z wall, the
-	## keep at the back; turned PI so the gate is on the fortress frame's -Z. The clear courtyard is
-	## between the front wall's inner face (local z -17.8) and the keep (z 0), x within +-22.7; its
-	## grass slab is the bottom 2 units.
-	_ludo_fortress = {"mesh": _vertex_white(mesh), "tex": tex, "aabb": aabb, "yaw": PI,
-		"court": Rect2(Vector2(-21.0, -16.8), Vector2(42.0, 16.0)), "gate_z": Vector2(-13.0, -36.0),
-		"sink": 2.0, "banner_at": Vector2(9.0, 20.0)}
-	return true
-
-
-## A copy of an imported mesh with white vertex colours, so the model shaders read its texture.
-func _vertex_white(mesh: Mesh) -> ArrayMesh:
-	var arr: Array = mesh.surface_get_arrays(0)
-	var nv: int = (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
-	var cols := PackedColorArray()
-	cols.resize(nv)
-	cols.fill(Color(1, 1, 1, 1))
-	arr[Mesh.ARRAY_COLOR] = cols
-	var am := ArrayMesh.new()
-	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-	return am
+		"floor": floor_y} ## the courtyard's floor over the stage
 
 
 static func _first_mesh(n: Node) -> MeshInstance3D:
-	if n is MeshInstance3D:
-		return n
-	for ch in n.get_children():
-		var m := _first_mesh(ch)
-		if m != null:
-			return m
-	return null
+	return Models._first_mesh(n)
 
 
 ## A capital's courtyard muster point and facing, in the world: [centre Vector2, facing Vector2,
@@ -587,8 +649,8 @@ func rig_eye(r: Dictionary) -> Vector3:
 func apply_rig() -> void:
 	if cam == null:
 		return
-	if outline_mat != null and get_viewport() != null:
-		outline_mat.set_shader_parameter("screen", get_viewport().get_visible_rect().size)
+	if outline_mat != null:
+		outline_mat.set_shader_parameter("screen", view_size)
 	var fov: float = rig["fov"]
 	var d: float = float(rig["span"]) / (2.0 * tan(deg_to_rad(fov) * 0.5))
 	var pitch: float = deg_to_rad(rig["pitch"])
@@ -598,7 +660,8 @@ func apply_rig() -> void:
 	var z: Vector3 = (back * cos(pitch) + Vector3.UP * sin(pitch)).normalized()
 	var x: Vector3 = Vector3.UP.cross(back).normalized()
 	var y: Vector3 = z.cross(x)
-	cam.transform = Transform3D(Basis(x, y, z), t + z * d)
+	cam_xform = Transform3D(Basis(x, y, z), t + z * d)
+	cam.transform = cam_xform
 	cam.fov = fov
 	cam.near = maxf(0.5, d * 0.02)
 	cam.far = d * 6.0 + 4000.0
@@ -608,24 +671,40 @@ func apply_rig() -> void:
 		env.fog_density = fog_k * 0.07 / maxf(d, 1.0)
 
 
+## The camera's projection, computed here rather than asked of the Camera3D node, so picking works the
+## same out of the scene tree (headless tests) as in it. The Camera3D keeps its default vertical FOV
+## (keep height), and `view_size` is the size of the viewport it draws into (the board keeps them equal).
+func project3(v: Vector3) -> Vector2:
+	var pv: Vector3 = cam_xform.affine_inverse() * v
+	if pv.z > -0.001:
+		return Vector2(-99999, -99999)
+	var th: float = tan(deg_to_rad(float(rig["fov"])) * 0.5)
+	var aspect: float = view_size.x / maxf(view_size.y, 1.0)
+	var nx: float = pv.x / (-pv.z * th * aspect)
+	var ny: float = pv.y / (-pv.z * th)
+	return Vector2((nx * 0.5 + 0.5) * view_size.x, (0.5 - ny * 0.5) * view_size.y)
+
+
 ## A map point on the land, to screen pixels (Vector2(-99999) when behind the camera).
 func project(p: Vector2, lift: float = 0.0) -> Vector2:
-	var v := Vector3(p.x, maxf(terrain.height_at(p), 0.0) + lift, p.y)
-	if cam.is_position_behind(v):
-		return Vector2(-99999, -99999)
-	return cam.unproject_position(v)
+	return project3(Vector3(p.x, maxf(terrain.height_at(p), 0.0) + lift, p.y))
 
 
-func project3(v: Vector3) -> Vector2:
-	if cam.is_position_behind(v):
-		return Vector2(-99999, -99999)
-	return cam.unproject_position(v)
+## The ray from the eye through a screen point: [origin, direction].
+func screen_ray(s: Vector2) -> Array:
+	var th: float = tan(deg_to_rad(float(rig["fov"])) * 0.5)
+	var aspect: float = view_size.x / maxf(view_size.y, 1.0)
+	var nx: float = (s.x / maxf(view_size.x, 1.0)) * 2.0 - 1.0
+	var ny: float = 1.0 - (s.y / maxf(view_size.y, 1.0)) * 2.0
+	var dir: Vector3 = cam_xform.basis * Vector3(nx * th * aspect, ny * th, -1.0)
+	return [cam_xform.origin, dir.normalized()]
 
 
 ## A screen point onto the ground: a ray from the eye, refined over the hills.
 func unproject(s: Vector2) -> Vector2:
-	var o: Vector3 = cam.project_ray_origin(s)
-	var d: Vector3 = cam.project_ray_normal(s)
+	var ray: Array = screen_ray(s)
+	var o: Vector3 = ray[0]
+	var d: Vector3 = ray[1]
 	if absf(d.y) < 0.0001:
 		return Vector2(o.x, o.z)
 	var hgt := 0.0
@@ -638,6 +717,31 @@ func unproject(s: Vector2) -> Vector2:
 
 # ------------------------------------------------------------------ helpers
 
+## Cosmetic variety (tree placement, village spots, a banner's ripple) from a fixed seed and a counter,
+## hashed: the world never touches the game's dice (design/3D_DIRECTION.md 2).
+class _Hash:
+	var _s: int
+
+	func _init(seed_value: int) -> void:
+		_s = seed_value * 2654435761 + 1013904223
+
+	func next01() -> float:
+		_s = _s * 6364136223846793005 + 1442695040888963407
+		return float((_s >> 33) & 0x7FFFFFFF) / 2147483648.0
+
+	func range01(a: float, b: float) -> float:
+		return a + (b - a) * next01()
+
+	func next_int() -> int:
+		_s = _s * 6364136223846793005 + 1442695040888963407
+		return (_s >> 33) & 0x7FFFFFFF
+
+
+static func _h01(n: int, salt: int) -> float:
+	var h := _Hash.new(n * 7919 + salt)
+	return h.next01()
+
+
 static func _mean_colour(tex: Texture2D) -> Vector3:
 	var img: Image = tex.get_image()
 	if img.is_compressed():
@@ -648,7 +752,7 @@ static func _mean_colour(tex: Texture2D) -> Vector3:
 	return Vector3(c.r, c.g, c.b)
 
 
-func _grain() -> ImageTexture:
+static func make_grain() -> Image:
 	var imgs := []
 	for k in 3:
 		var nz := FastNoiseLite.new()
@@ -661,7 +765,7 @@ func _grain() -> ImageTexture:
 		for x in 256:
 			out.set_pixel(x, y, Color(imgs[0].get_pixel(x, y).r, imgs[1].get_pixel(x, y).r, imgs[2].get_pixel(x, y).r))
 	out.generate_mipmaps()
-	return ImageTexture.create_from_image(out)
+	return out
 
 
 func _waves(sd: int) -> NoiseTexture2D:

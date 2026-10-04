@@ -2,7 +2,7 @@
 ##     godot --path . -- --world3d                (from the title, via world3d/launch.gd)
 ##     godot --path . res://world3d/world_preview.tscn
 ## Options after `--`: --look=cel|painted  --start (the turn-0 game instead of a mid-game)
-##   --turns=N (turns autoplayed before the shown one)  --probe (the Ludo probe's figures)
+##   --turns=N (turns autoplayed before the shown one)  --primitive (primitive figures, not the model table's GLBs)
 ##   --primitive-fort  --shots=DIR (the evidence screenshots, then quit)  --perf=FILE (fps, then quit)
 ##
 ## It builds the land off the main thread (terrain3d.gd), then the world (world_view.gd), the
@@ -16,6 +16,8 @@ const Armies := preload("res://world3d/armies.gd")
 const Overlay := preload("res://world3d/overlay.gd")
 const Scenario := preload("res://world3d/scenario.gd")
 const Kit := preload("res://world3d/kit.gd")
+const Models := preload("res://world3d/models.gd")
+const Playback := preload("res://world3d/playback.gd")
 
 const SPAN_FAR := 600.0
 const SPAN_NEAR := 70.0
@@ -89,6 +91,7 @@ func _process(delta: float) -> void:
 		_build()
 	if not built:
 		return
+	wv.view_size = get_viewport().get_visible_rect().size
 	_camera(delta)
 	_toy_scale()
 	_watch_speed(delta)
@@ -109,9 +112,10 @@ func _build() -> void:
 	armies = Armies.new()
 	armies.name = "Armies"
 	armies.wv = wv
-	armies.use_probe = _opts.has("probe")
+	armies.prefer_models = not _opts.has("primitive")
 	wv.add_child(armies)
-	armies.playback_done.connect(_on_marchers_arrived)
+	armies.captured.connect(func(_p, _o): pass)
+	armies.playback_finished.connect(_on_marchers_arrived)
 	overlay.wv = wv
 	overlay.armies = armies
 	overlay.build_labels()
@@ -155,14 +159,17 @@ func play_turn() -> void:
 		return
 	if shown != turns[turn_i]["before"]:
 		_show(turns[turn_i]["before"])
-	armies.play_turn(turns[turn_i])
+	_play(turns[turn_i])
+
+
+## Plays a Scenario turn through the board's playback (world3d/playback.gd).
+func _play(turn: Dictionary) -> void:
+	armies.play(Playback.plan(turn["before"], turn["events"], turn["after"]), turn["before"], turn["after"])
 
 
 func _on_marchers_arrived() -> void:
 	var after: GameState = turns[turn_i]["after"]
 	_paint_owners(after)
-	## when the columns have re-formed, the next turn is the one Space plays
-	await get_tree().create_timer(2.8).timeout
 	shown = after
 	overlay.build_plates(after, seats)
 	if turn_i + 1 < turns.size():
@@ -277,7 +284,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 			KEY_L:
 				wv.set_look("painted" if wv.look == "cel" else "cel")
 			KEY_P:
-				armies.use_probe = not armies.use_probe
+				armies.prefer_models = not armies.prefer_models
 				armies.show_state(shown, seats)
 			KEY_F:
 				_rebuild_fortresses()
@@ -393,7 +400,7 @@ func _shots(dir: String) -> void:
 		var g: Vector2 = wv.gate_dir(src)
 		frame_at(c + g * 30.0, 0.74)
 		await _wait(6)
-		armies.play_turn(turn)
+		_play(turn)
 		armies.set_process(false)
 		var marks := [0.0, 1.2, 2.4, 3.6, 5.0, 7.0, 10.0]
 		var tnow := 0.0
@@ -418,7 +425,7 @@ func _shots(dir: String) -> void:
 		await _shot(dir, "05_march_after_wide")
 		_show(turns[turn_i]["before"] if turn_i < turns.size() else shown)
 	if only == "" or only.contains("probe"):
-		armies.use_probe = true
+		armies.prefer_models = true
 		armies.show_state(shown, seats)
 		_frame("crownkeep", true)
 		frame_at(terrain.centre_of("crownkeep") + wv.gate_dir("crownkeep") * 6.0, 0.97)
@@ -434,7 +441,7 @@ func _shots(dir: String) -> void:
 		frame_at(Vector2(500, 300), 0.2)
 		await _wait(8)
 		await _shot(dir, "06_probe_far")
-		armies.use_probe = false
+		armies.prefer_models = false
 		armies.show_state(shown, seats)
 	if only == "" or only.contains("stand"):
 		## the probe's models beside the placeholders, on a stand over the sea north of the map
@@ -477,12 +484,11 @@ func _showcase() -> Node3D:
 	var row: Array = [["spearmen", false], ["spearmen", true], ["crossbowmen", false], ["knights", false], ["knight_captain", false],
 		["tuskers", false], ["tuskers", true], ["fangthrowers", false], ["war_bear", false], ["warchief", false]]
 	var x := -20.5
-	var was: bool = armies.use_probe
 	for e in row:
-		armies.use_probe = e[1]
 		var mi := MeshInstance3D.new()
-		mi.mesh = armies._mesh(e[0])
-		var tex: Texture2D = armies._probe_tex.get(e[0]) if e[1] else null
+		var fm: Dictionary = Models.figure_mesh(e[0], e[1])
+		mi.mesh = fm["mesh"]
+		var tex: Texture2D = fm["tex"]
 		mi.material_override = wv.model_mat(UiPalette.seat_color(0 if e[0] in ["spearmen", "crossbowmen", "knights", "knight_captain"] else 1), tex)
 		var w: float = 9.0 if e[0] == "war_bear" else (5.5 if e[0] in ["knights", "knight_captain", "tuskers", "warchief"] else 4.2)
 		x += w * 0.5
@@ -490,7 +496,6 @@ func _showcase() -> Node3D:
 		mi.rotation.y = PI + (0.5 if e[0] in ["knights", "knight_captain", "war_bear"] else 0.25)
 		x += w * 0.5
 		root.add_child(mi)
-	armies.use_probe = was
 	return root
 
 
@@ -525,7 +530,7 @@ func _perf(path: String) -> void:
 					else:
 						frame_at(terrain.centre_of("crownkeep") + wv.gate_dir("crownkeep") * 60.0, 0.5)
 						_show(turns[turn_i]["before"])
-						armies.play_turn(turns[turn_i])
+						_play(turns[turn_i])
 						armies.step_playback(4.0)
 					await _wait(20)
 					var frames := 0
