@@ -54,7 +54,7 @@ const TENS := ["Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty
 const TENS_ORDINAL := ["Twentieth", "Thirtieth", "Fortieth", "Fiftieth", "Sixtieth", "Seventieth", "Eightieth", "Ninetieth"]
 
 ## Player-facing names of the stats a ruler has (the breakdown titles use them).
-const STAT_NAMES := {"hp": "Maximum hit points", "attack": "Attack", "defense": "Defense", "cost": "Recruit cost"}
+const STAT_NAMES := {"hp": "Maximum hit points", "attack": "Attack", "defense": "Defense", "cost": "Recruit cost", "morale": "Morale"}
 
 
 # --- data lookups ---------------------------------------------------------------------------------
@@ -857,23 +857,30 @@ static func apply_build(state: GameState, faction_id: String, build) -> Array:
 
 ## A roster unit's or commander's numbers for `faction_id` with its mandates: Royal Armories (+1 attack
 ## and defense) and Veteran Levies (+2 max hp) for regular units, Muster Grounds (a fifth off, rounded
-## down) for every recruit. The numbers come from MandateData. Returns {"ok", "unit_type", "name",
-## "is_commander", "hp", "attack", "defense", "cost", "base": {stat: the type's value},
-## "mods": {stat: [{"mandate", "name", "value"}]}}; "ok" is false for a type the faction can't recruit.
-## The cost is recruit_price's (price_mods), the price the recruitment phase charges (M2-4).
+## down) for every recruit. The numbers come from MandateData. M4: in a game with paths, the path's parts
+## on regular units follow the mandates' (AscensionRules.unit_parts and price_parts: Drillyard, Arbalests,
+## Remount Stables, ...), and "morale" is one of the stats. Returns {"ok", "unit_type", "name",
+## "is_commander", "hp", "attack", "defense", "morale", "cost", "base": {stat: the type's value},
+## "mods": {stat: [{"key", "name", "value", and "mandate" (its id; "" for a path part) or "node"}]}};
+## "ok" is false for a type the faction can't recruit. Path parts' keys are "path_<node id>", mandates'
+## "mandate_<id>". The cost is recruit_price's (price_mods), the price the recruitment phase charges (M2-4).
 static func unit_stats(state: GameState, faction_id: String, unit_type_id: String) -> Dictionary:
 	var f := state.find_faction(faction_id)
 	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id) if f else null
 	if ut == null:
 		return {"ok": false}
-	var base := {"hp": ut.hp, "attack": ut.attack, "defense": ut.defense, "cost": ut.cost}
-	var mods := {"hp": [], "attack": [], "defense": [], "cost": price_mods(state, faction_id, ut)}
+	var base := {"hp": ut.hp, "attack": ut.attack, "defense": ut.defense, "cost": ut.cost, "morale": ut.morale}
+	var mods := {"hp": [], "attack": [], "defense": [], "cost": price_mods(state, faction_id, ut), "morale": []}
 	for mid in mandates(state, faction_id):
 		var md := mandate_data(mid)
 		if not ut.is_commander:
 			var bonus: Dictionary = md.get("units", {})
 			for stat in bonus:
-				mods[stat].append({"mandate": mid, "name": md.name, "value": int(bonus[stat])})
+				mods[stat].append({"mandate": mid, "key": AutoBattleResolver.MANDATE_PREFIX + mid, "name": md.name,
+					"value": int(bonus[stat])})
+	var path := AscensionRules.unit_parts(state, faction_id, ut)  # M4: [] without paths
+	for stat in path:
+		mods[stat].append_array(path[stat])
 	var out := {"ok": true, "unit_type": ut.id, "name": ut.name, "is_commander": ut.is_commander,
 		"base": base, "mods": mods}
 	for stat in base:
@@ -984,6 +991,8 @@ const TITHE_GOLD := 2
 ## The price cuts `faction_id`'s mandates make on `ut` (Muster Grounds: cost / 5, rounded down, comes
 ## off every recruit, commanders included): [{"mandate", "name", "value" (negative)}]. The numbers come
 ## from MandateData's recruit_divisor.
+## M4: in a game with paths the path's price parts follow (AscensionRules.price_parts: Remount Stables -4
+## on Knights, Living Iron +4), with "key" "path_<node id>" and "mandate" "".
 static func price_mods(state: GameState, faction_id: String, ut: UnitType) -> Array:
 	var out := []
 	if ut == null:
@@ -992,7 +1001,9 @@ static func price_mods(state: GameState, faction_id: String, ut: UnitType) -> Ar
 		var md := mandate_data(mid)
 		var divisor := int(md.get("recruit_divisor", 0))
 		if divisor > 0:
-			out.append({"mandate": mid, "name": md.name, "value": -floori(float(ut.cost) / divisor)})
+			out.append({"mandate": mid, "key": AutoBattleResolver.MANDATE_PREFIX + mid, "name": md.name,
+				"value": -floori(float(ut.cost) / divisor)})
+	out.append_array(AscensionRules.price_parts(state, faction_id, ut))
 	return out
 
 
@@ -1007,16 +1018,17 @@ static func recruit_price(state: GameState, faction_id: String, ut: UnitType) ->
 	return price
 
 
-## "16 gold (20 - Muster Grounds 4)", or "20 gold" when no mandate changes the price.
+## "16 gold (20 - Muster Grounds 4)", or "20 gold" when no mandate changes the price. A part that raises
+## the price reads "+": "24 gold (20 + Living Iron 4)" (M4).
 static func price_text(state: GameState, faction_id: String, ut: UnitType) -> String:
 	var mods := price_mods(state, faction_id, ut)
 	var price := recruit_price(state, faction_id, ut)
 	if mods.is_empty():
 		return "%d gold" % price
-	var parts := []
+	var text := "%d" % ut.cost
 	for m in mods:
-		parts.append("%s %d" % [m.name, -int(m.value)])
-	return "%d gold (%d - %s)" % [price, ut.cost, " - ".join(parts)]
+		text += " %s %s %d" % ["-" if int(m.value) <= 0 else "+", m.name, absi(int(m.value))]
+	return "%d gold (%s)" % [price, text]
 
 
 ## True when the faction's ruler has `ability_id` (whether or not the ruler is on the map right now).
@@ -1168,6 +1180,15 @@ static func province_income_parts(state: GameState, province_id: String, ruler_a
 	var total := p.income
 	for m in mods:
 		total += int(m.value)
+	# M4: the path's income lines (AscensionRules.income_parts; none without paths). A province never earns
+	# less than 0: a line makes up the difference, so the lines still add up to the total.
+	for m in AscensionRules.income_parts(state, p):
+		mods.append(m)
+		total += int(m.value)
+	if total < 0:
+		mods.append({"key": "income_floor", "name": "Never below 0", "value": -total,
+			"note": "a province never earns less than nothing"})
+		total = 0
 	return {"owner": fid, "base": p.income, "mods": mods, "total": total}
 
 
@@ -1372,7 +1393,8 @@ static func units_bonus_text(mandate_id: String) -> String:
 
 
 ## A unit's maximum hit points with its faction's mandates: its type's, plus Veteran Levies for a
-## regular unit (never commanders or rulers). unit_stats' "hp" for the unit's own type.
+## regular unit (never commanders or rulers), plus the path's hp parts in a game with paths (M4).
+## unit_stats' "hp" for the unit's own type.
 static func unit_max_hp(state: GameState, unit: Unit) -> int:
 	if unit == null or unit.type == null:
 		return 0
@@ -1381,6 +1403,7 @@ static func unit_max_hp(state: GameState, unit: Unit) -> int:
 		return hp
 	for mid in mandates(state, unit.owner):
 		hp += int(mandate_data(mid).get("units", {}).get("hp", 0))
+	hp += AscensionRules.unit_hp_bonus(state, unit.owner, unit.type)  # M4: Drillyard, Boar Hide, ... (0 without paths)
 	return hp
 
 

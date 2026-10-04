@@ -489,6 +489,89 @@ static func _sacrifice_odds(state: GameState, after_state: GameState, faction_id
 	return out
 
 
+# --- research (M4-1, #66; design/M4_ASCENSION.md §2.3) ---------------------------------------------
+
+## The research forecast: when a node is done, from the same AscensionRules functions the research phase
+## uses. The node is `node_id` ("if researched next", for every card of the panel) or, without it, the
+## target the queued ResearchOrder in `orders` sets, or else the faction's current target. Returns {"ok",
+## "code", "reason", "rate", "rate_parts", "rate_text", "pool", "target", "name", "cost", "eta" (turns,
+## this one counting as 1; -1 if never at this rate), "done_turn" (the 1-based turn it is done at the end
+## of; it works from the next), "carry" (research left over then), "then" (for an Oath: {"node", "name",
+## "cost", "eta", "done_turn"} of its transformation, "about", because the rate can change), "text"}.
+## With no target, "ok" is true, "target" "" and "text" says what is waiting (or "Path complete").
+## Forecast equals result: when no province changes hands, the node is done at the end of done_turn.
+## The target is private (§3.3): only show this to its own faction.
+static func research(state: GameState, faction_id: String, orders: Array = [], node_id: String = "") -> Dictionary:
+	var out := {"ok": false, "code": "", "reason": "", "rate": 0, "rate_parts": [], "rate_text": "", "pool": 0, "target": "",
+		"name": "", "cost": 0, "eta": 0, "done_turn": 0, "carry": 0, "then": {}, "text": ""}
+	var f := state.find_faction(faction_id)
+	if f == null or not AscensionRules.has_paths(state):
+		var no := AscensionRules.node_state(state, faction_id, node_id)
+		out.code = no.code
+		out.reason = no.reason
+		out.text = no.reason
+		return out
+	var view := RulerRules.state_after_orders(state, faction_id, orders)
+	var rate := AscensionRules.research_rate(view, faction_id)
+	var pool := AscensionRules.research_points(view, faction_id)
+	var per_turn := int(rate.rate)
+	out.rate = per_turn
+	out.rate_parts = rate.parts.duplicate(true)
+	out.rate_text = rate.text
+	out.pool = pool
+	var target := node_id
+	if target.is_empty():
+		var queued := AscensionRules.queued_research(orders)
+		if queued != null and AscensionRules.check_research(view, faction_id, queued.node_id).is_empty():
+			target = queued.node_id
+		else:
+			target = AscensionRules.research_target(view, faction_id)
+	if target.is_empty():
+		out.ok = true
+		if AscensionRules.path_complete(view, faction_id):
+			out.text = "Path complete: everything on your path is researched or closed. Research keeps saving up (%d now, %d a turn)." % [pool, per_turn]
+		else:
+			out.text = "Choose what to research: %d research is waiting, and you gain %d a turn (%s)." % [pool, per_turn, rate.short]
+		return out
+	var check := AscensionRules.check_research(view, faction_id, target)
+	out.target = target
+	out.name = AscensionRules.node_name(target)
+	out.cost = AscensionRules.node_cost(target)
+	if not check.is_empty():
+		out.code = check.code
+		out.reason = check.reason
+		out.text = check.reason
+		return out
+	var cost := int(out.cost)
+	var n := AscensionRules.eta(cost, pool, per_turn)
+	out.ok = true
+	out.eta = n
+	var head := "%s: %d of %d research." % [out.name, pool, cost] if pool < cost \
+		else "%s: %d research, and you have %d saved." % [out.name, cost, pool]
+	var gain := "You gain %d a turn (%s)" % [per_turn, rate.short]
+	if n < 0:
+		out.done_turn = -1
+		out.text = "%s %s, so at this pace it is never done. Hold or retake your capital to research again." % [head, gain]
+		return out
+	out.done_turn = view.current_turn + n
+	out.carry = pool + per_turn * n - cost
+	var when := "this turn" if n == 1 else "turn %d, in %s" % [out.done_turn, _count(n, "turn")]
+	out.text = "%s %s, so it is done at the end of %s. From turn %d, %s. Capturing or losing a province changes the pace by %d a turn." % [
+		head, gain, when, out.done_turn + 1, AscensionRules.effect_preview(view, faction_id, target), int(PathData.RESEARCH.province)]
+	if AscensionRules.is_oath(target):
+		var side := String(AscensionRules.node_data(target).branch)
+		var next := String(AscensionRules.branch_data(side).get("transformation", ""))
+		var m := AscensionRules.eta(AscensionRules.node_cost(next), int(out.carry), per_turn)
+		out.then = {"node": next, "name": AscensionRules.node_name(next), "cost": AscensionRules.node_cost(next),
+			"eta": n + m if m > 0 else -1, "done_turn": out.done_turn + m if m > 0 else -1}
+		var other := AscensionRules.other_branch(faction_id, side)
+		out.text += " Swearing it closes %s for the rest of the game, but nothing is closed until it is done: until then you can change your research freely." % AscensionRules.branch_ref(other)
+		if m > 0:
+			out.text += " %s then needs %d more: about turn %d." % [RulerRules._cap(AscensionRules.branch_ref(side)),
+				AscensionRules.node_cost(next), int(out.then.done_turn)]
+	return out
+
+
 static func _row(key: String, label: String, before: String, after: String, codex: String, breakdown: Dictionary,
 		before_value: int = 0, after_value: int = 0, higher_is_better: bool = true) -> Dictionary:
 	return {"key": key, "label": label, "before": before, "after": after, "codex": codex, "breakdown": breakdown,

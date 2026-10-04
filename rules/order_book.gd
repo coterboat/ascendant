@@ -11,6 +11,9 @@ class_name OrderBook
 ## makes an earlier order fail (a lower ability rank allows fewer recruits with the Ninth Fang), the
 ## other orders are checked again in the order given and the ones that no longer pass are removed, each
 ## with a plain reason (dropped(), last_dropped()).
+##
+## Research orders (M4, design/M4_ASCENSION.md §2.2): at most one per faction per turn. Queuing another
+## replaces the queued one (it is reported in last_dropped(), "Research Drillyard replaced: ...").
 
 var _orders := {}  # faction id -> Array of orders, in the order given
 var _last_dropped: Array = []  # what the last submit() or cancel() removed: [{"order", "code", "reason", "text"}]
@@ -26,6 +29,8 @@ func submit(state: GameState, faction_id: String, order) -> String:
 		return check.reason
 	if not _orders.has(faction_id):
 		_orders[faction_id] = []
+	if order is ResearchOrder:
+		_last_dropped = _replace_research(state, faction_id, order)
 	_orders[faction_id].append(order)
 	if order is SacrificeOrder:
 		_last_dropped = _recheck(state, faction_id)
@@ -93,7 +98,10 @@ static func check_order(state: GameState, faction_id: String, order, existing: A
 		recruits.append(order)
 		var last: Dictionary = TurnResolver.price_recruits(board, faction_id, recruits).results.back()
 		return {} if last.ok else {"code": last.code, "reason": last.reason}
-	return {"code": "unknown_order", "reason": "That is not an order this game knows. Orders are moves, recruits and sacrifices."}
+	if order is ResearchOrder:
+		# M4: one per turn, but a new one replaces the queued one (submit), so only the rule is checked here.
+		return AscensionRules.check_research(board, faction_id, order.node_id)
+	return {"code": "unknown_order", "reason": "That is not an order this game knows. Orders are moves, recruits, sacrifices and research."}
 
 
 ## Checks `orders` again in the order given, as submit() would take them one by one, against the state
@@ -139,6 +147,8 @@ static func short_text(state: GameState, faction_id: String, order) -> String:
 		return "Recruit %s at %s" % [unit, TurnResolver._province_name(state, f.capital) if f else "your capital"]
 	if order is SacrificeOrder:
 		return "Sacrifice for %s" % RulerRules.mandate_name(order.mandate_id)
+	if order is ResearchOrder:
+		return "Research %s" % AscensionRules.node_name(order.node_id)
 	return "An unknown order"
 
 
@@ -173,7 +183,7 @@ static func orders_from_dict(data: Dictionary, errors = null) -> Dictionary:
 
 
 ## Old records without "via" or "at" load as M1 orders (design/M2_RULER.md §9). A sacrifice is
-## {"type": "sacrifice", "mandate": id} (M2-6).
+## {"type": "sacrifice", "mandate": id} (M2-6), a research order {"type": "research", "node": id} (M4-1).
 static func order_from_dict(data: Dictionary, errors = null):
 	match str(data.get("type", "")):
 		"move":
@@ -182,12 +192,29 @@ static func order_from_dict(data: Dictionary, errors = null):
 			return RecruitOrder.new(str(data.get("unit_type", "")), str(data.get("at", "")))
 		"sacrifice":
 			return SacrificeOrder.new(str(data.get("mandate", "")))
-	var msg := "Unknown order type '%s'. Orders are 'move', 'recruit' and 'sacrifice'." % str(data.get("type", ""))
+		"research":
+			return ResearchOrder.new(str(data.get("node", "")))
+	var msg := "Unknown order type '%s'. Orders are 'move', 'recruit', 'sacrifice' and 'research'." % str(data.get("type", ""))
 	if errors is Array:
 		errors.append(msg)
 	else:
 		push_error(msg)
 	return null
+
+
+## Removes the faction's queued research order, if any, before `order` replaces it (one per turn, §2.2).
+## Returns what it removed, as last_dropped() reports it.
+func _replace_research(state: GameState, faction_id: String, order: ResearchOrder) -> Array:
+	var out := []
+	var kept := []
+	for o in _orders.get(faction_id, []):
+		if o is ResearchOrder:
+			out.append({"order": o, "code": "replaced", "reason": "you chose %s instead." % AscensionRules.node_name(order.node_id),
+				"text": "%s replaced: you chose %s instead." % [short_text(state, faction_id, o), AscensionRules.node_name(order.node_id)]})
+		else:
+			kept.append(o)
+	_orders[faction_id] = kept
+	return out
 
 
 ## Replaces the faction's orders with what recheck() keeps and returns what it dropped.
