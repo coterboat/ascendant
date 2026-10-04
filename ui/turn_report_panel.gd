@@ -27,6 +27,12 @@ extends PanelContainer
 ## side came out, captures by what became of the defenders, rejected orders by their result, and the moves
 ## of the movement phase grouped by destination. A row naming armies says how they are named in its tooltip.
 ## Without a state (show_report_data's default) the rows are the events' own text, in resolver order.
+## M3c S-3 (#101, design/M3C_SIEGES.md §9.4, §9.5), in a game with sieges: the Sieges phase gets its heading; a
+## recruit's line names its fort and count and a capture's says the fort came with it (FortView.with_extra puts
+## back what the rewritten line left out); the "needs you" lines at the top name the viewer's besieged forts, the
+## forts it besieges and any breach (show_siege_needs_you, FortView.needs_you); and with the game screen's
+## chronicle set, the first siege, storm, sally and breach of the game each get two plain sentences under their
+## line, with a codex link, once per player (SiegeChronicle.teach).
 
 signal province_focus_requested(province_id: String)
 signal battle_report_requested(event: Dictionary)
@@ -41,6 +47,7 @@ const PHASE_TITLES := {
 	"orders": "Orders",
 	"movement": "Movement",
 	"battles": "Battles",
+	"sieges": "Sieges",
 	"capture": "Captures",
 	"recruitment": "Recruitment",
 	"income": "Income",
@@ -79,6 +86,9 @@ var notes_body: VBoxContainer
 var _note_labels: Array[Label] = []
 var _viewer := ""  # M4-4: the faction the report is shown to ("" for public text only)
 var needs_you_label: Label = null  # M4-4: "Choose what to research: ..." at the top, when it applies
+## M3c S-3: the game's siege chronicle (the game screen sets it), for the first-siege sentences; null: none.
+var chronicle: SiegeChronicle = null
+var siege_needs_you: VBoxContainer = null  # M3c S-3: the siege "needs you" lines at the top, when there are any
 
 
 func _init() -> void:
@@ -99,6 +109,7 @@ func show_report(session: GameSession, computer_notes: Array = []) -> void:
 		session.state() if session != null else null)
 	if not viewer.is_empty():
 		show_needs_you(PathView.needs_you(session.state(), viewer))
+		show_siege_needs_you(FortView.needs_you(session.state(), viewer, int(session.turn_report().turn)))  # M3c
 	_show_seats(session)
 	show_computer_notes(computer_notes)
 
@@ -124,6 +135,8 @@ func show_report_data(report: Dictionary, viewer: String = "", rebuild: bool = f
 	victory_box.visible = not victory_texts.is_empty()
 
 	var current_phase := ""
+	var sieges := state != null and state.sieges
+	var teach: Array = chronicle.teach(events, viewer, int(report.get("turn", 0))) if chronicle != null and sieges else []
 	for row in TurnReportText.rows(events, state, viewer):
 		var e: Dictionary = row.event
 		if _is_game_over(e):
@@ -132,7 +145,11 @@ func show_report_data(report: Dictionary, viewer: String = "", rebuild: bool = f
 		if phase != current_phase:
 			current_phase = phase
 			rows_box.add_child(_phase_heading(phase))
-		rows_box.add_child(_event_row(e, String(row.text), state != null))
+		var text := FortView.with_extra(e, String(row.text)) if sieges else String(row.text)  # M3c: the fort clauses
+		rows_box.add_child(_event_row(e, text, state != null))
+		for t in teach:
+			if is_same(t.event, e):
+				rows_box.add_child(_teach_row(t))  # M3c: the first siege, storm, sally or breach of the game
 	_show_watch_battles(events)
 	visible = true
 
@@ -363,6 +380,59 @@ func show_needs_you(text: String) -> void:
 	rows_box.move_child(needs_you_label, 0)
 
 
+## M3c S-3: the siege "needs you" lines (FortView.needs_you: [{"text", "province", "codex"}]) at the top, under
+## any research line; each one shows its fort on the map when clicked. [] removes them.
+func show_siege_needs_you(lines: Array) -> void:
+	if siege_needs_you != null:
+		rows_box.remove_child(siege_needs_you)
+		siege_needs_you.queue_free()
+		siege_needs_you = null
+	if lines.is_empty():
+		return
+	siege_needs_you = VBoxContainer.new()
+	siege_needs_you.name = "SiegeNeedsYou"
+	siege_needs_you.add_theme_constant_override("separation", 2)
+	for line in lines:
+		var b := Button.new()
+		b.name = "NeedsYou_%s" % String(line.province).validate_node_name()
+		b.text = "Needs you: %s" % String(line.text)
+		b.flat = true
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		b.add_theme_font_size_override("font_size", 18)
+		for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+			b.add_theme_color_override(c, UiPalette.GILT)
+		b.tooltip_text = TooltipText.plain("Needs you", "%s Click to show it on the map." % RulesCodex.text(String(line.codex)))
+		CodexLink.attach(b, String(line.codex), codex_requested.emit)
+		var pid := String(line.province)
+		b.pressed.connect(func(): province_focus_requested.emit(pid))
+		siege_needs_you.add_child(b)
+	rows_box.add_child(siege_needs_you)
+	rows_box.move_child(siege_needs_you, 1 if needs_you_label != null else 0)
+
+
+## M3c S-3 (§9.5): a first-siege sentence under its line: "Your first siege. A siege: ...", linked to its entry.
+func _teach_row(t: Dictionary) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = "Teach_%s" % String(t.kind)
+	row.add_theme_constant_override("separation", 12)
+	var pad := Control.new()
+	pad.custom_minimum_size = Vector2(28, 0)
+	row.add_child(pad)
+	var l := Label.new()
+	l.text = "%s. %s" % [String(t.title), String(t.text)]
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l.add_theme_font_size_override("font_size", 17)
+	l.add_theme_color_override("font_color", UiPalette.GILT.lerp(UiPalette.TEXT_PRIMARY, 0.35))
+	l.mouse_filter = Control.MOUSE_FILTER_PASS
+	l.tooltip_text = TooltipText.plain(String(t.title), RulesCodex.text(String(t.codex)))
+	CodexLink.attach(l, String(t.codex), codex_requested.emit)
+	row.add_child(l)
+	row.add_child(_codex_button(String(t.codex)))
+	return row
+
+
 ## The unit type a "recruited" event is about ("knights"), found by the unit names of the recruiting
 ## faction in the event's text; "" for any other event.
 static func recruited_unit(e: Dictionary) -> String:
@@ -468,6 +538,7 @@ func _on_codex_pressed(key: String) -> void:
 
 func _clear_rows() -> void:
 	needs_you_label = null  # freed with the rows below
+	siege_needs_you = null
 	_event_rows.clear()
 	_battle_buttons.clear()
 	_watch_buttons.clear()
