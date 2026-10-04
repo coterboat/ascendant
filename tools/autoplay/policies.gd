@@ -22,7 +22,8 @@ extends RefCounted
 ##   ai_easy AIPlayer at "easy": sometimes lets good moves pass and recruits at random.
 ## In a game with rulers (autoplay --rulers) every policy plays the build the simulator gave its seat;
 ## only ai and ai_easy know what a ruler, a road move or a sacrifice is (AIPlayer, M2-7). The others
-## move the ruler's army like any other army.
+## move the ruler's army like any other army. In a game with paths (--paths) only ai and ai_easy research
+## (AIPlayer, M4-5); configure() tells them their seed and seat, so they roll the fork as an AI seat does.
 ##
 ##   var policy = Policies.make("greedy")
 ##   var orders: Array = policy.orders(state, "kingdom", SeededRNG.new(7))
@@ -53,6 +54,11 @@ class Base extends RefCounted:
 
 	func orders(_state: GameState, _faction_id: String, _rng: SeededRNG) -> Array:
 		return []
+
+	## Whose seat this policy plays (M4, paths): the game seed, the 0-based seat and a forced side of the
+	## fork ("" to roll). Only the computer (ai, ai_easy) researches; the others ignore it.
+	func configure(_game_seed: int, _seat: int, _forced_branch: String = "") -> void:
+		pass
 
 	func bump(key: String, by: int = 1) -> void:
 		stats[key] = int(stats.get(key, 0)) + by
@@ -436,11 +442,17 @@ class AIPolicy extends Base:
 		policy_name = p_name
 		difficulty = p_difficulty
 
+	## M4: the brain's seed and seat, as AISeat gives them (AIPlayer.configure), so its side of the fork is
+	## the one an AI seat in a real game on this seed rolls; `forced_branch` replaces the roll (--branches).
+	func configure(game_seed: int, seat: int, forced_branch: String = "") -> void:
+		ai.configure(game_seed, seat, forced_branch)
+
 	func orders(state: GameState, faction_id: String, rng: SeededRNG) -> Array:
 		var planned: Array = ai.plan_orders(state, faction_id, rng, difficulty)
 		var st: Dictionary = ai.last_plan_stats()
 		for key in ["odds_calls", "odds_cached", "odds_skipped", "attacks", "held_back", "captures", "recalls",
-				"retreats", "dropped_invalid", "sacrifices", "road_moves", "field_recruits", "ruler_moves"]:
+				"retreats", "dropped_invalid", "sacrifices", "road_moves", "field_recruits", "ruler_moves",
+				"research_orders", "path_recruits"]:
 			if int(st.get(key, 0)) > 0:
 				bump(key, int(st.get(key, 0)))
 		bump("plans")

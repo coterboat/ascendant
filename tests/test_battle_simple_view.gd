@@ -425,7 +425,10 @@ func test_the_biggest_battle_plays_inside_the_cpu_budget() -> void:
 	var fx := _fixture("biggest")
 	var best: Array = []
 	var runs := 0
-	for attempt in MAX_RUNS:
+	var finished := true
+	# Without --perf the battle plays once and only its correctness is checked (tests/test_case.gd perf helpers).
+	var max_runs := perf_runs(MAX_RUNS)
+	for attempt in max_runs:
 		runs += 1
 		var v := _view(fx)
 		v.player.set_speed(4)
@@ -440,16 +443,18 @@ func test_the_biggest_battle_plays_inside_the_cpu_budget() -> void:
 			else:
 				best.append(ms)
 			frames += 1
+		finished = finished and v.player.is_finished()
 		v.free()
 		var m := _avg_max(best)
-		if runs >= MIN_RUNS and m[0] <= CPU_AVG_MS and m[1] <= CPU_MAX_MS:
+		if runs >= mini(MIN_RUNS, max_runs) and m[0] <= CPU_AVG_MS and m[1] <= CPU_MAX_MS:
 			break
 	var am := _avg_max(best)
 	var avg: float = am[0]
 	var worst: float = am[1]
 	print("     biggest fixture at 4x, headless, %d frames: playback CPU avg %.2f ms, worst frame %.2f ms (fastest of %d runs per frame)" % [best.size(), avg, worst, runs])
-	assert_true(avg <= CPU_AVG_MS, "average %.2f ms per frame (budget %.1f ms)" % [avg, CPU_AVG_MS])
-	assert_true(worst <= CPU_MAX_MS, "worst frame %.2f ms (budget %.1f ms)" % [worst, CPU_MAX_MS])
+	assert_true(finished and not best.is_empty(), "the biggest battle plays to its end at 4x")
+	assert_perf(avg <= CPU_AVG_MS, "average %.2f ms per frame (budget %.1f ms)" % [avg, CPU_AVG_MS])
+	assert_perf(worst <= CPU_MAX_MS, "worst frame %.2f ms (budget %.1f ms)" % [worst, CPU_MAX_MS])
 
 
 func _avg_max(times: Array) -> Array:

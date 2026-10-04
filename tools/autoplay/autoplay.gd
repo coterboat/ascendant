@@ -20,6 +20,12 @@ extends SceneTree
 ##                    RULER+MANDATE+... (e.g. ever_regent keeps all 10 power,
 ##                    ever_regent+royal_armories+heavy_tithes+veteran_levies spends all 10), or "roll" to
 ##                    keep that seat's roll
+##   --paths          play with paths of ascension (M4; implies --rulers): GameState.with_paths. The computer
+##                    (ai, ai_easy) researches along its build's plan and rolls its side of the fork with
+##                    AIPlayer.choose_branch for the seed and seat, as an AI seat does; the report adds wins
+##                    by side of the fork and by pairing, when transformations land, and path mandates
+##   --branches A,B   with --paths, force the side of the fork of seat 1 and seat 2 (celestial_host or
+##                    living_iron for the Crown, thorn_wild or blood_pact for the Clans), or "roll"
 ##   --matrix         the M2 build balance check (#36, design/M2_RULER.md §8.2): plays bands A-H with
 ##                    AIPlayer in both seats and prints a pass/miss table (tools/autoplay/matrix.gd).
 ##                    --seed and --turn-cap apply; --games, --p1/--p2, --seat1, --builds and --rulers don't
@@ -80,7 +86,7 @@ func _initialize() -> void:
 		return
 	var started := Time.get_ticks_msec()
 	# Every engine or script error logged during a game is filed under that game's seed and turn.
-	var options := {"rulers": opts.rulers, "builds": opts.builds}
+	var options := {"rulers": opts.rulers, "builds": opts.builds, "paths": opts.paths, "branches": opts.branches}
 	var results := Simulator.run_batch(opts.games, opts.seed, opts.seats, opts.policies, opts.turn_cap, catcher.take, options)
 	var summary := Simulator.summarize(results)
 	var seconds := (Time.get_ticks_msec() - started) / 1000.0
@@ -97,9 +103,11 @@ func _initialize() -> void:
 				repro.turn, repro.what, JSON.stringify(repro.orders)]
 	var extra := ""
 	if opts.rulers:
-		extra = " --rulers"
+		extra = " --paths" if opts.paths else " --rulers"
 		if opts.builds.any(func(b): return not str(b).is_empty()):
 			extra += " --builds %s" % ",".join(opts.builds.map(func(b): return "roll" if str(b).is_empty() else str(b)))
+		if opts.branches.any(func(b): return not str(b).is_empty()):
+			extra += " --branches %s" % ",".join(opts.branches.map(func(b): return "roll" if str(b).is_empty() else str(b)))
 	md += "\n- **Run:** `--games %d --seed %d --p1 %s --p2 %s --seat1 %s --turn-cap %d%s`, %.1f s." % [opts.games, opts.seed,
 		opts.policies[0], opts.policies[1], opts.seats[0], opts.turn_cap, extra, seconds]
 	if opts.list:
@@ -123,10 +131,11 @@ func _initialize() -> void:
 
 func _parse(args: PackedStringArray) -> Dictionary:
 	var opts := {"games": 50, "seed": 1, "policies": ["greedy", "greedy"], "seats": FACTIONS.duplicate(),
-		"turn_cap": Simulator.TURN_CAP, "out": "", "list": false, "rulers": false, "builds": ["", ""],
+		"turn_cap": Simulator.TURN_CAP, "out": "", "list": false, "rulers": false, "builds": ["", ""], "paths": false, "branches": ["", ""],
 		"matrix": false, "jobs": clampi(OS.get_processor_count(), 1, MAX_JOBS), "scale": 1.0, "work_dir": "user://autoplay_matrix",
 		"worker": false, "cell": "", "from": 0, "count": 0, "only": ""}
 	var builds_arg := ""
+	var branches_arg := ""
 	var i := 0
 	while i < args.size():
 		var key := args[i]
@@ -136,6 +145,11 @@ func _parse(args: PackedStringArray) -> Dictionary:
 			continue
 		if key == "--rulers":
 			opts.rulers = true
+			i += 1
+			continue
+		if key == "--paths":
+			opts.paths = true
+			opts.rulers = true  # paths need rulers
 			i += 1
 			continue
 		if key == "--matrix" or key == "--matrix-worker":
@@ -172,6 +186,8 @@ func _parse(args: PackedStringArray) -> Dictionary:
 				opts.out = value
 			"--builds":
 				builds_arg = value
+			"--branches":
+				branches_arg = value
 			"--jobs":
 				if not value.is_valid_int() or value.to_int() < 1:
 					return {"error": "--jobs must be a positive whole number"}
@@ -208,6 +224,23 @@ func _parse(args: PackedStringArray) -> Dictionary:
 				return {"error": "seat %d (%s): %s Its presets: %s; or an explicit build like %s+...; or roll" % [seat + 1,
 					opts.seats[seat], parsed.error, ", ".join(ids), RulerRules.rulers_for(opts.seats[seat])[0]]}
 			opts.builds[seat] = pid
+	if not branches_arg.is_empty():
+		if not opts.paths:
+			return {"error": "--branches needs --paths"}
+		var sides := branches_arg.split(",")
+		if sides.size() != 2:
+			return {"error": "--branches takes two sides of the fork, seat 1's and seat 2's, separated by a comma (\"roll\" keeps a seat's roll)"}
+		for seat in 2:
+			var side := sides[seat].strip_edges()
+			if side == "roll" or side.is_empty():
+				continue
+			if String(AscensionRules.branch_data(side).get("faction", "")) != opts.seats[seat]:
+				var ok := []
+				for b in PathData.BRANCHES:
+					if String(PathData.BRANCHES[b].faction) == opts.seats[seat]:
+						ok.append(b)
+				return {"error": "seat %d (%s): '%s' is not one of its sides of the fork (%s, or roll)" % [seat + 1, opts.seats[seat], side, ", ".join(ok)]}
+			opts.branches[seat] = side
 	return opts
 
 

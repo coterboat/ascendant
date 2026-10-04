@@ -25,6 +25,11 @@ extends RefCounted
 ## so the build in the starting state is the one rolled here, and build(faction) returns it. The brain
 ## always plays the build the state holds (AIPlayer.preset_for). A game without rulers makes no draw.
 ##
+## Paths (M4, design/M4_ASCENSION.md §8.1): each brain is told its game seed and seat (AIPlayer.configure),
+## so its side of the fork is AIPlayer.choose_branch's roll, the first draw of a stream of its own
+## (seat_seed + AIPaths.BRANCH_SALT). The seat RNG makes no extra draw, so M1 and M2 games are unchanged,
+## and a restored save rolls the same side.
+##
 ## Notes: AIPlayer.last_plan_notes() say what the computer is about to do, so they would give away its
 ## simultaneous orders. They are kept per planned turn, and report_notes(session) only ever returns the
 ## notes of the last RESOLVED turn. A computer in seat 1 has already planned the next turn when the
@@ -60,6 +65,7 @@ func _init(session: GameSession = null, game_seed: int = 0) -> void:
 		_levels[fid] = String(seats[fid])
 		_seats[fid] = seat
 		_brains[fid] = AIPlayer.new()
+		_brains[fid].configure(game_seed, seat)  # M4: the side of the fork is this seat's roll (no effect without paths)
 		_rngs[fid] = SeededRNG.new(seat_seed(game_seed, seat))
 		if rulers:
 			_builds[fid] = AIPlayer.choose_build(state, fid, _rngs[fid])
