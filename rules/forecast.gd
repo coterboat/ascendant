@@ -39,6 +39,8 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 		text = "%s moves by the King's Roads through %s and is at %s at the start of turn %d. On the road it never stops and never fights on a border; if an enemy army moves into %s too, you fight it there." % [
 			label, state.find_province(order.via).name, dest.name, arrival, dest.name]
 	var would_capture := false
+	if state.sieges and dest.fort_level > 0:
+		return _fort_move(state, faction_id, order, other_orders, army, here, dest, text, arrival)  # M3c: which row of §3.9
 	if not enemies.is_empty():
 		var names := []
 		for fid in enemies:
@@ -57,6 +59,63 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 				AscensionRules.node_name(String(raid.node)), AscensionRules.times_text(int(raid.times))]
 	return {"ok": true, "code": "", "reason": "", "from": here.id, "to": dest.id, "via": order.via, "arrival_turn": arrival,
 		"enemy_present": not enemies.is_empty(), "would_capture": would_capture, "text": text}
+
+
+## M3c (§9.2): the move forecast into a fort in a game with sieges says which row of §3.9 it will be, if the other
+## side holds: a siege (and how fast the walls drop), a storm (with a storm order queued), the battle through the
+## breach, a relief, an empty fort taken whole, or your own fort. The odds come from battle_odds (the same plan).
+## The result adds "siege_row": "besiege" | "storm" | "breach" | "relief" | "empty" | "own".
+static func _fort_move(state: GameState, fid: String, order: MoveOrder, others: Array, army: Army, here: Province, dest: Province,
+		text: String, arrival: int) -> Dictionary:
+	var out := {"ok": true, "code": "", "reason": "", "from": here.id, "to": dest.id, "via": order.via, "arrival_turn": arrival,
+		"enemy_present": false, "would_capture": false, "text": text, "siege_row": ""}
+	var garrison := SiegeRules.garrison(state, dest.id)
+	var enemies := SiegeRules.besiegers(state, dest.id).filter(func(a): return a.owner != fid)
+	if dest.owner == fid:
+		if not enemies.is_empty():
+			out.enemy_present = true
+			out.siege_row = "relief"
+			var tied := 0
+			for o in others:
+				if o is SiegeOrder and o.is_sally() and o.with_army == army.id:
+					tied += 1
+			out.text += " It arrives outside the walls as a relief: it meets the %s siege lines there in the open, where nobody gets walls or ground, and it gets no cover." % \
+				RulerRules._possessive(_faction_name(state, enemies[0].owner))
+			out.text += " %s." % ("%s from the garrison sally to fight beside it, with their cover" % _count(tied, "army", "armies") if tied > 0
+				else "Order the garrison to sally with it to fight together")
+		else:
+			out.siege_row = "own"
+			out.text += " If an enemy army arrives there this turn too, you meet outside the walls, where nobody gets walls or ground."
+		return out
+	if not garrison.is_empty() and dest.walls <= 0:
+		out.enemy_present = true
+		out.siege_row = "breach"
+		out.text += " Its walls are down: you fight its garrison there at once, through the breach, in the open, where nobody gets the ground and the garrison keeps +%d cover." % \
+			FortData.COVER_DEFENSE
+		return out
+	if not garrison.is_empty():
+		out.enemy_present = true
+		var storm := false
+		for o in others:
+			if o is SiegeOrder and o.is_storm() and o.province == dest.id:
+				storm = true
+		if storm:
+			out.siege_row = "storm"
+			out.text += " With your storm order it attacks the walls at once: the garrison defends with its walls (%d of %d: +%d defense) and its ground." % [
+				dest.walls, SiegeRules.walls_max(dest.fort_level), SiegeRules.walls_defense(dest.walls)]
+			return out
+		out.siege_row = "besiege"
+		var fc := siege(state, fid, dest.id, others + [order])
+		out.text += " It doesn't fight there: it besieges %s. %s" % [dest.name, String(fc.text)]
+		return out
+	out.siege_row = "empty"
+	out.would_capture = true
+	out.text += " Nobody is inside: you take the %s at %s unopposed (walls %d of %d), unless an enemy army arrives there too, and you can recruit there from turn %d." % [
+		SiegeRules.level_word(dest.fort_level), dest.name, dest.walls, SiegeRules.walls_max(dest.fort_level), arrival + FortData.CAPTURE_WAIT]
+	var raid := AscensionRules.capture_gold(state, fid, dest)  # M4-2: Raiding Parties
+	if int(raid.gold) > 0:
+		out.text += " Raiding Parties take %d gold at once." % int(raid.gold)
+	return out
 
 
 ## Sworn Vassals (§2.3): the neutral province that joins `faction_id` at the end of this turn, from the
@@ -122,6 +181,8 @@ static func projected_board(state: GameState, orders: Array = []) -> Dictionary:
 ## What holding `province` gives its defender in battle (RulesCodex "battle_terrain"), from the same
 ## AutoBattleResolver numbers the battle uses: "the forest gives it +2 defense".
 static func defender_ground(province: Province) -> String:
+	if province.fort_level > 0:
+		return _fort_ground(province)  # M3c: walls instead of the flat fort bonus
 	var bonus: Dictionary = AutoBattleResolver.TERRAIN.get(province.terrain, {})
 	var defense: int = bonus.get("defense", 0)
 	var attack: int = bonus.get("attack", 0)
@@ -139,6 +200,27 @@ static func defender_ground(province: Province) -> String:
 	return "%s, and %s" % [ground, fort] if province.has_fort else ground
 
 
+## M3c (§4.1): what a fort's ground gives in a game with sieges: its terrain and walls only to a stormed garrison.
+## "the hills give it +1 defense and +1 attack, and its walls (6 of 6) +4 defense, but only if stormed".
+static func _fort_ground(province: Province) -> String:
+	var bonus: Dictionary = AutoBattleResolver.TERRAIN.get(province.terrain, {})
+	var parts := []
+	if int(bonus.get("defense", 0)) > 0:
+		parts.append("+%d defense" % int(bonus.defense))
+	if int(bonus.get("attack", 0)) > 0:
+		parts.append("+%d attack" % int(bonus.attack))
+	var top := SiegeRules.walls_max(province.fort_level)
+	var walls := "its walls (%d of %d) +%d defense" % [province.walls, top, SiegeRules.walls_defense(province.walls)] if province.walls > 0 \
+		else "its walls are down"
+	if parts.is_empty():
+		return "open %s give no terrain bonus, and %s, but only if stormed" % [province.terrain, walls] if province.walls > 0 \
+			else "open %s give no terrain bonus, and %s" % [province.terrain, walls]
+	var verb := "give" if province.terrain.ends_with("s") else "gives"
+	if province.walls <= 0:
+		return "the %s %s it %s only in a storm, and %s" % [province.terrain, verb, " and ".join(parts), walls]
+	return "the %s %s it %s, and %s, but only if stormed" % [province.terrain, verb, " and ".join(parts), walls]
+
+
 ## Odds of `faction_id` attacking `province_id` with the armies `army_ids` (RulesCodex "battle_odds"):
 ## the real AutoBattleResolver fought on fixed internal seeds against the enemy armies there now,
 ## which defend and get the terrain. Returns {"ok", "text", and when ok: "win_rate", "wins",
@@ -146,6 +228,9 @@ static func defender_ground(province: Province) -> String:
 ## In a game with rulers (M2-2) the battle reads `state`, so every side's mandates count, a ruler's army
 ## among `army_ids` (or among the defenders) fights in its rank, and the Great Thornmane's Dread works:
 ## the sacrifice preview (sacrifice) fights its queued attacks again on the state after the sacrifice.
+## M3c (S-2): at a fort in a game with sieges the odds fight SiegeRules.next_battle's plan (_plan_odds), so they
+## read the walls and the open-battle rule; where no battle happens (the armies would besiege) "ok" is false and
+## "code" is "siege".
 static func battle_odds(state: GameState, faction_id: String, army_ids: Array, province_id: String) -> Dictionary:
 	var province := state.find_province(province_id)
 	if province == null:
@@ -166,6 +251,17 @@ static func battle_odds(state: GameState, faction_id: String, army_ids: Array, p
 			by_faction[a.owner].append(a)
 	if defenders.is_empty():
 		return {"ok": false, "text": "No enemy army is in %s, so there is no battle to forecast." % province.name}
+	if state.sieges and province.fort_level > 0:
+		# M3c (§9.2): at a fort the battle is whatever SiegeRules.next_battle plans, fought as a chain on each seed.
+		var moves := []
+		for a in by_faction[faction_id]:
+			if a.location != province_id:
+				moves.append(MoveOrder.new(a.id, province_id))
+		var odds := _plan_odds(state, faction_id, province_id, moves, {"storms": {}, "sallies": {}})
+		if not odds.ok and odds.get("siege", false):
+			odds["code"] = "siege"
+			odds["text"] = "No battle this turn: the walls of %s stand and a garrison is inside, so your armies besiege it instead of fighting. Order a storm to attack the walls." % province.name
+		return odds
 	var fids: Array = by_faction.keys()
 	fids.sort()
 	var sides := []
@@ -698,7 +794,12 @@ static func province_rules(state: GameState, faction_id: String, orders: Array =
 ## "reach" ([army ids of the other side that can reach the fort this turn]), "text"}.
 ## Forecast equals result: when no army enters or leaves the province, the walls reach 0 at the end of
 ## breach_turn and the fort is cut off from cut_off_from.
-static func siege(state: GameState, faction_id: String, province_id: String, orders: Array = []) -> Dictionary:
+## M3c S-2: `with_odds` adds the odds lines (they fight the real rules on every test seed, so ask only when they are
+## shown): for the besiegers "storm_odds" (storming now), "breach_odds" (against the garrison with its cover, as in a
+## sally or at the breach) and "relief_storm_odds" (storming with their nearest relief arriving too); for the
+## garrison "storm_odds" (if they storm: the garrison's odds), "sally_odds" (every garrison army but the ruler's
+## sallies) and "relief_odds" (your nearest army relieves, with that sally). Each is a storm_odds-shaped result.
+static func siege(state: GameState, faction_id: String, province_id: String, orders: Array = [], with_odds: bool = false) -> Dictionary:
 	var out := {"ok": false, "code": "", "reason": "", "province": province_id, "side": "", "walls": 0, "walls_max": 0,
 		"walls_defense": 0, "besieged": false, "starts": false, "damage": {}, "turns_to_breach": 0, "breach_turn": -1,
 		"cut_off": false, "cut_off_from": 0, "pickets": false, "besieger": "", "empty": false, "reach": [], "text": ""}
@@ -714,8 +815,55 @@ static func siege(state: GameState, faction_id: String, province_id: String, ord
 	out.walls_max = SiegeRules.walls_max(p.fort_level)
 	out.walls_defense = SiegeRules.walls_defense(p.walls)
 	if p.owner == faction_id:
-		return _siege_garrison(state, faction_id, p, turn, out)
-	return _siege_besieger(state, faction_id, p, turn, orders, out)
+		out = _siege_garrison(state, faction_id, p, turn, out)
+		if with_odds and out.besieged and p.walls > 0:
+			_garrison_odds(state, faction_id, p, out)
+		return out
+	out = _siege_besieger(state, faction_id, p, turn, orders, out)
+	if with_odds and out.besieged:
+		_besieger_odds(state, faction_id, p, orders, out)
+	return out
+
+
+## The besiegers' odds lines (§9.2): storming now, the garrison with its cover (a sally or the breach), and storming
+## with their nearest relief arriving too.
+static func _besieger_odds(state: GameState, fid: String, p: Province, orders: Array, out: Dictionary) -> void:
+	var storm := storm_odds(state, fid, p.id, orders)
+	out["storm_odds"] = storm
+	if storm.ok:
+		out.text += " Storming now: %s." % _odds_words(storm)
+	var breach := breach_odds(state, fid, p.id, orders)
+	out["breach_odds"] = breach
+	if breach.ok:
+		out.text += " Against their garrison with its +%d cover, as in a sally or at the breach: %s." % [FortData.COVER_DEFENSE, _odds_words(breach)]
+	if not Array(out.reach).is_empty():
+		var with_relief := storm_odds(state, fid, p.id, orders, [out.reach[0]])
+		out["relief_storm_odds"] = with_relief
+		if with_relief.ok:
+			out.text += " Storming with their army from %s arriving too: %s." % [state.find_province(state.find_army(String(out.reach[0])).location).name,
+				_odds_words(with_relief)]
+
+
+## The garrison's odds lines (§9.2): if they storm, sallying now, and relief with a sally.
+static func _garrison_odds(state: GameState, fid: String, p: Province, out: Dictionary) -> void:
+	var besieger := String(out.besieger)
+	var storm := storm_odds(state, besieger, p.id, [], [], fid)
+	out["storm_odds"] = storm
+	if storm.ok:
+		out.text += " If they storm this turn, your odds of holding: %s." % _odds_words(storm)
+	var garrison := SiegeRules.garrison(state, p.id).filter(func(a): return a.ruler == null).map(func(a): return a.id)
+	if not garrison.is_empty():
+		var sally := sally_odds(state, fid, garrison)
+		out["sally_odds"] = sally
+		if sally.ok:
+			out.text += " Sallying now with %s: %s." % [_count(garrison.size(), "army", "armies"), _odds_words(sally)]
+	if not Array(out.reach).is_empty():
+		var move := MoveOrder.new(String(out.reach[0]), p.id)
+		var relief := relief_odds(state, fid, move, garrison)
+		out["relief_odds"] = relief
+		if relief.ok:
+			out.text += " Relief from %s%s: %s." % [state.find_province(state.find_army(move.army_id).location).name,
+				" with that sally" if not garrison.is_empty() else "", _odds_words(relief)]
 
 
 static func _siege_besieger(state: GameState, fid: String, p: Province, turn: int, orders: Array, out: Dictionary) -> Dictionary:
@@ -838,6 +986,224 @@ static func _armies_phrase(state: GameState, ids: Array, whose: String) -> Strin
 		if not places.has(name):
 			places.append(name)
 	return "%s %s at %s" % [whose, "army" if ids.size() == 1 else "armies", RulerRules._and_list(places)]
+
+
+# --- odds at forts (M3c S-2, #100; design/M3C_SIEGES.md §9.2) -----------------------------------------
+# Every battle at a fort goes through SiegeRules.next_battle, the function the turn resolves with, so the odds
+# fight the same plan: the battle outside the walls first, then the storm if the stormers won it, or the battle
+# through the breach. On each of AutoBattleResolver's ODDS_SAMPLES seeds the whole chain is fought with the real
+# rules (one SeededRNG per seed, as one turn's battles share one), on copies of the armies, the losers removed
+# between battles. A plan of one battle gives exactly AutoBattleResolver.estimate's numbers on the same sides. The
+# other side's orders are unknown: it holds, unless a function says otherwise.
+#
+# The API S-3's panels call (stable):
+#   storm_odds(state, faction_id, province_id, orders = [], relief = [], viewer = "")
+#       `faction_id` storms the fort at `province_id` with its armies there and those its queued moves in `orders`
+#       march in; `relief` = ids of the fort owner's armies imagined marching in this turn (the "their army at
+#       Highcrag can reach it" line: the battle outside the walls comes first). A win: the fort is taken.
+#   sally_odds(state, faction_id, army_ids, orders = [])
+#       the armies `army_ids` of `faction_id`'s besieged garrison sally; a move of its own into the fort in `orders`
+#       is a relief they sally with. A win: no besieger is left.
+#   relief_odds(state, faction_id, move, sally_ids = [], orders = [])
+#       the MoveOrder `move` brings a relief into `faction_id`'s own besieged fort, and `sally_ids` sally to join
+#       it. A win: no besieger is left.
+#   breach_odds(state, faction_id, province_id, orders = [])
+#       the battle through the breach if both sides stay as they are (the walls taken as 0): what a sally meets
+#       too, since both are open battles where the garrison keeps its cover. A win: the other side is gone.
+# Each returns battle_odds' shape: {"ok", "code", "reason", "text", and when ok "win_rate", "wins", "samples",
+# "label", "reasons", "battles" (the kinds fought in the first test, in order), "chained" (some test fought more
+# than one battle)}. `viewer` (storm_odds) counts the odds for another faction, the garrison's ("you likely hold").
+
+static func storm_odds(state: GameState, faction_id: String, province_id: String, orders: Array = [], relief: Array = [],
+		viewer: String = "") -> Dictionary:
+	var p := state.find_province(province_id)
+	var moves := _own_moves(state, faction_id, orders)
+	var check := SiegeRules.check_siege_order(state, faction_id, SiegeOrder.storm(province_id), moves)
+	if not check.is_empty():
+		return {"ok": false, "code": String(check.code), "reason": String(check.reason), "text": String(check.reason)}
+	for id in relief:
+		var a := state.find_army(String(id))
+		if a != null and a.owner == p.owner and a.location != province_id:
+			moves.append(MoveOrder.new(a.id, province_id))
+	var orders_at := {"storms": {province_id: {faction_id: true}}, "sallies": {}}
+	return _plan_odds(state, viewer if not viewer.is_empty() else faction_id, province_id, moves, orders_at)
+
+
+static func sally_odds(state: GameState, faction_id: String, army_ids: Array, orders: Array = []) -> Dictionary:
+	if army_ids.is_empty():
+		return {"ok": false, "code": "no_army", "reason": "No army is sallying.", "text": "No army is sallying."}
+	var moves := _own_moves(state, faction_id, orders)
+	var first := state.find_army(String(army_ids[0]))
+	var pid := first.location if first != null else ""
+	var relief := ""
+	for m in moves:
+		if m.to == pid:
+			relief = m.army_id
+	var orders_at := {"storms": {}, "sallies": {}}
+	var given := []
+	for id in army_ids:
+		var order := SiegeOrder.sally(String(id), relief)
+		var check := SiegeRules.check_siege_order(state, faction_id, order, moves, given)
+		if not check.is_empty():
+			return {"ok": false, "code": String(check.code), "reason": String(check.reason), "text": String(check.reason)}
+		given.append(order)
+		orders_at.sallies[String(id)] = {"faction": faction_id, "with": relief, "from": ""}
+	return _plan_odds(state, faction_id, pid, moves, orders_at)
+
+
+static func relief_odds(state: GameState, faction_id: String, move: MoveOrder, sally_ids: Array = [], orders: Array = []) -> Dictionary:
+	var check := TurnResolver.check_move(state, faction_id, move)
+	if not check.is_empty():
+		return {"ok": false, "code": String(check.code), "reason": String(check.reason), "text": String(check.reason)}
+	var moves := _own_moves(state, faction_id, orders).filter(func(m): return m.army_id != move.army_id)
+	moves.append(move)
+	var orders_at := {"storms": {}, "sallies": {}}
+	var given := []
+	for id in sally_ids:
+		var order := SiegeOrder.sally(String(id), move.army_id)
+		var sally_check := SiegeRules.check_siege_order(state, faction_id, order, moves, given)
+		if not sally_check.is_empty():
+			return {"ok": false, "code": String(sally_check.code), "reason": String(sally_check.reason), "text": String(sally_check.reason)}
+		given.append(order)
+		orders_at.sallies[String(id)] = {"faction": faction_id, "with": move.army_id, "from": ""}
+	return _plan_odds(state, faction_id, move.to, moves, orders_at)
+
+
+static func breach_odds(state: GameState, faction_id: String, province_id: String, orders: Array = []) -> Dictionary:
+	var p := state.find_province(province_id)
+	if not state.sieges or p == null or p.fort_level <= 0:
+		return {"ok": false, "code": "no_fort", "reason": "There is no fort there.", "text": "There is no fort there."}
+	return _plan_odds(state, faction_id, province_id, _own_moves(state, faction_id, orders), {"storms": {}, "sallies": {}}, 0)
+
+
+## `faction_id`'s move orders in `orders` whose army is on the map and its own.
+static func _own_moves(state: GameState, faction_id: String, orders: Array) -> Array:
+	var out := []
+	for o in orders:
+		if o is MoveOrder:
+			var a := state.find_army(o.army_id)
+			if a != null and a.owner == faction_id:
+				out.append(o)
+	return out
+
+
+## The odds of `perspective` at the fort `province_id` when `moves` happen and `siege_orders` are given, the walls
+## taken as `walls` when it isn't -1 (see the block comment above).
+static func _plan_odds(state: GameState, perspective: String, province_id: String, moves: Array, siege_orders: Dictionary,
+		walls: int = -1) -> Dictionary:
+	var copy := state.deep_copy([])
+	if copy == null:
+		return {"ok": false, "code": "bad_state", "reason": "The game can't be copied to test this battle.", "text": "The game can't be copied to test this battle."}
+	var p := copy.find_province(province_id)
+	var moved := {}
+	for m in moves:
+		var a := copy.find_army(m.army_id)
+		if a != null and a.location != m.to:
+			a.location = m.to
+			moved[a.id] = true
+	if walls >= 0:
+		p.walls = walls
+	var originals: Array[Army] = copy.armies.duplicate()
+	var wins := 0
+	var scores := {}
+	var briefs := {}
+	var first := []
+	var chained := false
+	for i in AutoBattleResolver.ODDS_SAMPLES:
+		var armies: Array[Army] = []
+		for a in originals:
+			armies.append(_clone_army(a))
+		copy.armies = armies
+		var rng := SeededRNG.new(AutoBattleResolver.odds_seed(i))
+		var fought := []
+		while true:
+			var plan := SiegeRules.next_battle(copy, province_id, moved, siege_orders, fought)
+			if plan.is_empty():
+				break
+			var fids: Array = plan.sides.keys()
+			fids.sort()
+			var sides_in := []
+			for fid in fids:
+				sides_in.append({"faction": fid, "armies": plan.sides[fid]})
+			var ctx := {"kind": "province", "defender": String(plan.defender), "province": p, "province_ids": [province_id],
+				"state": copy, "siege": plan.siege}
+			var r := AutoBattleResolver.fight(sides_in, ctx, rng)
+			AutoBattleResolver.add_odds_factors(r.result.report, perspective, scores, briefs)
+			AutoBattleResolver._apply_losses(r.sides, r.result.winner)
+			_remove_losers(copy, sides_in, String(r.result.winner))
+			fought.append(String(plan.kind))
+		if i == 0:
+			first = fought.duplicate()
+			if fought.is_empty():
+				break
+		chained = chained or fought.size() > 1
+		if _holds(copy, province_id, perspective):
+			wins += 1
+	copy.armies = originals
+	if first.is_empty():
+		var why := "No battle happens at %s this turn as things stand: an army that arrives at a fort with standing walls and a garrison inside besieges it." % p.name
+		return {"ok": false, "code": "no_battle", "reason": why, "text": why, "siege": true}
+	var out := AutoBattleResolver.odds_summary(wins, scores, briefs, perspective, copy)
+	out["ok"] = true
+	out["code"] = ""
+	out["reason"] = ""
+	out["battles"] = first
+	out["chained"] = chained
+	return out
+
+
+## A copy of `a` (its units at their hit points) that a test battle can wound and destroy.
+static func _clone_army(a: Army) -> Army:
+	var c := Army.new()
+	c.id = a.id
+	c.owner = a.owner
+	c.location = a.location
+	c.engines = a.engines
+	for u in a.units:
+		c.units.append(_clone_unit(u))
+	if a.commander != null:
+		c.commander = _clone_unit(a.commander)
+	if a.ruler != null:
+		c.ruler = _clone_unit(a.ruler)
+	return c
+
+
+static func _clone_unit(u: Unit) -> Unit:
+	var c := Unit.new(u.type, u.owner)
+	c.current_hp = u.current_hp
+	return c
+
+
+## After a test battle, as TurnResolver._fight does: every army of a losing side goes, and so does a winning army
+## whose every fighter fell.
+static func _remove_losers(state: GameState, sides_in: Array, winner: String) -> void:
+	var gone := {}
+	for side in sides_in:
+		for a in side.armies:
+			if side.faction != winner or (a.units.is_empty() and a.commander == null and a.ruler == null):
+				gone[a.id] = true
+	var kept: Array[Army] = []
+	for a in state.armies:
+		if not gone.has(a.id):
+			kept.append(a)
+	state.armies = kept
+
+
+## True when `fid` has an army at `province_id` and no other faction has.
+static func _holds(state: GameState, province_id: String, fid: String) -> bool:
+	var mine := false
+	for a in state.armies:
+		if a.location != province_id:
+			continue
+		if a.owner != fid:
+			return false
+		mine = true
+	return mine
+
+
+## "likely win (21 of 24)".
+static func _odds_words(odds: Dictionary) -> String:
+	return "%s (%d of %d test battles won)" % [String(odds.label), int(odds.wins), int(odds.samples)]
 
 
 ## The Fortify forecast for `province_id` (§9.2): what the next level costs, when it stands, when it takes

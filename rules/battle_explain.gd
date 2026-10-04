@@ -483,7 +483,7 @@ static func _part_cause(battle_log: Dictionary, p: String, si: int, i: int) -> S
 # --- shared words (BattleMoments and BattleCaptions use these) -----------------------------------------
 
 ## The player-facing name of an attack, defense or morale part key: a mandate's name for "mandate_<id>",
-## "hills (defending)" for terrain, "fort (defending)", a trait's own name.
+## "hills (defending)" for terrain, "fort (defending)", M3c's "walls (4 of 6)" and "cover of the walls", a trait's own name.
 static func part_name(battle_log: Dictionary, key: String) -> String:
 	if key.begins_with(AutoBattleResolver.MANDATE_PREFIX):
 		return RulerRules.mandate_name(key.trim_prefix(AutoBattleResolver.MANDATE_PREFIX))
@@ -491,6 +491,12 @@ static func part_name(battle_log: Dictionary, key: String) -> String:
 		return "%s (defending)" % String(battle_log.get("terrain", "terrain"))
 	if key == "fort":
 		return "fort (defending)"
+	if key == AutoBattleResolver.WALLS:  # M3c: "walls (4 of 6)"
+		var sg: Dictionary = battle_log.get("siege", {})
+		return "walls (%d of %d)" % [int(sg.get("walls", 0)), int(sg.get("walls_max", 0))] if not sg.is_empty() else "walls"
+	if key == AutoBattleResolver.COVER:  # M3c: "cover of the walls"
+		var breach := String(battle_log.get("siege", {}).get("kind", "")) == SiegeRules.BREACH
+		return "cover of the ruined walls" if breach else "cover of the walls"
 	if key.begins_with(AutoBattleResolver.PATH_PREFIX):
 		return AscensionRules.part_name(key)  # M4-3: "Living Iron", "Arbalests"
 	return key
@@ -499,6 +505,11 @@ static func part_name(battle_log: Dictionary, key: String) -> String:
 static func _part_note(battle_log: Dictionary, key: String) -> String:
 	if key == "terrain" or key == "fort":
 		return "only the defender gets the ground"
+	if key == AutoBattleResolver.WALLS:
+		return "+%d for every %d wall strength standing; only a stormed garrison gets it" % [AutoBattleResolver.WALLS_DEFENSE_PER_STEP,
+			AutoBattleResolver.WALL_STEP]
+	if key == AutoBattleResolver.COVER:
+		return "fighting from inside the walls, in a sally or at the breach"
 	if key.begins_with(AutoBattleResolver.MANDATE_PREFIX):
 		return "mandate"
 	if key.begins_with(AutoBattleResolver.PATH_PREFIX):
@@ -518,6 +529,10 @@ static func factor_entry(factor_id: String) -> String:
 		return AscensionRules.part_codex(factor_id.trim_prefix("morale_"))
 	if factor_id == AutoBattleResolver.DREAD_LANDS_ID:
 		return AutoBattleResolver.DREAD_LANDS_ID
+	if factor_id == AutoBattleResolver.WALLS:  # M3c
+		return "battle_walls"
+	if factor_id == AutoBattleResolver.COVER:
+		return "battle_open"
 	var trait_entry := AutoBattleResolver.codex_id_for_trait(factor_id.trim_prefix("morale_"))
 	return trait_entry if RulesCodex.ENTRIES.has(trait_entry) else ""
 

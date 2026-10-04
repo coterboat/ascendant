@@ -47,8 +47,23 @@ class_name BattleLog
 ##              that round). Playback shows it as a green number.
 ##   harvest    {side, fighters, gold}: Red Harvest's gold after the battle (after feast, before aftermath)
 ## A reader that folds hp must apply heal events (final_hp and BattleTimeline do).
+##
+## Forts and sieges (M3c S-2, #100; design/M3C_SIEGES.md §4.4). A battle at a fort in a game with sieges writes a
+## "siege" block at the top level, in the same version-1 schema (every other log is unchanged, byte for byte):
+##   siege      {"kind": "storm" | "open" | "breach", "why" (§3.9's last column: storm, sally, gate, relief,
+##              relief_sally, rivals, empty, breach), "fort" (palisade, keep or citadel), "walls", "walls_max" (the
+##              walls never change during a battle), "walls_defense" (the part each stormed garrison fighter gets:
+##              2 x ceil(walls / 3) in a storm, 0 otherwise), "cover_defense" (2 for the from_inside fighters of a
+##              sally or breach battle, 0 otherwise), "garrison" (the fort owner's side index, -1 when the owner
+##              has no side), "from_inside" (the owner's armies fighting from inside: stormed, sallying or breach
+##              defenders; never a relief army), "turn_of_siege" (0 when there was no siege at the start of turn)}
+##   attack     in a storm every attack on a fighter of a from_inside army carries defense part "walls"; in a sally
+##              or breach battle it carries "cover". A siege battle never has the flat "fort" part.
 
 const VERSION := 1
+## M3c: what a battle at a fort can be (the siege block's "kind"), and the "why" each kind allows (§3.9).
+const SIEGE_WHYS := {"storm": ["storm"], "breach": ["breach"], "open": ["sally", "gate", "relief", "relief_sally", "rivals", "empty"]}
+const SIEGE_FORTS := ["palisade", "keep", "citadel"]
 const MAX_EVENTS := 12000
 const EVENT_TYPES := ["round", "attack", "wound", "death", "morale", "rout", "destroyed", "round_end", "end", "feast", "aftermath",
 	"heal", "harvest"]
@@ -271,6 +286,7 @@ static func validate(battle_log) -> Array:
 				_add(r, "Side %d's '%s' should be a whole number." % [i, key])
 	if not r.is_empty():
 		return r
+	_validate_siege(r, battle_log)  # M3c: the siege block, when there is one
 	var round_no := 0
 	var cap := int(battle_log.round_cap)
 	var events: Array = battle_log.events
@@ -387,7 +403,100 @@ static func validate(battle_log) -> Array:
 					_add(r, "%s should carry the report's aftermath sentence." % what)
 	if not battle_log.truncated and find_event(battle_log, "end") < 0:
 		_add(r, "The battle log has no end event, but it isn't marked as cut short.")
+	if r.is_empty():
+		_validate_siege_parts(r, battle_log)  # M3c: walls, cover and fort parts agree with the siege block
 	return r
+
+
+## M3c (§4.4): the siege block's fields and their agreement with the header: a storm has a garrison side that
+## defends behind standing walls and gets 2 x ceil(walls / 3); open and breach battles have no defender and give
+## cover exactly when armies fight from inside; the armies from inside are the garrison side's.
+static func _validate_siege(r: Array, battle_log: Dictionary) -> void:
+	if not battle_log.has("siege"):
+		return
+	var sg = battle_log.siege
+	if not (sg is Dictionary):
+		_add(r, "The battle log's siege should be a group of named values.")
+		return
+	for key in ["kind", "why", "fort"]:
+		if not (sg.get(key) is String):
+			_add(r, "The battle log's siege '%s' should be text." % key)
+			return
+	for key in ["walls", "walls_max", "walls_defense", "cover_defense", "garrison", "turn_of_siege"]:
+		if not _is_int(sg.get(key)):
+			_add(r, "The battle log's siege '%s' should be a whole number." % key)
+			return
+	if not (sg.get("from_inside") is Array):
+		_add(r, "The battle log's siege 'from_inside' should be a list of army ids.")
+		return
+	var kind := String(sg.kind)
+	if not SIEGE_WHYS.has(kind):
+		_add(r, "The battle log's siege kind is '%s'; it should be storm, open or breach." % kind)
+		return
+	if not Array(SIEGE_WHYS[kind]).has(String(sg.why)):
+		_add(r, "A %s battle can't be one of kind '%s' (§3.9)." % [kind, String(sg.why)])
+	if not SIEGE_FORTS.has(String(sg.fort)):
+		_add(r, "The battle log's siege fort is '%s'; it should be a palisade, a keep or a citadel." % String(sg.fort))
+	if not bool(battle_log.fort):
+		_add(r, "The battle log has a siege, but its header says there is no fort.")
+	var walls := int(sg.walls)
+	if walls < 0 or walls > int(sg.walls_max) or int(sg.walls_max) <= 0:
+		_add(r, "The siege's walls are %d of %d; they should be from 0 to the most the fort has." % [walls, int(sg.walls_max)])
+	var ns: int = battle_log.sides.size()
+	var gi := int(sg.garrison)
+	if gi < -1 or gi >= ns:
+		_add(r, "The siege's garrison is side %d, but the log has %d sides." % [gi, ns])
+		return
+	var inside: Array = sg.from_inside
+	if not inside.is_empty():
+		if gi < 0:
+			_add(r, "The siege has armies fighting from inside, but the fort's owner has no side.")
+		else:
+			var own := Array(battle_log.sides[gi].armies).map(func(a): return String(a.id))
+			for id in inside:
+				if not own.has(String(id)):
+					_add(r, "Army '%s' fights from inside, but it isn't on the garrison's side." % str(id))
+	var per_step := AutoBattleResolver.WALLS_DEFENSE_PER_STEP
+	var expected_walls := per_step * ceili(float(maxi(walls, 0)) / AutoBattleResolver.WALL_STEP) if kind == "storm" else 0
+	if int(sg.walls_defense) != expected_walls:
+		_add(r, "A %s with walls %d gives the garrison +%d defense, but the log says +%d." % [kind, walls, expected_walls, int(sg.walls_defense)])
+	var expected_cover := AutoBattleResolver.COVER_DEFENSE if kind != "storm" and not inside.is_empty() else 0
+	if int(sg.cover_defense) != expected_cover:
+		_add(r, "A %s battle gives cover %d, but the log says %d." % [String(sg.why), expected_cover, int(sg.cover_defense)])
+	if kind == "storm":
+		if gi < 0 or walls <= 0:
+			_add(r, "A storm needs a garrison side behind standing walls.")
+		elif String(battle_log.defender) != String(battle_log.sides[gi].faction):
+			_add(r, "In a storm the garrison defends, but the log's defender is '%s'." % String(battle_log.defender))
+	elif not String(battle_log.defender).is_empty():
+		_add(r, "A battle %s has no defender, but the log names '%s'." % ["through the breach" if kind == "breach" else "outside the walls",
+			String(battle_log.defender)])
+	if kind == "breach" and walls != 0:
+		_add(r, "A battle through the breach needs walls at 0, but they are %d." % walls)
+
+
+## M3c: every attack's walls, cover and fort parts agree with the siege block (none of them without one).
+static func _validate_siege_parts(r: Array, battle_log: Dictionary) -> void:
+	var sg: Dictionary = battle_log.get("siege", {})
+	var inside: Array = sg.get("from_inside", [])
+	var storm: bool = String(sg.get("kind", "")) == "storm"
+	var fighters: Array = battle_log.fighters
+	for i in battle_log.events.size():
+		var e: Dictionary = battle_log.events[i]
+		if String(e.t) != "attack":
+			continue
+		var parts: Dictionary = e.defense.parts
+		var from_inside := inside.has(String(fighters[int(e.to)].army))
+		var walls := int(parts.get(AutoBattleResolver.WALLS, 0))
+		var cover := int(parts.get(AutoBattleResolver.COVER, 0))
+		var want_walls := int(sg.walls_defense) if storm and from_inside else 0
+		var want_cover := int(sg.get("cover_defense", 0)) if not storm and from_inside else 0
+		if walls != want_walls or parts.has(AutoBattleResolver.WALLS) != (want_walls > 0):
+			_add(r, "Event %d (attack in round %d): the target's walls part is %d, but it should be %d." % [i, int(e.n), walls, want_walls])
+		if cover != want_cover or parts.has(AutoBattleResolver.COVER) != (want_cover > 0):
+			_add(r, "Event %d (attack in round %d): the target's cover part is %d, but it should be %d." % [i, int(e.n), cover, want_cover])
+		if not sg.is_empty() and parts.has("fort"):
+			_add(r, "Event %d (attack in round %d): a battle at a fort with sieges has no flat fort part; the walls replace it." % [i, int(e.n)])
 
 
 static func _validate_attack(r: Array, what: String, e: Dictionary, nf: int) -> void:
@@ -534,6 +643,8 @@ static func cross_check(battle_log: Dictionary, report: Dictionary) -> Array:
 	var rep_sides: Array = report.get("sides", [])
 	if rep_sides.size() != sides.size():
 		return ["The log has %d sides but the report has %d." % [sides.size(), rep_sides.size()]]
+	if JSON.stringify(battle_log.get("siege", {})) != JSON.stringify(report.get("siege", {})):
+		r.append("The log's siege block and the report's differ.")  # M3c (§4.5): the report carries the same block
 	var events: Array = battle_log.events
 	var tl := BattleTimeline.build(battle_log)
 	var frenzy_key: String = AutoBattleResolver.MANDATE_PREFIX + RulerRules.BLOOD_FRENZY
