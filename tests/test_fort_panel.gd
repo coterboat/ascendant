@@ -724,6 +724,53 @@ func test_a_real_storm_shows_its_walls_chip_teaches_and_counts() -> void:
 	c.add_turn(1, result.events)
 	assert_eq(c.teach(result.events, CROWN, 1).map(func(l): return String(l.kind)), ["storm"], "the first storm teaches")
 	assert_eq(int(c.stats()[CROWN].storms), 1, "and counts for the stormers")
+	# The roles, in the report's words: the Clans (side 0) defend the walls, the Crown (side 1) storms.
+	_assert_roles(battles[0], result.new_state, {CROWN: "Storming:", CLANS: "Defending the walls:"})
+
+
+## The battle report viewer's role line for each side (and Watch's plaque) at a battle at a fort, and no M1 line
+## ("Attacking", "Arrived", "Fort: the defending ...") left.
+func _assert_roles(event: Dictionary, state: GameState, want: Dictionary) -> void:
+	var viewer := BattleReportViewer.new()
+	viewer.show_event(event, state)
+	var texts := viewer.find_children("*", "Label", true, false).map(func(l): return (l as Label).text)
+	for fid in want:
+		assert_true(texts.any(func(t): return t.begins_with(want[fid])), "%s's role line begins '%s': %s" % [fid, want[fid], texts])
+	for t in texts:
+		assert_false(t.begins_with("Attacking:") or t.begins_with("Arrived at the same time") or t.begins_with("Fort: the defending"),
+			"no M1 line at a fort: %s" % t)
+	viewer.free()
+	var battle_log: Dictionary = event.get("numbers", {}).get("log", {})
+	if battle_log.is_empty():
+		return
+	var v := BattleSimpleView.new()
+	assert_eq(v.show_battle(battle_log, event.numbers.get("report", {}), [], event), "", "the battle plays")
+	var plaques := [v.plaque_labels[0].text, v.plaque_labels[1].text]
+	for p in plaques:
+		assert_false(p.ends_with("· arrived") or p.ends_with("· attacking"), "no M1 role on the plaque: %s" % p)
+	for k in 2:
+		for chip in v.chip_boxes[k].get_children():
+			assert_false((chip as Label).text.begins_with("Fort:"), "no Fort +2 chip with sieges on: %s" % (chip as Label).text)
+	v.free()
+
+
+func test_a_real_breach_battle_reads_as_one() -> void:
+	var s := Fx.state([["kingdom-3", CROWN, "blackwood", Fx.units("knights", 10)], ["beasts-5", CLANS, "blackwood", Fx.units("tuskers", 2)]],
+		{"blackwood": CLANS})
+	s.find_province("blackwood").walls = 0
+	s.find_province("blackwood").siege_since = 1
+	s.current_turn = 1
+	var result := Fx.resolve(s, {}, true)
+	var battles := Fx.events_of(result.events, "battle")
+	assert_eq(battles.size(), 1, "the battle through the breach comes on its own")
+	assert_eq(String(battles[0].numbers.siege.kind), "breach")
+	assert_false((battles[0].numbers.get("log", {}) as Dictionary).is_empty(), "a log to watch, so the plaque is checked too")
+	_assert_roles(battles[0], result.new_state, {CROWN: "Attacking through the breach:", CLANS: "Garrison, in the breach:"})
+	var viewer := BattleReportViewer.new()
+	viewer.show_event(battles[0], result.new_state)
+	var chip := viewer.find_children("SiegeChip", "", true, false)
+	assert_eq((chip[0] as Label).text, "Through the breach: no walls, and nobody gets the hills")
+	viewer.free()
 
 
 # --- the victory screen --------------------------------------------------------------------------------

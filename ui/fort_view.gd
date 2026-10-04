@@ -245,6 +245,58 @@ static func siege_chip(siege: Dictionary) -> Dictionary:
 	return {}
 
 
+## A side's role in a battle at a fort, from the battle's `siege` block and the side's index (sides in faction id
+## order, as the block's "garrison" counts them), in the words of the report's first line (S-2,
+## AutoBattleResolver._siege_role): "defending the walls", "storming", "garrison, in the breach", "attacking
+## through the breach", "sallying garrison", "relief", "relief and sallying garrison", "outside the walls". ""
+## without a block.
+static func siege_role(siege: Dictionary, side_index: int) -> String:
+	if siege.is_empty():
+		return ""
+	var garrison := side_index == int(siege.get("garrison", -1))
+	match String(siege.get("kind", "")):
+		"storm":
+			return "defending the walls" if garrison else "storming"
+		"breach":
+			return "garrison, in the breach" if garrison else "attacking through the breach"
+	if not garrison:
+		return "outside the walls"
+	match String(siege.get("why", "")):
+		"relief_sally":
+			return "relief and sallying garrison"
+		"relief", "empty":
+			return "relief"
+	return "sallying garrison" if not Array(siege.get("from_inside", [])).is_empty() else "relief"
+
+
+## What a siege role means, for the role line's second half and its tooltip: {"text", "title", "codex"}.
+static func role_meaning(siege: Dictionary, side_index: int) -> Dictionary:
+	var role := siege_role(siege, side_index)
+	var walls := int(siege.get("walls", 0))
+	var top := int(siege.get("walls_max", 0))
+	match role:
+		"defending the walls":
+			return {"text": "it held the walls (%d of %d), +%d defense to every fighter." % [walls, top, int(siege.get("walls_defense", 0))],
+				"title": "Defending the walls", "codex": _entry("battle_walls", "walls")}
+		"storming":
+			return {"text": "it went over the walls (%d of %d) instead of waiting for them to fall." % [walls, top],
+				"title": "Storming the walls", "codex": _entry("battle_walls", "storm")}
+		"garrison, in the breach":
+			return {"text": "the walls were down; its fighters kept +%d cover among the ruins." % int(siege.get("cover_defense", FortData.COVER_DEFENSE)),
+				"title": "Through the breach", "codex": _entry("battle_breach", "breach")}
+		"attacking through the breach":
+			return {"text": "the walls were down, so the battle came on its own, in the open.", "title": "Through the breach",
+				"codex": _entry("battle_breach", "breach")}
+		"sallying garrison", "relief and sallying garrison":
+			return {"text": "it came out of the walls to fight in the open; its fighters from inside kept +%d cover." % int(siege.get("cover_defense", FortData.COVER_DEFENSE)),
+				"title": "Sallying out", "codex": _entry("battle_open", "sally")}
+		"relief":
+			return {"text": "it arrived outside its own fort and fought in the open, with no cover.", "title": "Relief",
+				"codex": _entry("battle_open", "relief")}
+	return {"text": "it stood outside the walls, where nobody holds the ground.", "title": "Outside the walls",
+		"codex": _entry("battle_open", "inside_outside")}
+
+
 static func _entry(preferred: String, fallback: String) -> String:
 	return preferred if RulesCodex.ENTRIES.has(preferred) else fallback
 

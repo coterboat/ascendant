@@ -1084,6 +1084,8 @@ func _fill_top_bar() -> void:
 		var k := _slot_of_side(si)
 		var side: Dictionary = _log.sides[si]
 		var role := "on the border" if border else ("defending" if side.get("defender", false) else ("attacking" if not defender.is_empty() else "arrived"))
+		if not border and not _siege_block().is_empty():
+			role = FortView.siege_role(_siege_block(), si)  # M3c S-3: "storming", "sallying garrison", "garrison, in the breach"...
 		var people := String(side.get("people", {}).get("name", "")) if side.get("people", {}) is Dictionary else ""
 		plaque_labels[k].text = "%s · %s · %s" % [side.name, people, role] if not people.is_empty() else "%s · %s" % [side.name, role]
 		_fit(plaque_labels[k], 18, 13)
@@ -1145,6 +1147,9 @@ func _siege_block() -> Dictionary:
 func _role_words(side: Dictionary, border: bool, defender: String) -> String:
 	if border:
 		return "met the enemy on the border as both armies tried to swap places"
+	if not _siege_block().is_empty():  # M3c S-3: its role at the fort and what it meant
+		var si := (_log.get("sides", []) as Array).find(side)
+		return "%s: %s" % [FortView.siege_role(_siege_block(), si), String(FortView.role_meaning(_siege_block(), si).text)]
 	if side.get("defender", false):
 		return "defending: it already held the province"
 	if defender.is_empty():
