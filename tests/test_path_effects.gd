@@ -281,11 +281,12 @@ func test_codex_entries_cover_research_paths_and_every_node() -> void:
 		var e := RulesCodex.entry(key)
 		assert_false(String(e.text).contains("_"), "%s: no raw id in the text" % key)
 		assert_ne(String(e.title), key)
-	# One contiguous block at the end of the entries.
+	# One contiguous block near the end of the entries (M4-2's rule entries follow it directly).
 	var all := RulesCodex.ENTRIES.keys()
-	var tail := all.slice(all.size() - keys.size())
+	var first := all.find(keys[0])
+	var tail := all.slice(first, first + keys.size())
 	for key in keys:
-		assert_true(tail.has(key), "%s is in the block at the end" % key)
+		assert_true(tail.has(key), "%s is in the M4-1 block" % key)
 	# The numbers match the data.
 	assert_true(RulesCodex.text("research_points").contains("your capital yields %d while you hold it, and every other province %d" % [
 		PathData.RESEARCH.capital, PathData.RESEARCH.province]))

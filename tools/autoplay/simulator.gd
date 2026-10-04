@@ -35,6 +35,9 @@ const EVENT_TYPES := ["order_rejected", "army_moved", "battle", "border_battle",
 ## Sworn Vassals in the capture phase (M2-4, #32) and sacrifices (M2-6, #34).
 const RULER_EVENT_TYPES := ["ruler_died", "mending", "ruler_healed", "ruler_arrived", "succession_waiting", "vassal_joined", "vassal_contested",
 	"sacrificed"]
+## Event types a game with paths adds (M4): the research phase's events (M4-1, #66), and the transformations'
+## on the map (M4-2, #67): Raiding Parties in capture, the transformed event, the Wild Spreads and the heals.
+const PATH_EVENT_TYPES := ["research_gained", "research_done", "oath_sworn", "transformed", "wild_spread", "path_healed", "raided"]
 const BATTLE_TYPES := ["battle", "border_battle"]
 ## AutoBattleResolver report "end" values, in display order.
 const BATTLE_ENDS := ["rout", "destroyed", "round_cap", "mutual"]
@@ -300,6 +303,9 @@ static func parse_build(arg, faction_id: String) -> Dictionary:
 ## by one faction's armies belongs to that faction; armies a battle destroyed are gone; event types and
 ## phases are known; battle reports have a known end, 1..ROUND_CAP rounds and no negative hp; the turn
 ## counter went up by one; gold = gold before - recruits paid + income. With rulers, _check_rulers too.
+## With paths (M4-2): research events are known, gold also counts Raiding Parties' raided gold (Blood Levy's
+## lower prices are already in the recruited costs) and Red Harvest's gold, paid to a battle's winner (M4-3,
+## the battle event's numbers.red_harvest), and _check_terrain: terrain changes only by the Wild Spreads.
 static func check_invariants(prev: GameState, state: GameState, events: Array) -> Array:
 	var out := []
 	if state == null:
@@ -353,11 +359,14 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 			out.append({"check": "occupied_not_captured", "detail": "%s holds only %s armies but belongs to '%s'." % [pid, owners[0], provinces[pid].owner]})
 	var spent := {}
 	var income := {}
+	var raided := {}
+	var harvested := {}  # M4-3: Red Harvest's gold, paid to the winner in the battles phase
 	for e in events:
 		var type := str(e.get("type", ""))
-		if not EVENT_TYPES.has(type) and not RULER_EVENT_TYPES.has(type):
+		if not EVENT_TYPES.has(type) and not RULER_EVENT_TYPES.has(type) and not (state.paths and PATH_EVENT_TYPES.has(type)):
 			out.append({"check": "event_type_unknown", "detail": "The turn report has an event of unexpected type '%s'." % type})
-		if not GameSession.REPORT_PHASES.has(str(e.get("phase", ""))):
+		var phases: Array = GameSession.PATH_REPORT_PHASES if state.paths else GameSession.REPORT_PHASES
+		if not phases.has(str(e.get("phase", ""))):
 			out.append({"check": "event_phase_unknown", "detail": "A %s event has unexpected phase '%s'." % [type, e.get("phase", "")]})
 		var numbers: Dictionary = e.get("numbers", {})
 		var fids: Array = e.get("factions", [])
@@ -366,10 +375,15 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 				if state.find_army(str(id)) != null:
 					out.append({"check": "destroyed_army_present", "detail": "Army %s was destroyed in a battle but is still on the map." % id})
 			out.append_array(_check_battle_report(numbers.get("report", {})))
+			if numbers.has("red_harvest"):
+				var winner := str(numbers.get("winner", ""))
+				harvested[winner] = int(harvested.get(winner, 0)) + int(numbers.red_harvest)
 		elif type == "recruited" and not fids.is_empty():
 			spent[fids[0]] = int(spent.get(fids[0], 0)) + int(numbers.get("cost", 0))
 		elif type == "income" and not fids.is_empty():
 			income[fids[0]] = int(income.get(fids[0], 0)) + int(numbers.get("income", 0))
+		elif type == "raided" and not fids.is_empty():  # M4-2: Raiding Parties' gold, taken in the capture phase
+			raided[fids[0]] = int(raided.get(fids[0], 0)) + int(numbers.get("gold", 0))
 	if prev != null:
 		if state.current_turn != prev.current_turn + 1:
 			out.append({"check": "turn_counter", "detail": "The turn counter went from %d to %d." % [prev.current_turn, state.current_turn]})
@@ -377,11 +391,40 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 			var before := prev.find_faction(f.id)
 			if before == null:
 				continue
-			var expected: int = before.gold - int(spent.get(f.id, 0)) + int(income.get(f.id, 0))
+			var expected: int = before.gold - int(spent.get(f.id, 0)) + int(income.get(f.id, 0)) + int(raided.get(f.id, 0)) \
+				+ int(harvested.get(f.id, 0))
 			if f.gold != expected:
-				out.append({"check": "gold_accounting", "detail": "%s has %d gold, expected %d (%d - %d recruits + %d income)." % [
-					f.id, f.gold, expected, before.gold, spent.get(f.id, 0), income.get(f.id, 0)]})
+				out.append({"check": "gold_accounting", "detail": "%s has %d gold, expected %d (%d - %d recruits + %d income + %d raided + %d harvested)." % [
+					f.id, f.gold, expected, before.gold, spent.get(f.id, 0), income.get(f.id, 0), raided.get(f.id, 0), harvested.get(f.id, 0)]})
 	out.append_array(_check_rulers(prev, state, events))
+	out.append_array(_check_terrain(prev, state, events))
+	return out
+
+
+## Terrain (M4-2, design/M4_ASCENSION.md §11): a province's terrain changes only by the Wild Spreads, so
+## every change this turn is to forest, in a game with paths, with a wild_spread event for that province;
+## and every wild_spread event's province is forest now.
+##   terrain_changed  a province changed terrain without a wild_spread event, or to something else
+##   wild_spread_not_forest  a wild_spread event names a province that is not forest
+static func _check_terrain(prev: GameState, state: GameState, events: Array) -> Array:
+	var out := []
+	var grown := {}
+	for e in events:
+		if str(e.get("type", "")) == "wild_spread":
+			for pid in e.get("provinces", []):
+				grown[str(pid)] = true
+	for pid in grown:
+		var p := state.find_province(pid)
+		if p == null or p.terrain != AscensionRules.FOREST:
+			out.append({"check": "wild_spread_not_forest", "detail": "The Wild Spreads grew %s, but it is %s." % [pid, p.terrain if p else "not on the map"]})
+	if prev == null:
+		return out
+	for p in state.provinces:
+		var before := prev.find_province(p.id)
+		if before == null or before.terrain == p.terrain:
+			continue
+		if not state.paths or p.terrain != AscensionRules.FOREST or not grown.has(p.id):
+			out.append({"check": "terrain_changed", "detail": "%s went from %s to %s without the Wild Spreads." % [p.id, before.terrain, p.terrain]})
 	return out
 
 

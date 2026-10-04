@@ -141,6 +141,8 @@ static func check_move(state: GameState, faction_id: String, order: MoveOrder, a
 		var why := "%s is not next to %s. Armies move one neighboring province per turn." % [dest.name, _province_name(state, army.location)]
 		if RulerRules.has_mandate(state, faction_id, RulerRules.KINGS_ROADS):
 			why += " King's Roads add a second province only through and into land you already own."
+		if AscensionRules.has_forest_stride(state, faction_id):  # M4-2
+			why += " Forest Stride adds a second province only through a forest you own into another forest."
 		return _reject("not_adjacent", why)
 	if already_ordered.has(army.id):
 		return _reject("duplicate_move", "The %s already has a move order this turn. Each army moves once per turn." % army_label(state, army))
@@ -150,11 +152,19 @@ static func check_move(state: GameState, faction_id: String, order: MoveOrder, a
 ## King's Roads (§2.3): a road move from A (the army's province) through B (`via`) to C (`dest`) is
 ## legal when the faction has King's Roads, B is next to A, C is next to B, C is not A, and the faction
 ## owns both B and C in `state` (the start of the turn). {} when legal, otherwise {"code", "reason"}.
+## M4-2, Forest Stride (§4.8): the same move is also legal when the faction has Forest Stride, B and C are
+## both forest and B is a province it owned at the start of the turn (C may belong to anyone). With both
+## rules, either is enough, and the reason names both.
 static func _check_road_move(state: GameState, faction: Faction, army: Army, here: Province, dest: Province, via_id: String) -> Dictionary:
 	var label := army_label(state, army)
-	if not RulerRules.has_mandate(state, faction.id, RulerRules.KINGS_ROADS):
-		return _reject("no_kings_roads", "Only a faction with King's Roads can move an army two provinces in one turn, so the %s can't go through %s to %s. Armies move one neighboring province per turn." % [
-			label, _province_name(state, via_id), dest.name])
+	var kings := RulerRules.has_mandate(state, faction.id, RulerRules.KINGS_ROADS)
+	var stride := AscensionRules.has_forest_stride(state, faction.id)
+	if not kings and not stride:
+		var why := "Only a faction with King's Roads can move an army two provinces in one turn, so the %s can't go through %s to %s. Armies move one neighboring province per turn." % [
+			label, _province_name(state, via_id), dest.name]
+		if AscensionRules.has_paths(state) and AscensionRules.path_has_forest_stride(faction.id):
+			why += " Forest Stride, on your path, lets armies move through a forest you own into another forest."
+		return _reject("no_kings_roads", why)
 	var via := state.find_province(via_id)
 	if via == null:
 		return _reject("unknown_via", "That road move goes through a place that is not on the map.")
@@ -162,11 +172,40 @@ static func _check_road_move(state: GameState, faction: Faction, army: Army, her
 		return _reject("via_not_adjacent", "%s is not next to %s, so a road move can't go through it." % [via.name, _province_name(state, army.location)])
 	if not via.neighbors.has(dest.id):
 		return _reject("road_not_adjacent", "%s is not next to %s, so a road move through %s can't reach it." % [dest.name, via.name, via.name])
-	if via.owner != faction.id:
-		return _reject("road_not_owned", "King's Roads run only through your own land, and %s is not yours. A road move goes through a province you owned at the start of the turn." % via.name)
-	if dest.owner != faction.id:
-		return _reject("road_not_owned", "King's Roads run only through your own land, and %s is not yours. Move one province at a time to take it." % dest.name)
-	return {}
+	var kings_why := ""
+	if kings:
+		if via.owner != faction.id:
+			kings_why = "King's Roads run only through your own land, and %s is not yours. A road move goes through a province you owned at the start of the turn." % via.name
+		elif dest.owner != faction.id:
+			kings_why = "King's Roads run only through your own land, and %s is not yours. Move one province at a time to take it." % dest.name
+		if kings_why.is_empty():
+			return {}
+		if not stride:
+			return _reject("road_not_owned", kings_why)
+	var stride_why := AscensionRules.forest_stride_why(state, faction.id, via, dest)
+	if stride_why.is_empty():
+		return {}
+	if not kings:
+		return _reject("stride_not_forest", stride_why)
+	return _reject("road_not_allowed", "Neither King's Roads nor Forest Stride allow this road move. %s %s" % [kings_why, stride_why])
+
+
+## Which rule a legal road move uses (M4-2): "kings_roads" when King's Roads allow it (as in M2), otherwise
+## "forest_stride". "" for a one-step move.
+static func road_rule(state: GameState, faction_id: String, order: MoveOrder) -> String:
+	if order == null or order.via.is_empty():
+		return ""
+	var via := state.find_province(order.via)
+	var dest := state.find_province(order.to)
+	if RulerRules.has_mandate(state, faction_id, RulerRules.KINGS_ROADS) and via != null and dest != null \
+			and via.owner == faction_id and dest.owner == faction_id:
+		return "kings_roads"
+	return "forest_stride"
+
+
+## The rule's name for text: "King's Roads" or "Forest Stride".
+static func road_rule_name(rule: String) -> String:
+	return "Forest Stride" if rule == "forest_stride" else "King's Roads"
 
 
 ## Checks a recruit order for `faction_id` with `gold_available` left to spend. Returns {} when
@@ -304,8 +343,10 @@ static func price_recruits(state: GameState, faction_id: String, orders: Array, 
 			if at == RecruitOrder.AT_RULER:
 				with_ruler += 1
 				province = muster_province(start, faction_id)
+			# M4-2: the hp it arrives with (Blood Levy: a quarter missing), as _add_recruit gives it.
+			var max_hp := int(RulerRules.unit_stats(state, faction_id, ut.id).hp)
 			results.append({"ok": true, "order": order, "at": at, "unit_type": ut.id, "cost": price, "gold_after": gold,
-				"province": province})
+				"province": province, "max_hp": max_hp, "hp": AscensionRules.arrival_hp(state, faction_id, ut, max_hp)})
 		else:
 			results.append({"ok": false, "order": order, "at": at, "code": check.code, "reason": check.reason})
 	return {"gold_before": gold_before, "spent": gold_before - gold, "gold_after": gold, "results": results}
@@ -395,7 +436,7 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 				# Label taken before anyone moves, so it names the province the army leaves from.
 				# "via" is set for a road move (King's Roads), "" for a one-step move.
 				moves.append({"army_id": army.id, "faction": fid, "from": army.location, "to": order.to,
-					"label": army_label(s, army), "via": order.via})
+					"label": army_label(s, army), "via": order.via, "road": road_rule(s, fid, order)})
 			elif order is RecruitOrder:
 				recruits[fid].append(order)  # checked in the recruitment phase, against that phase's state
 			elif order is SacrificeOrder:
@@ -549,6 +590,12 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 
 	var strengths: Dictionary = result.get("strengths", {})
 	var report: Dictionary = result.get("report", {})
+	var harvest: Dictionary = report.get("red_harvest", {})
+	if not harvest.is_empty():
+		# M4-3: Red Harvest pays the winner for every enemy fighter lost (the aftermath says so).
+		var wf := s.find_faction(winner)
+		if wf != null:
+			wf.gold += int(harvest.get("gold", 0))
 	var parts := []
 	for fid in fids:
 		if report.is_empty():
@@ -604,6 +651,8 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 		"destroyed": destroyed, "why": result.get("why", ""), "report": report}
 	if not rulers_lost.is_empty() or not fallen.is_empty():
 		numbers["rulers_lost"] = rulers_lost.size() + fallen.size()  # M2-2: only in games with rulers
+	if not harvest.is_empty():
+		numbers["red_harvest"] = int(harvest.get("gold", 0))  # M4-3: gold paid to the winner
 	var battle_log = result.get("log")
 	if battle_log is Dictionary and not battle_log.is_empty():
 		# M3-1: the battle event log rides beside the report (in memory only: never in the game record).
@@ -668,7 +717,24 @@ static func _aftermath(s: GameState, report: Dictionary, winner: String, fids: A
 		sentences.append("%s: the %s %s healed to full (+%d hp)." % [RulerRules.mandate_name(RulerRules.FEAST_OF_VICTORY),
 			RulerRules._possessive(String(feast.get("name", ""))), "only surviving fighter" if n == 1 else "%d surviving fighters" % n,
 			int(feast.get("healed", 0))])
+	var harvest: Dictionary = report.get("red_harvest", {})
+	if not harvest.is_empty():
+		# M4-3, §9.5: "Red Harvest: the Thornmane Clans took 23 gold from the 23 enemy fighters lost."
+		var lost := int(harvest.get("fighters", 0))
+		sentences.append("%s: %s took %d gold from the %s." % [_red_harvest_name(), _the_name(s, winner), int(harvest.get("gold", 0)),
+			"enemy fighter lost" if lost == 1 else "%d enemy fighters lost" % lost])
 	return " ".join(sentences)
+
+
+## Red Harvest's name, from its MandateData row when there is one (M4-2 adds it).
+static func _red_harvest_name() -> String:
+	var md := RulerRules.mandate_data(AutoBattleResolver.RED_HARVEST)
+	return String(md.get("name", "Red Harvest"))
+
+
+## A faction's name in running text with "the" ("the Thornmane Clans"), as the turn report writes it.
+static func _the_name(s: GameState, fid: String) -> String:
+	return "the " + _faction_name(s, fid)
 
 
 # --- ruler deaths and the rulers phase (M2-3, #31; design/M2_RULER.md §3, §5, §1.4, §1.7) ----------
@@ -810,7 +876,24 @@ static func _capture(s: GameState, battle_sites: Dictionary, events: Array) -> v
 		var involved := [fid] if previous.is_empty() else [fid, previous]
 		events.append(_event("captured", "capture", [p.id], involved, army_ids, cause,
 			{"income": p.income, "is_capital": not capital_of.is_empty()}, text, "capture"))
+		_raid(s, fid, p, army_ids, events)  # M4-2: Raiding Parties, for captures by armies only
 	_sworn_vassals(s, events)
+
+
+## Raiding Parties (M4-2, §3.6, §7 step 5): when `fid`'s armies capture `p`, it takes n x its base income in
+## gold, once. Event:
+##   raided  capture  the gold taken. Codex "raiding_parties".
+## Nothing without the node (so no event in M1, M2 or a game where nobody has it).
+static func _raid(s: GameState, fid: String, p: Province, army_ids: Array, events: Array) -> void:
+	var raid := AscensionRules.capture_gold(s, fid, p)
+	if int(raid.gold) <= 0:
+		return
+	var f := s.find_faction(fid)
+	var before := f.gold
+	f.gold += int(raid.gold)
+	events.append(_event("raided", "capture", [p.id], [fid], army_ids.duplicate(), "raiding_parties",
+		{"gold": raid.gold, "income": p.income, "times": raid.times, "gold_before": before, "gold_after": f.gold},
+		AscensionRules.raided_text(s, fid, p, raid, before, f.gold), "raiding_parties"))
 
 
 ## Sworn Vassals (§2.3), after the army captures: each faction with the mandate gains its best neutral
@@ -868,17 +951,24 @@ static func _recruitment(s: GameState, recruits: Dictionary, events: Array, star
 			if with_ruler:
 				# Warband Muster (§7.5): still a "recruited" event, saying with whom and where they gathered.
 				how = "with %s at %s, where it started the turn," % [RulerRules.current_name(s, fid), _province_name(s, r.province)]
+			var numbers := {"cost": r.cost, "gold_after": r.gold_after, "new_army": placed.created}
+			var text := "%s recruited %s %s for %d gold (%d gold left). %s" % [faction.faction_name, ut.name, how, r.cost,
+				r.gold_after, joined]
+			if int(placed.hp) < int(placed.max_hp):
+				# M4-2, Blood Levy (§4.5, §9.5): only a recruit that arrives wounded carries these, so M1/M2 events are unchanged.
+				numbers["hp"] = placed.hp
+				numbers["max_hp"] = placed.max_hp
+				numbers["blood_levy"] = AscensionRules.blood_levy_divisor(s, fid)
+				text += " " + AscensionRules.arrival_text(ut, int(placed.hp), int(placed.max_hp), int(numbers.blood_levy))
 			events.append(_event("recruited", "recruitment", [r.province], [fid], [army.id], "with_ruler" if with_ruler else "order",
-				{"cost": r.cost, "gold_after": r.gold_after, "new_army": placed.created},
-				"%s recruited %s %s for %d gold (%d gold left). %s" % [faction.faction_name, ut.name, how, r.cost,
-					r.gold_after, joined],
-				"field_recruit" if with_ruler else "recruit"))
+				numbers, text, "field_recruit" if with_ruler else "recruit"))
 
 
 ## Puts a new unit into the faction's first army (by id) at `location` (its capital by default), or a
 ## new army there. A commander goes to the first army there without one. Recruits never join a ruler's
 ## army: a ruler travels alone (RulesCodex "ruler_army").
-## Returns {"army": the army it joined, "created": true if that army was formed by this recruit}.
+## Returns {"army": the army it joined, "created": true if that army was formed by this recruit, "hp" (the hp
+## it arrives with), "max_hp"}. M4-2: under Blood Levy a regular recruit arrives missing a quarter of its hp.
 static func _add_recruit(s: GameState, faction: Faction, ut: UnitType, location: String = "") -> Dictionary:
 	var where := faction.capital if location.is_empty() else location
 	var army: Army = null
@@ -895,12 +985,14 @@ static func _add_recruit(s: GameState, faction: Faction, ut: UnitType, location:
 		s.armies.append(army)
 		created = true
 	var unit := Unit.new(ut, faction.id)
+	var max_hp := unit.current_hp
 	if ut.is_commander:
 		army.commander = unit
 	else:
-		unit.current_hp = RulerRules.unit_max_hp(s, unit)  # M2-2: recruits arrive at the maximum Veteran Levies gives
+		max_hp = RulerRules.unit_max_hp(s, unit)
+		unit.current_hp = AscensionRules.arrival_hp(s, faction.id, ut, max_hp)  # M2-2: the maximum; M4-2: Blood Levy
 		army.units.append(unit)
-	return {"army": army, "created": created}
+	return {"army": army, "created": created, "hp": unit.current_hp, "max_hp": max_hp}
 
 
 static func _income(s: GameState, events: Array) -> void:
@@ -937,6 +1029,10 @@ static func income_modifiers_text(s: GameState, fid: String, inc: Dictionary, ru
 		var f := s.find_faction(fid)
 		parts.append("%s +%d at %s, where %s %s" % [RulerRules.ability_name(f.ruler_type), court,
 			_province_name(s, inc.court_at), RulerRules.current_name(s, fid), ruler_verb])
+	var forge := int(inc.modifiers.get(RulerRules.FORGE_TITHE, 0))  # M4-2
+	if forge > 0:
+		parts.append("%s +%d (%d for each province with a fort)" % [RulerRules.mandate_name(RulerRules.FORGE_TITHE), forge,
+			AscensionRules.mandate_value(s, fid, "fort_income", 0)])
 	for key in inc.modifiers:  # M4: the path's income lines (Market Charters, Tithe of Light, ...)
 		if String(key).begins_with(AscensionRules.PART_PREFIX):
 			parts.append("%s %+d" % [AscensionRules.part_name(String(key)), int(inc.modifiers[key])])
@@ -966,7 +1062,12 @@ static func _check_research_order(s: GameState, fid: String, order: ResearchOrde
 ##   research_done    research   a node was researched, with its effect in numbers. Codex: the node's entry.
 ##   oath_sworn       research   an Oath was sworn (instead of research_done): the side, what closed, the
 ##                               economy rule now, and the transformation now being researched (§5).
-## (M4-2 adds the transformation's province rules after these steps.)
+##   transformed      research   (M4-2, instead of research_done) a transformation: the roster change, the new
+##                               unit, the province rule and the mandates, in public words; numbers carry
+##                               "own_text", the same facts spoken to the faction itself (§9.5).
+## Then the transformation's province rules (M4-2, §2.2 step 4, AscensionRules.province_rules_step):
+##   wild_spread      research   the Wild Spreads turned a province to forest. Codex "wild_spreads".
+##   path_healed      research   Hallowed Land or the Forges healed wounded fighters. One per faction.
 static func _research_phase(s: GameState, events: Array) -> void:
 	if not AscensionRules.has_paths(s):
 		return
@@ -976,20 +1077,52 @@ static func _research_phase(s: GameState, events: Array) -> void:
 		events.append(_event("research_gained", "research", [], [fid], [], "research",
 			{"gained": step.gained, "rate": step.rate, "parts": step.parts, "done": step.done},
 			AscensionRules.gained_text(s, fid, step), "research_points"))
-		if String(step.done).is_empty():
-			continue
-		var nid := String(step.done)
-		var numbers := {"node": nid, "cost": step.cost, "kind": AscensionRules.node_kind(nid), "turn": turn,
-			"units_changed": int(step.applied.get("units_changed", 0)), "hp_total": int(step.applied.get("hp_total", 0))}
-		var codex := String(AscensionRules.node_data(nid).codex)
-		if not String(step.sworn).is_empty():
-			numbers["branch"] = step.sworn
-			numbers["closed"] = AscensionRules.other_branch(fid, String(step.sworn))
-			events.append(_event("oath_sworn", "research", [], [fid], [], "oath", numbers,
-				AscensionRules.sworn_text(s, fid, nid), codex))
-		else:
-			events.append(_event("research_done", "research", [], [fid], [], "researched", numbers,
-				AscensionRules.done_text(s, fid, nid, step.applied), codex))
+		if not String(step.done).is_empty():
+			_research_done_event(s, fid, step, turn, events)
+		_province_rules(s, fid, events)
+
+
+## The event for the node `step` completed: oath_sworn, transformed or research_done (see _research_phase).
+static func _research_done_event(s: GameState, fid: String, step: Dictionary, turn: int, events: Array) -> void:
+	var nid := String(step.done)
+	var numbers := {"node": nid, "cost": step.cost, "kind": AscensionRules.node_kind(nid), "turn": turn,
+		"units_changed": int(step.applied.get("units_changed", 0)), "hp_total": int(step.applied.get("hp_total", 0))}
+	var codex := String(AscensionRules.node_data(nid).codex)
+	if not String(step.sworn).is_empty():
+		numbers["branch"] = step.sworn
+		numbers["closed"] = AscensionRules.other_branch(fid, String(step.sworn))
+		events.append(_event("oath_sworn", "research", [], [fid], [], "oath", numbers,
+			AscensionRules.sworn_text(s, fid, nid), codex))
+	elif AscensionRules.node_kind(nid) == PathData.TRANSFORMATION:
+		var fx := AscensionRules.node_effects(nid)
+		numbers["branch"] = String(AscensionRules.node_data(nid).branch)
+		numbers["renamed"] = step.applied.get("renamed", {}).duplicate(true)
+		numbers["new_unit"] = String(step.applied.get("new_unit", ""))
+		numbers["province_rule"] = String(fx.get("province_rule", {}).get("id", ""))
+		numbers["opens_mandate"] = String(fx.get("opens_mandate", ""))
+		numbers["forswears"] = String(fx.get("forswears", ""))
+		numbers["own_text"] = AscensionRules.transformed_text(s, fid, nid, turn, true)
+		events.append(_event("transformed", "research", [], [fid], [], "transformation", numbers,
+			AscensionRules.transformed_text(s, fid, nid, turn, false), codex))
+	else:
+		events.append(_event("research_done", "research", [], [fid], [], "researched", numbers,
+			AscensionRules.done_text(s, fid, nid, step.applied), codex))
+
+
+## The transformation's province rules for `fid` in the research phase (M4-2), with their events.
+static func _province_rules(s: GameState, fid: String, events: Array) -> void:
+	var done := AscensionRules.province_rules_step(s, fid)
+	for pick in done.spread:
+		events.append(_event("wild_spread", "research", [pick.province], [fid], [], "wild_spreads",
+			{"province": pick.province, "from_terrain": pick.from_terrain, "terrain": AscensionRules.FOREST,
+				"grown_from": pick.grown_from.duplicate()},
+			AscensionRules.wild_spread_text(s, fid, pick), "wild_spreads"))
+	var healed: Dictionary = done.healed
+	if not healed.is_empty() and int(healed.fighters) > 0:
+		events.append(_event("path_healed", "research", healed.provinces.duplicate(), [fid], healed.armies.duplicate(),
+			String(healed.rule), {"rule": healed.rule, "amount": healed.amount, "fighters": healed.fighters, "total": healed.total,
+				"healed": healed.healed.duplicate(true)},
+			AscensionRules.healed_text(s, fid, healed), String(healed.codex)))
 
 
 # --- helpers --------------------------------------------------------------------------------------
@@ -1064,6 +1197,12 @@ static func _rejected_event(s: GameState, fid: String, order, check: Dictionary,
 
 static func _moved_event(s: GameState, m: Dictionary, cause: String) -> Dictionary:
 	var via := String(m.get("via", ""))
+	if not via.is_empty() and String(m.get("road", "")) == "forest_stride":
+		# M4-2, a Forest Stride road move (§4.8): an "army_moved" event naming the forest it went through.
+		return _event("army_moved", "movement", [m.from, via, m.to], [m.faction], [m.army_id], "road_move",
+			{"via": via, "rule": "forest_stride"},
+			"The %s moved to %s through the forest of %s (Forest Stride)." % [m.label, _province_name(s, m.to), _province_name(s, via)],
+			"forest_stride")
 	if not via.is_empty():
 		# A road move (King's Roads, §7.5): still an "army_moved" event, saying which way it went.
 		return _event("army_moved", "movement", [m.from, via, m.to], [m.faction], [m.army_id], "road_move", {"via": via},
