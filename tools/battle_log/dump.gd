@@ -6,6 +6,7 @@ extends RefCounted
 ## text uses ids and is not player-facing.
 ##
 ##   print(Dump.text(log, report))
+##   print(Dump.captions(log, report))   M3-2 (#57): the round captions and key moments, as players read them
 
 
 static func text(battle_log: Dictionary, report: Dictionary = {}) -> String:
@@ -151,3 +152,35 @@ static func _after_rounds(sides: Array, impact: Array) -> String:
 
 static func _ok(reasons: Array) -> String:
 	return "ok" if reasons.is_empty() else "%d problems" % reasons.size()
+
+
+## The battle's round captions (BattleCaptions) and key moments (BattleMoments), as the battle player
+## shows them, with each line's rule, report factor and codex entry, and the camera hint of each moment
+## (M3-2, #57). The caption and moment texts are player-facing; the bracketed tags are for developers.
+static func captions(battle_log: Dictionary, report: Dictionary = {}) -> String:
+	var L := []
+	var where := ""
+	if battle_log.kind == "border":
+		where = "border battle between %s" % " and ".join(battle_log.provinces)
+	else:
+		where = "%s (%s%s)" % [", ".join(battle_log.provinces), battle_log.terrain, ", fort" if battle_log.fort else ""]
+	L.append("Battle %s: %s. %s" % [battle_log.id if not String(battle_log.id).is_empty() else "(outside a game)", where,
+		String(report.get("summary", ""))])
+	L.append("")
+	L.append("Captions:")
+	for rc in BattleCaptions.all_rounds(battle_log, report):
+		for line in rc.lines:
+			L.append("  %s" % line.text)
+			L.append("      [%s%s; codex %s]" % [line.rule, ", factor " + line.factor if not String(line.factor).is_empty() else "", line.codex])
+	L.append("")
+	L.append("Key moments:")
+	for m in BattleMoments.key_moments(battle_log):
+		L.append("  %s (event %d, round %d): %s" % [m.title, int(m.event), int(m.round), m.text])
+		L.append("      %s" % m.explain)
+		L.append("      [camera %s, fighters %s, side %d%s; codex %s]" % [m.camera.frame, str(m.camera.fighters), int(m.camera.side),
+			", " + String(m.camera.rank) if not String(m.camera.rank).is_empty() else "", m.codex])
+	var missing := BattleMoments.missing(battle_log)
+	for kind in BattleMoments.KINDS:
+		if missing.has(kind):
+			L.append("  %s: none. %s" % [BattleMoments.TITLES[kind], missing[kind]])
+	return "\n".join(L)
