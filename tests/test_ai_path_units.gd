@@ -121,6 +121,29 @@ func test_rooted_is_worth_a_forest_battle_or_an_open_one_by_the_forest_share() -
 		float(wardens.reduce(func(acc, u): return acc + u.current_hp, 0)) * AutoBattleResolver.ROOTED_DEFENSE)
 
 
+## #131: _recruit_value sums the foe side once per recruit plan (_foe_summary) instead of for every unit it tries.
+## The cached worth is the uncached one, a different foe list is summed afresh, and nothing outlives a plan.
+func test_the_foe_summary_is_cached_within_one_plan() -> void:
+	var s := _state("thorn_wild", "celestial_host", ["warchief"] + _many("briarwardens", 4) + _many("tuskers", 2), _many("knights", 5) + ["knight_captain"])
+	var ai := _brain(s, 0.5)
+	var ours := ai._units(ai._mine_at("fangridge"))
+	var foes := ai._units(ai._foes)
+	var want := _worth(ai._ctx, ours, foes)
+	assert_true(absf(ai._recruit_value(ours, foes) - want) < 0.000001, "first call")
+	assert_true(is_same(ai._foe_cache.get("foes"), foes), "the foe list is cached")
+	assert_true(ai._foe_cache.has("forest") and ai._foe_cache.has("open"), "a forest and an open summary (Rooted, share 0.5)")
+	var forest: Dictionary = ai._foe_cache.forest
+	assert_true(absf(ai._recruit_value(ours + [ours[1]], foes) - _worth(ai._ctx, ours + [ours[1]], foes)) < 0.000001, "a trial recruit")
+	assert_true(is_same(ai._foe_cache.forest, forest), "the trial reuses the foe summary")
+	var fewer: Array = foes.slice(1)
+	assert_true(absf(ai._recruit_value(ours, fewer) - _worth(ai._ctx, ours, fewer)) < 0.000001, "another foe list is summed afresh")
+	assert_true(is_same(ai._foe_cache.get("foes"), fewer))
+	ai._begin(s, "beasts", SeededRNG.new(1), "normal")
+	assert_eq(ai._foe_cache, {}, "a new plan starts empty")
+	ai.plan_orders(s, "beasts", SeededRNG.new(1), "normal")
+	assert_eq(ai._foe_cache, {}, "a plan leaves nothing behind")
+
+
 func test_lifedrinker_heals_with_the_rules_rounding_and_counts_in_full() -> void:
 	var s := _state("blood_pact", "celestial_host", ["warchief", "bloodsworn"], _many("knights", 4))
 	var ai := _brain(s, 0.0)
