@@ -1084,6 +1084,8 @@ func _fill_top_bar() -> void:
 		var k := _slot_of_side(si)
 		var side: Dictionary = _log.sides[si]
 		var role := "on the border" if border else ("defending" if side.get("defender", false) else ("attacking" if not defender.is_empty() else "arrived"))
+		if not border and not _siege_block().is_empty():
+			role = FortView.siege_role(_siege_block(), si)  # M3c S-3: "storming", "sallying garrison", "garrison, in the breach"...
 		var people := String(side.get("people", {}).get("name", "")) if side.get("people", {}) is Dictionary else ""
 		plaque_labels[k].text = "%s · %s · %s" % [side.name, people, role] if not people.is_empty() else "%s · %s" % [side.name, role]
 		_fit(plaque_labels[k], 18, 13)
@@ -1106,25 +1108,48 @@ func _fill_top_bar() -> void:
 				var chip := _chip(text, TooltipText.plain("Terrain", "The defender of a %s province gets %s." % [terrain, text.substr(text.find(":") + 2)]))
 				chip_boxes[k].add_child(chip)
 				CodexLink.attach(chip, TooltipText.codex_for(TooltipText.terrain_kind(terrain)), codex_requested.emit)
-			if _log.get("fort", false):
+			var walls := FortView.siege_chip(_siege_block())
+			if not walls.is_empty():  # M3c S-3 (§9.7): a stormed garrison's walls replace the fort's old +2
+				var wchip := _chip(String(walls.text), String(walls.tip))
+				wchip.name = "SiegeChip"
+				chip_boxes[k].add_child(wchip)
+				CodexLink.attach(wchip, String(walls.codex), codex_requested.emit)
+			elif _log.get("fort", false):
 				var fchip := _chip("Fort: +%d defense" % AutoBattleResolver.FORT_DEFENSE, TooltipText.plain("Fort", "Only a defender gets a fort's bonus: +%d defense to every fighter." % AutoBattleResolver.FORT_DEFENSE))
 				chip_boxes[k].add_child(fchip)
 				CodexLink.attach(fchip, "fort", codex_requested.emit)
+	var open := FortView.siege_chip(_siege_block())
 	if border:
 		center_chip.text = "Border battle: nobody defends, no terrain bonus"
+	elif defender.is_empty() and not open.is_empty():
+		center_chip.text = String(open.text)  # M3c S-3 (§9.7): outside the walls, or through the breach
 	elif defender.is_empty():
 		center_chip.text = "Nobody was defending: no terrain bonus"
 	else:
 		center_chip.text = ""
 	center_chip.visible = not center_chip.text.is_empty()
 	center_chip.tooltip_text = TooltipText.plain("Terrain", "Only a side that already held the province gets its terrain and fort bonus. Here nobody did.") if center_chip.visible else ""
-	if center_chip.visible:
+	if center_chip.visible and defender.is_empty() and not open.is_empty() and not border:
+		center_chip.tooltip_text = String(open.tip)
+		CodexLink.attach(center_chip, String(open.codex), codex_requested.emit)
+	elif center_chip.visible:
 		CodexLink.attach(center_chip, "battle_terrain", codex_requested.emit)
+
+
+## M3c S-3: the battle's siege block (§4.4): the log's, the report's, or the event's (S-1b puts it on the event first).
+func _siege_block() -> Dictionary:
+	for src in [_log, _report, _event.get("numbers", {}) if _event is Dictionary else {}]:
+		if src is Dictionary and src.get("siege") is Dictionary and not (src.siege as Dictionary).is_empty():
+			return src.siege
+	return {}
 
 
 func _role_words(side: Dictionary, border: bool, defender: String) -> String:
 	if border:
 		return "met the enemy on the border as both armies tried to swap places"
+	if not _siege_block().is_empty():  # M3c S-3: its role at the fort and what it meant
+		var si := (_log.get("sides", []) as Array).find(side)
+		return "%s: %s" % [FortView.siege_role(_siege_block(), si), String(FortView.role_meaning(_siege_block(), si).text)]
 	if side.get("defender", false):
 		return "defending: it already held the province"
 	if defender.is_empty():

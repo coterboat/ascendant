@@ -12,6 +12,10 @@ extends Control
 ##   6. routs      morale checks: who broke and fled, who held (and when Iron Discipline held a side)
 ##   7. hits       hit rates against the chances each side had
 ##   8. round_cap  only when the battle ran out of rounds
+## M3c S-3 (#101, design/M3C_SIEGES.md §9.7): a battle at a fort in a game with sieges carries a `siege` block
+## (written by S-2, §4.4-§4.5); the terrain section then shows its chip (FortView.siege_chip) in place of the old
+## fort line: "Walls: +4 defense (5 of 9)" in a storm, "Outside the walls: ..." in an open battle, "Through the
+## breach: ..." at the breach, each linked to its codex entry.
 ## Reads the report only: every number comes from the report (or the rules' terrain and fort bonus
 ## constants), every explanation from RulesCodex. Never changes rules state.
 ## Builds its children in code, so it works before it is in the tree (headless tests).
@@ -114,6 +118,9 @@ func show_event(event: Dictionary, state: GameState = null, seats: Array = []) -
 	_show_watch(_event)
 	var numbers: Dictionary = event.get("numbers", {})
 	var report: Dictionary = numbers.get("report", {})
+	if not report.is_empty() and not report.has("siege") and numbers.get("siege") is Dictionary:
+		report = report.duplicate()  # M3c: the battle's siege block rides on the event (S-1b) before the report has it (S-2)
+		report["siege"] = numbers.siege
 	if report.is_empty():
 		_state = state
 		# #55: the battle in the turn report's words (TurnReportText), when the state is at hand.
@@ -287,8 +294,11 @@ func _add_sides() -> void:
 			var n := int(triggers[key])
 			var entry := RulesCodex.entry(_part_entry(String(key)))
 			var what := "mandate" if String(key).begins_with(AutoBattleResolver.MANDATE_PREFIX) else "trait"
-			_text(col, "%s: changed %d %s" % [_part_name(String(key)), n, "attack" if n == 1 else "attacks"],
-				_tip(String(entry.get("title", _part_name(String(key)))), "Counted once for every attack this %s changed in the battle. %s" % [what, String(entry.get("text", ""))]), 17)
+			if key in [AutoBattleResolver.WALLS, AutoBattleResolver.COVER]:  # M3c S-3: the walls' parts, in words
+				what = "part of the walls"
+			var part := BattleExplain.part_name(_report, String(key))  # "walls (4 of 6)", "cover of the walls" (S-2)
+			_text(col, "%s: changed %d %s" % [_cap(part), n, "attack" if n == 1 else "attacks"],
+				_tip(String(entry.get("title", part)), "Counted once for every attack this %s changed in the battle. %s" % [what, String(entry.get("text", ""))]), 17)
 		# Skirmish is about reach since #41 (it attacks the second rank), so it sits with the side that has it.
 		for f in _report.get("all_factors", []):
 			if f.get("id", "") == AutoBattleResolver.SKIRMISH and f.get("faction", "") == sr.get("faction", ""):
@@ -386,12 +396,19 @@ func _add_terrain() -> void:
 	var box := _section("terrain", "Terrain and fort", tip, "battle_terrain")
 	var terrain := String(_report.get("terrain", ""))
 	var defender := _defender_side()
+	var chip := FortView.siege_chip(_siege())
+	if not chip.is_empty():  # M3c S-3: the walls, the open ground or the breach (§9.7)
+		var c := _text(box, String(chip.text), String(chip.tip), 20, UiPalette.GILT)
+		c.name = "SiegeChip"
+		CodexLink.attach(c, String(chip.codex), codex_requested.emit)
 	if _report.get("kind", "province") == "border":
 		_text(box, "This was a border battle: the armies tried to swap places and met between the two provinces, so nobody was defending and nobody got terrain or fort bonuses.",
 			_tip("Armies swapping places", RulesCodex.text("swap")))
 		return
 	if not terrain.is_empty():
 		_text(box, "Terrain: %s" % terrain.capitalize(), tip, 20)
+	if defender.is_empty() and not chip.is_empty():
+		return  # M3c: outside the walls or through the breach, the chip above says why nobody had the ground
 	if defender.is_empty():
 		_text(box, "Everyone arrived at the same time, so nobody was defending and nobody got terrain or fort bonuses.",
 			_tip("Armies meeting in a province", RulesCodex.text("same_province")))
@@ -409,7 +426,9 @@ func _add_terrain() -> void:
 		_text(box, "%s give no bonus, even to the defending %s." % [terrain.capitalize(), who], tip)
 	else:
 		_text(box, "The defending %s got %s from the %s." % [who, " and ".join(parts), terrain], tip)
-	if _report.get("fort", false):
+	if not chip.is_empty():
+		pass  # M3c: with sieges the walls replace the fort's old +2 (the chip above says what they gave)
+	elif _report.get("fort", false):
 		_text(box, "Fort: the defending %s got +%d defense more from the fort." % [who, AutoBattleResolver.FORT_DEFENSE], tip)
 	else:
 		_text(box, "Fort: none here.", tip)
@@ -606,6 +625,10 @@ func _why_tooltip() -> String:
 
 
 func _role_text(sr: Dictionary) -> String:
+	var siege := _siege()
+	if not siege.is_empty():  # M3c S-3: the side's role at the fort, in the report's own words (S-2)
+		var role := FortView.siege_role(siege, _sides().find(sr))
+		return "%s: %s" % [_cap(role), String(FortView.role_meaning(siege, _sides().find(sr)).text)]
 	if _report.get("kind", "province") == "border":
 		return "Met the enemy on the border as both tried to swap places."
 	if sr.get("defender", false):
@@ -616,6 +639,10 @@ func _role_text(sr: Dictionary) -> String:
 
 
 func _role_tooltip(sr: Dictionary) -> String:
+	var siege := _siege()
+	if not siege.is_empty():  # M3c S-3
+		var meaning := FortView.role_meaning(siege, _sides().find(sr))
+		return _tip(String(meaning.title), RulesCodex.text(String(meaning.codex)))
 	if _report.get("kind", "province") == "border":
 		return _tip("Armies swapping places", RulesCodex.text("swap"))
 	if sr.get("defender", false):
@@ -666,6 +693,8 @@ func _why_entry() -> String:
 
 
 static func _factor_entry(factor_id: String) -> String:
+	if factor_id in [AutoBattleResolver.WALLS, AutoBattleResolver.COVER]:
+		return BattleExplain.factor_entry(factor_id)  # M3c S-3: battle_walls, battle_open (S-2), one map with BattleExplain
 	if FACTOR_ENTRIES.has(factor_id):
 		return FACTOR_ENTRIES[factor_id]
 	if factor_id.begins_with(AutoBattleResolver.MANDATE_PREFIX):
@@ -684,8 +713,11 @@ static func _part_name(key: String) -> String:
 	return key
 
 
-## The RulesCodex entry of an attack or defense part: the trait's or the mandate's.
+## The RulesCodex entry of an attack or defense part: the trait's or the mandate's (M3c: the walls' and the
+## cover's battle entries, through BattleExplain.factor_entry).
 static func _part_entry(key: String) -> String:
+	if key in [AutoBattleResolver.WALLS, AutoBattleResolver.COVER]:
+		return BattleExplain.factor_entry(key)
 	if key.begins_with(AutoBattleResolver.MANDATE_PREFIX):
 		return _factor_entry(key)
 	if key.begins_with(AscensionRules.PART_PREFIX):  # M4-4: the node's (or its economy rule's) codex entry
@@ -727,6 +759,12 @@ func _defender_side() -> Dictionary:
 		if sr.get("defender", false):
 			return sr
 	return {}
+
+
+## M3c S-3: the battle's siege block (§4.4), {} for a battle that isn't at a fort in a game with sieges.
+func _siege() -> Dictionary:
+	var siege = _report.get("siege", {})
+	return siege if siege is Dictionary else {}
 
 
 func _winner_side() -> Dictionary:
