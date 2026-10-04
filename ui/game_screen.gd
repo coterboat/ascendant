@@ -85,6 +85,7 @@ var report_button: Button
 var codex_button: Button
 var results_button: Button  # only once the game is over
 var ruler_button: Button  # M2-6: opens the ruler panel; only in a game with rulers
+var research_hud: ResearchHud  # M4-4: the research chip, the research panel and the lock-in preview
 var report_overlay: Control
 var report_panel: TurnReportPanel
 var battle_viewer: BattleReportViewer
@@ -613,6 +614,8 @@ func _show_setup_errors(errors: Array) -> void:
 # --- HUD ------------------------------------------------------------------------------------------
 
 func _update_hud() -> void:
+	if research_hud:
+		research_hud.refresh()  # M4-4: the chip, and the research panel follows the seat
 	var watching := is_watching()
 	var playing: bool = session != null and session.phase() == GameSession.Phase.ORDERS and not watching
 	var n: int = session.current_orders().size() if playing else 0
@@ -765,6 +768,7 @@ func _build_hud() -> void:
 	opponent_box.add_theme_constant_override("separation", 5)
 	opponent_box.visible = false
 	map.faction_label.get_parent().add_child(opponent_box)
+	research_hud = ResearchHud.new(self)  # M4-4: the research chip (paths games only)
 
 
 ## The top bar's opponent tag: every computer seat as "vs", its emblem and its name, with the
