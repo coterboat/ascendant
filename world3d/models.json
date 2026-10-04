@@ -1,0 +1,36 @@
+{
+	"version": 1,
+	"about": "The 3D board's model table (world3d/models.gd reads it; the format is in world3d/README.md). One row per unit type and per building kind: a GLB to load, and the primitive piece (world3d/kit.gd) drawn when the GLB is missing. Add a model by dropping its GLB under assets/models/ and filling in its row: no code changes.",
+	"block": {"per_unit": 1.0, "max": 8, "min": 2},
+	"figures": {
+		"spearmen": {"faction": "kingdom", "model": "res://assets/models/probe/spearman.glb", "height": 1.3, "yaw": 180, "fallback": "spearmen", "rank": 0},
+		"crossbowmen": {"faction": "kingdom", "model": "", "height": 1.0, "fallback": "crossbowmen", "rank": 1},
+		"knights": {"faction": "kingdom", "model": "", "height": 1.75, "fallback": "knights", "rank": 0, "large": true},
+		"knight_captain": {"faction": "kingdom", "model": "", "height": 1.8, "fallback": "knight_captain", "rank": 2, "large": true},
+		"tuskers": {"faction": "beasts", "model": "res://assets/models/probe/tusker.glb", "height": 1.25, "yaw": 180, "fallback": "tuskers", "rank": 0},
+		"fangthrowers": {"faction": "beasts", "model": "", "height": 1.0, "fallback": "fangthrowers", "rank": 0},
+		"war_bear": {"faction": "beasts", "model": "", "height": 1.3, "fallback": "war_bear", "rank": 0, "large": true},
+		"warchief": {"faction": "beasts", "model": "", "height": 1.65, "fallback": "warchief", "rank": 2},
+		"aurel_king": {"faction": "kingdom", "model": "", "height": 2.0, "fallback": "knight_captain", "scale": 1.12, "rank": 0, "large": true, "ruler": true},
+		"ever_regent": {"faction": "kingdom", "model": "", "height": 1.25, "fallback": "crossbowmen", "scale": 1.3, "rank": 1, "ruler": true},
+		"thornmane_avatar": {"faction": "beasts", "model": "", "height": 1.8, "fallback": "war_bear", "scale": 1.35, "rank": 0, "large": true, "ruler": true},
+		"fang_chieftain": {"faction": "beasts", "model": "", "height": 1.8, "fallback": "warchief", "scale": 1.12, "rank": 0, "ruler": true},
+		"seraphs": {"faction": "kingdom", "model": "", "height": 1.1, "fallback": "spearmen", "scale": 1.1, "rank": 0},
+		"iron_colossus": {"faction": "kingdom", "model": "", "height": 1.6, "fallback": "spearmen", "scale": 1.6, "rank": 0, "large": true},
+		"briarwardens": {"faction": "beasts", "model": "", "height": 1.6, "fallback": "tuskers", "scale": 1.35, "rank": 0, "large": true},
+		"bloodsworn": {"faction": "beasts", "model": "", "height": 1.1, "fallback": "fangthrowers", "scale": 1.1, "rank": 0},
+		"bearer": {"faction": "", "model": "", "height": 1.0, "fallback": "bearer", "rank": 2}
+	},
+	"buildings": {
+		"fortress": {"model": "res://assets/models/probe/crownkeep.glb", "fallback": "fortress", "side": 76.0, "yaw": 180, "key_hue": 0.62, "tint": 0.86,
+			"court": [-21.0, -16.8, 42.0, 16.0], "gate_z": [-13.0, -36.0], "sink": 2.0, "banner_at": [9.0, 20.0], "floor": 0.25},
+		"fortress.beasts": {"model": "res://assets/models/probe/crownkeep.glb", "fallback": "fortress", "side": 76.0, "yaw": 180, "key_hue": 0.62, "tint": 0.86,
+			"stone": "#C98F5E", "palisade": true,
+			"court": [-21.0, -16.8, 42.0, 16.0], "gate_z": [-13.0, -36.0], "sink": 2.0, "banner_at": [9.0, 20.0], "floor": 0.25},
+		"fort": {"model": "", "fallback": "fort"},
+		"cottage": {"model": "", "fallback": "cottage"},
+		"tree_broadleaf": {"model": "", "fallback": "broadleaf"},
+		"tree_pine": {"model": "", "fallback": "pine"},
+		"rock": {"model": "", "fallback": "rock"}
+	}
+}
