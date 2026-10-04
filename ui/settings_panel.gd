@@ -1,23 +1,40 @@
 class_name SettingsPanel
 extends Control
-## The Settings overlay (title screen and the game menu): window mode, interface size and, for later,
-## whether battles play by themselves. Every change is saved to the settings file (GameSettings) and put
-## into effect at once; Close (or Esc) hides the panel and emits `closed`.
+## The Settings overlay (title screen and the game menu): window mode, interface size, for later
+## whether battles play by themselves, and the sound: Master, Music, Effects and Ambiance volumes and a
+## mute switch. Every change is saved to the settings file (GameSettings) and put into effect at once
+## (volumes even before the panel is in the tree, since the buses are global); Close (or Esc) hides the
+## panel and emits `closed`.
 ## Builds its children in code, so it works before it is in the tree (headless tests).
 ##
 ## API:
 ##   open(settings = null)        shows the panel for `settings` (default: GameSettings.load_from())
 ##   set_window_mode(mode) -> bool, set_ui_scale(percent) -> bool, set_auto_watch(on)
+##   set_volume(key, percent) -> bool   key: a GameSettings.VOLUME_BUSES key ("music_volume", ...)
+##   set_muted(on)
 ##   window_picker, scale_picker, watch_picker   the three pickers
+##   volume_sliders               {volume key: HSlider}, volume_labels {volume key: Label} ("80%")
+##   mute_toggle                  the "Mute all sound" CheckBox (like the new game screen's toggles)
 ##   close()
 ##   settings                     the GameSettings being edited
 
 signal closed
 
+## What each volume covers, for its tooltip.
+const VOLUME_HELP := {
+	"master_volume": "Everything the game plays: music, effects and ambiance together.",
+	"music_volume": "The title, map and battle themes, and the victory and defeat stings.",
+	"sfx_volume": "Clicks, orders, End turn, the new turn, recruits, captures, rulers' deaths and crownings, sacrifices.",
+	"ambiance_volume": "The quiet beds under the map (wind and birdsong) and under a battle.",
+}
+
 var settings: GameSettings = null
 var window_picker: OptionButton
 var scale_picker: OptionButton
 var watch_picker: OptionButton  # "Off" / "On": battles play by themselves (milestone 3)
+var volume_sliders := {}  # GameSettings volume key -> HSlider (0 to 100)
+var volume_labels := {}  # GameSettings volume key -> Label showing the percent
+var mute_toggle: CheckBox
 var error_label: Label
 var close_button: Button
 
@@ -42,6 +59,9 @@ func open(game_settings: GameSettings = null) -> void:
 	window_picker.select(GameSettings.WINDOW_MODES.find(settings.window_mode))
 	scale_picker.select(GameSettings.UI_SCALES.find(settings.ui_scale))
 	watch_picker.select(1 if settings.auto_watch_battles else 0)
+	for key in volume_sliders:
+		_show_volume(key)
+	mute_toggle.set_pressed_no_signal(settings.muted)
 	error_label.visible = false
 	visible = true
 	if is_inside_tree():
@@ -77,12 +97,44 @@ func set_auto_watch(on: bool) -> void:
 	_changed()
 
 
+func set_volume(key: String, percent: int) -> bool:
+	if settings == null or not settings.set_volume(key, percent):
+		return false
+	_show_volume(key)
+	_audio_changed()
+	return true
+
+
+func set_muted(on: bool) -> void:
+	if settings == null:
+		return
+	settings.muted = on
+	mute_toggle.set_pressed_no_signal(on)
+	_audio_changed()
+
+
+func _show_volume(key: String) -> void:
+	var percent := settings.volume(key)
+	(volume_sliders[key] as HSlider).set_value_no_signal(percent)
+	(volume_labels[key] as Label).text = "%d%%" % percent
+
+
+## A volume or the mute changed: saved, and put on the buses at once.
+func _audio_changed() -> void:
+	_save()
+	settings.apply_audio()
+
+
 func _changed() -> void:
+	_save()
+	if is_inside_tree():
+		settings.apply(get_tree())
+
+
+func _save() -> void:
 	var why := settings.save()
 	error_label.text = why
 	error_label.visible = not why.is_empty()
-	if is_inside_tree():
-		settings.apply(get_tree())
 
 
 # --- nodes ----------------------------------------------------------------------------------------
@@ -106,7 +158,7 @@ func _build() -> void:
 	center.add_child(panel)
 	var box := VBoxContainer.new()
 	box.name = "Box"
-	box.add_theme_constant_override("separation", 16)
+	box.add_theme_constant_override("separation", 12)
 	panel.add_child(box)
 	box.add_child(_label("TitleLabel", "Settings", 36, UiPalette.GILT))
 
@@ -126,6 +178,17 @@ func _build() -> void:
 	var watch_note := _label("AutoWatchNote", "Takes effect when animated battles arrive. Until then, open any battle from the turn report.", 16, UiPalette.TEXT_SECONDARY)
 	watch_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(watch_note)
+
+	box.add_child(_label("SoundLabel", "Sound", 26, UiPalette.GILT))
+	for key in GameSettings.VOLUME_BUSES:
+		_volume_row(box, String(key))
+	mute_toggle = CheckBox.new()
+	mute_toggle.name = "MuteToggle"
+	mute_toggle.text = "Mute all sound"
+	mute_toggle.add_theme_font_size_override("font_size", 20)
+	mute_toggle.tooltip_text = "Silence the whole game without losing your volume levels."
+	mute_toggle.toggled.connect(set_muted)
+	box.add_child(mute_toggle)
 
 	error_label = _label("ErrorLabel", "", 18, UiPalette.NEGATIVE)
 	error_label.visible = false
@@ -157,6 +220,38 @@ func _row(box: VBoxContainer, title: String, picker: OptionButton, help: String)
 	row.add_child(label)
 	picker.tooltip_text = help
 	row.add_child(picker)
+
+
+## One volume: its name, a 0 to 100 slider in steps of 5, and the percent.
+func _volume_row(box: VBoxContainer, key: String) -> void:
+	var row := HBoxContainer.new()
+	row.name = key.to_pascal_case() + "Row"
+	row.add_theme_constant_override("separation", 16)
+	box.add_child(row)
+	var help: String = VOLUME_HELP.get(key, "")
+	var label := _label("Label", String(GameSettings.VOLUME_NAMES[key]), 20, UiPalette.TEXT_PRIMARY)
+	label.custom_minimum_size = Vector2(200, 0)
+	label.tooltip_text = help
+	label.mouse_filter = Control.MOUSE_FILTER_PASS
+	row.add_child(label)
+	var slider := HSlider.new()
+	slider.name = key.to_pascal_case() + "Slider"
+	slider.min_value = 0
+	slider.max_value = 100
+	slider.step = 5
+	slider.value = 100
+	slider.custom_minimum_size = Vector2(300, 30)
+	slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	slider.tooltip_text = help
+	slider.value_changed.connect(func(v: float): set_volume(key, int(v)))
+	if key == "sfx_volume":
+		slider.drag_ended.connect(func(_moved: bool): GameAudio.sfx("order_queued"))  # hear the new level
+	row.add_child(slider)
+	var value := _label("Value", "100%", 20, UiPalette.TEXT_SECONDARY)
+	value.custom_minimum_size = Vector2(64, 0)
+	row.add_child(value)
+	volume_sliders[key] = slider
+	volume_labels[key] = value
 
 
 func _picker(node_name: String, items: Array) -> OptionButton:

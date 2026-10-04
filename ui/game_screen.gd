@@ -41,6 +41,12 @@ extends Control
 ## faction with its "Computer (Normal)" tag. Two humans play exactly as before. With no human seat at
 ## all (watch mode), End turn becomes Next turn and plays one whole turn per press.
 ##
+## Sound (GameAudio, through its static shortcuts; it never sees the session): the map theme and the map
+## bed while a game runs, end_turn on End turn, turn_start on the handoff cover and when a new turn
+## starts for the only human, the turn report's headline cues (GameAudio.report_cues) as each new report
+## opens, battle music and bed over the ducked map theme while the battle report viewer is open, and the
+## victory or defeat sting with the victory screen (GameAudio.ending_sting). Buttons click by themselves.
+##
 ## API:
 ##   start_game(config)   config = {"players": [faction ids in seat order], "seed": int, "ai": {faction id:
 ##                        level}}. "ai" is optional (absent: every seat is human). Missing keys get
@@ -67,6 +73,9 @@ extends Control
 
 const SCENE := "res://ui/game_screen.tscn"
 const CODEX_SCENE := "res://ui/codex_panel.tscn"
+## Sound timing: turn_start lands just after End turn's sound, the report's cues after turn_start.
+const TURN_START_DELAY := 0.45
+const REPORT_CUE_DELAY := 1.1
 
 var session: GameSession = null
 var computer: AISeat = null  # plays the computer seats of `session`
@@ -113,6 +122,8 @@ var _report_seen := 0  # the last turn report shown to the only human, so each o
 var _snapshot := {}  # SaveGame.computer_snapshot from the start of the turn being played
 var _turn_start_turns := -1  # session.turns_played() when the current turn started (and was autosaved)
 var _last_autosave_turn := 0  # the turn the last autosave was made at the start of (0: none)
+var _audio_turn := 0  # the turn turn_start last sounded for
+var _battle_audio := false  # the battle report viewer's music is on
 var _bound := false
 
 
@@ -149,6 +160,7 @@ func start_game(game_config: Dictionary = {}) -> void:
 	else:
 		config.ai = ai
 	_reset_screens()
+	_start_audio()
 	loaded_header = {}
 	# The state's seed and the game seed are the same, so GameSession's turn seeds match TurnResolver's.
 	session = GameSession.new(starting_state(config), config.players, config.seed, AutoBattleResolver.new(), ai)
@@ -174,6 +186,7 @@ func load_game(save: Dictionary) -> String:
 	if not restored.errors.is_empty():
 		return SaveGame.error_text(restored.errors)
 	_reset_screens()
+	_start_audio()
 	config = restored.config
 	loaded_header = restored.header
 	session = restored.session
@@ -243,6 +256,28 @@ func _check_turn_start() -> void:
 			show_notice("Autosave failed", why)
 
 
+## A game starts or loads: the map theme and the map bed (crossfading from whatever played before).
+func _start_audio() -> void:
+	_audio_turn = 0
+	GameAudio.music("music_map")
+	GameAudio.ambiance("amb_map")
+
+
+## turn_start, once per turn for the player at the controls (the handoff cover sounds it in a hotseat
+## game). True when it sounded.
+func _cue_turn_start() -> bool:
+	if session.turn_number() == _audio_turn:
+		return false
+	_audio_turn = session.turn_number()
+	GameAudio.sfx("turn_start", TURN_START_DELAY)
+	return true
+
+
+## The headline cues of the report that just opened (GameAudio.report_cues), from `delay_s`.
+func _cue_report(delay_s: float) -> void:
+	GameAudio.report(session.turn_report().get("events", []), delay_s)
+
+
 ## The starting state for `game_config`: the M1 game, or with rulers when the config asks for them
 ## ("rulers": true, or "builds") or the game was launched with `-- --rulers`; with paths (M4-1) when it has
 ## "paths": true or the game was launched with `-- --paths`. Factions without a
@@ -266,6 +301,7 @@ func end_turn() -> String:
 	if not why.is_empty():
 		map.set_hint(why)
 		return why
+	GameAudio.sfx("end_turn")
 	_check_turn_start()  # the last seat's End turn resolved the turn: autosave before a computer plans
 	_close_overlays()
 	notice_panel.visible = false
@@ -279,6 +315,7 @@ func next_turn() -> String:
 	if not is_watching():
 		return "Next turn is only for games where the computer plays every seat."
 	_close_overlays()
+	GameAudio.sfx("end_turn")
 	computer.play(session)
 	_check_turn_start()
 	if session.is_over():
@@ -286,6 +323,7 @@ func next_turn() -> String:
 		return ""
 	_show_watch()
 	open_turn_report()
+	_cue_report(TURN_START_DELAY)
 	return ""
 
 
@@ -346,8 +384,10 @@ func _advance() -> void:
 				_show_watch()
 				return
 			_show_current_player()
+			var new_turn := _cue_turn_start()
 			if session.human_seats() == 1 and session.turn_report().turn > _report_seen:
 				open_turn_report()
+				_cue_report(REPORT_CUE_DELAY if new_turn else 0.2)
 		GameSession.Phase.GAME_OVER:
 			_show_game_over()
 
@@ -382,7 +422,9 @@ func _show_watch() -> void:
 func _show_handoff() -> void:
 	map.clear_preview()
 	map.visible = false
-	handoff.show_for(session)
+	if handoff.show_for(session):
+		_audio_turn = session.turn_number()
+		GameAudio.sfx("turn_start", TURN_START_DELAY)
 	_update_hud()
 
 
@@ -390,6 +432,7 @@ func _on_handoff_acknowledged() -> void:
 	_show_current_player()
 	if session.turn_report().turn > 0:
 		open_turn_report()
+		_cue_report(0.2)
 
 
 ## The final map, seen by nobody in particular, under the victory screen.
@@ -402,6 +445,8 @@ func _show_game_over() -> void:
 	map.faction_label.tooltip_text = TooltipText.plain("Game over", "Nobody gives orders any more. The map shows the final positions.")
 	CodexLink.attach(map.faction_label, TooltipText.codex_for("draw" if session.victory().get("draw", false) else "game_over"), open_codex)
 	_update_hud()
+	_battle_audio = false
+	GameAudio.music(GameAudio.ending_sting(session.victory(), session.players(), session.computer_seats()))
 	_show_victory(session.victory())
 
 
@@ -522,6 +567,7 @@ func _switch(next: Node) -> void:
 func _close_overlays() -> void:
 	report_overlay.visible = false
 	battle_viewer.visible = false
+	_set_battle_audio(false)
 	quit_overlay.visible = false
 	menu_overlay.visible = false
 	save_overlay.visible = false
@@ -595,6 +641,20 @@ func _show_battle_report(event: Dictionary) -> void:
 	var seats: Array = session.players() if session else []
 	battle_viewer.show_event(event, state, seats)
 	_raise(battle_viewer)
+	_set_battle_audio(true)
+
+
+## Battle music and bed over the ducked map theme while the battle report viewer is open.
+func _set_battle_audio(on: bool) -> void:
+	if on == _battle_audio:
+		return
+	_battle_audio = on
+	GameAudio.battle(on)
+
+
+func _on_battle_viewer_visibility() -> void:
+	if not battle_viewer.visible:
+		_set_battle_audio(false)
 
 
 ## The victory screen over the final map.
@@ -854,6 +914,8 @@ func _build_overlays() -> void:
 
 	battle_viewer = BattleReportViewer.new()
 	battle_viewer.codex_requested.connect(open_codex)
+	battle_viewer.closed.connect(_set_battle_audio.bind(false))
+	battle_viewer.visibility_changed.connect(_on_battle_viewer_visibility)
 	overlays.add_child(battle_viewer)
 
 	codex = load(CODEX_SCENE).instantiate()
@@ -912,7 +974,7 @@ func _build_menu() -> void:
 	_menu_button(m[1], "ResumeButton", "Resume", close_menu, "Back to the game (Esc).")
 	menu_save_button = _menu_button(m[1], "SaveGameButton", "Save game", open_save_dialog, "")
 	_menu_button(m[1], "LoadGameButton", "Load game", open_load_screen, "Play on from a saved game instead of this one.")
-	_menu_button(m[1], "SettingsButton", "Settings", open_settings, "Window or fullscreen, and how big the interface is drawn.")
+	_menu_button(m[1], "SettingsButton", "Settings", open_settings, "Window or fullscreen, how big the interface is drawn, and the sound volumes.")
 	_menu_button(m[1], "QuitToTitleButton", "Quit to title", _on_quit_requested, "Leave this game for the title screen. You are asked to confirm first.")
 
 
