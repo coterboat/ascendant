@@ -67,7 +67,9 @@ DESCRIPTOR = os.path.join(ROOT, "assets", "models", "models.json")
 PIC_CAND = "assets/_concept/candidates"   # gitignored (**/candidates/)
 GLB_CAND = "assets/models/candidates"     # gitignored, with a local .gdignore
 CAP = 500.0
-FF = "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg" if os.path.exists("/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg") else (shutil.which("ffmpeg") or "ffmpeg")
+## The request id prefix (asc_3d_paths.py reuses this module's driver under its own batch and prefix).
+RID = "asc3d"
+FF ="/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg" if os.path.exists("/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg") else (shutil.which("ffmpeg") or "ffmpeg")
 
 # ------------------------------------------------------------------------------------------ style
 ## STYLE_BIBLE §8.11 C-model, with the director's 3D figure rules (asc-3d-factions): no base (the
@@ -638,7 +640,8 @@ class BudgetStop(Exception):
     pass
 
 
-PRICE = {"/assets/image": 0.5, "/assets/image/edit": 0.5, "/assets/image/style": 0.5, "/assets/3d-model": 3.0}
+PRICE = {"/assets/image": 0.5, "/assets/image/edit": 0.5, "/assets/image/style": 0.5, "/assets/3d-model": 3.0,
+         "/assets/image/remove-background": 0.5}
 
 
 def local_b64(rel):
@@ -661,16 +664,23 @@ def check_prompt(text):
 def body_of(row):
     k = row["kind"]
     check_prompt(row.get("prompt"))
+    ## a row may ask for another image_type (asc_3d_paths.py's portraits: "portrait"); figures are "asset"
+    itype = row.get("image_type", "asset")
     if k == "edit":
         return "/assets/image/edit", {"image": local_b64(row["from_file"]), "prompt": row["prompt"], "n": row["n"],
-                                      "image_type": "asset", "augment_prompt": False}
+                                      "image_type": itype, "augment_prompt": False}
     if k == "styled":
         return "/assets/image/style", {"style_image": local_b64(row["style_file"]), "prompt": row["prompt"],
-                                       "image_type": "asset", "n": row["n"], "augment_prompt": False}
+                                       "image_type": itype, "n": row["n"], "augment_prompt": False}
     if k == "image":
         return "/assets/image", {"image_type": "asset", "prompt": row["prompt"], "art_style": "Cel-Shaded",
                                  "perspective": "High Angle", "aspect_ratio": "ar_1_1", "n": row["n"],
                                  "augment_prompt": False}
+    if k == "cutout":
+        ## removeBackground with the pixels kept exact and the canvas kept (asc_3d_paths.py: a soft ground
+        ## shadow painted into a picture comes back from image-to-3D as a floor slab)
+        return "/assets/image/remove-background", {"image": local_b64(row["from_file"]), "crop": False,
+                                                   "creative_edit": False}
     if k == "model3d":
         return "/assets/3d-model", {"image": local_b64(row["from_file"]), "target_num_faces": row["faces"],
                                     "texture_size": row["texture_size"], "texture_type": row["texture_type"]}
@@ -693,7 +703,7 @@ def run_row(row, state, deadline):
         if time.time() > deadline:
             raise RuntimeError("deadline")
         v = state["v"].get(row["id"], 1)
-        rid = "asc3d-%s-v%d" % (row["id"], v)
+        rid = "%s-%s-v%d" % (RID, row["id"], v)
         with _submit_lock:
             avail = account()
             spent = state["balance_before"] - avail
@@ -1245,9 +1255,11 @@ def courtyard(m):
 
 
 # ------------------------------------------------------------------------------------------ install
-GROUP_ORDER = ("units", "rulers", "extras", "buildings", "props")
+## "variants": a transformation's look of a base unit (asc_3d_paths.py), keyed "<unit>__<transformation id>"
+GROUP_ORDER = ("units", "rulers", "variants", "extras", "buildings", "props")
 POSE_ORDER = {p: i for i, p in enumerate(RULER_POSES)}
-KIND = {"units": "unit", "rulers": "ruler", "extras": "extra", "buildings": "building", "props": "prop"}
+KIND = {"units": "unit", "rulers": "ruler", "variants": "variant", "extras": "extra", "buildings": "building",
+        "props": "prop"}
 
 
 def dump_descriptor(d):

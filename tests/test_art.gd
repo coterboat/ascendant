@@ -37,6 +37,42 @@ func test_every_unit_type_has_a_portrait() -> void:
 		assert_true(Art.portrait(pair[1]) == tex, "and it is cached: loaded once")
 
 
+## M4's portraits (asc-3d-paths, M4_ASCENSION §12.1): every transformation's new unit is found by its unit
+## id alone (Art knows which side of the fork adds it), and every unit a transformation changes has that
+## look at assets/portraits/<faction>/<unit>__<transformation id>.webp; other pairs have none, quietly.
+func test_every_transformation_has_its_new_unit_and_changed_unit_portraits() -> void:
+	var count := 0
+	for side in PathData.BRANCHES:
+		var b: Dictionary = PathData.BRANCHES[side]
+		var fid := String(b.faction)
+		var trans := String(b.transformation)
+		var fx := AscensionRules.node_effects(trans)
+		var new_unit := String(fx.new_unit)
+		assert_eq(Art.unit_faction(new_unit), fid, "%s belongs to %s" % [new_unit, fid])
+		var tex := Art.portrait(new_unit)
+		assert_true(tex != null, "%s has its portrait" % new_unit)
+		if tex != null:
+			assert_eq(tex.get_size(), Vector2(384, 512), "%s's portrait is 384x512" % new_unit)
+			assert_eq(tex.resource_path, Art.PORTRAIT_PATH % [fid, new_unit], "%s's portrait path" % new_unit)
+		for type_id in fx.rename:
+			count += 1
+			var vt := Art.variant_portrait(String(type_id), fid, trans)
+			assert_true(vt != null, "%s has its %s portrait" % [type_id, trans])
+			if vt != null:
+				assert_eq(vt.get_size(), Vector2(384, 512), "%s's %s portrait is 384x512" % [type_id, trans])
+				assert_true(vt != Art.portrait(String(type_id)), "it isn't the base portrait")
+			var card := PathPortrait.make(String(type_id), fid, String(b.colour), Vector2(96, 128))
+			assert_true(card.shows_variant and card.has_art(), "the fork's card shows the %s look" % trans)
+			card.free()
+		var nc := PathPortrait.make(new_unit, fid, String(b.colour), Vector2(96, 128))
+		assert_true(nc.has_art() and not nc.shows_variant, "the new unit's card shows its portrait")
+		nc.free()
+		assert_eq(Art.variant_portrait(new_unit, fid, trans), null, "a new unit has no changed look")
+	assert_true(count > 0, "the transformations change units")
+	assert_eq(Art.variant_portrait("crossbowmen", "kingdom", "crown_celestial_host"), null, "a unit the transformation doesn't change has none")
+	assert_eq(Art.variant_portrait("spearmen", "kingdom", ""), null, "no transformation, no look")
+
+
 func test_every_faction_has_a_banner_and_every_terrain_a_tile() -> void:
 	for f in FactionData.FACTIONS:
 		var b := Art.banner(f.id)

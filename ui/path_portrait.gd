@@ -5,11 +5,16 @@ extends Control
 ## glyph: a gilt sun ring (Celestial Host), riveted iron (Living Iron), a vine (Thorn Wild) or a blood edge
 ## (Blood Pact). A new unit: the placeholder card (a bust and the unit's initial) in the same frame. When a
 ## real portrait lands at assets/portraits/<faction>/<id>.webp, Art shows it inside the frame with no code
-## change. Takes no mouse; the row around it carries the tooltip.
+## change. The changed unit's own look (asc-3d-paths: Sunspears, Iron Knights, Thornthrowers, Bloodtuskers)
+## replaces its base portrait once it lands at assets/portraits/<faction>/<id>__<transformation id>.webp
+## (Art.variant_portrait; the transformation is the side of the fork of this faction in `colour`).
+## Takes no mouse; the row around it carries the tooltip.
 ##
 ##   PathPortrait.make(unit_type_id, faction_id, colour, size)   colour: PathData.BRANCHES "colour"
 
 var colour_key := ""
+## True when the card shows the changed unit's own look (its variant portrait), not its base portrait.
+var shows_variant := false
 var card: Art.PortraitCard
 var overlay: Control
 
@@ -23,6 +28,10 @@ static func make(unit_type_id: String, faction_id: String, colour: String, card_
 	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var initial := String(PathData.NEW_UNITS.get(unit_type_id, {}).get("name", ""))
 	p.card = Art.portrait_card(unit_type_id, card_size, faction_id, Art.Crop.FULL, PathView.FORK_COLOURS.get(colour, UiPalette.GILT))
+	var variant := Art.variant_portrait(unit_type_id, faction_id, transformation_of(faction_id, colour))
+	if variant != null:
+		p.card.texture = variant
+		p.shows_variant = true
 	if not initial.is_empty():
 		p.card.initial = Art._initials(initial)
 	p.card.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -37,6 +46,15 @@ static func make(unit_type_id: String, faction_id: String, colour: String, card_
 ## True when the real portrait is shown inside the frame (not the placeholder card).
 func has_art() -> bool:
 	return card != null and card.has_art()
+
+
+## The transformation of `faction_id`'s side of the fork in `colour` (PathData.BRANCHES), or "".
+static func transformation_of(faction_id: String, colour: String) -> String:
+	for side in PathData.BRANCHES:
+		var b: Dictionary = PathData.BRANCHES[side]
+		if String(b.get("faction", "")) == faction_id and String(b.get("colour", "")) == colour:
+			return String(b.get("transformation", ""))
+	return ""
 
 
 ## The fork's frame and glyph, drawn over the card.
