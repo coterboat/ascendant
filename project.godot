@@ -13,7 +13,7 @@ config_version=5
 config/name="Ascendant"
 config/description="A deep, approachable simultaneous-turn fantasy strategy game."
 run/main_scene="res://ui/title_screen.tscn"
-config/features=PackedStringArray("4.5", "GL Compatibility")
+config/features=PackedStringArray("4.5", "Forward Plus")
 
 [display]
 
@@ -28,6 +28,8 @@ theme/custom="res://ui/ascendant_theme.tres"
 
 [rendering]
 
-renderer/rendering_method="gl_compatibility"
-renderer/rendering_method.mobile="gl_compatibility"
+renderer/rendering_method="forward_plus"
+renderer/rendering_method.mobile="mobile"
+anti_aliasing/quality/msaa_3d=1
+anti_aliasing/quality/screen_space_aa=1
 textures/vram_compression/import_etc2_astc=true
