@@ -55,13 +55,14 @@ const FORT_R := 13.0 ## a fort's half-size when its row gives none
 ## The ground plan of `battle_log` on the land `t`. `world` (optional): {"fortresses": {province id:
 ## {"gate_outer": Vector2, "gate_dir": Vector2, "half": float}}, "forts": {province id: [Vector2, radius]}}.
 ## `aspect`: the band's width over its height.
-static func plan(battle_log: Dictionary, t, world: Dictionary = {}, aspect: float = 2.6) -> Dictionary:
+static func plan(battle_log: Dictionary, t, world: Dictionary = {}, aspect: float = 2.6, groups: Dictionary = {}) -> Dictionary:
 	var sides: Array = battle_log.get("sides", [])
 	var nsides := sides.size()
 	var lines := [] ## by side: the lines of that side (front first)
-	var files := _pick_files(battle_log, aspect)
+	var reps: Dictionary = groups.get("reps", {})
+	var files := _pick_files(battle_log, aspect, reps)
 	for si in nsides:
-		lines.append(side_lines(battle_log, si, files))
+		lines.append(side_lines(battle_log, si, files, reps))
 	var depths := []
 	var widest := 0.0
 	for si in nsides:
@@ -93,6 +94,14 @@ static func plan(battle_log: Dictionary, t, world: Dictionary = {}, aspect: floa
 			if wet == 0:
 				break
 	var out := best
+	## a file's other fighters share its figure's place (M3 3.4's files, groups_of)
+	if not reps.is_empty():
+		var slots: Array = out["slots"]
+		var file_of: Array = groups.get("file_of", [])
+		var members: Array = groups.get("members", [])
+		for fid in slots.size():
+			if slots[fid] == null and fid < file_of.size():
+				slots[fid] = slots[int(members[int(file_of[fid])][0])]
 	out["near"] = near
 	out["far"] = far
 	out["where"] = geo["where"]
@@ -115,9 +124,14 @@ static func plan(battle_log: Dictionary, t, world: Dictionary = {}, aspect: floa
 
 ## The lines of side `si` with `files` files: [{"fids": [ids in file order], "pitches": [each one's room
 ## across], "width", "depth", "tier"}], front line first.
-static func side_lines(battle_log: Dictionary, si: int, files: int) -> Array:
+static func side_lines(battle_log: Dictionary, si: int, files: int, reps: Dictionary = {}) -> Array:
 	var out := []
 	var tiers := ordered_tiers(battle_log, si)
+	if not reps.is_empty():
+		for tl in tiers:
+			var keep := (tl as Array).filter(func(fid): return reps.has(int(fid)))
+			tl.clear()
+			tl.append_array(keep)
 	for tier in 3:
 		var ids: Array = tiers[tier]
 		if ids.is_empty():
@@ -177,6 +191,56 @@ static func ordered_tiers(battle_log: Dictionary, si: int) -> Array:
 			var rb := _rank_in(roster, battle_log.fighters[b])
 			return ra < rb if ra != rb else a < b)
 	return out
+
+
+## M3 3.4's files, for battles too big to stand 1:1 (3D_DIRECTION 7.2: over `most` fighters, M3's 280): one
+## figure for a file of up to k fighters of the same side, army, type and rank, k the smallest (from 2) that
+## brings the figures down to `most`. Rulers and commanders always stand alone. Pure: {"k" (1: everyone their
+## own figure), "members": [[fighter ids, the first its figure's]], "file_of": [by fighter id: its file],
+## "reps": {first fighter id of each file: true}} ({} when the battle fits 1:1).
+static func groups_of(battle_log: Dictionary, most: int) -> Dictionary:
+	var fighters: Array = battle_log.get("fighters", [])
+	if fighters.size() <= most:
+		return {}
+	var k := 2
+	var out := {}
+	while k <= 64:
+		out = _groups_with(battle_log, k)
+		if (out["members"] as Array).size() <= most:
+			break
+		k += 1
+	return out
+
+
+static func _groups_with(battle_log: Dictionary, k: int) -> Dictionary:
+	var members := []
+	var file_of := []
+	file_of.resize((battle_log.get("fighters", []) as Array).size())
+	var reps := {}
+	for si in (battle_log.get("sides", []) as Array).size():
+		for tier_ids in ordered_tiers(battle_log, si):
+			var run := []
+			var run_key := ""
+			for fid in tier_ids:
+				var f: Dictionary = battle_log.fighters[int(fid)]
+				var key := "%s|%s" % [String(f.army), String(f.type)]
+				var alone: bool = f.role != "unit"
+				if alone or key != run_key or run.size() >= k:
+					if not run.is_empty():
+						members.append(run)
+					run = []
+					run_key = "" if alone else key
+				run.append(int(fid))
+				if alone:
+					members.append(run)
+					run = []
+			if not run.is_empty():
+				members.append(run)
+	for i in members.size():
+		reps[int(members[i][0])] = true
+		for fid in members[i]:
+			file_of[int(fid)] = i
+	return {"k": k, "members": members, "file_of": file_of, "reps": reps}
 
 
 ## A type's footprint on the ground: Vector2(width across, length along its facing), world units, from
@@ -266,11 +330,15 @@ static func roads_home(t, pid: String, faction: String) -> int:
 
 ## The file count that frames the whole battle biggest: the smallest needed screen height, the battle's
 ## depth across the band's width or its width up the band's height (seen from the flank at PITCH).
-static func _pick_files(battle_log: Dictionary, aspect: float) -> int:
+static func _pick_files(battle_log: Dictionary, aspect: float, reps: Dictionary = {}) -> int:
 	var sides: Array = battle_log.get("sides", [])
 	var most := 1
 	for si in sides.size():
-		most = maxi(most, (sides[si].fighters as Array).size())
+		var n := 0
+		for fid in sides[si].fighters:
+			if reps.is_empty() or reps.has(int(fid)):
+				n += 1
+		most = maxi(most, n)
 	## lines, not queues: at least about the square root of twice a side's size (a side of 4 stands 3
 	## abreast, the biggest 17)
 	var least := mini(most, maxi(1, int(ceil(sqrt(2.0 * most)))))
@@ -282,7 +350,7 @@ static func _pick_files(battle_log: Dictionary, aspect: float) -> int:
 		var deep := FRONT_GAP
 		var wide := 0.0
 		for si in sides.size():
-			var ls := side_lines(battle_log, si, w)
+			var ls := side_lines(battle_log, si, w, reps)
 			deep += _depth(ls)
 			for ln in ls:
 				wide = maxf(wide, float(ln["width"]))
