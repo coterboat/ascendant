@@ -126,7 +126,7 @@ func show_victory(summary: Dictionary, state: GameState = null, players: Array =
 	var battles := int(summary.get("battles", 0))
 	battles_label.text = "Battles fought: %d" % battles
 	battles_label.tooltip_text = TooltipText.plain("Battles fought: %d" % battles,
-		"Every battle in the whole game, including border battles between armies that swapped places. %s" % RulesCodex.text("battle_rounds"))
+		"Every battle in the whole game, including border battles between armies that tried to swap places. %s" % RulesCodex.text("battle_rounds"))
 	_link(battles_label, "battles")
 
 	_clear(provinces_box, _province_labels)

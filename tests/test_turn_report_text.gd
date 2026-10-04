@@ -378,10 +378,10 @@ func test_army_descriptions_have_no_raw_ids() -> void:
 		for d in [with_state, without]:
 			assert_false(d.contains(a.id) or d.contains(a.location) or RegEx.create_from_string("\\b%s\\b" % a.owner).search(d) != null, "no raw id: %s" % d)
 	var crown: Army = s.armies.filter(func(a): return a.owner == "kingdom" and a.ruler == null)[0]
-	assert_eq(crown.get_description(s), "the Crown's %s at Crownkeep: %s" % [TurnReportText.ordinal(TurnReportText.army_number(crown.id)),
+	assert_eq(crown.get_description(s), "the Crown's %s (%s) at Crownkeep" % [TurnReportText.ordinal(TurnReportText.army_number(crown.id)),
 		TurnReportText.units_phrase(TurnReportText._army_entries(crown))])
 	var king := RulerRules.ruler_army(s, "kingdom")
-	assert_eq(king.get_description(s), "%s, the Aurel Crown ruler, at Crownkeep" % RulerRules.current_name(s, "kingdom"))
+	assert_eq(king.get_description(s), "%s (ruler of the Aurel Crown) at Crownkeep" % RulerRules.current_name(s, "kingdom"))
 
 
 func test_the_unknown_army_reason_does_not_assume_it_was_destroyed() -> void:
@@ -446,8 +446,8 @@ func test_the_battle_report_viewer_names_the_armies_and_says_50_50() -> void:
 	var viewer := load("res://ui/battle_report_viewer.tscn").instantiate() as BattleReportViewer
 	assert_true(viewer.show_event(border, r.new_state))
 	var text := _labels_text(viewer)
-	assert_true(text.contains("Army: the Clans' 4th · Thornmane Clans army at Wildmoor (1 unit, no commander)"), text)
-	assert_true(text.contains("Army: the Crown's 2nd · Aurel Crown army at Thornvale (1 unit, no commander)"), text)
+	assert_true(text.contains("Army: the Clans' 4th (Fangthrowers), from Wildmoor"), text)
+	assert_true(text.contains("Army: the Crown's 2nd (Crossbowmen), from Thornvale"), text)
 	# An exact tie at the round cap: the viewer says a 50/50 roll picked the winner.
 	var tied := border.duplicate(true)
 	tied.numbers.tie_break = "roll"
