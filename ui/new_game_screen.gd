@@ -27,6 +27,9 @@ extends Control
 ## Forts & sieges (M3c S-1a, #98; design/M3C_SIEGES.md §1.3): the "Forts & sieges (M3c preview)" box, off by
 ## default (launching with `-- --sieges` ticks it), independent of Rulers and Paths. Ticked, config() adds
 ## "sieges": true (GameScreen.starting_state then uses GameState.with_sieges).
+## Fog of war (M5-1, #112; design/M5_MAGIC_FOG.md §1.3): the "Fog of war (M5 preview)" box, off by default (launching
+## with `-- --fog` ticks it), independent of every other box. Ticked, config() adds "fog": true (GameScreen.starting_state
+## then calls GameState.setup_fog on whichever game the other boxes make).
 ## Builds its children in code, so it works before it is in the tree (headless tests).
 ##
 ## API:
@@ -49,6 +52,7 @@ extends Control
 ##   set_rulers(on), rulers_on()     the "Rulers" box (ticked by default)
 ##   set_paths(on), paths_on()       the "Paths (M4 preview)" box (M4-1); ticking it ticks rulers
 ##   set_sieges(on), sieges_on()     the "Forts & sieges (M3c preview)" box (M3c), on its own
+##   set_fog(on), fog_on()           the "Fog of war (M5 preview)" box (M5-1), on its own
 ##   quick_start_config(rng) -> Dictionary   Quick start's config (static): a random faction for the person
 ##                                   in seat 1, the computer at Normal in seat 2, rulers on with the balanced
 ##                                   preset for the person, and a random seed
@@ -93,6 +97,7 @@ var rulers_toggle: CheckBox  # "Rulers": on by default
 var rulers_label: Label  # what the box does, shown while it is ticked
 var paths_toggle: CheckBox  # M4-1: "Paths (M4 preview)": off by default; needs rulers
 var sieges_toggle: CheckBox  # M3c: "Forts & sieges (M3c preview)": off by default; independent of rulers and paths
+var fog_toggle: CheckBox  # M5-1: "Fog of war (M5 preview)": off by default; works with any game
 var build_screen: BuildScreen = null  # opened by Start while rulers are on; built on first use
 var _last_builds := {}  # faction id -> the last game's build of a human seat (rematch)
 var _model: GameState
@@ -141,6 +146,8 @@ func config() -> Dictionary:
 		out["paths"] = true
 	if sieges_on():
 		out["sieges"] = true
+	if fog_on():
+		out["fog"] = true
 	return out
 
 
@@ -214,6 +221,10 @@ func prefill(last_game: Dictionary) -> void:
 		set_sieges(true)
 	elif last_game.has("players"):
 		set_sieges(_sieges_by_default())
+	if last_game.get("fog", false) == true:  # M5-1
+		set_fog(true)
+	elif last_game.has("players"):
+		set_fog(_fog_by_default())
 	new_seed(int(last_game.get("seed", -1)))
 
 
@@ -344,6 +355,21 @@ func sieges_on() -> bool:
 ## Forts and sieges start ticked when the game was launched with `-- --sieges` (GameScreen.starting_state).
 static func _sieges_by_default() -> bool:
 	return OS.get_cmdline_user_args().has("--sieges")
+
+
+## Ticks or clears the "Fog of war (M5 preview)" box (M5-1). It needs no other box.
+func set_fog(on: bool) -> void:
+	fog_toggle.set_pressed_no_signal(on)
+	_refresh()
+
+
+func fog_on() -> bool:
+	return fog_toggle.button_pressed
+
+
+## Fog of war starts ticked when the game was launched with `-- --fog` (GameScreen.starting_state).
+static func _fog_by_default() -> bool:
+	return OS.get_cmdline_user_args().has("--fog")
 
 
 func build_screen_open() -> bool:
@@ -686,6 +712,7 @@ func _build() -> void:
 	rulers_row.add_child(rulers_label)
 	_build_paths_row(box)
 	_build_sieges_row(box)
+	_build_fog_row(box)
 
 	error_label = _label("ErrorLabel", "", 19, NEGATIVE)
 	error_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -758,6 +785,29 @@ func _build_sieges_row(box: Container) -> void:
 	sieges_toggle.set_pressed_no_signal(_sieges_by_default())
 	sieges_toggle.toggled.connect(func(on: bool): set_sieges(on))
 	row.add_child(sieges_toggle)
+
+
+## M5-1: the "Fog of war (M5 preview)" box under the sieges box. It is independent of every other box. Its tooltip is
+## §1.3's, with the codex entry one click away.
+func _build_fog_row(box: Container) -> void:
+	var row := HBoxContainer.new()
+	row.name = "FogRow"
+	row.add_theme_constant_override("separation", 14)
+	box.add_child(row)
+	fog_toggle = CheckBox.new()
+	fog_toggle.name = "FogToggle"
+	fog_toggle.text = "Fog of war (M5 preview)"
+	fog_toggle.add_theme_font_size_override("font_size", 20)
+	fog_toggle.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	fog_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Fog of war (preview)", fog_tooltip()), "fog_of_war")
+	fog_toggle.set_pressed_no_signal(_fog_by_default())
+	fog_toggle.toggled.connect(func(on: bool): set_fog(on))
+	row.add_child(fog_toggle)
+
+
+## The fog box's explanation (design/M5_MAGIC_FOG.md §1.3), then what the preview has so far.
+static func fog_tooltip() -> String:
+	return "You see exactly only where you own land or have an army; next to that, roughly; beyond, only what you saw last. In hotseat, each player sees only their own view. It works with or without Rulers, Paths and Forts & sieges. Fog of war is still being built: the rules that decide what each player can see are in, but the map and the panels don't hide anything yet."
 
 
 ## Human or Computer for seat `i` (0-based).

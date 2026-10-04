@@ -22,6 +22,8 @@ class_name GameState
 ## magic fields), and `is_view` with the stand-ins' view notes (Army.seen) in a player's view. Without them a game
 ## saves byte-identically to before. Rules: MagicRules (validate checks the magic fields against `magic`); a view
 ## note only in a view (_validate_views). The per-faction army numbers M5 asks for are next_army_ids (#94).
+## M5-1: setup_fog() turns fog on for any game before turn 1; a view (FogRules.view_state) also saves `view_of`, its
+## viewer, and validate relaxes four checks for the view's rivals (view_relaxes).
 
 var provinces: Array[Province] = []
 var factions: Array[Faction] = []
@@ -43,6 +45,9 @@ var magic: bool = false  # spells, rituals and enchantments (MagicRules); needs 
 ## "cast_turn", "until_turn", "bonus", "ending"} each (MagicRules.ENCHANTMENT_KEYS). Saved only in a magic game.
 var enchantments: Array = []
 var is_view: bool = false  # one player's view of the game (FogRules, §2.7), never the true state; saved only when true
+## Whose view it is (M5-1, FogRules.view_state): the viewer's faction id, saved with is_view. validate relaxes four
+## checks for the other factions of a view, its rivals (view_relaxes); "" in a true state.
+var view_of: String = ""
 
 func _init(map_seed: int = 12345) -> void:
 	seed_value = map_seed
@@ -190,6 +195,27 @@ func setup_sieges(errors = null) -> bool:
 	return validate(errors)
 
 
+## Fog of war for any game (M5-1, design/M5_MAGIC_FOG.md §1.3, §2.1): it can follow any setup, before turn 1. Fog is
+## a lens, not a rule: the resolver never reads it, so a fog game resolves exactly as the same game without it, and
+## only what each player is shown changes (FogRules). The per-faction army numbers fog needs are every game's rule
+## since #94 (next_army_ids), so there is no counter to set up (§2.1's director's note). Returns false, with a plain
+## reason in `errors`, when it is too late.
+func setup_fog(errors = null) -> bool:
+	if current_turn != 0:
+		_report(errors, "Fog of war is chosen before the game starts.")
+		return false
+	fog = true
+	return validate(errors)
+
+
+## True when `faction_id` is a rival in a player's view (M5-1, §2.7): validate relaxes exactly four checks for it,
+## because a view holds only what its viewer knows of a rival: AscensionRules.validate's prerequisites and order of
+## `researched`, RulerRules.validate_factions' kept-power arithmetic and sacrifice-only check, _living_rulers_on_map,
+## and summoned units' `until` (stand-ins carry 0; MagicRules). Never in a true state, and never for the viewer.
+func view_relaxes(faction_id: String) -> bool:
+	return is_view and faction_id != view_of
+
+
 ## Hands out `faction_id`'s next army id, e.g. "kingdom-3": its own count (next_army_ids), skipping ids
 ## already in use.
 func new_army_id(faction_id: String) -> String:
@@ -319,6 +345,10 @@ func validate(errors = null) -> bool:
 ## (Army.validate_seen). A true state never has one.
 func _validate_views(errors) -> bool:
 	var ok := true
+	if not view_of.is_empty() and (not is_view or find_faction(view_of) == null):
+		_report(errors, "This game says it is the view of '%s', but %s." % [view_of,
+			"it is the true game, not a player's view" if not is_view else "that is not a faction in this game"])
+		ok = false
 	for a in armies:
 		if a.seen.is_empty():
 			continue
@@ -338,6 +368,8 @@ func _living_rulers_on_map(errors) -> bool:
 	for f in factions:
 		if not f.has_ruler() or f.ruler_status != RulerRules.ALIVE or RulerRules.ruler_data(f.ruler_type).is_empty():
 			continue
+		if view_relaxes(f.id):
+			continue  # M5-1 (§2.7): a view may know a rival's ruler lives without knowing where (RulerRules.ruler_alive)
 		if RulerRules.ruler_army(self, f.id) == null:
 			_report(errors, "%s (%s) is alive but has no ruler's army on the map. A living ruler always travels as its own army, and a ruler whose army is gone is dead." % [
 				Serial.cap(RulerRules.current_name(self, f.id)), f.faction_name if not f.faction_name.is_empty() else f.id])
@@ -384,6 +416,7 @@ func to_dict() -> Dictionary:
 		d["enchantments"] = enchantment_dicts
 	if is_view:
 		d["is_view"] = true  # M5: only a player's view carries the key
+		d["view_of"] = view_of  # M5-1: whose view it is
 	return d
 
 ## Rebuilds a state from to_dict() output (or the same data after a JSON round-trip). Returns null when
@@ -413,6 +446,10 @@ static func from_dict(data, errors = null) -> GameState:
 		if flag == null:
 			return null
 		state.set(key, flag)
+	var viewer = Serial.expect(data, "view_of", TYPE_STRING, errors, WHO, "")  # M5-1: views only
+	if viewer == null:
+		return null
+	state.view_of = String(viewer)
 	var enchantment_list = Serial.expect_dicts(data, "enchantments", errors, WHO, "enchantment")  # M5: magic games only
 	if enchantment_list == null:
 		return null

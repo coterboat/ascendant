@@ -1225,7 +1225,9 @@ static func _fraction_word(divisor: int) -> String:
 ## every faction has a ruler (paths need rulers) and a path, its pool is 0 or more, its researched nodes
 ## are its own, each once, each after its prerequisites, done on turns 0 .. current_turn in order, at most
 ## one Oath, path_branch is that Oath's side, and its target is legal. Appends plain-language messages to
-## `errors` (or push_error when it isn't an Array).
+## `errors` (or push_error when it isn't an Array). M5-1: for a rival in a player's view (GameState.view_relaxes)
+## the prerequisites and the turn order of `researched` are relaxed: a view holds the heralded nodes and the ones it
+## learned, by the turn it learned them (design/M5_MAGIC_FOG.md §2.7).
 static func validate(state: GameState, errors = null) -> bool:
 	var ok := true
 	for f in state.factions:
@@ -1263,11 +1265,12 @@ static func validate(state: GameState, errors = null) -> bool:
 			if seen.has(nid):
 				_report(errors, "%s has researched %s twice. Each node is researched once." % [name, node_ref(nid)])
 				ok = false
+			var relaxed := state.view_relaxes(f.id)  # M5-1 (§2.7): a view knows only some of a rival's nodes
 			for req in n.requires:
-				if not seen.has(String(req)):
+				if not seen.has(String(req)) and not relaxed:
 					_report(errors, "%s has researched %s without %s before it." % [name, node_ref(nid), node_ref(String(req))])
 					ok = false
-			if int(n.get("requires_any", 0)) > 0:
+			if int(n.get("requires_any", 0)) > 0 and not relaxed:
 				var ordinary := 0
 				for d in seen:
 					if is_ordinary(d):
@@ -1276,7 +1279,7 @@ static func validate(state: GameState, errors = null) -> bool:
 					_report(errors, "%s has researched %s with only %d ordinary nodes before it; it needs %d." % [
 						name, node_ref(nid), ordinary, int(n.requires_any)])
 					ok = false
-			if turn < 0 or turn > state.current_turn or turn < last_turn:
+			if turn < 0 or turn > state.current_turn or (turn < last_turn and not relaxed):
 				_report(errors, "%s has researched %s on turn %d, which is out of order (this is turn %d)." % [
 					name, node_ref(nid), turn, state.current_turn])
 				ok = false

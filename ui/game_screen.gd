@@ -332,9 +332,17 @@ func _cue_report(delay_s: float) -> void:
 ## The starting state for `game_config`: the M1 game, or with rulers when the config asks for them
 ## ("rulers": true, or "builds") or the game was launched with `-- --rulers`; with paths (M4-1) when it has
 ## "paths": true or the game was launched with `-- --paths`; with forts and sieges (M3c) when it has "sieges": true or
-## the game was launched with `-- --sieges`. Factions without a
+## the game was launched with `-- --sieges`; and with fog of war (M5-1) on top of any of these when it has "fog": true
+## or the game was launched with `-- --fog`. Factions without a
 ## build get their balanced preset. Null when a build is illegal (the session then explains).
 static func starting_state(game_config: Dictionary) -> GameState:
+	var state := _starting_state(game_config)
+	if state != null and (game_config.get("fog", false) or OS.get_cmdline_user_args().has("--fog")):
+		state.setup_fog([])  # M5-1: fog is a lens on whichever game the other boxes make
+	return state
+
+
+static func _starting_state(game_config: Dictionary) -> GameState:
 	var seed_value := int(game_config.get("seed", 0))
 	var args := OS.get_cmdline_user_args()
 	if game_config.get("sieges", false) or args.has("--sieges"):
