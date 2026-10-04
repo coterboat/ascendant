@@ -103,7 +103,10 @@ extends BattleResolver
 ##   Dread Lands  (the Blood Pact's province rule) in a province battle in a province the Blood Pact
 ##                owned at the start of the turn, every enemy side has the rule's value less morale for the
 ##                whole battle (a morale part "Dread Lands"). Ownership only changes in the capture phase,
-##                after every battle, so the province's owner as the battle is fought is that owner.
+##                after every battle, so the province's owner as the battle is fought is that owner. It
+##                doesn't stack with Dread (M4-6, §10.3 and §15 call 13): while an enemy ruler's Dread takes
+##                morale from a side, Dread Lands takes only what goes beyond it (with both at 1, nothing),
+##                and it takes its full value again once that ruler has fallen.
 ##   Red Harvest  (mandate) after a battle its side wins, RED_HARVEST_GOLD gold for every enemy fighter lost
 ##                in it (all of a losing side's fighters: fallen, or destroyed with their armies). The
 ##                report gets "red_harvest"; TurnResolver pays it.
@@ -1098,11 +1101,13 @@ static func _morale(sides: Array, si: int, standing: Array) -> Dictionary:
 			dread += int(sides[oi].dread)
 	if dread > 0:
 		parts[DREAD] = -dread
-	# M4-3: Dread Lands, for the whole battle, on every side but the Blood Pact's own (§4.7).
+	# M4-3: Dread Lands, for the whole battle, on every side but the Blood Pact's own (§4.7). M4-6: it doesn't
+	# stack with Dread, so it takes only what goes beyond the Dread this side suffers now.
 	var lands := 0
 	for oi in sides.size():
 		if oi != si:
 			lands = maxi(lands, int(sides[oi].get("dread_lands", 0)))
+	lands = maxi(0, lands - dread)
 	if lands > 0:
 		parts[DREAD_LANDS] = -lands
 	var value: int = side.base_morale
@@ -2219,8 +2224,13 @@ static func _paths_line(sides: Array) -> String:
 			for o in sides:
 				if o.faction != s.faction:
 					others.append(String(o.name))
-			lands.append("%s: this is %s own land, so %s %s %d less morale" % [DREAD_LANDS, _poss(_people_ref(s)),
-				" and ".join(others), "has" if others.size() == 1 else "each have", int(s.dread_lands)])
+			var line := "%s: this is %s own land, so %s %s %d less morale" % [DREAD_LANDS, _poss(_people_ref(s)),
+				" and ".join(others), "has" if others.size() == 1 else "each have", int(s.dread_lands)]
+			if int(s.get("dread", 0)) > 0:
+				# M4-6: Dread Lands doesn't stack with Dread.
+				line += ", but not on top of %s's Dread: while %s stands, Dread Lands adds nothing to it" % [String(s.ruler_info.get("name", "the ruler")),
+					String(s.ruler_info.get("name", "the ruler"))]
+			lands.append(line)
 	if people.is_empty() and lands.is_empty():
 		return ""
 	var text := "Paths:"

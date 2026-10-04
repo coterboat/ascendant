@@ -50,8 +50,8 @@ func test_question_buttons_only_for_codex_keys_that_exist() -> void:
 		assert_eq(b.text, "?")
 		assert_true(b.tooltip_text.contains(String(RulesCodex.entry(key).title)), "the tooltip names the entry: %s" % b.tooltip_text)
 		assert_false(b.tooltip_text.contains("_"), "the tooltip shows the title, not a raw key")
-	# The battle row keeps its "Battle report" button next to the event.
-	assert_eq(rows[1].get_parent().get_child_count(), 2)
+	# The battle row keeps its "Battle report" button next to the event, with M3-5's Watch beside it.
+	assert_eq(rows[1].get_parent().get_child_count(), 3)
 	assert_eq(panel.battle_buttons().size(), 1)
 	panel.free()
 

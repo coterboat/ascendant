@@ -63,6 +63,9 @@ extends Control
 ##                        computer seats, the computer then plays at once. In watch mode: next_turn().
 ##   next_turn()          watch mode only: both computers give their orders and the turn resolves.
 ##   open_turn_report()   the Turn report button: the last resolved turn's report.
+##   watch_battles(events, start = 0) -> String   M3-5: plays battle events (report order) in the battle
+##                        host, from events[start]; "" or why not (no game, behind the handoff cover).
+##   watch_battle(event) -> String   M3-5: one battle, with the report's other battles as its queue.
 ##   open_codex(key)      the Codex button, a report's "?", a right-click on a linked number.
 ##   show_results()       the Results button once the game is over: the victory screen again.
 ##   open_ruler_panel()   the Ruler button (M2-6, games with rulers only): the map's ruler panel.
@@ -78,12 +81,22 @@ extends Control
 ## cover or a modal overlay covers it. use_board("3d" / "2d") switches it (tests and tools).
 ## M3a.2: the turn's start is kept with its report (_replay), so every hotseat seat sees the playback
 ## behind its own handoff, and the report's "Watch this turn again" (watch_turn_again) plays it once more.
+##
+## Watching battles (M3-5, #60): one BattleHost on the Overlays layer plays every battle playback. The turn
+## report's Watch buttons and "Watch your battles (N)", and the battle report viewer's Watch, open it
+## (watch_battle(event), watch_battles(events, start)); its Full report opens the viewer over it. With
+## Settings "Watch my battles at the start of each turn" on, the player's battles start by themselves once
+## the turn's board playback has finished and the report has opened, after any handoff, once per player and
+## turn (never in watch mode, or for a loaded game's last turn). Nothing is watched behind the handoff cover,
+## and a handoff closes the battle screen. The viewer's side gets the victory or defeat sting (watch_viewer).
 
 const SCENE := "res://ui/game_screen.tscn"
 const CODEX_SCENE := "res://ui/codex_panel.tscn"
 ## Sound timing: turn_start lands just after End turn's sound, the report's cues after turn_start.
 const TURN_START_DELAY := 0.45
 const REPORT_CUE_DELAY := 1.1
+## M3-5: the z_index of an overlay opened over the battle screen (above its result card and legend).
+const OVER_BATTLE_Z := BattleHost.OVER_Z
 
 var session: GameSession = null
 var computer: AISeat = null  # plays the computer seats of `session`
@@ -106,6 +119,7 @@ var research_hud: ResearchHud  # M4-4: the research chip, the research panel and
 var report_overlay: Control
 var report_panel: TurnReportPanel
 var battle_viewer: BattleReportViewer
+var battle_host: BattleHost  # M3-5: every battle playback
 var codex: CodexPanel
 var victory_screen: VictoryScreen
 var error_overlay: Control
@@ -136,6 +150,7 @@ var _bound := false
 var _turn_before: GameState = null  # M3a.1: the start-of-turn state of the turn being resolved, for its playback
 var _played_for := {}  # M3a.1: faction id -> the report turn already played out on the board for them
 var _replay := {}  # M3a.2: {"turn", "before"}: the last resolved turn's start, for every seat's playback and "Watch this turn again"
+var _auto_watched := {}  # M3-5: faction id -> the report turn whose battles auto-watch already played for them
 
 
 func _ready() -> void:
@@ -176,6 +191,7 @@ func start_game(game_config: Dictionary = {}) -> void:
 	loaded_header = {}
 	_turn_before = null
 	_played_for = {}
+	_auto_watched = {}
 	# The state's seed and the game seed are the same, so GameSession's turn seeds match TurnResolver's.
 	session = GameSession.new(starting_state(config), config.players, config.seed, AutoBattleResolver.new(), ai)
 	computer = AISeat.new(session, config.seed)
@@ -209,6 +225,10 @@ func load_game(save: Dictionary) -> String:
 	computer = restored.computer
 	map.session = session
 	_build_opponent_tag()
+	# M3-5: a loaded game doesn't auto-watch the battles of the turn it was saved after.
+	_auto_watched = {}
+	for fid in session.players():
+		_auto_watched[String(fid)] = session.turn_report().turn
 	# The save is the start of this turn: it counts as this turn's autosave.
 	_turn_start_turns = session.turns_played()
 	_snapshot = SaveGame.computer_snapshot(computer, session)
@@ -440,6 +460,7 @@ func _show_watch() -> void:
 
 ## Covers everything and hides the map until the next player presses Ready.
 func _show_handoff() -> void:
+	battle_host.close()  # M3-5: nothing is watched behind the handoff cover
 	map.clear_preview()
 	map.visible = false
 	if handoff.show_for(session):
@@ -592,6 +613,7 @@ func _switch(next: Node) -> void:
 
 func _close_overlays() -> void:
 	report_overlay.visible = false
+	battle_host.close()
 	battle_viewer.visible = false
 	_set_battle_audio(false)
 	quit_overlay.visible = false
@@ -614,9 +636,18 @@ func _reset_screens() -> void:
 
 
 ## Shows an overlay above every other overlay: the last one opened is always on top.
+## M3-5: the battle screen draws its result card, why panel and legend with a raised z_index, so an
+## overlay opened over it (the report viewer, the codex, the settings) is lifted above those
+## (OVER_BATTLE_Z), and raising the battle screen again puts every overlay back level.
 func _raise(overlay: Control) -> void:
 	overlays.move_child(overlay, overlays.get_child_count() - 1)
 	overlay.visible = true
+	if overlay == battle_host:
+		for c in overlays.get_children():
+			if c is CanvasItem:
+				(c as CanvasItem).z_index = 0
+	elif battle_host != null:
+		overlay.z_index = OVER_BATTLE_Z if battle_host.visible else 0
 
 
 ## F1 over a number linked to the codex opens its entry (right-click is handled by the link itself).
@@ -938,10 +969,20 @@ func _build_overlays() -> void:
 
 	report_overlay = _report_overlay()
 
+	battle_host = BattleHost.new()  # M3-5: under the report viewer and the codex it opens
+	battle_host.rebuild_with = func(e: Dictionary) -> Dictionary: return rebuild_battle_log(session, e)
+	battle_host.codex_requested.connect(open_codex)
+	battle_host.report_requested.connect(_show_battle_report)
+	overlays.add_child(battle_host)
+
 	battle_viewer = BattleReportViewer.new()
+	battle_viewer.can_rebuild = true
 	battle_viewer.codex_requested.connect(open_codex)
 	battle_viewer.closed.connect(_set_battle_audio.bind(false))
 	battle_viewer.visibility_changed.connect(_on_battle_viewer_visibility)
+	battle_viewer.watch_requested.connect(func(e: Dictionary):
+		battle_viewer.close()
+		watch_battle(e))
 	overlays.add_child(battle_viewer)
 
 	codex = load(CODEX_SCENE).instantiate()
@@ -1101,6 +1142,8 @@ func _report_overlay() -> Control:
 	report_panel.battle_report_requested.connect(func(e: Dictionary): _show_battle_report(e))
 	report_panel.codex_requested.connect(open_codex)
 	report_panel.watch_again_requested.connect(func(): watch_turn_again())
+	report_panel.watch_requested.connect(func(e: Dictionary): watch_battle(e))
+	report_panel.watch_battles_requested.connect(func(events: Array): watch_battles(events))
 	box.add_child(report_panel)
 	var footer := PanelContainer.new()
 	footer.name = "Footer"
@@ -1271,13 +1314,110 @@ func watch_turn_again() -> bool:
 
 
 ## Opens the turn report (with its headline cues after `cue_delay` seconds), after the board's playback
-## when one is running.
+## when one is running; then auto-watch (M3-5) when the setting is on.
 func _open_report_when_played(cue_delay: float) -> void:
 	if map.board != null and map.board.is_playing():
 		map.board.playback_finished.connect(func():
 			if session != null and session.turn_report().turn > 0:
 				open_turn_report()
-				_cue_report(0.2), CONNECT_ONE_SHOT)
+				_cue_report(0.2)
+				auto_watch(), CONNECT_ONE_SHOT)
 		return
 	open_turn_report()
 	_cue_report(cue_delay)
+	auto_watch()
+
+
+# --- watching battles (M3-5) ----------------------------------------------------------------------
+
+## Plays `events` (battle events, in report order) in the battle host from events[start], over whatever is
+## open (the turn report, which shows again when it closes). "" or why not.
+func watch_battles(events: Array, start: int = 0) -> String:
+	_bind()
+	if session == null or session.phase() == GameSession.Phase.INVALID:
+		return "No game is running."
+	if handoff.visible:
+		return "Battles can't be watched behind the handoff cover."
+	var why := battle_host.open(events, start, session, watch_viewer())
+	if why.is_empty():
+		_raise(battle_host)
+	return why
+
+
+## Plays one battle of the last report, with the report's other battles that can be watched as its queue.
+func watch_battle(event: Dictionary) -> String:
+	_bind()
+	if session == null:
+		return "No game is running."
+	var battles := BattleHost.watchable(session.battle_events(), true)
+	for i in battles.size():
+		if same_battle(battles[i], event):
+			return watch_battles(battles, i)
+	return watch_battles([event])
+
+
+## Whether two battle events are the same battle of the report (copies of it): same text, same provinces.
+static func same_battle(a: Dictionary, b: Dictionary) -> bool:
+	return String(a.get("text", "")) == String(b.get("text", "")) and Array(a.get("provinces", [])) == Array(b.get("provinces", []))
+
+
+## Whose side the battle screen takes for its victory and defeat stings: the only person at the table, or
+## the player giving orders now in a hotseat game; "" for nobody in particular (watch mode, a finished
+## hotseat game).
+func watch_viewer() -> String:
+	if session == null:
+		return ""
+	if session.human_seats() == 1:
+		for fid in session.players():
+			if not session.is_computer(String(fid)):
+				return String(fid)
+	if session.phase() == GameSession.Phase.ORDERS and not session.is_computer(session.current_player()):
+		return session.current_player()
+	return ""
+
+
+## Settings "Watch my battles at the start of each turn": once the new turn's report has opened (after the
+## board's playback and any handoff), the player at the controls watches their battles, once per turn.
+## Never in watch mode, behind the handoff cover, or when they fought none. True when it started.
+func auto_watch() -> bool:
+	if session == null or handoff.visible or session.phase() != GameSession.Phase.ORDERS or is_watching():
+		return false
+	var fid := session.current_player()
+	var turn := int(session.turn_report().turn)
+	if session.is_computer(fid) or turn <= 0 or int(_auto_watched.get(fid, 0)) >= turn:
+		return false
+	if not GameSettings.load_from().auto_watch_battles:
+		return false
+	_auto_watched[fid] = turn
+	var mine := BattleHost.watchable(BattleHost.battles_of(session.battle_events(), fid), true)
+	if mine.is_empty():
+		return false
+	return watch_battles(mine).is_empty()
+
+
+## Rebuilds the log of a battle of the last turn that isn't kept, from the game record (BattleLog.regenerate),
+## and checks it against the battle's report (BattleLog.cross_check). {"log", "errors"}: "log" is {} with the
+## plain reason when it can't. The battle host calls this (rebuild_with); the record is a copy, so nothing
+## in the game changes.
+static func rebuild_battle_log(game_session: GameSession, event: Dictionary) -> Dictionary:
+	if game_session == null:
+		return {"log": {}, "errors": [BattleHost.NOT_KEPT]}
+	var report := game_session.turn_report()
+	var k := -1
+	var n := 0
+	for e in report.events:
+		if not GameSession.BATTLE_TYPES.has(String(e.get("type", ""))):
+			continue
+		if same_battle(e, event):
+			k = n
+			break
+		n += 1
+	if k < 0:
+		return {"log": {}, "errors": ["This battle isn't in the last turn's report, so its playback can't be rebuilt."]}
+	var out := BattleLog.regenerate(game_session.record(), int(report.turn), k)
+	if (out.log as Dictionary).is_empty():
+		return {"log": {}, "errors": out.errors if not out.errors.is_empty() else [BattleHost.NOT_KEPT]}
+	var numbers: Dictionary = event.get("numbers", {})
+	if not BattleLog.cross_check(out.log, numbers.get("report", {})).is_empty():
+		return {"log": {}, "errors": ["The rebuilt playback doesn't match this battle's report, so it isn't shown."]}
+	return {"log": out.log, "errors": []}

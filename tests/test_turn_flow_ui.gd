@@ -198,8 +198,12 @@ func test_only_battle_events_get_a_battle_report_button() -> void:
 	var rows := panel.event_rows()
 	for i in events.size():
 		var is_battle: bool = GameSession.BATTLE_TYPES.has(events[i].type)
-		assert_eq(rows[i].get_parent().get_child_count(), 2 if is_battle else 1,
-			"battle button only on battle rows: %s" % events[i].text)
+		assert_eq(rows[i].get_parent().get_child_count(), 3 if is_battle else 1,
+			"Watch and Battle report only on battle rows: %s" % events[i].text)
+	# M3-5: the stub resolver writes no log, so Watch is there but says why it can't play.
+	assert_eq(panel.watch_buttons().size(), battles.size(), "every battle row has Watch")
+	assert_true(panel.watch_buttons()[0].disabled, "a battle fought with the test rules can't be watched")
+	assert_true(panel.watch_buttons()[0].tooltip_text.replace("\n", " ").contains(BattleHost.NO_LOG), panel.watch_buttons()[0].tooltip_text)
 
 	var requested := []
 	panel.battle_report_requested.connect(func(e: Dictionary): requested.append(e))

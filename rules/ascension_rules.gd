@@ -1184,7 +1184,7 @@ static func province_rule_sentence(state: GameState, faction_id: String, own: bo
 			return "Each turn %s next to %s forests turns to forest for good (the Wild Spreads)." % [
 				"one province %s own" % you if n == 1 else "%d provinces %s own" % [n, you], their.to_lower()]
 		DREAD_LANDS:
-			return "Invaders have %d less morale in province battles on %s land (Dread Lands)." % [int(rule.value), their.to_lower()]
+			return "Invaders have %d less morale in province battles on %s land (Dread Lands), not on top of a ruler's Dread." % [int(rule.value), their.to_lower()]
 	return ""
 
 

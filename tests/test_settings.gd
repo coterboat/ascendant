@@ -67,7 +67,7 @@ func test_the_panel_saves_every_change() -> void:
 	assert_eq(back.ui_scale, 125, "the size is saved at once")
 	assert_eq(back.auto_watch_battles, true)
 	assert_eq(back.window_mode, "fullscreen")
-	assert_true(panel.watch_picker.tooltip_text.contains("milestone 3"), "the auto-watch switch explains that it is for later")
+	assert_true(panel.watch_picker.tooltip_text.contains("start of each turn"), "the auto-watch switch explains when it plays (M3-5)")
 	panel.close_button.pressed.emit()
 	assert_false(panel.visible)
 	panel.free()

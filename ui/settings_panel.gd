@@ -1,9 +1,12 @@
 class_name SettingsPanel
 extends Control
-## The Settings overlay (title screen and the game menu): window mode, interface size, for later
-## whether battles play by themselves, the board (the 3D world or the 2D map, M3a.1) and how fast a turn
-## plays out on it, and the sound: Master, Music, Effects and Ambiance volumes and a
-## mute switch. Every change is saved to the settings file (GameSettings) and put into effect at once
+## The Settings overlay (title screen, the game menu and the battle screen): window mode, interface size,
+## the board (the 3D world or the 2D map, M3a.1) and how fast a turn plays out on it, and the sound:
+## Master, Music, Effects and Ambiance volumes and a mute switch. M3-5 (#60, design/M3_BATTLES.md §6) adds a
+## Battles column: watching your battles at the start of each turn (GameSettings.auto_watch_battles), the
+## battle view (Simple, or 3D on the land once it is in the game), the speed battles start at, reduced
+## motion and screen shake (the [battle] section, BattleFx.settings / save_settings).
+## Every change is saved to the settings file (GameSettings) and put into effect at once
 ## (volumes even before the panel is in the tree, since the buses are global); Close (or Esc) hides the
 ## panel and emits `closed`.
 ## Builds its children in code, so it works before it is in the tree (headless tests).
@@ -13,6 +16,10 @@ extends Control
 ##   set_window_mode(mode) -> bool, set_ui_scale(percent) -> bool, set_auto_watch(on)
 ##   set_volume(key, percent) -> bool   key: a GameSettings.VOLUME_BUSES key ("music_volume", ...)
 ##   set_muted(on)
+##   M3-5, the Battles column (saved in the same file's [battle] section):
+##   battle_view_picker, battle_speed_picker, reduced_motion_toggle, screen_shake_toggle, battle_view_note
+##   set_battle_view(view) -> bool ("simple" / "3d"), set_battle_speed(speed) -> bool (1, 2, 4),
+##   set_reduced_motion(on), set_screen_shake(on)
 ##   window_picker, scale_picker, watch_picker   the three pickers
 ##   board_picker, speed_picker   M3a.1: the map as the 3D world or the 2D map, and the 3D playback speed
 ##   set_board(value) -> bool, set_playback_speed(value) -> bool
@@ -34,12 +41,17 @@ const VOLUME_HELP := {
 var settings: GameSettings = null
 var window_picker: OptionButton
 var scale_picker: OptionButton
-var watch_picker: OptionButton  # "Off" / "On": battles play by themselves (milestone 3)
+var watch_picker: OptionButton  # "Off" / "On": watch my battles at the start of each turn (M3-5)
 var board_picker: OptionButton  # "3D world" / "2D map" (M3a.1)
 var speed_picker: OptionButton  # 1x / 2x / 4x: a turn's playback on the 3D board
 var volume_sliders := {}  # GameSettings volume key -> HSlider (0 to 100)
 var volume_labels := {}  # GameSettings volume key -> Label showing the percent
 var mute_toggle: CheckBox
+var battle_view_picker: OptionButton  # M3-5: "Simple" / "3D on the land"
+var battle_view_note: Label  # M3-5: shown while 3D is chosen but the 3D stage isn't in the game yet
+var battle_speed_picker: OptionButton  # M3-5: 1x / 2x / 4x, the speed battles start at
+var reduced_motion_toggle: CheckBox  # M3-5
+var screen_shake_toggle: CheckBox  # M3-5
 var error_label: Label
 var close_button: Button
 
@@ -69,6 +81,7 @@ func open(game_settings: GameSettings = null) -> void:
 	for key in volume_sliders:
 		_show_volume(key)
 	mute_toggle.set_pressed_no_signal(settings.muted)
+	_show_battle_settings()
 	error_label.visible = false
 	visible = true
 	if is_inside_tree():
@@ -136,6 +149,50 @@ func set_muted(on: bool) -> void:
 	_audio_changed()
 
 
+## M3-5: the battle view. "3d" plays in the Simple view until the 3D stage is in the game (the note says so).
+func set_battle_view(view: String) -> bool:
+	if settings == null or not BattleFx.VIEWS.has(view):
+		return false
+	_save_battle({"view": view})
+	return true
+
+
+func set_battle_speed(speed: int) -> bool:
+	if settings == null or not BattlePlayer.SPEEDS.has(speed):
+		return false
+	_save_battle({"speed": speed})
+	return true
+
+
+func set_reduced_motion(on: bool) -> void:
+	if settings != null:
+		_save_battle({"reduced_motion": on})
+
+
+func set_screen_shake(on: bool) -> void:
+	if settings != null:
+		_save_battle({"screen_shake": on})
+
+
+func _save_battle(changes: Dictionary) -> void:
+	var why := BattleFx.save_settings(changes, settings.path)
+	error_label.text = why
+	error_label.visible = not why.is_empty()
+	_show_battle_settings()
+
+
+func _show_battle_settings() -> void:
+	if settings == null:
+		return
+	var st := BattleFx.settings(settings.path)
+	battle_view_picker.select(BattleFx.VIEWS.find(String(st.view)))
+	battle_view_note.visible = st.view == "3d" and not BattleHost.has_stage_3d()
+	battle_speed_picker.select(BattlePlayer.SPEEDS.find(int(st.speed)))
+	reduced_motion_toggle.set_pressed_no_signal(bool(st.reduced_motion))
+	screen_shake_toggle.set_pressed_no_signal(bool(st.screen_shake))
+	screen_shake_toggle.disabled = bool(st.reduced_motion)
+
+
 func _show_volume(key: String) -> void:
 	var percent := settings.volume(key)
 	(volume_sliders[key] as HSlider).set_value_no_signal(percent)
@@ -179,11 +236,26 @@ func _build() -> void:
 	panel.custom_minimum_size = Vector2(640, 0)
 	panel.add_theme_stylebox_override("panel", UiPalette.panel_style(32))
 	center.add_child(panel)
+	var outer := VBoxContainer.new()
+	outer.name = "Box"
+	outer.add_theme_constant_override("separation", 12)
+	panel.add_child(outer)
+	outer.add_child(_label("TitleLabel", "Settings", 36, UiPalette.GILT))
+	# Two columns (M3-5): the window, the board and the sound on the left, battles on the right.
+	var columns := HBoxContainer.new()
+	columns.name = "Columns"
+	columns.add_theme_constant_override("separation", 48)
+	outer.add_child(columns)
 	var box := VBoxContainer.new()
-	box.name = "Box"
+	box.name = "General"
+	box.custom_minimum_size = Vector2(600, 0)
 	box.add_theme_constant_override("separation", 12)
-	panel.add_child(box)
-	box.add_child(_label("TitleLabel", "Settings", 36, UiPalette.GILT))
+	columns.add_child(box)
+	var battles := VBoxContainer.new()
+	battles.name = "Battles"
+	battles.custom_minimum_size = Vector2(520, 0)
+	battles.add_theme_constant_override("separation", 12)
+	columns.add_child(battles)
 
 	window_picker = _picker("WindowPicker", GameSettings.WINDOW_MODE_NAMES)
 	window_picker.item_selected.connect(func(i: int): set_window_mode(GameSettings.WINDOW_MODES[i]))
@@ -193,14 +265,6 @@ func _build() -> void:
 	scale_picker = _picker("ScalePicker", scale_names)
 	scale_picker.item_selected.connect(func(i: int): set_ui_scale(GameSettings.UI_SCALES[i]))
 	_row(box, "Interface size", scale_picker, "125% draws all text, buttons and the map a quarter bigger, for big or far-away screens.")
-
-	watch_picker = _picker("AutoWatchPicker", ["Off", "On"])
-	watch_picker.item_selected.connect(func(i: int): set_auto_watch(i == 1))
-	_row(box, "Watch battles", watch_picker, TooltipText.plain("Watch battles automatically",
-		"When battles play out on screen (coming in milestone 3), each battle of the turn will play by itself as the turn report opens. For now battles are read in the battle report, so this changes nothing yet."))
-	var watch_note := _label("AutoWatchNote", "Takes effect when animated battles arrive. Until then, open any battle from the turn report.", 16, UiPalette.TEXT_SECONDARY)
-	watch_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(watch_note)
 
 	board_picker = _picker("BoardPicker", GameSettings.BOARD_NAMES)
 	board_picker.item_selected.connect(func(i: int): set_board(GameSettings.BOARDS[i]))
@@ -222,14 +286,47 @@ func _build() -> void:
 	mute_toggle.toggled.connect(set_muted)
 	box.add_child(mute_toggle)
 
+	# Battles (M3-5).
+	battles.add_child(_label("BattlesLabel", "Battles", 26, UiPalette.GILT))
+	watch_picker = _picker("AutoWatchPicker", ["Off", "On"])
+	watch_picker.item_selected.connect(func(i: int): set_auto_watch(i == 1))
+	_row(battles, "Watch my battles", watch_picker, TooltipText.plain("Watch my battles at the start of each turn",
+		"When this is on, each of your turns starts by playing your battles from the last turn back, one after another, once the turn has played out on the board and the report has opened (in a game for two at one screen, only after the handoff, and only your own). Esc goes to the report. Off by default: the Watch buttons on the turn report play any battle whenever you like."))
+	var watch_note := _label("AutoWatchNote", "At the start of each turn, after the handoff. The Watch buttons on the turn report play any battle.", 16, UiPalette.TEXT_SECONDARY)
+	watch_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	watch_note.custom_minimum_size = Vector2(500, 0)
+	battles.add_child(watch_note)
+	battle_view_picker = _picker("BattleViewPicker", ["Simple", "3D on the land"])
+	battle_view_picker.item_selected.connect(func(i: int): set_battle_view(BattleFx.VIEWS[i]))
+	_row(battles, "Battle view", battle_view_picker, TooltipText.plain("Battle view",
+		"How a battle you watch is drawn. Simple: two armies of portrait cards facing each other, with every number on hover. 3D on the land: the battle fought on the province's own ground, woods and walls. Both play back exactly what the report says, with the same controls, why panel and legend."))
+	battle_view_note = _label("BattleViewNote", "3D on the land isn't in the game yet: battles play in the Simple view until it arrives.", 16, UiPalette.TEXT_SECONDARY)
+	battle_view_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	battle_view_note.custom_minimum_size = Vector2(500, 0)
+	battle_view_note.visible = false
+	battles.add_child(battle_view_note)
+	var bspeed_names: Array = BattlePlayer.SPEEDS.map(func(v): return "%d×" % v)
+	battle_speed_picker = _picker("BattleSpeedPicker", bspeed_names)
+	battle_speed_picker.item_selected.connect(func(i: int): set_battle_speed(BattlePlayer.SPEEDS[i]))
+	_row(battles, "Battle speed", battle_speed_picker, TooltipText.plain("Battle speed",
+		"The speed a battle starts at when you watch it. The 1×, 2× and 4× buttons (keys 1, 2, 3) change it while you watch, and the last one you pick is remembered here."))
+	reduced_motion_toggle = _check("ReducedMotionToggle", "Reduced motion", TooltipText.plain("Reduced motion",
+		"Battles play without screen shake, lunges, slow motion or aura waves; impacts become a still ring and the routed fade where they stand. Projectiles still fly, since they show who hit whom. Applies from the next battle you open."))
+	reduced_motion_toggle.toggled.connect(set_reduced_motion)
+	battles.add_child(reduced_motion_toggle)
+	screen_shake_toggle = _check("ScreenShakeToggle", "Screen shake", TooltipText.plain("Screen shake",
+		"A short shake of the battle screen for a big hit or a fallen ruler. Reduced motion turns it off whatever this says. Applies from the next battle you open."))
+	screen_shake_toggle.toggled.connect(set_screen_shake)
+	battles.add_child(screen_shake_toggle)
+
 	error_label = _label("ErrorLabel", "", 18, UiPalette.NEGATIVE)
 	error_label.visible = false
-	box.add_child(error_label)
+	outer.add_child(error_label)
 
 	var row := HBoxContainer.new()
 	row.name = "Buttons"
 	row.alignment = BoxContainer.ALIGNMENT_END
-	box.add_child(row)
+	outer.add_child(row)
 	close_button = Button.new()
 	close_button.name = "CloseButton"
 	close_button.text = "Close"
@@ -238,6 +335,15 @@ func _build() -> void:
 	close_button.tooltip_text = "Close the settings (Esc). Changes are already saved."
 	close_button.pressed.connect(close)
 	row.add_child(close_button)
+
+
+func _check(node_name: String, text: String, help: String) -> CheckBox:
+	var c := CheckBox.new()
+	c.name = node_name
+	c.text = text
+	c.add_theme_font_size_override("font_size", 20)
+	c.tooltip_text = help
+	return c
 
 
 func _row(box: VBoxContainer, title: String, picker: OptionButton, help: String) -> void:
