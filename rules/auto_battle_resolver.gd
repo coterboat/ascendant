@@ -81,6 +81,33 @@ extends BattleResolver
 ## changes no state, so the report, the winner, the armies and the RNG state are the same with it on or
 ## off. resolve_battle() records (TurnResolver keeps the log in the event's numbers.log); estimate() and
 ## resolve() by default don't.
+##
+## Paths of ascension in battle (M4-3, #68; design/M4_ASCENSION.md §4.7, §4.9, §4.10, §9.6). Only in a
+## game with paths (GameState.with_paths) or with a transformation's new unit on the field: otherwise a
+## battle, its report and its log are exactly as above. The numbers come from PathData through
+## RulerRules.unit_stats (AscensionRules.unit_parts) and the constants below:
+##   path parts   every researched node's stat parts on regular units, as named parts "path_<node>": attack
+##                and defense in _attack / _defense, hp in the maximum hp, and morale in the side's base
+##                morale (the average now counts each unit's morale with its parts; base_morale_parts says
+##                how much of it each node gave). Each is a "why" factor measured like a mandate's part
+##                (morale: like Inspire, "morale_path_<node>").
+##   Wings        (Seraphs) can attack any enemy fighter, whatever its rank; while an enemy commander
+##                stands it attacks a commander (a seeded pick among them, the same single target roll).
+##   Iron Hide    (Iron Colossus) every hit on it deals IRON_HIDE_DAMAGE less, never below MIN_DAMAGE: a
+##                named damage part beside Charge's.
+##   Rooted       (Briarwardens) +ROOTED_DEFENSE defense in a province battle in a forest province, whoever
+##                holds it; never in a border battle. A named defense part.
+##   Lifedrinker  (Bloodsworn) at the end of each round, after damage lands and before morale is checked,
+##                if it still stands it heals 1/LIFEDRINK_DIVISOR of the damage its hits dealt that round,
+##                rounded up, up to its maximum.
+##   Dread Lands  (the Blood Pact's province rule) in a province battle in a province the Blood Pact
+##                owned at the start of the turn, every enemy side has the rule's value less morale for the
+##                whole battle (a morale part "Dread Lands"). Ownership only changes in the capture phase,
+##                after every battle, so the province's owner as the battle is fought is that owner.
+##   Red Harvest  (mandate) after a battle its side wins, RED_HARVEST_GOLD gold for every enemy fighter lost
+##                in it (all of a losing side's fighters: fallen, or destroyed with their armies). The
+##                report gets "red_harvest"; TurnResolver pays it.
+## Report sides gain "people" ({"id", "name"} of the transformation, or {}) in a game with paths.
 
 const ROUND_CAP := 8
 const BASE_HIT := 60
@@ -107,6 +134,13 @@ const BERSERK_ATTACK := 3
 const FURY_MORALE := 2
 const FURY_MAX := 3
 const PACK_LEADER_ATTACK := 1
+## M4-3 (§4.9): the transformations' traits. Iron Hide and Rooted are breakpoint values (a flat damage
+## step, and exactly one damage step of defense); Lifedrinker's divisor is a tuning knob (1-3, §10.3).
+const IRON_HIDE_DAMAGE := 1
+const ROOTED_DEFENSE := 4
+const LIFEDRINK_DIVISOR := 2
+## Red Harvest (§4.10): gold for every enemy fighter lost in a battle its side wins.
+const RED_HARVEST_GOLD := 1
 
 const SHIELD_WALL := "Shield Wall"
 const VOLLEY := "Volley"
@@ -116,6 +150,15 @@ const BERSERK := "Berserk"
 const SKIRMISH := "Skirmish"
 const FURY := "Fury"
 const PACK_LEADER := "Pack Leader"
+const WINGS := "Wings"
+const IRON_HIDE := "Iron Hide"
+const ROOTED := "Rooted"
+const LIFEDRINKER := "Lifedrinker"
+## The traits of the transformations' new units (M4-3): a battle with one of them on the field is a path
+## battle even without a game state.
+const PATH_TRAITS := [WINGS, IRON_HIDE, ROOTED, LIFEDRINKER]
+## Lifedrinker's share in words, by LIFEDRINK_DIVISOR (its tuning range and one either side).
+const SHARE_WORDS := {1: "all", 2: "half", 3: "a third", 4: "a quarter"}
 ## What each trait does, built from the constants the rules use: a unit type's trait description
 ## (data/factions.gd trait_desc, shown in unit tooltips) and the first sentence of its codex entry.
 const TRAIT_TEXT := {
@@ -127,6 +170,10 @@ const TRAIT_TEXT := {
 	SKIRMISH: "Can attack the enemy's second rank (its units with Volley) as well as its front rank, even while the front rank shields them.",
 	FURY: "While it stands, every enemy side gets -%d morale" % FURY_MORALE + " (at most -%d in all, however many roar)." % FURY_MAX,
 	PACK_LEADER: "While it stands, every unit on its side gets +%d attack." % PACK_LEADER_ATTACK,
+	WINGS: "Can attack any enemy fighter, whatever its rank, even commanders behind the line. While an enemy commander stands, it attacks a commander.",
+	IRON_HIDE: "Every hit on it deals %d less damage" % IRON_HIDE_DAMAGE + ", but always at least %d." % MIN_DAMAGE,
+	ROOTED: "Gets +%d defense in a battle in a forest province, whoever holds it. Not in a battle on a border." % ROOTED_DEFENSE,
+	LIFEDRINKER: "At the end of each round, if it still stands, it heals %s of the damage its hits dealt that round (rounded up), up to its maximum." % SHARE_WORDS[LIFEDRINK_DIVISOR],
 }
 ## One-line summaries of TRAIT_TEXT, for odds reasons and compact lists.
 const TRAIT_SHORT := {
@@ -138,6 +185,10 @@ const TRAIT_SHORT := {
 	SKIRMISH: "reaches the second rank",
 	FURY: "-%d enemy morale" % FURY_MORALE,
 	PACK_LEADER: "+%d attack to every unit" % PACK_LEADER_ATTACK,
+	WINGS: "flies over the line to strike commanders",
+	IRON_HIDE: "-%d damage from every hit" % IRON_HIDE_DAMAGE,
+	ROOTED: "+%d defense in a forest" % ROOTED_DEFENSE,
+	LIFEDRINKER: "heals %s of the damage it deals" % SHARE_WORDS[LIFEDRINK_DIVISOR],
 }
 
 ## M2-2: the ruler's morale part and its "why" factor id, Dread's morale part, and the prefix of every
@@ -146,6 +197,17 @@ const RULER := "ruler"
 const DREAD := "Dread"
 const MANDATE_PREFIX := "mandate_"
 const RULER_RANK_WORDS := {"front": "in the front rank", "second": "from the second rank"}
+## M4-3: the prefix of a path part's key and "why" factor id ("path_crown_living_iron", AscensionRules'
+## PART_PREFIX), Dread Lands' morale part and its factor id (also its RulesCodex entry and PathData's
+## province rule id), and Red Harvest's mandate id.
+const PATH_PREFIX := "path_"
+const DREAD_LANDS := "Dread Lands"
+const DREAD_LANDS_ID := "dread_lands"
+const RED_HARVEST := "red_harvest"
+## Path stat words for the "why", and the verb that says what a part of that stat did.
+const PATH_STAT_WORDS := {"attack": "attack", "defense": "defense", "hp": "maximum hp"}
+const PATH_STAT_VERBS := {"attack": "was worth about %d damage", "defense": "turned aside about %d damage",
+	"hp": "absorbed about %d damage"}
 
 ## Odds estimate: the real battle is fought ODDS_SAMPLES times on fixed internal seeds.
 const ODDS_SAMPLES := 24
@@ -207,8 +269,31 @@ func resolve_battle(battle: Dictionary, rng: SeededRNG) -> Dictionary:
 			if r.sides[i].faction == r.result.winner:
 				wi = i
 		_log_push(r.log, int(ctx.get("max_events", BattleLog.MAX_EVENTS)), {"t": "feast", "side": wi, "healed": healed})
+	var harvest := red_harvest(r.sides, r.result.winner)
+	if not harvest.is_empty():
+		# M4-3: Red Harvest's gold (TurnResolver pays it and says so in the aftermath).
+		r.result.report["red_harvest"] = harvest
+		_log_push(r.log, int(ctx.get("max_events", BattleLog.MAX_EVENTS)), {"t": "harvest", "side": int(harvest.side),
+			"fighters": int(harvest.fighters), "gold": int(harvest.gold)})
 	r.result["log"] = r.log
 	return r.result
+
+
+## Red Harvest (M4-3, §4.10): when the winning side has it, {"faction", "name", "side" (its index),
+## "fighters" (every fighter of the losing sides: fallen, or destroyed with their armies), "gold"
+## (RED_HARVEST_GOLD for each)}; {} otherwise or when no enemy fighter was lost.
+static func red_harvest(sides: Array, winner: String) -> Dictionary:
+	var wi := -1
+	var lost := 0
+	for i in sides.size():
+		if sides[i].faction == winner:
+			wi = i
+		else:
+			lost += int(sides[i].count_start)
+	if wi < 0 or int(sides[wi].get("red_harvest", 0)) <= 0 or lost == 0:
+		return {}
+	return {"faction": winner, "name": String(sides[wi].name), "side": wi, "fighters": lost,
+		"gold": lost * int(sides[wi].red_harvest)}
 
 
 ## Pre-battle odds for `perspective` (a faction id among the sides): the real battle fought on
@@ -302,6 +387,9 @@ static func fight(sides_in: Array, ctx: Dictionary, rng: SeededRNG, record := fa
 		fort = province.has_fort
 	var defender_fid: String = ctx.get("defender", "")
 	var sides := _build_sides(sides_in, defender_fid, state, kind)
+	if kind == "province" and province != null and state is GameState:
+		for s in sides:
+			s.dread_lands = dread_lands_value(state, s.faction, province)  # M4-3: the Blood Pact's own land
 	var env := {"terrain": terrain, "fort": fort, "kind": kind}
 	# M3-1: the recorder, {"log", "cap"}, or null when not recording.
 	var rec = null
@@ -376,6 +464,8 @@ static func _build_sides(sides_in: Array, defender_fid: String, state, kind: Str
 		var fighters := []
 		var labels := []
 		var morale_sum := 0
+		var morale_by_key := {}  # M4-3: path morale part key -> the morale it adds over the side's units
+		var type_names := {}  # unit type id -> the name its units fight under (a transformation renames)
 		var regulars := 0
 		var strength := 0
 		var line_attacks := []
@@ -387,7 +477,10 @@ static func _build_sides(sides_in: Array, defender_fid: String, state, kind: Str
 				var mods := _unit_mods(mods_by_type, sd.faction, u.type, state)
 				var max_hp: int = RulerRules.unit_max_hp(state, u) if state is GameState else u.type.hp
 				fighters.append(_fighter(i, a, u, false, false, mods, max_hp))
-				morale_sum += u.type.morale
+				morale_sum += u.type.morale + _mods_total(mods.morale)
+				for m in mods.morale:
+					morale_by_key[m.key] = int(morale_by_key.get(m.key, 0)) + int(m.value)
+				type_names[u.type.id] = u.type.name
 				regulars += 1
 				line_attacks.append(u.type.attack + _mods_total(mods.attack))
 				line_cost += u.type.cost
@@ -405,8 +498,13 @@ static func _build_sides(sides_in: Array, defender_fid: String, state, kind: Str
 				line_attacks.append(ut.attack + _mods_total(_unit_mods(mods_by_type, sd.faction, ut, state).attack))
 				line_cost += ut.cost
 		var base_morale := 0
+		var base_morale_parts := {}  # M4-3: what each path morale part added to the average (0s left out)
 		if regulars > 0:
 			base_morale = floori(float(morale_sum) / regulars)
+			for k in morale_by_key:
+				var without := floori(float(morale_sum - int(morale_by_key[k])) / regulars)
+				if base_morale != without:
+					base_morale_parts[k] = base_morale - without
 		else:
 			for f in fighters:
 				base_morale = maxi(base_morale, f.type.morale)
@@ -428,27 +526,60 @@ static func _build_sides(sides_in: Array, defender_fid: String, state, kind: Str
 			"frenzy": int(effects.wounded_attack), "frenzy_key": String(effects.wounded_attack_key),
 			"iron": bool(effects.iron_discipline), "feast": bool(effects.feast_of_victory), "iron_held": [],
 			"ruler_info": ruler_info, "dread": int(ruler_info.get("dread", 0)), "ruler_expected": 0.0, "ruler_dealt": 0,
-			"ruler_fell": 0})
+			"ruler_fell": 0,
+			# M4-3: paths. "paths": the game has them (the report then carries "people"); the rest only
+			# ever change in a battle with path parts, a path trait or Dread Lands.
+			"paths": state is GameState and AscensionRules.has_paths(state), "people": people_of(state, sd.faction),
+			"base_morale_parts": base_morale_parts, "type_names": type_names, "dread_lands": 0,
+			"red_harvest": RED_HARVEST_GOLD if state is GameState and RulerRules.has_mandate(state, sd.faction, RED_HARVEST) else 0,
+			"wings_reach": 0.0, "wings_targets": {}, "wings_kills": [], "iron_hits": 0, "healed": 0})
 		for f in fighters:
 			if not f.trait.is_empty():
 				sides[i].trait_units[f.trait] = f.name
 	return sides
 
 
-## The attack, defense and maximum hp parts the side's mandates give a regular unit of type `ut`, from
-## RulerRules.unit_stats (Royal Armories, Veteran Levies): {"attack": [{"key", "value"}], "defense": [...],
-## "hp": [...]}, keyed "mandate_<id>". Empty for commanders, rulers, types outside the faction's roster
-## and games without mandates. Cached per type in `cache`.
+## The people `fid` has become in `state` (M4-3, §9.6): {"id" (the side of the fork), "name"} once its
+## transformation is researched, otherwise {} (also without paths or a state).
+static func people_of(state, fid: String) -> Dictionary:
+	if not (state is GameState) or not AscensionRules.has_paths(state):
+		return {}
+	var nid := AscensionRules.transformation(state, fid)
+	if nid.is_empty():
+		return {}
+	var bid := String(AscensionRules.node_data(nid).get("branch", ""))
+	return {"id": bid, "name": AscensionRules.branch_name(bid)}
+
+
+## Dread Lands (§4.7): the morale every enemy side loses in a province battle in `province` when `fid`
+## owns it and has researched a transformation with that province rule (the Blood Pact); 0 otherwise. The
+## battles phase comes before captures, so the owner now is the owner at the start of the turn.
+static func dread_lands_value(state, fid: String, province: Province) -> int:
+	if not (state is GameState) or province == null or province.owner != fid or not AscensionRules.has_paths(state):
+		return 0
+	var rule := AscensionRules.province_rule(state, fid)
+	return int(rule.get("value", 0)) if String(rule.get("id", "")) == DREAD_LANDS_ID else 0
+
+
+## The attack, defense, maximum hp and morale parts the side's mandates and path give a regular unit of
+## type `ut`, from RulerRules.unit_stats (Royal Armories, Veteran Levies; M4-3: every researched node's
+## parts, Drillyard, Arbalests, Living Iron, ...): {"attack": [{"key", "value"}], "defense": [...], "hp":
+## [...], "morale": [...]}, keyed by each part's key ("mandate_<id>", "path_<node>"). Empty for commanders,
+## rulers, types outside the faction's roster and games with neither mandates nor paths. Cached per type.
 static func _unit_mods(cache: Dictionary, fid: String, ut: UnitType, state) -> Dictionary:
 	if cache.has(ut.id):
 		return cache[ut.id]
-	var out := {"attack": [], "defense": [], "hp": []}
-	if state is GameState and not ut.is_commander and not ut.is_ruler and not RulerRules.mandates(state, fid).is_empty():
+	var out := {"attack": [], "defense": [], "hp": [], "morale": []}
+	if state is GameState and not ut.is_commander and not ut.is_ruler \
+			and (not RulerRules.mandates(state, fid).is_empty() or AscensionRules.has_paths(state)):
 		var us := RulerRules.unit_stats(state, fid, ut.id)
 		if us.get("ok", false):
 			for stat in out:
-				for m in us.mods[stat]:
-					out[stat].append({"key": MANDATE_PREFIX + String(m.mandate), "value": int(m.value)})
+				for m in us.mods.get(stat, []):
+					var key := String(m.get("key", ""))
+					if key.is_empty():
+						key = MANDATE_PREFIX + String(m.get("mandate", ""))
+					out[stat].append({"key": key, "value": int(m.value)})
 	cache[ut.id] = out
 	return out
 
@@ -548,7 +679,7 @@ static func _fighter(side_idx: int, army: Army, unit: Unit, is_cmd: bool, is_rul
 	return {"side": side_idx, "army": army.id, "army_ref": army, "unit": unit, "type": unit.type, "name": unit.type.name,
 		"trait": t, "cmd": is_cmd, "tier": tier, "hp": unit.current_hp, "hp0": unit.current_hp,
 		"max": max_hp if max_hp > 0 else unit.type.hp, "alive": unit.current_hp > 0, "pending": 0,
-		"ruler": is_ruler, "mods": mods if not mods.is_empty() else {"attack": [], "defense": [], "hp": []}, "taken": 0}
+		"ruler": is_ruler, "mods": mods if not mods.is_empty() else {"attack": [], "defense": [], "hp": [], "morale": []}, "taken": 0}
 
 
 static func _standing(sides: Array) -> Array:
@@ -599,17 +730,22 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 				bonus = CHARGE_DAMAGE_FOREST if env.terrain == "forest" else CHARGE_DAMAGE
 			var base: int = side.base_hit  # BASE_HIT, or Drilled Ranks'
 			var chance := hit_chance(atk.value, dfn.value, base)
-			var dmg := damage(atk.value, dfn.value) + bonus
+			var hide := _hide(t, damage(atk.value, dfn.value) + bonus)  # M4-3: Iron Hide (0 for anyone else)
+			var dmg := damage(atk.value, dfn.value) + bonus - hide
 			var expected := chance / 100.0 * dmg
 			# What each modifier was worth on this attack, in expected damage.
 			for p in atk.parts:
 				var a2: int = atk.value - atk.parts[p]
-				var gain: float = expected - hit_chance(a2, dfn.value, base) / 100.0 * (damage(a2, dfn.value) + bonus)
+				var gain: float = expected - hit_chance(a2, dfn.value, base) / 100.0 * _dealt(t, damage(a2, dfn.value) + bonus)
 				_add_impact(side, p, gain)
 			for p in dfn.parts:
 				var d2: int = dfn.value - dfn.parts[p]
-				var saved: float = hit_chance(atk.value, d2, base) / 100.0 * (damage(atk.value, d2) + bonus) - expected
+				var saved: float = hit_chance(atk.value, d2, base) / 100.0 * _dealt(t, damage(atk.value, d2) + bonus) - expected
 				_add_impact(tside, p, saved)
+			if hide > 0:
+				# Iron Hide: the damage it turned aside, in expected damage like every other defense part.
+				_add_impact(tside, IRON_HIDE, chance / 100.0 * hide)
+				tside.triggers[IRON_HIDE] = tside.triggers.get(IRON_HIDE, 0) + 1
 			if base != BASE_HIT:
 				# Drilled Ranks: what the side's higher base hit chance added to this attack.
 				var plain_chance := hit_chance(atk.value, dfn.value)
@@ -627,8 +763,16 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 				side.skirmish_reach += expected
 				side.skirmish_targets[t.name] = int(side.skirmish_targets.get(t.name, 0)) + 1
 				_add_impact(side, SKIRMISH, expected)
+			if f.trait == WINGS and _screened(tside, t):
+				# M4-3: only Wings reached this target, a commander behind its line or a shielded second rank,
+				# counted in full like Skirmish's reach (§9.6).
+				side.wings_reach += expected
+				side.wings_targets[t.name] = int(side.wings_targets.get(t.name, 0)) + 1
+				side.triggers[WINGS] = side.triggers.get(WINGS, 0) + 1
+				_add_impact(side, WINGS, expected)
 			if bonus > 0:
-				_add_impact(side, CHARGE, chance / 100.0 * bonus)
+				# Charge's worth is what it added to this hit (all of it, unless Iron Hide was already at the floor).
+				_add_impact(side, CHARGE, chance / 100.0 * (dmg - _dealt(t, damage(atk.value, dfn.value))))
 			if f.cmd:
 				side.cmd_expected += expected
 				_add_impact(side, "commander", expected - _line_baseline(side, f, dfn.value, atk.parts.get("terrain", 0)))
@@ -640,7 +784,7 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			var roll := rng.randi_range(1, 100)
 			var hit := roll <= chance
 			if rec != null:
-				_log_attack(rec, round_no, f, t, reach, pool.size(), pick, chance, roll, hit, dmg, bonus, base, atk, dfn, expected)
+				_log_attack(rec, round_no, f, t, reach, pool.size(), pick, chance, roll, hit, dmg, bonus, base, atk, dfn, expected, hide)
 				expected_by[si] = float(expected_by.get(si, 0.0)) + expected
 				if hit:
 					if not hit_by.has(t.id):
@@ -666,6 +810,15 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 					charge[si] = charge.get(si, 0) + bonus
 				if f.ruler:
 					side.ruler_dealt += dmg
+				# M4-3: what Lifedrinker drinks back at the end of the round, Iron Hide's hits, and a
+				# commander Wings struck (so the "why" can say it fell to the Seraphs).
+				if f.trait == LIFEDRINKER:
+					f["drink"] = int(f.get("drink", 0)) + dmg
+				if hide > 0:
+					tside.iron_hits += 1
+				if f.trait == WINGS and t.cmd:
+					t["winged"] = round_no
+					t["winged_by"] = si
 
 	var highlights := []
 	for si in standing:
@@ -689,7 +842,12 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 					highlights.append("%s %s fell." % [_poss(sides[si].name), _bare(f.name)])
 					if f.ruler:
 						sides[si].ruler_fell = round_no
+					if f.cmd and int(f.get("winged", 0)) == round_no:
+						# M4-3: Wings struck this commander in the round it fell.
+						sides[int(f.winged_by)].wings_kills.append({"name": f.name, "trait": f.trait, "round": round_no,
+							"side": sides[si].name})
 			f.pending = 0
+	_drink(sides, standing, round_no, highlights, rec)
 
 	# Morale is checked for every side before any of them leaves, so the order of sides never matters.
 	var checks := {}
@@ -758,6 +916,8 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 ## alone once the front rank has fallen; its commanders once no unit stands. Fighters keep their side's
 ## order, so a seed always picks the same target.
 static func _targets(sides: Array, si: int, standing: Array, attacker: Dictionary = {}) -> Array:
+	if attacker.get("trait", "") == WINGS:
+		return _wings_targets(sides, si, standing)
 	var reach: bool = attacker.get("trait", "") == SKIRMISH
 	var pool := []
 	for oi in standing:
@@ -781,6 +941,36 @@ static func _reachable_tiers(counts: Array, skirmish: bool) -> Array:
 	if counts[1] > 0 and (skirmish or counts[1] > counts[0]):
 		return [0, 1]
 	return [0]
+
+
+## Wings (M4-3, §4.9): every standing enemy commander while any stands, otherwise every standing enemy
+## fighter, whatever its rank. Rulers are not commanders, so they aren't preferred (but can be reached).
+## Fighters keep their side's order, so a seed always picks the same target.
+static func _wings_targets(sides: Array, si: int, standing: Array) -> Array:
+	var commanders := []
+	var anyone := []
+	for oi in standing:
+		if oi == si:
+			continue
+		for f in sides[oi].fighters:
+			if f.alive:
+				anyone.append(f)
+				if f.cmd:
+					commanders.append(f)
+	return commanders if not commanders.is_empty() else anyone
+
+
+## The ranks Wings can reach on a side with `counts` standing fighters per tier (the battle log's
+## "wings_tiers"): its commanders while one stands, otherwise every rank with someone in it. When any enemy
+## side has a commander standing, Wings goes only for commanders (_wings_targets).
+static func _wings_tiers(counts: Array) -> Array:
+	if counts[2] > 0:
+		return [2]
+	var out := []
+	for tier in 3:
+		if counts[tier] > 0:
+			out.append(tier)
+	return out
 
 
 ## Standing fighters of `side` per tier: [front, second, back].
@@ -870,6 +1060,8 @@ static func _defense(t: Dictionary, tside: Dictionary, _attacker: Dictionary, en
 			if o.alive and o != t:
 				parts[SHIELD_WALL] = SHIELD_WALL_DEFENSE
 				break
+	if t.trait == ROOTED and env.get("kind", "province") == "province" and env.terrain == "forest":
+		parts[ROOTED] = ROOTED_DEFENSE  # M4-3: whoever holds the forest, never on a border
 	for m in t.get("mods", {}).get("defense", []):
 		parts[m.key] = int(parts.get(m.key, 0)) + int(m.value)  # Royal Armories
 	var value: int = t.type.defense
@@ -906,6 +1098,13 @@ static func _morale(sides: Array, si: int, standing: Array) -> Dictionary:
 			dread += int(sides[oi].dread)
 	if dread > 0:
 		parts[DREAD] = -dread
+	# M4-3: Dread Lands, for the whole battle, on every side but the Blood Pact's own (§4.7).
+	var lands := 0
+	for oi in sides.size():
+		if oi != si:
+			lands = maxi(lands, int(sides[oi].get("dread_lands", 0)))
+	if lands > 0:
+		parts[DREAD_LANDS] = -lands
 	var value: int = side.base_morale
 	for p in parts:
 		value += parts[p]
@@ -940,6 +1139,50 @@ static func _iron_holder_id(side: Dictionary) -> int:
 	return -1
 
 
+## Iron Hide (M4-3, §4.9): how much less a hit of `raw` damage (Charge included) deals to target `t`:
+## IRON_HIDE_DAMAGE for a fighter with Iron Hide, never taking the hit below MIN_DAMAGE; 0 for anyone else.
+static func _hide(t: Dictionary, raw: int) -> int:
+	if t.trait != IRON_HIDE:
+		return 0
+	return clampi(raw - MIN_DAMAGE, 0, IRON_HIDE_DAMAGE)
+
+
+## The damage a hit of `raw` damage deals to target `t`, after Iron Hide (`raw` for anyone without it).
+static func _dealt(t: Dictionary, raw: int) -> int:
+	return raw - _hide(t, raw)
+
+
+## Lifedrinker (M4-3, §4.9), at the end of round `round_no`, after its damage has landed and before
+## morale is checked: every fighter with it that still stands heals 1/LIFEDRINK_DIVISOR of the damage its
+## hits dealt this round, rounded up, up to its maximum. One that fell this round heals nothing. Counts the
+## hp it healed as its "why" worth, writes a heal event to the log and one highlight per side.
+static func _drink(sides: Array, standing: Array, round_no: int, highlights: Array, rec) -> void:
+	for si in standing:
+		var side: Dictionary = sides[si]
+		var healed := 0
+		var who := ""
+		for f in side.fighters:
+			if f.trait != LIFEDRINKER:
+				continue
+			var drunk := int(f.get("drink", 0))
+			f["drink"] = 0
+			if not f.alive or drunk <= 0 or f.hp >= f.max:
+				continue
+			var heal := mini(ceili(float(drunk) / LIFEDRINK_DIVISOR), f.max - f.hp)
+			var before: int = f.hp
+			f.hp += heal
+			healed += heal
+			who = f.name
+			side.triggers[LIFEDRINKER] = side.triggers.get(LIFEDRINKER, 0) + 1
+			if rec != null:
+				_log_push(rec.log, rec.cap, {"t": "heal", "n": round_no, "f": f.id, "from": before, "to": f.hp, "dealt": drunk,
+					"trait": LIFEDRINKER})
+		if healed > 0:
+			side.healed += healed
+			_add_impact(side, LIFEDRINKER, float(healed))
+			highlights.append("%s %s drank back %d hp." % [_poss(side.name), who, healed])
+
+
 ## Veteran Levies (§7.4): the damage each regular unit's extra maximum hp absorbed (up to the bonus, for
 ## a unit that took that much), added to the side's impact under the mandate's key once the battle ends.
 static func _count_extra_hp(sides: Array) -> void:
@@ -949,6 +1192,8 @@ static func _count_extra_hp(sides: Array) -> void:
 		for f in s.fighters:
 			var left: int = f.taken
 			for m in f.mods.hp:
+				if int(m.value) <= 0:
+					continue  # a part lowering max hp (the Blood Pact's Bloodtuskers) absorbs nothing
 				var a := mini(int(m.value), left)
 				left -= a
 				if not absorbed.has(m.key):
@@ -1043,6 +1288,7 @@ static func _log_header(sides: Array, sides_in: Array, ctx: Dictionary, env: Dic
 	var fighters := []
 	var side_logs := []
 	var standing := _standing(sides)
+	var paths := _log_paths(sides)
 	for si in sides.size():
 		var s: Dictionary = sides[si]
 		var ids := []
@@ -1056,16 +1302,39 @@ static func _log_header(sides: Array, sides_in: Array, ctx: Dictionary, env: Dic
 		for ai in armies.size():
 			army_logs.append({"id": armies[ai].id, "label": s.armies[ai]})
 		var m := _morale(sides, si, standing)
-		side_logs.append({"index": si, "faction": s.faction, "name": s.name, "defender": s.is_defender, "armies": army_logs,
+		var side_log := {"index": si, "faction": s.faction, "name": s.name, "defender": s.is_defender, "armies": army_logs,
 			"fighters": ids, "hp_start": s.hp_start, "base_morale": s.base_morale,
 			"start_morale": {"morale": m.value, "parts": m.parts, "break_pct": break_pct(m.value)},
 			"base_hit": s.base_hit, "frenzy": s.frenzy, "iron": s.iron, "feast": s.feast, "dread": s.dread,
-			"mandates": s.mandates.duplicate()})
-	return {"v": BattleLog.VERSION, "id": "", "turn": 0, "index": 0, "kind": env.kind,
+			"mandates": s.mandates.duplicate()}
+		if paths:
+			# M4-3: the people it fights as, what each path morale part added to its base morale, the
+			# morale Dread Lands takes from every enemy side here, and Red Harvest's gold per fighter.
+			side_log["people"] = s.people.duplicate()
+			side_log["base_morale_parts"] = s.base_morale_parts.duplicate()
+			side_log["dread_lands"] = s.dread_lands
+			side_log["red_harvest"] = s.red_harvest
+		side_logs.append(side_log)
+	var out := {"v": BattleLog.VERSION, "id": "", "turn": 0, "index": 0, "kind": env.kind,
 		"provinces": ctx.get("province_ids", []).duplicate(), "terrain": env.terrain, "fort": env.fort,
 		"defender": ctx.get("defender", ""), "round_cap": ROUND_CAP,
 		"rng": {"seed": Serial.int64_to_str(rng.get_seed()), "before": Serial.int64_to_str(rng.get_state()), "after": ""},
 		"sides": side_logs, "fighters": fighters, "events": [], "truncated": false}
+	if paths:
+		out["paths"] = true  # M4-3: the path additions below are in this log (BattleLog: "paths")
+	return out
+
+
+## True when a battle's log carries the M4-3 path additions: the game has paths, or a fighter with a path
+## trait is on the field. Every other log is exactly the M3-1 schema.
+static func _log_paths(sides: Array) -> bool:
+	for s in sides:
+		if s.get("paths", false):
+			return true
+		for f in s.fighters:
+			if PATH_TRAITS.has(f.trait):
+				return true
+	return false
 
 
 static func _log_fighter(f: Dictionary, s: Dictionary) -> Dictionary:
@@ -1092,9 +1361,12 @@ static func _log_push(battle_log: Dictionary, cap: int, ev: Dictionary) -> void:
 static func _log_round(rec: Dictionary, sides: Array, standing: Array, round_no: int) -> Dictionary:
 	var by_side := {}
 	var reach := []
+	var paths: bool = rec.log.get("paths", false)
 	for si in standing:
 		var counts := _tier_counts(sides[si])
 		var r := {"side": si, "tiers": _reachable_tiers(counts, false), "skirmish_tiers": _reachable_tiers(counts, true)}
+		if paths:
+			r["wings_tiers"] = _wings_tiers(counts)  # M4-3
 		by_side[si] = r
 		reach.append(r)
 	_log_push(rec.log, rec.cap, {"t": "round", "n": round_no, "reach": reach})
@@ -1102,12 +1374,17 @@ static func _log_round(rec: Dictionary, sides: Array, standing: Array, round_no:
 
 
 static func _log_attack(rec: Dictionary, round_no: int, f: Dictionary, t: Dictionary, reach: Dictionary, pool: int, pick: int,
-		chance: int, roll: int, hit: bool, dmg: int, bonus: int, base: int, atk: Dictionary, dfn: Dictionary, expected: float) -> void:
+		chance: int, roll: int, hit: bool, dmg: int, bonus: int, base: int, atk: Dictionary, dfn: Dictionary, expected: float,
+		hide: int = 0) -> void:
 	var how: String = TIER_WORDS[t.tier]
 	if not reach[t.side].tiers.has(t.tier):
-		how = "skirmish"  # only Skirmish could reach it
+		how = "wings" if f.trait == WINGS else "skirmish"  # only Skirmish (or Wings, M4-3) could reach it
+	# The damage parts: Charge's bonus, and Iron Hide's reduction (M4-3) as a negative part.
+	var damage_parts := {CHARGE: bonus} if bonus > 0 else {}
+	if hide > 0:
+		damage_parts[IRON_HIDE] = -hide
 	_log_push(rec.log, rec.cap, {"t": "attack", "n": round_no, "by": f.id, "to": t.id, "pool": pool, "pick": pick,
-		"chance": chance, "roll": roll, "hit": hit, "damage": dmg, "bonus": {CHARGE: bonus} if bonus > 0 else {},
+		"chance": chance, "roll": roll, "hit": hit, "damage": dmg, "bonus": damage_parts,
 		"base_hit": base, "attack": {"value": atk.value, "base": f.type.attack, "parts": atk.parts},
 		"defense": {"value": dfn.value, "base": t.type.defense, "parts": dfn.parts}, "reach": how,
 		"screened": not reach[f.side].tiers.has(f.tier), "expected": _dec(expected, 10.0)})
@@ -1221,8 +1498,13 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 	var who := []
 	for s in sides:
 		var role := "defending" if s.is_defender else ("attacking" if not String(ctx.get("defender", "")).is_empty() else "arrived")
+		if not s.people.is_empty():
+			role = "%s, %s" % [s.people.name, role]  # M4-3: "Aurel Crown (Celestial Host, attacking)"
 		who.append("%s (%s) with the %s" % [s.name, role, " and the ".join(s.armies)])
 	lines.append("Battle %s. %s." % [where, "; ".join(who)])
+	var paths_line := _paths_line(sides)
+	if not paths_line.is_empty():
+		lines.append(paths_line)
 	for r in rounds:
 		lines.append(r.line)
 	var side_reports := []
@@ -1247,6 +1529,13 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 			sr["ruler"] = _ruler_report(s)
 		if not s.mandates.is_empty():
 			sr["mandates"] = _mandates_report(s)
+		# M4-3: only in a game with paths, or a battle where a path effect worked.
+		if s.paths:
+			sr["people"] = s.people.duplicate()
+		if s.dread_lands > 0:
+			sr["dread_lands"] = s.dread_lands
+		if s.healed > 0:
+			sr["lifedrinker_healed"] = s.healed
 		side_reports.append(sr)
 	lines.append("Casualties: %s." % "; ".join(losses))
 	var hit_parts := []
@@ -1274,10 +1563,16 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 	var summary := "%s won after %d %s: %s. %s." % [winner.name, n, "round" if n == 1 else "rounds", why, "; ".join(losses)]
 	var chosen_out := []
 	for c in chosen:
-		chosen_out.append({"id": c.id, "faction": c.faction, "impact": snappedf(c.impact, 0.1), "text": c.clause, "favors_winner": c.faction == winner.faction})
+		var co := {"id": c.id, "faction": c.faction, "impact": snappedf(c.impact, 0.1), "text": c.clause, "favors_winner": c.faction == winner.faction}
+		if c.has("codex"):
+			co["codex"] = c.codex  # M4-3: path factors name their RulesCodex entry
+		chosen_out.append(co)
 	var all_out := []
 	for f in factors:
-		all_out.append({"id": f.id, "faction": f.faction, "impact": snappedf(f.impact, 0.1), "brief": f.brief, "text": f.clause})
+		var fo := {"id": f.id, "faction": f.faction, "impact": snappedf(f.impact, 0.1), "brief": f.brief, "text": f.clause}
+		if f.has("codex"):
+			fo["codex"] = f.codex
+		all_out.append(fo)
 	return {"kind": env.kind, "provinces": ctx.get("province_ids", []).duplicate(), "place": where,
 		"terrain": env.terrain, "fort": env.fort, "defender": ctx.get("defender", ""), "winner": winner.faction,
 		"winner_name": winner.name, "end": end, "rounds_fought": n, "round_cap": ROUND_CAP,
@@ -1354,6 +1649,7 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 			var won: bool = si == wi
 			var c := ""
 			var brief := ""
+			var codex := ""  # M4-3: path factors carry their RulesCodex entry
 			var unit: String = s.trait_units.get(k, "")
 			var who := _poss(s.name)
 			var dmg := roundi(v)
@@ -1403,17 +1699,42 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 					c = "%s fought %s and dealt about %d damage%s" % [rname, rank, dmg, " before falling" if s.ruler_fell > 0 else ""] if won \
 						else "even though %s fought %s and dealt about %d damage" % [rname, rank, dmg]
 					brief = "%s (fights %s, +%d morale while it stands)" % [rname, rank, RulerData.RULER_MORALE]
+				WINGS:
+					# M4-3 (§9.6): the damage dealt to fighters only Wings could reach, like Skirmish's reach.
+					var struck := _the(_most_hit(s.wings_targets))
+					c = "%s %s flew over the line and struck %s, for about %d damage%s" % [who, unit, struck, roundi(s.wings_reach),
+						_wings_kill_tail(s)] if won else "even though %s %s flew over the line to strike %s" % [who, unit, struck]
+					codex = codex_id_for_trait(k)
+				IRON_HIDE:
+					var hits := "from each of %d %s" % [s.iron_hits, "hit" if s.iron_hits == 1 else "hits"] if s.iron_hits > 0 else "from every hit"
+					c = "%s %s took %d less damage %s (Iron Hide), turning aside about %d damage" % [who, unit, IRON_HIDE_DAMAGE, hits, dmg] if won \
+						else "even though %s %s took %d less damage %s (Iron Hide)" % [who, unit, IRON_HIDE_DAMAGE, hits]
+					codex = codex_id_for_trait(k)
+				ROOTED:
+					c = "%s %s were rooted in the forest (+%d defense) and took about %d less damage" % [who, unit, ROOTED_DEFENSE, dmg] if won \
+						else "even though %s %s were rooted in the forest (+%d defense)" % [who, unit, ROOTED_DEFENSE]
+					codex = codex_id_for_trait(k)
+				LIFEDRINKER:
+					c = "%s %s drank back %d hp (Lifedrinker)" % [who, unit, s.healed] if won \
+						else "even though %s %s drank back %d hp (Lifedrinker)" % [who, unit, s.healed]
+					codex = codex_id_for_trait(k)
 				_:
-					if not k.begins_with(MANDATE_PREFIX):
-						continue
-					var words := _mandate_words(s, k, dmg)
+					var words := {}
+					if k.begins_with(MANDATE_PREFIX):
+						words = _mandate_words(s, k, dmg)
+					elif k.begins_with(PATH_PREFIX):
+						words = _path_words(s, k, dmg)  # M4-3: a path part, measured like a mandate's
+						codex = AscensionRules.part_codex(k)
 					if words.is_empty():
 						continue
 					c = String(words.done) + String(words.tail) if won else "even though %s" % words.done
 					brief = String(words.brief)
 			if brief.is_empty():
 				brief = "%s %s (%s)" % [who, unit, TRAIT_SHORT.get(k, k)]
-			out.append({"id": k, "side": si, "faction": s.faction, "impact": v, "clause": c, "brief": brief})
+			var factor := {"id": k, "side": si, "faction": s.faction, "impact": v, "clause": c, "brief": brief}
+			if not codex.is_empty():
+				factor["codex"] = codex
+			out.append(factor)
 
 	# Morale: routs, and the morale effects that decided whether a side broke.
 	for si in sides.size():
@@ -1450,6 +1771,20 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 							if dread_side == wi else "even though %s shook %s" % [whose, s.name],
 						"brief": "%s %s (%d enemy morale while it stands)" % [_poss(String(ds.ruler_info.name)),
 							RulerRules.ability_name(String(ds.ruler_info.id)), dread]})
+			# M4-3: Dread Lands, measured like Dread (§9.6).
+			var lands: int = ri.parts.get(DREAD_LANDS, 0)
+			if lands < 0:
+				var land_side := _side_with_dread_lands(sides, si)
+				if land_side >= 0:
+					var ls: Dictionary = sides[land_side]
+					var decisive_lands: bool = ri.lost_pct < break_pct(ri.morale - lands)
+					var land := "fighting on %s own land cost %s %d morale" % [_poss(_people_ref(ls)), s.name, -lands]
+					out.append({"id": DREAD_LANDS_ID, "side": land_side, "faction": ls.faction,
+						"impact": float(ri.hp) if decisive_lands else float(-lands) * 0.5,
+						"clause": ("%s: %s, and it broke a round sooner than it would have" if decisive_lands else "%s: %s") % [DREAD_LANDS, land]
+							if land_side == wi else "even though %s (%s)" % [land, DREAD_LANDS],
+						"brief": "%s (%s has %d less morale on %s own land)" % [DREAD_LANDS, s.name, -lands, _poss(_people_ref(ls))],
+						"codex": DREAD_LANDS_ID})
 	for si in sides.size():
 		var s: Dictionary = sides[si]
 		for key in ["commander", INSPIRE]:
@@ -1479,6 +1814,29 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 					else "even though %s %s inspired the line" % [_poss(s.name), cname]
 			out.append({"id": "morale_" + key, "side": si, "faction": s.faction, "impact": impact, "clause": c,
 				"brief": "%s %s (%s)" % [_poss(s.name), cname, "+%d morale" % (COMMANDER_MORALE + (INSPIRE_MORALE if key == INSPIRE else 0))]})
+	# M4-3: path morale parts in the base morale (the Celestial Host's Sunspears), measured like Inspire.
+	for si in sides.size():
+		var s: Dictionary = sides[si]
+		var keys: Array = s.base_morale_parts.keys()
+		keys.sort()
+		for key in keys:
+			var part := int(s.base_morale_parts[key])
+			if part <= 0 or s.morale_log.is_empty():
+				continue
+			var held_by_it := false
+			for e in s.morale_log:
+				if e.lost_pct < e.break_pct and e.lost_pct >= break_pct(e.morale - part):
+					held_by_it = true
+			var whose := _path_morale_words(s, String(key))
+			var lifted := "raised %s morale by %d" % [_poss(s.name), part]
+			var c := ""
+			if si == wi:
+				c = ("%s %s and kept the line from breaking" if held_by_it else "%s %s") % [whose, lifted]
+			else:
+				c = "even though %s steadied the line" % whose
+			out.append({"id": "morale_" + String(key), "side": si, "faction": s.faction,
+				"impact": float(_hp(s)) if held_by_it else float(part) * 0.5, "clause": c,
+				"brief": "%s (%s)" % [whose, lifted], "codex": AscensionRules.part_codex(String(key))})
 	# M2-2: the ruler's +morale kept the line, measured like the commander's (§7.4), and Iron Discipline
 	# held a side past its breaking point while a commander stood: the hp it kept from a rout.
 	for si in sides.size():
@@ -1748,6 +2106,129 @@ static func _mandate_words(s: Dictionary, key: String, dmg: int) -> Dictionary:
 			"tail": ", worth about %d damage" % dmg,
 			"brief": "%s gives every %s unit %s" % [name, s.name, bonus]}
 	return {}
+
+
+# --- paths in the report (M4-3, §9.6) ---------------------------------------------------------------
+
+## The first side other than `not_side` whose Dread Lands work in this battle, or -1.
+static func _side_with_dread_lands(sides: Array, not_side: int) -> int:
+	for i in sides.size():
+		if i != not_side and int(sides[i].get("dread_lands", 0)) > 0:
+			return i
+	return -1
+
+
+## The people a side fights as, in running text ("the Blood Pact"), or its faction's name without one.
+static func _people_ref(s: Dictionary) -> String:
+	if s.people.is_empty():
+		return String(s.name)
+	return AscensionRules.branch_ref(String(s.people.id))
+
+
+## A node as running text in the "why": a transformation by its people ("the Celestial Host", "Living
+## Iron"), any other node by its name ("Arbalests").
+static func _node_words(node_id: String) -> String:
+	var n := AscensionRules.node_data(node_id)
+	if String(n.get("kind", "")) == PathData.TRANSFORMATION and not String(n.get("branch", "")).is_empty():
+		return AscensionRules.branch_ref(String(n.branch))
+	return AscensionRules.node_name(node_id)
+
+
+## The name a side's units of `type_id` fought under (a transformation renames them: "Iron Knights").
+static func _type_name(s: Dictionary, type_id: String) -> String:
+	if s.type_names.has(type_id):
+		return String(s.type_names[type_id])
+	for f in FactionData.FACTIONS:
+		for u in f.unit_types:
+			if u.id == type_id:
+				return String(u.name)
+	return type_id.capitalize()
+
+
+## A path part's part of the "why" (§9.6), from PathData: {"done", "tail", "brief"} like _mandate_words,
+## or {} for a part with no battle stat to explain. `key` is "path_<node>", `dmg` its worth in damage:
+##   "Living Iron (+4 defense on Iron Knights)" + " turned aside about 18 damage"
+static func _path_words(s: Dictionary, key: String, dmg: int) -> Dictionary:
+	var nid := key.trim_prefix(PATH_PREFIX)
+	if AscensionRules.node_data(nid).is_empty():
+		return {}
+	var units: Dictionary = AscensionRules.node_effects(nid).get("unit", {})
+	var bonuses := []
+	var first_stat := ""
+	var on := []
+	var type_ids: Array = units.keys()
+	type_ids.sort()
+	for type_id in type_ids:
+		var stats: Dictionary = units[type_id]
+		var pieces := []
+		for stat in ["attack", "defense", "hp"]:
+			if int(stats.get(stat, 0)) > 0:
+				pieces.append("+%d %s" % [int(stats[stat]), PATH_STAT_WORDS[stat]])
+				if first_stat.is_empty():
+					first_stat = stat
+		if not pieces.is_empty():
+			bonuses.append(" and ".join(pieces))
+			on.append(_type_name(s, String(type_id)))
+	if first_stat.is_empty():
+		return {}
+	var name := _node_words(nid)
+	var bonus := ", ".join(bonuses)
+	var units_text := " and ".join(on)
+	return {"done": "%s (%s on %s %s)" % [name, bonus, _poss(s.name), units_text],
+		"tail": " " + PATH_STAT_VERBS[first_stat] % dmg,
+		"brief": "%s gives %s %s %s" % [name, _poss(s.name), units_text, bonus]}
+
+
+## Who carries a path morale part, for the "why": "the Celestial Host's Sunspears (+2 morale each)".
+static func _path_morale_words(s: Dictionary, key: String) -> String:
+	var nid := key.trim_prefix(PATH_PREFIX)
+	var units: Dictionary = AscensionRules.node_effects(nid).get("unit", {})
+	var parts := []
+	var type_ids: Array = units.keys()
+	type_ids.sort()
+	for type_id in type_ids:
+		var m := int(units[type_id].get("morale", 0))
+		if m != 0:
+			parts.append("%s (%+d morale each)" % [_type_name(s, String(type_id)), m])
+	return "%s %s" % [_poss(_node_words(nid)), " and ".join(parts)]
+
+
+## The end of Wings' clause when a commander it struck fell that round: "; the Thornmane Clans' Warchief
+## fell in round 3, and with it Pack Leader".
+static func _wings_kill_tail(s: Dictionary) -> String:
+	if s.wings_kills.is_empty():
+		return ""
+	var k: Dictionary = s.wings_kills[0]
+	var text := "; %s %s fell in round %d" % [_poss(String(k.side)), _bare(String(k.name)), int(k.round)]
+	if not String(k.trait).is_empty():
+		text += ", and with it %s" % k.trait
+	return text
+
+
+## The report's line about paths, after the opening line, when one is in play (otherwise ""): who fought as
+## which people, and Dread Lands. "Paths: Aurel Crown fought as the Celestial Host. Dread Lands: this is the
+## Blood Pact's own land, so Aurel Crown has 1 less morale."
+static func _paths_line(sides: Array) -> String:
+	var people := []
+	var lands := []
+	for s in sides:
+		if not s.people.is_empty():
+			people.append("%s fought as %s" % [s.name, AscensionRules.branch_ref(String(s.people.id))])
+		if int(s.dread_lands) > 0:
+			var others := []
+			for o in sides:
+				if o.faction != s.faction:
+					others.append(String(o.name))
+			lands.append("%s: this is %s own land, so %s %s %d less morale" % [DREAD_LANDS, _poss(_people_ref(s)),
+				" and ".join(others), "has" if others.size() == 1 else "each have", int(s.dread_lands)])
+	if people.is_empty() and lands.is_empty():
+		return ""
+	var text := "Paths:"
+	if not people.is_empty():
+		text += " %s." % _cap("; ".join(people))
+	for l in lands:
+		text += " %s." % l
+	return text
 
 
 static func _poss(name: String) -> String:

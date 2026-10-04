@@ -153,7 +153,7 @@ func _fill_roster(fid: String) -> void:
 		t.add_theme_font_size_override("font_size", 14)
 		t.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 		var key := AutoBattleResolver.codex_id_for_trait(String(row.trait))
-		t.tooltip_text = TooltipText.plain(String(row.trait), String(AutoBattleResolver.TRAIT_TEXT.get(String(row.trait), AscensionRules.NEW_TRAIT_TEXT.get(String(row.trait), ""))))
+		t.tooltip_text = TooltipText.plain(String(row.trait), String(AutoBattleResolver.TRAIT_TEXT.get(String(row.trait), "")))
 		t.mouse_filter = Control.MOUSE_FILTER_PASS
 		CodexLink.attach(t, key, codex_requested.emit)
 		roster.add_child(t)

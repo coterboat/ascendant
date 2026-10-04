@@ -224,6 +224,12 @@ static func apply(battle_log: Dictionary, state: Dictionary, i: int) -> void:
 		"death":
 			state.beat = "wounds"
 			fighters[int(e.f)].alive = false
+		"heal":
+			# M4-3: Lifedrinker, after the round's wounds and before its morale checks.
+			state.beat = "wounds"
+			var hid := int(e.f)
+			sides[int(battle_log.fighters[hid].side)].hp += int(e.to) - int(e.from)
+			fighters[hid].hp = int(e.to)
 		"morale":
 			state.beat = "morale"
 			var s: Dictionary = sides[int(e.side)]
