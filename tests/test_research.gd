@@ -485,7 +485,8 @@ func test_forecast_eta_and_done_turn_equal_the_turn_each_node_completes() -> voi
 					var r := _resolve(s, orders)
 					orders = {}  # every army holds; the target persists
 					s = r.new_state
-					var done := _events(r.events, "research_done", fid) + _events(r.events, "oath_sworn", fid)
+					var done := _events(r.events, "research_done", fid) + _events(r.events, "oath_sworn", fid) \
+						+ _events(r.events, "transformed", fid)  # M4-2: a transformation makes a transformed event
 					for e in done:
 						if e.numbers.node == nid:
 							turn_done = int(e.numbers.turn)
@@ -632,7 +633,7 @@ func test_a_recorded_game_with_research_replays_to_an_identical_state() -> void:
 				assert_eq(session.queue_research(String(next[turn % next.size()])), "")
 			session.end_turn()
 		for e in session.turn_report().events:
-			if e.type == "research_done" or e.type == "oath_sworn":
+			if e.type == "research_done" or e.type == "oath_sworn" or e.type == "transformed":
 				done += 1
 	assert_true(done >= 6, "nodes were researched along the way (%d)" % done)
 	var rec := session.record()

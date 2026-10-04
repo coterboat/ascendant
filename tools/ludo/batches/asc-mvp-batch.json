@@ -1,0 +1,1050 @@
+{
+ "style": {
+  "image": "",
+  "art_style": "Cel-Shaded",
+  "note": "Every entry carries its full style block in its prompt (style:false). Bible §6.1 blocks used verbatim: C-portrait, C-terrain, C-banner, C-ui, C-sfx, C-ambience, C-music. New classes defined by this batch (proposed for STYLE_BIBLE §6.1 by the art lead): see 'new_blocks'."
+ },
+ "new_blocks": {
+  "C-music-calm": "Warm thoughtful fantasy score for planning a campaign: gentle harp and plucked strings, soft woodwind melody, light hand percussion, warm low strings, hopeful and curious, tempo around 90 bpm, instrumental.",
+  "C-music-sombre": "Sombre fantasy score: slow low brass and cello, a lone horn melody, soft timpani, dignified and regretful, instrumental.",
+  "C-ambience-battle": "Open battlefield bed for a fantasy war: steady wind over open ground, banners and cloth flapping, the distant rumble of marching armies and faint far-off clashing steel, even level from start to end, seamless loop.",
+  "C-keyart-diorama": "Painted stylised 3D diorama key art of bright high fantasy: chunky simplified 3D forms with clean dark outlines, flat saturated colours with soft hard-edged shading, bright sunlit sky with soft white clouds, colourful and characterful, cinematic wide vista seen from a high three-quarter angle, open sky in the upper middle, wordless pure pictorial image.",
+  "C-concept": "Cel-shaded character concept art of bright high fantasy: one full figure shown whole from head to feet in a front three-quarter view, standing upright in a neutral relaxed stance with the arms held slightly away from the body, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, even flat lighting, single subject centred with wide empty margin on every side, plain flat light grey background.",
+  "C-concept-beast": "Cel-shaded creature concept art of bright high fantasy: one whole animal shown from nose to tail in a front three-quarter view, standing still on all four legs with its back level and its head forward, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, even flat lighting, single subject centred with wide empty margin on every side, plain flat light grey background.",
+  "C-structure": "Cel-shaded building concept art of bright high fantasy: one whole structure shown complete on a small patch of ground in a high three-quarter view, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, simple bold readable shapes, even flat lighting, single structure centred with wide empty margin on every side, plain flat light grey background.",
+  "C-vignette": "Cel-shaded landscape vignette of bright high fantasy: a small self-contained scene seen from a gentle high angle, thick clean dark outlines, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, bright sunlit daylight with soft clouds, edges fading softly into a plain pale parchment border, wordless pure pictorial image."
+ },
+ "batch": "asc-mvp-batch",
+ "issues": [
+  37
+ ],
+ "date": "2026-10-04",
+ "driver": "ludo.py's call()/sniff() transport with batch bodies, asc_mvp_* request ids (bumped _vN on failure), n=3 on images, one job in flight per endpoint (file locks), a balance-delta budget guard (cap 1800), per-call ledger studio/ledgers/asc-mvp-batch.jsonl",
+ "skipped": "group 3 (M3 2D battle sprite sheets, effects, horizon bands, fort): cancelled by the director on 2026-10-04 before any call (the game is going 3D)",
+ "assets": [
+  {
+   "group": 1,
+   "id": "asc_mvp_ruler_aurel_king",
+   "out": "assets/portraits/rulers/aurel_king.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: King Corvane of the Aurel Crown, a broad-shouldered human king in his forties with a short dark beard touched with grey, a gold crown set with one blue gem, polished steel plate with gold trim under a royal-blue mantle with a white fur collar and a gold crown-and-sun clasp, the gilded hilt of a longsword held upright before his chest in his right hand, calm resolute expression, eyes on the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait.webp",
+   "n": 3,
+   "request_ids": [
+    "asc_mvp_ruler_aurel_king_v1"
+   ],
+   "pick": "asc_mvp_ruler_aurel_king_v1 c1",
+   "gates": "eyes 38%; longsword blade + crossguard visible; crown and ermine read at 96x128",
+   "post": "flattened onto the M1 portrait gradient (radial #333052 -> #1C1B2A, refit from the 8 shipped portraits), 3:4 crop on the eye line, 384x512 webp q90",
+   "status": "in-pr"
+  },
+  {
+   "group": 1,
+   "id": "asc_mvp_ruler_ever_regent",
+   "out": "assets/portraits/rulers/ever_regent.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: The Ever-Regent of the Aurel Crown, an ageless archmage with a gaunt pale face, a long silver beard and softly glowing pale gold eyes, a tall high-collared robe of white and royal blue embroidered with gold suns, a staff topped with a radiant golden sunstone held upright in his right hand close beside his face, warm golden light from the sunstone on his cheek, serene distant expression, eyes on the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait.webp",
+   "n": 3,
+   "request_ids": [
+    "asc_mvp_ruler_ever_regent_v1"
+   ],
+   "pick": "asc_mvp_ruler_ever_regent_v1 c1",
+   "gates": "eyes 38.5%; glowing sunstone staff visible; caster read at 96x128",
+   "post": "flattened onto the M1 portrait gradient (radial #333052 -> #1C1B2A, refit from the 8 shipped portraits), 3:4 crop on the eye line, 384x512 webp q90",
+   "status": "in-pr"
+  },
+  {
+   "group": 1,
+   "id": "asc_mvp_ruler_thornmane_avatar",
+   "out": "assets/portraits/rulers/thornmane_avatar.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: The Great Thornmane, beast-god of the Thornmane Clans, a colossal primal beast with a broad heavy-jawed lion-like head, a great mane of twisting green briars and thorny vines dotted with small pale blossoms, tawny fur mottled with moss, two curling antlers of dark thorny wood, crimson war-paint marks on its brow, softly glowing jade-green eyes, calm ancient fearsome expression, eyes on the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait_beasts.webp",
+   "n": 3,
+   "request_ids": [
+    "asc_mvp_ruler_thornmane_avatar_v1"
+   ],
+   "pick": "asc_mvp_ruler_thornmane_avatar_v1 c2",
+   "gates": "eyes 40% (1.09x zoom, bottom-anchored); briar mane + thorn antlers; green beast-god apart from the tawny warchief",
+   "post": "flattened onto the M1 portrait gradient (radial #333052 -> #1C1B2A, refit from the 8 shipped portraits), 3:4 crop on the eye line, 384x512 webp q90",
+   "status": "in-pr"
+  },
+  {
+   "group": 1,
+   "id": "asc_mvp_ruler_fang_chieftain",
+   "out": "assets/portraits/rulers/fang_chieftain.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: The Ninth Fang, high chieftain of the Thornmane Clans, a grizzled black-furred wolf-headed beastman with a scarred muzzle streaked with white, a circlet of nine long bone fangs on his brow, crimson war paint across the eyes, a heavy cloak of grey wolf pelts over moss-green leather and bone armour, the bone hilt of a broad greatblade resting against his right shoulder, fierce proud expression, eyes on the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait_beasts.webp",
+   "n": 3,
+   "request_ids": [
+    "asc_mvp_ruler_fang_chieftain_v1"
+   ],
+   "pick": "asc_mvp_ruler_fang_chieftain_v1 c3",
+   "gates": "eyes 36%; bone-hilted greatblade visible on the shoulder (c1/c2 show none); nine-fang circlet",
+   "post": "flattened onto the M1 portrait gradient (radial #333052 -> #1C1B2A, refit from the 8 shipped portraits), 3:4 crop on the eye line, 384x512 webp q90",
+   "status": "in-pr"
+  },
+  {
+   "group": 2,
+   "id": "asc_m1_portrait_beasts_fangthrowers",
+   "out": "assets/portraits/beasts/fangthrowers.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: A fangthrower of the Thornmane Clans, a lean wolf-headed beastwoman with grey-brown fur and pointed ears, crimson war paint across the muzzle, moss-green leather wraps and a bone necklace, a bundle of bone-tipped javelins held over her left shoulder in her left hand, alert keen expression, eyes looking to the left.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait_beasts.webp",
+   "n": 3,
+   "request_ids": [
+    "asc_mvp_regen_portrait_beasts_fangthrowers_v1"
+   ],
+   "pick": "kept",
+   "gates": "kept the shipped M1 v20 c3: new c1 has bone tips but eye line 42.5% and the snout clips in the 3:4 crop; c2/c3 javelins fall outside the crop",
+   "status": "kept (M1 file unchanged)"
+  },
+  {
+   "group": 2,
+   "id": "asc_m1_portrait_beasts_war_bear",
+   "out": "assets/portraits/beasts/war_bear.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: A war bear of the Thornmane Clans, a huge brown bear with moss and small thorny vines growing in its shaggy fur, bone plates strapped to its shoulders, crimson war-paint handprints on its brow, mouth open in a roar, eyes locked on the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait_beasts.webp",
+   "n": 3,
+   "request_ids": [
+    "asc_mvp_regen_portrait_beasts_war_bear_v1"
+   ],
+   "pick": "asc_mvp_regen_portrait_beasts_war_bear_v1 c3",
+   "gates": "replaced: handprints on the brow as specified (shipped had stripes), bone plates in frame, eyes 37%",
+   "status": "in-pr"
+  },
+  {
+   "group": 2,
+   "id": "asc_m1_portrait_beasts_warchief",
+   "out": "assets/portraits/beasts/warchief.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: The warchief commander of the Thornmane Clans, a towering lion-maned beastman with a great tawny mane braided with bones and thorns, crimson war paint, a cloak of moss-green hide, a horned-skull totem staff held upright in his right hand, proud commanding expression, eyes on the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait_beasts.webp",
+   "n": 3,
+   "request_ids": [
+    "asc_mvp_regen_portrait_beasts_warchief_v1"
+   ],
+   "pick": "asc_mvp_regen_portrait_beasts_warchief_v1 c2",
+   "gates": "replaced: the horned-skull totem staff is whole (shipped cut it at the edge), eyes 37%",
+   "status": "in-pr"
+  },
+  {
+   "group": 2,
+   "id": "asc_m1_portrait_kingdom_crossbowmen",
+   "out": "assets/portraits/kingdom/crossbowmen.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: A human crossbowman of the Aurel Crown, sharp-eyed older woman, padded blue-and-white gambeson, brimmed steel kettle hat, a loaded crossbow held across her chest with both hands, calm focused expression, eyes narrowed toward the left.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait.webp",
+   "n": 3,
+   "request_ids": [
+    "asc_mvp_regen_portrait_kingdom_crossbowmen_edit_v1",
+    "asc_mvp_regen_portrait_kingdom_crossbowmen_v1",
+    "asc_mvp_regen_portrait_kingdom_crossbowmen_edit2_v1"
+   ],
+   "pick": "asc_mvp_regen_portrait_kingdom_crossbowmen_edit2_v1 c1",
+   "gates": "replaced: editImage of the shipped pick; now the older woman the subject asks for (grey braid), same hat/gambeson/crossbow, eyes 37.5%. Styled re-roll v1 3/3 male; edit v1 3/3 read as old men; edit v2 c2/c3 grin",
+   "status": "in-pr",
+   "edits": [
+    {
+     "request_id": "asc_mvp_regen_portrait_kingdom_crossbowmen_edit_v1",
+     "kind": "edit",
+     "image_file": "assets/portraits/kingdom/crossbowmen.webp (M1 pick)",
+     "prompt": "Make the crossbow soldier a sharp-eyed older woman: grey hair tied back under the same brimmed steel kettle hat, a lined weathered face with high cheekbones, the same blue-and-white gambeson, the same crossbow held across her chest with both hands, same pose, same framing, same thick outline and flat cel colours, same deep indigo background."
+    },
+    {
+     "request_id": "asc_mvp_regen_portrait_kingdom_crossbowmen_edit2_v1",
+     "kind": "edit",
+     "image_file": "assets/portraits/kingdom/crossbowmen.webp (M1 pick)",
+     "prompt": "Make the crossbow soldier a woman in her fifties: a feminine face with a narrow chin, full lips and smooth skin with a few laugh lines, long grey-streaked hair in a thick braid falling over her shoulder, the same brimmed steel kettle hat, the same blue-and-white gambeson, the same crossbow held across her chest with both hands, same pose, same framing, same thick outline and flat cel colours."
+    }
+   ]
+  },
+  {
+   "group": 2,
+   "id": "asc_m1_banner_beasts",
+   "out": "assets/banners/beasts.webp",
+   "prompt": "Cel-shaded heraldic banner: one tall cloth banner hanging from a short horizontal crossbar, one bold invented emblem in the centre readable at 48 pixels, flat saturated colours with one hard shadow tone, thick clean dark outline, viewed straight on, single banner centred with wide empty margin, plain flat mid-grey background. Subject: Banner of a wild beast tribe, ochre hide cloth with a crimson border and a ragged torn lower edge hung with small bones, a bone-white horned beast skull wreathed in green thorns as the central emblem.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "asset",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/banner_grey.webp",
+   "n": 3,
+   "request_ids": [
+    "asc_mvp_regen_banner_beasts_v1"
+   ],
+   "pick": "kept",
+   "gates": "kept the shipped v20c1 cutout: regen 0/3 blue but none better at 48 px; no cutout spent",
+   "status": "kept (M1 file unchanged)"
+  },
+  {
+   "group": 2,
+   "id": "asc_m1_terrain_plains",
+   "out": "assets/terrain/plains.webp",
+   "prompt": "Seamless tileable top-down cel-shaded map texture in bright sunlit daylight: light mid-tone colours, flat saturated colour with simple hard-edged shape motifs in two close light tones, soft pale highlights, low contrast within the texture, even flat lighting, uniform density from edge to edge, pattern continues across all four edges. Subject: Open grassland plains seen from directly above, fresh light yellow-green grass with soft even texture, scattered tiny pale wildflower dots and faint trodden paths.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "texture",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/terrain.webp",
+   "n": 3,
+   "request_ids": [
+    "asc_mvp_regen_terrain_plains_v1"
+   ],
+   "pick": "kept",
+   "gates": "kept (shipped L* 74.3, chroma 45.9): regen L* 70.8/77.1/76.4 but chroma 49-54 and c2 repeats a motif",
+   "status": "kept (M1 file unchanged)"
+  },
+  {
+   "group": 2,
+   "id": "asc_m1_terrain_hills",
+   "out": "assets/terrain/hills.webp",
+   "prompt": "Seamless tileable top-down cel-shaded map texture in bright sunlit daylight: light mid-tone colours, flat saturated colour with simple hard-edged shape motifs in two close light tones, soft pale highlights, low contrast within the texture, even flat lighting, uniform density from edge to edge, pattern continues across all four edges. Subject: Rolling hills seen from directly above, sunlit warm ochre and tan grassy slopes with soft curved ridge lines and a few small pale grey rock outcrops.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "texture",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/terrain.webp",
+   "n": 3,
+   "request_ids": [
+    "asc_mvp_regen_terrain_hills_v1"
+   ],
+   "pick": "kept",
+   "gates": "kept (shipped L* 60.0): regen came back green, L* 62.4-67.6, chroma 42-45",
+   "status": "kept (M1 file unchanged)"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_music_title",
+   "out": "assets/audio/music/title.mp3",
+   "kind": "music",
+   "prompt": "Bold heroic fantasy score: brass fanfare motifs, driving drums, soaring strings, bright and determined, tempo around 110 bpm, instrumental. Subject: the main title theme of a fantasy strategy game about rival rulers racing to ascend: a noble French horn melody rising over strings and harp, building to a full heroic statement with brass and drums, then easing back to a quiet harp-and-horn passage so it can loop.",
+   "duration": 90,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_music_title_t1_v1",
+    "asc_mvp_music_title_t2_v1"
+   ],
+   "pick": "asc_mvp_music_title_t1_v1",
+   "gates": "builds from harp/horn to full statement; LRA 10.5 vs t2 15.9",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_music_map",
+   "out": "assets/audio/music/map.mp3",
+   "kind": "music",
+   "prompt": "Warm thoughtful fantasy score for planning a campaign: gentle harp and plucked strings, soft woodwind melody, light hand percussion, warm low strings, hopeful and curious, tempo around 90 bpm, instrumental. Subject: the loop that plays on the strategy map while players plan their turn: a light recurring woodwind theme over harp arpeggios, unhurried, warm and curious, gentle enough to play under long thinking.",
+   "duration": 120,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_music_map_t1_v1",
+    "asc_mvp_music_map_t2_v1"
+   ],
+   "pick": "asc_mvp_music_map_t2_v1",
+   "gates": "steady; wrap jump 0.14 and end/start level -2.2 dB (t1 fades out: -9.1 dB, wrap 1.84)",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_music_battle",
+   "out": "assets/audio/music/battle.mp3",
+   "kind": "music",
+   "prompt": "Bold heroic fantasy score: brass fanfare motifs, driving drums, soaring strings, bright and determined, tempo around 110 bpm, instrumental. Subject: a battle loop for watching two armies clash: pounding war drums and a low brass ostinato, urgent string runs and bold horn calls, high energy from start to end.",
+   "duration": 90,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_music_battle_t1_v1",
+    "asc_mvp_music_battle_t2_v1"
+   ],
+   "pick": "asc_mvp_music_battle_t1_v1",
+   "gates": "drums throughout; t2 fades out at the end (-9.6 dB)",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_music_victory",
+   "out": "assets/audio/music/victory.mp3",
+   "kind": "music",
+   "prompt": "Bold heroic fantasy score: brass fanfare motifs, driving drums, soaring strings, bright and determined, tempo around 110 bpm, instrumental. Subject: a short victory fanfare: a rising brass flourish, a cymbal crash and a bright sustained major chord that rings out.",
+   "duration": 10,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_music_victory_t1_v1",
+    "asc_mvp_music_victory_t2_v1"
+   ],
+   "pick": "asc_mvp_music_victory_t1_v1",
+   "gates": "fanfare reaches full level by 0.3 s (t2 starts 23 dB down)",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_music_defeat",
+   "out": "assets/audio/music/defeat.mp3",
+   "kind": "music",
+   "prompt": "Sombre fantasy score: slow low brass and cello, a lone horn melody, soft timpani, dignified and regretful, instrumental. Subject: a short defeat sting: a falling horn phrase over a low drum roll, ending on a dark sustained minor chord.",
+   "duration": 10,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_music_defeat_t1_v1",
+    "asc_mvp_music_defeat_t2_v1"
+   ],
+   "pick": "asc_mvp_music_defeat_t1_v1",
+   "gates": "drum roll then a held low chord, as asked; t2 static",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_ui_click",
+   "out": "assets/audio/sfx/ui_click.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a crisp light wooden click of a game button being pressed, with a tiny bright tick",
+   "duration": 1.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_ui_click_t1_v1",
+    "asc_mvp_sfx_ui_click_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_ui_click_t2_v1",
+   "gates": "t1 was near-silent (-38 dBFS peak)",
+   "post": "onset trim, cap 0.25 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_ui_hover",
+   "out": "assets/audio/sfx/ui_hover.wav",
+   "kind": "sfx",
+   "prompt": {
+    "t1-t2": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a very soft short airy tick of a fingertip brushing a wooden game piece",
+    "t3-t4": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: one very soft short high wooden tick, a fingernail tapping a small game piece once"
+   },
+   "duration": 0.5,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_ui_hover_t1_v1",
+    "asc_mvp_sfx_ui_hover_t2_v1",
+    "asc_mvp_sfx_ui_hover_t3_v1",
+    "asc_mvp_sfx_ui_hover_t4_v1"
+   ],
+   "pick": "asc_mvp_sfx_ui_hover_t3_v1",
+   "gates": "first of three ticks; t1/t2 near-silent noise, t4 duller",
+   "post": "onset trim, cap 0.12 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_order_queued",
+   "out": "assets/audio/sfx/order_queued.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a wooden army token set down firmly on a map table, a soft knock with a small bright chime on top",
+   "duration": 1.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_order_queued_t1_v1",
+    "asc_mvp_sfx_order_queued_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_order_queued_t1_v1",
+   "gates": "knock plus chime; t2 a 0.24 s flat burst",
+   "post": "onset trim, cap 0.80 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_order_cancelled",
+   "out": "assets/audio/sfx/order_cancelled.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a wooden army token lifted off a map table, a soft scrape and a low two-note falling pluck",
+   "duration": 1.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_order_cancelled_t1_v1",
+    "asc_mvp_sfx_order_cancelled_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_order_cancelled_t1_v1",
+   "gates": "falling contour; t2 flat",
+   "post": "onset trim, cap 0.70 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_end_turn",
+   "out": "assets/audio/sfx/end_turn.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a heavy brass hourglass turned over on a wooden table, a solid thump, a short sweep of sand and a warm low bell",
+   "duration": 2.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_end_turn_t1_v1",
+    "asc_mvp_sfx_end_turn_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_end_turn_t2_v1",
+   "gates": "thump + sand sweep + bell; t1 bell only, -14 dBFS",
+   "post": "onset trim, cap 1.40 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_turn_start",
+   "out": "assets/audio/sfx/turn_start.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a bright clear hand bell rung once to announce a new turn, with a gentle rising shimmer",
+   "duration": 2.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_turn_start_t1_v1",
+    "asc_mvp_sfx_turn_start_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_turn_start_t1_v1",
+   "gates": "decaying bell shimmer",
+   "post": "onset trim, cap 1.30 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_recruit",
+   "out": "assets/audio/sfx/recruit.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a squad of soldiers snapping to attention, a sharp clatter of armour and one unified stamp of boots",
+   "duration": 2.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_recruit_t1_v1",
+    "asc_mvp_sfx_recruit_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_recruit_t1_v1",
+   "gates": "one stamp + clatter decay; t2's closing stamp is truncated",
+   "post": "onset trim, cap 1.20 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_march",
+   "out": "assets/audio/sfx/march.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a column of soldiers moving off, a short burst of rhythmic marching boots on dirt with jangling mail",
+   "duration": 2.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_march_t1_v1",
+    "asc_mvp_sfx_march_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_march_t2_v1",
+   "gates": "regular footfalls visible",
+   "post": "onset trim, cap 1.70 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_battle_hit",
+   "out": "assets/audio/sfx/battle_hit.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a heavy sword blow landing on a wooden shield, a solid crunching thud with a short metallic ring",
+   "duration": 1.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_battle_hit_t1_v1",
+    "asc_mvp_sfx_battle_hit_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_battle_hit_t1_v1",
+   "gates": "thud with metallic ring; t2 a flat 0.2 s burst",
+   "post": "onset trim, cap 0.60 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_battle_clash",
+   "out": "assets/audio/sfx/battle_clash.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: two steel swords clashing hard, one bright ringing clang",
+   "duration": 1.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_battle_clash_t1_v1",
+    "asc_mvp_sfx_battle_clash_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_battle_clash_t1_v1",
+   "gates": "ringing clang; t2 had DC offset and clipping",
+   "post": "onset trim, cap 0.90 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_battle_miss",
+   "out": "assets/audio/sfx/battle_miss.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a sword swung hard through empty air, one fast whoosh",
+   "duration": 1.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_battle_miss_t1_v1",
+    "asc_mvp_sfx_battle_miss_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_battle_miss_t2_v1",
+   "gates": "whoosh; fewer overs than t1",
+   "post": "onset trim, cap 0.50 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_battle_bolt",
+   "out": "assets/audio/sfx/battle_bolt.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a crossbow firing, a sharp string twang and a short whistling bolt",
+   "duration": 1.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_battle_bolt_t1_v1",
+    "asc_mvp_sfx_battle_bolt_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_battle_bolt_t1_v1",
+   "gates": "twang + falling whistle; t2 near-silent",
+   "post": "onset trim, cap 0.40 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_battle_javelin",
+   "out": "assets/audio/sfx/battle_javelin.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a javelin hurled hard, one fast low whoosh through the air",
+   "duration": 1.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_battle_javelin_t1_v1",
+    "asc_mvp_sfx_battle_javelin_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_battle_javelin_t1_v1",
+   "gates": "whoosh; t2 clipped (154 samples over)",
+   "post": "onset trim, cap 0.60 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_battle_arcane",
+   "out": "assets/audio/sfx/battle_arcane.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a magic bolt fired from a staff, a bright crackling zap with a sparkling tail",
+   "duration": 1.5,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_battle_arcane_t1_v1",
+    "asc_mvp_sfx_battle_arcane_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_battle_arcane_t1_v1",
+   "gates": "crackling zap with a tail",
+   "post": "onset trim, cap 0.90 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_battle_charge",
+   "out": "assets/audio/sfx/battle_charge.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: heavy cavalry breaking into a charge, a short burst of thundering hooves and jingling harness",
+   "duration": 2.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_battle_charge_t1_v1",
+    "asc_mvp_sfx_battle_charge_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_battle_charge_t2_v1",
+   "gates": "four distinct hoof beats",
+   "post": "onset trim, cap 1.30 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_unit_fall",
+   "out": "assets/audio/sfx/unit_fall.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: an armoured soldier collapsing onto the ground, a heavy thud and a clatter of steel",
+   "duration": 1.5,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_unit_fall_t1_v1",
+    "asc_mvp_sfx_unit_fall_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_unit_fall_t2_v1",
+   "gates": "impact then clatter",
+   "post": "onset trim, cap 1.00 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_rout_horn",
+   "out": "assets/audio/sfx/rout_horn.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a single long low war horn blast that wavers and falls in pitch, the signal to retreat",
+   "duration": 3.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_rout_horn_t1_v1",
+    "asc_mvp_sfx_rout_horn_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_rout_horn_t1_v1",
+   "gates": "harmonics bend down at the end (falling pitch)",
+   "post": "onset trim, cap 3.00 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_capital_captured",
+   "out": "assets/audio/sfx/capital_captured.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a short triumphant brass fanfare of three rising notes ending in a cymbal crash",
+   "duration": 4.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_capital_captured_t1_v1",
+    "asc_mvp_sfx_capital_captured_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_capital_captured_t1_v1",
+   "gates": "brass phrase then cymbal crash",
+   "post": "onset trim, cap 3.10 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_ruler_death",
+   "out": "assets/audio/sfx/ruler_death.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a deep resonant bronze bell tolled once, long and solemn, with a dark low swell underneath",
+   "duration": 4.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_ruler_death_t1_v1",
+    "asc_mvp_sfx_ruler_death_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_ruler_death_t2_v1",
+   "gates": "long tolling bell with low swell",
+   "post": "onset trim, cap 4.00 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_succession_crown",
+   "out": "assets/audio/sfx/succession_crown.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a shimmering magical chime rising into a bright regal bell, a crown placed on a new ruler",
+   "duration": 3.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_succession_crown_t1_v1",
+    "asc_mvp_sfx_succession_crown_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_succession_crown_t1_v1",
+   "gates": "rising shimmer into bell partials",
+   "post": "onset trim, cap 2.60 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_sacrifice",
+   "out": "assets/audio/sfx/sacrifice.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a dark magical rush of energy drawn inward, a low pulsing throb and crackling embers",
+   "duration": 3.0,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_sacrifice_t1_v1",
+    "asc_mvp_sfx_sacrifice_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_sacrifice_t2_v1",
+   "gates": "low throb with mid crackle; t1 quiet rumble only",
+   "post": "onset trim, cap 2.60 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_sfx_research_complete",
+   "out": "assets/audio/sfx/research_complete.wav",
+   "kind": "sfx",
+   "prompt": "Punchy stylised game foley: wood, steel, leather, bright magical chimes. Close-mic, dry, single short isolated sound, clean sharp onset, quick decay into silence. Subject: a bright magical discovery chime, quick sparkling ascending bell notes",
+   "duration": 2.5,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_sfx_research_complete_t1_v1",
+    "asc_mvp_sfx_research_complete_t2_v1"
+   ],
+   "pick": "asc_mvp_sfx_research_complete_t1_v1",
+   "gates": "chime partials; t2 near-silent",
+   "post": "onset trim, cap 1.40 s, 40 ms fade, mono 16-bit, loudest-400 ms -16 dBFS RMS, peak <= -1 dBFS",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_amb_map",
+   "out": "assets/audio/ambiance/map.mp3",
+   "kind": "ambiance",
+   "prompt": "Light airy bed for a fantasy strategy map: gentle wind, rustling leaves, far-off birds, a soft warm pad, even level from start to end, seamless loop. Subject: sunny open countryside seen from high above: soft wind, rustling grass and leaves, birdsong in the distance.",
+   "duration": 10,
+   "loop": true,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_amb_map_t1_v1",
+    "asc_mvp_amb_map_t2_v1",
+    "asc_mvp_amb_map_t3_v1"
+   ],
+   "pick": "wind bed t1+t2 (t3 louder, uneven) plus birdsong layer t1+t2 at -6 dB",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_amb_battle",
+   "out": "assets/audio/ambiance/battle.mp3",
+   "kind": "ambiance",
+   "prompt": "Open battlefield bed for a fantasy war: steady wind over open ground, banners and cloth flapping, the distant rumble of marching armies and faint far-off clashing steel, even level from start to end, seamless loop. Subject: a wide plain where two armies face each other, wind across the field.",
+   "duration": 10,
+   "loop": true,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_amb_battle_t1_v1",
+    "asc_mvp_amb_battle_t2_v1",
+    "asc_mvp_amb_battle_t3_v1"
+   ],
+   "pick": "t1+t2; t3 rejected (rigid periodic pulses, DC, clipping, wrap jump 2.7)",
+   "status": "in-pr"
+  },
+  {
+   "group": 4,
+   "id": "asc_mvp_amb_map_birds",
+   "out": "assets/audio/ambiance/map.mp3",
+   "kind": "ambiance",
+   "prompt": "Light airy bed for a fantasy strategy map: gentle wind, rustling leaves, far-off birds, a soft warm pad, even level from start to end, seamless loop. Subject: songbirds calling and chirping in a sunny meadow, clear short birdsong phrases from several birds over a soft breeze.",
+   "duration": 10,
+   "loop": true,
+   "augment": true,
+   "request_ids": [
+    "asc_mvp_amb_map_birds_t1_v1",
+    "asc_mvp_amb_map_birds_t2_v1"
+   ],
+   "pick": "birdsong layer t1+t2 at -6 dB in ambiance/map.mp3",
+   "status": "in-pr"
+  },
+  {
+   "group": 5,
+   "id": "asc_mvp_ui_title_backdrop",
+   "out": "assets/ui/title_backdrop.webp",
+   "kind": "image",
+   "type": "splash",
+   "perspective": "High Angle",
+   "aspect": "ar_16_9",
+   "n": 3,
+   "augment": false,
+   "prompts": {
+    "muster": "Painted stylised 3D diorama key art of bright high fantasy: chunky simplified 3D forms with clean dark outlines, flat saturated colours with soft hard-edged shading, bright sunlit sky with soft white clouds, colourful and characterful, cinematic wide vista seen from a high three-quarter angle, open sky in the upper middle, wordless pure pictorial image. Subject: A grand stone fortress of the Aurel Crown with royal-blue roofs and tall gold-and-blue banners stands on a green hill above a river valley; its great gate is open and a mustering army of small spearmen, knights and crossbowmen in blue and white marches out along a winding road; rolling plains, round green forests and ochre hills stretch away to distant mountains.",
+    "rivals": "Painted stylised 3D diorama key art of bright high fantasy: chunky simplified 3D forms with clean dark outlines, flat saturated colours with soft hard-edged shading, bright sunlit sky with soft white clouds, colourful and characterful, cinematic wide vista seen from a high three-quarter angle, open sky in the upper middle, wordless pure pictorial image. Subject: A grand stone fortress of the Aurel Crown with royal-blue roofs and gold-and-blue banners on a green hill, an army in blue and white mustering at its open gate; across the river valley on a far ochre ridge, a wild war camp of the Thornmane Clans with hide tents, bonfire smoke and crimson-and-ochre banners; rolling plains and round green forests between them, distant mountains under a bright sky."
+   },
+   "art_style": {
+    "muster": "Cel-Shaded",
+    "muster_s3d": "Stylized 3D",
+    "rivals": "Cel-Shaded"
+   },
+   "request_ids": [
+    "asc_mvp_ui_title_backdrop_muster_v1",
+    "asc_mvp_ui_title_backdrop_muster_s3d_v1",
+    "asc_mvp_ui_title_backdrop_rivals_v1"
+   ],
+   "pick": "asc_mvp_ui_title_backdrop_muster_s3d_v1 c2",
+   "gates": "chunkiest 3D-diorama read; open sky upper left/middle for the logo; no text; runner-up muster_v1 c3",
+   "post": "1344x768 -> Lanczos 1920x1097 + unsharp (r1.2, 40%) -> centre crop 1920x1080, webp q90",
+   "status": "in-pr"
+  },
+  {
+   "group": 5,
+   "id": "asc_mvp_ui_title_plaque",
+   "out": "assets/ui/title_plaque.webp",
+   "kind": "image",
+   "type": "ui_asset",
+   "art_style": "Cel-Shaded",
+   "aspect": "ar_16_9",
+   "n": 3,
+   "augment": false,
+   "prompt": "Cel-shaded game interface element: deep indigo panel with a thick clean gold border and simple bold geometric corner pieces each set with one coloured gem, solid opaque deep indigo centre, flat colours with one hard highlight tone, flat even lighting, symmetrical, clean straight edges, viewed straight on. Subject: A wide horizontal title plaque for the game's name: a long gold-framed deep indigo plate with a small radiant gold sun crest at the top centre and short ribbon tails at each end, the long centre left empty for lettering.",
+   "request_ids": [
+    "asc_mvp_ui_title_plaque_v1"
+   ],
+   "pick": "asc_mvp_ui_title_plaque_v1 c1",
+   "gates": "centre alpha 255 (all 3); mirror diff 0.4 (c2 0.6, c3 0.8)",
+   "post": "bbox crop + 8 px, 952x247 webp lossless",
+   "status": "in-pr"
+  },
+  {
+   "group": 6,
+   "id": "asc_mvp_concept_spearmen",
+   "out": "assets/concept/units/spearmen.webp",
+   "kind": "styled",
+   "type": "asset",
+   "augment": false,
+   "n": 3,
+   "prompt": "Cel-shaded character concept art of bright high fantasy: one full figure shown whole from head to feet in a front three-quarter view, standing upright in a neutral relaxed stance with the arms held slightly away from the body, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, even flat lighting, single subject centred with wide empty margin on every side, plain flat light grey background. Subject: A disciplined human spearman of the Aurel Crown, young weathered face, open-faced steel helm with a short blue plume, royal-blue tabard with gold trim over steel mail, brown leather boots, a round steel-rimmed shield on his left arm, a long spear held upright in his right hand with its butt resting on the ground beside his foot.",
+   "style_from_file": "assets/portraits/kingdom/spearmen.webp",
+   "request_ids": [
+    "asc_mvp_concept_spearmen_v1",
+    "asc_mvp_concept_spearmen_v1c3_cut_v1"
+   ],
+   "pick": "asc_mvp_concept_spearmen_v1 c3",
+   "post": "removeBackground (crop, creative_edit false), padded square +12%, <=1024, webp q92 alpha 100",
+   "status": "in-pr"
+  },
+  {
+   "group": 6,
+   "id": "asc_mvp_concept_crossbowmen",
+   "out": "assets/concept/units/crossbowmen.webp",
+   "kind": "styled",
+   "type": "asset",
+   "augment": false,
+   "n": 3,
+   "prompt": "Cel-shaded character concept art of bright high fantasy: one full figure shown whole from head to feet in a front three-quarter view, standing upright in a neutral relaxed stance with the arms held slightly away from the body, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, even flat lighting, single subject centred with wide empty margin on every side, plain flat light grey background. Subject: A crossbow soldier of the Aurel Crown, a sharp-eyed woman in her fifties with a long grey braid, brimmed steel kettle hat, padded blue-and-white gambeson, brown leather boots, a quiver of bolts at her hip, a loaded crossbow held in both hands pointing down across her body.",
+   "style_from_file": "assets/portraits/kingdom/crossbowmen.webp (the replacement installed by this batch)",
+   "request_ids": [
+    "asc_mvp_concept_crossbowmen_v1",
+    "asc_mvp_concept_crossbowmen_v1c3_cut_v1"
+   ],
+   "pick": "asc_mvp_concept_crossbowmen_v1 c3",
+   "post": "removeBackground (crop, creative_edit false), padded square +12%, <=1024, webp q92 alpha 100",
+   "status": "in-pr"
+  },
+  {
+   "group": 6,
+   "id": "asc_mvp_concept_knights",
+   "out": "assets/concept/units/knights.webp",
+   "kind": "styled",
+   "type": "asset",
+   "augment": false,
+   "n": 3,
+   "prompt": "Cel-shaded character concept art of bright high fantasy: one full figure shown whole from head to feet in a front three-quarter view, standing upright in a neutral relaxed stance with the arms held slightly away from the body, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, even flat lighting, single subject centred with wide empty margin on every side, plain flat light grey background. Subject: A mounted human knight of the Aurel Crown on a white warhorse in blue-and-white barding, polished steel plate with gold trim and a royal-blue surcoat, great helm with the visor raised, a lance held upright in his right hand, the horse standing still with all four legs visible.",
+   "style_from_file": "assets/portraits/kingdom/knights.webp",
+   "request_ids": [
+    "asc_mvp_concept_knights_v1",
+    "asc_mvp_concept_knights_v1c3_cut_v1"
+   ],
+   "pick": "asc_mvp_concept_knights_v1 c3",
+   "post": "removeBackground (crop, creative_edit false), padded square +12%, <=1024, webp q92 alpha 100",
+   "status": "in-pr"
+  },
+  {
+   "group": 6,
+   "id": "asc_mvp_concept_knight_captain",
+   "out": "assets/concept/units/knight_captain.webp",
+   "kind": "styled",
+   "type": "asset",
+   "augment": false,
+   "n": 3,
+   "prompt": "Cel-shaded character concept art of bright high fantasy: one full figure shown whole from head to feet in a front three-quarter view, standing upright in a neutral relaxed stance with the arms held slightly away from the body, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, even flat lighting, single subject centred with wide empty margin on every side, plain flat light grey background. Subject: The knight-captain commander of the Aurel Crown, grizzled bearded veteran, ornate steel plate with gold filigree, royal-blue cloak fastened with a gold crown-and-sun clasp, steel sabatons, a sword held point-down before him with both hands resting on the pommel.",
+   "style_from_file": "assets/portraits/kingdom/knight_captain.webp",
+   "request_ids": [
+    "asc_mvp_concept_knight_captain_v1",
+    "asc_mvp_concept_knight_captain_v1c1_cut_v1"
+   ],
+   "pick": "asc_mvp_concept_knight_captain_v1 c1",
+   "post": "removeBackground (crop, creative_edit false), padded square +12%, <=1024, webp q92 alpha 100",
+   "status": "in-pr"
+  },
+  {
+   "group": 6,
+   "id": "asc_mvp_concept_tuskers",
+   "out": "assets/concept/units/tuskers.webp",
+   "kind": "styled",
+   "type": "asset",
+   "augment": false,
+   "n": 3,
+   "prompt": "Cel-shaded character concept art of bright high fantasy: one full figure shown whole from head to feet in a front three-quarter view, standing upright in a neutral relaxed stance with the arms held slightly away from the body, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, even flat lighting, single subject centred with wide empty margin on every side, plain flat light grey background. Subject: A tusker warrior of the Thornmane Clans, a hulking boar-headed beastman with long curved tusks and bristly tawny fur, crimson war paint stripes, moss-green leather harness with bone plates, a hide kilt, bare hoofed feet, a heavy stone-headed club held in his right hand with its head resting on the ground.",
+   "style_from_file": "assets/portraits/beasts/tuskers.webp",
+   "request_ids": [
+    "asc_mvp_concept_tuskers_v1",
+    "asc_mvp_concept_tuskers_v1c3_cut_v1"
+   ],
+   "pick": "asc_mvp_concept_tuskers_v1 c3",
+   "post": "removeBackground (crop, creative_edit false), padded square +12%, <=1024, webp q92 alpha 100",
+   "status": "in-pr"
+  },
+  {
+   "group": 6,
+   "id": "asc_mvp_concept_fangthrowers",
+   "out": "assets/concept/units/fangthrowers.webp",
+   "kind": "styled",
+   "type": "asset",
+   "augment": false,
+   "n": 3,
+   "prompt": "Cel-shaded character concept art of bright high fantasy: one full figure shown whole from head to feet in a front three-quarter view, standing upright in a neutral relaxed stance with the arms held slightly away from the body, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, even flat lighting, single subject centred with wide empty margin on every side, plain flat light grey background. Subject: A fangthrower of the Thornmane Clans, a lean wolf-headed beastwoman with grey-brown fur and pointed ears, crimson war paint across the muzzle, moss-green leather wraps and a bone necklace, a bundle of bone-tipped javelins on her back and one javelin held upright in her right hand.",
+   "style_from_file": "assets/portraits/beasts/fangthrowers.webp",
+   "request_ids": [
+    "asc_mvp_concept_fangthrowers_v1",
+    "asc_mvp_concept_fangthrowers_v1c2_cut_v1"
+   ],
+   "pick": "asc_mvp_concept_fangthrowers_v1 c2",
+   "post": "removeBackground (crop, creative_edit false), padded square +12%, <=1024, webp q92 alpha 100",
+   "status": "in-pr"
+  },
+  {
+   "group": 6,
+   "id": "asc_mvp_concept_war_bear",
+   "out": "assets/concept/units/war_bear.webp",
+   "kind": "styled",
+   "type": "asset",
+   "augment": false,
+   "n": 3,
+   "prompt": "Cel-shaded character concept art of bright high fantasy: one full figure shown whole from head to feet in a front three-quarter view, standing upright in a neutral relaxed stance with the arms held slightly away from the body, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, even flat lighting, single subject centred with wide empty margin on every side, plain flat light grey background. Subject: A war bear of the Thornmane Clans, a huge brown bear standing on all four legs, moss and small thorny vines growing in its shaggy fur, bone plates strapped to its shoulders, crimson war-paint handprints on its brow, calm alert head.",
+   "style_from_file": "assets/portraits/beasts/war_bear.webp (the replacement installed by this batch)",
+   "request_ids": [
+    "asc_mvp_concept_war_bear_v1",
+    "asc_mvp_concept_war_bear_quad_v1",
+    "asc_mvp_concept_war_bear_quad_v1c3_cut_v1"
+   ],
+   "pick": "asc_mvp_concept_war_bear_quad_v1 c3",
+   "post": "removeBackground (crop, creative_edit false), padded square +12%, <=1024, webp q92 alpha 100",
+   "status": "in-pr",
+   "prompt_quad": "Cel-shaded creature concept art of bright high fantasy: one whole animal shown from nose to tail in a front three-quarter view, standing still on all four legs with its back level and its head forward, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, even flat lighting, single subject centred with wide empty margin on every side, plain flat light grey background. Subject: A war bear of the Thornmane Clans, a huge brown bear on all fours, moss and small thorny vines growing in its shaggy fur, bone plates strapped to its shoulders, crimson war-paint handprints on its brow, calm alert head.",
+   "gates": "re-rolled with the quadruped creature block (the character block stood 3/3 bears upright)"
+  },
+  {
+   "group": 6,
+   "id": "asc_mvp_concept_warchief",
+   "out": "assets/concept/units/warchief.webp",
+   "kind": "styled",
+   "type": "asset",
+   "augment": false,
+   "n": 3,
+   "prompt": "Cel-shaded character concept art of bright high fantasy: one full figure shown whole from head to feet in a front three-quarter view, standing upright in a neutral relaxed stance with the arms held slightly away from the body, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, even flat lighting, single subject centred with wide empty margin on every side, plain flat light grey background. Subject: The warchief commander of the Thornmane Clans, a towering lion-maned beastman with a great tawny mane braided with bones and thorns, crimson war paint, a cloak of moss-green hide over bare muscular arms, bone-studded leather kilt, a horned-skull totem staff held upright in his right hand.",
+   "style_from_file": "assets/portraits/beasts/warchief.webp (the replacement installed by this batch)",
+   "request_ids": [
+    "asc_mvp_concept_warchief_v1",
+    "asc_mvp_concept_warchief_v1c3_cut_v1"
+   ],
+   "pick": "asc_mvp_concept_warchief_v1 c3",
+   "post": "removeBackground (crop, creative_edit false), padded square +12%, <=1024, webp q92 alpha 100",
+   "status": "in-pr"
+  },
+  {
+   "group": 6,
+   "id": "asc_mvp_concept_crownkeep",
+   "out": "assets/concept/fortresses/crownkeep.webp",
+   "kind": "styled + image",
+   "type": "asset",
+   "augment": false,
+   "n": 3,
+   "prompt": "Cel-shaded building concept art of bright high fantasy: one whole structure shown complete on a small patch of ground in a high three-quarter view, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, simple bold readable shapes, even flat lighting, single structure centred with wide empty margin on every side, plain flat light grey background. Subject: Crownkeep, the capital fortress of the Aurel Crown: pale stone curtain walls with round towers capped in royal-blue conical roofs, a tall square central keep crowned with a golden sun ornament and a glowing golden sunstone in its top window, blue-and-gold banners bearing an invented golden crown above a rising sun, a great arched gatehouse facing the viewer, a cobbled road leading to the gate.",
+   "style_from_file": "assets/_anchors/portrait.webp",
+   "art_style_text_only": "Cel-Shaded, High Angle, ar_1_1",
+   "request_ids": [
+    "asc_mvp_concept_crownkeep_text_v1",
+    "asc_mvp_concept_crownkeep_styled_v1",
+    "asc_mvp_concept_crownkeep_styled_v1c1_cut_v1"
+   ],
+   "pick": "asc_mvp_concept_crownkeep_styled_v1 c1",
+   "post": "removeBackground (crop, creative_edit false), padded square +12%, 1024, webp q92 alpha 100",
+   "status": "in-pr"
+  },
+  {
+   "group": 6,
+   "id": "asc_mvp_concept_fangridge",
+   "out": "assets/concept/fortresses/fangridge.webp",
+   "kind": "styled + image",
+   "type": "asset",
+   "augment": false,
+   "n": 3,
+   "prompt": "Cel-shaded building concept art of bright high fantasy: one whole structure shown complete on a small patch of ground in a high three-quarter view, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, simple bold readable shapes, even flat lighting, single structure centred with wide empty margin on every side, plain flat light grey background. Subject: Fangridge, the stronghold of the Thornmane Clans: a rocky ridge crowned with a ring of sharpened log palisades and huge upright bone tusks, hide-roofed longhouses around a great central hall roofed with moss-green thatch, crimson-and-ochre banners bearing an invented horned beast skull, a gate framed by two giant curved fangs, thorny briars and moss growing over the rocks.",
+   "style_from_file": "assets/_anchors/portrait_beasts.webp",
+   "art_style_text_only": "Cel-Shaded, High Angle, ar_1_1",
+   "request_ids": [
+    "asc_mvp_concept_fangridge_text_v1",
+    "asc_mvp_concept_fangridge_styled_v1",
+    "asc_mvp_concept_fangridge_styled_v1c3_cut_v1"
+   ],
+   "pick": "asc_mvp_concept_fangridge_styled_v1 c3",
+   "post": "removeBackground (crop, creative_edit false), padded square +12%, 1024, webp q92 alpha 100",
+   "status": "in-pr"
+  },
+  {
+   "group": 6,
+   "id": "asc_mvp_codex_plains",
+   "out": "assets/concept/codex/plains.webp",
+   "kind": "styled",
+   "type": "art",
+   "augment": false,
+   "n": 3,
+   "prompt": "Cel-shaded landscape vignette of bright high fantasy: a small self-contained scene seen from a gentle high angle, thick clean dark outlines, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, bright sunlit daylight with soft clouds, edges fading softly into a plain pale parchment border, wordless pure pictorial image. Subject: open grassland plains: wide fresh yellow-green grass scattered with pale wildflowers, a winding dirt road beside a low wooden fence, a lone oak tree, gentle far hills under a wide sky.",
+   "style_from_file": "assets/ui/title_backdrop.webp (source: asc_mvp_ui_title_backdrop_muster_s3d_v1 c2)",
+   "request_ids": [
+    "asc_mvp_codex_plains_v1"
+   ],
+   "pick": "asc_mvp_codex_plains_v1 c1",
+   "post": "768x768 webp q90",
+   "status": "in-pr"
+  },
+  {
+   "group": 6,
+   "id": "asc_mvp_codex_forest",
+   "out": "assets/concept/codex/forest.webp",
+   "kind": "styled",
+   "type": "art",
+   "augment": false,
+   "n": 3,
+   "prompt": "Cel-shaded landscape vignette of bright high fantasy: a small self-contained scene seen from a gentle high angle, thick clean dark outlines, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, bright sunlit daylight with soft clouds, edges fading softly into a plain pale parchment border, wordless pure pictorial image. Subject: a temperate forest: bold rounded tree canopies in bright leaf green crowding a narrow sunlit path, mossy rocks and ferns, dappled light, deeper woods behind.",
+   "style_from_file": "assets/ui/title_backdrop.webp (source: asc_mvp_ui_title_backdrop_muster_s3d_v1 c2)",
+   "request_ids": [
+    "asc_mvp_codex_forest_v1"
+   ],
+   "pick": "asc_mvp_codex_forest_v1 c3",
+   "post": "768x768 webp q90",
+   "status": "in-pr"
+  },
+  {
+   "group": 6,
+   "id": "asc_mvp_codex_hills",
+   "out": "assets/concept/codex/hills.webp",
+   "kind": "styled",
+   "type": "art",
+   "augment": false,
+   "n": 3,
+   "prompt": "Cel-shaded landscape vignette of bright high fantasy: a small self-contained scene seen from a gentle high angle, thick clean dark outlines, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, bright sunlit daylight with soft clouds, edges fading softly into a plain pale parchment border, wordless pure pictorial image. Subject: rolling hills: sunlit warm ochre and tan grassy slopes with soft curved ridges, a few pale grey rock outcrops and a small stone watchtower on a far crest.",
+   "style_from_file": "assets/ui/title_backdrop.webp (source: asc_mvp_ui_title_backdrop_muster_s3d_v1 c2)",
+   "request_ids": [
+    "asc_mvp_codex_hills_v1"
+   ],
+   "pick": "asc_mvp_codex_hills_v1 c1",
+   "post": "768x768 webp q90",
+   "status": "in-pr"
+  }
+ ]
+}

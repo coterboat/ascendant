@@ -1,0 +1,44 @@
+{
+ "batch": "asc-3d-probe",
+ "rid_prefix": "asc",
+ "note": "3D spike (spike-3d-world): image to 3D probe. No concept art existed in assets/concept/, so each model gets a reference picture first (image, 0.5 cr), then model3d (3 cr). Pictures follow STYLE_BIBLE C-unit/C-mapicon wording, reworded for a 3D reference: A-pose, front three-quarter, light grey ground. Outputs land in the gitignored candidates/ folder; slimmed GLBs are copied to assets/models/probe/.",
+ "style": {"image": "", "art_style": "Cel-Shaded"},
+ "assets": [
+  {
+   "id": "asc_3d_ref_spearman",
+   "kind": "image", "type": "asset", "art_style": "Cel-Shaded", "style": false, "augment": false,
+   "perspective": "Any perspective", "aspect": "ar_3_4",
+   "out": "assets/models/probe/candidates/spearman_ref",
+   "prompt": "Cel-shaded game character reference of bright high fantasy: thick clean dark outline of even weight, flat saturated colours with one hard-edged shadow tone and one highlight tone, simple bold shapes and large readable forms, bright even light from the upper left. Full figure standing in a relaxed A-pose, front three-quarter view, both feet flat on the ground at the bottom of the figure, single subject centred with wide empty margin on every side and clear headroom above the tallest point, plain flat light grey background. Subject: A disciplined human spearman of the Aurel Crown, sturdy proportions, open-faced steel helm with a short blue plume, royal-blue tabard with gold trim over steel mail, a large round blue shield with a gold rim strapped to his left arm, his right hand gripping a thick sturdy spear held upright close beside his body, steady determined expression, eyes looking ahead."
+  },
+  {
+   "id": "asc_3d_model_spearman",
+   "kind": "model3d", "from": "asc_3d_ref_spearman", "faces": 12000, "texture_size": 1024, "texture_type": "pbr",
+   "out": "assets/models/probe/candidates/spearman"
+  },
+  {
+   "id": "asc_3d_ref_tusker",
+   "kind": "image", "type": "asset", "art_style": "Cel-Shaded", "style": false, "augment": false,
+   "perspective": "Any perspective", "aspect": "ar_3_4",
+   "out": "assets/models/probe/candidates/tusker_ref",
+   "prompt": "Cel-shaded game character reference of bright high fantasy: thick clean dark outline of even weight, flat saturated colours with one hard-edged shadow tone and one highlight tone, simple bold shapes and large readable forms, bright even light from the upper left. Full figure standing in a relaxed A-pose, front three-quarter view, both feet flat on the ground at the bottom of the figure, single subject centred with wide empty margin on every side and clear headroom above the tallest point, plain flat light grey background. Subject: A tusker warrior of the Thornmane Clans, a hulking boar-headed beastman with long curved tusks and bristly tawny fur, crimson war paint stripes, moss-green leather harness with bone plates, his right hand gripping a heavy stone-headed club held low at his side, fierce snarling expression, eyes looking ahead."
+  },
+  {
+   "id": "asc_3d_model_tusker",
+   "kind": "model3d", "from": "asc_3d_ref_tusker", "faces": 12000, "texture_size": 1024, "texture_type": "pbr",
+   "out": "assets/models/probe/candidates/tusker"
+  },
+  {
+   "id": "asc_3d_ref_crownkeep",
+   "kind": "image", "type": "asset", "art_style": "Cel-Shaded", "style": false, "augment": false,
+   "perspective": "High Angle", "aspect": "ar_1_1",
+   "out": "assets/models/probe/candidates/crownkeep_ref",
+   "prompt": "Cel-shaded game asset of bright high fantasy: thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, simple bold shapes, bright even light from the upper left, seen from a high three-quarter angle, single object centred with wide empty margin on every side, plain flat light grey background. Subject: Crownkeep, a compact royal fortress on a square of flat ground: square curtain walls of pale cream stone with crenellations, four stout round corner towers with royal-blue conical roofs, a tall square central keep with a blue roof and gold trim, a large arched gatehouse with two small towers in the front wall, an open grassy courtyard inside the walls around the keep."
+  },
+  {
+   "id": "asc_3d_model_crownkeep",
+   "kind": "model3d", "from": "asc_3d_ref_crownkeep", "faces": 30000, "texture_size": 2048, "texture_type": "pbr",
+   "out": "assets/models/probe/candidates/crownkeep"
+  }
+ ]
+}

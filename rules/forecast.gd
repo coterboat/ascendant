@@ -30,7 +30,11 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 	var arrival := state.current_turn + 2
 	var label := TurnResolver.army_label(state, army)
 	var text := "The %s moves to %s and is there at the start of turn %d." % [label, dest.name, arrival]
-	if order.is_road_move():
+	if order.is_road_move() and TurnResolver.road_rule(state, faction_id, order) == "forest_stride":
+		# M4-2, Forest Stride (§4.8): a road move through a forest you own into another forest.
+		text = "The %s moves through the forest of %s (Forest Stride) and is at %s at the start of turn %d. On the way it never stops and never fights on a border; if an enemy army moves into %s too, you fight it there." % [
+			label, state.find_province(order.via).name, dest.name, arrival, dest.name]
+	elif order.is_road_move():
 		text = "The %s moves by the King's Roads through %s and is at %s at the start of turn %d. On the road it never stops and never fights on a border; if an enemy army moves into %s too, you fight it there." % [
 			label, state.find_province(order.via).name, dest.name, arrival, dest.name]
 	var would_capture := false
@@ -46,6 +50,10 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 	elif dest.owner != faction_id:
 		would_capture = true
 		text += " %s is undefended: if no enemy army arrives too, you capture it and gain %d gold per turn." % [dest.name, dest.income]
+		var raid := AscensionRules.capture_gold(state, faction_id, dest)  # M4-2: Raiding Parties
+		if int(raid.gold) > 0:
+			text = text.trim_suffix(".") + ", and %d gold at once (%s: %s)." % [int(raid.gold),
+				AscensionRules.node_name(String(raid.node)), AscensionRules.times_text(int(raid.times))]
 	return {"ok": true, "code": "", "reason": "", "from": here.id, "to": dest.id, "via": order.via, "arrival_turn": arrival,
 		"enemy_present": not enemies.is_empty(), "would_capture": would_capture, "text": text}
 
@@ -174,6 +182,29 @@ static func recruit_cost(state: GameState, faction_id: String, unit_type_id: Str
 	return TurnResolver.recruit_cost(state, faction_id, unit_type_id)
 
 
+## The recruit forecast for one `unit_type_id` (M4-2, §9.4): its price and the hp it arrives with, from the
+## same TurnResolver.price_recruits the recruitment phase pays with (Blood Levy: a quarter off the price and
+## a quarter of its hp missing). `orders` are the faction's queued orders (a queued sacrifice counts).
+## Returns {"ok", "reason", "unit_type", "name", "price", "price_text", "hp", "max_hp", "text"}.
+static func recruit(state: GameState, faction_id: String, unit_type_id: String, orders: Array = []) -> Dictionary:
+	var view := RulerRules.state_after_orders(state, faction_id, orders)
+	var f := view.find_faction(faction_id)
+	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id) if f else null
+	if ut == null:
+		return {"ok": false, "reason": "That is not a unit you can recruit.", "text": "That is not a unit you can recruit."}
+	var priced := TurnResolver.price_recruits(view, faction_id, [RecruitOrder.new(unit_type_id)])
+	var r: Dictionary = priced.results[0]
+	var max_hp := int(RulerRules.unit_stats(view, faction_id, unit_type_id).hp)
+	var hp := AscensionRules.arrival_hp(view, faction_id, ut, max_hp)
+	var text := "%s: %s, arriving with %d of %d hit points." % [ut.name, RulerRules.price_text(view, faction_id, ut), hp, max_hp]
+	if hp < max_hp:
+		text = "%s: %s. %s" % [ut.name, RulerRules.price_text(view, faction_id, ut),
+			AscensionRules.arrival_text(ut, hp, max_hp, AscensionRules.blood_levy_divisor(view, faction_id))]
+	return {"ok": bool(r.ok), "reason": String(r.get("reason", "")), "unit_type": ut.id, "name": ut.name,
+		"price": RulerRules.recruit_price(view, faction_id, ut), "price_text": RulerRules.price_text(view, faction_id, ut),
+		"hp": hp, "max_hp": max_hp, "text": text}
+
+
 ## Gold left after the given recruit orders, paid in order, plus the income expected at the end of
 ## the turn if no provinces change hands. Rejected recruits are listed with their reasons.
 ## Prices are the recruitment phase's (Muster Grounds included) and the income is the income phase's
@@ -254,7 +285,7 @@ static func sacrifice_options(state: GameState, faction_id: String, orders: Arra
 	var queued := RulerRules.queued_sacrifice(orders)
 	var already: String = queued.mandate_id if queued != null else ""
 	var out := []
-	for mid in RulerRules.available_mandates(faction_id):
+	for mid in RulerRules.available_mandates(faction_id, state):  # M4-2: plus the mandates a transformation opened
 		var check := RulerRules.sacrifice_check(state, faction_id, mid, already if mid != already else "")
 		if mid == already:
 			check = {"code": "queued", "reason": "Queued this turn. Cancel the order in your orders list to choose another mandate."}
@@ -351,6 +382,27 @@ static func mandate_now(state: GameState, faction_id: String, mandate_id: String
 					lead, "yours" if own else "its", their]
 			return "%s: %s of %s can reach %s two steps away by road this turn." % [lead,
 				_count(reach.armies, "army", "armies"), "yours" if own else "its", _count(reach.provinces, "province")]
+		RulerRules.HYMN_OF_DAWN:  # M4-2: the mandates a transformation opens
+			var heal := AscensionRules.heal_targets(state, faction_id)
+			if heal.is_empty():
+				return "%s: it works once %s people have become the Celestial Host." % [lead, their]
+			return "%s: Hallowed Land heals %d hit points a turn; this turn %s of %s heal %d in all, if they hold." % [lead,
+				int(heal.amount), _count(int(heal.fighters), "wounded fighter"), "yours" if own else "its", int(heal.total)]
+		RulerRules.FORGE_TITHE:
+			var forts := 0
+			var gold := 0
+			for p in state.provinces:
+				if p.owner == faction_id and p.has_fort:
+					forts += 1
+					for m in RulerRules.province_income_parts(state, p.id).mods:
+						if m.key == RulerRules.FORGE_TITHE:
+							gold += int(m.value)
+			return "%s: +%d gold per turn from %s %s." % [lead, gold, their, _count(forts, "fort")]
+		RulerRules.DEEP_ROOTS:
+			var picks := AscensionRules.wild_spread_picks(state, faction_id)
+			if picks.is_empty():
+				return "%s: no province of %s can grow into forest this turn." % [lead, "yours" if own else "its"]
+			return "%s: the Wild Spreads grows %s this turn." % [lead, RulerRules._and_list(picks.map(func(p): return String(p.name)))]
 	return "%s: it works in every battle %s fighters are in." % [lead, their]
 
 
@@ -569,6 +621,58 @@ static func research(state: GameState, faction_id: String, orders: Array = [], n
 		if m > 0:
 			out.text += " %s then needs %d more: about turn %d." % [RulerRules._cap(AscensionRules.branch_ref(side)),
 				AscensionRules.node_cost(next), int(out.then.done_turn)]
+	return out
+
+
+# --- the transformations' province rules (M4-2, #67; design/M4_ASCENSION.md §4.6, §4.7, §9.4) ---------
+
+## What `faction_id`'s province rule does at the end of this turn, from the same AscensionRules functions
+## the research phase runs, for the map: the provinces the Wild Spreads will grow, and the armies Hallowed
+## Land or the Forges will heal. The board is taken as it stands (every army holds, nobody captures); a
+## transformation this turn's research completes counts, but only when `viewer` is the faction itself (it
+## reads the private research target; `orders` are its queued orders). Returns {"ok", "rule", "spread":
+## [{"province", "name", "grown_from", "text"}], "heal": AscensionRules.heal_targets' info, "by_army":
+## {army id: {"fighters", "total", "amount", "province", "text"}}, "text"}. "ok" is false without a rule.
+static func province_rules(state: GameState, faction_id: String, orders: Array = [], viewer: String = "") -> Dictionary:
+	var out := {"ok": false, "rule": "", "spread": [], "heal": {}, "by_army": {}, "text": ""}
+	var f := state.find_faction(faction_id)
+	if f == null or not AscensionRules.has_paths(state):
+		return out
+	var own := viewer.is_empty() or viewer == faction_id
+	var view := RulerRules.state_after_orders(state, faction_id, orders) if own else state
+	if own:
+		view = AscensionRules.after_research(view, faction_id, orders)
+	var rule := AscensionRules.province_rule(view, faction_id)
+	if rule.is_empty():
+		return out
+	out.ok = true
+	out.rule = String(rule.id)
+	var you := "you" if own else "the %s" % f.faction_name
+	var lines := []
+	for pick in AscensionRules.wild_spread_picks(view, faction_id):
+		var names := []
+		for pid in pick.grown_from:
+			names.append(view.find_province(String(pid)).name)
+		var text := "%s turns to forest at the end of this turn (the Wild Spreads), if %s still hold%s it and %s then." % [
+			String(pick.name), you, "" if own else "s", RulerRules._or_list(names)]
+		out.spread.append({"province": pick.province, "name": pick.name, "grown_from": pick.grown_from.duplicate(), "text": text})
+		lines.append(text)
+	var heal := AscensionRules.heal_targets(view, faction_id)
+	out.heal = heal
+	if not heal.is_empty():
+		for h in heal.healed:
+			var a: Dictionary = out.by_army.get(h.army, {"fighters": 0, "total": 0, "amount": heal.amount, "province": h.province})
+			a.fighters = int(a.fighters) + 1
+			a.total = int(a.total) + int(h.after) - int(h.before)
+			out.by_army[h.army] = a
+		for army_id in out.by_army:
+			var a: Dictionary = out.by_army[army_id]
+			var each := "to full" if int(heal.amount) <= 0 else "+%d hp each, up to their maximum" % int(heal.amount)
+			a.text = "%s: %s heal %d hit points at the end of this turn (%s), if this army ends the turn at %s and %s still hold%s it." % [
+				RulerRules._cap(String(heal.name)), _count(int(a.fighters), "wounded fighter"), int(a.total), each,
+				view.find_province(String(a.province)).name, you, "" if own else "s"]
+			lines.append(a.text)
+	out.text = " ".join(lines)
 	return out
 
 

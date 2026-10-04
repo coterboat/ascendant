@@ -289,6 +289,15 @@ static func recruited_unit(e: Dictionary) -> String:
 		for u in f.unit_types + [f.commander]:
 			if text.contains(" recruited %s " % u.name):
 				return String(u.id)
+		# M4-2: a transformation's renamed and new units (PathData), which the faction data doesn't name.
+		for nid in AscensionRules.node_ids(String(f.id)):
+			var fx := AscensionRules.node_effects(nid)
+			for type_id in fx.get("rename", {}):
+				if text.contains(" recruited %s " % String(fx.rename[type_id])):
+					return String(type_id)
+			var new_id := String(fx.get("new_unit", ""))
+			if not new_id.is_empty() and text.contains(" recruited %s " % String(PathData.NEW_UNITS[new_id].name)):
+				return new_id
 	return ""
 
 

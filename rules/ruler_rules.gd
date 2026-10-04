@@ -70,6 +70,9 @@ static func mandate_data(mandate_id: String) -> Dictionary:
 	for m in MandateData.MANDATES:
 		if m.id == mandate_id:
 			return m
+	for m in MandateData.PATH_MANDATES:  # M4-2: the mandates a transformation opens (sacrifice only)
+		if m.id == mandate_id:
+			return m
 	return {}
 
 
@@ -97,8 +100,11 @@ static func rulers_for(faction_id: String) -> Array:
 	return out
 
 
-## The mandates `faction_id` can take: the shared ones, then its own, in data order (§2.1).
-static func available_mandates(faction_id: String) -> Array:
+## The mandates `faction_id` can take: the shared ones, then its own, in data order (§2.1): the pre-game
+## build list. M4-2: given a `state` with paths, the list a ruler sacrifices from mid-game also has the
+## mandates the faction's transformation opened (MandateData.PATH_MANDATES), last. A forsworn mandate stays
+## on the list, so the sacrifice dialog can show why it can't be bought (sacrifice_check).
+static func available_mandates(faction_id: String, state: GameState = null) -> Array:
 	var shared := []
 	var own := []
 	for m in MandateData.MANDATES:
@@ -106,7 +112,12 @@ static func available_mandates(faction_id: String) -> Array:
 			shared.append(m.id)
 		elif m.faction == faction_id:
 			own.append(m.id)
-	return shared + own
+	var opened := []
+	if state != null:
+		for mid in AscensionRules.opened_mandates(state, faction_id):
+			if String(mandate_data(mid).get("faction", "")) == faction_id:
+				opened.append(mid)
+	return shared + own + opened
 
 
 ## The faction's preset dictionaries, in data order (an AI seat rolls an index into this list).
@@ -807,6 +818,8 @@ static func build_errors(faction_id: String, build) -> Array:
 		seen[mid] = true
 		if not String(md.faction).is_empty() and md.faction != faction_id:
 			errors.append("%s is %s mandate, so the %s can't take it." % [md.name, _a(_faction_display(md.faction)), fname])
+		elif md.get("sacrifice_only", false):
+			errors.append(path_mandate_reason(mid, fname))
 		cost += int(md.cost)
 		parts.append("%s %d" % [md.name, int(md.cost)])
 	if cost > RulerData.POWER_POOL:
@@ -984,6 +997,10 @@ const SWORN_VASSALS := "sworn_vassals"
 const HEAVY_TITHES := "heavy_tithes"
 const ROYAL_COURT := "royal_court"
 const WARBAND_MUSTER := "warband_muster"
+## M4-2: the mandates a transformation opens that work on the map (data/mandates.gd PATH_MANDATES).
+const FORGE_TITHE := "forge_tithe"
+const HYMN_OF_DAWN := "hymn_of_dawn"
+const DEEP_ROOTS := "deep_roots"
 ## Gold Heavy Tithes adds to every province its owner holds (§2.3).
 const TITHE_GOLD := 2
 
@@ -1056,7 +1073,7 @@ static func road_vias(state: GameState, faction_id: String, army_id: String, to:
 	var out := []
 	var army := state.find_army(army_id)
 	var here: Province = state.find_province(army.location) if army else null
-	if here == null or not has_mandate(state, faction_id, KINGS_ROADS):
+	if here == null or not has_road_moves(state, faction_id):
 		return out
 	var ids: Array = here.neighbors.duplicate()
 	ids.sort()
@@ -1066,13 +1083,28 @@ static func road_vias(state: GameState, faction_id: String, army_id: String, to:
 	return out
 
 
+## True when the faction can make road moves at all: King's Roads, or (M4-2) Forest Stride.
+static func has_road_moves(state: GameState, faction_id: String) -> bool:
+	return has_mandate(state, faction_id, KINGS_ROADS) or AscensionRules.has_forest_stride(state, faction_id)
+
+
+## Why a path mandate can't be taken yet, naming the transformation that opens it: "Hymn of Dawn opens only
+## when the Aurel Crown becomes the Celestial Host, and then only by sacrifice."
+static func path_mandate_reason(mandate_id: String, faction_name: String) -> String:
+	var md := mandate_data(mandate_id)
+	var nid := String(md.get("path", ""))
+	var side := AscensionRules.branch_ref(String(AscensionRules.node_data(nid).get("branch", "")))
+	return "%s opens only when the %s becomes %s (a path of ascension), and then only by sacrifice." % [
+		String(md.get("name", mandate_id)), faction_name.trim_prefix("the ").trim_prefix("The "), side]
+
+
 ## Every province two steps away that `army_id` can reach by a road move this turn and could not reach
 ## by a one-step move: {province id: [legal vias, sorted by id]}. Empty without King's Roads.
 static func road_destinations(state: GameState, faction_id: String, army_id: String) -> Dictionary:
 	var out := {}
 	var army := state.find_army(army_id)
 	var here: Province = state.find_province(army.location) if army else null
-	if here == null or army.owner != faction_id or not has_mandate(state, faction_id, KINGS_ROADS):
+	if here == null or army.owner != faction_id or not has_road_moves(state, faction_id):
 		return out
 	var vias: Array = here.neighbors.duplicate()
 	vias.sort()
@@ -1177,6 +1209,10 @@ static func province_income_parts(state: GameState, province_id: String, ruler_a
 				var f := state.find_faction(fid)
 				mods.append({"key": ROYAL_COURT, "name": ability_name(f.ruler_type), "value": court,
 					"note": "%s is here, ability rank %d" % [current_name(state, fid), ability_rank(f.kept_power)]})
+		var fort_income := AscensionRules.mandate_value(state, fid, "fort_income", 0)  # M4-2: Forge Tithe
+		if fort_income > 0 and p.has_fort:
+			mods.append({"key": FORGE_TITHE, "name": mandate_name(FORGE_TITHE), "value": fort_income,
+				"note": "mandate: every province with a fort you own earns %d more" % fort_income})
 	var total := p.income
 	for m in mods:
 		total += int(m.value)
@@ -1221,6 +1257,10 @@ const SACRIFICE_NOW := {
 	"kings_roads": "From this turn on, armies of the {faction} can move two provinces in one turn inside its own land.",
 	"blood_frenzy": "From now on every fighter of the {faction} below its full hit points has +3 attack.",
 	"feast_of_victory": "From now on, after every battle the {faction} wins, its fighters still standing heal to full.",
+	"hymn_of_dawn": "From this turn on, Hallowed Land heals the wounded of the {faction} 6 hit points a turn instead of 3.",
+	"forge_tithe": "Every province with a fort the {faction} owns now earns 4 more gold per turn, starting with this turn's income.",
+	"deep_roots": "From this turn on, the Wild Spreads grows two provinces of the {faction} into forest each turn instead of one.",
+	"red_harvest": "From now on, after every battle the {faction} wins, it gains 1 gold for every enemy fighter lost in it.",
 }
 ## Player-facing words for the stats a mandate's "units" bonus names.
 const UNIT_BONUS_WORDS := {"hp": "maximum hit points", "attack": "attack", "defense": "defense"}
@@ -1258,6 +1298,13 @@ static func sacrifice_check(state: GameState, faction_id: String, mandate_id: St
 			md.name, _a(_faction_name(state, md.faction)), f.faction_name])
 	if f.mandates.has(mandate_id):
 		return _refusal("owned_mandate", "The %s already has %s. Each mandate can be taken only once." % [f.faction_name, md.name])
+	# M4-2 (§6): a transformation forswears one mandate and opens one, which only it can buy.
+	var forsworn := AscensionRules.forsworn_by(state, faction_id, mandate_id)
+	if not forsworn.is_empty():
+		return _refusal("forsworn_mandate", "%s was forsworn when the %s became %s, so it can no longer be bought by sacrifice. Mandates you already have stay." % [
+			md.name, f.faction_name, AscensionRules.branch_ref(String(AscensionRules.node_data(forsworn).get("branch", "")))])
+	if md.get("sacrifice_only", false) and not AscensionRules.opened_mandates(state, faction_id).has(mandate_id):
+		return _refusal("mandate_not_open", path_mandate_reason(mandate_id, f.faction_name))
 	var cost := sacrifice_cost(mandate_id)
 	if f.kept_power < cost:
 		return _refusal("not_enough_power", "%s costs %d power by sacrifice (%d, +%d for a mid-game sacrifice), but %s keeps only %d." % [
@@ -1510,6 +1557,9 @@ static func validate_factions(state: GameState, errors = null) -> bool:
 			seen[mid] = true
 			if not String(md.faction).is_empty() and md.faction != f.id:
 				_report(errors, "%s has %s, which only the %s can take." % [name, md.name, _faction_name(state, md.faction)])
+				ok = false
+			if md.get("sacrifice_only", false) and not sacrificed.has(mid):
+				_report(errors, "%s has %s without a sacrifice for it. %s" % [name, md.name, path_mandate_reason(mid, name)])
 				ok = false
 			if not sacrificed.has(mid):
 				pre_game += int(md.cost)
