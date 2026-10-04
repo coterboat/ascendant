@@ -55,6 +55,11 @@ const RULER_EVENT_TYPES := ["ruler_died", "mending", "ruler_healed", "ruler_arri
 ## Event types a game with paths adds (M4): the research phase's events (M4-1, #66), and the transformations'
 ## on the map (M4-2, #67): Raiding Parties in capture, the transformed event, the Wild Spreads and the heals.
 const PATH_EVENT_TYPES := ["research_gained", "research_done", "oath_sworn", "transformed", "wild_spread", "path_healed", "raided"]
+## Event types a game with forts and sieges adds (M3c S-1a, #98): the sieges phase's events, construction, and (S-1b)
+## the storms and sallies called off in the battles phase.
+const SIEGE_EVENT_TYPES := ["siege_started", "walls_damaged", "walls_breached", "siege_lifted", "siege_ended", "walls_repaired",
+	"construction_started", "construction_halted", "fort_built", "construction_razed", "storm_called_off", "sally_called_off",
+	"sally_found_nothing"]
 const BATTLE_TYPES := ["battle", "border_battle"]
 ## AutoBattleResolver report "end" values, in display order.
 const BATTLE_ENDS := ["rout", "destroyed", "round_cap", "mutual"]
@@ -424,6 +429,8 @@ static func parse_build(arg, faction_id: String) -> Dictionary:
 ## With paths (M4-2): research events are known, gold also counts Raiding Parties' raided gold (Blood Levy's
 ## lower prices are already in the recruited costs) and Red Harvest's gold, paid to a battle's winner (M4-3,
 ## the battle event's numbers.red_harvest), and _check_terrain: terrain changes only by the Wild Spreads.
+## With sieges (M3c S-1a): two factions may share a province only in a siege, phases follow GameSession.report_phases,
+## gold also counts Fortify spending (construction_started's cost), and _check_sieges.
 static func check_invariants(prev: GameState, state: GameState, events: Array) -> Array:
 	var out := []
 	if state == null:
@@ -472,7 +479,11 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 		var owners: Array = owners_at[pid].keys()
 		owners.sort()
 		if owners.size() > 1:
-			out.append({"check": "hostile_armies_share_province", "detail": "%s holds armies of %s after the turn." % [pid, ", ".join(owners)]})
+			var p: Province = provinces.get(pid)
+			var siege: bool = state.sieges and p != null and p.fort_level > 0 and p.siege_since > 0 and owners.size() == 2 \
+				and owners.has(p.owner)
+			if not siege:  # M3c: a garrison and its besiegers share their fort's province
+				out.append({"check": "hostile_armies_share_province", "detail": "%s holds armies of %s after the turn." % [pid, ", ".join(owners)]})
 		elif provinces.has(pid) and provinces[pid].owner != owners[0]:
 			out.append({"check": "occupied_not_captured", "detail": "%s holds only %s armies but belongs to '%s'." % [pid, owners[0], provinces[pid].owner]})
 	var spent := {}
@@ -481,9 +492,10 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 	var harvested := {}  # M4-3: Red Harvest's gold, paid to the winner in the battles phase
 	for e in events:
 		var type := str(e.get("type", ""))
-		if not EVENT_TYPES.has(type) and not RULER_EVENT_TYPES.has(type) and not (state.paths and PATH_EVENT_TYPES.has(type)):
+		if not EVENT_TYPES.has(type) and not RULER_EVENT_TYPES.has(type) and not (state.paths and PATH_EVENT_TYPES.has(type)) \
+				and not (state.sieges and SIEGE_EVENT_TYPES.has(type)):
 			out.append({"check": "event_type_unknown", "detail": "The turn report has an event of unexpected type '%s'." % type})
-		var phases: Array = GameSession.PATH_REPORT_PHASES if state.paths else GameSession.REPORT_PHASES
+		var phases: Array = GameSession.report_phases(state)
 		if not phases.has(str(e.get("phase", ""))):
 			out.append({"check": "event_phase_unknown", "detail": "A %s event has unexpected phase '%s'." % [type, e.get("phase", "")]})
 		var numbers: Dictionary = e.get("numbers", {})
@@ -496,8 +508,8 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 			if numbers.has("red_harvest"):
 				var winner := str(numbers.get("winner", ""))
 				harvested[winner] = int(harvested.get(winner, 0)) + int(numbers.red_harvest)
-		elif type == "recruited" and not fids.is_empty():
-			spent[fids[0]] = int(spent.get(fids[0], 0)) + int(numbers.get("cost", 0))
+		elif (type == "recruited" or type == "construction_started") and not fids.is_empty():
+			spent[fids[0]] = int(spent.get(fids[0], 0)) + int(numbers.get("cost", 0))  # M3c: Fortify orders are paid too
 		elif type == "income" and not fids.is_empty():
 			income[fids[0]] = int(income.get(fids[0], 0)) + int(numbers.get("income", 0))
 		elif type == "raided" and not fids.is_empty():  # M4-2: Raiding Parties' gold, taken in the capture phase
@@ -516,6 +528,46 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 					f.id, f.gold, expected, before.gold, spent.get(f.id, 0), income.get(f.id, 0), raided.get(f.id, 0), harvested.get(f.id, 0)]})
 	out.append_array(_check_rulers(prev, state, events))
 	out.append_array(_check_terrain(prev, state, events))
+	out.append_array(_check_sieges(prev, state, events))
+	return out
+
+
+## Forts and sieges (M3c S-1a, #98; design/M3C_SIEGES.md §11.2 band S9), in a game with sieges only. GameState.validate
+## already holds walls to 0..max, one site per faction, siege_since to the armies there, and engines to armies with
+## a fighter. On top of that:
+##   fort_level_changed     a fort's level changed without a fort_built event (capture keeps the level)
+##   recruited_at_cut_off   a recruit arrived at a fort that was cut off at the start of the turn
+##   recruited_too_soon     a recruit arrived at a fort its faction took last turn or this one (and didn't retake in time)
+##   fort_limit_exceeded    a fort took more recruits this turn than its level allows
+static func _check_sieges(prev: GameState, state: GameState, events: Array) -> Array:
+	var out := []
+	if not state.sieges or prev == null:
+		return out
+	var built := {}
+	var per_fort := {}
+	for e in events:
+		var type := str(e.get("type", ""))
+		if type == "fort_built":
+			for pid in e.get("provinces", []):
+				built[str(pid)] = true
+		elif type == "recruited" and str(e.get("cause", "")) != "with_ruler":
+			var pid := str(e.get("provinces", [""])[0])
+			var fid := str(e.get("factions", [""])[0])
+			var key := "%s|%s" % [fid, pid]
+			per_fort[key] = int(per_fort.get(key, 0)) + 1
+			var before := prev.find_province(pid)
+			if before == null:
+				continue
+			if SiegeRules.is_cut_off(prev, pid, prev.current_turn + 1):
+				out.append({"check": "recruited_at_cut_off", "detail": "%s recruited at %s, which was cut off at the start of the turn." % [fid, pid]})
+			if before.owner != fid or (before.owned_since > 0 and before.owned_since + FortData.CAPTURE_WAIT >= prev.current_turn + 1):
+				out.append({"check": "recruited_too_soon", "detail": "%s recruited at %s, which it had not held since the start of the previous turn." % [fid, pid]})
+			if int(per_fort[key]) > SiegeRules.recruit_limit(before.fort_level):
+				out.append({"check": "fort_limit_exceeded", "detail": "%s recruited %d at %s, a level %d fort." % [fid, per_fort[key], pid, before.fort_level]})
+	for p in state.provinces:
+		var before := prev.find_province(p.id)
+		if before != null and before.fort_level != p.fort_level and not built.has(p.id):
+			out.append({"check": "fort_level_changed", "detail": "%s went from fort level %d to %d without being built." % [p.id, before.fort_level, p.fort_level]})
 	return out
 
 
