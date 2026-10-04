@@ -72,6 +72,15 @@ extends BattleResolver
 ## no gold, so all of it is what it added), its morale is a factor of its own (morale_ruler), the stat
 ## mandates count what their parts added (mandate_*), Veteran Levies the damage its extra hp absorbed,
 ## Iron Discipline the hp it kept from a rout, and Dread is measured like Fury (ability_dread).
+##
+## The battle event log (M3-1, #56; design/M3_BATTLES.md §2). fight(..., record = true) also writes a
+## complete log of the battle while it fights, from the same values it uses: every attack with its
+## target roll, hit roll, chance, damage and their parts, every wound, death, morale check and rout,
+## round by round, and the RNG state before and after. Schema, checks and helpers: BattleLog
+## (rules/battle_log.gd). Recording is passive: it draws nothing from the RNG, reorders nothing and
+## changes no state, so the report, the winner, the armies and the RNG state are the same with it on or
+## off. resolve_battle() records (TurnResolver keeps the log in the event's numbers.log); estimate() and
+## resolve() by default don't.
 
 const ROUND_CAP := 8
 const BASE_HIT := 60
@@ -152,9 +161,10 @@ const MIN_IMPACT := 0.5
 
 ## The issue's shape: `attacker` against `defender` (each an Army or an Array of one faction's
 ## Armies) in `province`. The defender gets the terrain. Pure: the armies are not changed.
-## Returns {"result": {"winner", "strengths", "tie_break", "roll", "why", "report"}, "report": {...}}.
+## Returns {"result": {"winner", "strengths", "tie_break", "roll", "why", "report"}, "report": {...}},
+## plus "log" (BattleLog schema) when `record` is true.
 ## `state` is optional and only used for player-facing names.
-static func resolve(attacker, defender, province: Province, rng: SeededRNG, state: GameState = null) -> Dictionary:
+static func resolve(attacker, defender, province: Province, rng: SeededRNG, state: GameState = null, record := false) -> Dictionary:
 	var att: Array = attacker if attacker is Array else [attacker]
 	var dfn: Array = defender if defender is Array else [defender]
 	var dfid: String = dfn[0].owner
@@ -162,8 +172,11 @@ static func resolve(attacker, defender, province: Province, rng: SeededRNG, stat
 	sides.sort_custom(func(a, b): return a.faction < b.faction)
 	var ctx := {"kind": "province", "defender": dfid, "province": province,
 		"province_ids": [province.id] if province else [], "state": state}
-	var r := fight(sides, ctx, rng)
-	return {"result": r.result, "report": r.result.report}
+	var r := fight(sides, ctx, rng, record)
+	var out := {"result": r.result, "report": r.result.report}
+	if record:
+		out["log"] = r.log
+	return out
 
 
 ## BattleResolver interface, called by TurnResolver for every battle (any number of sides).
@@ -171,6 +184,8 @@ static func resolve(attacker, defender, province: Province, rng: SeededRNG, stat
 ## its army, Feast of Victory heals); the TurnResolver removes the losing armies. The battle dictionary
 ## may carry "state" for names, terrain, rulers and mandates. With Feast of Victory, the report gains
 ## "feast": {"faction", "name", "fighters", "healed"} (TurnResolver's aftermath line says so).
+## M3-1: the result also carries "log", the battle's event log (BattleLog), with a "feast" event when
+## Feast of Victory healed anyone. The battle dictionary may carry "max_events" (tests: a lowered cap).
 func resolve_battle(battle: Dictionary, rng: SeededRNG) -> Dictionary:
 	var state = battle.get("state")
 	var kind: String = battle.get("kind", "province")
@@ -180,10 +195,19 @@ func resolve_battle(battle: Dictionary, rng: SeededRNG) -> Dictionary:
 		province = state.find_province(pids[0])
 	var ctx := {"kind": kind, "defender": battle.get("defender", ""), "province": province,
 		"province_ids": pids, "state": state if state is GameState else null}
-	var r := fight(battle.sides, ctx, rng)
+	if battle.has("max_events"):
+		ctx["max_events"] = battle.max_events
+	var r := fight(battle.sides, ctx, rng, true)
+	var healed := _feast_healed(r.sides, r.result.winner)  # read before _apply_losses heals them
 	var feast := _apply_losses(r.sides, r.result.winner)
 	if not feast.is_empty():
 		r.result.report["feast"] = feast
+		var wi := -1
+		for i in r.sides.size():
+			if r.sides[i].faction == r.result.winner:
+				wi = i
+		_log_push(r.log, int(ctx.get("max_events", BattleLog.MAX_EVENTS)), {"t": "feast", "side": wi, "healed": healed})
+	r.result["log"] = r.log
 	return r.result
 
 
@@ -263,9 +287,11 @@ static func codex_id_for_trait(trait_id: String) -> String:
 # --- the battle -----------------------------------------------------------------------------------
 
 ## Fights one battle without changing any army. `sides` = [{"faction", "armies"}] sorted by faction
-## id; `ctx` = {"kind", "defender", "province" (Province or null), "province_ids", "state"}.
-## Returns {"result": BattleResolver result with "report", "sides": internal side records}.
-static func fight(sides_in: Array, ctx: Dictionary, rng: SeededRNG) -> Dictionary:
+## id; `ctx` = {"kind", "defender", "province" (Province or null), "province_ids", "state"}, and
+## optionally "max_events" (the log's cap, BattleLog.MAX_EVENTS by default; tests lower it).
+## Returns {"result": BattleResolver result with "report", "sides": internal side records}, plus "log"
+## (the battle event log, BattleLog's schema) when `record` is true. Recording is passive (M3-1).
+static func fight(sides_in: Array, ctx: Dictionary, rng: SeededRNG, record := false) -> Dictionary:
 	var state = ctx.get("state")
 	var kind: String = ctx.get("kind", "province")
 	var province = ctx.get("province")
@@ -277,18 +303,24 @@ static func fight(sides_in: Array, ctx: Dictionary, rng: SeededRNG) -> Dictionar
 	var defender_fid: String = ctx.get("defender", "")
 	var sides := _build_sides(sides_in, defender_fid, state, kind)
 	var env := {"terrain": terrain, "fort": fort, "kind": kind}
+	# M3-1: the recorder, {"log", "cap"}, or null when not recording.
+	var rec = null
+	if record:
+		rec = {"log": _log_header(sides, sides_in, ctx, env, rng, state), "cap": int(ctx.get("max_events", BattleLog.MAX_EVENTS))}
 
 	var rounds := []
 	var round_no := 0
 	while round_no < ROUND_CAP and _standing(sides).size() > 1:
 		round_no += 1
-		rounds.append(_fight_round(sides, round_no, env, rng))
+		rounds.append(_fight_round(sides, round_no, env, rng, rec))
+	var impact_before := _impacts(sides) if rec != null else []
 	_count_extra_hp(sides)
 
 	var standing := _standing(sides)
 	var winner_idx := -1
 	var tie_break := "none"
 	var roll := 0
+	var tied := 0
 	var end := ""
 	if standing.size() == 1:
 		winner_idx = standing[0]
@@ -313,6 +345,7 @@ static func fight(sides_in: Array, ctx: Dictionary, rng: SeededRNG) -> Dictionar
 		winner_idx = pick.index
 		tie_break = pick.tie_break
 		roll = pick.roll
+		tied = int(pick.get("tied", 0))
 		if end == "mutual":
 			sides[winner_idx].routed = false
 			sides[winner_idx].held_field = true
@@ -323,7 +356,12 @@ static func fight(sides_in: Array, ctx: Dictionary, rng: SeededRNG) -> Dictionar
 		strengths[s.faction] = s.strength
 	var result := {"winner": sides[winner_idx].faction, "strengths": strengths, "tie_break": tie_break,
 		"roll": roll, "why": report.why, "report": report}
-	return {"result": result, "sides": sides}
+	if rec == null:
+		return {"result": result, "sides": sides}
+	_log_push(rec.log, rec.cap, {"t": "end", "rounds": round_no, "winner": winner_idx, "how": end, "tie_break": tie_break,
+		"roll": roll, "tied": tied, "impact": _impact_deltas(sides, impact_before)})
+	rec.log.rng["after"] = Serial.int64_to_str(rng.get_state())
+	return {"result": result, "sides": sides, "log": rec.log}
 
 
 static func _build_sides(sides_in: Array, defender_fid: String, state, kind: String = "province") -> Array:
@@ -521,7 +559,9 @@ static func _standing(sides: Array) -> Array:
 	return out
 
 
-static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: SeededRNG) -> Dictionary:
+## One round. `rec` is fight()'s recorder ({"log", "cap"}) when the battle is being recorded (M3-1),
+## otherwise null; recording only reads what the round computes.
+static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: SeededRNG, rec = null) -> Dictionary:
 	var standing := _standing(sides)
 	var dealt := {}
 	var hits := {}
@@ -532,6 +572,15 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 		dealt[si] = 0
 		hits[si] = 0
 		attacks[si] = 0
+	# M3-1 recording: who hit whom, expected damage per side, impact at the round's start, and each side's
+	# reachable tiers (no fighter falls before the round ends, so they hold for every attack of the round).
+	var hit_by := {}
+	var expected_by := {}
+	var impact_before := []
+	var reach := {}
+	if rec != null:
+		impact_before = _impacts(sides)
+		reach = _log_round(rec, sides, standing, round_no)
 	for si in standing:
 		var side: Dictionary = sides[si]
 		for f in side.fighters:
@@ -540,7 +589,8 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			var pool := _targets(sides, si, standing, f)
 			if pool.is_empty():
 				continue
-			var t: Dictionary = pool[rng.randi_range(0, pool.size() - 1)]
+			var pick := rng.randi_range(0, pool.size() - 1)
+			var t: Dictionary = pool[pick]
 			var tside: Dictionary = sides[t.side]
 			var atk := _attack(f, side, env)
 			var dfn := _defense(t, tside, f, env)
@@ -587,7 +637,15 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 				_add_impact(side, VOLLEY, expected * 0.5)
 			if atk.parts.has(BERSERK) and not berserk.has(si):
 				berserk[si] = f.name
-			var hit := rng.randi_range(1, 100) <= chance
+			var roll := rng.randi_range(1, 100)
+			var hit := roll <= chance
+			if rec != null:
+				_log_attack(rec, round_no, f, t, reach, pool.size(), pick, chance, roll, hit, dmg, bonus, base, atk, dfn, expected)
+				expected_by[si] = float(expected_by.get(si, 0.0)) + expected
+				if hit:
+					if not hit_by.has(t.id):
+						hit_by[t.id] = []
+					hit_by[t.id].append(f.id)
 			side.attacks += 1
 			side.chance_sum += chance
 			side.chance_min = mini(side.chance_min, chance)
@@ -621,6 +679,10 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 				var before: int = f.hp
 				f.hp = maxi(0, f.hp - f.pending)
 				f.taken += before - f.hp
+				if rec != null:
+					_log_push(rec.log, rec.cap, {"t": "wound", "n": round_no, "f": f.id, "from": before, "to": f.hp, "by": hit_by.get(f.id, [])})
+					if f.hp == 0:
+						_log_push(rec.log, rec.cap, {"t": "death", "n": round_no, "f": f.id, "by": hit_by.get(f.id, []).duplicate()})
 				if f.hp == 0:
 					f.alive = false
 					sides[si].lost.append(f.name)
@@ -642,6 +704,7 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			"lost_pct": lost_pct, "hp": hp_now}
 		side.morale_log.append(entry)
 		checks[si] = entry
+	var outcomes := {}  # M3-1 recording: side index -> {"result", "held_by" (fighter id), "iron_last_round"}
 	for si in standing:
 		var side: Dictionary = sides[si]
 		if _hp(side) == 0:
@@ -653,7 +716,8 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			# ROUND_CAP the usual check applies, so a line it holds past its break point can't win by
 			# stalling the attackers until the round cap.
 			var holder := _iron_holder(side) if round_no < ROUND_CAP else ""
-			if side.iron and holder.is_empty() and round_no >= ROUND_CAP and not _iron_holder(side).is_empty():
+			var iron_last_round: bool = side.iron and holder.is_empty() and round_no >= ROUND_CAP and not _iron_holder(side).is_empty()
+			if iron_last_round:
 				highlights.append("%s holds a line only until the last round." % RulerRules.mandate_name(RulerRules.IRON_DISCIPLINE))
 			if not holder.is_empty():
 				# Iron Discipline: the side would break, but one of its commanders still stands (§2.3).
@@ -663,12 +727,20 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 					highlights.append("%s would have broken after losing %d%% of its strength (morale %d holds only to %d%%), but %s held it while its %s stood." % [
 						side.name, checks[si].lost_pct, checks[si].morale, checks[si].break_pct,
 						RulerRules.mandate_name(RulerRules.IRON_DISCIPLINE), holder])
+				if rec != null:
+					outcomes[si] = {"result": "held", "held_by": _iron_holder_id(side), "iron_last_round": false}
 				continue
 			side.routed = true
 			side.out_round = round_no
 			side.rout_info = checks[si]
 			highlights.append("%s broke and fled after losing %d%% of its strength (morale %d holds only to %d%%)." % [
 				side.name, checks[si].lost_pct, checks[si].morale, checks[si].break_pct])
+			if rec != null:
+				outcomes[si] = {"result": "breaks", "held_by": -1, "iron_last_round": iron_last_round}
+		elif rec != null:
+			outcomes[si] = {"result": "holds", "held_by": -1, "iron_last_round": false}
+	if rec != null:
+		_log_round_end(rec, sides, standing, round_no, checks, outcomes, attacks, hits, dealt, expected_by, impact_before)
 
 	var parts := []
 	for si in standing:
@@ -691,19 +763,33 @@ static func _targets(sides: Array, si: int, standing: Array, attacker: Dictionar
 	for oi in standing:
 		if oi == si:
 			continue
-		var counts := [0, 0, 0]
-		for f in sides[oi].fighters:
-			if f.alive:
-				counts[f.tier] += 1
-		var tiers := [0]
-		if counts[0] == 0:
-			tiers = [1] if counts[1] > 0 else [2]
-		elif counts[1] > 0 and (reach or counts[1] > counts[0]):
-			tiers = [0, 1]
+		var tiers := _reachable_tiers(_tier_counts(sides[oi]), reach)
 		for f in sides[oi].fighters:
 			if f.alive and tiers.has(f.tier):
 				pool.append(f)
 	return pool
+
+
+## The target rule's ranks (M3-1: factored out of _targets with no change in behaviour, so the battle
+## log's "reach" is the rule itself): the tiers of a side with `counts` standing fighters per tier
+## ([front, second, back]) that an enemy can attack. The front rank; the second rank too when it
+## outnumbers the front rank or the attacker has Skirmish (`skirmish`); the second rank alone once the
+## front rank has fallen; the commanders once no unit stands.
+static func _reachable_tiers(counts: Array, skirmish: bool) -> Array:
+	if counts[0] == 0:
+		return [1] if counts[1] > 0 else [2]
+	if counts[1] > 0 and (skirmish or counts[1] > counts[0]):
+		return [0, 1]
+	return [0]
+
+
+## Standing fighters of `side` per tier: [front, second, back].
+static func _tier_counts(side: Dictionary) -> Array:
+	var counts := [0, 0, 0]
+	for f in side.fighters:
+		if f.alive:
+			counts[f.tier] += 1
+	return counts
 
 
 ## What the same gold as commander `f` would have dealt with this attack if it had been spent on its
@@ -844,6 +930,16 @@ static func _iron_holder(side: Dictionary) -> String:
 	return ""
 
 
+## The log id of the commander _iron_holder names (the same fighter), or -1. Recording only (M3-1).
+static func _iron_holder_id(side: Dictionary) -> int:
+	if not side.iron:
+		return -1
+	for f in side.fighters:
+		if f.alive and f.cmd:
+			return int(f.id)
+	return -1
+
+
 ## Veteran Levies (§7.4): the damage each regular unit's extra maximum hp absorbed (up to the bonus, for
 ## a unit that took that much), added to the side's impact under the mandate's key once the battle ends.
 static func _count_extra_hp(sides: Array) -> void:
@@ -895,7 +991,7 @@ static func _pick_best(sides: Array, pool: Array, defender_fid: String, defender
 		if sides[i].faction == defender_fid:
 			return {"index": i, "tie_break": "defender", "roll": 0}
 	var r := rng.randi_range(0, tied.size() - 1)
-	return {"index": tied[r], "tie_break": "roll", "roll": r}
+	return {"index": tied[r], "tie_break": "roll", "roll": r, "tied": tied.size()}  # "tied": for the log (M3-1)
 
 
 static func _add_impact(side: Dictionary, key: String, amount: float) -> void:
@@ -932,6 +1028,181 @@ static func _apply_losses(sides: Array, winner: String) -> Dictionary:
 		if s.feast and healed > 0:
 			feast = {"faction": s.faction, "name": s.name, "fighters": standing, "healed": healed}
 	return feast
+
+
+# --- the battle event log (M3-1, design/M3_BATTLES.md §2.2-§2.3) ----------------------------------
+# These only read the battle's values and append to the log: nothing here draws from the RNG or writes
+# to a side or fighter, except the log id ("id") _log_header gives each fighter record.
+
+const TIER_WORDS := ["front", "second", "back"]
+
+
+## The log's header (top level, sides and fighters; events come as the battle is fought). Numbers each
+## fighter record with its log id, in the resolver's fighter order.
+static func _log_header(sides: Array, sides_in: Array, ctx: Dictionary, env: Dictionary, rng: SeededRNG, state) -> Dictionary:
+	var fighters := []
+	var side_logs := []
+	var standing := _standing(sides)
+	for si in sides.size():
+		var s: Dictionary = sides[si]
+		var ids := []
+		for f in s.fighters:
+			f["id"] = fighters.size()
+			ids.append(f.id)
+			fighters.append(_log_fighter(f, s))
+		var armies: Array = sides_in[si].armies.duplicate()
+		armies.sort_custom(func(a, b): return a.id < b.id)  # as _build_sides orders them (and their labels)
+		var army_logs := []
+		for ai in armies.size():
+			army_logs.append({"id": armies[ai].id, "label": s.armies[ai]})
+		var m := _morale(sides, si, standing)
+		side_logs.append({"index": si, "faction": s.faction, "name": s.name, "defender": s.is_defender, "armies": army_logs,
+			"fighters": ids, "hp_start": s.hp_start, "base_morale": s.base_morale,
+			"start_morale": {"morale": m.value, "parts": m.parts, "break_pct": break_pct(m.value)},
+			"base_hit": s.base_hit, "frenzy": s.frenzy, "iron": s.iron, "feast": s.feast, "dread": s.dread,
+			"mandates": s.mandates.duplicate()})
+	return {"v": BattleLog.VERSION, "id": "", "turn": 0, "index": 0, "kind": env.kind,
+		"provinces": ctx.get("province_ids", []).duplicate(), "terrain": env.terrain, "fort": env.fort,
+		"defender": ctx.get("defender", ""), "round_cap": ROUND_CAP,
+		"rng": {"seed": Serial.int64_to_str(rng.get_seed()), "before": Serial.int64_to_str(rng.get_state()), "after": ""},
+		"sides": side_logs, "fighters": fighters, "events": [], "truncated": false}
+
+
+static func _log_fighter(f: Dictionary, s: Dictionary) -> Dictionary:
+	var hp_parts := {}
+	for m in f.mods.hp:
+		hp_parts[m.key] = int(hp_parts.get(m.key, 0)) + int(m.value)
+	var ruler := {}
+	if f.ruler and not s.ruler_info.is_empty():
+		ruler = {"id": s.ruler_info.id, "kept_power": s.ruler_info.kept_power, "rank": s.ruler_info.rank, "dread": s.ruler_info.dread}
+	var ut: UnitType = f.type
+	return {"id": f.id, "side": f.side, "army": f.army, "role": "commander" if f.cmd else ("ruler" if f.ruler else "unit"),
+		"type": ut.id, "name": f.name, "trait": f.trait, "tier": f.tier, "hp": f.hp, "max_hp": f.max, "hp_parts": hp_parts,
+		"attack": ut.attack, "defense": ut.defense, "morale": ut.morale, "cost": ut.cost, "ruler": ruler}
+
+
+## Appends `ev` unless the log has reached `cap` events: then recording stops and the log is marked
+## "truncated" (the battle itself goes on as usual).
+static func _log_push(battle_log: Dictionary, cap: int, ev: Dictionary) -> void:
+	BattleLog.append(battle_log, ev, cap)
+
+
+## The round event, with each standing side's reachable tiers from the target rule. Returns them by side
+## index ({"tiers", "skirmish_tiers"}) for the round's attack events.
+static func _log_round(rec: Dictionary, sides: Array, standing: Array, round_no: int) -> Dictionary:
+	var by_side := {}
+	var reach := []
+	for si in standing:
+		var counts := _tier_counts(sides[si])
+		var r := {"side": si, "tiers": _reachable_tiers(counts, false), "skirmish_tiers": _reachable_tiers(counts, true)}
+		by_side[si] = r
+		reach.append(r)
+	_log_push(rec.log, rec.cap, {"t": "round", "n": round_no, "reach": reach})
+	return by_side
+
+
+static func _log_attack(rec: Dictionary, round_no: int, f: Dictionary, t: Dictionary, reach: Dictionary, pool: int, pick: int,
+		chance: int, roll: int, hit: bool, dmg: int, bonus: int, base: int, atk: Dictionary, dfn: Dictionary, expected: float) -> void:
+	var how: String = TIER_WORDS[t.tier]
+	if not reach[t.side].tiers.has(t.tier):
+		how = "skirmish"  # only Skirmish could reach it
+	_log_push(rec.log, rec.cap, {"t": "attack", "n": round_no, "by": f.id, "to": t.id, "pool": pool, "pick": pick,
+		"chance": chance, "roll": roll, "hit": hit, "damage": dmg, "bonus": {CHARGE: bonus} if bonus > 0 else {},
+		"base_hit": base, "attack": {"value": atk.value, "base": f.type.attack, "parts": atk.parts},
+		"defense": {"value": dfn.value, "base": t.type.defense, "parts": dfn.parts}, "reach": how,
+		"screened": not reach[f.side].tiers.has(f.tier), "expected": _dec(expected, 10.0)})
+
+
+## The round's morale checks, routs and destructions, and its round_end totals.
+static func _log_round_end(rec: Dictionary, sides: Array, standing: Array, round_no: int, checks: Dictionary, outcomes: Dictionary,
+		attacks: Dictionary, hits: Dictionary, dealt: Dictionary, expected_by: Dictionary, impact_before: Array) -> void:
+	for si in standing:
+		if not checks.has(si):
+			continue
+		var c: Dictionary = checks[si]
+		var o: Dictionary = outcomes[si]
+		_log_push(rec.log, rec.cap, {"t": "morale", "n": round_no, "side": si, "morale": c.morale, "base": sides[si].base_morale,
+			"parts": c.parts.duplicate(), "break_pct": c.break_pct, "lost_pct": c.lost_pct, "hp": c.hp, "result": o.result,
+			"held_by": o.held_by, "decisive": _decisive(c, o.result), "iron_last_round": o.iron_last_round})
+	for si in standing:
+		var s: Dictionary = sides[si]
+		if s.destroyed:
+			_log_push(rec.log, rec.cap, {"t": "destroyed", "n": round_no, "side": si})
+		elif s.routed:
+			var fled := []
+			for f in s.fighters:
+				if f.alive:
+					fled.append(f.id)
+			_log_push(rec.log, rec.cap, {"t": "rout", "n": round_no, "side": si, "fled": fled})
+	var hp := []
+	var att := []
+	var hit := []
+	var dlt := []
+	var expd := []
+	for si in sides.size():
+		hp.append(_hp(sides[si]))
+		att.append(int(attacks.get(si, 0)))
+		hit.append(int(hits.get(si, 0)))
+		dlt.append(int(dealt.get(si, 0)))
+		expd.append(_dec(float(expected_by.get(si, 0.0)), 100.0))
+	_log_push(rec.log, rec.cap, {"t": "round_end", "n": round_no, "hp": hp, "attacks": att, "hits": hit, "dealt": dlt,
+		"expected": expd, "impact": _impact_deltas(sides, impact_before)})
+
+
+## The parts that decided a morale check (§2.2): for "holds", each positive part without which the side
+## would have broken; for "breaks", each negative part without which it would have held; [] for "held".
+static func _decisive(check: Dictionary, result: String) -> Array:
+	var out := []
+	if result == "held":
+		return out
+	for p in check.parts:
+		var v: int = check.parts[p]
+		if result == "holds" and v > 0 and check.lost_pct >= break_pct(check.morale - v):
+			out.append(p)
+		elif result == "breaks" and v < 0 and check.lost_pct < break_pct(check.morale - v):
+			out.append(p)
+	return out
+
+
+## A copy of every side's impact accumulator.
+static func _impacts(sides: Array) -> Array:
+	var out := []
+	for s in sides:
+		out.append(s.impact.duplicate())
+	return out
+
+
+## Per side, what each impact key gained since `before` (_impacts), to 2 decimals, zeros left out.
+static func _impact_deltas(sides: Array, before: Array) -> Array:
+	var out := []
+	for si in sides.size():
+		var d := {}
+		var was: Dictionary = before[si]
+		for k in sides[si].impact:
+			var v := _dec(float(sides[si].impact[k]) - float(was.get(k, 0.0)), 100.0)
+			if v != 0.0:
+				d[k] = v
+		out.append(d)
+	return out
+
+
+## `x` rounded to 1 / `per` (10.0: one decimal), as the double nearest that decimal, so the value
+## survives a JSON round trip exactly (snappedf's multiply can land a bit off it: 4.6000000000000005).
+static func _dec(x: float, per: float) -> float:
+	return roundf(x * per) / per
+
+
+## Feast of Victory's healing, read before _apply_losses applies it: [[fighter id, hp, max hp]] for each
+## standing fighter of the winning side below its maximum, when that side has the mandate.
+static func _feast_healed(sides: Array, winner: String) -> Array:
+	var out := []
+	for s in sides:
+		if s.faction != winner or not s.feast:
+			continue
+		for f in s.fighters:
+			if f.alive and f.hp < f.max:
+				out.append([int(f.id), int(f.hp), int(f.max)])
+	return out
 
 
 # --- the report -----------------------------------------------------------------------------------
