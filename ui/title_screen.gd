@@ -13,7 +13,7 @@ extends Control
 ##   Quick start  straight into a game: NewGameScreen.quick_start_config() (a random faction against the
 ##                computer at Normal, rulers on with the balanced preset, a random seed).
 ##   Codex        opens the CodexPanel over the title; Close (or Esc) returns here.
-##   Settings     opens the SettingsPanel (window mode, interface size).
+##   Settings     opens the SettingsPanel (window mode, interface size, sound volumes).
 ##   Quit         closes the game.
 ##   Map preview  a developer preview of the map screen, kept small and grey at the bottom.
 ## Builds its overlays lazily, so the whole flow also runs before the screen is in the tree (tests):
@@ -49,6 +49,9 @@ func _ready() -> void:
 	_bind()
 	if is_inside_tree():
 		GameSettings.apply_saved_once(get_tree())
+	# The title theme plays here and under the new game, build and load screens; no ambiance bed.
+	GameAudio.music("music_title")
+	GameAudio.ambiance("")
 
 
 ## Finds the buttons and wires them, once (from _ready, or from the first call before it).
