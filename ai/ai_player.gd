@@ -250,6 +250,9 @@ var _arrival := {}  # unit type id -> the hp a recruit of it arrives with
 var _standoff := {}  # standoff_info for us, or {} when there is no stand-off
 var _hunt := {}  # the enemy army a stand-off hunts (_choose_hunt): {"pid", "rate", "force"}, or {}
 var _sally_to := ""  # where the garrison sallies to this turn (_sally), or ""
+## M3c S-6 (#104): forts and sieges (ai/ai_sieges.gd), called behind one `state.sieges` check each.
+var _sieges := AISieges.new()
+var _gold_reserved := 0  # M3c: gold set aside for Fortify and engines before the troops are planned (0 without sieges)
 
 
 ## Orders for `faction_id` this turn. See the class comment. Unknown difficulties play as "normal".
@@ -273,14 +276,26 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 	_plan_standoff()  # #94: read from the state alone, every plan
 	_recruit_plan = _plan_recruits([])  # a fresh army, for judging next turn's garrison
 	_defend_capital()
-	_strike_capitals()
+	if _state.sieges:
+		_sieges.defend_forts()  # M3c: our besieged forts (relief, sallies, leaving, holding)
+		_sieges.attack_forts()  # ...and enemy forts (storms, sieges, engines), in place of _strike_capitals
+	else:
+		_strike_capitals()
 	_attack_armies()
+	if _state.sieges:
+		_sieges.keep_garrisons()  # M3c: a reachable keep keeps an army
 	_field_moves()
 	_ruler_moves()
+	if _state.sieges:
+		_sieges.plan_builds()  # M3c: Fortify, with its gold set aside before the troops are planned
 	if _level != "easy":
 		_recruit_plan = _plan_recruits(_armies_ending_at(_me.capital))
 	out.append_array(_checked_moves())
-	out.append_array(_checked_recruits())
+	if _state.sieges:
+		out.append_array(_sieges.siege_orders(out))
+		out.append_array(_sieges.checked_recruits())  # M3c: recruits across our forts, Fortify and engines
+	else:
+		out.append_array(_checked_recruits())
 	_stats["usec"] = Time.get_ticks_usec() - started  # reporting only; never feeds a decision
 	# Let go of this turn's state; only the notes and counters are kept.
 	_state = null
@@ -294,6 +309,7 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 	_threat_cache = {}
 	_arrival = {}
 	_hunt = {}
+	_sieges.end()
 	return out
 
 
@@ -413,6 +429,7 @@ func _begin(state: GameState, faction_id: String, rng: SeededRNG, difficulty: St
 	_standoff = {}
 	_hunt = {}
 	_sally_to = ""
+	_gold_reserved = 0
 	_me = state.find_faction(faction_id) if state != null else null
 	if _me == null:
 		return
@@ -490,6 +507,8 @@ func _defend_capital() -> void:
 	var cap := _state.find_province(_me.capital)
 	if cap == null or cap.owner != _fid:
 		return
+	if _state.sieges and _sieges.capital_besieged():
+		return  # M3c: a besieged capital is AISieges.defend_forts' business
 	var home := _mine_at(cap.id)
 	var threats := _threats_to(cap.id)  # M4: plus enemy road moves (King's Roads, Forest Stride) with paths
 	if threats.is_empty():
@@ -609,6 +628,8 @@ func _keepers(pid: String, home: Array, threats: Array) -> Array:
 ## case over the attacking factions. Forecast.battle_odds is run from the attacker's side on a scratch
 ## copy of the state where the defenders stand in `pid`.
 func _defense_rate(pid: String, defenders: Array, threats: Array) -> float:
+	if _state.sieges and _sieges.walls_stand(pid):
+		return _sieges.defense_rate(pid, defenders, threats)  # M3c: behind walls the enemy storms or besieges
 	if defenders.is_empty():
 		return 0.0
 	var ratio := _ratio(defenders, threats, _ground_bonus(pid), 1.0)
@@ -714,6 +735,8 @@ func _attack_armies() -> void:
 	for p in _sorted_provinces():
 		if _is_enemy_capital(p.id):
 			continue
+		if _state.sieges and _sieges.skips_battle(p.id):
+			continue  # M3c: a garrison or a siege of ours: AISieges decides
 		var held := _foes_at(p.id)
 		if held.is_empty():
 			continue
@@ -805,6 +828,8 @@ func _field_moves() -> void:
 	var objective := _objective_for(main.loc)
 	if not _hunt.is_empty():
 		objective = String(_hunt.pid)  # #94: in a stand-off the main army marches on the army it hunts
+	elif _state.sieges:
+		objective = _sieges.target_from(main.loc, objective)  # M3c: an enemy fort on the road comes first
 	var claimed := {}
 	var main_dest: String = main.loc
 	# Mass before pushing: the main army waits while a big share of our strength is still on its way.
@@ -911,6 +936,8 @@ func _best_capture(g: Dictionary, is_main: bool, objective: String, claimed: Dic
 			score = float(p.income) * (1.0 if p.owner.is_empty() else 2.0) + _rng.randf() * float(JITTER[_level])
 		if not objective.is_empty():
 			score -= 0.01 * _d(n, objective)
+		if _state.sieges:
+			score += _sieges.muster_value(p)  # M3c: a fort is a recruiting post
 		if score > best_score:
 			best = n
 			best_score = score
@@ -938,7 +965,8 @@ func _advance(g: Dictionary, objective: String) -> String:
 			options.append(n)
 	if options.is_empty():
 		# #94: in a stand-off, besiege the enemy capital anyway where we are at least even, else raid.
-		var other := _siege_step(here, objective, g.armies)
+		# M3c: with sieges, the step next to a target fort is judged by the siege-start odds instead.
+		var other := _sieges.approach_step(here, objective, g.armies) if _state.sieges else _siege_step(here, objective, g.armies)
 		if other.is_empty():
 			other = _raid_step(here, g.armies)
 		if not other.is_empty():
@@ -1082,7 +1110,7 @@ func _plan_recruits(base: Array) -> Array:
 		if ut.cost > 0:
 			roster.append(ut)
 	var cmd: UnitType = _me.commander_type if _me.commander_type != null and _me.commander_type.cost > 0 else null
-	var gold := _me.gold
+	var gold := _me.gold - _gold_reserved  # M3c: less what Fortify and engines take (0 without sieges)
 	var out := []
 	if _level == "easy":
 		# Cruder: random affordable picks until the gold runs out.
@@ -1731,6 +1759,8 @@ func _ruler_moves() -> void:
 		if not info.is_empty():
 			_note_top("No ruler this turn: %s" % RulerRules.successor_sentence(info))
 		return
+	if _state.sieges and _sieges.keeps_ruler():
+		return  # M3c: inside a besieged fort the ruler stays (or leaves with its garrison)
 	var here: String = _ruler.location
 	var cap: String = _me.capital
 	var who := RulerRules._cap(RulerRules.current_name(_state, _fid))
@@ -2157,6 +2187,8 @@ func _path_recruit_reason(ut: UnitType, n: int) -> String:
 func _plan_standoff() -> void:
 	_standoff = standoff_info(_state, _fid)
 	_hunt = {}
+	if _state.sieges:
+		_sieges.begin(self)  # M3c: the main army's fort target; a stand-off's "siege" is a real one
 	if _standoff.is_empty():
 		return
 	_stats.standoff = 1
@@ -2497,6 +2529,8 @@ func _army_power(a: Army) -> float:
 
 
 func _ground_bonus(pid: String) -> float:
+	if _state.sieges:
+		return _sieges.ground_bonus(pid)  # M3c: a fort's walls, which only a storm has to face
 	var p := _state.find_province(pid)
 	if p == null:
 		return 1.0
