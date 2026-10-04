@@ -11,7 +11,7 @@ Alex decided on 2026-10-04 that the game goes 3D with a 2D interface. Full direc
 - **M3a.1 the world:** Forward+ and a quality ladder; the 3D world in a SubViewport under the 2D UI; terrain, borders, territory wash, roads and rivers from the M1 map; fortress kits; villages; the camera; orders on the 3D board; armies as blocks of ready poses. *Play:* an M2 game on the 3D board, with every order and tooltip working as on the 2D map.
 - **M3a.2 the armies:** full pose families, formations, muster yards and war camps, the fortress close-up, and the turn's playback (march-out, border clashes, captures, recruits mustering). Independents, if approved. *Play:* watch each turn resolve on the land, and predict the next battle from what you saw muster.
 - **M3b battles on the land:** M3's event log, timeline, controls, why panel and approachability drive a 3D stage on the province. #58 is re-scoped; #61, #62, #63 and #64 are rewritten for 3D. *Play:* M3's own goals.
-- **Forts and sieges** (proposal): sieges, walls, and building and upgrading fortresses.
+- **Forts and sieges** (proposal): sieges, walls, and building and upgrading fortresses. Specced as **M3c**: see "milestone 3c" below and `design/M3C_SIEGES.md`.
 - **M4 in 3D:** M4's rules as built, with transformed model families and a 3D turntable in the lock-in preview.
 - **M5 magic and fog:** magic, fog of war on the world's vision mask, and seasons if approved.
 - **M6 six factions and bigger maps:** the lore room's factions 3-6, generated maps for 2-6 players, and battles with more than two sides.
@@ -172,6 +172,23 @@ After M3-1, tickets 2 and 3 run in parallel; after 3, tickets 5 and 6 run in par
 9. M3-9 `asset` Asset builder: M3 batch from the manifest, within the Ludo budget. (needs 8)
 
 Budget: 500 Ludo credits for the milestone (321 planned, 482 with the re-roll reserve).
+
+---
+
+## milestone 3c: forts and sieges
+Status: **PROPOSED by the director (Claude session, 2026-10-04). Built provisionally under Alex's 10-4 'build an MVP you'd want to play'. Alex can change anything.**
+
+Full spec, with every number, rule, ticket (S-1 to S-9) and the art budget (155 Ludo credits): `design/M3C_SIEGES.md`. Read its §16 (director's calls) and §17 (questions for Alex) first.
+
+### goal
+Fortresses are where armies muster and wars are decided. You recruit at the forts you own (palisade, keep, citadel), build forward ones, and take an enemy fort by besieging it until its walls are breached, or by storming the walls at a cost; the defender sallies, sends relief or waits. Walls always fall, which gives #94's capital stand-off a clock. Opt-in behind "Forts & sieges (M3c preview)"; off, M1, M2 and M4 replay byte-identically.
+
+### what to play and what to feel for (at the end)
+Play two games against the AI with sieges on, one pushing for its capital and one holding yours. Feel for four things:
+- You can watch the enemy gather at its forward fort and guess where it will strike.
+- Storm or wait, sally or hold, is a real decision each turn, and the forecast lets you make it without guessing at the rules.
+- A siege of your capital is tense but readable: you know when the walls fall and what relief would do.
+- Games don't stall: someone always has a reason to march.
 
 ---
 
