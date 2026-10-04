@@ -231,7 +231,16 @@ func _raise(overlay: Control) -> void:
 
 func _focus_first() -> void:
 	if is_inside_tree():
-		(continue_button if continue_button.visible else new_game_button).grab_focus.call_deferred()
+		_grab_first_focus.call_deferred()
+
+
+## The deferred half of _focus_first. By then the title may already be gone: `-- --world3d` swaps in the 3D
+## world preview on the same frame (world3d/launch.gd), so it checks again instead of focusing a button
+## that is out of the tree (an engine error at boot).
+func _grab_first_focus() -> void:
+	var button: Button = continue_button if continue_button.visible else new_game_button
+	if button.is_inside_tree():
+		button.grab_focus()
 
 
 ## The painted title backdrop (Art.title_backdrop) once it is in the game, covering the screen under

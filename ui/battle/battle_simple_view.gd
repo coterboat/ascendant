@@ -83,6 +83,7 @@ var layout: Dictionary = {}
 
 var _settings_read := false
 var _log: Dictionary = {}
+var _names_state: GameState = null  # play()'s state, for the armies' names (TurnReportText); null names them from data
 var _report: Dictionary = {}
 var _event: Dictionary = {}
 var _seats: Array = []
@@ -172,8 +173,9 @@ func _process(delta: float) -> void:
 # --- showing a battle -----------------------------------------------------------------------------
 
 ## The battle view contract (M3-5, ui/battle/README.md): plays `battle_log` with its `report`. `state` (the
-## game state, for the 3D stage's land) is not needed here.
-func play(battle_log: Dictionary, report: Dictionary, _state: GameState = null, seats: Array = []) -> String:
+## game state, for the 3D stage's land) only names the armies here, as the turn report does (#55).
+func play(battle_log: Dictionary, report: Dictionary, state: GameState = null, seats: Array = []) -> String:
+	_names_state = state
 	return show_battle(battle_log, report, seats)
 
 
@@ -1122,7 +1124,7 @@ func _fill_top_bar() -> void:
 
 func _role_words(side: Dictionary, border: bool, defender: String) -> String:
 	if border:
-		return "met the enemy on the border while both armies swapped places"
+		return "met the enemy on the border as both armies tried to swap places"
 	if side.get("defender", false):
 		return "defending: it already held the province"
 	if defender.is_empty():
@@ -1130,11 +1132,15 @@ func _role_words(side: Dictionary, border: bool, defender: String) -> String:
 	return "attacking: it marched in"
 
 
+## The side's armies as the turn report and the map name them (TurnReportText.log_armies, #55), then its size.
 func _army_words(side: Dictionary) -> String:
-	var labels := []
-	for a in side.armies:
-		labels.append(String(a.label))
-	return "%s: %d fighters, %d hp, morale %d." % [", ".join(labels), side.fighters.size(), int(side.hp_start), int(side.start_morale.morale)]
+	var titles := TurnReportText.log_armies(_log, String(side.get("faction", "")), _names_state).map(func(a): return String(a.title))
+	if titles.is_empty():
+		for a in side.armies:
+			titles.append(String(a.label))
+	var n: int = side.fighters.size()
+	return "%s: %d %s, %d hp, morale %d." % [RulerRules._cap(RulerRules._and_list(titles)), n, "fighter" if n == 1 else "fighters",
+		int(side.hp_start), int(side.start_morale.morale)]
 
 
 func _build() -> void:

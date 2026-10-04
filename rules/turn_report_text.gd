@@ -22,8 +22,9 @@ class_name TurnReportText
 ## The rules of #55:
 ##   1. Stable army names. An army is named once and keeps the name until it is gone: a ruler's army by its
 ##      ruler ("King Corvane I"), every other army by its number, "the Crown's 3rd". The number is the one in
-##      its id, which the game hands out once, in order, to every army raised on the map and never reuses,
-##      so a name never changes when other armies die, move or are raised. Numbers sort as numbers.
+##      its id, which the game hands out once and never reuses, so a name never changes when other armies
+##      die, move or are raised. Numbers sort as numbers. The map, the orders list, the forecasts, the order
+##      checks and the battle screens use the same names (army_title, log_armies).
 ##   2. Battle lines name the units on each side and the outcome: "Aurel Crown's Knights (20 hp) beat
 ##      Thornmane Clans' Tuskers (14 hp) ... The Tuskers (the Clans' 5th) were destroyed; the Knights (the
 ##      Crown's 3rd) lost no fighters."
@@ -177,18 +178,68 @@ static func sort_ids(ids: Array) -> Array:
 	return out
 
 
-## An army in one line, with no ids: "the Crown's 1st at Crownkeep: Spearmen, Crossbowmen, Knights and
-## Knight Captain" or "King Corvane I, the Aurel Crown ruler, at Crownkeep". Without a state, names come
-## from the faction and map data.
-static func describe_army(army: Army, state: GameState = null) -> String:
-	var where := _province_name(state, army.location)
+## An army as the map, the orders list, the forecasts and the tooltips name it, the way the turn report does:
+## its name, who is in it, and where it stands: "the Crown's 3rd (Knights and Spearmen) at Blackwood", or
+## "King Corvane I (ruler of the Aurel Crown) at Crownkeep" for a ruler's army. `with_place` false leaves off
+## " at <province>". It starts with a lower-case "the"; at the start of a sentence, cap it (RulerRules._cap).
+## Without a state, names come from the faction and map data.
+static func army_title(state: GameState, army: Army, with_place: bool = true) -> String:
+	if army == null:
+		return "an army that is not on the map"
+	var text := army_name(state, army.id, army.owner)
 	if army.ruler != null:
-		return "%s, the %s ruler, at %s" % [army.ruler.type.name, _faction_name(state, army.owner), where]
-	var name := army_name(state, army.id, army.owner)
-	var entries := _army_entries(army)
-	if entries.is_empty():
-		return "%s at %s, with no one left in it" % [name, where]
-	return "%s at %s: %s" % [name, where, units_phrase(entries)]
+		text += " (ruler of the %s)" % _faction_name(state, army.owner)
+	else:
+		var entries := _army_entries(army)
+		text += " (%s)" % (units_phrase(entries) if not entries.is_empty() else "no one left in it")
+	if with_place:
+		text += " at %s" % _province_name(state, army.location)
+	return text
+
+
+## An army in one line, with no ids, for Army.get_description(): its army_title.
+static func describe_army(army: Army, state: GameState = null) -> String:
+	return army_title(state, army)
+
+
+## The armies of `faction_id`'s side in a battle, from its battle log, as the report names them:
+## [{"id", "title": "the Crown's 2nd (Crossbowmen)", "from": the province it came from, in a border battle,
+## else ""}], in the log's army order. Who was in each army comes from the log's fighters; where a border
+## battle's army came from, from the log's label for it ("... army at Thornvale ..."). [] without a log.
+static func log_armies(battle_log, faction_id: String, state: GameState = null) -> Array:
+	var out := []
+	if not (battle_log is Dictionary):
+		return out
+	var per := {}
+	for f in battle_log.get("fighters", []):
+		var id := String(f.get("army", ""))
+		if not per.has(id):
+			per[id] = []
+		_add_entry(per[id], String(f.get("name", "")), String(f.get("role", "unit")))
+	var border := String(battle_log.get("kind", "")) == "border"
+	for side in battle_log.get("sides", []):
+		if String(side.get("faction", "")) != faction_id:
+			continue
+		for a in side.get("armies", []):
+			if not (a is Dictionary) or String(a.get("id", "")).is_empty():
+				continue
+			var id := String(a.id)
+			var entries: Array = per.get(id, [])
+			var ruler := ""
+			for en in entries:
+				if en.role == "ruler":
+					ruler = String(en.name)
+			var title := army_name(state, id, faction_id, ruler)
+			if ruler.is_empty() and not entries.is_empty():
+				title += " (%s)" % units_phrase(entries)
+			var from := ""
+			if border:
+				for pid in battle_log.get("provinces", []):
+					var place := _province_name(state, String(pid))
+					if String(a.get("label", "")).contains(" at %s" % place):
+						from = place
+			out.append({"id": id, "title": title, "from": from})
+	return out
 
 
 # --- the turn's context ---------------------------------------------------------------------------
