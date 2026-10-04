@@ -15,6 +15,10 @@ config/description="A deep, approachable simultaneous-turn fantasy strategy game
 run/main_scene="res://ui/title_screen.tscn"
 config/features=PackedStringArray("4.5", "Forward Plus")
 
+[autoload]
+
+World3DLaunch="*res://world3d/launch.gd"
+
 [display]
 
 window/size/viewport_width=1600
