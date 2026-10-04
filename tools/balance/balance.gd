@@ -79,6 +79,38 @@ static func new_state_presets(presets: Dictionary, errors: Array = []) -> GameSt
 	return new_state_with(mandates, rulers, errors)
 
 
+## `state` (a rulers game from new_state_with, no armies) with paths on and `nodes` ({fid: [node ids]})
+## researched in place (M4-3): their stat and price parts, and the transformation's renamed unit and new
+## unit on the roster (until M4-2's roster change makes AscensionRules.apply_node do that itself). Null,
+## with the reasons in `errors`, when paths can't be set up. (The harness's state has no armies, not even
+## the rulers', which setup_paths' validation reports; only a refusal to turn paths on counts.)
+static func with_path_nodes(state: GameState, nodes: Dictionary, errors: Array = []) -> GameState:
+	if state == null:
+		return null
+	var problems := []
+	state.setup_paths(problems)
+	if not state.paths:
+		errors.append_array(problems)
+		return null
+	for fid in nodes:
+		var f := state.find_faction(fid)
+		for nid in nodes[fid]:
+			if not AscensionRules.has_node(state, fid, nid):
+				AscensionRules.apply_node(state, fid, nid, 0)
+			var fx := AscensionRules.node_effects(nid)
+			var new_unit := String(fx.get("new_unit", ""))
+			if not new_unit.is_empty() and TurnResolver.recruitable_type(f, new_unit) == null:
+				var ut := UnitType.from_dict(PathData.NEW_UNITS[new_unit])
+				ut.trait_description = AutoBattleResolver.TRAIT_TEXT.get(ut.trait_id, "")
+				f.unit_types.append(ut)
+			var renames: Dictionary = fx.get("rename", {})
+			for type_id in renames:
+				var t := TurnResolver.recruitable_type(f, type_id)
+				if t != null:
+					t.name = String(renames[type_id])
+	return state
+
+
 ## The ruler's army of `owner` at full hp (state with rulers), or null without one.
 static func ruler_army(state: GameState, owner: String, id := "") -> Army:
 	var f := state.find_faction(owner)

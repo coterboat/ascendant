@@ -159,7 +159,8 @@ const ENTRIES := {
 			+ " Morale 10 breaks after losing %d%% of its hit points;" % (AutoBattleResolver.BREAK_BASE_PCT + 10 * AutoBattleResolver.MORALE_PCT_PER_POINT)
 			+ " morale 6 after %d%%." % (AutoBattleResolver.BREAK_BASE_PCT + 6 * AutoBattleResolver.MORALE_PCT_PER_POINT)
 			+ " A side that breaks flees and loses the battle, even with units still standing, and its armies are destroyed as they flee (there are no retreats yet)."
-			+ " With the Iron Discipline mandate, a side does not break while one of its commanders stands, except at the end of the last round (round %d)." % AutoBattleResolver.ROUND_CAP,
+			+ " With the Iron Discipline mandate, a side does not break while one of its commanders stands, except at the end of the last round (round %d)." % AutoBattleResolver.ROUND_CAP
+			+ " In a game with paths, a path's morale counts in each unit's morale, so the Celestial Host's Sunspears raise their side's average; and on the Blood Pact's own land (Dread Lands) every enemy side has less morale for the whole battle, in a province battle in a province the Blood Pact owned at the start of the turn. Dread Lands adds to Dread and Fury.",
 	},
 	"battle_commanders": {
 		"title": "Commanders in battle",
@@ -210,6 +211,23 @@ const ENTRIES := {
 	"trait_pack_leader": {
 		"title": "Pack Leader (Warchief)",
 		"text": AutoBattleResolver.TRAIT_TEXT["Pack Leader"] + " Commanders don't get it, only units.",
+	},
+	# M4-3 (#68): the traits of the transformations' new units (design/M4_ASCENSION.md §4.9).
+	"trait_wings": {
+		"title": "Wings (Seraphs)",
+		"text": AutoBattleResolver.TRAIT_TEXT["Wings"] + " If several stand, which one it attacks is a seeded pick, like any target. Rulers aren't commanders, so the Seraphs don't seek them out, but they can reach a ruler in any rank. Wings is the Celestial Host's answer to armies that lean on their commander, such as Iron Discipline or a Warchief's Pack Leader.",
+	},
+	"trait_iron_hide": {
+		"title": "Iron Hide (Iron Colossus)",
+		"text": AutoBattleResolver.TRAIT_TEXT["Iron Hide"] + " It counts after Charge, so a charging Knight still hits it hard, and it is worth most against many small hits, such as Fangthrowers' and Tuskers'.",
+	},
+	"trait_rooted": {
+		"title": "Rooted (Briarwardens)",
+		"text": AutoBattleResolver.TRAIT_TEXT["Rooted"] + " It adds to the forest's own defense when the Briarwardens are the defenders, and the Thorn Wild turns more of the map to forest every turn.",
+	},
+	"trait_lifedrinker": {
+		"title": "Lifedrinker (Bloodsworn)",
+		"text": AutoBattleResolver.TRAIT_TEXT["Lifedrinker"] + " It heals after the round's damage lands and before morale is checked, so a Bloodsworn that falls that round heals nothing. Like any wound, what it doesn't heal carries over after the battle.",
 	},
 	"capture": {
 		"title": "Capturing provinces",

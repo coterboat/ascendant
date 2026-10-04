@@ -549,6 +549,12 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 
 	var strengths: Dictionary = result.get("strengths", {})
 	var report: Dictionary = result.get("report", {})
+	var harvest: Dictionary = report.get("red_harvest", {})
+	if not harvest.is_empty():
+		# M4-3: Red Harvest pays the winner for every enemy fighter lost (the aftermath says so).
+		var wf := s.find_faction(winner)
+		if wf != null:
+			wf.gold += int(harvest.get("gold", 0))
 	var parts := []
 	for fid in fids:
 		if report.is_empty():
@@ -604,6 +610,8 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 		"destroyed": destroyed, "why": result.get("why", ""), "report": report}
 	if not rulers_lost.is_empty() or not fallen.is_empty():
 		numbers["rulers_lost"] = rulers_lost.size() + fallen.size()  # M2-2: only in games with rulers
+	if not harvest.is_empty():
+		numbers["red_harvest"] = int(harvest.get("gold", 0))  # M4-3: gold paid to the winner
 	var battle_log = result.get("log")
 	if battle_log is Dictionary and not battle_log.is_empty():
 		# M3-1: the battle event log rides beside the report (in memory only: never in the game record).
@@ -668,7 +676,24 @@ static func _aftermath(s: GameState, report: Dictionary, winner: String, fids: A
 		sentences.append("%s: the %s %s healed to full (+%d hp)." % [RulerRules.mandate_name(RulerRules.FEAST_OF_VICTORY),
 			RulerRules._possessive(String(feast.get("name", ""))), "only surviving fighter" if n == 1 else "%d surviving fighters" % n,
 			int(feast.get("healed", 0))])
+	var harvest: Dictionary = report.get("red_harvest", {})
+	if not harvest.is_empty():
+		# M4-3, §9.5: "Red Harvest: the Thornmane Clans took 23 gold from the 23 enemy fighters lost."
+		var lost := int(harvest.get("fighters", 0))
+		sentences.append("%s: %s took %d gold from the %s." % [_red_harvest_name(), _the_name(s, winner), int(harvest.get("gold", 0)),
+			"enemy fighter lost" if lost == 1 else "%d enemy fighters lost" % lost])
 	return " ".join(sentences)
+
+
+## Red Harvest's name, from its MandateData row when there is one (M4-2 adds it).
+static func _red_harvest_name() -> String:
+	var md := RulerRules.mandate_data(AutoBattleResolver.RED_HARVEST)
+	return String(md.get("name", "Red Harvest"))
+
+
+## A faction's name in running text with "the" ("the Thornmane Clans"), as the turn report writes it.
+static func _the_name(s: GameState, fid: String) -> String:
+	return "the " + _faction_name(s, fid)
 
 
 # --- ruler deaths and the rulers phase (M2-3, #31; design/M2_RULER.md §3, §5, §1.4, §1.7) ----------
