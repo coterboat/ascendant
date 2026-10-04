@@ -1548,7 +1548,8 @@ func pick(at: Vector2) -> int:
 	return best
 
 
-## Any key or click during the dive lands it at once (3D_DIRECTION 8.2: cinematic moves are skippable).
+## Any key or click during the dive lands it at once (3D_DIRECTION 8.2: cinematic moves are skippable); the
+## input then goes on to do what it does. Returns whether it landed a dive.
 func skip_dive_on(event: InputEvent) -> bool:
 	if not bool(_move.get("dive", false)):
 		return false
@@ -1561,9 +1562,7 @@ func skip_dive_on(event: InputEvent) -> bool:
 
 
 func _gui_input(event: InputEvent) -> void:
-	if skip_dive_on(event):
-		accept_event()
-		return
+	skip_dive_on(event)
 	var mm := event as InputEventMouseMotion
 	if mm != null:
 		if _drag >= 0:
@@ -1637,9 +1636,7 @@ func _get_tooltip(at_position: Vector2) -> String:
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible or player == null:
 		return
-	if skip_dive_on(event):
-		_handled()
-		return
+	skip_dive_on(event) ## a key lands the dive and still does its own job (Esc closes, Space plays)
 	if CodexLink.is_open_key(event):
 		var key := ""
 		if _hovered >= 0:
