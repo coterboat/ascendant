@@ -8,8 +8,9 @@ extends RefCounted
 ##
 ##   BattleFx.settings(path = "")   the [battle] section of the settings file: {"reduced_motion" (false),
 ##                                  "screen_shake" (true), "speed" (1), "why_panel_open" (true),
-##                                  "legend_open" (false), "first_hint_seen" (false)}. A missing or broken file,
-##                                  or a value this game doesn't know, gives the defaults, with no error (§6).
+##                                  "legend_open" (false), "first_hint_seen" (false), "view" ("simple": M3-5's
+##                                  "Battle view", "simple" or "3d")}. A missing or broken file, or a value this
+##                                  game doesn't know, gives the defaults, with no error (§6).
 ##   BattleFx.save_settings(changes, path = "")   writes those keys into [battle], keeping every other key
 ##                                  and section of the file (M3-4: the last speed, the why panel and legend
 ##                                  toggles, the first-visit hint). Returns "" or why it could not be saved.
@@ -43,7 +44,10 @@ const SOUND_SPACING := {"battle_hit": 0.06, "battle_clash": 0.06, "battle_miss":
 const CLASH_EVERY := 3
 const SECTION := "battle"
 const DEFAULTS := {"reduced_motion": false, "screen_shake": true, "speed": 1, "why_panel_open": true, "legend_open": false,
-	"first_hint_seen": false}
+	"first_hint_seen": false, "view": "simple"}
+## M3-5: the battle views a player can choose ("Battle view"): the Simple view, or the 3D stage on the land
+## (BattleHost falls back to the Simple view until the 3D stage is in the game).
+const VIEWS := ["simple", "3d"]
 ## The settings that are true or false (every key of DEFAULTS but the speed).
 const _BOOLS := ["reduced_motion", "screen_shake", "why_panel_open", "legend_open", "first_hint_seen"]
 
@@ -62,6 +66,9 @@ static func settings(path: String = "") -> Dictionary:
 	var sp = cfg.get_value(SECTION, "speed", 1)
 	if (sp is int or sp is float) and BattlePlayer.SPEEDS.has(int(sp)):
 		out.speed = int(sp)
+	var view = cfg.get_value(SECTION, "view", "simple")
+	if view is String and VIEWS.has(view):
+		out.view = view
 	return out
 
 
@@ -80,6 +87,9 @@ static func save_settings(changes: Dictionary, path: String = "") -> String:
 			wrote = true
 		elif key == "speed" and (v is int or v is float) and BattlePlayer.SPEEDS.has(int(v)):
 			cfg.set_value(SECTION, key, int(v))
+			wrote = true
+		elif key == "view" and v is String and VIEWS.has(v):
+			cfg.set_value(SECTION, key, v)
 			wrote = true
 	if not wrote:
 		return ""

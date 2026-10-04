@@ -26,6 +26,12 @@ extends Control
 ##   section(name) -> Control                  one section's node, or null
 ##   side_color(faction_id) -> Color           the colour a side is drawn in
 ##   signal codex_requested(key)               a section heading or the "why" was right-clicked (or F1)
+##   signal watch_requested(event)             M3-5: Watch in the header (beside Close) was pressed
+##   watch_button                              M3-5: shown for a battle event (show_event), disabled with the
+##                                             reason when it can't be played back (BattleHost.watch_problem);
+##                                             hidden for a bare report (show_report)
+##   can_rebuild                               M3-5: a log that isn't kept can be rebuilt (the host has the
+##                                             game record), so such a battle's Watch stays enabled
 ## `seats` is the seat order (GameSession.players()): player colours follow the seat, the same way the
 ## map draws them (UiPalette.faction_color). Without it, the state's faction order stands in.
 ## Art (#10): each "Who fought" card flies its side's banner and shows its roster as portrait cards (a
@@ -35,6 +41,8 @@ extends Control
 signal closed
 ## A linked heading or the "why" was right-clicked: open the codex at `key` (the host does).
 signal codex_requested(key: String)
+## M3-5: Watch in the header: play this battle back (the host opens BattleHost).
+signal watch_requested(event: Dictionary)
 
 const SECTION_ORDER := ["why", "sides", "terrain", "rounds", "casualties", "routs", "hits", "round_cap"]
 const NO_REPORT_TEXT := "No detailed report for this battle."
@@ -71,6 +79,8 @@ const MORALE_PART_NAMES := {
 
 var title_label: Label
 var close_button: Button
+var watch_button: Button  # M3-5
+var can_rebuild := false  # M3-5: see the class comment
 var message_label: Label
 var scroll: ScrollContainer
 var content: VBoxContainer
@@ -101,6 +111,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func show_event(event: Dictionary, state: GameState = null, seats: Array = []) -> bool:
 	_event = event.duplicate(true)
 	_seats = seats.duplicate()
+	_show_watch(_event)
 	var numbers: Dictionary = event.get("numbers", {})
 	var report: Dictionary = numbers.get("report", {})
 	if report.is_empty():
@@ -114,11 +125,24 @@ func show_event(event: Dictionary, state: GameState = null, seats: Array = []) -
 func show_report(report: Dictionary, state: GameState = null, seats: Array = []) -> bool:
 	_event = {}
 	_seats = seats.duplicate()
+	_show_watch({})
 	if report.is_empty():
 		_state = state
 		_show_no_report("")
 		return false
 	return _show(report, state)
+
+
+## M3-5: Watch for `event` (hidden for {}), or why it can't be watched.
+func _show_watch(event: Dictionary) -> void:
+	watch_button.visible = not event.is_empty()
+	if event.is_empty():
+		return
+	var why := BattleHost.watch_problem(event, can_rebuild)
+	watch_button.disabled = not why.is_empty()
+	watch_button.tooltip_text = TooltipText.plain("Watch this battle",
+		"Play this battle back. The playback shows exactly what the report describes, and watching never changes anything.") \
+		if why.is_empty() else TooltipText.plain("Can't watch this battle", why)
 
 
 ## Hides the viewer and tells the host, which can free it or give focus back.
@@ -811,6 +835,17 @@ func _build() -> void:
 	title_label.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
 	title_label.text = "Battle report"
 	header.add_child(title_label)
+	watch_button = Button.new()
+	watch_button.name = "WatchButton"
+	watch_button.text = "Watch"
+	watch_button.visible = false
+	watch_button.custom_minimum_size = Vector2(120, 44)
+	watch_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	watch_button.add_theme_font_size_override("font_size", 22)
+	watch_button.add_theme_color_override("font_color", UiPalette.GILT)
+	watch_button.pressed.connect(func(): watch_requested.emit(_event.duplicate(true)))
+	header.add_child(watch_button)
+	header.add_theme_constant_override("separation", 12)
 	close_button = Button.new()
 	close_button.name = "CloseButton"
 	close_button.text = "Close"

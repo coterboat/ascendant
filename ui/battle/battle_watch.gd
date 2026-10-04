@@ -1,8 +1,9 @@
 extends Control
-## A standalone launcher that plays one battle in the Simple view (M3-3, #58), for testing and playtests
-## until M3-5 adds the real entry points (Watch on the turn report and in the battle report viewer). It
-## hosts the view, the full battle report viewer (the result card's Full report) and the codex (right-click
-## or F1 on anything linked).
+## A standalone launcher that plays one battle in the Simple view (M3-3, #58), for testing and playtests.
+## The game itself opens battles through BattleHost (M3-5: Watch on the turn report and in the battle report
+## viewer, Watch your battles, auto-watch). It hosts the view, the full battle report viewer (the result
+## card's Full report, whose Watch plays the battle again) and the codex (right-click or F1 on anything
+## linked).
 ##
 ##   godot --path . res://ui/battle/battle_watch.tscn -- --fixture king_falls_wins
 ##   options: --fixture NAME (a file in tests/fixtures/battles; default starting_plains), --speed 1|2|4,
@@ -32,14 +33,19 @@ func _init() -> void:
 	view = BattleSimpleView.new()
 	add_child(view)
 	viewer = BattleReportViewer.new()
+	viewer.z_index = BattleHost.OVER_Z  # above the view's result card and legend (M3-5)
 	add_child(viewer)
 	codex = (load("res://ui/codex_panel.tscn") as PackedScene).instantiate()
 	codex.visible = false
+	codex.z_index = BattleHost.OVER_Z
 	add_child(codex)
 	view.closed.connect(_on_view_closed)
 	view.report_requested.connect(func(e: Dictionary): viewer.show_event(e, null, _seats))
 	view.codex_requested.connect(_open_codex)
 	viewer.codex_requested.connect(_open_codex)
+	viewer.watch_requested.connect(func(e: Dictionary):
+		viewer.close()
+		watch(e, _seats))
 
 
 func _ready() -> void:
