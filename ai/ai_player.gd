@@ -208,6 +208,8 @@ const STANDOFF_TURNS := 20.0
 const STANDOFF_WIN := 0.5
 const STANDOFF_SAFE := 1.0
 const STANDOFF_SALLY_WIN := LIKELY_WIN
+## A note names at most this many armies, then says how many more (a Warband Muster host is many small armies).
+const NAMED_ARMIES := 2
 
 var _notes: Array = []
 var _stats := {}
@@ -2197,7 +2199,8 @@ func _choose_hunt() -> Dictionary:
 		if force.is_empty():
 			continue
 		var held := _foes_at(pid)
-		var rate := _rate_from_ratio(_ratio(force, held + _foes_next_to(pid), 1.0, _ground_bonus(pid)))
+		# Capped like _attack_rate's sure win: the rough guess never promises more than that.
+		var rate := minf(0.95, _rate_from_ratio(_ratio(force, held + _foes_next_to(pid), 1.0, _ground_bonus(pid))))
 		if rate < STANDOFF_WIN:
 			continue
 		var power := _power_units(_units(held), _units(force))
@@ -2230,13 +2233,16 @@ func _hunting_the_pin(threat: Array) -> bool:
 	return pin == String(_hunt.pid)
 
 
-## The turn report's names for `armies` (TurnReportText.army_name, #55): "the Crown's 3rd", "the Clans' 5th and
-## the Clans' 8th", in number order.
+## The turn report's names for `armies` (TurnReportText.army_name, #55), in number order: "the Crown's 3rd",
+## "the Clans' 5th and the Clans' 8th"; past NAMED_ARMIES, the first ones and how many more ("the Clans' 1st,
+## the Clans' 3rd and 16 more armies").
 func _army_names(armies: Array) -> String:
 	var ids := TurnReportText.sort_ids(armies.map(func(a): return a.id))
 	var names := []
-	for id in ids:
+	for id in ids.slice(0, NAMED_ARMIES if ids.size() > NAMED_ARMIES + 1 else ids.size()):
 		names.append(TurnReportText.army_name(_state, String(id)))
+	if ids.size() > names.size():
+		names.append("%d more armies" % (ids.size() - names.size()))
 	return RulerRules._and_list(names) if not names.is_empty() else "nobody"
 
 

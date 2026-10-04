@@ -281,6 +281,22 @@ func test_the_turn_report_says_when_the_computer_breaks_a_standoff() -> void:
 	assert_eq(session.state().find_army("kingdom-1").location, "rivermarch")
 
 
+func test_a_note_names_a_few_armies_and_counts_the_rest() -> void:
+	var s := _hunt_position(true)
+	var ai := AIPlayer.new()
+	ai._begin(s, "kingdom", SeededRNG.new(1), "normal")
+	var many := []
+	for i in AIPlayer.NAMED_ARMIES + 4:
+		var a := Army.new()
+		a.id = "kingdom-%d" % (20 + i)
+		a.owner = "kingdom"
+		many.append(a)
+	var text := ai._army_names(many)
+	assert_true(text.begins_with(TurnReportText.army_name(s, "kingdom-20")), text)
+	assert_true(text.ends_with("and %d more armies" % 4), text)
+	assert_eq(ai._army_names(many.slice(0, AIPlayer.NAMED_ARMIES + 1)).count("the Crown's"), AIPlayer.NAMED_ARMIES + 1, "one more than the limit is just named")
+
+
 # --- strike: even odds are worth taking -------------------------------------------------------------
 
 ## A Crown army at Thornvale next to a Clans army at Wildmoor, far from both capitals, sized from the data so
