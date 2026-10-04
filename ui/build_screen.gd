@@ -367,6 +367,7 @@ func _show_start_cover() -> void:
 func _show_cover() -> void:
 	page.visible = false
 	cover.visible = true
+	GameAudio.sfx("turn_start")  # the hotseat handoff sound, as on the game's handoff cover
 	if is_inside_tree():
 		ready_button.grab_focus.call_deferred()
 
