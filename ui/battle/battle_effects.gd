@@ -81,24 +81,39 @@ func step(dt: float, new_frame: bool = true) -> void:
 
 func _draw() -> void:
 	for p in projectiles.items:
-		_draw_projectile(p)
+		draw_projectile(self, p)
 	for it in impacts.items:
-		_draw_impact(it)
+		if draw_impact(self, it):
+			bright_frames_drawn += 1
 	for d in dust.items:
-		var k := float(d.age) / float(d.life)
-		for j in 3:
-			var off := Vector2((j - 1) * 9.0, -3.0 * j) * float(d.s)
-			draw_circle(d.pos + off, (4.0 + 8.0 * k) * float(d.s), Color(0.55, 0.52, 0.48, 0.55 * (1.0 - k)))
+		draw_dust(self, d)
 	var font := get_theme_default_font()
 	for n in numbers.items:
-		var k := float(n.age) / float(n.life)
-		var pos: Vector2 = n.pos - Vector2(0, NUMBER_RISE * k)
-		var a := 1.0 if k < 0.5 else 1.0 - (k - 0.5) / 0.5
-		var fs := int(n.size)
-		var tw := font.get_string_size(String(n.text), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		var at := pos - Vector2(tw / 2.0, 0)
-		draw_string_outline(font, at, String(n.text), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 6, Color(UiPalette.KEYLINE_INK, a))
-		draw_string(font, at, String(n.text), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(n.color, a))
+		draw_number(self, font, n)
+
+
+## Each effect is drawn by a static function, so the legend (BattleLegend, M3-4) draws its rows with the
+## field's own code. Each takes the effect's pool item (its "age" and "life" pick the frame).
+
+## A dust puff: three grey circles growing and fading.
+static func draw_dust(ci: CanvasItem, d: Dictionary) -> void:
+	var k := float(d.age) / float(d.life)
+	for j in 3:
+		var off := Vector2((j - 1) * 9.0, -3.0 * j) * float(d.s)
+		ci.draw_circle(d.pos + off, (4.0 + 8.0 * k) * float(d.s), Color(0.55, 0.52, 0.48, 0.55 * (1.0 - k)))
+
+
+## A floating number (damage in white, "miss" in grey, "+3 hp" in green), rising and fading, with an ink
+## outline so it reads on any ground.
+static func draw_number(ci: CanvasItem, font: Font, n: Dictionary) -> void:
+	var k := float(n.age) / float(n.life)
+	var pos: Vector2 = n.pos - Vector2(0, NUMBER_RISE * k)
+	var a := 1.0 if k < 0.5 else 1.0 - (k - 0.5) / 0.5
+	var fs := int(n.size)
+	var tw := font.get_string_size(String(n.text), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var at := pos - Vector2(tw / 2.0, 0)
+	ci.draw_string_outline(font, at, String(n.text), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 6, Color(UiPalette.KEYLINE_INK, a))
+	ci.draw_string(font, at, String(n.text), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(n.color, a))
 
 
 ## The projectile's position at share `u` of its flight.
@@ -109,7 +124,8 @@ static func path_point(p: Dictionary, u: float) -> Vector2:
 	return a.lerp(b, u) - Vector2(0, 4.0 * apex * u * (1.0 - u))
 
 
-func _draw_projectile(p: Dictionary) -> void:
+## A projectile (bolt, javelin, arcane bolt) or a Wings dive's streak: a dot with a tapering trail.
+static func draw_projectile(ci: CanvasItem, p: Dictionary) -> void:
 	var u := clampf(float(p.age) / float(p.life), 0.0, 1.0)
 	var head := path_point(p, u)
 	var dist := maxf(1.0, (p.from as Vector2).distance_to(p.to))
@@ -125,23 +141,25 @@ func _draw_projectile(p: Dictionary) -> void:
 	for j in steps:
 		var u0 := lerpf(tail_u, u, float(j) / steps)
 		var u1 := lerpf(tail_u, u, float(j + 1) / steps)
-		draw_line(path_point(p, u0), path_point(p, u1), Color(col, a * float(j + 1) / steps), 1.0 + 3.0 * float(j + 1) / steps)
+		ci.draw_line(path_point(p, u0), path_point(p, u1), Color(col, a * float(j + 1) / steps), 1.0 + 3.0 * float(j + 1) / steps)
 	var r := (7.0 if dive else 5.0) * float(p.s)
-	draw_circle(head, r + 1.5, Color(UiPalette.KEYLINE_INK, a))
-	draw_circle(head, r, Color(col, a))
+	ci.draw_circle(head, r + 1.5, Color(UiPalette.KEYLINE_INK, a))
+	ci.draw_circle(head, r, Color(col, a))
 
 
-func _draw_impact(it: Dictionary) -> void:
+## An impact: an 8-point star (a static ring with reduced motion). Returns true when it drew a bright frame
+## (above 80% opacity: at most BattleFx.BRIGHT_FRAMES real frames, and only when the flash limiter allowed).
+static func draw_impact(ci: CanvasItem, it: Dictionary) -> bool:
 	var k := float(it.age) / float(it.life)
 	var r := float(it.r)
 	if it.ring:
-		draw_arc(it.pos, r * 0.8, 0.0, TAU, 24, Color(UiPalette.TEXT_PRIMARY, 0.7), 2.0)
-		return
-	# Bright (above 80% opacity) for at most BRIGHT_FRAMES real frames, and only when the limiter allowed it.
+		ci.draw_arc(it.pos, r * 0.8, 0.0, TAU, 24, Color(UiPalette.TEXT_PRIMARY, 0.7), 2.0)
+		return false
 	var a := 0.8 * (1.0 - k * k)
+	var bright := false
 	if it.bright and int(it.frames) <= BattleFx.BRIGHT_FRAMES:
 		a = 1.0
-		bright_frames_drawn += 1
+		bright = true
 	var star := PackedVector2Array()
 	var grow := 0.7 + 0.3 * k
 	for j in 16:
@@ -150,5 +168,6 @@ func _draw_impact(it: Dictionary) -> void:
 	var outline := PackedVector2Array()
 	for p in star:
 		outline.append(it.pos + (p - it.pos) * 1.12)
-	draw_colored_polygon(outline, Color(UiPalette.KEYLINE_INK, minf(1.0, a + 0.2)))
-	draw_colored_polygon(star, Color(1, 1, 1, a))
+	ci.draw_colored_polygon(outline, Color(UiPalette.KEYLINE_INK, minf(1.0, a + 0.2)))
+	ci.draw_colored_polygon(star, Color(1, 1, 1, a))
+	return bright
