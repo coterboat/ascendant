@@ -211,6 +211,50 @@ without rulers; a played board stands exactly as one built from the state after;
 before and after); a game where the report waits for the playback; and a static check that the board's
 code never rolls dice or resolves a turn. `tests/test_world3d.gd` keeps the spike's land tests.
 
+## Battles on the land (M3b)
+
+A battle is played back in 3D on the province where it happened (design/3D_DIRECTION.md 7), driven entirely by
+the renderer-agnostic `BattlePlayer` (ui/battle/). `BattleHost` loads it as the "3D on the land" battle view, the
+default (Settings > Battle view keeps Simple).
+
+    BattleStage3D (world3d/battle_stage.gd/.tscn: extends BattleSimpleView, so the top bar, strength bars,
+      |             caption strip, result card, BattleControls, BattleWhyPanel, BattleLegend and BattleSelection
+      |             are the Simple view's own, unchanged)
+      Frame > Field
+        Land (draws the World SubViewport: 1600 x 600 at the window's physical pixels)
+          World (own World3D): WorldView on Board3D.terrain_now() (the board's baked land), Fighters, Projectiles
+        StageOverlay: hp plates, ruler plates, glyphs, ground rings, impacts, dust, sparks, bursts, numbers (2D)
+
+- **Where it stands** (`battle_formation.gd`, pure): the defender holds the stage facing the border the attacker
+  came by (the first road toward the attacker's capital), before its own gate at a fortress, its fort behind it
+  (the world's, or one the stage puts up when the log has a fort the world doesn't draw); nobody defending: each
+  side toward its home; a border battle on the crossing. It turns up to 60 degrees until nobody stands in the sea.
+  Ranks as the log has them: front rank, second rank, back line; types in roster order; a ruler mid front line,
+  the commander mid back line with the side's standard bearer and musician (cosmetic). Every fighter its own
+  figure. The file count is the one that frames the battle biggest. The woods, rocks, villages and cottages on
+  its ground are lifted off the table and put back after (`clear_for`).
+- **Figures** (`battle_figures.gd`): one MultiMesh per unit type and pose mesh (both sides share it: the base's
+  colour and a hit's red tint ride in the instance custom data), a desaturated copy for the fallen. Motions keyed
+  to the player's clock: deploy step, lunge and strike pose, release, Wings dive, recoil, topple then fallen
+  pose, rout run and shrink, aftermath fade, winners' cheer. The sync is incremental: only moving figures are
+  posed again.
+- **Camera** (`battle_camera.gd`, pure): flank yaws (and up to 24 degrees off), pitch raised until no hill or wall
+  hides anyone, fitted and centred in the band the 2D leaves clear; a little in favour of the sun behind the
+  camera and the defender on the right. A key-moment jump frames the moment's camera hint and rises back after
+  FOCUS_HOLD. F reframes (BattleControls.reframe_requested), right-drag turns, middle-drag pans, the wheel zooms.
+  Moves are at most 1 s, cuts with reduced motion; shake per M3 4.5 through BattleFx.ShakeLimiter.
+- **Effects**: 3D projectiles (bolt, javelin, arcane bolt: code meshes with trails, arcs from BattlePlayer's
+  PROJECTILES); impacts, dust, sparks, heals and the ruler's burst drawn camera-facing in the overlay by the
+  Simple view's own BattleEffects functions where they exist; numbers by BattleEffects.draw_number. The flash
+  limiter, sound gate and reduced motion are BattleFx's. Legend rows: `BattleStage3D.stage_rows()`.
+- **Budget**: the woods round the battle are model trees in 28-unit cells (each its own LOD), primitives beyond;
+  the fighters' ink width follows their size on screen. Quality ladder: `set_quality` (world_view.gd's rungs,
+  then the fighters' shadows, the woods as primitives, no sun shadows).
+- **Run it**: `godot --path . -- --battle3d --fixture biggest` (or `path_wings`, `path_lifedrinker`, ...).
+- **Tests**: `tests/test_battle_stage3d.gd` (every fixture to the timeline's final state, beats to actions, seek
+  and skip, the game unchanged, hover and click selection, raw ids, reduced motion, the flash limiter, the ground
+  plan, the camera, the legend rows, the creature scale, the host contract, the CPU budget).
+
 # The spike (PR #81, `spike-3d-world`)
 
 A real 3D world map for ascendant, built from the real rules, to judge the look and the cost before the art

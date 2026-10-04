@@ -43,16 +43,16 @@ const CHEER := 1.6
 const HOP := 0.6
 const STEP_RATE := 9.0
 const FALLEN_DESAT := 0.3
-const STRIDE := 16 ## floats per instance in a MultiMesh buffer: a 3x4 transform and the custom data
 
 var wv: Node3D ## world_view.gd (materials and banners)
 var figs: Array = [] ## by index: the log's fighters (index = fighter id), then the extras
 var n_fighters := 0
-var groups: Dictionary = {} ## key -> {"mi": MultiMeshInstance3D, "buf": PackedFloat32Array, "n": int, "cap": int}
+var groups: Dictionary = {} ## key -> {"mi": MultiMeshInstance3D, "n": int (drawn now), "cap": int}
 var banners: Array = [] ## by side: the standard bearer's banner node
 var reduced_motion := false
 var shadows := true
 var land: RefCounted = null ## the baked land (the ground under a moving figure)
+var lod_bias := 1.0
 ## The fighters' own ink (Look A): its width follows the figures' size on screen (set_ink_px), so a crowd of
 ## 35-pixel figures isn't drawn half in ink, while a close battle keeps the full line.
 var ink: ShaderMaterial = null
@@ -133,10 +133,9 @@ func _group(gk: String, mesh: Mesh, tex: Texture2D, cap: int, fallen: bool) -> D
 	mi.multimesh = mm
 	mi.material_override = _mat(tex, fallen)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.lod_bias = lod_bias
 	add_child(mi)
-	var buf := PackedFloat32Array()
-	buf.resize(cap * STRIDE)
-	return {"mi": mi, "buf": buf, "n": 0, "cap": cap}
+	return {"mi": mi, "n": 0, "cap": cap}
 
 
 func _mat(tex: Texture2D, fallen: bool) -> ShaderMaterial:
@@ -164,6 +163,14 @@ func set_ink_px(width: float, far: float, view: Vector2) -> void:
 	ink.set_shader_parameter("width_px", width)
 	ink.set_shader_parameter("far_px", far)
 	ink.set_shader_parameter("screen", view)
+
+
+## How soon the figures drop to their lower levels of detail (GeometryInstance3D.lod_bias: 1 the engine's own
+## choice, lower sooner): a crowd of small figures needs far fewer triangles than a close fight.
+func set_lod_bias(b: float) -> void:
+	lod_bias = b
+	for g in groups.values():
+		(g["mi"] as GeometryInstance3D).lod_bias = b
 
 
 ## Figures cast shadows (or not: the quality ladder's lower rungs).
@@ -352,8 +359,9 @@ func prune(now: float) -> void:
 
 ## Writes the figures at clock time `now` into their groups' MultiMeshes, and the banner onto each bearer.
 ## Incremental: only a figure with a motion under way (or one that just ended, or changed its hold) is posed
-## again; a group is rebuilt (compacted) only when a figure joins or leaves it, otherwise the moved rows are
-## written in place. `force` poses every figure (a seek, a new battle).
+## again, and only its own instance is written (the renderer uploads what changed); a group is rewritten
+## (compacted) only when a figure joins or leaves it. `force` poses every figure (a seek, a new battle).
+## Each figure keeps where it stands now ("foot", "top": world points; "on": drawn) for the overlay.
 func sync(now: float, force: bool = false) -> void:
 	var todo: Array = []
 	if force or _dirty:
@@ -374,13 +382,12 @@ func sync(now: float, force: bool = false) -> void:
 	if todo.is_empty():
 		return
 	var rebuild := {}
-	var touched := {}
+	var moved: Array = []
 	for i in todo:
 		var f: Dictionary = figs[i]
 		var p := pose_at(i, now)
 		var shown: bool = bool(p["shown"]) and float(p["scale"]) >= 0.01
 		var gk := ""
-		var row := PackedFloat32Array()
 		if shown:
 			var lying: bool = bool(p["lying"])
 			var pose := "fallen" if lying else String(p["pose"])
@@ -389,56 +396,61 @@ func sync(now: float, force: bool = false) -> void:
 			var keys: Dictionary = f["keys"]
 			var base_key: String = keys.get(pose, keys["ready"])
 			gk = base_key + ("f" if String(f["hold"]) == "fallen" and float(p["fall"]) >= 0.999 else "s")
-			row = _row(f, p)
+			f["xf"] = _xform(f, p)
+			f["tint"] = 1.0 - float(p["hurt"])
+			var xf: Transform3D = f["xf"]
+			var h: float = float(f["h"]) * float(p["scale"])
+			if float(p["fall"]) > 0.5:
+				h = minf(h, Kit.FIG * 0.35)
+			f["foot"] = xf.origin
+			f["top"] = xf.origin + Vector3.UP * h
 		elif String(f["role"]) == "bearer" and int(f["side"]) < banners.size():
 			(banners[int(f["side"])] as Node3D).visible = false
+		f["on"] = shown
 		var old := String(f.get("gk", ""))
-		f["row"] = row
 		if old != gk:
 			if old != "":
 				rebuild[old] = true
 			if gk != "":
 				rebuild[gk] = true
 			f["gk"] = gk
-		elif gk != "" and not rebuild.has(gk):
-			var g: Dictionary = groups[gk]
-			var gi: int = int(f.get("gi", -1))
-			if gi >= 0 and gi < int(g["n"]):
-				var buf: PackedFloat32Array = g["buf"]
-				var o := gi * STRIDE
-				for k in STRIDE:
-					buf[o + k] = row[k]
-				touched[gk] = true
-			else:
-				rebuild[gk] = true
+		elif gk != "":
+			moved.append(i)
 	for gk2 in rebuild.keys():
 		var g2: Dictionary = groups[gk2]
-		var buf2: PackedFloat32Array = g2["buf"]
+		var mm2: MultiMesh = (g2["mi"] as MultiMeshInstance3D).multimesh
 		var n := 0
 		for f2 in figs:
 			if String(f2.get("gk", "")) != gk2 or n >= int(g2["cap"]):
 				continue
-			var row2: PackedFloat32Array = f2["row"]
-			var o2 := n * STRIDE
-			for k in STRIDE:
-				buf2[o2 + k] = row2[k]
+			mm2.set_instance_transform(n, f2["xf"])
+			mm2.set_instance_custom_data(n, _custom(f2))
 			f2["gi"] = n
 			n += 1
 		g2["n"] = n
-		touched[gk2] = true
-	for gk3 in touched.keys():
+		mm2.visible_instance_count = n
+		(g2["mi"] as Node3D).visible = n > 0
+	for i2 in moved:
+		var f3: Dictionary = figs[i2]
+		var gk3 := String(f3["gk"])
+		if rebuild.has(gk3):
+			continue
 		var g3: Dictionary = groups[gk3]
-		var mm: MultiMesh = (g3["mi"] as MultiMeshInstance3D).multimesh
-		var n3: int = g3["n"]
-		if n3 > 0:
-			mm.buffer = g3["buf"]
-		mm.visible_instance_count = n3
-		(g3["mi"] as Node3D).visible = n3 > 0
+		var gi: int = int(f3.get("gi", -1))
+		if gi < 0 or gi >= int(g3["n"]):
+			continue
+		var mm3: MultiMesh = (g3["mi"] as MultiMeshInstance3D).multimesh
+		mm3.set_instance_transform(gi, f3["xf"])
+		mm3.set_instance_custom_data(gi, _custom(f3))
 
 
-## A figure's MultiMesh row at pose `p` (a 3x4 transform, then its side's colour and the hit tint), and its
-## banner when it is the bearer.
-func _row(f: Dictionary, p: Dictionary) -> PackedFloat32Array:
+static func _custom(f: Dictionary) -> Color:
+	var lin: Color = f["lin"]
+	return Color(lin.r, lin.g, lin.b, float(f.get("tint", 1.0)))
+
+
+## A figure's transform at pose `p`, and its banner when it is the bearer.
+func _xform(f: Dictionary, p: Dictionary) -> Transform3D:
 	var lying: bool = bool(p["lying"])
 	var yaw: float = p["yaw"]
 	var basis := Basis(Vector3.UP, yaw)
@@ -452,15 +464,12 @@ func _row(f: Dictionary, p: Dictionary) -> PackedFloat32Array:
 	var y: float = float(p["y"]) + float(p["hop"]) + float(p["extra_y"])
 	if pos != (f["home"] as Vector2):
 		y = maxf(_ground(pos, float(f["y"])), 0.0) + float(p["hop"]) + float(p["extra_y"])
-	var lin: Color = f["lin"]
-	var row := PackedFloat32Array([basis.x.x, basis.y.x, basis.z.x, pos.x, basis.x.y, basis.y.y, basis.z.y, y, basis.x.z, basis.y.z, basis.z.z, pos.y,
-		lin.r, lin.g, lin.b, 1.0 - float(p["hurt"])])
+	var xf := Transform3D(basis, Vector3(pos.x, y, pos.y))
 	if String(f["role"]) == "bearer" and int(f["side"]) < banners.size():
 		var bn: Node3D = banners[int(f["side"])]
-		var xf := Transform3D(basis, Vector3(pos.x, y, pos.y))
 		bn.transform = Transform3D(Basis(Vector3.UP, yaw + PI * 0.5).scaled(Vector3.ONE * sc), xf * Vector3(0.95, 1.2, 0.0))
 		bn.visible = sc > 0.05 and fall < 0.5
-	return row
+	return xf
 
 
 func _ground(p: Vector2, fallback: float) -> float:
@@ -472,6 +481,17 @@ func _ground(p: Vector2, fallback: float) -> float:
 ## The figure index of fighter `fid` (fighters come first, so it is the id itself).
 func index_of(fid: int) -> int:
 	return fid if fid >= 0 and fid < n_fighters else -1
+
+
+## Figure `i`'s feet and head as last synced, world (the overlay draws every frame from these), or [] when it
+## isn't drawn.
+func ends_now(i: int) -> Array:
+	if i < 0 or i >= figs.size():
+		return []
+	var f: Dictionary = figs[i]
+	if not bool(f.get("on", false)):
+		return []
+	return [f["foot"], f["top"]]
 
 
 ## Figure `i`'s feet and head at `now`, world (for plates and picking), or [] when it isn't shown.

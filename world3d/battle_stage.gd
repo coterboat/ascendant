@@ -121,6 +121,9 @@ var _clock_last := 0.0
 var _side_colours: Array = []
 var _hp_of: Array = [] ## by fighter: its max hp
 var _xf := Transform3D()
+var _xf_inv := Transform3D()
+var _th := 0.27
+var _aspect := 2.67
 var _view := Vector2(1600, 900)
 var bright_frames_drawn := 0
 var shakes_started := 0
@@ -204,6 +207,8 @@ func build_now() -> void:
 	_vp.add_child(wv)
 	wv.setup(terrain, Board3D.look)
 	wv.set_effects(true)
+	## a battle's ground is compact: two shadow splits cover it (the board's four span the whole map)
+	wv.sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	_rechunk_props(PROP_CELL)
 	## the woods without their ink: the fighters keep theirs, so they stand out from the trees, and the
 	## woods' second pass was the battle's dearest (measured: about 45% of the frame's triangles)
@@ -675,8 +680,11 @@ func _frame_all() -> Dictionary:
 			dsi = int(s.index)
 	if dsi >= 0:
 		dr = 1 if dsi == int(plan["far"]) else -1
-	return Cam.frame(terrain, _points(), _band(), _view, plan["axis"], {"obstacles": _obstacles(), "defender_right": dr,
-		"los": _points([], true)})
+	var opts := {"obstacles": _obstacles(), "defender_right": dr, "los": _points([], true)}
+	if layout.has("left") and layout.get("slots") == plan.get("slots"):
+		## the battle is on screen already: keep its sides where their strength bars are
+		opts["near_left"] = int(layout["left"]) == int(plan["near"])
+	return Cam.frame(terrain, _points(), _band(), _view, plan["axis"], opts)
 
 
 ## Frames the whole battle again (F, or the end of a key moment's framing).
@@ -725,6 +733,8 @@ func _apply_rig() -> void:
 		var man_px: float = Kit.FIG * _view.y / maxf(float(r["span"]), 1.0)
 		var w := clampf(man_px / 40.0, 0.55, 2.0)
 		figures.set_ink_px(w, w * 0.75, _view)
+		## and their detail: a crowd of 35-pixel figures draws their lower levels of detail
+		figures.set_lod_bias(clampf(man_px / 90.0, 0.25, 1.0))
 
 
 ## A shake's offset in screen pixels at `t` real seconds in: two thirds across, one third up and down, its
@@ -865,6 +875,7 @@ func set_quality(q: int) -> void:
 	if wv == null:
 		return
 	wv.set_quality(mini(quality, 3) if quality < 4 else 3)
+	wv.sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	figures.set_shadows(quality < 3)
 	if not plan.is_empty():
 		_woods_near(plan["site"], _footprint_radius() + WOODS_NEAR)
@@ -1399,11 +1410,10 @@ func pick(at: Vector2) -> int:
 	var r := Cam.ray(wv.rig, _view, local * _px)
 	var o: Vector3 = r[0]
 	var d: Vector3 = r[1]
-	var now := player.time() if player != null else 0.0
 	var best := -1
 	var best_t := INF
 	for i in figures.n_fighters:
-		var e: Array = figures.ends_at(i, now)
+		var e: Array = figures.ends_now(i)
 		if e.is_empty():
 			continue
 		var f: Dictionary = figures.figs[i]
@@ -1598,10 +1608,10 @@ func _to_overlay(view_px: Vector2) -> Vector2:
 
 
 func _proj_overlay(p: Vector3) -> Vector2:
-	var s := Cam.project(wv.rig, _view, p, _xf)
-	if s.x < -90000.0:
+	var pv: Vector3 = _xf_inv * p
+	if pv.z > -0.001:
 		return Vector2(-99999, -99999)
-	return _to_overlay(s)
+	return Vector2((pv.x / (-pv.z * _th * _aspect) * 0.5 + 0.5) * _view.x, (0.5 - pv.y / (-pv.z * _th) * 0.5) * _view.y) / _px
 
 
 ## Screen pixels per world unit at `p` (an effect's size there).
@@ -1615,14 +1625,16 @@ func _draw_overlay(ci: CanvasItem) -> void:
 	if player == null or figures == null or plan.is_empty() or wv == null:
 		return
 	_xf = Cam.xform_of(wv.rig)
+	_xf_inv = _xf.affine_inverse()
+	_th = tan(deg_to_rad(float(wv.rig["fov"])) * 0.5)
+	_aspect = _view.x / maxf(_view.y, 1.0)
 	var st := player.live_state()
 	var now := player.time()
 	var font := (ci as Control).get_theme_default_font()
 	## ground rings: auras, then the hovered and the pinned fighter
 	for a in _auras:
 		var fid := int(a["fid"])
-		var i: int = figures.index_of(fid)
-		var e: Array = figures.ends_at(i, now)
+		var e: Array = figures.ends_now(figures.index_of(fid))
 		if e.is_empty():
 			continue
 		var col: Color = _side_colours[int(_log.fighters[fid].side)]
@@ -1632,7 +1644,7 @@ func _draw_overlay(ci: CanvasItem) -> void:
 		var fid2: int = k[0]
 		if fid2 < 0:
 			continue
-		var e2: Array = figures.ends_at(figures.index_of(fid2), now)
+		var e2: Array = figures.ends_now(figures.index_of(fid2))
 		if e2.is_empty():
 			continue
 		var rad: float = maxf(2.6, minf(float(figures.figs[fid2]["w"]), float(figures.figs[fid2]["len"])) * 0.6)
@@ -1666,7 +1678,7 @@ func _draw_overlay(ci: CanvasItem) -> void:
 		var show: bool = not _massed[si] or hurt or f.role != "unit" or fid3 == _hovered or fid3 == _selected
 		if not show:
 			continue
-		var e3: Array = figures.ends_at(figures.index_of(fid3), now)
+		var e3: Array = figures.ends_now(figures.index_of(fid3))
 		if e3.is_empty():
 			continue
 		var head := _proj_overlay((e3[1] as Vector3) + Vector3.UP * 1.0)

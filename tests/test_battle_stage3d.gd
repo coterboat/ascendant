@@ -789,3 +789,53 @@ func test_the_biggest_battle_plays_inside_the_cpu_budget() -> void:
 	assert_perf(avg <= CPU_AVG_MS, "average %.2f ms per frame (budget %.1f ms)" % [avg, CPU_AVG_MS])
 	assert_perf(worst <= CPU_MAX_MS * 3.0, "worst frame %.2f ms (budget %.1f ms, x3 for the frames a seek rebuilds every figure)" % [worst, CPU_MAX_MS])
 	s.free()
+
+
+# --- the host (M3-5, ui/battle/README.md) -----------------------------------------------------------------
+
+func test_the_stage_keeps_the_battle_view_contract_in_the_host() -> void:
+	assert_eq(BattleHost.STAGE_3D_PATH, "res://world3d/battle_stage.tscn", "the host loads the stage from its scene")
+	assert_true(BattleHost.has_stage_3d(), "the 3D stage is in the game")
+	assert_eq(BattleFx.DEFAULTS.view, "3d", "3D on the land is the default battle view")
+	var path := GameSettings.default_path.get_base_dir().path_join("stage_host_%d.cfg" % OS.get_process_id())
+	DirAccess.remove_absolute(path)
+	var data = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/main_records.json"))
+	var rec := {}
+	for g in data.games:
+		if String(g.name) == "m1_greedy_vs_ai":
+			rec = g.record.duplicate(true)
+			rec.history = rec.history.slice(0, 5)
+	var loaded := GameSession.from_record(rec)
+	assert_eq(loaded.errors, [], "the recorded game loads")
+	var session: GameSession = loaded.session
+	var battles := session.battle_events()
+	assert_true(battles.size() >= 2, "the turn had battles to queue")
+	var state_before := var_to_str(session.state().to_dict())
+	var h := BattleHost.new()
+	h.settings_path = path
+	var winner := String(battles[0].numbers.winner)
+	assert_eq(h.open(battles, 0, session, winner), "", "the host opens the queue")
+	assert_eq(h.view_kind, "3d", "on the 3D stage, the default")
+	assert_true(h.view is BattleStage3D, "the real stage")
+	assert_true(BattleHost.keeps_contract(h.view), "which keeps the battle view contract")
+	var stage: BattleStage3D = h.view
+	assert_false(h.note_label.visible, "no fallback note")
+	assert_true(stage.controls is BattleControls and stage.controls.queue_row.visible, "the host's queue row is on the stage's bar")
+	assert_true(stage.controls.buttons.settings.visible, "and its Settings button")
+	assert_eq(var_to_str(stage.player.battle_log()), var_to_str(battles[0].numbers.log), "it plays the first battle's log")
+	assert_true(stage.figures.n_fighters == battles[0].numbers.log.fighters.size(), "on the land, every fighter a figure")
+	var finished := [0]
+	stage.finished.connect(func(): finished[0] += 1)
+	stage.player.play()
+	stage.player.skip_to_end()
+	assert_eq(finished[0], 1, "finished when the result card is up")
+	assert_eq(h.last_sting, "sting_victory", "and the host plays the viewer's sting")
+	assert_true(stage.buttons.next_battle_card.visible, "the result card offers the next battle")
+	stage.controls.next_requested.emit()
+	assert_eq(h.index, 1, "the stage's bar moves the host's queue")
+	assert_eq(var_to_str(stage.player.battle_log()), var_to_str(battles[1].numbers.log), "the same stage plays the next battle")
+	stage.close()
+	assert_false(h.visible, "closing the stage closes the host")
+	assert_eq(var_to_str(session.state().to_dict()), state_before, "and the game is as it was")
+	h.free()
+	DirAccess.remove_absolute(path)

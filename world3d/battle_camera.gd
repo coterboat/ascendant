@@ -95,7 +95,7 @@ static func sees_all(t, rig: Dictionary, points: Array, obstacles: Array = []) -
 ## size `view`. `axis` is the battle's axis (from the near side to the far side); `opts`: {"yaws": [only
 ## these yaws], "obstacles", "defender_right": +1 when the far side defends, -1 the near, 0 nobody,
 ## "min_span", "los": the points that must be seen (default `points`; the stage passes upper bodies),
-## "pitch": the pitch to start from}. Returns the rig plus "left_near": whether the near side stands on the screen's left.
+## "pitch": the pitch to start from, "near_left": only yaws that keep the near side on that half}. Returns the rig plus "left_near": whether the near side stands on the screen's left.
 static func frame(t, points: Array, band: Rect2, view: Vector2, axis: Vector2, opts: Dictionary = {}) -> Dictionary:
 	var c := Vector3.ZERO
 	for p in points:
@@ -113,6 +113,8 @@ static func frame(t, points: Array, band: Rect2, view: Vector2, axis: Vector2, o
 	var best := {}
 	var best_score := INF
 	for yaw in yaws:
+		if opts.has("near_left") and bool(opts["near_left"]) != ((-axis).dot(right_of(float(yaw))) < 0.0):
+			continue
 		var r := {"target": Vector3(c.x, c.y, c.z), "pitch": float(opts.get("pitch", PITCH_MIN)), "yaw": float(yaw), "fov": FOV, "span": 120.0}
 		var los: Array = opts.get("los", points)
 		var see_pts := los if los.size() <= 48 else _thin(los, 48)
@@ -126,6 +128,8 @@ static func frame(t, points: Array, band: Rect2, view: Vector2, axis: Vector2, o
 		var score := float(r["span"]) * (1.0 + 0.22 * (1.0 - back.dot(SUN_FROM)) + 0.004 * absf(float(r["pitch"]) - 40.0))
 		var right := right_of(float(yaw))
 		var near_left := (-axis).dot(right) < 0.0
+		if opts.has("near_left") and bool(opts["near_left"]) != near_left:
+			continue ## a reframe keeps each side on the half of the screen its strength bar is on
 		var dr := int(opts.get("defender_right", 0))
 		if dr != 0 and ((dr > 0) != near_left):
 			score *= 1.3 ## the defender on the left: allowed when nothing else sees everyone, but M3 keeps it right
