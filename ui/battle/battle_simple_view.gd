@@ -6,15 +6,25 @@ extends Control
 ## 3D stage can replace the field later and keep the same player. It reads the log, the report, static data
 ## (Art, RulesCodex, the resolver's constants) and its own settings, and never changes the game.
 ##
-## Screen (1600 x 900 base, centred when the window is wider or taller), as M3 §3.1 without the why panel:
+## Screen (1600 x 900 base, centred when the window is wider or taller), as M3 §3.1:
 ##   top bar      0-88     the title, each side's plaque (emblem, name, attacking / defending / arrived, the
 ##                         terrain and fort chips) and strength bar with its break notch and numbers, the round
-##   field        88-688   backdrop and cards (BattleLayout), effects, the round banner
-##   caption      688-752  the round's caption (BattleCaptions), each line linked to its codex entry
-##   controls     752-900  the scrubber with round ticks and key-moment markers; Restart, Play/Pause, 1x 2x 4x,
-##                         Skip to end, a jump button per key-moment kind, Close
-## The result card comes up over the field at the end: the result, the why with its factor chips, each
-## side's losses, the ruler, feast and aftermath lines, and Watch again / Full report / Close.
+##   field        88-688   backdrop and cards (BattleLayout), effects, the round banner; 1216 wide while the
+##                         why panel is docked
+##   caption      688-752  the round's caption (BattleCaptions), each line linked to its codex entry; before
+##                         round 1 the first-visit hint with its Got it button (remembered)
+##   controls     752-900  BattleControls (M3-4): the scrubber with round ticks and key-moment markers;
+##                         Restart, Play/Pause, 1x 2x 4x, Skip to end, a jump button per key-moment kind,
+##                         Legend, Why, Close
+##   why panel    1216, 88, 384 x 664   BattleWhyPanel (M3-4), docked right. When the battle only fits the
+##                         narrow field as a crowd, the panel floats over the full-width field instead (§3.4).
+## The legend (BattleLegend, M3-4) opens over the field. The result card comes up over the field at the end:
+## the result, the why with its factor chips, each side's losses, the ruler, feast and aftermath lines, and
+## Watch again / Full report / Close.
+##
+## The controls, the why panel, the legend and the selection (BattleSelection) talk only to the BattlePlayer,
+## so the 3D stage hosts the same components. Clicking a card (or Tab) selects its fighter: the card keeps a
+## white outline and the why panel pins its explanation.
 ##
 ## API:
 ##   show_event(event, seats = []) -> String         a battle event (numbers.log + numbers.report)
@@ -22,13 +32,17 @@ extends Control
 ##        both return "" when it plays, or the plain reason it can't be watched (shown on screen instead)
 ##   tick(delta)        advances the player and every motion; _process calls it, headless tests call it
 ##   player             the BattlePlayer (play(), set_speed(), seek()...; the buttons and keys drive it)
+##   controls, why_panel, legend, selection   the M3-4 components
 ##   card(fid)          a fighter's BattleCard;  bar(si) a side's BattleStrengthBar
 ##   visible_texts()    every text a player can see or hover (for the no-raw-ids test)
 ##   signals closed, codex_requested(key), report_requested(event)
 ## Keys (§5.3): Space play/pause, 1 2 3 speed, Left/Right round, comma/period step (paused), Home/End,
-## M next key moment, R watch again (on the result card), Esc close.
+## M next key moment, Tab / Shift+Tab select a fighter, Enter pin it (opens the why panel), L legend,
+## W why panel (all BattleControls.handle_key); R watch again (on the result card); F1 the codex for what
+## is hovered; Esc closes the legend, else the screen.
 ## Settings: reduced motion and screen shake come from the [battle] section of the settings file
-## (BattleFx.settings); set reduced_motion / screen_shake before show_*() to override.
+## (BattleFx.settings); set reduced_motion / screen_shake before show_*() to override. The speed, the why
+## panel, the legend and the first-visit hint are remembered there (BattleControls, BattleFx.save_settings).
 
 signal closed
 signal codex_requested(key: String)
@@ -50,6 +64,10 @@ const TAG_TIME := 2.5
 const MOMENT_TOAST := 1.8
 const FIRST_HINT := "The bars show hit points left; the white notch is where a side breaks. Hover anyone to see what it's doing and why."
 const TOOLTIP_WRAP := 72
+## The why panel's width when docked, and where the narrowed field ends (§3.1).
+const WHY_W := 384.0
+const WHY_X := 1216.0
+const DEPLOY_LINE := "Before round 1: the armies deploy. Press Space to play, or L for what every mark means."
 
 var player: BattlePlayer = null
 var reduced_motion := false
@@ -82,8 +100,11 @@ var _shake_phase := 0.0
 var _banner_t := -1.0
 var _toast_t := -1.0
 var _tag_t: Array = [-1.0, -1.0]
-var _resume_after_drag := false
 var _hovered := -1
+var _why_open := true
+var _why_docks := true
+var _hint_seen := false
+var _selected := -1
 
 # Nodes.
 var frame: Control
@@ -102,6 +123,14 @@ var bar_texts: Array = []
 var tag_labels: Array = []
 var center_chip: Label
 var caption_labels: Array = []
+var field: Control
+var caption_strip: PanelContainer
+var hint_button: Button
+var controls: BattleControls
+var why_panel: BattleWhyPanel
+var legend: BattleLegend
+var selection := BattleSelection.new()
+## Aliases into the controls (and the result card's buttons), as M3-3 named them.
 var scrubber: BattleScrubber
 var buttons: Dictionary = {}
 var moment_buttons: Dictionary = {}
@@ -141,11 +170,12 @@ func show_event(event: Dictionary, seats: Array = []) -> String:
 
 
 func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array = [], event: Dictionary = {}) -> String:
+	var st := BattleFx.settings()
 	if not _settings_read:
 		_settings_read = true
-		var st := BattleFx.settings()
 		reduced_motion = reduced_motion or bool(st.reduced_motion)
 		screen_shake = screen_shake and bool(st.screen_shake)
+	_hint_seen = bool(st.first_hint_seen)
 	visible = true
 	var problem := BattlePlayer.playback_problem(battle_log)
 	if problem.is_empty() and battle_log.get("sides", []).size() != 2:
@@ -171,9 +201,14 @@ func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array =
 	player.reduced_motion = reduced_motion
 	player.beat.connect(_on_beat)
 	player.seeked.connect(_on_seeked)
-	player.playing_changed.connect(func(_p): _update_buttons())
-	player.speed_changed.connect(func(_s): _update_buttons())
-	player.set_speed(int(BattleFx.settings().speed))
+	controls.bind(player, st)
+	_why_docks = not BattleLayout.build(_log, Vector2(WHY_X, FIELD_H)).crowd
+	if not _why_docks and controls.why_open:
+		# Nothing fits beside the panel (§3.4): it starts collapsed for this battle, and Why / W opens it over
+		# the field. The remembered setting is left as it is.
+		controls.why_open = false
+		controls.buttons.why.set_pressed_no_signal(false)
+	_why_open = controls.why_open
 	_shake.enabled = screen_shake and not reduced_motion
 	_flash.reset()
 	_shake.reset()
@@ -181,9 +216,13 @@ func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array =
 	if not _mood_on:
 		_mood_on = true
 		GameAudio.battle(true)
+	_apply_width()
 	_build_field()
+	selection.bind(player, _tab_order())
+	why_panel.bind(player, selection)
+	legend.reduced_motion = reduced_motion
+	_set_legend_open(controls.legend_open)
 	_fill_top_bar()
-	_fill_controls()
 	_fill_end_card()
 	end_card.visible = false
 	_set_caption([])
@@ -248,7 +287,8 @@ func tick(delta: float) -> void:
 		_refresh_bars()
 	_tick_labels(dt)
 	_tick_shake(delta)
-	scrubber.time = now
+	controls.tick(delta)
+	why_panel.tick(delta)
 
 
 func _tick_labels(dt: float) -> void:
@@ -338,6 +378,7 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 			var c := card(int(b.fighter))
 			c.sync(st.fighters[c.fid], c.glyphs)
 			_bars_dirty = true
+			_glyphs_dirty = true  # Berserk and Blood Frenzy start when wounded
 		"death":
 			var c := card(int(b.fighter))
 			c.sync(st.fighters[c.fid], [])
@@ -356,6 +397,7 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 				c.sync(st.fighters[c.fid], c.glyphs)
 				effects.add_number(_upper(c), "+%d hp" % int(b.data.healed), UiPalette.POSITIVE, _number_size(false))
 			_bars_dirty = true
+			_glyphs_dirty = true
 		"harvest":
 			var side_name := String(_log.sides[int(b.side)].name)
 			toast_label.text = "%s: %s takes %d gold from the %d enemy fighters lost." % [RulerRules.mandate_name(AutoBattleResolver.RED_HARVEST),
@@ -376,18 +418,22 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 			_show_tag(si, text)
 			bars[_slot_of_side(si)].set_strength(player.strength(si), true)
 			_glyphs_dirty = true
+			_bars_dirty = true  # the bar's text: morale and the break line
 		"caption":
 			_set_caption(b.data.lines)
 		"rout":
 			for fid in b.data.fled:
 				var c := card(int(fid))
 				if c != null and c.visible:
+					c.sync(st.fighters[c.fid], [])
 					c.rout()
 					_animate(c)
 			_bars_dirty = true
+			_glyphs_dirty = true
 			_show_tag(int(b.side), "%s broke and fled." % String(_log.sides[int(b.side)].name))
 		"destroyed":
 			_bars_dirty = true
+			_glyphs_dirty = true
 			_show_tag(int(b.side), "No one of %s is left standing." % String(_log.sides[int(b.side)].name))
 		"moment":
 			toast_label.text = String(b.data.text)
@@ -402,6 +448,7 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 						c.snap(st.fighters[int(fid)], c.glyphs)
 						_animating.erase(c)
 			_bars_dirty = true
+			_glyphs_dirty = true
 		"feast":
 			for h in b.data.healed:
 				var c := card(int(h[0]))
@@ -409,12 +456,15 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 					c.sync(st.fighters[c.fid], c.glyphs)
 					effects.add_number(_upper(c), "+%d hp" % (int(h[2]) - int(h[1])), UiPalette.POSITIVE, _number_size(false))
 			_bars_dirty = true
+			_glyphs_dirty = true
 		"aftermath":
 			for fid in b.data.lost:
 				var c := card(int(fid))
 				if c != null and c.visible:
+					c.sync(st.fighters[c.fid], [])
 					c.fade_out()
 					_animate(c)
+			_glyphs_dirty = true
 		"result":
 			_show_end_card()
 
@@ -439,7 +489,7 @@ func _attack_landed(b: Dictionary, st: Dictionary) -> void:
 		return
 	var si := int(_log.fighters[t.fid].side)
 	var fs: Dictionary = st.fighters[t.fid]
-	var shown: bool = not _massed[si] or t.fid == _hovered
+	var shown: bool = not _massed[si] or t.fid == _hovered or t.fid == _selected
 	if b.data.hit:
 		t.hit()
 		_animate(t)
@@ -491,7 +541,7 @@ func _on_seeked(st: Dictionary) -> void:
 	_set_caption(lines)
 	_update_round_label(st)
 	end_card.visible = false
-	scrubber.time = player.time()
+	controls.tick()
 
 
 ## Who Iron Discipline held each side with at `st` (the side's last morale check before it).
@@ -551,7 +601,7 @@ func _glyphs_for(fid: int, st: Dictionary) -> Array:
 	var fs: Dictionary = st.fighters[fid]
 	if not fs.alive or fs.fled:
 		return []
-	if _massed[si] and f.role == "unit" and fid != _hovered:
+	if _massed[si] and f.role == "unit" and fid != _hovered and fid != _selected:
 		return []
 	var s := player.timeline().statuses(st, fid)
 	var out := []
@@ -623,53 +673,152 @@ func _on_card_hover(fid: int, on: bool) -> void:
 		c.sync(player.live_state().fighters[fid], _glyphs_for(fid, player.live_state()))
 
 
+## A click on a card: select its fighter (a second click clears it) and pin it in the why panel.
+func _on_card_clicked(fid: int) -> void:
+	selection.toggle(fid)
+	if selection.selected >= 0 and not _why_open:
+		controls.set_why(true, false)
+
+
+func _on_selection(fid: int) -> void:
+	var before := _selected
+	_selected = fid
+	if player == null:
+		return
+	for k in [before, fid]:
+		var c := card(k)
+		if c != null:
+			c.selected = c.fid == fid
+			c.sync(player.live_state().fighters[c.fid], _glyphs_for(c.fid, player.live_state()))
+			c.queue_redraw()
+
+
+## Tab order (§5.3): the left side first, then the right; each side front rank to back line, each rank
+## front column first, top to bottom.
+func _tab_order() -> Array:
+	var ids := []
+	for f in _log.fighters:
+		ids.append(int(f.id))
+	var left := int(layout.get("left", 0))
+	ids.sort_custom(func(a, b):
+		var sa: Dictionary = layout.slots[a]
+		var sb: Dictionary = layout.slots[b]
+		var ka := [0 if int(sa.side) == left else 1, int(sa.tier), int(sa.col), int(sa.row), a]
+		var kb := [0 if int(sb.side) == left else 1, int(sb.tier), int(sb.col), int(sb.row), b]
+		for k in ka.size():
+			if ka[k] != kb[k]:
+				return ka[k] < kb[k]
+		return false)
+	return ids
+
+
+# --- the why panel and the legend -----------------------------------------------------------------
+
+## The field's width: narrowed while the why panel is docked (§3.1), full when it floats or is closed.
+func field_width() -> float:
+	return WHY_X if _why_open and _why_docks else BASE.x
+
+
+func _set_why_open(on: bool) -> void:
+	_why_open = on
+	var before := field.size.x
+	_apply_width()
+	if on:
+		why_panel.refresh()
+	if player != null and absf(field.size.x - before) > 0.5:
+		var end_shown := end_card.visible
+		_build_field()
+		selection.order = _tab_order()
+		_on_seeked(player.live_state())
+		end_card.visible = end_shown
+		var c := card(_selected)
+		if c != null:
+			c.selected = true
+
+
+## The legend opens over the whole field and the why panel (it is modal: L, Esc or its x closes it).
+func _set_legend_open(on: bool) -> void:
+	legend.visible = on
+	legend.place(Rect2(16, TOP_H + 8, BASE.x - 32, FIELD_H + CAPTION_H - 16))
+
+
+## Sizes the field, the caption strip and what sits on them to field_width(), and docks or floats the why
+## panel.
+func _apply_width() -> void:
+	var w := field_width()
+	field.size.x = w
+	for n in [stage, backdrop, cards_layer, effects]:
+		(n as Control).size.x = w
+	banner_label.size.x = w
+	toast_label.size.x = w - 400.0
+	caption_strip.size.x = w
+	caption_strip.custom_minimum_size.x = w
+	tag_labels[1].position.x = w - 24.0 - 520.0
+	end_card.position.x = (w - end_card.custom_minimum_size.x) / 2.0
+	message_panel.position.x = (w - message_panel.custom_minimum_size.x) / 2.0
+	why_panel.visible = _why_open
+	why_panel.position = Vector2(WHY_X, TOP_H)
+
+
+func _on_hint_seen() -> void:
+	_hint_seen = true
+	BattleFx.save_settings({"first_hint_seen": true})
+	if player != null:
+		_on_seeked(player.live_state())
+
+
 # --- input ----------------------------------------------------------------------------------------
+
+## Tab selects fighters (§5.3) before the GUI's focus moves can take it, unless a control outside this
+## screen (a codex search field above it) has the keyboard.
+func _input(event: InputEvent) -> void:
+	var k := event as InputEventKey
+	if k == null or k.keycode != KEY_TAB or not visible or player == null or not is_inside_tree():
+		return
+	var focus := get_viewport().gui_get_focus_owner()
+	if focus != null and not is_ancestor_of(focus):
+		return
+	if controls.handle_key(event):
+		_handled()
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible or player == null:
 		return
-	if CodexLink.is_open_key(event) and _hovered >= 0:
-		codex_requested.emit(card(_hovered).codex_key)
-		_handled()
+	if CodexLink.is_open_key(event):
+		var key := card(_hovered).codex_key if _hovered >= 0 else ""
+		if key.is_empty() and is_inside_tree():
+			key = CodexLink.key_at(get_viewport().gui_get_hovered_control())
+		if not key.is_empty():
+			codex_requested.emit(key)
+			_handled()
 		return
 	var k := event as InputEventKey
 	if k == null or not k.pressed or k.echo:
 		return
 	match k.keycode:
-		KEY_SPACE:
-			player.toggle()
-		KEY_1:
-			player.set_speed(1)
-		KEY_2:
-			player.set_speed(2)
-		KEY_3:
-			player.set_speed(4)
-		KEY_LEFT:
-			if player.round_now() <= 1 or not player.seek_round(player.round_now() - 1):
-				player.restart()
-		KEY_RIGHT:
-			if not player.seek_round(player.round_now() + 1):
-				player.skip_to_end()
-		KEY_COMMA:
-			if not player.is_playing():
-				player.step_back()
-		KEY_PERIOD:
-			if not player.is_playing():
-				player.step()
-		KEY_HOME:
-			player.restart()
-		KEY_END:
-			player.skip_to_end()
-		KEY_M:
-			player.next_moment()
 		KEY_R:
-			if end_card.visible:
-				_watch_again()
+			if not end_card.visible:
+				return
+			_watch_again()
 		KEY_ESCAPE:
-			close()
+			if legend.visible:
+				controls.set_legend(false)
+			else:
+				close()
 		_:
-			return
+			if not controls.handle_key(event):
+				return
 	_handled()
+
+
+func _gui_input(event: InputEvent) -> void:
+	# A click on the empty field clears the selection.
+	var mb := event as InputEventMouseButton
+	if mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and player != null:
+		var at := mb.position - frame.position
+		if Rect2(Vector2(0, TOP_H), Vector2(field_width(), FIELD_H)).has_point(at):
+			selection.clear()
 
 
 func _handled() -> void:
@@ -693,8 +842,8 @@ func visible_texts() -> Array:
 	for c in _cards:
 		if c != null:
 			out.append(fighter_tooltip(c.fid))
-	for m in scrubber.marks:
-		out.append(String(m.text))
+	out.append_array(controls.visible_texts())
+	out.append_array(legend.visible_texts())
 	return out
 
 
@@ -718,12 +867,13 @@ func _set_caption(lines: Array) -> void:
 			l.tooltip_text = TooltipText.plain("Round caption", "What mattered most this round, worked out from the battle's own numbers.")
 			CodexLink.attach(l, String(lines[k].codex), codex_requested.emit)
 		elif k == 0 and lines.is_empty():
-			l.text = FIRST_HINT
+			l.text = FIRST_HINT if not _hint_seen else DEPLOY_LINE
 			l.tooltip_text = TooltipText.plain("Watching a battle", "The battle was already fought; this plays it back with the same rolls as the report, so watching can never change it. A caption after every round says what mattered most.")
 			CodexLink.attach(l, "battle_playback", codex_requested.emit)
 		else:
 			l.text = ""
 			l.tooltip_text = ""
+	hint_button.visible = lines.is_empty() and not _hint_seen
 
 
 func _show_tag(si: int, text: String) -> void:
@@ -753,6 +903,7 @@ func _show_message(text: String) -> void:
 
 func _show_end_card() -> void:
 	end_card.visible = true
+	end_card.reset_size()
 
 
 ## Fills the result card when the battle loads (its content is fixed per battle), so the end beat only
@@ -788,7 +939,9 @@ func _fill_end_card() -> void:
 	for line in end_card_lines():
 		var l := _label(String(line), 17, UiPalette.TEXT_PRIMARY)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size.x = 950  # so a new line never measures itself one word wide and stretches the card
 		end_lines.add_child(l)
+	end_card.reset_size()  # a card filled for a longer battle before shrinks back to its content
 	buttons.report.disabled = _report.is_empty()
 	buttons.report.tooltip_text = "Open the full battle report: every round, loss and morale check in words." if not _report.is_empty() \
 		else "This battle has no written report."
@@ -858,7 +1011,7 @@ func _build_field() -> void:
 		cards_layer.remove_child(c)
 		c.queue_free()
 	effects.clear()
-	layout = BattleLayout.build(_log, Vector2(BASE.x, FIELD_H))
+	layout = BattleLayout.build(_log, Vector2(field_width(), FIELD_H))
 	_cards = []
 	_cards.resize(_log.fighters.size())
 	_glyph_cards = []
@@ -874,6 +1027,8 @@ func _build_field() -> void:
 		c.codex_requested.connect(codex_requested.emit)
 		c.mouse_entered.connect(_on_card_hover.bind(fid, true))
 		c.mouse_exited.connect(_on_card_hover.bind(fid, false))
+		c.clicked.connect(_on_card_clicked)
+		c.selected = fid == _selected
 		_cards[fid] = c
 		order.append(c)
 		if not _massed[int(f.side)] or f.role != "unit":
@@ -959,37 +1114,6 @@ func _army_words(side: Dictionary) -> String:
 	return "%s: %d fighters, %d hp, morale %d." % [", ".join(labels), side.fighters.size(), int(side.hp_start), int(side.start_morale.morale)]
 
 
-func _fill_controls() -> void:
-	var marks := []
-	for m in player.moments():
-		marks.append({"t": player.moment_time(m), "kind": String(m.kind), "text": String(m.text)})
-	scrubber.duration = player.duration()
-	scrubber.rounds = player.round_times()
-	scrubber.marks = marks
-	scrubber.queue_redraw()
-	var missing := player.missing_moments()
-	for kind in BattleMoments.KINDS:
-		var b: Button = moment_buttons[kind]
-		var have := player.moments().filter(func(m): return m.kind == kind)
-		b.disabled = have.is_empty()
-		if have.is_empty():
-			b.tooltip_text = TooltipText.wrap_text(String(missing.get(kind, "Not in this battle.")))
-		else:
-			var tip := String(have[0].text)
-			if have.size() > 1:
-				tip += " (%d in this battle: press again for the next.)" % have.size()
-			b.tooltip_text = TooltipText.wrap_text(tip + " M jumps to the next key moment of any kind.")
-	_update_buttons()
-
-
-func _update_buttons() -> void:
-	if player == null:
-		return
-	buttons.play.text = "Pause" if player.is_playing() else "Play"
-	for s in BattlePlayer.SPEEDS:
-		(buttons["speed%d" % s] as Button).button_pressed = player.speed() == s
-
-
 func _build() -> void:
 	var bg := ColorRect.new()
 	bg.name = "Background"
@@ -1004,7 +1128,7 @@ func _build() -> void:
 	add_child(frame)
 
 	# The field: a clipping window, a stage inside it that shakes.
-	var field := Control.new()
+	field = Control.new()
 	field.name = "Field"
 	field.position = Vector2(0, TOP_H)
 	field.size = Vector2(BASE.x, FIELD_H)
@@ -1056,6 +1180,7 @@ func _build() -> void:
 	_build_controls()
 	_build_end_card()
 	_build_message()
+	selection.changed.connect(_on_selection)
 
 
 func _build_top_bar() -> void:
@@ -1130,8 +1255,7 @@ func _build_top_bar() -> void:
 		tag.position = Vector2(x, TOP_H + 4.0)
 		tag.size = Vector2(520, 22)
 		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if k == 0 else HORIZONTAL_ALIGNMENT_RIGHT
-		tag.add_theme_color_override("font_outline_color", UiPalette.KEYLINE_INK)
-		tag.add_theme_constant_override("outline_size", 4)
+		BattleStrengthBar.style_tag(tag)
 		tag.z_index = 3
 		frame.add_child(tag)
 		tag_labels.append(tag)
@@ -1139,6 +1263,7 @@ func _build_top_bar() -> void:
 
 func _build_caption() -> void:
 	var strip := PanelContainer.new()
+	caption_strip = strip
 	strip.name = "CaptionStrip"
 	strip.position = Vector2(0, TOP_H + FIELD_H)
 	strip.size = Vector2(BASE.x, CAPTION_H)
@@ -1153,10 +1278,24 @@ func _build_caption() -> void:
 	style.content_margin_bottom = 6
 	strip.add_theme_stylebox_override("panel", style)
 	frame.add_child(strip)
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 12)
+	strip.add_child(line)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 2)
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	strip.add_child(col)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.add_child(col)
+	hint_button = Button.new()
+	hint_button.name = "GotIt"
+	hint_button.text = "Got it"
+	hint_button.tooltip_text = "Hide this hint for good. The legend (L) explains every mark on the screen."
+	hint_button.focus_mode = Control.FOCUS_NONE
+	hint_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hint_button.add_theme_font_size_override("font_size", 15)
+	hint_button.pressed.connect(_on_hint_seen)
+	hint_button.visible = false
+	line.add_child(hint_button)
 	for k in 2:
 		var l := _label("", 18, UiPalette.TEXT_PRIMARY if k == 0 else UiPalette.TEXT_SECONDARY)
 		l.name = "Caption%d" % k
@@ -1168,36 +1307,31 @@ func _build_caption() -> void:
 
 
 func _build_controls() -> void:
-	var y0 := TOP_H + FIELD_H + CAPTION_H
-	scrubber = BattleScrubber.new()
-	scrubber.name = "Scrubber"
-	scrubber.position = Vector2(200, y0 + 6)
-	scrubber.size = Vector2(1200, 40)
-	scrubber.scrubbed.connect(_on_scrub)
-	scrubber.released.connect(_on_scrub_released)
-	frame.add_child(scrubber)
-	var row := HBoxContainer.new()
-	row.name = "Buttons"
-	row.add_theme_constant_override("separation", 8)
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.position = Vector2(16, y0 + 60)
-	row.size = Vector2(BASE.x - 32, 48)
-	frame.add_child(row)
-	buttons.restart = _button(row, "Restart", "Watch from the start (Home).", func(): player.restart())
-	buttons.play = _button(row, "Play", "Play or pause (Space).", func(): player.toggle())
-	buttons.play.custom_minimum_size.x = 96
-	for s in BattlePlayer.SPEEDS:
-		var key: String = {1: "1", 2: "2", 4: "3"}[s]
-		var b := _button(row, "%d×" % s, "Play at %d× speed (%s)." % [s, key], func(): player.set_speed(s))
-		b.toggle_mode = true
-		b.custom_minimum_size.x = 52
-		buttons["speed%d" % s] = b
-	buttons.skip = _button(row, "Skip to end", "Skip to the result (End).", func(): player.skip_to_end())
-	row.add_child(VSeparator.new())
-	for kind in BattleMoments.KINDS:
-		moment_buttons[kind] = _button(row, String(BattleMoments.TITLES[kind]), "", func(): player.jump_to_moment(kind))
-	row.add_child(VSeparator.new())
-	buttons.close = _button(row, "Close", "Close the battle (Esc).", close)
+	controls = BattleControls.new()
+	controls.position = Vector2(0, TOP_H + FIELD_H + CAPTION_H)
+	controls.selection = selection
+	frame.add_child(controls)
+	scrubber = controls.scrubber
+	buttons = controls.buttons
+	moment_buttons = controls.moment_buttons
+	controls.why_toggled.connect(_set_why_open)
+	controls.legend_toggled.connect(_set_legend_open)
+	controls.close_requested.connect(close)
+	controls.codex_requested.connect(codex_requested.emit)
+	controls.pin_requested.connect(func(_fid): if not _why_open: controls.set_why(true, false))
+	why_panel = BattleWhyPanel.new()
+	why_panel.position = Vector2(WHY_X, TOP_H)
+	why_panel.z_index = 3
+	why_panel.codex_requested.connect(codex_requested.emit)
+	why_panel.close_requested.connect(func(): controls.set_why(false))
+	frame.add_child(why_panel)
+	legend = BattleLegend.new()
+	legend.z_index = 5
+	legend.visible = false
+	legend.set_rows(BattleLegend.overlay_rows() + BattleLegend.field_rows())
+	legend.codex_requested.connect(codex_requested.emit)
+	legend.close_requested.connect(func(): controls.set_legend(false))
+	frame.add_child(legend)
 
 
 func _build_end_card() -> void:
@@ -1316,20 +1450,3 @@ func _button(parent: Control, text: String, tip: String, action: Callable) -> Bu
 	b.pressed.connect(action)
 	parent.add_child(b)
 	return b
-
-
-# --- scrubbing ------------------------------------------------------------------------------------
-
-func _on_scrub(t: float) -> void:
-	if player == null:
-		return
-	if not _resume_after_drag and player.is_playing():
-		_resume_after_drag = true
-		player.pause()
-	player.seek_time(t)
-
-
-func _on_scrub_released() -> void:
-	if _resume_after_drag:
-		_resume_after_drag = false
-		player.play()
