@@ -1,0 +1,1836 @@
+class_name AIPlayer
+extends RefCounted
+## Computer opponent (pre-M2 "AI player brain"). Pure code: no nodes, no scenes.
+##
+##   var ai := AIPlayer.new()
+##   var orders: Array = ai.plan_orders(state, "beasts", SeededRNG.new(seed), "normal")
+##   var why: Array = ai.last_plan_notes()   # plain-language reasons, for a "what is the AI doing" tooltip
+##
+## plan_orders reads the start-of-turn state (it never changes it) and returns MoveOrder and
+## RecruitOrder objects for `faction_id`. Every move is pre-checked with TurnResolver.check_move and
+## every recruit with TurnResolver.price_recruits, so the rules accept each order it returns.
+## Determinism: the same state, rng state and difficulty always give the same orders. Armies,
+## provinces and factions are walked in sorted id order, and every random choice (tie-breaks, and the
+## easy level's skipped moves and recruits) comes from `rng`.
+##
+## Strategy, in priority order each turn:
+##   1. Capital first. Enemy armies next to the capital can attack it this turn: the armies in the
+##      capital hold, and armies next door are recalled until Forecast.battle_odds, run from the
+##      enemy's side so the garrison defends with terrain and fort, calls the capital a likely win as
+##      defender (or nobody is left to recall). The capital is never left open: the only exception
+##      is a sally, when every adjacent enemy army stands in one province and the garrison alone
+##      crushes it (SALLY_WIN); that army can then only get in by beating the garrison on the
+##      border. Enemy armies two or three moves away keep the garrison home when this turn's
+##      recruits alone would not hold the capital against them.
+##   2. Enemy capital. An undefended enemy capital next to a free army is walked into (it wins the
+##      game). A defended one is attacked once the odds are at least even.
+##   3. Battles. Free armies next to an enemy army attack it together when the odds are a likely win,
+##      or merely close when that enemy army stands next to a capital we might not hold. The odds
+##      count the enemy armies next to the target as if they move in and join the defense. Targets
+##      are taken in order of the enemy strength we expect to destroy; stragglers are not worth a step
+##      away from the enemy capital.
+##   4. Field moves. Armies next to a stronger enemy pull back. Others take safe, undefended
+##      provinces for income. The strongest free army pushes toward the enemy capital while the road
+##      is safe and it has most of our nearby strength with it (MASS_SHARE); otherwise it waits and
+##      every other free army marches to join it, so attacks are made by massed armies.
+##   5. Recruits. All gold is spent at the capital (recruits double as the garrison), on the mix that
+##      most raises the rough odds of the army that will stand there against the enemy's armies, with
+##      a commander first when the capital is threatened and nobody there has one.
+## Unit strengths are never hardcoded. The rough strength guess (_power_units) uses only unit stats
+## from the state, and only ranks options and skips forecasts that cannot change a decision. Every
+## decision that risks an army or the capital is checked with Forecast.battle_odds, which fights the
+## real battle rules; calls are capped per plan (ODDS_BUDGET, MAX_ODDS_CALLS) and cached within a plan.
+##
+## Games with rulers (M2, design/M2_RULER.md §6.1, §6.3; ticket M2-7, #35):
+##   * Build: choose_build(state, faction, rng) is the AI seat's build, presets[faction][rng.randi_range(0, 2)]
+##     (BuildPresetData), the first draw of the seat's RNG. The build screen's computer seats and AISeat
+##     both call it. plan_orders plays whatever build the state holds: preset_for() finds the preset by
+##     its ruler and pre-game mandates, which gives the ruler role and the sacrifice picks.
+##   * Sacrifice, first, at most one per turn and only when RulerRules.sacrifice_check allows it: the
+##     preset's first affordable pick, when an enemy army next to the capital could win there (the
+##     defenders' odds are close or a likely loss), or from turn SACRIFICE_TURN when our income is at
+##     most SACRIFICE_INCOME_SHARE of the strongest enemy's. The rest of the plan is made on the state
+##     with the sacrifice applied (RulerRules.with_sacrifice), the state OrderBook checks it against.
+##   * Ruler: the ruler's army is planned on its own, never as part of a group. A ruler keeping
+##     LOW_KEPT power or less, or with the "home" role, stays at (or walks back to) the capital. A
+##     "field" ruler goes with the strongest army (hp x attack), joins its attack only when the
+##     forecast with the ruler is RULER_JOIN_WIN or better, and never ends a turn alone next to an
+##     enemy army or where the forecast as defender is below RULER_GUARD_WIN; otherwise it holds or
+##     falls back toward the capital.
+##   * Mandates: road moves (King's Roads) when they shorten a march, a return home or a recall, and
+##     recruits with the Ninth Fang (Warband Muster) wherever it stands in its own land, unless the
+##     capital needs the defenders. Muster Grounds prices come from RulerRules.recruit_price.
+##   * Recruits are trait-aware (_recruit_value): Shield Wall, Charge, Berserk, Inspire, Pack Leader,
+##     Fury, Volley and Skirmish are valued with AutoBattleResolver's own trait constants, a Volley unit
+##     is only recruited while at least as many front-rank units stand with it (the shield holds), and
+##     Skirmish is worth more the more Volley units the enemy fields.
+##   * Our own ruler is left out of the rough strength guess and enemy rulers are counted in it, which
+##     errs on the safe side whether or not battles count rulers yet; every battle that risks our ruler
+##     is checked with the forecast, which fights the real battle rules.
+
+const DIFFICULTIES := ["easy", "normal"]
+
+## Win rates the AI acts on (Forecast.battle_odds labels LIKELY_WIN or more "likely win").
+const LIKELY_WIN := 0.65
+## Attacking an enemy army that stands next to our capital: "close" is good enough.
+const URGENT_WIN := 0.45
+## Attacking the enemy capital, which wins the game: at least even odds.
+const CAPITAL_WIN := 0.5
+## Capital defense: our win rate as defender we want before we stop recalling armies.
+const HOLD_TARGET := {"easy": 0.5, "normal": 0.65}
+## Forecast budget per plan, in rough milliseconds: each Forecast.battle_odds call fights the real
+## battle many times, costing about ODDS_BASE + ODDS_PER_FIGHTER x f + ODDS_PER_FIGHTER_SQ x f^2 for
+## f fighters (long, even battles between big armies cost the most). A capital defense check may
+## overdraw the budget by up to ESSENTIAL_OVERDRAFT; past that the rough guess decides.
+const ODDS_BUDGET := {"easy": 35.0, "normal": 60.0}
+const ODDS_BASE := 6.0
+const ODDS_PER_FIGHTER := 0.8
+const ODDS_PER_FIGHTER_SQ := 0.035
+const ESSENTIAL_OVERDRAFT := 40.0
+const MAX_ODDS_CALLS := {"easy": 4, "normal": 6}
+## Rough-guess power ratios (ours / theirs, see _ratio). Power is hp x damage, so a ratio of 2 is
+## about 1.4 times the numbers.
+const SURE_RATIO := 4.0  # this lopsided either way: no need to ask the forecast
+const HOPELESS_RATIO := 0.3
+const RETREAT_RATIO := 0.9  # pull back when the enemy next door is stronger than this
+const SAFE_RATIO := 1.2  # step into a province only if we would be this much stronger there
+const MASS_SHARE := 0.6  # the main army pushes on only with this share of our free field strength
+const MASS_REACH := 3  # ...counting the armies at most this many moves from it
+const STRAGGLER_SHARE := 0.15  # enemy armies this small are not worth a step away from the objective
+const GARRISON_RATIO := 1.3  # recruits alone must be this strong for the garrison to leave
+const SURPLUS_RATIO := 2.5  # extra armies in a threatened capital may leave if the rest are this strong
+const WALK_IN_RATIO := 0.8  # walk into an undefended enemy capital unless rescuers are stronger
+## Sally: the garrison may attack the enemy army next to the capital when it wins this surely. That
+## army can then only reach the capital by fighting the garrison on the border (RulesCodex "swap").
+const SALLY_WIN := 0.9
+## Rough value of holding ground for the guess (the forecast uses the real terrain and fort rules).
+const HOLD_BONUS := 1.15
+const FORT_BONUS := 1.25
+## Easy level: chance to let a good attack or capture pass.
+const EASY_SKIP := 0.3
+## Random spread (in gold per turn) added to capture and road choices, so the AI is not perfectly
+## predictable and games on different seeds differ. Drawn from the plan's rng, so still deterministic.
+const JITTER := {"easy": 4.0, "normal": 3.0}
+const MAX_NOTES := 14
+
+## M2 (design/M2_RULER.md §6.3). A ruler keeping this much power or less is too easy to kill to risk
+## in the field: it stays at or near the capital, whatever its preset's role.
+const LOW_KEPT := 2
+## Our ruler joins an attack only when the forecast, with the ruler fighting, is at least this.
+const RULER_JOIN_WIN := 0.65
+## Our ruler ends a turn where an enemy army could attack it only if its side would win as defender
+## at least this often.
+const RULER_GUARD_WIN := 0.5
+## Sacrifice (b): from this turn on, when our income is at most this share of the strongest enemy's.
+const SACRIFICE_TURN := 8
+const SACRIFICE_INCOME_SHARE := 0.8
+## Trait-aware recruiting (_recruit_value). A shielded Volley unit shoots while the front rank takes
+## the hits: its damage counts this much more, times the share of enemy units without Skirmish (those
+## can't reach it).
+const VOLLEY_SHIELD_VALUE := 0.5
+## A Skirmish unit's damage counts this much more against an enemy whose units all have Volley, scaled
+## by the enemy's Volley share: it hits the second rank the others can't reach.
+const SKIRMISH_REACH_VALUE := 1.0
+## Rounds a battle lasts, roughly, for Charge (first round only) and Berserk (wounded about half the time).
+const ROUNDS_GUESS := 3.0
+const BERSERK_SHARE := 0.5
+## Warband Muster: recruits go with the ruler, away from the capital, only while no enemy army is
+## within this many moves of the capital (and half of them stay home while no army of ours is there).
+const FIELD_RECRUIT_SAFE := 3
+
+var _notes: Array = []
+var _stats := {}
+var _state: GameState = null
+var _fid := ""
+var _me: Faction = null
+var _rng: SeededRNG = null
+var _level := "normal"
+var _budget := 0.0
+var _cache := {}
+var _nbrs := {}  # province id -> sorted neighbor ids
+var _dist := {}  # province id -> {province id: steps}
+var _mine: Array = []  # our armies, sorted by id
+var _foes: Array = []  # every other faction's armies, sorted by id
+var _moves := {}  # army id -> destination
+var _busy := {}  # army id -> true once it has a job this turn (holding or moving)
+var _scratch: GameState = null
+var _capital_short := false
+var _home_rate := 1.0  # our win rate as defender of the capital this turn (1.0: nothing can attack it)
+var _recruit_plan: Array = []  # UnitType, in recruit order
+var _vias := {}  # army id -> the province a road move (King's Roads) goes through
+var _last_via := ""  # the way through of the road move a field-move helper just chose ("" for one step)
+var _ruler: Army = null  # our living ruler's army: planned on its own, never part of _mine
+var _preset := {}  # the build preset we play (preset_for), {} without rulers
+var _sacrifice := ""  # the mandate this turn's Sacrifice order is for, or ""
+var _head := 0  # notes put at the top (build, sacrifice, ruler, mandates) so far
+
+
+## Orders for `faction_id` this turn. See the class comment. Unknown difficulties play as "normal".
+func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficulty: String = "normal") -> Array:
+	var started := Time.get_ticks_usec()
+	_begin(state, faction_id, rng, difficulty)
+	if _me == null:
+		return []
+	var out := []
+	_note_build()
+	_sacrifice = _choose_sacrifice()
+	if not _sacrifice.is_empty():
+		# The sacrifice phase resolves first, so every other order is planned (and checked by
+		# OrderBook) on the state with the sacrifice applied.
+		_rebase(RulerRules.with_sacrifice(state, faction_id, _sacrifice))
+		out.append(SacrificeOrder.new(_sacrifice))
+		_stats.sacrifices = 1
+	_recruit_plan = _plan_recruits([])  # a fresh army, for judging next turn's garrison
+	_defend_capital()
+	_strike_capitals()
+	_attack_armies()
+	_field_moves()
+	_ruler_moves()
+	if _level != "easy":
+		_recruit_plan = _plan_recruits(_armies_ending_at(_me.capital))
+	out.append_array(_checked_moves())
+	out.append_array(_checked_recruits())
+	_stats["usec"] = Time.get_ticks_usec() - started  # reporting only; never feeds a decision
+	# Let go of this turn's state; only the notes and counters are kept.
+	_state = null
+	_me = null
+	_scratch = null
+	_cache = {}
+	_mine = []
+	_foes = []
+	_ruler = null
+	return out
+
+
+## The build an AI seat plays in a game with rulers (design/M2_RULER.md §6.1): one of the faction's
+## three presets, presets[faction][rng.randi_range(0, 2)], as {"preset", "ruler", "mandates"}
+## (RulerRules.preset_build). Call it with the seat's own RNG before its first plan: this is that RNG's
+## first draw, so the same seed always gives the same build and the same orders after it. The build
+## screen (BuildScreen.computer_preset), AISeat and the autoplay all pick through here, so the presets
+## on screen and the computer's builds are the same data. `state_or_faction` may be the GameState, the
+## Faction or null; the presets come from data/build_presets.gd. {} (and no draw) for a faction without presets.
+static func choose_build(state_or_faction, faction_id: String, rng: SeededRNG) -> Dictionary:
+	var fid := faction_id
+	if fid.is_empty() and state_or_faction is Faction:
+		fid = state_or_faction.id
+	if state_or_faction is GameState and state_or_faction.find_faction(fid) == null:
+		return {}
+	var presets := RulerRules.presets_for(fid)
+	if presets.is_empty() or rng == null:
+		return {}
+	return RulerRules.preset_build(String(presets[rng.randi_range(0, presets.size() - 1)].id))
+
+
+## The preset `faction_id` plays (BuildPresetData, with "faction"): the one whose ruler and pre-game
+## mandates (its mandates minus the ones it bought by sacrifice) match the faction's. A build that is no
+## preset gets a stand-in: "home" when it started with LOW_KEPT power or less, otherwise "field", and
+## the sacrifice picks of the faction's first preset with the same ruler that has any. {} without a ruler.
+static func preset_for(state: GameState, faction_id: String) -> Dictionary:
+	var f: Faction = state.find_faction(faction_id) if state != null else null
+	if f == null or not f.has_ruler():
+		return {}
+	var bought := []
+	for s in f.sacrifices:
+		bought.append(String(s.get("mandate", "")))
+	var start := []
+	for mid in f.mandates:
+		if not bought.has(mid):
+			start.append(String(mid))
+	var start_sorted := start.duplicate()
+	start_sorted.sort()
+	var picks := []
+	for p in RulerRules.presets_for(faction_id):
+		if p.ruler != f.ruler_type:
+			continue
+		var m: Array = p.mandates.duplicate()
+		m.sort()
+		if m == start_sorted:
+			var out: Dictionary = p.duplicate(true)
+			out["faction"] = faction_id
+			return out
+		if picks.is_empty():
+			picks = p.ai_sacrifices.duplicate()
+	var kept := RulerRules.kept_after({"ruler": f.ruler_type, "mandates": start})
+	return {"id": "", "name": "", "style": "custom", "faction": faction_id, "ruler": f.ruler_type, "mandates": start,
+		"ai_role": "home" if kept <= LOW_KEPT else "field", "ai_sacrifices": picks}
+
+
+## Plain-language reasons for the last plan, most important first. Names only, never ids.
+func last_plan_notes() -> Array:
+	return _notes.duplicate()
+
+
+## Counters for the last plan: {"odds_calls", "odds_cached", "odds_skipped", "attacks", "held_back",
+## "captures", "recalls", "retreats", "recruits", "dropped_invalid", "usec"}, plus "odds_usec" and
+## "odds_fighters_max" when a forecast ran. The timings are for reports only and never steer a plan.
+func last_plan_stats() -> Dictionary:
+	return _stats.duplicate()
+
+
+# --- setup ----------------------------------------------------------------------------------------
+
+func _begin(state: GameState, faction_id: String, rng: SeededRNG, difficulty: String) -> void:
+	_state = state
+	_fid = faction_id
+	_rng = rng if rng != null else SeededRNG.new(0)
+	_level = difficulty if DIFFICULTIES.has(difficulty) else "normal"
+	_notes = []
+	_head = 0
+	_stats = {"odds_calls": 0, "odds_cached": 0, "odds_skipped": 0, "attacks": 0, "held_back": 0,
+		"captures": 0, "recalls": 0, "retreats": 0, "recruits": 0, "dropped_invalid": 0, "usec": 0,
+		"sacrifices": 0, "road_moves": 0, "field_recruits": 0, "ruler_moves": 0}
+	_budget = ODDS_BUDGET[_level]
+	_cache = {}
+	_moves = {}
+	_vias = {}
+	_busy = {}
+	_scratch = null
+	_capital_short = false
+	_home_rate = 1.0
+	_recruit_plan = []
+	_mine = []
+	_foes = []
+	_ruler = null
+	_preset = {}
+	_sacrifice = ""
+	_me = state.find_faction(faction_id) if state != null else null
+	if _me == null:
+		return
+	_nbrs = {}
+	for p in state.provinces:
+		var n: Array = p.neighbors.duplicate()
+		n.sort()
+		_nbrs[p.id] = n
+	_dist = {}
+	for p in state.provinces:
+		_dist[p.id] = _bfs(p.id)
+	_collect_armies()
+	_preset = preset_for(state, faction_id)
+
+
+## Sorts the state's armies into ours (_mine, without our ruler's army), our ruler's army and the foes'.
+func _collect_armies() -> void:
+	_mine = []
+	_foes = []
+	_ruler = null
+	for a in _state.armies:
+		if a.owner == _fid:
+			if a.ruler != null:
+				_ruler = a
+			else:
+				_mine.append(a)
+		else:
+			_foes.append(a)
+	_mine.sort_custom(func(x, y): return x.id < y.id)
+	_foes.sort_custom(func(x, y): return x.id < y.id)
+
+
+## Plans the rest of the turn on `state` instead (the state with this turn's sacrifice applied). The map
+## is the same; the armies, the faction and every cached forecast are taken afresh.
+func _rebase(state: GameState) -> void:
+	if state == null:
+		return
+	_state = state
+	_me = state.find_faction(_fid)
+	_cache = {}
+	_scratch = null
+	_moves = {}
+	_vias = {}
+	_busy = {}
+	_collect_armies()
+
+
+func _bfs(from_id: String) -> Dictionary:
+	var dist := {from_id: 0}
+	var queue: Array = [from_id]
+	var i := 0
+	while i < queue.size():
+		var pid: String = queue[i]
+		i += 1
+		for n in _nbrs.get(pid, []):
+			if not dist.has(n):
+				dist[n] = int(dist[pid]) + 1
+				queue.append(n)
+	return dist
+
+
+# --- 1. the capital -------------------------------------------------------------------------------
+
+func _defend_capital() -> void:
+	var cap := _state.find_province(_me.capital)
+	if cap == null or cap.owner != _fid:
+		return
+	var home := _mine_at(cap.id)
+	var threats := _foes_next_to(cap.id)
+	if threats.is_empty():
+		_size_garrison(cap, home)
+		return
+	var where := _places_text(threats)
+	var guard := _home_guard()  # our ruler, when it holds the capital this turn
+	var recallable := []
+	for n in _nbrs[cap.id]:
+		for a in _mine_at(n):
+			recallable.append(a)
+	# King's Roads: armies two provinces away through our own land can be back this turn too.
+	var road := _road_recalls(cap.id)
+	var road_ids: Array = road.keys()
+	road_ids.sort()
+	for id in road_ids:
+		recallable.append(_state.find_army(str(id)))
+	recallable.sort_custom(func(x, y): return _army_power(x) > _army_power(y) or (_army_power(x) == _army_power(y) and x.id < y.id))
+
+	if home.is_empty():
+		# Nobody holds the capital (or only our ruler does), so recalled armies arrive together with any
+		# attacker. Bring back everyone who can make it.
+		for a in recallable:
+			_move(a, cap.id, str(road.get(a.id, "")))
+			_stats.recalls += 1
+		_home_rate = 0.0
+		if recallable.is_empty():
+			if guard.is_empty():
+				_note("%s is open: an enemy army at %s could walk in next turn, and none of our armies can get there in time." % [cap.name, where])
+			else:
+				_home_rate = _defense_rate(cap.id, guard, threats)
+				_note("Only %s holds %s: an enemy army at %s could attack next turn, and none of our armies can get there in time (odds as defender: %s)." % [
+					RulerRules.current_name(_state, _fid), cap.name, where, _odds_words(_home_rate)])
+		else:
+			var rate := _defense_rate(cap.id, recallable + guard, threats)
+			_home_rate = rate
+			_note("Rushing %s back to %s: %s and an enemy army at %s could attack next turn (odds: %s)." % [
+				_count_text(recallable), cap.name, "it is empty" if guard.is_empty() else "only %s holds it" % RulerRules.current_name(_state, _fid),
+				where, _odds_words(rate)])
+		return
+
+	# Keep the smallest set of home armies that holds; any extra armies may leave.
+	var keep := _keepers(cap.id, home, threats)
+	for a in keep:
+		_hold(a)
+	var defenders: Array = keep.duplicate()
+	var recalled := []
+	var rate := _defense_rate(cap.id, defenders + guard, threats)
+	while rate < HOLD_TARGET[_level] and not recallable.is_empty():
+		var a: Army = recallable.pop_front()
+		recalled.append(a)
+		defenders.append(a)
+		rate = _defense_rate(cap.id, defenders + guard, threats)
+	for a in recalled:
+		_move(a, cap.id, str(road.get(a.id, "")))
+		_stats.recalls += 1
+	_home_rate = rate
+	if recalled.is_empty() and _sally(cap, home, threats):
+		return
+	if recalled.is_empty():
+		_note("Holding %s: an enemy army at %s could attack next turn (odds as defender: %s)." % [cap.name, where, _odds_words(rate)])
+	else:
+		_note("Recalling %s to %s: an enemy army at %s could attack next turn (odds as defender with them: %s)." % [
+			_count_text(recalled), cap.name, where, _odds_words(rate)])
+	if keep.size() < home.size():
+		_note("%s is safe without %s, so %s free to act." % [cap.name, _count_text(home.size() - keep.size()),
+			"it is" if home.size() - keep.size() == 1 else "they are"])
+
+
+## Every enemy army next to the capital stands in one province and the whole garrison would crush
+## it: attack it instead of waiting. Moving in, it would have to fight the garrison on the border
+## first, and nobody else can reach the capital this turn; this turn's recruits regroup there.
+## Returns true when the garrison sallies.
+func _sally(cap: Province, home: Array, threats: Array) -> bool:
+	var at: String = threats[0].location
+	for e in threats:
+		if e.location != at:
+			return false
+	# Judged with the garrison alone: on the border it meets that army without the armies joining
+	# from elsewhere (and without terrain, which only makes this estimate safer).
+	var odds := _attack_rate(home, at)
+	if odds.rate < SALLY_WIN:
+		return false
+	var attackers: Array = home.duplicate()
+	for a in _free_next_to(at):
+		if not attackers.has(a):
+			attackers.append(a)
+	for a in attackers:
+		_move(a, at)
+	_stats.attacks += 1
+	_home_rate = odds.rate
+	_note("Sallying out of %s to destroy the enemy army at %s (odds: %s): it cannot slip into %s without fighting us on the way." % [
+		cap.name, _province_name(at), _odds_words(odds.rate, odds.label), cap.name])
+	return true
+
+
+## Home armies that must stay: all of them, unless the strongest few are already lopsidedly enough.
+func _keepers(pid: String, home: Array, threats: Array) -> Array:
+	if home.size() < 2:
+		return home.duplicate()
+	var by_power := home.duplicate()
+	by_power.sort_custom(func(x, y): return _army_power(x) > _army_power(y) or (_army_power(x) == _army_power(y) and x.id < y.id))
+	var keep := []
+	for a in by_power:
+		keep.append(a)
+		if _ratio(keep, threats, _ground_bonus(pid), 1.0) >= SURPLUS_RATIO:
+			break
+	return keep
+
+
+## Our win rate holding `pid` with `defenders` against `threats` attacking it together: the worst
+## case over the attacking factions. Forecast.battle_odds is run from the attacker's side on a scratch
+## copy of the state where the defenders stand in `pid`.
+func _defense_rate(pid: String, defenders: Array, threats: Array) -> float:
+	if defenders.is_empty():
+		return 0.0
+	var ratio := _ratio(defenders, threats, _ground_bonus(pid), 1.0)
+	if ratio >= SURE_RATIO:
+		return 0.95
+	if ratio <= HOPELESS_RATIO:
+		return 0.05
+	var st := _scratch_with(defenders, pid)
+	var by_faction := {}
+	for e in threats:
+		if not by_faction.has(e.owner):
+			by_faction[e.owner] = []
+		by_faction[e.owner].append(e.id)
+	var fids: Array = by_faction.keys()
+	fids.sort()
+	var worst := 1.0
+	for fid in fids:
+		var r: Dictionary = _odds(st, fid, by_faction[fid], pid, true) if st != null else {}
+		var their: float = float(r.win_rate) if r.has("win_rate") else _rate_from_ratio(1.0 / maxf(ratio, 0.001))
+		worst = minf(worst, 1.0 - their)
+	return worst
+
+
+## With no enemy next door, enemy armies two or three moves away may still need a garrison: the home
+## armies stay unless this turn's recruits alone would hold the capital against them.
+func _size_garrison(cap: Province, home: Array) -> void:
+	var near := []
+	var far := []
+	for e in _foes:
+		var d := _d(e.location, cap.id)
+		if d == 2:
+			near.append(e)
+		elif d == 3:
+			far.append(e)
+	if near.is_empty() and far.is_empty():
+		return
+	var threat: Array = near + far
+	var recruits := _recruit_units()
+	var need := GARRISON_RATIO if not near.is_empty() else GARRISON_RATIO * 0.6
+	var bonus := _ground_bonus(cap.id)
+	if _ratio_units(recruits, _units(threat), bonus, 1.0) >= need:
+		return
+	if home.is_empty():
+		if not near.is_empty():
+			_capital_short = _ratio_units(recruits, _units(threat), bonus, 1.0) < 1.0
+		return
+	for a in home:
+		_hold(a)
+	var garrison: Array = recruits + _units(home)
+	if not near.is_empty() and _ratio_units(garrison, _units(threat), bonus, 1.0) < 1.0:
+		_capital_short = true
+	var where := _places_text(near if not near.is_empty() else far)
+	_note("Keeping the garrison in %s: an enemy army at %s is %s moves away." % [cap.name, where, "two" if not near.is_empty() else "three"])
+
+
+# --- 2. the enemy capital -------------------------------------------------------------------------
+
+func _strike_capitals() -> void:
+	for f in _sorted_factions():
+		if f.id == _fid:
+			continue
+		var ec := _state.find_province(f.capital)
+		if ec == null or ec.owner == _fid:
+			continue
+		var attackers := _free_next_to(ec.id)
+		if attackers.is_empty():
+			continue
+		var held := _foes_at(ec.id)
+		if held.is_empty():
+			var rescuers := _foes_next_to(ec.id)
+			if rescuers.is_empty() or _ratio(attackers, rescuers, 1.0, 1.0) >= WALK_IN_RATIO:
+				for a in attackers:
+					_move(a, ec.id)
+				_stats.attacks += 1
+				_note("Marching into %s: the %s capital is undefended, and taking it wins the game." % [ec.name, f.faction_name])
+			else:
+				_note("Not walking into %s yet: the %s armies next to it could rush back and win." % [ec.name, f.faction_name])
+			continue
+		var odds := _attack_rate(attackers, ec.id)
+		if odds.rate >= CAPITAL_WIN:
+			for a in attackers:
+				_move(a, ec.id)
+			_stats.attacks += 1
+			_note("Attacking %s, the %s capital, with %s (odds: %s%s)." % [ec.name, f.faction_name, _count_text(attackers), _odds_words(odds.rate, odds.label), _joiners_text(odds)])
+		else:
+			_stats.held_back += 1
+			_note("Not attacking %s yet (odds: %s%s); massing more armies next to it." % [ec.name, _odds_words(odds.rate, odds.label), _joiners_text(odds)])
+
+
+# --- 3. battles -----------------------------------------------------------------------------------
+
+func _attack_armies() -> void:
+	var near_home: Array = _nbrs.get(_me.capital, [])
+	var cands := []
+	for p in _sorted_provinces():
+		if _is_enemy_capital(p.id):
+			continue
+		var held := _foes_at(p.id)
+		if held.is_empty():
+			continue
+		var att := _free_next_to(p.id)
+		if att.is_empty():
+			continue
+		var urgent: bool = near_home.has(p.id) and _home_rate < HOLD_TARGET[_level]
+		# Worth: the enemy strength we expect to destroy, more next to our capital.
+		var ratio := _ratio(att, held, 1.0, _ground_bonus(p.id))
+		var worth := _power_units(_units(held), _units(att)) * _rate_from_ratio(ratio) * (1.5 if near_home.has(p.id) else 1.0)
+		cands.append({"pid": p.id, "urgent": urgent, "worth": worth})
+	cands.sort_custom(func(x, y):
+		if x.urgent != y.urgent:
+			return x.urgent
+		if x.worth != y.worth:
+			return x.worth > y.worth
+		return x.pid < y.pid)
+	for c in cands:
+		var att := _attackers_for(c.pid, c.urgent)
+		if att.is_empty():
+			continue
+		var p := _state.find_province(c.pid)
+		var odds := _attack_rate(att, c.pid)
+		var need := URGENT_WIN if c.urgent else LIKELY_WIN
+		if odds.rate < need:
+			_stats.held_back += 1
+			if odds.rate > HOPELESS_RATIO or c.urgent:
+				_note("Not attacking the enemy at %s (odds: %s%s)." % [p.name, _odds_words(odds.rate, odds.label), _joiners_text(odds)])
+			continue
+		if _skips():
+			_note("Letting a chance to attack %s pass." % p.name)
+			continue
+		for a in att:
+			_move(a, c.pid)
+		_stats.attacks += 1
+		var why := " before it reaches %s" % _province_name(_me.capital) if c.urgent else ""
+		_note("Attacking the enemy at %s with %s%s (odds: %s%s)." % [p.name, _count_text(att), why, _odds_words(odds.rate, odds.label), _joiners_text(odds)])
+
+
+## Free armies next to `pid` that should attack it. A small enemy army (a straggler) is not worth a
+## step away from the enemy capital, unless it threatens our capital: those armies stay on course.
+func _attackers_for(pid: String, urgent: bool) -> Array:
+	var att := _free_next_to(pid)
+	if urgent or att.is_empty():
+		return att
+	var held := _foes_at(pid)
+	if _power_units(_units(held), _units(att)) >= STRAGGLER_SHARE * _power_units(_units(att), _units(held)):
+		return att
+	return att.filter(func(a):
+		var obj := _objective_for(a.location)
+		return obj.is_empty() or _d(pid, obj) <= _d(a.location, obj))
+
+
+## {"rate", "label", "helpers"} for our `attackers` attacking `pid` now. Enemy armies next to `pid`
+## could move in and join the defense in the same turn, so they are counted as if they do ("helpers":
+## how many). The rough guess decides when it is lopsided or the forecast budget is spent, otherwise
+## Forecast.battle_odds, on a scratch copy of the state with those armies moved in.
+func _attack_rate(attackers: Array, pid: String) -> Dictionary:
+	var helpers := _foes_next_to(pid)
+	var foes: Array = _foes_at(pid) + helpers
+	var ratio := _ratio(attackers, foes, 1.0, _ground_bonus(pid))
+	if ratio >= SURE_RATIO:
+		return {"rate": 0.95, "label": "likely win", "helpers": helpers.size()}
+	if ratio <= HOPELESS_RATIO:
+		return {"rate": 0.05, "label": "likely loss", "helpers": helpers.size()}
+	var ids := []
+	for a in attackers:
+		ids.append(a.id)
+	var st: GameState = _state if helpers.is_empty() else _scratch_with(helpers, pid)
+	var r: Dictionary = _odds(st, _fid, ids, pid, false) if st != null else {}
+	if r.has("win_rate"):
+		return {"rate": float(r.win_rate), "label": str(r.get("label", "")), "helpers": helpers.size()}
+	var rate := _rate_from_ratio(ratio)
+	return {"rate": rate, "label": _label_for(rate), "helpers": helpers.size()}
+
+
+# --- 4. field moves -------------------------------------------------------------------------------
+
+func _field_moves() -> void:
+	var groups := _free_groups()
+	if groups.is_empty():
+		return
+	var main: Dictionary = groups[0]
+	var objective := _objective_for(main.loc)
+	var claimed := {}
+	var main_dest: String = main.loc
+	# Mass before pushing: the main army waits while a big share of our strength is still on its way.
+	var nearby := 0.0
+	var waiting_for := 0
+	for g in groups:
+		if _d(g.loc, main.loc) <= MASS_REACH:
+			nearby += float(g.power)
+			if g.loc != main.loc:
+				waiting_for += 1
+	main["massed"] = float(main.power) >= MASS_SHARE * nearby
+	main["waiting_for"] = waiting_for
+	for i in groups.size():
+		var g: Dictionary = groups[i]
+		_last_via = ""
+		var dest := _field_move(g, i == 0, objective, main_dest, claimed)
+		if i == 0:
+			main_dest = dest
+		for a in g.armies:
+			if dest == g.loc:
+				_hold(a)
+			else:
+				_move(a, dest, _last_via)
+
+
+func _field_move(g: Dictionary, is_main: bool, objective: String, main_dest: String, claimed: Dictionary) -> String:
+	var here: String = g.loc
+	var armies: Array = g.armies
+	var here_name := _province_name(here)
+	# A clearly stronger enemy next door: pull back.
+	var danger := _foes_next_to(here)
+	if not danger.is_empty() and _ratio(armies, danger, _ground_bonus(here), 1.0) < RETREAT_RATIO:
+		var back := _retreat_step(g)
+		if back != here:
+			_stats.retreats += 1
+			_note("Pulling back from %s to %s: a stronger enemy army is next to it." % [here_name, _province_name(back)])
+			return back
+	# The capital will be short of defenders soon: armies close to home go back.
+	var cap: String = _me.capital
+	if _capital_short and here != cap and _d(here, cap) <= 2:
+		var step := _road_or_step(here, cap, armies)
+		if not step.is_empty():
+			_note("Sending %s from %s back toward %s: enemy armies are closing in on it." % [_count_text(armies), here_name, _province_name(cap)])
+			return step
+	# Take a safe, undefended province next door.
+	var capture := _best_capture(g, is_main, objective, claimed)
+	if not capture.is_empty():
+		if _skips():
+			return here
+		claimed[capture] = true
+		_stats.captures += 1
+		var p := _state.find_province(capture)
+		_note("Taking %s for %d gold per turn%s." % [p.name, p.income, "" if p.owner.is_empty() else " (and %s lose it)" % _faction_name(p.owner)])
+		return capture
+	if is_main:
+		return _advance(g, objective)
+	return _join(g, main_dest)
+
+
+## The neighbor (or `here`) where the group is safest, judged with the friendly armies that will be
+## there. Ties: closer to our capital, then sorted id.
+func _retreat_step(g: Dictionary) -> String:
+	var here: String = g.loc
+	var options: Array = [here]
+	for n in _nbrs[here]:
+		if _foes_at(n).is_empty():
+			options.append(n)
+	var best := here
+	var best_ratio := -1.0
+	for pid in options:
+		var friends: Array = g.armies + _friends_ending_at(pid, g.armies)
+		var threat := _foes_next_to(pid)
+		var r := 99.0 if threat.is_empty() else _ratio(friends, threat, _ground_bonus(pid), 1.0)
+		var better := r > best_ratio + 0.0001
+		if not better and absf(r - best_ratio) <= 0.0001:
+			better = _d(pid, _me.capital) < _d(best, _me.capital) or (_d(pid, _me.capital) == _d(best, _me.capital) and pid < best)
+		if better:
+			best = pid
+			best_ratio = r
+	return best
+
+
+func _best_capture(g: Dictionary, is_main: bool, objective: String, claimed: Dictionary) -> String:
+	var here: String = g.loc
+	var best := ""
+	var best_score := 0.0
+	for n in _nbrs[here]:
+		var p := _state.find_province(n)
+		if p == null or p.owner == _fid or claimed.has(n) or not _foes_at(n).is_empty():
+			continue
+		if is_main and not objective.is_empty() and _d(n, objective) > _d(here, objective):
+			continue
+		if not _safe_at(g.armies, n):
+			continue
+		var score: float = float(p.income) * (1.0 if p.owner.is_empty() else 2.0) + _rng.randf() * float(JITTER[_level])
+		if not objective.is_empty():
+			score -= 0.01 * _d(n, objective)
+		if score > best_score:
+			best = n
+			best_score = score
+	return best
+
+
+## The main army: one step toward the objective while the step is safe, otherwise hold and mass.
+func _advance(g: Dictionary, objective: String) -> String:
+	var here: String = g.loc
+	if objective.is_empty():
+		return here
+	var d_here := _d(here, objective)
+	if d_here <= 1:
+		return here  # next to the enemy capital: _strike_capitals decides when to go in
+	if not g.get("massed", true):
+		_note("Massing at %s: waiting for %s to join before pushing on to %s." % [_province_name(here),
+			_count_text(int(g.get("waiting_for", 1))), _province_name(objective)])
+		return here
+	var road := _road_step(here, objective, g.armies)  # King's Roads: two provinces through our own land
+	if not road.is_empty():
+		return road
+	var options := []
+	for n in _nbrs[here]:
+		if _d(n, objective) == d_here - 1 and _foes_at(n).is_empty() and _safe_at(g.armies, n):
+			options.append(n)
+	if options.is_empty():
+		_note("Massing at %s before pushing on to %s: the road ahead is guarded by stronger armies." % [_province_name(here), _province_name(objective)])
+		return here
+	var step := _pick_step(options)
+	return step
+
+
+## Every other free army: one safe step toward where the main army will be.
+func _join(g: Dictionary, main_dest: String) -> String:
+	var here: String = g.loc
+	if here == main_dest:
+		return here
+	var step := _road_or_step(here, main_dest, g.armies)
+	return here if step.is_empty() else step
+
+
+## A step from `here` toward `target` for `armies` (all standing in `here`): a road move two provinces
+## along (King's Roads) when one is legal, safe and gets closer than one step would, otherwise
+## _step_toward's one safe step. A road move sets _last_via. "" when there is no safe step.
+func _road_or_step(here: String, target: String, armies: Array) -> String:
+	var road := _road_step(here, target, armies)
+	return road if not road.is_empty() else _step_toward(here, target, armies)
+
+
+## The best road move (King's Roads, RulerRules.road_destinations) from `here` toward `target` for
+## `armies`: the legal two-province move that ends closest to `target`, closer than one step could, in
+## a province with no enemy army and safe for the armies that will be there (_safe_at). Ties go to the
+## first by id; the way through is the first legal one by id (as the orders UI picks). Sets _last_via.
+## "" without King's Roads or when no road move helps.
+func _road_step(here: String, target: String, armies: Array) -> String:
+	if armies.is_empty() or not RulerRules.has_mandate(_state, _fid, RulerRules.KINGS_ROADS):
+		return ""
+	var d_here := _d(here, target)
+	if d_here < 2:
+		return ""
+	var dests := RulerRules.road_destinations(_state, _fid, armies[0].id)
+	var keys: Array = dests.keys()
+	keys.sort()
+	var best := ""
+	var best_d := d_here - 1  # a road move has to beat a single step
+	for to in keys:
+		var d := _d(to, target)
+		if d >= best_d or not _foes_at(to).is_empty():
+			continue
+		var friends: Array = armies + _friends_ending_at(to, armies)
+		if not _safe_at(friends, to):
+			continue
+		best = to
+		best_d = d
+	if best.is_empty():
+		return ""
+	_last_via = String(dests[best][0])
+	return best
+
+
+## King's Roads recalls: our free armies two provinces from the capital that a road move brings home
+## this turn, {army id: the province it goes through}. {} without King's Roads.
+func _road_recalls(cap_id: String) -> Dictionary:
+	var out := {}
+	if not RulerRules.has_mandate(_state, _fid, RulerRules.KINGS_ROADS):
+		return out
+	for a in _mine:
+		if _busy.has(a.id) or _d(a.location, cap_id) != 2:
+			continue
+		var vias := RulerRules.road_vias(_state, _fid, a.id, cap_id)
+		if not vias.is_empty():
+			out[a.id] = String(vias[0])
+	return out
+
+
+## A safe step from `here` that gets closer to `target`, or "" when there is none. Stepping into
+## `target` itself counts the friendly armies that will be there.
+func _step_toward(here: String, target: String, armies: Array) -> String:
+	var d_here := _d(here, target)
+	var options := []
+	for n in _nbrs[here]:
+		if _d(n, target) != d_here - 1 or not _foes_at(n).is_empty():
+			continue
+		var friends: Array = armies + _friends_ending_at(n, armies)
+		if _safe_at(friends, n):
+			options.append(n)
+	return "" if options.is_empty() else _pick_step(options)
+
+
+## Among equally good steps: provinces we don't own first (they get captured on the way), then the
+## highest income give or take a little random spread (JITTER), then a roll of the rng.
+func _pick_step(options: Array) -> String:
+	var best := []
+	var best_key := -1.0
+	for n in options:
+		var p := _state.find_province(n)
+		var key: float = float(p.income) + (100.0 if p.owner != _fid else 0.0) + _rng.randf() * float(JITTER[_level])
+		if key > best_key + 0.0001:
+			best_key = key
+			best = [n]
+		elif absf(key - best_key) <= 0.0001:
+			best.append(n)
+	if best.size() == 1:
+		return best[0]
+	return best[_rng.randi_range(0, best.size() - 1)]
+
+
+func _safe_at(armies: Array, pid: String) -> bool:
+	var threat := _foes_next_to(pid)
+	return threat.is_empty() or _ratio(armies, threat, _ground_bonus(pid), 1.0) >= SAFE_RATIO
+
+
+## The nearest enemy capital from `from_id` (ties: faction id order), or "".
+func _objective_for(from_id: String) -> String:
+	var best := ""
+	var best_d := 1 << 30
+	for f in _sorted_factions():
+		if f.id == _fid:
+			continue
+		var p := _state.find_province(f.capital)
+		if p == null or p.owner == _fid:
+			continue
+		var d := _d(from_id, p.id)
+		if d < best_d:
+			best = p.id
+			best_d = d
+	return best
+
+
+# --- 5. recruits ----------------------------------------------------------------------------------
+
+## Units to recruit this turn, in order, for the army that will stand in the capital after this
+## turn's moves (`base`, our armies there). Recruits appear there, so they are next turn's garrison.
+func _plan_recruits(base: Array) -> Array:
+	var cap := _state.find_province(_me.capital)
+	if cap == null or cap.owner != _fid:
+		return []
+	var roster: Array = []
+	for ut in _me.unit_types:
+		if ut.cost > 0:
+			roster.append(ut)
+	var cmd: UnitType = _me.commander_type if _me.commander_type != null and _me.commander_type.cost > 0 else null
+	var gold := _me.gold
+	var out := []
+	if _level == "easy":
+		# Cruder: random affordable picks until the gold runs out.
+		var pool: Array = roster.duplicate()
+		if cmd != null:
+			pool.append(cmd)
+		for _i in 16:
+			var affordable := pool.filter(func(ut): return _price(ut) <= gold)
+			if affordable.is_empty():
+				break
+			var pick: UnitType = affordable[_rng.randi_range(0, affordable.size() - 1)]
+			out.append(pick)
+			gold -= _price(pick)
+		return out
+	# Normal: each pick most raises the garrison's trait-aware odds against the enemy's armies per gold
+	# spent (_recruit_value). Prices are the ones the recruitment phase charges (Muster Grounds included).
+	var foe_units := _units(_foes)
+	var units: Array = _units(base)
+	var has_cmd := false
+	for a in base:
+		if a.commander != null:
+			has_cmd = true
+	var threatened := false
+	for e in _foes:
+		if _d(e.location, cap.id) <= 2:
+			threatened = true
+	# A threatened capital with no commander gets one first: a commander steadies the whole army.
+	if cmd != null and threatened and not has_cmd and _price(cmd) <= gold:
+		out.append(cmd)
+		units.append(Unit.new(cmd, _fid))
+		gold -= _price(cmd)
+	var value := _recruit_value(units, foe_units)
+	for _i in 40:
+		var best: UnitType = null
+		var best_gain := 0.0
+		var best_value := value
+		var ranks := _ranks(units)
+		for ut in roster:
+			var price := _price(ut)
+			if price > gold or price <= 0:
+				continue
+			# Volley holds its shield only while at least as many front-rank units stand: never recruit
+			# past that (AutoBattleResolver._targets).
+			if ut.trait_id == AutoBattleResolver.VOLLEY and ranks.volley + 1 > ranks.front:
+				continue
+			var trial: Array = units.duplicate()
+			trial.append(Unit.new(ut, _fid))
+			var v := _recruit_value(trial, foe_units)
+			var gain := (v - value) / float(price)
+			if gain > best_gain + 0.000001:
+				best = ut
+				best_gain = gain
+				best_value = v
+		if best == null:
+			break
+		out.append(best)
+		units.append(Unit.new(best, _fid))
+		gold -= _price(best)
+		value = best_value
+	return out
+
+
+## What one `ut` costs us now: RulerRules.recruit_price, the recruitment phase's price.
+func _price(ut: UnitType) -> int:
+	return RulerRules.recruit_price(_state, _fid, ut)
+
+
+## {"front", "volley"}: the regular units among `units` that stand in the front rank (no Volley) and in
+## the second rank (Volley), as AutoBattleResolver ranks them. Commanders and rulers are left out.
+static func _ranks(units: Array) -> Dictionary:
+	var out := {"front": 0, "volley": 0}
+	for u in units:
+		if u.type.is_commander or u.type.is_ruler:
+			continue
+		if u.type.trait_id == AutoBattleResolver.VOLLEY:
+			out.volley += 1
+		else:
+			out.front += 1
+	return out
+
+
+## How well `units` would fight `foe_units` (or the enemy rosters, before any enemy army is seen),
+## trait-aware: our _trait_power over theirs. Rulers are left out (they are never recruited).
+func _recruit_value(units: Array, foe_units: Array) -> float:
+	if units.is_empty():
+		return 0.0
+	var foes: Array = foe_units if not foe_units.is_empty() else _roster_units()
+	var ours := _side_summary(units)
+	var theirs := _side_summary(foes)
+	return _trait_power(ours, theirs) / maxf(_trait_power(theirs, ours), 0.001)
+
+
+## Totals of one side for _trait_power: {"hp", "morale", "regulars", "best_morale", "cmd", "inspire",
+## "pack", "bears", "front", "volley", "skirmish", "fighters", "def_hp", "shield_hp", "kinds": {type id:
+## {"type", "n"}}}. Rulers are skipped.
+static func _side_summary(units: Array) -> Dictionary:
+	var s := {"hp": 0.0, "morale": 0, "regulars": 0, "best_morale": 0, "cmd": false, "inspire": false, "pack": false,
+		"bears": 0, "front": 0, "volley": 0, "skirmish": 0, "fighters": 0, "def_hp": 0.0, "shield_hp": 0.0, "kinds": {}}
+	for u in units:
+		var ut: UnitType = u.type
+		if ut.is_ruler:
+			continue
+		var hp := float(u.current_hp)
+		s.hp += hp
+		s.def_hp += hp * ut.defense
+		s.fighters += 1
+		if ut.is_commander:
+			s.cmd = true
+			s.best_morale = maxi(s.best_morale, ut.morale)
+			if ut.trait_id == AutoBattleResolver.INSPIRE:
+				s.inspire = true
+			elif ut.trait_id == AutoBattleResolver.PACK_LEADER:
+				s.pack = true
+		else:
+			s.morale += ut.morale
+			s.regulars += 1
+			if ut.trait_id == AutoBattleResolver.VOLLEY:
+				s.volley += 1
+			else:
+				s.front += 1
+			if ut.trait_id == AutoBattleResolver.SKIRMISH:
+				s.skirmish += 1
+			elif ut.trait_id == AutoBattleResolver.FURY:
+				s.bears += 1
+			elif ut.trait_id == AutoBattleResolver.SHIELD_WALL:
+				s.shield_hp += hp
+		if not s.kinds.has(ut.id):
+			s.kinds[ut.id] = {"type": ut, "n": 0}
+		s.kinds[ut.id].n += 1
+	return s
+
+
+## Rough fighting power of side `s` against side `foe` (both _side_summary), with the traits counted the
+## way AutoBattleResolver applies them, from its own constants: the hp the side can lose before it
+## breaks (morale with commanders, Inspire and the foe's Fury) x the damage it deals per round. Shield
+## Wall raises our defense, Pack Leader and (about half the time) Berserk our attack, Charge adds its
+## first-round damage; a shielded Volley unit's damage counts more (less against Skirmish), and a
+## Skirmish unit's more against an enemy with Volley units, which only Skirmish reaches behind its front.
+static func _trait_power(s: Dictionary, foe: Dictionary) -> float:
+	if float(s.hp) <= 0.0:
+		return 0.0
+	var foe_def := _summary_defense(foe)
+	var m: float = float(s.morale) / s.regulars if int(s.regulars) > 0 else float(s.best_morale)
+	if s.cmd:
+		m += AutoBattleResolver.COMMANDER_MORALE
+	if s.inspire:
+		m += AutoBattleResolver.INSPIRE_MORALE
+	m -= mini(AutoBattleResolver.FURY_MAX, AutoBattleResolver.FURY_MORALE * int(foe.bears))
+	var hold := clampf(AutoBattleResolver.BREAK_BASE_PCT + AutoBattleResolver.MORALE_PCT_PER_POINT * m,
+		AutoBattleResolver.MIN_BREAK_PCT, AutoBattleResolver.MAX_BREAK_PCT) / 100.0
+	var shielded: bool = int(s.volley) > 0 and int(s.front) >= int(s.volley)
+	# Enemy Skirmish units reach our shielded Volley units anyway; ours reach the enemy's. Both pick
+	# their targets at random among the ranks they reach, so it is the share of each side's units that counts.
+	var foe_regulars := maxf(1.0, float(foe.regulars))
+	var foe_reach := float(foe.skirmish) / foe_regulars
+	var our_targets := float(foe.volley) / foe_regulars
+	var dmg := 0.0
+	for k in s.kinds.values():
+		var ut: UnitType = k.type
+		var atk := float(ut.attack)
+		if not ut.is_commander and s.pack:
+			atk += AutoBattleResolver.PACK_LEADER_ATTACK
+		if ut.trait_id == AutoBattleResolver.BERSERK:
+			atk += AutoBattleResolver.BERSERK_ATTACK * BERSERK_SHARE
+		var hit := _hit_rate(atk, foe_def)
+		var per := hit * maxf(AutoBattleResolver.MIN_DAMAGE, ceilf(atk * 0.5) - floorf(foe_def * 0.25))
+		if ut.trait_id == AutoBattleResolver.CHARGE:
+			per += hit * AutoBattleResolver.CHARGE_DAMAGE / ROUNDS_GUESS
+		if ut.trait_id == AutoBattleResolver.VOLLEY and shielded:
+			per *= 1.0 + VOLLEY_SHIELD_VALUE * (1.0 - foe_reach)
+		if ut.trait_id == AutoBattleResolver.SKIRMISH:
+			per *= 1.0 + SKIRMISH_REACH_VALUE * our_targets
+		dmg += per * int(k.n)
+	return float(s.hp) * hold * dmg
+
+
+## A side's average defense, weighted by hp, with Shield Wall's bonus while it has company.
+static func _summary_defense(s: Dictionary) -> float:
+	if float(s.hp) <= 0.0:
+		return 0.0
+	var total: float = s.def_hp
+	if int(s.fighters) > 1:
+		total += AutoBattleResolver.SHIELD_WALL_DEFENSE * float(s.shield_hp)
+	return total / float(s.hp)
+
+
+## Chance one attack with `atk` hits `def`, AutoBattleResolver's rule: BASE_HIT plus HIT_PER_POINT per
+## point of attack over defense, within MIN_HIT..MAX_HIT percent.
+static func _hit_rate(atk: float, def: float) -> float:
+	return clampf(AutoBattleResolver.BASE_HIT + AutoBattleResolver.HIT_PER_POINT * (atk - def),
+		AutoBattleResolver.MIN_HIT, AutoBattleResolver.MAX_HIT) / 100.0
+
+
+## One unit of each type the other factions can recruit, as a stand-in enemy.
+func _roster_units() -> Array:
+	var out := []
+	for f in _state.factions:
+		if f.id == _fid:
+			continue
+		for ut in f.unit_types:
+			out.append(Unit.new(ut, f.id))
+	return out
+
+
+## The planned recruits as unit objects, for strength guesses about next turn's garrison.
+func _recruit_units() -> Array:
+	var out := []
+	for ut in _recruit_plan:
+		out.append(Unit.new(ut, _fid))
+	return out
+
+
+# --- orders ---------------------------------------------------------------------------------------
+
+func _checked_moves() -> Array:
+	var ids: Array = _moves.keys()
+	ids.sort()
+	var ordered := {}
+	var out := []
+	var roads := []
+	for id in ids:
+		var order := MoveOrder.new(str(id), str(_moves[id]), str(_vias.get(id, "")))
+		if TurnResolver.check_move(_state, _fid, order, ordered).is_empty():
+			ordered[order.army_id] = true
+			out.append(order)
+			if order.is_road_move():
+				_stats.road_moves += 1
+				roads.append(order)
+		else:
+			_stats.dropped_invalid += 1
+	if not roads.is_empty():
+		var parts := []
+		for o in roads.slice(0, 2):
+			var a := _state.find_army(o.army_id)
+			var who := "%s at %s" % ["our ruler" if a != null and a.ruler != null else "the army", _province_name(a.location if a else "")]
+			parts.append("%s goes through %s to %s" % [who, _province_name(o.via), _province_name(o.to)])
+		var more := "" if roads.size() <= 2 else " (and %d more)" % (roads.size() - 2)
+		_note_top("Using the King's Roads: %s%s, two provinces in one turn through our own land." % [" and ".join(parts), more])
+	return out
+
+
+func _checked_recruits() -> Array:
+	var field := _field_recruit_count()
+	var out := []
+	var home := {"counts": {}, "names": [], "spent": 0}
+	var away := {"counts": {}, "names": [], "spent": 0}
+	for ut in _recruit_plan:
+		# Warband Muster: the first regular units of the plan go with the ruler, up to its limit.
+		var order := RecruitOrder.new(ut.id, RecruitOrder.AT_RULER if field > 0 and not ut.is_commander else RecruitOrder.AT_CAPITAL)
+		var trial := out.duplicate()
+		trial.append(order)
+		var r: Dictionary = TurnResolver.price_recruits(_state, _fid, trial).results.back()
+		if not r.ok and order.is_with_ruler():
+			order = RecruitOrder.new(ut.id)
+			trial = out.duplicate()
+			trial.append(order)
+			r = TurnResolver.price_recruits(_state, _fid, trial).results.back()
+		if not r.ok:
+			_stats.dropped_invalid += 1
+			continue
+		out.append(order)
+		var tally: Dictionary = away if order.is_with_ruler() else home
+		if order.is_with_ruler():
+			field -= 1
+			_stats.field_recruits += 1
+		tally.spent += int(r.cost)
+		if not tally.counts.has(ut.name):
+			tally.counts[ut.name] = 0
+			tally.names.append(ut.name)
+		tally.counts[ut.name] += 1
+	_stats.recruits = out.size()
+	if not home.names.is_empty():
+		_note("Recruiting at %s for %d gold: %s." % [_province_name(_me.capital), home.spent, _tally_text(home)])
+	if not away.names.is_empty():
+		var dest: String = _ruler.location if _ruler != null else ""  # they gather where the ruler starts the turn
+		_note_top("Recruiting with %s for %d gold: %s, joining our armies at %s at the end of the turn (Warband Muster)." % [
+			RulerRules.current_name(_state, _fid), away.spent, _tally_text(away), _province_name(dest)])
+	return out
+
+
+## "Tuskers x2, War Bear x1" from a recruit tally.
+static func _tally_text(tally: Dictionary) -> String:
+	var parts := []
+	for n in tally.names:
+		parts.append("%s x%d" % [n, tally.counts[n]])
+	return ", ".join(parts)
+
+
+## How many of this turn's recruits go with our ruler (Warband Muster, §1.4): up to its limit while it
+## stands in our own land, unless it is away from a capital that needs the defenders this turn. The
+## recruits gather where it starts the turn; at the capital they are the same as capital recruits.
+func _field_recruit_count() -> int:
+	if _ruler == null:
+		return 0
+	var limit := RulerRules.field_recruit_limit(_state, _fid)
+	if limit <= 0:
+		return 0
+	var where := _state.find_province(_ruler.location)
+	if where == null or where.owner != _fid:
+		return 0
+	var away: bool = _ruler.location != _me.capital
+	if away and (_capital_short or _home_rate < HOLD_TARGET[_level] or _foe_within(_me.capital, FIELD_RECRUIT_SAFE)):
+		_note("Recruiting at %s rather than with %s: enemy armies are close enough to need the defenders at home." % [
+			_province_name(_me.capital), RulerRules.current_name(_state, _fid)])
+		return 0
+	if away and _armies_ending_at(_me.capital).is_empty():
+		# Nobody else will stand in the capital: at least half of this turn's regular recruits stay there.
+		var regulars := _recruit_plan.filter(func(ut): return not ut.is_commander).size()
+		return mini(limit, regulars / 2)
+	return limit
+
+
+## True when an enemy army stands within `steps` moves of `pid`.
+func _foe_within(pid: String, steps: int) -> bool:
+	for e in _foes:
+		if _d(e.location, pid) <= steps:
+			return true
+	return false
+
+
+func _move(a: Army, dest: String, via: String = "") -> void:
+	if dest == a.location:
+		_hold(a)
+		return
+	_moves[a.id] = dest
+	if via.is_empty():
+		_vias.erase(a.id)
+	else:
+		_vias[a.id] = via
+	_busy[a.id] = true
+
+
+func _hold(a: Army) -> void:
+	_moves.erase(a.id)
+	_vias.erase(a.id)
+	_busy[a.id] = true
+
+
+func _skips() -> bool:
+	return _level == "easy" and _rng.randf() < EASY_SKIP
+
+
+# --- M2: the build, sacrifices and the ruler (design/M2_RULER.md §6.1, §6.3) ---------------------
+
+## Turn 1 of a game with rulers: which build we play and what it means for the ruler, in a note.
+func _note_build() -> void:
+	if _preset.is_empty() or _state.current_turn != 0:
+		return
+	var who := RulerRules._cap(RulerRules.current_name(_state, _fid))
+	var kept := RulerRules.kept_power(_state, _fid)
+	var names := []
+	for mid in _preset.mandates:
+		names.append(RulerRules.mandate_name(mid))
+	var build := "%s plays %s" % [_me.faction_name, _preset.name] if not String(_preset.name).is_empty() else "%s plays its own build" % _me.faction_name
+	var spend := "keeps all %d power" % kept if names.is_empty() else "spends %d power on %s and keeps %d" % [
+		RulerData.POWER_POOL - kept, RulerRules._and_list(names), kept]
+	var role := "stays home in %s, where a ruler with little power is safest" % _province_name(_me.capital) if _ruler_role() == "home" \
+		else "marches with the main army and fights beside it when the odds are good"
+	var text := "%s: %s %s, and %s." % [build, who, spend, role]
+	var picks := []
+	for mid in _preset.get("ai_sacrifices", []):
+		picks.append(RulerRules.mandate_name(mid))
+	if not picks.is_empty():
+		text += " If %s is in danger, or the economy falls behind from turn %d, the ruler sacrifices power for %s." % [
+			_province_name(_me.capital), SACRIFICE_TURN, ", then ".join(picks)]
+	_note_top(text)
+
+
+## "home" (the ruler stays at or near the capital) or "field" (it goes with the strongest army): the
+## preset's role, but a ruler keeping LOW_KEPT power or less always plays home.
+func _ruler_role() -> String:
+	if _preset.is_empty() or RulerRules.kept_power(_state, _fid) <= LOW_KEPT:
+		return "home"
+	return String(_preset.get("ai_role", "home"))
+
+
+## The mandate to sacrifice for this turn, or "" (§6.3): the preset's first pick that
+## RulerRules.sacrifice_check allows, when (a) an enemy army next to the capital could win there (the
+## defenders' odds, with every army that could come back, are close or a likely loss), or (b) from turn
+## SACRIFICE_TURN, our income is at most SACRIFICE_INCOME_SHARE of the strongest enemy's.
+func _choose_sacrifice() -> String:
+	if _ruler == null or _preset.is_empty():
+		return ""
+	var pick := ""
+	for mid in _preset.get("ai_sacrifices", []):
+		if RulerRules.sacrifice_check(_state, _fid, String(mid)).is_empty():
+			pick = String(mid)
+			break
+	if pick.is_empty():
+		return ""
+	var why := _capital_danger()
+	if why.is_empty():
+		why = _falling_behind()
+	if why.is_empty():
+		return ""
+	var kept := RulerRules.kept_power(_state, _fid)
+	var cost := RulerRules.sacrifice_cost(pick)
+	_note_top("Sacrificing %d of %s's power for %s (%d, +%d for a mid-game sacrifice), kept power %d to %d: %s." % [
+		cost, RulerRules.current_name(_state, _fid), RulerRules.mandate_name(pick), RulerRules.mandate_cost(pick),
+		MandateData.SACRIFICE_PREMIUM, kept, kept - cost, why])
+	return pick
+
+
+## Why the capital is in danger, or "": an enemy army next to it, and our odds as defender with every
+## army that could be back this turn (and the ruler, when it is there) are close or worse.
+func _capital_danger() -> String:
+	var cap := _state.find_province(_me.capital)
+	if cap == null or cap.owner != _fid:
+		return ""
+	var threats := _foes_next_to(cap.id)
+	if threats.is_empty():
+		return ""
+	var defenders := _mine_at(cap.id)
+	for n in _nbrs[cap.id]:
+		defenders.append_array(_mine_at(n))
+	if _ruler != null and _ruler.location == cap.id:
+		defenders.append(_ruler)
+	var rate := _defense_rate(cap.id, defenders, threats) if not defenders.is_empty() else 0.0
+	if rate >= LIKELY_WIN:
+		return ""
+	return "an enemy army at %s threatens %s, and our odds as defender are only %s" % [_places_text(threats), cap.name, _odds_words(rate)]
+
+
+## Why we are falling behind, or "": from turn SACRIFICE_TURN, our income is at most
+## SACRIFICE_INCOME_SHARE of the strongest enemy's.
+func _falling_behind() -> String:
+	var turn := _state.current_turn + 1
+	if turn < SACRIFICE_TURN:
+		return ""
+	var ours: int = TurnResolver.income_of(_state, _fid).total
+	var best := 0
+	var best_name := ""
+	for f in _sorted_factions():
+		if f.id == _fid:
+			continue
+		var theirs: int = TurnResolver.income_of(_state, f.id).total
+		if theirs > best:
+			best = theirs
+			best_name = f.faction_name
+	if best <= 0 or float(ours) > SACRIFICE_INCOME_SHARE * best:
+		return ""
+	return "on turn %d our income is %d gold against %d for the %s, so the war has to be won with what we have" % [turn, ours, best, best_name]
+
+
+## Our ruler when it holds the capital this turn (a home ruler standing there), as [army]; [] otherwise.
+## The capital's defense counts it.
+func _home_guard() -> Array:
+	if _ruler != null and _ruler.location == _me.capital and _ruler_role() == "home":
+		return [_ruler]
+	return []
+
+
+## Our strongest army by hp x attack (units and commander; ties: first by id), or null.
+func _lead_army() -> Army:
+	var best: Army = null
+	var best_power := -1
+	for a in _mine:
+		var p := 0
+		for u in _members(a):
+			p += u.current_hp * u.type.attack
+		if p > best_power:
+			best = a
+			best_power = p
+	return best
+
+
+## Plans our ruler's army, after every other army (§6.3). Home: it holds the capital, or walks back to
+## it. Field: it goes where the strongest army ends the turn (the same move, or a step along the
+## shortest path, by road when that is quicker). Either way it only ends the turn somewhere safe
+## (_ruler_spot); otherwise it tries holding, then falling back toward the capital, and at worst takes
+## the safest of those.
+func _ruler_moves() -> void:
+	if _ruler == null:
+		var info := RulerRules.succession_info(_state, _fid)
+		if not info.is_empty():
+			_note_top("No ruler this turn: %s" % RulerRules.successor_sentence(info))
+		return
+	var here: String = _ruler.location
+	var cap: String = _me.capital
+	var who := RulerRules._cap(RulerRules.current_name(_state, _fid))
+	var kept := RulerRules.kept_power(_state, _fid)
+	var options := []  # [{"to", "via", "why"}], best first
+	if _ruler_role() == "home":
+		var reason := "with %d kept power %s is easy to kill" % [kept, RulerRules.current_name(_state, _fid)] if kept <= LOW_KEPT \
+			else "its build keeps it home"
+		if here == cap:
+			_hold(_ruler)
+			_note_top("%s stays in %s: %s." % [who, _province_name(cap), reason])
+			return
+		options.append_array(_ruler_steps(cap, "to head back to %s: %s" % [_province_name(cap), reason]))
+		options.append({"to": here, "via": "", "why": "holding: the way back to %s isn't safe this turn" % _province_name(cap)})
+	else:
+		var lead := _lead_army()
+		if lead == null:
+			if here != cap:
+				options.append_array(_ruler_steps(cap, "back to %s: we have no army for it to march with" % _province_name(cap)))
+			options.append({"to": here, "via": "", "why": "we have no army for it to march with"})
+		else:
+			var dest: String = _moves.get(lead.id, lead.location)
+			var main_name := _province_name(dest)
+			if here == lead.location or dest == here:
+				var why := "with the main army"
+				options.append({"to": dest, "via": str(_vias.get(lead.id, "")) if here == lead.location else "", "why": why})
+			else:
+				options.append_array(_ruler_steps(dest, "to rejoin the main army at %s" % main_name))
+			if here != dest:
+				options.append({"to": here, "via": "", "why": "holding: it can't join the main army safely this turn"})
+			if here != cap:
+				options.append_array(_ruler_steps(cap, "falling back toward %s: it can't stay with the main army safely" % _province_name(cap)))
+	var best := {}
+	var best_spot := {}
+	for o in options:
+		if not o.via.is_empty() and RulerRules.road_vias(_state, _fid, _ruler.id, o.to).is_empty():
+			continue
+		var spot := _ruler_spot(o.to)
+		if spot.ok:
+			best = o
+			best_spot = spot
+			break
+		if best.is_empty() or float(spot.rate) > float(best_spot.rate) + 0.0001:
+			best = o
+			best_spot = spot
+	if best.is_empty():
+		_hold(_ruler)
+		return
+	if best.to == here:
+		_hold(_ruler)
+	else:
+		# A road move is checked again: the way through must still be legal for the ruler's army.
+		var via: String = best.via
+		if not via.is_empty() and not RulerRules.road_vias(_state, _fid, _ruler.id, best.to).has(via):
+			via = ""
+		_move(_ruler, best.to, via)
+		_stats.ruler_moves += 1
+	_note_top(_ruler_note(who, best, best_spot))
+
+
+## Steps for our ruler toward `target`: a road move (King's Roads) that gets closer than one step, then
+## the one-step moves that get closer, provinces without an enemy army first. [{"to", "via", "why"}].
+func _ruler_steps(target: String, why: String) -> Array:
+	var here: String = _ruler.location
+	var d_here := _d(here, target)
+	var out := []
+	if d_here <= 0:
+		return out
+	if RulerRules.has_mandate(_state, _fid, RulerRules.KINGS_ROADS) and d_here >= 2:
+		var dests := RulerRules.road_destinations(_state, _fid, _ruler.id)
+		var keys: Array = dests.keys()
+		keys.sort()
+		var best := ""
+		var best_d := d_here - 1
+		for to in keys:
+			if _d(to, target) < best_d:
+				best = to
+				best_d = _d(to, target)
+		if not best.is_empty():
+			out.append({"to": best, "via": String(dests[best][0]), "why": why})
+	var quiet := []
+	var held := []
+	for n in _nbrs[here]:
+		if _d(n, target) != d_here - 1:
+			continue
+		if _foes_at(n).is_empty():
+			quiet.append({"to": n, "via": "", "why": why})
+		else:
+			held.append({"to": n, "via": "", "why": why})
+	out.append_array(quiet)
+	out.append_array(held)
+	return out
+
+
+## Whether our ruler can safely end the turn in `pid`, given the moves planned so far:
+## {"ok", "rate", "label", "kind"}. kind "attack": an enemy army holds `pid`, so the ruler would fight
+## beside our armies moving in, never alone, and only at RULER_JOIN_WIN or better with it. "guard": an
+## enemy army next door could attack `pid`; our armies ending there, with the ruler, must hold at
+## RULER_GUARD_WIN or better, and the ruler is never left there alone. "quiet": no enemy army can reach it.
+func _ruler_spot(pid: String) -> Dictionary:
+	var friends := _armies_ending_at(pid)
+	var held := _foes_at(pid)
+	if not held.is_empty():
+		if friends.is_empty():
+			return {"ok": false, "rate": 0.0, "label": "likely loss", "kind": "alone"}
+		var odds := _attack_rate(friends + [_ruler], pid)
+		return {"ok": float(odds.rate) >= RULER_JOIN_WIN, "rate": float(odds.rate), "label": str(odds.label), "kind": "attack"}
+	var threats := _foes_next_to(pid)
+	if threats.is_empty():
+		return {"ok": true, "rate": 1.0, "label": "", "kind": "quiet"}
+	if friends.is_empty():
+		return {"ok": false, "rate": 0.0, "label": "likely loss", "kind": "alone"}
+	var rate := _defense_rate(pid, friends + [_ruler], threats)
+	return {"ok": rate >= RULER_GUARD_WIN, "rate": rate, "label": _label_for(rate), "kind": "guard"}
+
+
+## The ruler's note: where it goes, why, and the odds when a battle could follow.
+func _ruler_note(who: String, o: Dictionary, spot: Dictionary) -> String:
+	var here: String = _ruler.location
+	var place := _province_name(o.to)
+	var road := "" if String(o.via).is_empty() else " by the King's Roads through %s" % _province_name(o.via)
+	var odds := ""
+	match String(spot.get("kind", "")):
+		"attack":
+			odds = " (odds with %s fighting: %s)" % [RulerRules.current_name(_state, _fid), _odds_words(float(spot.rate), str(spot.label))]
+		"guard":
+			odds = " (odds if attacked there: %s)" % _odds_words(float(spot.rate))
+		"alone":
+			odds = " (nowhere safer within reach)"
+	if o.to == here:
+		return "%s holds at %s, %s%s." % [who, place, o.why, odds]
+	if String(spot.get("kind", "")) == "attack":
+		return "%s attacks %s%s %s%s." % [who, place, road, o.why, odds]
+	return "%s moves to %s%s, %s%s." % [who, place, road, o.why, odds]
+
+
+## Adds `text` after the notes already put at the top (build, sacrifice, ruler, mandates), ahead of the
+## plan's other notes; the last ordinary note gives way when the list is full.
+func _note_top(text: String) -> void:
+	if _notes.has(text):
+		return
+	_notes.insert(mini(_head, _notes.size()), text)
+	_head += 1
+	if _notes.size() > MAX_NOTES:
+		_notes.pop_back()
+
+
+# --- forecasts ------------------------------------------------------------------------------------
+
+## Forecast.battle_odds of `attacker` attacking `pid` with `ids` on `st`, cached within this plan.
+## Returns {} when the budget does not allow the call (callers fall back to the rough guess).
+func _odds(st: GameState, attacker: String, ids: Array, pid: String, essential: bool) -> Dictionary:
+	var sorted_ids := ids.duplicate()
+	sorted_ids.sort()
+	var fighters := 0
+	var sig := []
+	for id in sorted_ids:
+		var a := st.find_army(str(id))
+		if a != null:
+			fighters += a.units.size() + (1 if a.commander != null else 0) + (1 if a.ruler != null else 0)
+	for a in st.armies:
+		if a.location == pid and a.owner != attacker:
+			fighters += a.units.size() + (1 if a.commander != null else 0) + (1 if a.ruler != null else 0)
+			sig.append(a.id)
+	sig.sort()
+	var key := "%s|%s|%s|%s" % [attacker, ",".join(sorted_ids), pid, ",".join(sig)]
+	if _cache.has(key):
+		_stats.odds_cached += 1
+		return _cache[key]
+	var cost := ODDS_BASE + ODDS_PER_FIGHTER * fighters + ODDS_PER_FIGHTER_SQ * fighters * fighters
+	var allowed: bool = _stats.odds_calls < MAX_ODDS_CALLS[_level] and _budget >= cost
+	if essential and _budget + ESSENTIAL_OVERDRAFT >= cost:
+		allowed = true
+	if not allowed:
+		_stats.odds_skipped += 1
+		return {}
+	_budget -= cost
+	_stats.odds_calls += 1
+	var t0 := Time.get_ticks_usec()
+	var r := Forecast.battle_odds(st, attacker, sorted_ids, pid)
+	_stats["odds_usec"] = int(_stats.get("odds_usec", 0)) + Time.get_ticks_usec() - t0  # reporting only
+	_stats["odds_cost"] = float(_stats.get("odds_cost", 0.0)) + cost
+	_stats["odds_fighters_max"] = maxi(int(_stats.get("odds_fighters_max", 0)), fighters)
+	if not r.get("ok", false):
+		r = {}
+	_cache[key] = r
+	return r
+
+
+## A scratch copy of the state (made once per plan) where `placed` armies stand in `pid`, our other
+## armies that really are in `pid` stand next door instead (they are not counted on to stay), and
+## every other army is where it really is. The real state is never changed.
+func _scratch_with(placed: Array, pid: String) -> GameState:
+	if _scratch == null:
+		_scratch = _state.deep_copy([])
+		if _scratch == null:
+			return null
+	var ids := {}
+	for a in placed:
+		ids[a.id] = true
+	var aside: String = _nbrs[pid][0] if not _nbrs.get(pid, []).is_empty() else pid
+	for a in _scratch.armies:
+		var real := _state.find_army(a.id)
+		if real == null:
+			continue
+		if ids.has(a.id):
+			a.location = pid
+		elif a.owner == _fid and real.location == pid:
+			a.location = aside
+		else:
+			a.location = real.location
+	return _scratch
+
+
+# --- rough strength guess -------------------------------------------------------------------------
+
+## Rough fighting power of `units` against `foe_units` (Lanchester-style): the hp the side can lose
+## before it breaks x the damage it deals per round. Only unit stats from the state go in. The damage
+## per attack follows the shape of the published battle rules (RulesCodex: hit chance rises with
+## attack over defense, damage is about half the attack minus a quarter of the defense) and the
+## breaking point rises with morale; the exact numbers, terrain, forts and traits are left to
+## Forecast.battle_odds, which decides every battle that matters.
+func _power_units(units: Array, foe_units: Array) -> float:
+	if units.is_empty():
+		return 0.0
+	var foe_def := _avg_defense(foe_units)
+	var hp := 0.0
+	var dmg := 0.0
+	var morale := 0.0
+	var regulars := 0
+	var led := false
+	for u in units:
+		hp += u.current_hp
+		dmg += _pressure(u.type.attack, foe_def)
+		if u.type.is_commander:
+			led = true
+		else:
+			morale += u.type.morale
+			regulars += 1
+	var m := morale / regulars if regulars > 0 else 10.0
+	if led:
+		m += 2.0
+	return hp * clampf(0.2 + 0.05 * m, 0.25, 0.95) * dmg
+
+
+## Rough expected damage of one attack with `attack` against `foe_def` defense.
+static func _pressure(attack: int, foe_def: float) -> float:
+	var atk := float(attack)
+	var hit := clampf(0.6 + 0.04 * (atk - foe_def), 0.3, 0.9)
+	return hit * maxf(1.0, ceilf(atk * 0.5) - floorf(foe_def * 0.25))
+
+
+static func _avg_defense(units: Array) -> float:
+	var hp := 0.0
+	var total := 0.0
+	for u in units:
+		hp += u.current_hp
+		total += u.current_hp * u.type.defense
+	return total / hp if hp > 0.0 else 0.0
+
+
+func _ratio_units(ours: Array, theirs: Array, our_bonus: float, their_bonus: float) -> float:
+	var them := _power_units(theirs, ours) * their_bonus
+	if them <= 0.0:
+		return 99.0
+	return _power_units(ours, theirs) * our_bonus / them
+
+
+func _ratio(ours: Array, theirs: Array, our_bonus: float, their_bonus: float) -> float:
+	return _ratio_units(_units(ours), _units(theirs), our_bonus, their_bonus)
+
+
+func _army_power(a: Army) -> float:
+	return _power_units(_members(a), _units(_foes))
+
+
+func _ground_bonus(pid: String) -> float:
+	var p := _state.find_province(pid)
+	if p == null:
+		return 1.0
+	return HOLD_BONUS * (FORT_BONUS if p.has_fort else 1.0)
+
+
+## Win chance from a power ratio, for when the forecast budget is spent.
+static func _rate_from_ratio(r: float) -> float:
+	var r2 := r * r
+	return r2 / (1.0 + r2)
+
+
+static func _label_for(rate: float) -> String:
+	if rate >= LIKELY_WIN:
+		return "likely win"
+	if rate <= 1.0 - LIKELY_WIN:
+		return "likely loss"
+	return "close"
+
+
+# --- lookups --------------------------------------------------------------------------------------
+
+func _d(a: String, b: String) -> int:
+	return int(_dist.get(a, {}).get(b, 999))
+
+
+## The fighters of `a` for the rough guess: its units and commander, plus an enemy ruler (our own ruler
+## is left out, so the guess errs on the safe side whether or not battles count rulers yet).
+func _members(a: Army) -> Array:
+	var out: Array = a.units.duplicate()
+	if a.commander != null:
+		out.append(a.commander)
+	if a.ruler != null and a.owner != _fid:
+		out.append(a.ruler)
+	return out
+
+
+func _units(armies: Array) -> Array:
+	var out := []
+	for a in armies:
+		out.append_array(_members(a))
+	return out
+
+
+func _mine_at(pid: String) -> Array:
+	return _mine.filter(func(a): return a.location == pid)
+
+
+func _foes_at(pid: String) -> Array:
+	return _foes.filter(func(a): return a.location == pid)
+
+
+## Enemy armies that could move into `pid` this turn (they stand next to it).
+func _foes_next_to(pid: String) -> Array:
+	var near: Array = _nbrs.get(pid, [])
+	return _foes.filter(func(a): return near.has(a.location))
+
+
+## Our armies without a job yet that stand next to `pid`, sorted by id.
+func _free_next_to(pid: String) -> Array:
+	var near: Array = _nbrs.get(pid, [])
+	return _mine.filter(func(a): return not _busy.has(a.id) and near.has(a.location))
+
+
+## Our other armies that will be in `pid` after this turn's moves planned so far (holding there or
+## moving in), excluding `exclude`.
+func _friends_ending_at(pid: String, exclude: Array) -> Array:
+	var out := []
+	for a in _mine:
+		if exclude.has(a):
+			continue
+		var dest: String = _moves.get(a.id, a.location)
+		if dest == pid and (_busy.has(a.id) or a.location == pid):
+			out.append(a)
+	return out
+
+
+## Our armies that will stand in `pid` after the moves planned so far.
+func _armies_ending_at(pid: String) -> Array:
+	return _mine.filter(func(a): return str(_moves.get(a.id, a.location)) == pid)
+
+
+## Our free armies grouped by province: [{"loc", "armies", "power"}], strongest first.
+func _free_groups() -> Array:
+	var by_loc := {}
+	for a in _mine:
+		if _busy.has(a.id):
+			continue
+		if not by_loc.has(a.location):
+			by_loc[a.location] = []
+		by_loc[a.location].append(a)
+	var foe_units := _units(_foes)
+	var locs: Array = by_loc.keys()
+	locs.sort()
+	var groups := []
+	for loc in locs:
+		groups.append({"loc": loc, "armies": by_loc[loc], "power": _power_units(_units(by_loc[loc]), foe_units)})
+	groups.sort_custom(func(x, y): return x.power > y.power or (x.power == y.power and x.loc < y.loc))
+	return groups
+
+
+func _is_enemy_capital(pid: String) -> bool:
+	for f in _state.factions:
+		if f.id != _fid and f.capital == pid:
+			return true
+	return false
+
+
+func _sorted_factions() -> Array:
+	var out: Array = _state.factions.duplicate()
+	out.sort_custom(func(a, b): return a.id < b.id)
+	return out
+
+
+func _sorted_provinces() -> Array:
+	var out: Array = _state.provinces.duplicate()
+	out.sort_custom(func(a, b): return a.id < b.id)
+	return out
+
+
+# --- plain-language notes -------------------------------------------------------------------------
+
+func _note(text: String) -> void:
+	if _notes.size() < MAX_NOTES and not _notes.has(text):
+		_notes.append(text)
+
+
+func _province_name(pid: String) -> String:
+	var p := _state.find_province(pid)
+	return p.name if p != null else "an unknown place"
+
+
+func _faction_name(fid: String) -> String:
+	var f := _state.find_faction(fid)
+	return f.faction_name if f != null else "an unknown faction"
+
+
+## "Westwatch" or "Westwatch and Highcrag": where these armies stand, by name, sorted.
+func _places_text(armies: Array) -> String:
+	var names := []
+	for a in armies:
+		var n := _province_name(a.location)
+		if not names.has(n):
+			names.append(n)
+	names.sort()
+	return " and ".join(names)
+
+
+## "1 army" / "3 armies" for an Array of armies or a count.
+static func _count_text(what) -> String:
+	var n: int = what.size() if what is Array else int(what)
+	return "%d %s" % [n, "army" if n == 1 else "armies"]
+
+
+## ", even if the enemy army next to it joins in" when an attack's odds count possible reinforcements.
+static func _joiners_text(odds: Dictionary) -> String:
+	var n := int(odds.get("helpers", 0))
+	if n == 0:
+		return ""
+	return ", even if the enemy %s next to it %s in" % ["army" if n == 1 else "armies", "joins" if n == 1 else "join"]
+
+
+static func _odds_words(rate: float, label: String = "") -> String:
+	var l := label if not label.is_empty() else _label_for(rate)
+	return "%s, %d%%" % [l, roundi(rate * 100.0)]

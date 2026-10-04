@@ -1,9 +1,13 @@
-# Godot (same lines as the t1-scaffold .gitignore in #11)
+# Godot 4 editor/import cache
 .godot/
 .import/
 *.translation
+
+# Export output
 build/
 *.tmp
+
+# Editor / OS noise
 *.swp
 *~
 .DS_Store
@@ -16,3 +20,6 @@ __pycache__/
 
 # Secrets (LUDO_API_KEY lives in .env / .env.local)
 .env*
+
+# Local worktrees made by Claude Code sessions
+.claude/worktrees/

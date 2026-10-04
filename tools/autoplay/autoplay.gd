@@ -1,0 +1,321 @@
+extends SceneTree
+## Headless autoplay runner (the M1 play-script): plays complete games with scripted policies and
+## prints a markdown balance and length report. Logic lives in simulator.gd and policies.gd.
+##
+##   godot --headless --path . -s tools/autoplay/autoplay.gd -- --games 50 --seed 1 --p1 greedy --p2 greedy
+##
+## Options (all optional):
+##   --games N        games to play (default 50), on seeds S, S+1, ... S+N-1
+##   --seed S         first game seed (default 1)
+##   --p1 / --p2      policy of seat 1 / seat 2: greedy, random, turtle, ai or ai_easy (default greedy)
+##   --seat1 FACTION  faction in seat 1: kingdom (Aurel Crown, default) or beasts (Thornmane Clans);
+##                    seat 2 gets the other one
+##   --turn-cap T     turns before a game counts as unfinished (default 60)
+##   --out PATH       also write the markdown report to PATH
+##   --list           also print one table row per game (seed, result, turns, battles, ...)
+##   --rulers         play with rulers (M2): each seat rolls its build preset with AIPlayer.choose_build,
+##                    the first draw of its policy RNG, as an AI seat does in a real game
+##   --builds A,B     with --rulers, force the build of seat 1 and seat 2: a preset id from
+##                    data/build_presets.gd (e.g. warrior_king,clan_moot), an explicit build RULER or
+##                    RULER+MANDATE+... (e.g. ever_regent keeps all 10 power,
+##                    ever_regent+royal_armories+heavy_tithes+veteran_levies spends all 10), or "roll" to
+##                    keep that seat's roll
+##   --matrix         the M2 build balance check (#36, design/M2_RULER.md §8.2): plays bands A-H with
+##                    AIPlayer in both seats and prints a pass/miss table (tools/autoplay/matrix.gd).
+##                    --seed and --turn-cap apply; --games, --p1/--p2, --seat1, --builds and --rulers don't
+##   --jobs N         with --matrix, games run in N headless Godot processes at once (default: the
+##                    processor count, at most 8). The results are the same for any N
+##   --scale F        with --matrix, play F times the games of every band (default 1; 0.25 for a quick look)
+##   --only TEXT      with --matrix, play only the cells whose id contains TEXT (e.g. blood_of_the_fang);
+##                    the bands are then judged on those games alone
+##   --work-dir PATH  with --matrix and --jobs above 1, where the worker processes write their results
+##                    (default user://autoplay_matrix); the files are removed afterwards
+##
+## Exit code: 0 when every game ran with no invariant violation, no session error and no script
+## error; 1 otherwise; 2 for bad arguments. With --matrix: 0 only when band H (integrity) holds; the
+## other bands are reported but don't change the exit code.
+
+const Simulator := preload("res://tools/autoplay/simulator.gd")
+const Policies := preload("res://tools/autoplay/policies.gd")
+const Matrix := preload("res://tools/autoplay/matrix.gd")
+const FACTIONS := ["kingdom", "beasts"]
+const MAX_JOBS := 8
+
+
+class ErrorCatcher extends Logger:
+	var _mutex := Mutex.new()
+	var _errors: PackedStringArray = []
+
+	func _log_error(function: String, file: String, line: int, code: String, rationale: String,
+			_editor_notify: bool, error_type: int, _script_backtrace: Array[ScriptBacktrace]) -> void:
+		if error_type == ERROR_TYPE_WARNING:
+			return
+		var text := rationale if not rationale.is_empty() else code
+		_mutex.lock()
+		_errors.append("%s (%s:%d in %s)" % [text, file, line, function])
+		_mutex.unlock()
+
+	func take() -> PackedStringArray:
+		_mutex.lock()
+		var out := _errors
+		_errors = PackedStringArray()
+		_mutex.unlock()
+		return out
+
+
+func _initialize() -> void:
+	var opts := _parse(OS.get_cmdline_user_args())
+	if opts.has("error"):
+		printerr("autoplay: %s" % opts.error)
+		printerr("usage: godot --headless --path . -s tools/autoplay/autoplay.gd -- --games 50 --seed 1 --p1 greedy --p2 greedy [--seat1 kingdom|beasts] [--turn-cap 60] [--out report.md] [--list] [--rulers [--builds PRESET1,PRESET2]]")
+		quit(2)
+		return
+	var catcher := ErrorCatcher.new()
+	OS.add_logger(catcher)
+	if opts.worker:
+		_run_worker(opts, catcher)
+		return
+	if opts.matrix:
+		_run_matrix(opts, catcher)
+		return
+	var started := Time.get_ticks_msec()
+	# Every engine or script error logged during a game is filed under that game's seed and turn.
+	var options := {"rulers": opts.rulers, "builds": opts.builds}
+	var results := Simulator.run_batch(opts.games, opts.seed, opts.seats, opts.policies, opts.turn_cap, catcher.take, options)
+	var summary := Simulator.summarize(results)
+	var seconds := (Time.get_ticks_msec() - started) / 1000.0
+	var stray_errors := catcher.take()
+	OS.remove_logger(catcher)
+
+	var md := Simulator.to_markdown(summary)
+	if not stray_errors.is_empty():
+		md += "\n- **Script errors outside games:** %d. First: %s" % [stray_errors.size(), stray_errors[0]]
+	for key in ["violations", "script_errors"]:
+		var repro: Dictionary = summary[key].get("repro", {})
+		if not repro.is_empty():
+			md += "\n- **Repro (%s):** seed %d, turn %d: %s Orders that turn: `%s`." % [key.replace("_", " "), repro.seed,
+				repro.turn, repro.what, JSON.stringify(repro.orders)]
+	var extra := ""
+	if opts.rulers:
+		extra = " --rulers"
+		if opts.builds.any(func(b): return not str(b).is_empty()):
+			extra += " --builds %s" % ",".join(opts.builds.map(func(b): return "roll" if str(b).is_empty() else str(b)))
+	md += "\n- **Run:** `--games %d --seed %d --p1 %s --p2 %s --seat1 %s --turn-cap %d%s`, %.1f s." % [opts.games, opts.seed,
+		opts.policies[0], opts.policies[1], opts.seats[0], opts.turn_cap, extra, seconds]
+	if opts.list:
+		md += "\n\n" + Simulator.game_lines(results)
+	print(md)
+	if not opts.out.is_empty():
+		var f := FileAccess.open(opts.out, FileAccess.WRITE)
+		if f == null:
+			printerr("autoplay: could not write %s (%s)" % [opts.out, error_string(FileAccess.get_open_error())])
+		else:
+			f.store_string(md + "\n")
+			f.close()
+
+	var script_errors: int = summary.script_errors.count + stray_errors.size()
+	var failed: bool = summary.violations.count > 0 or summary.errors.count > 0 or script_errors > 0
+	if failed:
+		printerr("autoplay: FAIL (%d invariant violations, %d session errors, %d script errors)" % [
+			summary.violations.count, summary.errors.count, script_errors])
+	quit(1 if failed else 0)
+
+
+func _parse(args: PackedStringArray) -> Dictionary:
+	var opts := {"games": 50, "seed": 1, "policies": ["greedy", "greedy"], "seats": FACTIONS.duplicate(),
+		"turn_cap": Simulator.TURN_CAP, "out": "", "list": false, "rulers": false, "builds": ["", ""],
+		"matrix": false, "jobs": clampi(OS.get_processor_count(), 1, MAX_JOBS), "scale": 1.0, "work_dir": "user://autoplay_matrix",
+		"worker": false, "cell": "", "from": 0, "count": 0, "only": ""}
+	var builds_arg := ""
+	var i := 0
+	while i < args.size():
+		var key := args[i]
+		if key == "--list":
+			opts.list = true
+			i += 1
+			continue
+		if key == "--rulers":
+			opts.rulers = true
+			i += 1
+			continue
+		if key == "--matrix" or key == "--matrix-worker":
+			opts.matrix = true
+			opts.worker = key == "--matrix-worker"
+			i += 1
+			continue
+		if i + 1 >= args.size():
+			return {"error": "%s needs a value" % key}
+		var value := args[i + 1]
+		i += 2
+		match key:
+			"--games":
+				if not value.is_valid_int() or value.to_int() < 1:
+					return {"error": "--games must be a positive whole number"}
+				opts.games = value.to_int()
+			"--seed":
+				if not value.is_valid_int():
+					return {"error": "--seed must be a whole number"}
+				opts.seed = value.to_int()
+			"--p1", "--p2":
+				if not Policies.NAMES.has(value):
+					return {"error": "%s must be one of %s" % [key, ", ".join(Policies.NAMES)]}
+				opts.policies[0 if key == "--p1" else 1] = value
+			"--seat1":
+				if not FACTIONS.has(value):
+					return {"error": "--seat1 must be kingdom or beasts"}
+				opts.seats = [value, FACTIONS[1] if value == FACTIONS[0] else FACTIONS[0]]
+			"--turn-cap":
+				if not value.is_valid_int() or value.to_int() < 1:
+					return {"error": "--turn-cap must be a positive whole number"}
+				opts.turn_cap = value.to_int()
+			"--out":
+				opts.out = value
+			"--builds":
+				builds_arg = value
+			"--jobs":
+				if not value.is_valid_int() or value.to_int() < 1:
+					return {"error": "--jobs must be a positive whole number"}
+				opts.jobs = value.to_int()
+			"--scale":
+				if not value.is_valid_float() or value.to_float() <= 0.0:
+					return {"error": "--scale must be a number above 0, like 0.25"}
+				opts.scale = value.to_float()
+			"--work-dir":
+				opts.work_dir = value
+			"--only":
+				opts.only = value
+			"--cell":  # worker processes only
+				opts.cell = value
+			"--from":
+				opts.from = value.to_int()
+			"--count":
+				opts.count = value.to_int()
+			_:
+				return {"error": "unknown option %s" % key}
+	if not builds_arg.is_empty():
+		if not opts.rulers:
+			return {"error": "--builds needs --rulers"}
+		var parts := builds_arg.split(",")
+		if parts.size() != 2:
+			return {"error": "--builds takes two presets, seat 1's and seat 2's, separated by a comma (\"roll\" keeps a seat's roll)"}
+		for seat in 2:
+			var pid := parts[seat].strip_edges()
+			if pid == "roll" or pid.is_empty():
+				continue
+			var parsed := Simulator.parse_build(pid, opts.seats[seat])
+			if parsed.has("error"):
+				var ids := RulerRules.presets_for(opts.seats[seat]).map(func(p): return str(p.id))
+				return {"error": "seat %d (%s): %s Its presets: %s; or an explicit build like %s+...; or roll" % [seat + 1,
+					opts.seats[seat], parsed.error, ", ".join(ids), RulerRules.rulers_for(opts.seats[seat])[0]]}
+			opts.builds[seat] = pid
+	return opts
+
+
+# --- the build balance matrix (M2-8, #36) ----------------------------------------------------------
+
+func _run_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
+	var started := Time.get_ticks_msec()
+	var cells := Matrix.plan(opts.scale, opts.seed)
+	if not str(opts.only).is_empty():
+		cells = cells.filter(func(c): return str(c.id).contains(opts.only))
+	var results := []
+	var problems := []
+	results.append_array(_play_items(Matrix.work_items(cells), cells, opts, catcher, problems))
+	# A pairing with too few decisive games plays its games again on the next seeds, once (§8.2).
+	var short := Matrix.short_pairings(results, opts.scale)
+	var again := cells.filter(func(c): return short.has(c.pairing))
+	var doubled: Array = short.keys()
+	if not again.is_empty():
+		var offsets := {}
+		for c in again:
+			offsets[c.id] = int(c.games)
+		results.append_array(_play_items(Matrix.work_items(again, offsets), cells, opts, catcher, problems))
+	var stray := catcher.take()
+	OS.remove_logger(catcher)
+	var j := Matrix.judge(results, stray.size() + problems.size())
+	var seconds := (Time.get_ticks_msec() - started) / 1000.0
+	var md := Matrix.to_markdown(j)
+	if not doubled.is_empty():
+		doubled.sort()
+		md += "\n- **Doubled** (fewer than %d decisive games): %s." % [ceili(Matrix.MIN_DECISIVE * opts.scale),
+			", ".join(doubled.map(func(p): return " vs ".join(Array(str(p).split("|")).map(func(b): return Simulator.build_name(str(b))))))]
+	for e in problems:
+		md += "\n- **Worker problem:** %s" % e
+	if not stray.is_empty():
+		md += "\n- **Script errors outside games:** %d. First: %s" % [stray.size(), stray[0]]
+	md += "\n- **Run:** `--matrix --seed %d --turn-cap %d --scale %s --jobs %d%s`, %d games, %.1f s." % [opts.seed, opts.turn_cap,
+		str(opts.scale), opts.jobs, "" if str(opts.only).is_empty() else " --only " + str(opts.only), results.size(), seconds]
+	print(md)
+	if not opts.out.is_empty():
+		var f := FileAccess.open(opts.out, FileAccess.WRITE)
+		if f == null:
+			printerr("autoplay: could not write %s (%s)" % [opts.out, error_string(FileAccess.get_open_error())])
+		else:
+			f.store_string(md + "\n")
+			f.close()
+	if not j.h_ok:
+		printerr("autoplay: band H (integrity) does not hold")
+	quit(0 if j.h_ok else 1)
+
+
+## Plays the work items, in this process (--jobs 1) or in up to --jobs headless worker processes, and
+## returns their results. Problems with a worker (it could not start, or wrote no results) go to `problems`.
+func _play_items(items: Array, cells: Array, opts: Dictionary, catcher: ErrorCatcher, problems: Array) -> Array:
+	var out := []
+	if opts.jobs <= 1:
+		for item in items:
+			out.append_array(Matrix.play_item(cells, item, opts.turn_cap, catcher.take))
+		return out
+	var dir := ProjectSettings.globalize_path(opts.work_dir) if str(opts.work_dir).begins_with("user://") or str(opts.work_dir).begins_with("res://") else str(opts.work_dir)
+	DirAccess.make_dir_recursive_absolute(dir)
+	var exe := OS.get_executable_path()
+	var project := ProjectSettings.globalize_path("res://")
+	var queue := items.duplicate()
+	var running := {}
+	var n := 0
+	while not queue.is_empty() or not running.is_empty():
+		while running.size() < opts.jobs and not queue.is_empty():
+			var item: Dictionary = queue.pop_front()
+			n += 1
+			var path := dir.path_join("matrix_%d_%d.txt" % [OS.get_process_id(), n])
+			var args := ["--headless", "--quiet", "--path", project, "-s", "res://tools/autoplay/autoplay.gd", "--", "--matrix-worker",
+				"--cell", str(item.cell), "--from", str(item.from), "--count", str(item.count), "--seed", str(opts.seed),
+				"--turn-cap", str(opts.turn_cap), "--out", path]
+			var pid := OS.create_process(exe, args)
+			if pid <= 0:
+				problems.append("could not start a worker for %s, seeds %d-%d" % [item.cell, item.from, item.from + item.count - 1])
+				continue
+			running[pid] = {"item": item, "path": path}
+		OS.delay_msec(40)
+		for pid in running.keys():
+			if OS.is_process_running(pid):
+				continue
+			var job: Dictionary = running[pid]
+			running.erase(pid)
+			var text := FileAccess.get_file_as_string(job.path)
+			var data = str_to_var(text) if not text.is_empty() else null
+			if not (data is Dictionary) or not data.has("results"):
+				problems.append("the worker for %s, seeds %d-%d, wrote no results" % [job.item.cell, job.item.from, job.item.from + job.item.count - 1])
+				continue
+			out.append_array(data.results)
+			for e in data.get("stray", []):
+				problems.append("script error in a worker outside its games: %s" % e)
+			DirAccess.remove_absolute(job.path)
+	return out
+
+
+## A worker process of a parallel --matrix run: plays one work item and writes its results to --out.
+func _run_worker(opts: Dictionary, catcher: ErrorCatcher) -> void:
+	var cells := Matrix.plan(1.0, opts.seed)
+	var item := {"cell": opts.cell, "from": opts.from, "count": opts.count}
+	var results := Matrix.play_item(cells, item, opts.turn_cap, catcher.take)
+	var stray := catcher.take()
+	OS.remove_logger(catcher)
+	var f := FileAccess.open(opts.out, FileAccess.WRITE)
+	if f == null:
+		printerr("autoplay worker: could not write %s" % opts.out)
+		quit(1)
+		return
+	f.store_string(var_to_str({"results": results, "stray": Array(stray)}))
+	f.close()
+	quit(0)
