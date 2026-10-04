@@ -22,6 +22,8 @@ class_name TurnResolver
 ##   capture      a province occupied by armies of exactly one faction becomes that faction's.
 ##   recruitment  recruit orders are checked and paid in the order given, at the faction's capital.
 ##   income       every faction earns the income of the provinces it owns.
+##   research     (games with paths, M4) each faction gains research and completes its target once it
+##                is paid for (AscensionRules; _research_phase). Research orders set the target in orders.
 ##   rulers       (games with rulers, M2) Mending Light heals, rulers heal, due successors arrive.
 ##
 ## Mandates and abilities on the map (M2-4, design/M2_RULER.md §1.4, §2.3; rules in RulerRules; only
@@ -67,6 +69,9 @@ class_name TurnResolver
 ## faction and province display names, and armies as army_label() describes them.
 
 const PHASES := ["sacrifice", "orders", "movement", "battles", "capture", "recruitment", "income", "rulers"]
+## The phases of a game with paths (M4, design/M4_ASCENSION.md §7): PHASES with "research" after income.
+## PHASES itself stays the M1/M2 list, which a game without paths resolves exactly as before.
+const PATH_PHASES := ["sacrifice", "orders", "movement", "battles", "capture", "recruitment", "income", "research", "rulers"]
 
 
 static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: int, battle_resolver: BattleResolver = null) -> Dictionary:
@@ -96,6 +101,7 @@ static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: 
 	_capture(s, battle_sites, events)
 	_recruitment(s, recruits, events, state)  # Warband Muster gathers where the ruler started the turn
 	_income(s, events)
+	_research_phase(s, events)  # M4: games with paths only
 	_rulers_phase(s, events)
 
 	s.current_turn += 1
@@ -376,6 +382,7 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 				"Orders from %s were ignored: they were not a list of orders." % _faction_name(s, fid), "orders"))
 			continue
 		var ordered := {}
+		var research_given := ""  # M4: the node of this faction's research order this turn, if any
 		recruits[fid] = []
 		for order in list:
 			if order is MoveOrder:
@@ -393,6 +400,14 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 				recruits[fid].append(order)  # checked in the recruitment phase, against that phase's state
 			elif order is SacrificeOrder:
 				continue  # resolved in the sacrifice phase, before these checks (M2-6)
+			elif order is ResearchOrder:
+				# M4: sets the research target (silently: the target is private). One per turn.
+				var check := _check_research_order(s, fid, order, research_given)
+				if not check.is_empty():
+					events.append(_rejected_event(s, fid, order, check, "orders"))
+					continue
+				research_given = order.node_id
+				AscensionRules.set_target(s, fid, order.node_id)
 			else:
 				events.append(_rejected_event(s, fid, order,
 					_reject("unknown_order", "That is not an order this game knows. Orders are moves and recruits."), "orders"))
@@ -922,9 +937,59 @@ static func income_modifiers_text(s: GameState, fid: String, inc: Dictionary, ru
 		var f := s.find_faction(fid)
 		parts.append("%s +%d at %s, where %s %s" % [RulerRules.ability_name(f.ruler_type), court,
 			_province_name(s, inc.court_at), RulerRules.current_name(s, fid), ruler_verb])
+	for key in inc.modifiers:  # M4: the path's income lines (Market Charters, Tithe of Light, ...)
+		if String(key).begins_with(AscensionRules.PART_PREFIX):
+			parts.append("%s %+d" % [AscensionRules.part_name(String(key)), int(inc.modifiers[key])])
 	if parts.is_empty():
 		return ""
 	return "That includes %s." % " and ".join(parts)
+
+
+# --- research (M4-1, #66; design/M4_ASCENSION.md §2.2, §7) -----------------------------------------
+# Only in a game with paths (GameState.paths): research orders set the target in the orders phase, and the
+# research phase, after income and before rulers, gains research and completes the target. The rules are
+# AscensionRules'. A game without paths has no research orders and no research events.
+
+## A research order's check in the orders phase: AscensionRules.check_research against the state after
+## sacrifices, plus "one per turn" (`given` is the node of a research order this faction already gave).
+static func _check_research_order(s: GameState, fid: String, order: ResearchOrder, given: String) -> Dictionary:
+	if not given.is_empty() and AscensionRules.has_paths(s):
+		return _reject("second_research", "You already gave a research order this turn, for %s. Only one research order counts each turn: choosing another replaces it before you end the turn." % AscensionRules.node_name(given))
+	return AscensionRules.check_research(s, fid, order.node_id)
+
+
+## The research phase (§2.2), for each faction in id order: the pool gains this turn's research (5 for the
+## capital, 1 for every other province, as the board stands after captures and Sworn Vassals); then, if the
+## target is paid for, it is done and its effects start (AscensionRules.research_step). Events:
+##   research_gained  research   what the faction gained, from where. One per faction per turn. Public, so
+##                               it never names the target (§3.3). Codex "research_points".
+##   research_done    research   a node was researched, with its effect in numbers. Codex: the node's entry.
+##   oath_sworn       research   an Oath was sworn (instead of research_done): the side, what closed, the
+##                               economy rule now, and the transformation now being researched (§5).
+## (M4-2 adds the transformation's province rules after these steps.)
+static func _research_phase(s: GameState, events: Array) -> void:
+	if not AscensionRules.has_paths(s):
+		return
+	var turn := s.current_turn + 1  # the turn being resolved, as players count it
+	for fid in _faction_ids(s):
+		var step := AscensionRules.research_step(s, fid, turn)
+		events.append(_event("research_gained", "research", [], [fid], [], "research",
+			{"gained": step.gained, "rate": step.rate, "parts": step.parts, "done": step.done},
+			AscensionRules.gained_text(s, fid, step), "research_points"))
+		if String(step.done).is_empty():
+			continue
+		var nid := String(step.done)
+		var numbers := {"node": nid, "cost": step.cost, "kind": AscensionRules.node_kind(nid), "turn": turn,
+			"units_changed": int(step.applied.get("units_changed", 0)), "hp_total": int(step.applied.get("hp_total", 0))}
+		var codex := String(AscensionRules.node_data(nid).codex)
+		if not String(step.sworn).is_empty():
+			numbers["branch"] = step.sworn
+			numbers["closed"] = AscensionRules.other_branch(fid, String(step.sworn))
+			events.append(_event("oath_sworn", "research", [], [fid], [], "oath", numbers,
+				AscensionRules.sworn_text(s, fid, nid), codex))
+		else:
+			events.append(_event("research_done", "research", [], [fid], [], "researched", numbers,
+				AscensionRules.done_text(s, fid, nid, step.applied), codex))
 
 
 # --- helpers --------------------------------------------------------------------------------------
@@ -970,6 +1035,13 @@ static func _rejected_event(s: GameState, fid: String, order, check: Dictionary,
 			desc += " with %s" % (who if not who.is_empty() else "the ruler")
 			if ruler:
 				provinces = [ruler.location]
+	elif order is ResearchOrder:
+		# M4: name the node (or quote an unknown id).
+		var node := AscensionRules.node_name(order.node_id) if not AscensionRules.node_data(order.node_id).is_empty() \
+			else "'%s'" % order.node_id
+		desc = "research %s" % node
+		order_dict = order.to_dict()
+		codex = "research_order"
 	elif order is SacrificeOrder:
 		# M2-6: name the mandate (or quote an unknown id) and put the event where the ruler stands.
 		var mandate := RulerRules.mandate_name(order.mandate_id) if not RulerRules.mandate_data(order.mandate_id).is_empty() \

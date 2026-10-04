@@ -364,9 +364,13 @@ func test_no_raw_ids_in_visible_text() -> void:
 	assert_false(game.map.preview_move("highcrag").is_empty())
 	_assert_no_raw_ids(_visible_text(game), "orders with the recruit panel, order list and hover preview")
 	game.map.back_button.pressed.emit()
+	assert_true(game.menu_overlay.visible)
+	_assert_no_raw_ids(_visible_text(game), "the menu")
+	(game.menu_overlay.find_child("QuitToTitleButton", true, false) as Button).pressed.emit()
 	assert_true(game.quit_overlay.visible)
 	_assert_no_raw_ids(_visible_text(game), "quit confirmation")
 	game.quit_overlay.visible = false
+	game.menu_overlay.visible = false
 	game.end_turn_button.pressed.emit()
 	_assert_no_raw_ids(_visible_text(game), "handoff")
 	game.handoff.ready_button.pressed.emit()
@@ -378,11 +382,15 @@ func test_no_raw_ids_in_visible_text() -> void:
 
 func test_quit_asks_first_and_codex_opens_as_an_overlay() -> void:
 	var game := _game()
-	assert_eq(game.map.back_button.text, "Quit to title")
+	assert_eq(game.map.back_button.text, "Menu")
 	game.map.back_button.pressed.emit()
+	assert_true(game.menu_overlay.visible, "the top bar's Menu opens the menu")
+	(game.menu_overlay.find_child("QuitToTitleButton", true, false) as Button).pressed.emit()
 	assert_true(game.quit_overlay.visible, "quitting asks first")
 	(game.quit_overlay.find_child("KeepPlayingButton", true, false) as Button).pressed.emit()
 	assert_false(game.quit_overlay.visible)
+	(game.menu_overlay.find_child("ResumeButton", true, false) as Button).pressed.emit()
+	assert_false(game.menu_overlay.visible, "Resume closes the menu")
 	assert_eq(game.session.phase(), GameSession.Phase.ORDERS, "the game goes on")
 
 	assert_false(game.codex.visible)

@@ -91,11 +91,11 @@ const ENTRIES := {
 	},
 	"phase_order": {
 		"title": "How a turn resolves",
-		"text": "Everyone gives orders first. Then the whole turn resolves at once, always in this order: 1. sacrifice: each ruler's Sacrifice order is checked and applied, faction by faction, so its new mandate already counts this turn; 2. orders: every other order is checked against the state after the sacrifices; 3. movement; 4. battles; 5. capture, then Sworn Vassals; 6. recruitment; 7. income; 8. rulers: Mending Light heals, rulers heal, then successors who are due arrive. Without rulers, steps 1 and 8 have nothing to do. The same orders and seed always give the same result.",
+		"text": "Everyone gives orders first. Then the whole turn resolves at once, always in this order: 1. sacrifice: each ruler's Sacrifice order is checked and applied, faction by faction, so its new mandate already counts this turn; 2. orders: every other order is checked against the state after the sacrifices; 3. movement; 4. battles; 5. capture, then Sworn Vassals; 6. recruitment; 7. income; 8. rulers: Mending Light heals, rulers heal, then successors who are due arrive. Without rulers, steps 1 and 8 have nothing to do. In a game with paths (the M4 preview), research resolves between income and rulers: see the research phase. The same orders and seed always give the same result.",
 	},
 	"orders": {
 		"title": "Orders",
-		"text": "Each turn you can move each army once, to a province next to it, and recruit units at your capital. An army with no move order holds where it is. An order that breaks a rule is rejected, and the turn report says why. In a game with rulers there is more. With King's Roads an army can instead make a road move, two provinces through your own land. With Warband Muster you can also recruit with the Ninth Fang where it stands. And a living ruler can give one Sacrifice order per turn, giving up power for a new mandate: it resolves before every other order, so your other orders are checked as if it had already happened.",
+		"text": "Each turn you can move each army once, to a province next to it, and recruit units at your capital. An army with no move order holds where it is. An order that breaks a rule is rejected, and the turn report says why. In a game with rulers there is more. With King's Roads an army can instead make a road move, two provinces through your own land. With Warband Muster you can also recruit with the Ninth Fang where it stands. And a living ruler can give one Sacrifice order per turn, giving up power for a new mandate: it resolves before every other order, so your other orders are checked as if it had already happened. In a game with paths, a research order chooses what your faction researches.",
 	},
 	"move": {
 		"title": "Moving",
@@ -427,6 +427,138 @@ const ENTRIES := {
 	"field_recruit": {
 		"title": "Recruiting in the field",
 		"text": "With Warband Muster, the Ninth Fang can recruit regular units where it stands, not only at the capital: up to its ability rank each turn, at the usual prices. Select the Fang's province to recruit with it. They gather where the Fang starts the turn and appear there at the end of the turn, joining your first army there that isn't the Fang's own, or forming a new one, even if the Fang has marched on; if you no longer own that province then, or if the Fang has fallen, they are cancelled and you keep the gold. Commanders still come only from the capital.",
+	},
+	# --- M4-1 (#66): research and the paths of ascension (design/M4_ASCENSION.md §2, §3, §9.3). One contiguous
+	# block. The numbers match data/paths.gd; tests/test_research.gd checks them. M4-2 adds the rules of the
+	# transformations (blood_levy, raiding_parties, forest_stride, hallowed_land, the_forges, wild_spreads,
+	# dread_lands) and M4-3 the new traits.
+	"research": {
+		"title": "Research",
+		"text": "In a game with paths (the M4 preview), every faction researches one node of its path at a time. Research points come from land: 5 a turn for your capital and 1 for every other province you own. They go into one pool, and when the pool holds the cost of your research target, the node is done and its effects start. You choose the target with a research order, and it stays until the node is done or you change it. Switching costs nothing and spare points are never lost. Every node shows how many turns it would take before you pick it.",
+	},
+	"research_points": {
+		"title": "Research points",
+		"text": "Research points come from the provinces you own, counted in the research phase after the turn's captures and Sworn Vassals: your capital yields 5 while you hold it, and every other province 1. A faction holding 4 provinces makes 8 a turn; one holding 9 makes 13. They are saved in one pool that never loses points: what is left over after a node is done stays, and so do points gained with no target. Capturing or losing a province changes your research by 1 a turn.",
+	},
+	"research_order": {
+		"title": "Research orders",
+		"text": "A research order makes one node of your path your research target. It is checked in the orders phase, after sacrifices, and is legal when the node is on your path, not researched yet, not closed by an Oath you swore, and all its prerequisites were researched by the start of the turn. The target stays from turn to turn until the node is done or you change it, so most turns need no research order. Only one counts per turn: choosing another replaces it. Changing the target moves nothing: the pool simply saves toward the new node. Your target is yours alone; the other player never sees it.",
+	},
+	"research_phase": {
+		"title": "The research phase",
+		"text": "In a game with paths, research resolves after income and before rulers. For each faction in turn, the pool gains this turn's research; then, if the pool holds the cost of the target, the cost is paid and the node is done. Its effects start at once, so they count from the next turn's orders, moves, battles, recruits and income. At most one node is done per faction per turn. Units already on the map change at once: a node that raises maximum hit points raises current hit points by as much, and one that lowers it lowers them by as much, never below 1. When a node is done the target becomes empty, except after an Oath: then its transformation becomes the target at once.",
+	},
+	"path": {
+		"title": "Paths of ascension",
+		"text": "Paths are a preview of the next milestone, behind the Paths (M4 preview) box on the new game screen, which needs rulers. Each faction has one path of 8 nodes: two tier I nodes (10 research each), two tier II nodes (15 each, each needing one tier I node), then a fork. Each side of the fork is an Oath (20), which needs any two of the four ordinary nodes, followed by a transformation (30), which needs its Oath. Swearing one Oath closes the other side for the rest of the game, so a faction completes at most 6 of its 8 nodes, 100 research in all. Completed nodes, Oaths and transformations are public; your research target is not.",
+	},
+	"path_node": {
+		"title": "Path nodes",
+		"text": "A node is one step of your path. Ordinary nodes (tier I and tier II) give a unit type a bonus or your provinces more gold, and they are never closed: the ones you skip stay open after the fork. Each bonus is a named part, shown in every tooltip, on regular units only, never commanders or rulers, and it adds to your mandates. Attack bonuses are always +2, a whole damage step, and defense bonuses land on the usual safe values, so terrain, forts and Shield Wall still change only the hit chance.",
+	},
+	"fork": {
+		"title": "The fork",
+		"text": "After the ordinary nodes, every path forks in two. Each side is an Oath and then a transformation. Targeting an Oath is not a commitment: until it is done you can change your research freely, and nothing is closed. The moment an Oath is done it is sworn, and the other Oath and its transformation are closed for good. Closed nodes stay visible, with the reason. Rushing two tier I nodes before the Oath transforms about three turns sooner than researching all four ordinary nodes first, and the skipped ones stay open afterwards.",
+	},
+	"oath": {
+		"title": "Oaths",
+		"text": "An Oath costs 20 research and needs any two of the four ordinary nodes. It is the lock-in: when it is done you have sworn to that side of the fork, the other side closes for the rest of the game, its economy rule starts at once, and its transformation becomes your research target. The Aurel Crown has the Oath of the Dawn (Tithe of Light) and the Oath of the Forge (Deep Mines); the Thornmane Clans the Oath of the Grove (Bounty of the Wild) and the Oath of Blood (Blood Levy).",
+	},
+	"lock_in": {
+		"title": "Lock-in",
+		"text": "Swearing an Oath is the one choice on a path you can't take back. Before you make an Oath your target, the lock-in preview shows what you gain, what you lose access to, and every unit number before and after. Nothing is queued until you swear, and nothing is closed until the Oath is done: until then you can change your research freely.",
+	},
+	"transformation": {
+		"title": "Transformations",
+		"text": "A transformation costs 30 research and needs its own Oath. It changes your people: one unit type you already have is renamed and changed in place, so every unit of that type on the map changes at once; one new unit joins your roster; a province rule starts; and your ruler can buy one new mandate by sacrifice while another is forsworn. The Aurel Crown becomes the Celestial Host or Living Iron; the Thornmane Clans become the Thorn Wild or the Blood Pact. Rulers and commanders don't change.",
+	},
+	"forsworn": {
+		"title": "Forsworn mandates",
+		"text": "Each transformation forswears one mandate: the Celestial Host forswears Heavy Tithes, Living Iron forswears King's Roads, the Thorn Wild forswears Blood Frenzy and the Blood Pact forswears Feast of Victory. A forsworn mandate can no longer be bought by sacrifice. Mandates you already have are never removed.",
+	},
+	"path_kingdom": {
+		"title": "The Sunstone Path",
+		"text": "The path of the Aurel Crown. Tier I: Drillyard (Spearmen +3 maximum hit points) and Market Charters (every plains province you own earns 2 more gold). Tier II: Arbalests (Crossbowmen +2 attack; needs Drillyard) and Remount Stables (Knights cost 4 gold less; needs Market Charters). The fork: the Oath of the Dawn leads to the Celestial Host, a field army that heals on its own land, and the Oath of the Forge leads to Living Iron, armies that are slow to kill, a hills economy and forts that repair them.",
+	},
+	"path_beasts": {
+		"title": "The Old Ways",
+		"text": "The path of the Thornmane Clans. Tier I: Boar Hide (Tuskers +3 maximum hit points) and Raiding Parties (gold when your armies capture a province). Tier II: Bone Fangs (Fangthrowers +2 attack; needs Boar Hide) and Forest Stride (two-province moves through your forests; needs Raiding Parties). The fork: the Oath of the Grove leads to the Thorn Wild, which turns your land to forest, and the Oath of Blood leads to the Blood Pact, cheap recruits paid for in blood and a home that is costly to invade.",
+	},
+	"node_crown_drillyard": {
+		"title": "Drillyard",
+		"text": "Aurel Crown path, tier I, 10 research, no prerequisite. Spearmen have 3 more maximum hit points (8 to 11). The Spearmen already on the map gain 3 hit points at once, and recruits arrive at the new maximum.",
+	},
+	"node_crown_charters": {
+		"title": "Market Charters",
+		"text": "Aurel Crown path, tier I, 10 research, no prerequisite. In the income phase every plains province you own earns 2 more gold. It shows in each province's income and in your gold.",
+	},
+	"node_crown_arbalests": {
+		"title": "Arbalests",
+		"text": "Aurel Crown path, tier II, 15 research, needs Drillyard. Crossbowmen have 2 more attack (11 to 13), one whole damage step.",
+	},
+	"node_crown_stables": {
+		"title": "Remount Stables",
+		"text": "Aurel Crown path, tier II, 15 research, needs Market Charters. Knights cost 4 gold less (20 to 16). With Living Iron it cancels the Iron Knights' price rise.",
+	},
+	"node_crown_oath_dawn": {
+		"title": "Oath of the Dawn",
+		"text": "Aurel Crown path, Oath, 20 research, needs any two ordinary nodes. Swearing it leads to the Celestial Host and closes the Oath of the Forge and Living Iron for the rest of the game. Its economy rule, Tithe of Light, starts at once: your capital earns 1 more gold for every province you own, the capital included.",
+	},
+	"node_crown_celestial_host": {
+		"title": "Celestial Host",
+		"text": "Aurel Crown transformation, 30 research, needs the Oath of the Dawn. Spearmen become Sunspears: 2 more maximum hit points (8 to 10) and 2 more morale (6 to 8); Shield Wall stays. Seraphs join the roster: 14 hit points, attack 13, defense 9, morale 12, 24 gold, trait Wings. Hallowed Land: at the end of every turn each of your wounded units and commanders in a province you own heals 3 hit points, up to its maximum. Opens Hymn of Dawn for sacrifice and forswears Heavy Tithes.",
+	},
+	"node_crown_oath_forge": {
+		"title": "Oath of the Forge",
+		"text": "Aurel Crown path, Oath, 20 research, needs any two ordinary nodes. Swearing it leads to Living Iron and closes the Oath of the Dawn and the Celestial Host for the rest of the game. Its economy rule, Deep Mines, starts at once: every hills province you own earns 3 more gold, and every forest province you own 1 less.",
+	},
+	"node_crown_living_iron": {
+		"title": "Living Iron",
+		"text": "Aurel Crown transformation, 30 research, needs the Oath of the Forge. Knights become Iron Knights: 4 more defense (9 to 13) and a price 4 gold higher (20 to 24); Charge stays. The Iron Colossus joins the roster: 26 hit points, attack 13, defense 9, morale 12, 30 gold, trait Iron Hide. The Forges: at the end of every turn each of your wounded units and commanders in a province with a fort that you own heals to full. Opens Forge Tithe for sacrifice and forswears King's Roads.",
+	},
+	"node_beasts_boar_hide": {
+		"title": "Boar Hide",
+		"text": "Thornmane Clans path, tier I, 10 research, no prerequisite. Tuskers have 3 more maximum hit points (14 to 17). The Tuskers already on the map gain 3 hit points at once, and recruits arrive at the new maximum.",
+	},
+	"node_beasts_raiding": {
+		"title": "Raiding Parties",
+		"text": "Thornmane Clans path, tier I, 10 research, no prerequisite. When your armies capture a province (not by Sworn Vassals), you take gold equal to twice its base income, once.",
+	},
+	"node_beasts_bone_fangs": {
+		"title": "Bone Fangs",
+		"text": "Thornmane Clans path, tier II, 15 research, needs Boar Hide. Fangthrowers have 2 more attack (11 to 13), one whole damage step.",
+	},
+	"node_beasts_forest_stride": {
+		"title": "Forest Stride",
+		"text": "Thornmane Clans path, tier II, 15 research, needs Raiding Parties. Your armies can make a road move from a province through a forest you owned at the start of the turn into another forest next to it, two provinces in one turn. Like a King's Roads move, it never fights on a border and never stops halfway.",
+	},
+	"node_beasts_oath_grove": {
+		"title": "Oath of the Grove",
+		"text": "Thornmane Clans path, Oath, 20 research, needs any two ordinary nodes. Swearing it leads to the Thorn Wild and closes the Oath of Blood and the Blood Pact for the rest of the game. Its economy rule, Bounty of the Wild, starts at once: every forest province you own earns 2 more gold.",
+	},
+	"node_beasts_thorn_wild": {
+		"title": "Thorn Wild",
+		"text": "Thornmane Clans transformation, 30 research, needs the Oath of the Grove. Fangthrowers become Thornthrowers: 3 more defense (5 to 8); Skirmish stays. Briarwardens join the roster: 26 hit points, attack 11, defense 9, morale 10, 24 gold, trait Rooted. The Wild Spreads: at the end of every turn one province you own, next to one of your forests, turns to forest for good. Opens Deep Roots for sacrifice and forswears Blood Frenzy.",
+	},
+	"node_beasts_oath_blood": {
+		"title": "Oath of Blood",
+		"text": "Thornmane Clans path, Oath, 20 research, needs any two ordinary nodes. Swearing it leads to the Blood Pact and closes the Oath of the Grove and the Thorn Wild for the rest of the game. Its economy rule, Blood Levy, starts at once: your regular recruits cost a quarter less and arrive missing a quarter of their hit points, never below 1.",
+	},
+	"node_beasts_blood_pact": {
+		"title": "Blood Pact",
+		"text": "Thornmane Clans transformation, 30 research, needs the Oath of Blood. Tuskers become Bloodtuskers: 2 more attack (11 to 13) and 2 fewer maximum hit points (14 to 12); Berserk stays. Bloodsworn join the roster: 16 hit points, attack 13, defense 5, morale 9, 18 gold, trait Lifedrinker. Dread Lands: in a province battle in a province you owned at the start of the turn, every enemy side has 1 less morale. Opens Red Harvest for sacrifice and forswears Feast of Victory.",
+	},
+	"tithe_of_light": {
+		"title": "Tithe of Light",
+		"text": "The economy rule of the Oath of the Dawn. In the income phase your capital earns 1 more gold for every province you own, the capital included: 7 more with 7 provinces. It counts the provinces you own after the turn's captures, and it shows in your capital's income and in your gold.",
+	},
+	"deep_mines": {
+		"title": "Deep Mines",
+		"text": "The economy rule of the Oath of the Forge. In the income phase every hills province you own earns 3 more gold, and every forest province you own 1 less; a province never earns less than nothing. It shows in each province's income and in your gold.",
+	},
+	"bounty_of_the_wild": {
+		"title": "Bounty of the Wild",
+		"text": "The economy rule of the Oath of the Grove. In the income phase every forest province you own earns 2 more gold. It shows in each province's income and in your gold.",
 	},
 }
 

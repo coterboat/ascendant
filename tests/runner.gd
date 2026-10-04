@@ -4,6 +4,9 @@ extends SceneTree
 ## Finds every `test_*.gd` under res://tests/, runs each `test_*` method on a
 ## fresh instance, prints PASS/FAIL per test, and exits 1 on any failure.
 ## Engine or script errors raised while a test runs also fail that test.
+## Saves and settings go to a temporary folder for the run (SaveStore.default_root and
+## GameSettings.default_path), so no test ever touches the player's user://saves or settings.cfg.
+## `-- --only=<a>,<b>` runs only the test files whose path contains one of those texts (a quick local loop).
 
 const TEST_ROOT := "res://tests"
 
@@ -33,9 +36,19 @@ func _initialize() -> void:
 	var passed := 0
 	var failed := 0
 
+	var scratch := "user://test_run_%d" % OS.get_process_id()
+	SaveStore.default_root = scratch.path_join("saves")
+	GameSettings.default_path = scratch.path_join("settings.cfg")
+
 	var files := _find_test_files(TEST_ROOT)
 	files.sort()
+	var only := PackedStringArray()
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--only="):
+			only = arg.trim_prefix("--only=").split(",", false)
 	for path in files:
+		if not only.is_empty() and not Array(only).any(func(part): return path.contains(part)):
+			continue
 		catcher.take()
 		var script: Script = load(path)
 		var load_errors := catcher.take()
@@ -74,6 +87,7 @@ func _initialize() -> void:
 					print("     %s" % p)
 
 	OS.remove_logger(catcher)
+	_remove_tree(scratch)
 	print("\n%d passed, %d failed" % [passed, failed])
 	if passed + failed == 0:
 		print("no tests found under %s" % TEST_ROOT)
@@ -94,3 +108,14 @@ func _find_test_files(dir_path: String) -> PackedStringArray:
 		if file.begins_with("test_") and file.ends_with(".gd") and file != "test_case.gd":
 			out.append(dir_path.path_join(file))
 	return out
+
+
+## Deletes a folder and everything in it (the run's temporary saves and settings).
+func _remove_tree(dir_path: String) -> void:
+	if not DirAccess.dir_exists_absolute(dir_path):
+		return
+	for sub in DirAccess.get_directories_at(dir_path):
+		_remove_tree(dir_path.path_join(sub))
+	for file in DirAccess.get_files_at(dir_path):
+		DirAccess.remove_absolute(dir_path.path_join(file))
+	DirAccess.remove_absolute(dir_path)
