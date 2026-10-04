@@ -322,6 +322,9 @@ func order_text(index: int) -> String:
 		return "%s %s" % [f.text, move_odds(o.army_id, o.to).line] if f.ok else f.reason
 	if o is SacrificeOrder:
 		return sacrifice_text(o)
+	if o is ResearchOrder:  # M4-4: the research target, with its forecast (only its own player sees it)
+		var fc := Forecast.research(state, faction_id, list)
+		return "Research: %s" % String(fc.text) if fc.ok else "Not researched: %s" % String(fc.reason)
 	var r := _recruit_result_at(index)
 	if not r.ok:
 		return "Not recruited: %s" % r.reason
@@ -371,6 +374,8 @@ func order_breakdown(index: int) -> Dictionary:
 		return _bd("Move forecast", "%s %s %s" % [f.text, odds_desc, rule],
 			[_line("Turn now", state.current_turn + 1, "turns count from 1"), step],
 			"Arrives at the start of turn", f.arrival_turn)
+	if o is ResearchOrder:  # M4-4
+		return Breakdown.research_progress(state, faction_id, orders())
 	var r := _recruit_result_at(index)
 	if not r.ok:
 		return _bd("Recruit order", r.reason, [], "Gold spent", 0)
@@ -390,6 +395,8 @@ func order_codex_kind(index: int) -> String:
 	var o = list[index]
 	if o is SacrificeOrder:
 		return "sacrifice"
+	if o is ResearchOrder:  # M4-4
+		return "research_order"
 	if o is MoveOrder:
 		if move_odds(o.army_id, o.to).enemy_present:
 			return "move_odds"
