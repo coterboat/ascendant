@@ -39,6 +39,10 @@ extends RefCounted
 ## Handoffs happen only where a cover is needed: before a human seat, and only when the game has more
 ## than one human seat. Otherwise end_turn() (and the resolution) go straight to the next seat's ORDERS
 ## phase. With no computer seats every seat is human, so a hotseat game flows exactly as before.
+##
+## Saved games (SaveGame): a save holds record(); from_record() turns it back into a playable session at
+## the start of the saved turn (a game with two people behind the handoff cover). Orders queued during a
+## turn are not in record(), so they are not saved.
 
 enum Phase { ORDERS, HANDOFF, GAME_OVER, INVALID }
 
@@ -52,6 +56,8 @@ const BATTLE_TYPES := ["battle", "border_battle"]
 const CODEX_KEYS := ["hotseat", "handoff", "victory", "simultaneous_capture", "computer_opponent"]
 ## The levels a computer seat can play at: AIPlayer.DIFFICULTIES (tests/test_ai_seat.gd checks they match).
 const COMPUTER_LEVELS := ["easy", "normal"]
+## How from_record() names a missing part of a saved game.
+const LOAD_PARTS := {"start_state": "starting map", "players": "list of players", "game_seed": "game seed"}
 
 var _state: GameState
 var _start_dict := {}
@@ -419,6 +425,74 @@ static func replay(game_record, battle_resolver: BattleResolver = null) -> Dicti
 	return {"state": state, "events": events, "errors": errors}
 
 
+# --- loading a saved game -------------------------------------------------------------------------
+
+## Rebuilds a playable session from record() (or the same data after a JSON round trip): what loading a
+## saved game does (SaveGame). The record's starting state, seats, game seed and computer seats start a
+## new session, then every recorded turn is resolved again with its recorded orders through the same
+## path end_turn() takes, so history(), turn_report(), battles_fought() and victory() come back as they
+## were. The session stands at the start of the next turn with seat 1 to act. Orders queued during that
+## turn were never part of the record, so they are not restored. In a game with more than one human
+## seat it starts behind the handoff cover, even on turn 1, so a loaded hotseat game never opens on a
+## player's orders.
+## Returns {"session": GameSession or null, "errors": plain-language reasons}. Unlike replay(), every
+## problem stops the load (an order that can't be read, a turn seed that is not the game's, a turn after
+## the game was won): playing on from a damaged record would not be the game that was saved.
+static func from_record(game_record, battle_resolver: BattleResolver = null) -> Dictionary:
+	var errors := []
+	if not Serial.check(game_record, TYPE_DICTIONARY, errors, "the saved game"):
+		return {"session": null, "errors": errors}
+	for key in ["start_state", "players", "game_seed"]:
+		if game_record.get(key) == null:
+			return {"session": null, "errors": ["The saved game is missing its %s." % LOAD_PARTS[key]]}
+	var state := GameState.from_dict(game_record.start_state, errors)
+	var players = Serial.expect(game_record, "players", TYPE_ARRAY, errors, "the saved game", [])
+	var ai = Serial.expect(game_record, "ai", TYPE_DICTIONARY, errors, "the saved game", {})
+	var history = Serial.expect_dicts(game_record, "history", errors, "the saved game", "turn")
+	if state == null or players == null or ai == null or history == null:
+		return {"session": null, "errors": errors}
+	var seats := []
+	for fid in players:
+		seats.append(str(fid))
+	var computer := {}
+	for fid in ai:
+		computer[str(fid)] = str(ai[fid])
+	var game_seed := Serial.to_int(game_record.game_seed)
+	var session := GameSession.new(state, seats, game_seed, battle_resolver, computer)
+	if session.phase() == Phase.INVALID:
+		return {"session": null, "errors": session.setup_errors()}
+	for i in history.size():
+		var entry: Dictionary = history[i]
+		if session.is_over():
+			return {"session": null, "errors": ["The saved game goes on after it was already won on turn %d." % session.turns_played()]}
+		var expected := turn_seed(game_seed, session._state.current_turn)
+		if entry.get("seed") == null or Serial.to_int(entry.seed) != expected:
+			return {"session": null, "errors": ["Turn %d of the saved game was played with a different seed than the game's own, so the save has been changed or damaged." % (i + 1)]}
+		var orders_data = Serial.expect(entry, "orders", TYPE_DICTIONARY, errors, "turn %d of the saved game" % (i + 1), {})
+		if orders_data == null:
+			return {"session": null, "errors": errors}
+		var order_errors := []
+		var orders := OrderBook.orders_from_dict(orders_data, order_errors)
+		for fid in orders:
+			if not seats.has(fid):
+				order_errors.append("It has orders for a faction that has no seat in this game.")
+				break
+		if not order_errors.is_empty():
+			return {"session": null, "errors": order_errors.map(func(e): return "Turn %d: %s" % [i + 1, e])}
+		var given := {}
+		var recorded := {}
+		for fid in seats:
+			given[fid] = orders.get(fid, [])
+			recorded[fid] = given[fid].map(func(o): return o.to_dict())
+		var why := session._resolve_orders(given, recorded)
+		if not why.is_empty():
+			return {"session": null, "errors": ["Turn %d: %s" % [i + 1, why]]}
+	# A new game opens on seat 1's orders; a loaded one with two people at the computer opens on the cover.
+	if session._phase == Phase.ORDERS and session._seat == 0 and session._needs_handoff(0):
+		session._phase = Phase.HANDOFF
+	return {"session": session, "errors": []}
+
+
 # --- internals ------------------------------------------------------------------------------------
 
 func _check_players(players: Array) -> void:
@@ -441,6 +515,12 @@ func _resolve_turn() -> String:
 	for fid in _players:
 		orders[fid] = _books[fid].orders_for(fid)
 		recorded[fid] = _books[fid].to_dict().get(fid, [])
+	return _resolve_orders(orders, recorded)
+
+
+## Resolves the turn with `orders` ({faction id: orders}) and records `recorded` (their dicts) in the
+## history: end_turn() after the last seat, and from_record() for every saved turn.
+func _resolve_orders(orders: Dictionary, recorded: Dictionary) -> String:
 	var turn := _state.current_turn
 	var seed_value := turn_seed(_game_seed, turn)
 	var result := TurnResolver.resolve(_state, orders, seed_value, _battle_resolver)

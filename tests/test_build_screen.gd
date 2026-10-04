@@ -24,8 +24,12 @@ const NOT_NUMBERS := ["HeaderLabel", "RulerHeading", "PowerHeading", "NationHead
 
 # --- helpers --------------------------------------------------------------------------------------
 
+## The new game screen set up as two people with the rulers box clear, which these tests start from
+## (the default is you against the computer with rulers: tests/test_mvp_defaults.gd).
 func _setup() -> NewGameScreen:
 	var screen := load(NEW_GAME_SCENE).instantiate() as NewGameScreen
+	screen.set_seat_kind(2, "human")
+	screen.set_rulers(false)
 	screen.set_seed(SEED)
 	return screen
 
@@ -189,11 +193,11 @@ func _assert_numbers(b: BuildScreen, what: String) -> int:
 
 # --- the new game screen --------------------------------------------------------------------------
 
-func test_rulers_box_is_off_by_default_and_the_m1_flow_is_unchanged() -> void:
+func test_rulers_box_cleared_gives_the_m1_flow() -> void:
 	var screen := _setup()
-	assert_false(screen.rulers_on(), "rulers are off by default")
+	assert_false(screen.rulers_on(), "rulers are off once the box is cleared")
 	assert_false(screen.rulers_toggle.button_pressed)
-	assert_eq(screen.rulers_toggle.text, "Rulers (M2 preview)")
+	assert_eq(screen.rulers_toggle.text, "Rulers")
 	assert_eq(screen.config(), {"players": ["kingdom", "beasts"], "seed": SEED}, "exactly the M1 config")
 	assert_eq(screen.start_button.text, "Start")
 	assert_false(screen.rulers_label.visible)
@@ -204,10 +208,13 @@ func test_rulers_box_is_off_by_default_and_the_m1_flow_is_unchanged() -> void:
 	assert_eq(screen.build_screen, null, "no build screen")
 	screen.free()
 
-	# Through the title: the game has no rulers, and Quick start neither.
+	# Through the title, with seat 2 a person and the box cleared: the game has no rulers. Quick start
+	# has them (the MVP default).
 	var title := load(TITLE_SCENE).instantiate() as TitleScreen
 	title._ready()
 	title.new_game_button.pressed.emit()
+	title.new_game_screen.set_seat_kind(2, "human")
+	title.new_game_screen.set_rulers(false)
 	title.new_game_screen.set_seed(SEED)
 	title.new_game_screen.start_button.pressed.emit()
 	var game := title.next_scene as GameScreen
@@ -221,8 +228,8 @@ func test_rulers_box_is_off_by_default_and_the_m1_flow_is_unchanged() -> void:
 	var quick := title.next_scene as GameScreen
 	assert_true(quick != null)
 	if quick:
-		assert_false(quick.config.has("rulers") or quick.config.has("builds"), "Quick start is unchanged")
-		assert_false(RulerRules.has_rulers(quick.session.state()))
+		assert_true(quick.config.rulers and quick.config.has("builds"), "Quick start plays with rulers")
+		assert_true(RulerRules.has_rulers(quick.session.state()))
 		quick.free()
 	title.free()
 
@@ -590,6 +597,7 @@ func test_start_gives_a_game_whose_factions_carry_exactly_the_chosen_builds() ->
 	title._ready()
 	title.new_game_button.pressed.emit()
 	var setup := title.new_game_screen
+	setup.set_seat_kind(2, "human")  # two people
 	setup.set_seed(SEED)
 	setup.swap_seats()  # Thornmane Clans are player 1
 	setup.rulers_toggle.button_pressed = true

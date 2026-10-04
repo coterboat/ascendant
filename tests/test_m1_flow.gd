@@ -27,6 +27,10 @@ func _start_from_title(game_seed: int) -> GameScreen:
 	var setup := title.new_game_screen
 	assert_true(setup != null and setup.visible, "New game opens the new game screen")
 	assert_eq(setup.get_index(), title.get_child_count() - 1, "on top of the title")
+	# The M1 hotseat game: Player 2 to Human and rulers off (the default is the computer, with rulers).
+	setup.kind_pickers[1].select(NewGameScreen.KINDS.find("human"))
+	setup.kind_pickers[1].item_selected.emit(NewGameScreen.KINDS.find("human"))
+	setup.rulers_toggle.button_pressed = false
 	setup.swap_button.pressed.emit()
 	setup.seed_edit.text = str(game_seed)
 	setup.seed_edit.text_changed.emit(setup.seed_edit.text)
@@ -259,12 +263,13 @@ func test_title_screen_buttons() -> void:
 	title.codex.close()
 	assert_false(title.codex.visible)
 
-	# Quick start: a default game, every faction in data order.
+	# Quick start: straight into a game against the computer (tests/test_mvp_defaults.gd has the details).
 	title.quick_start_button.pressed.emit()
 	var game := title.next_scene as GameScreen
 	assert_true(game != null, "Quick start switches to a game screen")
 	if game:
-		assert_eq(game.session.players(), GameScreen.default_config().players)
+		assert_eq(game.session.players().size(), GameScreen.default_config().players.size(), "every faction plays")
+		assert_eq(game.session.human_seats(), 1, "you against the computer")
 		assert_eq(game.session.phase(), GameSession.Phase.ORDERS)
 		game.free()
 	title.free()
@@ -273,6 +278,8 @@ func test_title_screen_buttons() -> void:
 func test_quit_and_back_to_title_go_to_the_title_scene() -> void:
 	var game := _start_from_title(SEED)
 	game.map.back_button.pressed.emit()
+	assert_true(game.menu_overlay.visible, "the top bar's Menu opens the menu")
+	(game.menu_overlay.find_child("QuitToTitleButton", true, false) as Button).pressed.emit()
 	assert_true(game.quit_overlay.visible, "Quit to title asks first")
 	(game.quit_overlay.find_child("ConfirmQuitButton", true, false) as Button).pressed.emit()
 	var title := game.next_scene as TitleScreen

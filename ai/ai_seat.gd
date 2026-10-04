@@ -16,7 +16,8 @@ extends RefCounted
 ## Determinism: one AIPlayer and one SeededRNG per computer seat for the whole game. The RNG is seeded
 ## with seat_seed(game_seed, seat) = game_seed * 7919 + (seat + 1) * 104729, the formula behind the
 ## autoplay's Simulator.policy_seed and the AI build pick in design/M2_RULER.md 6.1, so the same seed
-## and the same human orders always give the same computer orders. A save would store rng_state().
+## and the same human orders always give the same computer orders. A save stores rng_state() from the
+## start of the turn, and restore() puts it back (SaveGame).
 ##
 ## Builds (M2, design/M2_RULER.md 6.1): in a game with rulers, the seat's build is the first draw of its
 ## RNG, AIPlayer.choose_build, made here when the seat is set up; its orders use the draws after it. The
@@ -114,6 +115,27 @@ func rng_state() -> Dictionary:
 	for fid in _rngs:
 		out[fid] = _rngs[fid].to_dict()
 	return out
+
+
+## Restores the computer seats of a saved game (SaveGame): each seat's RNG state, {faction id:
+## SeededRNG.to_dict()} as rng_state() gave it at the start of the turn being played, so the computer
+## plays on exactly as it would have without the save; and `notes`, {faction id: [lines]} for the 1-based
+## `turn` the session last resolved, so that turn's report still shows what the computer was thinking.
+## Returns plain-language problems ([] when every computer seat was restored).
+func restore(rng_states: Dictionary, turn: int = 0, notes: Dictionary = {}) -> Array:
+	var errors := []
+	for fid in factions():
+		var data = rng_states.get(fid)
+		if not (data is Dictionary) or data.get("state") == null:
+			errors.append("The save does not have the computer's dice for player %d, so it could not play on the same way." % (_seats[fid] + 1))
+			continue
+		_rngs[fid].set_state(Serial.to_int(data.state))
+	if turn > 0:
+		_notes[turn] = {}
+		for fid in notes:
+			if is_computer(String(fid)) and notes[fid] is Array:
+				_notes[turn][String(fid)] = notes[fid].map(func(line): return str(line))
+	return errors
 
 
 ## Orders the session refused, {"turn", "faction", "order", "why"}. AIPlayer checks every order with the
