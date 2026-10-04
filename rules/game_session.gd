@@ -248,12 +248,15 @@ func describe_order(faction_id: String, order) -> String:
 		if order.is_storm():
 			return "Storm the walls of %s with every army of yours there." % TurnResolver._province_name(_state, order.province)
 		var army := _state.find_army(order.army_id)
-		var who := "the %s" % TurnResolver.army_label(_state, army) if army else "an army that no longer exists"
+		if army == null:  # as the order check says it
+			return "Sally out with an army that is not on the map."
+		var who := TurnReportText.army_title(_state, army, false)
+		var where := TurnResolver._province_name(_state, army.location)
 		if not order.with_army.is_empty():
 			var relief := _state.find_army(order.with_army)
-			return "Sally out with %s, together with the relief from %s." % [who,
-				TurnResolver._province_name(_state, relief.location) if relief else "an army that no longer exists"]
-		return "Sally out with %s against the siege lines." % who
+			return "Sally out of %s with %s, together with the relief from %s." % [where, who,
+				TurnResolver._province_name(_state, relief.location) if relief else "an army that is not on the map"]
+		return "Sally out of %s with %s against the siege lines." % [where, who]
 	if order is SacrificeOrder:  # M2-6
 		var mid: String = order.mandate_id
 		return "Sacrifice: %s gives up %d power for %s (%d, +%d for a mid-game sacrifice)." % [

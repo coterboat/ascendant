@@ -477,20 +477,20 @@ static func _check_sally(state: GameState, fid: String, order: SiegeOrder, moves
 		return _reject("unknown_army", "There is no such army on the map. It may have been destroyed.")
 	if army.owner != fid:
 		return _reject("not_your_army", "That army is not yours, so it can't sally.")
-	var label := TurnResolver.army_label(state, army)
+	var label := TurnResolver._army_name(state, army, true)  # its name for life, as the map and the report call it
 	var p := state.find_province(army.location)
 	if p == null or p.fort_level <= 0 or p.owner != fid:
-		return _reject("sally_not_in_fort", "The %s is not inside a fort of yours, so it can't sally. A sally comes out of your own besieged fort." % label)
+		return _reject("sally_not_in_fort", "%s is not inside a fort of yours, so it can't sally. A sally comes out of your own besieged fort." % label)
 	if not is_besieged(state, p.id):
 		return _reject("sally_not_besieged", "%s is not besieged, so there is nobody outside its walls to sally against." % p.name)
 	if p.walls <= 0:
 		return _reject("sally_walls_down", "%s's walls are down: the battle there comes on its own." % p.name)
 	for m in moves:
 		if m.army_id == army.id:
-			return _reject("sally_and_move", "The %s has a move order this turn. Moving out is leaving the fort, not sallying: cancel the move to sally." % label)
+			return _reject("sally_and_move", "%s has a move order this turn. Moving out is leaving the fort, not sallying: cancel the move to sally." % label)
 	for o in given:
 		if o is SiegeOrder and o.action == SALLY and o.army_id == army.id:
-			return _reject("sally_twice", "The %s already sallies this turn." % label)
+			return _reject("sally_twice", "%s already sallies this turn." % label)
 	if not order.with_army.is_empty():
 		var relief := state.find_army(order.with_army)
 		var coming := false

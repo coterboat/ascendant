@@ -925,7 +925,7 @@ static func recruit_at(state: GameState, faction_id: String, unit_type_id: Strin
 		break
 	out.joins = joins.id if joins != null else ""
 	if SiegeRules.is_engine(ut):
-		var who := "the %s" % TurnResolver.army_label(view, joins) if joins != null else "the army a recruit forms there first"
+		var who := TurnReportText.army_title(view, joins, false) if joins != null else "the army a recruit forms there first"
 		out.text = "%s: %d gold; it joins %s. %s" % [head, out.price, who, FortData.ENGINE_RULE]
 		for pid in _sieges_of(view, faction_id):
 			var p := view.find_province(pid)
@@ -943,7 +943,7 @@ static func recruit_at(state: GameState, faction_id: String, unit_type_id: Strin
 		return out
 	if joins != null:
 		var verb := "lead" if ut.is_commander else "join"
-		out.text = "%s: they %s the %s." % [head, verb, TurnResolver.army_label(view, joins)]
+		out.text = "%s: they %s %s." % [head, verb, TurnReportText.army_title(view, joins, false)]
 	else:
 		out.text = "%s: they form a new army there." % head
 	return out

@@ -208,7 +208,7 @@ static func short_text(state: GameState, faction_id: String, order) -> String:
 		if order.is_storm():
 			return "Storm of %s" % TurnResolver._province_name(state, order.province)
 		var army := state.find_army(order.army_id)
-		return "Sally by the %s" % (TurnResolver.army_label(state, army) if army else "army that no longer exists")
+		return "Sally by %s" % (TurnResolver._army_name(state, army) if army else "an army that is not on the map")
 	if order is SacrificeOrder:
 		return "Sacrifice for %s" % RulerRules.mandate_name(order.mandate_id)
 	if order is ResearchOrder:
