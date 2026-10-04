@@ -11,6 +11,11 @@ class_name GameState
 ## Paths (M4, #66; design/M4_ASCENSION.md §1.3) are opt-in too: GameState.with_paths(seed, builds) is the
 ## rulers game plus a path for every faction (`paths` true, research fields on each Faction). Without them
 ## no path field is saved, so M1 and M2 games, records and saves are byte-identical to before.
+##
+## Forts and sieges (M3c, design/M3C_SIEGES.md §1.3) are opt-in too, for any game: setup_sieges() before turn
+## 1, or GameState.with_sieges(seed, builds, flags). Each fort gets its level and full walls, `sieges` turns
+## true, and from then on provinces save their fort and siege fields and armies their engines. Without it
+## nothing of that is saved, so M1, M2 and M4 games stay byte-identical. Rules: SiegeRules.
 
 var provinces: Array[Province] = []
 var factions: Array[Faction] = []
@@ -24,6 +29,7 @@ var seed_value: int = 0
 ## number from its highest army id (from_dict).
 var next_army_ids: Dictionary = {}
 var paths: bool = false  # M4: every faction has a path and researches (AscensionRules); saved only when true
+var sieges: bool = false  # M3c: forts have levels and walls, and armies besiege them (SiegeRules); saved only when true
 
 func _init(map_seed: int = 12345) -> void:
 	seed_value = map_seed
@@ -126,6 +132,48 @@ func setup_paths(errors = null) -> bool:
 		f.research_target = ""
 		f.researched = []
 		f.path_branch = ""
+	return validate(errors)
+
+
+## Forts and sieges for any game (M3c, §1.3): the M1 game, with rulers when `flags` has "rulers" (or a
+## build in `builds`), with paths when it has "paths" (paths imply rulers), then setup_sieges(). The new
+## game screen and the autoplay use it. Returns null when a build is illegal, with the reasons in `errors`.
+static func with_sieges(map_seed: int = 12345, builds: Dictionary = {}, flags: Dictionary = {}, errors = null) -> GameState:
+	var state: GameState
+	if flags.get("paths", false):
+		state = with_paths(map_seed, builds, errors)
+	elif flags.get("rulers", false) or not builds.is_empty():
+		state = with_rulers(map_seed, builds, errors)
+	else:
+		state = GameState.new(map_seed)
+	if state == null or not state.setup_sieges(errors):
+		return null
+	return state
+
+
+## Turns forts and sieges on before turn 1 (§1.3): every capital becomes a citadel and every other
+## province with a fort on the map a keep (FortData.START), all at full walls. Rosters don't change:
+## the siege engines live in FortData, and TurnResolver.recruitable_type offers them only in a game with
+## sieges. Returns false, with plain reasons in `errors`, when it is too late.
+func setup_sieges(errors = null) -> bool:
+	if current_turn != 0:
+		_report(errors, "Forts and sieges are chosen before the game starts.")
+		return false
+	sieges = true
+	for p in provinces:
+		var level := 0
+		if p.is_capital:
+			level = int(FortData.START.capital)
+		elif p.has_fort:
+			level = int(FortData.START.fort)
+		p.fort_level = level
+		p.has_fort = level > 0
+		p.walls = int(FortData.level(level).walls)
+		p.fort_by = ""
+		p.works = {}
+		p.siege_since = 0
+		p.owned_since = 0
+		p.lost = {}
 	return validate(errors)
 
 
@@ -241,6 +289,9 @@ func validate(errors = null) -> bool:
 	# Research and paths (M4): AscensionRules owns those rules.
 	if not AscensionRules.validate(self, errors):
 		ok = false
+	# Forts, walls, construction, sieges and engines (M3c): SiegeRules owns those rules.
+	if not SiegeRules.validate(self, errors):
+		ok = false
 	if not _living_rulers_on_map(errors):
 		ok = false
 	return ok
@@ -263,7 +314,7 @@ func _living_rulers_on_map(errors) -> bool:
 func to_dict() -> Dictionary:
 	var province_dicts := []
 	for p in provinces:
-		province_dicts.append(p.to_dict())
+		province_dicts.append(p.to_dict(sieges))
 
 	var faction_dicts := []
 	for f in factions:
@@ -288,6 +339,8 @@ func to_dict() -> Dictionary:
 	}
 	if paths:
 		d["paths"] = true  # only a game with paths carries the key, so M1 and M2 save exactly as before
+	if sieges:
+		d["sieges"] = true  # M3c: only a game with sieges carries the key
 	return d
 
 ## Rebuilds a state from to_dict() output (or the same data after a JSON round-trip). Returns null when
@@ -308,6 +361,10 @@ static func from_dict(data, errors = null) -> GameState:
 	if paths_flag == null:
 		return null
 	state.paths = paths_flag
+	var sieges_flag = Serial.expect(data, "sieges", TYPE_BOOL, errors, WHO, false)
+	if sieges_flag == null:
+		return null
+	state.sieges = sieges_flag
 
 	var rng_data = Serial.expect(data, "rng", TYPE_DICTIONARY, errors, WHO, {})
 	if rng_data == null:

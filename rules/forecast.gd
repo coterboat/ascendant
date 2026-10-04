@@ -218,7 +218,12 @@ static func gold_after_recruits(state: GameState, faction_id: String, recruit_or
 	var income: int = inc.total
 	var text := "Gold %d, recruits cost %d, leaving %d. Income +%d if no provinces change hands, so %d next turn." % [
 		priced.gold_before, priced.spent, priced.gold_after, income, priced.gold_after + income]
-	if not inc.modifiers.is_empty():
+	if state.sieges:
+		# M3c (§9.2): the gold forecast names cut-off and besieged provinces, on both sides.
+		for part in [TurnResolver.income_modifiers_text(state, faction_id, inc, "ends the turn"), TurnResolver.siege_income_text(state, faction_id, inc)]:
+			if not String(part).is_empty():
+				text += " %s" % part
+	elif not inc.modifiers.is_empty():
 		text += " %s" % TurnResolver.income_modifiers_text(state, faction_id, inc, "ends the turn")
 	for r in priced.results:
 		if not r.ok:
@@ -393,7 +398,7 @@ static func mandate_now(state: GameState, faction_id: String, mandate_id: String
 			var forts := 0
 			var gold := 0
 			for p in state.provinces:
-				if p.owner == faction_id and p.has_fort:
+				if p.owner == faction_id and RulerRules.forge_tithe_counts(state, p):  # M3c: keeps and citadels with sieges
 					forts += 1
 					for m in RulerRules.province_income_parts(state, p.id).mods:
 						if m.key == RulerRules.FORGE_TITHE:
@@ -675,6 +680,287 @@ static func province_rules(state: GameState, faction_id: String, orders: Array =
 			lines.append(a.text)
 	out.text = " ".join(lines)
 	return out
+
+
+# --- forts and sieges (M3c, #98; design/M3C_SIEGES.md §9.2) -----------------------------------------
+# Every number comes from SiegeRules and TurnResolver.price_recruits, the functions the turn resolves with. The
+# odds lines (storm, sally, relief, breach) are S-2's; these say what the walls, the siege damage, the cut-off,
+# the gold and the recruit limits will do. Turn numbers follow §9.2: relative and absolute ("in 3 turns (turn
+# 11)"), and a breach turn always carries its condition ("if you stay as you are").
+
+## The siege forecast for `faction_id` at the fort `province_id` (§9.2), from its side: the besieger's (its
+## armies there, plus those its queued moves in `orders` march in) or the garrison's (it owns the fort).
+## Returns {"ok", "code", "reason", "province", "side" ("besieger" | "garrison"), "walls", "walls_max",
+## "walls_defense", "besieged" (a siege stands or starts this turn), "starts" (it starts this turn), "damage"
+## (SiegeRules.siege_damage's result), "turns_to_breach", "breach_turn" (the turn at whose end the walls reach 0
+## if the besiegers stay as they are; -1 without a siege), "cut_off" (now), "cut_off_from" (the first turn it
+## is cut off; 0 when it won't be), "pickets", "besieger", "empty" (no garrison: walking in takes it),
+## "reach" ([army ids of the other side that can reach the fort this turn]), "text"}.
+## Forecast equals result: when no army enters or leaves the province, the walls reach 0 at the end of
+## breach_turn and the fort is cut off from cut_off_from.
+static func siege(state: GameState, faction_id: String, province_id: String, orders: Array = []) -> Dictionary:
+	var out := {"ok": false, "code": "", "reason": "", "province": province_id, "side": "", "walls": 0, "walls_max": 0,
+		"walls_defense": 0, "besieged": false, "starts": false, "damage": {}, "turns_to_breach": 0, "breach_turn": -1,
+		"cut_off": false, "cut_off_from": 0, "pickets": false, "besieger": "", "empty": false, "reach": [], "text": ""}
+	var p := state.find_province(province_id)
+	if not state.sieges or p == null or p.fort_level <= 0:
+		out.code = "no_fort"
+		out.reason = "This game is played without forts and sieges." if not state.sieges else "%s has no fort." % (p.name if p else "That place")
+		out.text = out.reason
+		return out
+	var turn := state.current_turn + 1
+	out.ok = true
+	out.walls = p.walls
+	out.walls_max = SiegeRules.walls_max(p.fort_level)
+	out.walls_defense = SiegeRules.walls_defense(p.walls)
+	if p.owner == faction_id:
+		return _siege_garrison(state, faction_id, p, turn, out)
+	return _siege_besieger(state, faction_id, p, turn, orders, out)
+
+
+static func _siege_besieger(state: GameState, fid: String, p: Province, turn: int, orders: Array, out: Dictionary) -> Dictionary:
+	out.side = "besieger"
+	var ours := []
+	for a in SiegeRules.besiegers(state, p.id):
+		if a.owner == fid:
+			ours.append(a)
+	var arriving := []
+	for o in orders:
+		if o is MoveOrder and o.to == p.id:
+			var a := state.find_army(o.army_id)
+			if a != null and a.owner == fid and not ours.has(a):
+				arriving.append(a)
+	var armies: Array = ours + arriving
+	var inside := SiegeRules.garrison(state, p.id)
+	var name := p.name
+	if armies.is_empty():
+		out.text = "You have no army at %s and none marching there this turn. %s" % [name, SiegeRules.walls_text(state, p.id)]
+		return out
+	if inside.is_empty():
+		out.empty = true
+		out.text = "You take the %s at %s unopposed (%d of %d walls), unless an enemy army arrives there too. You can recruit there from turn %d." % [
+			SiegeRules.level_word(p.fort_level), name, p.walls, int(out.walls_max), turn + FortData.CAPTURE_WAIT + 1]
+		return out
+	if p.walls <= 0:
+		out.text = "%s's walls are down: you fight its garrison there this turn, in the open, with no siege." % name
+		return out
+	var dmg := SiegeRules.siege_damage(SiegeRules.troops(armies), SiegeRules.engines_of(armies), SiegeRules.engine_plural(fid))
+	out.damage = dmg
+	out.besieged = true
+	out.starts = p.siege_since <= 0
+	out.besieger = fid
+	out.turns_to_breach = SiegeRules.turns_to_breach(p.walls, int(dmg.total))
+	out.breach_turn = SiegeRules.breach_turn(p.walls, int(dmg.total), turn)
+	var need := ceili(float(SiegeRules.troops(inside)) / 2.0)
+	out.pickets = SiegeRules.troops(armies) < need
+	if not out.pickets:
+		out.cut_off_from = turn + 1 if out.starts else p.siege_since + 1
+		out.cut_off = not out.starts
+	var when := SiegeRules.in_turns_text(int(out.breach_turn), turn, true)
+	if int(out.breach_turn) > turn:
+		when = "at the end of turn %d, in %s" % [int(out.breach_turn), _count(int(out.turns_to_breach), "turn")]
+	var text := "%s's walls (%d of %d: +%d if stormed) drop by %d a turn (%s) and reach 0 %s, if you stay as you are." % [name, p.walls,
+		int(out.walls_max), int(out.walls_defense), int(dmg.total), SiegeRules.damage_text(dmg), when]
+	text += " Storming now meets the walls as they stand (+%d defense for the garrison)." % int(out.walls_defense)
+	if out.pickets:
+		text += " Your %d troops outside are only pickets, fewer than half the garrison's %d (%d), so %s is not cut off." % [
+			SiegeRules.troops(armies), SiegeRules.troops(inside), need, name]
+	elif out.starts:
+		text += " From next turn (%d) %s is cut off, and its %d gold a turn comes to you." % [turn + 1, name, p.income]
+	else:
+		text += " %s is cut off: its %d gold a turn comes to you." % [name, p.income]
+	var reach := _who_can_reach(state, p, p.owner)
+	out.reach = reach
+	if not reach.is_empty():
+		text += " %s can reach %s this turn." % [_armies_phrase(state, reach, "Their"), name]
+	out.text = text
+	return out
+
+
+static func _siege_garrison(state: GameState, fid: String, p: Province, turn: int, out: Dictionary) -> Dictionary:
+	out.side = "garrison"
+	var theirs := SiegeRules.besiegers(state, p.id)
+	var name := p.name
+	var reach := _who_can_reach(state, p, fid)
+	out.reach = reach
+	if theirs.is_empty():
+		out.text = "%s is not besieged. %s Walls repair %d a turn while no enemy army is there." % [name,
+			SiegeRules.walls_text(state, p.id), SiegeRules.repair_amount(p.fort_level)]
+		return out
+	out.besieged = true
+	out.besieger = SiegeRules.besieging_faction(state, p.id)
+	var dmg := SiegeRules.siege_damage(SiegeRules.troops(theirs), SiegeRules.engines_of(theirs), SiegeRules.engine_plural(String(out.besieger)))
+	out.damage = dmg
+	var cut := SiegeRules.cut_off_info(state, p.id, turn)
+	out.cut_off = cut.cut_off
+	out.pickets = cut.pickets
+	out.cut_off_from = p.siege_since + 1 if not bool(cut.pickets) else 0
+	if p.walls <= 0:
+		out.text = "Your walls at %s are down: the battle there comes this turn, on its own, in the open, unless one side leaves." % name
+		return out
+	out.turns_to_breach = SiegeRules.turns_to_breach(p.walls, int(dmg.total))
+	out.breach_turn = SiegeRules.breach_turn(p.walls, int(dmg.total), turn)
+	var after := maxi(0, p.walls - int(dmg.total))
+	var text := "Your walls at %s (%d of %d: +%d if stormed) drop to %d at the end of this turn (%d)" % [name, p.walls, int(out.walls_max),
+		int(out.walls_defense), after, turn]
+	if int(out.breach_turn) > turn:
+		text += " and to 0 at the end of turn %d" % int(out.breach_turn)
+	text += " if the besiegers stay as they are (siege damage %d: %s)." % [int(dmg.total), SiegeRules.damage_text(dmg)]
+	text += " If they storm this turn, they meet the walls as they stand (+%d defense for your garrison)." % int(out.walls_defense)
+	if out.cut_off:
+		text += " %s is cut off: nobody can recruit there, and its %d gold goes to the %s." % [name, p.income,
+			_faction_name(state, String(out.besieger))]
+	elif out.pickets:
+		text += " The %d troops outside are only pickets (half of your %d is %d), so %s is not cut off." % [int(cut.besieger_troops),
+			int(cut.garrison_troops), int(cut.need), name]
+	if not reach.is_empty():
+		text += " %s can reach %s this turn: a relief, and your garrison can sally to join it." % [_armies_phrase(state, reach, "Your"), name]
+	out.text = text
+	return out
+
+
+## Armies of `owner_fid` next to `p` that can reach it this turn by a one-step move (army ids, in id order).
+static func _who_can_reach(state: GameState, p: Province, owner_fid: String) -> Array:
+	var out := []
+	for a in state.armies:
+		if a.owner == owner_fid and a.location != p.id and p.neighbors.has(a.location):
+			out.append(a.id)
+	out.sort()
+	return out
+
+
+## "Your army at Westwatch", "Their armies at Highcrag and Westwatch".
+static func _armies_phrase(state: GameState, ids: Array, whose: String) -> String:
+	var places := []
+	for id in ids:
+		var a := state.find_army(String(id))
+		var name := state.find_province(a.location).name
+		if not places.has(name):
+			places.append(name)
+	return "%s %s at %s" % [whose, "army" if ids.size() == 1 else "armies", RulerRules._and_list(places)]
+
+
+## The Fortify forecast for `province_id` (§9.2): what the next level costs, when it stands, when it takes
+## recruits and how long its walls hold. `orders` are the faction's queued orders: their recruits and Fortify
+## orders are paid first, in the order given. Returns {"ok", "code", "reason", "province", "level", "cost",
+## "gold_left", "stands" (the turn it stands at the end of), "recruit_from", "recruits", "walls", "text"}.
+## Forecast equals result: if no enemy army stands there meanwhile, the level stands at the end of `stands`.
+static func fortify(state: GameState, faction_id: String, province_id: String, orders: Array = []) -> Dictionary:
+	var out := {"ok": false, "code": "", "reason": "", "province": province_id, "level": 0, "cost": 0, "gold_left": 0,
+		"stands": 0, "recruit_from": 0, "recruits": 0, "walls": 0, "text": ""}
+	var view := RulerRules.state_after_orders(state, faction_id, orders)
+	var paid := orders.filter(func(o): return o is RecruitOrder or o is FortifyOrder)
+	var priced := TurnResolver.price_recruits(view, faction_id, paid + [FortifyOrder.new(province_id)])
+	var r: Dictionary = priced.results.back()
+	if not r.ok:
+		out.code = String(r.code)
+		out.reason = String(r.reason)
+		out.text = out.reason
+		return out
+	var p := view.find_province(province_id)
+	var to := int(r.to)
+	var turn := view.current_turn + 1
+	var turns := int(SiegeRules.level_data(to).turns)
+	var walls := SiegeRules.walls_max(to)
+	var s := FortData.SIEGE
+	var big := int(s.per_troops) * int(s.troops_max)  # troops for the most siege damage from troops
+	var raid_turns := SiegeRules.turns_to_breach(walls, int(s.camp))
+	var army_turns := SiegeRules.turns_to_breach(walls, int(s.camp) + int(s.troops_max))
+	out.ok = true
+	out.level = to
+	out.cost = int(r.cost)
+	out.gold_left = int(r.gold_after)
+	out.stands = turn + turns
+	out.recruit_from = turn + turns + 1
+	out.recruits = SiegeRules.recruit_limit(to)
+	out.walls = walls
+	out.text = "%s at %s: %d gold now (%d left after your recruits). Built at the end of turn %d if no enemy army stands there; you can recruit %d a turn there from turn %d. Walls %d: against a raid they hold %s, against %d or more troops %s, and they give +%d defense only if stormed. You can build one fort at a time." % [
+		SiegeRules.level_name(to), p.name, out.cost, out.gold_left, out.stands, out.recruits, out.recruit_from, walls,
+		_count(raid_turns, "turn"), big, _count(army_turns, "turn"), SiegeRules.walls_defense(walls)]
+	return out
+
+
+## The recruit forecast at a fort (§9.2): "Spearmen at Stonegate (3 of 4 this turn): they join the Aurel Crown
+## army there." `at` is where (RecruitOrder.at: "" for the capital, or a fort's id); `orders` the faction's
+## queued orders, paid first. For a siege engine it says which army carries it, and what one more engine
+## changes at each siege that faction keeps now. Returns {"ok", "code", "reason", "unit_type", "name", "fort",
+## "count", "limit", "price", "joins" (the army's id, "" for a new army), "text"}.
+static func recruit_at(state: GameState, faction_id: String, unit_type_id: String, at: String = "", orders: Array = []) -> Dictionary:
+	var out := {"ok": false, "code": "", "reason": "", "unit_type": unit_type_id, "name": "", "fort": "", "count": 0, "limit": 0,
+		"price": 0, "joins": "", "text": ""}
+	var view := RulerRules.state_after_orders(state, faction_id, orders)
+	var f := view.find_faction(faction_id)
+	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id, view) if f else null
+	if ut == null:
+		out.code = "unknown_unit_type"
+		out.reason = "That is not a unit you can recruit."
+		out.text = out.reason
+		return out
+	out.name = ut.name
+	var paid := orders.filter(func(o): return o is RecruitOrder or o is FortifyOrder)
+	var priced := TurnResolver.price_recruits(view, faction_id, paid + [RecruitOrder.new(unit_type_id, at)])
+	var r: Dictionary = priced.results.back()
+	if not r.ok:
+		out.code = String(r.code)
+		out.reason = String(r.reason)
+		out.text = out.reason
+		return out
+	out.ok = true
+	out.price = int(r.cost)
+	var place := String(r.province)
+	out.fort = place
+	out.count = int(r.get("count", 0))
+	out.limit = int(r.get("limit", 0))
+	var where := view.find_province(place).name
+	var head := "%s at %s (%d of %d this turn)" % [ut.name, where, out.count, out.limit] if view.sieges else "%s at %s" % [ut.name, where]
+	var joins: Army = null
+	for a in TurnResolver._sorted_armies(view):
+		if a.owner != faction_id or a.location != place or a.ruler != null:
+			continue
+		if SiegeRules.is_engine(ut) and not SiegeRules.can_carry(a):
+			continue
+		if ut.is_commander and a.commander != null:
+			continue
+		joins = a
+		break
+	out.joins = joins.id if joins != null else ""
+	if SiegeRules.is_engine(ut):
+		var who := TurnReportText.army_title(view, joins, false) if joins != null else "the army a recruit forms there first"
+		out.text = "%s: %d gold; it joins %s. %s" % [head, out.price, who, FortData.ENGINE_RULE]
+		for pid in _sieges_of(view, faction_id):
+			var p := view.find_province(pid)
+			var mine := SiegeRules.besiegers(view, pid).filter(func(a): return a.owner == faction_id)
+			var now := SiegeRules.siege_damage(SiegeRules.troops(mine), SiegeRules.engines_of(mine))
+			var more := SiegeRules.siege_damage(SiegeRules.troops(mine), SiegeRules.engines_of(mine) + 1)
+			var n_now := SiegeRules.turns_to_breach(p.walls, int(now.total))
+			var n_more := SiegeRules.turns_to_breach(p.walls, int(more.total))
+			if int(more.total) > int(now.total):
+				out.text += " Brought to %s, it would raise the siege damage there from %d to %d: the walls would drop to 0 in %s instead of %s." % [
+					p.name, int(now.total), int(more.total), _count(n_more, "turn"), _count(n_now, "turn")]
+			else:
+				out.text += " Brought to %s, it would change nothing there: your %d troops there work at most %d engines, and at most %d count." % [
+					p.name, SiegeRules.troops(mine), SiegeRules.troops(mine) / int(FortData.SIEGE.troops_per_engine), int(FortData.SIEGE.engines_max)]
+		return out
+	if joins != null:
+		var verb := "lead" if ut.is_commander else "join"
+		out.text = "%s: they %s %s." % [head, verb, TurnReportText.army_title(view, joins, false)]
+	else:
+		out.text = "%s: they form a new army there." % head
+	return out
+
+
+## The forts `faction_id` besieges now, in id order.
+static func _sieges_of(state: GameState, faction_id: String) -> Array:
+	var out := []
+	for p in TurnResolver._sorted_provinces(state):
+		if p.owner != faction_id and SiegeRules.is_besieged(state, p.id) and SiegeRules.besieging_faction(state, p.id) == faction_id:
+			out.append(p.id)
+	return out
+
+
+static func _faction_name(state: GameState, fid: String) -> String:
+	var f := state.find_faction(fid)
+	return f.faction_name if f else ""
 
 
 static func _row(key: String, label: String, before: String, after: String, codex: String, breakdown: Dictionary,

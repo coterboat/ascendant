@@ -1210,9 +1210,10 @@ static func province_income_parts(state: GameState, province_id: String, ruler_a
 				mods.append({"key": ROYAL_COURT, "name": ability_name(f.ruler_type), "value": court,
 					"note": "%s is here, ability rank %d" % [current_name(state, fid), ability_rank(f.kept_power)]})
 		var fort_income := AscensionRules.mandate_value(state, fid, "fort_income", 0)  # M4-2: Forge Tithe
-		if fort_income > 0 and p.has_fort:
+		if fort_income > 0 and forge_tithe_counts(state, p):
 			mods.append({"key": FORGE_TITHE, "name": mandate_name(FORGE_TITHE), "value": fort_income,
-				"note": "mandate: every province with a fort you own earns %d more" % fort_income})
+				"note": ("mandate: every keep or citadel you own earns %d more" if state.sieges
+					else "mandate: every province with a fort you own earns %d more") % fort_income})
 	var total := p.income
 	for m in mods:
 		total += int(m.value)
@@ -1225,7 +1226,26 @@ static func province_income_parts(state: GameState, province_id: String, ruler_a
 		mods.append({"key": "income_floor", "name": "Never below 0", "value": -total,
 			"note": "a province never earns less than nothing"})
 		total = 0
+	# M3c (§3.3, §12): a cut-off province pays its owner nothing. The part is minus everything above, so the lines
+	# still add up to the total; its base income goes to the besiegers (TurnResolver.income_of).
+	if state.sieges and not fid.is_empty() and total > 0 and SiegeRules.is_cut_off(state, p.id):
+		var cut := SiegeRules.cut_off_info(state, p.id)
+		mods.append({"key": CUT_OFF, "name": "Cut off", "value": -total,
+			"note": "besieged since turn %d; its income goes to the %s" % [int(cut.since), _faction_name(state, String(cut.besieger))]})
+		total = 0
 	return {"owner": fid, "base": p.income, "mods": mods, "total": total}
+
+
+## The key of a cut-off province's income part (M3c).
+const CUT_OFF := "cut_off"
+
+
+## Whether Forge Tithe pays for `p` (M4-2): every province with a fort; in a game with sieges (M3c, §7) only a
+## keep or a citadel, so a 30-gold palisade doesn't pay for itself.
+static func forge_tithe_counts(state: GameState, p: Province) -> bool:
+	if state.sieges:
+		return p.fort_level >= 2
+	return p.has_fort
 
 
 # Warband Muster -----------------------------------------------------------------------------------
