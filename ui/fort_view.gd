@@ -259,8 +259,35 @@ static func report_extra(e: Dictionary, row_text: String) -> String:
 	return ""
 
 
-## `row_text` with report_extra put back: the fort clause of a recruit after "at <place>", a capture's at the end.
+## The battle line of an open or breach battle at a fort says where the armies met instead of TurnReportText's
+## "where both arrived at the same time" (§4.3, §4.5): "through the breach", "outside the walls, as the garrison
+## sallied", "outside the walls, as a relief arrived". "" for any other battle.
+static func siege_battle_where(e: Dictionary) -> String:
+	var siege = e.get("numbers", {}).get("siege", {})
+	if not (siege is Dictionary) or (siege as Dictionary).is_empty() or String(e.get("type", "")) != "battle":
+		return ""
+	match String(siege.get("kind", "")):
+		"breach":
+			return "through the breach"
+		"open":
+			match String(siege.get("why", "")):
+				"sally", "gate":
+					return "outside the walls, as the garrison sallied"
+				"relief":
+					return "outside the walls, as a relief arrived"
+				"relief_sally":
+					return "outside the walls, as a relief arrived and the garrison sallied to join it"
+			return "outside the walls"
+	return ""
+
+
+## `row_text` with report_extra put back: the fort clause of a recruit after "at <place>", a capture's at the end,
+## and a battle at a fort that says where the armies met (siege_battle_where).
 static func with_extra(e: Dictionary, row_text: String) -> String:
+	var where := siege_battle_where(e)
+	if not where.is_empty():
+		for phrase in [", where both arrived at the same time,", ", where all of them arrived at the same time,"]:
+			row_text = row_text.replace(phrase, ", %s," % where)
 	var extra := report_extra(e, row_text)
 	if extra.is_empty():
 		return row_text

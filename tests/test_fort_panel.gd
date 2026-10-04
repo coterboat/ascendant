@@ -683,6 +683,14 @@ func test_battle_viewer_chips_for_storm_open_and_breach() -> void:
 	assert_eq(String(sally.text), "Outside the walls: nobody holds the ground; the garrison's fighters have +%d cover" % FortData.COVER_DEFENSE)
 	var relief := FortView.siege_chip({"kind": "open", "why": "relief", "walls": 4, "walls_max": 6, "walls_defense": 0, "cover_defense": 0})
 	assert_eq(String(relief.text), "Outside the walls: nobody holds the ground", "no cover line in a relief-only battle")
+	# The report line's "where they met" for each kind of battle at a fort.
+	var where := {"sally": "outside the walls, as the garrison sallied", "relief": "outside the walls, as a relief arrived",
+		"relief_sally": "outside the walls, as a relief arrived and the garrison sallied to join it", "rivals": "outside the walls"}
+	for why in where:
+		assert_eq(FortView.siege_battle_where(_siege_battle("open", why)), where[why], why)
+	assert_eq(FortView.siege_battle_where(_siege_battle("storm", "storm")), "", "a storm keeps its held / attacked line")
+	assert_eq(FortView.with_extra(_siege_battle("open", "sally"), "In Stonegate, where both arrived at the same time, X beat Y."),
+		"In Stonegate, outside the walls, as the garrison sallied, X beat Y.")
 	var breach := FortView.siege_chip({"kind": "breach", "why": "breach", "walls": 0, "walls_max": 6, "walls_defense": 0, "cover_defense": FortData.COVER_DEFENSE})
 	assert_eq(String(breach.text), "Through the breach: no walls, and nobody gets the hills")
 	# In the viewer, the storm chip replaces the old fort line. A real battle's report, with the siege block S-2
@@ -779,6 +787,14 @@ func test_a_real_breach_battle_reads_as_one() -> void:
 	var chip := viewer.find_children("SiegeChip", "", true, false)
 	assert_eq((chip[0] as Label).text, "Through the breach: no walls, and nobody gets the hills")
 	viewer.free()
+	# The turn report's line says where they met, not that they "arrived at the same time".
+	var panel := TurnReportPanel.new()
+	panel.show_report_data({"turn": 2, "header": "Turn 2", "events": result.events}, CROWN, false, result.new_state)
+	var rows: Array = panel.event_rows().map(func(b): return b.text).filter(func(t): return t.begins_with("In Blackwood"))
+	assert_eq(rows.size(), 1)
+	assert_true(rows[0].begins_with("In Blackwood, through the breach, "), rows[0])
+	assert_false(rows[0].contains("arrived at the same time"), rows[0])
+	panel.free()
 
 
 # --- the victory screen --------------------------------------------------------------------------------
