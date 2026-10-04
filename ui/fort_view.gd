@@ -7,11 +7,11 @@ class_name FortView
 ##
 ##   status(state, pid) / turn_of_siege_breakdown, troops_breakdown, breach_breakdown, staying_breakdown
 ##   needs_you(state, viewer, report_turn)   the turn report's "needs you" lines (§9.4)
-##   report_extra(event, row_text)           a fort clause the report's rewritten line dropped (§9.4)
 ##   siege_chip(siege)                       the battle viewer's and Watch's chip from a battle's `siege` block (§9.7)
-##   siege_odds(kind, ...) / odds_text(odds) THE S-2 SEAM: storm, sally and relief odds (§9.2), {} until S-2
+##   siege_odds(kind, ...) / odds_text(odds) the storm, sally, relief and breach odds (S-2's Forecast, §9.2)
 
-## Turn words follow §9.2: the relative turn and the absolute one, and a breach turn carries its condition.
+## Turn words follow §9.2: the relative turn and the absolute one, and a breach turn carries its condition. The
+## relative words are the reader's (TurnReportText.reader_turn / reader_end): the turn being played is "this turn".
 const IF_THEY_STAY := "if the besiegers stay as they are"
 const IF_YOU_STAY := "if you stay as you are"
 
@@ -195,11 +195,12 @@ static func risk_text(state: GameState, province_id: String, inside: Array, sall
 # --- the turn report ---------------------------------------------------------------------------------
 
 ## The "needs you" lines for `viewer` at the start of its turn, after the report of `report_turn` (§9.4):
-## [{"text", "province", "codex"}], in province id order.
-##   "Your fort at Stonegate is besieged: its walls reach 0 in 2 turns (end of turn 9), if the besiegers stay
-##    as they are. Sally, send relief, or hold."
+## [{"text", "province", "codex"}], in province id order. Turn words are the reader's (TurnReportText.reader_end),
+## the turn the top bar shows counting as "this turn":
+##   "Your fort at Stonegate is besieged: its walls reach 0 at the end of next turn (9), if the besiegers stay as
+##    they are. Sally, send relief, or hold."
 ##   "Your armies besiege Crownkeep: storm, wait for the walls to reach 0 in 3 turns (end of turn 11), or leave."
-##   "Stonegate's walls are down. Next turn (9) you fight there in the open, unless you leave."
+##   "Stonegate's walls are down. This turn (9) you fight there in the open, unless you leave."
 static func needs_you(state: GameState, viewer: String, report_turn: int) -> Array:
 	var out := []
 	if state == null or not state.sieges or viewer.is_empty():
@@ -216,12 +217,12 @@ static func needs_you(state: GameState, viewer: String, report_turn: int) -> Arr
 			continue
 		if p.walls <= 0:
 			var odds := odds_text(siege_odds("breach", state, viewer, p.id, []))
-			out.append({"text": "%s's walls are down. Next turn (%d) you fight there in the open, unless you leave%s." % [p.name, turn,
-				": odds %s" % odds if not odds.is_empty() else ""], "province": p.id, "codex": "breach"})
+			out.append({"text": "%s's walls are down. %s you fight there in the open, unless you leave%s." % [p.name,
+				RulerRules._cap(TurnReportText.reader_turn(turn, turn)), ": odds %s" % odds if not odds.is_empty() else ""], "province": p.id, "codex": "breach"})
 			continue
 		var dmg := SiegeRules.siege_damage_at(state, p.id)
 		var end := SiegeRules.breach_turn(p.walls, int(dmg.total), turn)
-		var when := _when(end, report_turn)
+		var when := TurnReportText.reader_end(end, turn)
 		if mine:
 			out.append({"text": "Your fort at %s is besieged: its walls reach 0 %s, %s. Sally, send relief, or hold." % [p.name, when, IF_THEY_STAY],
 				"province": p.id, "codex": "siege"})
@@ -229,77 +230,6 @@ static func needs_you(state: GameState, viewer: String, report_turn: int) -> Arr
 			out.append({"text": "Your armies besiege %s: storm, wait for the walls to reach 0 %s, or leave." % [p.name, when],
 				"province": p.id, "codex": "storm"})
 	return out
-
-
-## "in 2 turns (end of turn 9)", or "at the end of next turn (8)", for something at the end of `end_turn`, told
-## after the report of `resolved` (the report's own turn words, SiegeRules.report_when).
-static func _when(end_turn: int, resolved: int) -> String:
-	var n := end_turn - resolved
-	if n <= 1:
-		return "at the end of next turn (%d)" % end_turn
-	return "in %d turns (end of turn %d)" % [n, end_turn]
-
-
-## What the report's line of `e` (TurnReportText's rewrite, `row_text`) left out of the event's own words, to put
-## back (§9.4): a recruit's fort and count, "(keep, 3 of 4 this turn)", and a capture's fort clause, "It came
-## with its keep (walls 2 of 6): ...". "" when nothing is missing.
-static func report_extra(e: Dictionary, row_text: String) -> String:
-	var own := String(e.get("text", ""))
-	match String(e.get("type", "")):
-		"recruited":
-			var m := RegEx.create_from_string("\\(([a-z]+), (\\d+) of (\\d+) this turn\\)").search(own)
-			if m != null and not row_text.contains(m.get_string()):
-				return m.get_string()
-		"captured":
-			var at := own.find("It came with its ")
-			if at >= 0:
-				var clause := own.substr(at)
-				if not row_text.contains(clause):
-					return clause
-	return ""
-
-
-## The battle line of an open or breach battle at a fort says where the armies met instead of TurnReportText's
-## "where both arrived at the same time" (§4.3, §4.5): "through the breach", "outside the walls, as the garrison
-## sallied", "outside the walls, as a relief arrived". "" for any other battle.
-static func siege_battle_where(e: Dictionary) -> String:
-	var siege = e.get("numbers", {}).get("siege", {})
-	if not (siege is Dictionary) or (siege as Dictionary).is_empty() or String(e.get("type", "")) != "battle":
-		return ""
-	match String(siege.get("kind", "")):
-		"breach":
-			return "through the breach"
-		"open":
-			match String(siege.get("why", "")):
-				"sally", "gate":
-					return "outside the walls, as the garrison sallied"
-				"relief":
-					return "outside the walls, as a relief arrived"
-				"relief_sally":
-					return "outside the walls, as a relief arrived and the garrison sallied to join it"
-			return "outside the walls"
-	return ""
-
-
-## `row_text` with report_extra put back: the fort clause of a recruit after "at <place>", a capture's at the end,
-## and a battle at a fort that says where the armies met (siege_battle_where).
-static func with_extra(e: Dictionary, row_text: String) -> String:
-	var where := siege_battle_where(e)
-	if not where.is_empty():
-		for phrase in [", where both arrived at the same time,", ", where all of them arrived at the same time,"]:
-			row_text = row_text.replace(phrase, ", %s," % where)
-	var extra := report_extra(e, row_text)
-	if extra.is_empty():
-		return row_text
-	if String(e.get("type", "")) == "recruited":
-		var provinces: Array = e.get("provinces", [])
-		var own := String(e.get("text", ""))
-		var place_at := own.find(" at ")
-		var place := own.substr(place_at + 4, own.find(" (", place_at) - place_at - 4) if place_at >= 0 else ""
-		if not place.is_empty() and row_text.contains(" at %s " % place):
-			return row_text.replace(" at %s " % place, " at %s %s " % [place, extra])
-		return "%s %s" % [row_text, extra] if not provinces.is_empty() else row_text
-	return "%s %s" % [row_text.strip_edges(), extra]
 
 
 # --- battles at walls (§9.7) ----------------------------------------------------------------------------
