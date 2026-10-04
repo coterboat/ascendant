@@ -37,6 +37,16 @@ class_name AscensionRules
 ##   is empty so AutoBattleResolver._unit_mods, which keys parts by mandate, reads it without error; M4-3
 ##   keys path parts by "key".)
 ## Text: gained_text, done_text, sworn_text, effect_preview, rate_text, closed_reason.
+## Transformations on the map (M4-2, #67; §3.4, §4, §6):
+##   apply_node also changes the roster: rename in place (same id), new_unit_type joins it
+##   transformation(state, fid), people_name, unit_title, base_unit_name, province_rule
+##   opened_mandates, forsworn_by, opening_node        RulerRules.available_mandates / sacrifice_check read these
+##   blood_levy_divisor, arrival_hp, arrival_text      Blood Levy (price_parts has its price part)
+##   capture_gold, raided_text                         Raiding Parties (TurnResolver's capture phase)
+##   has_forest_stride, forest_stride_why              Forest Stride (TurnResolver._check_road_move)
+##   wild_spread_picks, heal_targets, province_rules_step, after_research   the research phase's province
+##                                                     rules and their forecasts (Forecast.province_rules)
+##   transformed_text, wild_spread_text, healed_text, province_rule_sentence, terrain_note
 
 const RESEARCHED := "researched"
 const RESEARCHING := "researching"
@@ -405,11 +415,13 @@ static func research_step(state: GameState, faction_id: String, turn: int) -> Di
 
 
 ## Records `node_id` as researched at the end of `turn` and starts its effects (§3.4): an Oath swears its
-## side (path_branch), which closes the other side; the units already on the map change at once: a part
+## side (path_branch), which closes the other side; a transformation changes the roster (M4-2: the
+## changed unit is renamed in place, keeping its id, so every unit of that type on the map is the changed
+## unit at once, and the new unit joins the roster); the units already on the map change at once: a part
 ## raising maximum hp raises current hp by as much, one lowering it lowers current hp by as much, never
 ## below 1. Does not check legality (research_step does). Returns {"node", "turn", "branch",
-## "units_changed", "hp_change" (per unit, the type's max hp change), "hp_total" (current hp gained or
-## lost in all)}.
+## "units_changed", "hp_total" (current hp gained or lost in all), "renamed" ({type id: {"from", "to"}}),
+## "new_unit" (the type id added to the roster, or "")}.
 static func apply_node(state: GameState, faction_id: String, node_id: String, turn: int) -> Dictionary:
 	var f := state.find_faction(faction_id)
 	var before := []
@@ -421,6 +433,7 @@ static func apply_node(state: GameState, faction_id: String, node_id: String, tu
 	f.researched.append({"node": node_id, "turn": turn})
 	if is_oath(node_id):
 		f.path_branch = String(node_data(node_id).branch)
+	var roster := _apply_roster(f, node_id)
 	var changed := 0
 	var total := 0
 	for pair in before:
@@ -432,7 +445,31 @@ static func apply_node(state: GameState, faction_id: String, node_id: String, tu
 		u.current_hp = maxi(1, old + delta)
 		changed += 1
 		total += u.current_hp - old
-	return {"node": node_id, "turn": turn, "branch": f.path_branch, "units_changed": changed, "hp_total": total}
+	return {"node": node_id, "turn": turn, "branch": f.path_branch, "units_changed": changed, "hp_total": total,
+		"renamed": roster.renamed, "new_unit": roster.new_unit}
+
+
+## The roster change of a transformation (§3.4, §4; M4-2): each `rename` renames that roster entry in place
+## (its id, stats and trait stay; the stat parts come through unit_parts), and `new_unit` joins the roster
+## (PathData.NEW_UNITS, recruitable from the next turn). Returns {"renamed": {type id: {"from", "to"}},
+## "new_unit": type id or ""}. Nothing changes for a node without these effects.
+static func _apply_roster(f: Faction, node_id: String) -> Dictionary:
+	var fx := node_effects(node_id)
+	var renamed := {}
+	var names: Dictionary = fx.get("rename", {})
+	for type_id in names:
+		for ut in f.unit_types:
+			if ut.id == String(type_id):
+				renamed[ut.id] = {"from": ut.name, "to": String(names[type_id])}
+				ut.name = String(names[type_id])
+	var added := ""
+	var new_id := String(fx.get("new_unit", ""))
+	if not new_id.is_empty() and TurnResolver.recruitable_type(f, new_id) == null:
+		var ut := new_unit_type(new_id)
+		if ut != null:
+			f.unit_types.append(ut)
+			added = new_id
+	return {"renamed": renamed, "new_unit": added}
 
 
 ## A copy of `state` with `ids` researched by `faction_id`, in order, as the research phase would apply
@@ -473,8 +510,9 @@ static func unit_hp_bonus(state: GameState, faction_id: String, ut: UnitType) ->
 
 
 ## The path parts on the recruit price of `ut`: a `unit` effect's "cost" (Remount Stables -4 on Knights,
-## Living Iron +4). Regular units only. RulerRules.price_mods adds these, so every price on screen and
-## the recruitment phase include them.
+## Living Iron +4) and Blood Levy (M4-2, §4.5: cost / 4 of the type's base cost, rounded down, comes off,
+## as its own part like Muster Grounds). Regular units only. RulerRules.price_mods adds these, so every
+## price on screen and the recruitment phase include them.
 static func price_parts(state: GameState, faction_id: String, ut: UnitType) -> Array:
 	var out := []
 	if ut == null or ut.is_commander or ut.is_ruler or not has_paths(state):
@@ -483,6 +521,10 @@ static func price_parts(state: GameState, faction_id: String, ut: UnitType) -> A
 		var bonus: Dictionary = node_effects(nid).get("unit", {}).get(ut.id, {})
 		if bonus.has("cost"):
 			out.append(_part(nid, int(bonus.cost), "path: %s, %s" % [node_name(nid), kind_name(nid)]))
+		var levy := int(node_effects(nid).get("blood_levy", 0))
+		if levy > 0:
+			out.append(_part(nid, -floori(float(ut.cost) / levy), "%s: %s off every regular recruit's price (%d), rounded down" % [
+				_part_name(nid), _fraction_word(levy), ut.cost]))
 	return out
 
 
@@ -672,6 +714,519 @@ static func _effects_now(state: GameState, faction_id: String, node_id: String, 
 	return "; ".join(clauses)
 
 
+# --- transformations on the map (M4-2, #67; design/M4_ASCENSION.md §3.4, §4, §6) -------------------
+# The roster change (apply_node), Blood Levy, Raiding Parties, Forest Stride, the province rules (the Wild
+# Spreads, Hallowed Land, the Forges) and the mandates a transformation opens and forswears. Dread Lands and
+# the new traits work in battle (AutoBattleResolver, M4-3). TurnResolver, Forecast, RulerRules and the
+# screens read these, so a forecast and its result come from the same function.
+
+const FOREST := "forest"
+const HALLOWED_LAND := "hallowed_land"
+const FORGES := "forges"
+const WILD_SPREADS := "wild_spreads"
+const DREAD_LANDS := "dread_lands"
+## The new units' trait sentences until AutoBattleResolver.TRAIT_TEXT has them (M4-3 gives the traits their
+## effects in battle and owns that text; a new UnitType takes TRAIT_TEXT's sentence first).
+const NEW_TRAIT_TEXT := {
+	"Wings": "Can attack any enemy fighter, whatever its rank, and attacks a standing enemy commander first.",
+	"Iron Hide": "Every hit on it deals 1 less damage, but always at least 1.",
+	"Rooted": "+4 defense in a province battle in a forest province, whoever holds it. Not in border battles.",
+	"Lifedrinker": "At the end of each round in which it still stands, it heals half the damage its hits dealt that round, rounded up.",
+}
+const TIMES_WORDS := {1: "once", 2: "twice", 3: "three times"}
+
+
+## A new unit's UnitType (§4.1-4.4), from PathData.NEW_UNITS, or null.
+static func new_unit_type(unit_id: String) -> UnitType:
+	var d: Dictionary = PathData.NEW_UNITS.get(unit_id, {})
+	if d.is_empty():
+		return null
+	var ut := UnitType.new()
+	ut.id = unit_id
+	ut.name = String(d.name)
+	ut.hp = int(d.hp)
+	ut.attack = int(d.attack)
+	ut.defense = int(d.defense)
+	ut.morale = int(d.morale)
+	ut.cost = int(d.cost)
+	ut.trait_id = String(d.trait)
+	ut.trait_description = String(AutoBattleResolver.TRAIT_TEXT.get(ut.trait_id, NEW_TRAIT_TEXT.get(ut.trait_id, "")))
+	return ut
+
+
+## The roster name a unit type had before any transformation ("Spearmen" for "spearmen"), from the faction
+## data; the new units' own names; or the id.
+static func base_unit_name(faction_id: String, type_id: String) -> String:
+	for f in FactionData.FACTIONS:
+		if f.id != faction_id:
+			continue
+		for u in f.unit_types:
+			if u.id == type_id:
+				return String(u.name)
+		if f.commander.id == type_id:
+			return String(f.commander.name)
+	return String(PathData.NEW_UNITS.get(type_id, {}).get("name", type_id))
+
+
+## The faction's researched transformation node, or "".
+static func transformation(state: GameState, faction_id: String) -> String:
+	for nid in researched(state, faction_id):
+		if node_kind(nid) == PathData.TRANSFORMATION:
+			return nid
+	return ""
+
+
+## The people the faction has become ("Celestial Host"), or "" before its transformation (§9.1).
+static func people_name(state: GameState, faction_id: String) -> String:
+	var nid := transformation(state, faction_id)
+	return branch_name(String(node_data(nid).get("branch", ""))) if not nid.is_empty() else ""
+
+
+## A changed unit's full name for tooltips: "Sunspears (Spearmen of the Celestial Host)"; any other unit's
+## name as it is.
+static func unit_title(state: GameState, faction_id: String, ut: UnitType) -> String:
+	if ut == null:
+		return ""
+	var base := base_unit_name(faction_id, ut.id)
+	if base == ut.name or PathData.NEW_UNITS.has(ut.id):
+		return ut.name
+	return "%s (%s of %s)" % [ut.name, base, branch_ref(branch(state, faction_id))]
+
+
+## The faction's province rule now (§3.2 province_rule): {"id", "value", "node", "name", "codex"} of its
+## researched transformation, or {} before one.
+static func province_rule(state: GameState, faction_id: String) -> Dictionary:
+	for nid in researched(state, faction_id):
+		var r: Dictionary = node_effects(nid).get("province_rule", {})
+		if not r.is_empty():
+			var rid := String(r.get("id", ""))
+			var data: Dictionary = PathData.PROVINCE_RULES.get(rid, {})
+			return {"id": rid, "value": int(r.get("value", 0)), "node": nid, "name": String(data.get("name", rid)),
+				"codex": String(data.get("codex", "transformation"))}
+	return {}
+
+
+## The value of the first mandate field `key` the faction owns (data/mandates.gd), or `fallback`.
+static func mandate_value(state: GameState, faction_id: String, key: String, fallback: int) -> int:
+	for mid in RulerRules.mandates(state, faction_id):
+		var md := RulerRules.mandate_data(mid)
+		if md.has(key):
+			return int(md[key])
+	return fallback
+
+
+# Mandates opened and forsworn (§6) ------------------------------------------------------------------
+
+## The mandates the faction's researched transformation opens for sacrifice ([] before one).
+static func opened_mandates(state: GameState, faction_id: String) -> Array:
+	var out := []
+	for nid in researched(state, faction_id):
+		var mid := String(node_effects(nid).get("opens_mandate", ""))
+		if not mid.is_empty():
+			out.append(mid)
+	return out
+
+
+## The transformation that forswore `mandate_id` for the faction, or "" (§6: it can no longer be bought by
+## sacrifice; a mandate already owned stays).
+static func forsworn_by(state: GameState, faction_id: String, mandate_id: String) -> String:
+	for nid in researched(state, faction_id):
+		if String(node_effects(nid).get("forswears", "")) == mandate_id:
+			return nid
+	return ""
+
+
+## The transformation that opens a path mandate (MandateData.PATH_MANDATES "path"), or "".
+static func opening_node(mandate_id: String) -> String:
+	return String(RulerRules.mandate_data(mandate_id).get("path", ""))
+
+
+# Blood Levy (§4.5) -----------------------------------------------------------------------------------
+
+## Blood Levy's divisor for the faction (4: a quarter), or 0 without it.
+static func blood_levy_divisor(state: GameState, faction_id: String) -> int:
+	for nid in researched(state, faction_id):
+		var n := int(node_effects(nid).get("blood_levy", 0))
+		if n > 0:
+			return n
+	return 0
+
+
+## The hp a recruit of `ut` arrives with when its maximum is `max_hp`: the maximum, or under Blood Levy
+## (regular units only) max_hp - floor(max_hp / 4), never below 1. The recruitment phase and the recruit
+## forecast both call this.
+static func arrival_hp(state: GameState, faction_id: String, ut: UnitType, max_hp: int) -> int:
+	var n := blood_levy_divisor(state, faction_id)
+	if n <= 0 or ut == null or ut.is_commander or ut.is_ruler:
+		return max_hp
+	return maxi(1, max_hp - floori(float(max_hp) / n))
+
+
+## "They arrive wounded, 11 of 14 hit points (Blood Levy: a quarter missing, rounded down), so Berserk is
+## already on." for a recruit arriving below its maximum; "" otherwise.
+static func arrival_text(ut: UnitType, hp: int, max_hp: int, divisor: int) -> String:
+	if ut == null or hp >= max_hp:
+		return ""
+	var text := "They arrive wounded, %d of %d hit points (Blood Levy: %s missing, rounded down)" % [hp, max_hp, _fraction_word(divisor)]
+	if ut.trait_id == "Berserk":
+		text += ", so Berserk is already on"
+	return text + "."
+
+
+# Raiding Parties (§3.6) ------------------------------------------------------------------------------
+
+## What the faction's armies take when they capture `province` (not by Sworn Vassals): {"gold" (n x its
+## base income), "times", "node"}, or {"gold": 0} without Raiding Parties.
+static func capture_gold(state: GameState, faction_id: String, province: Province) -> Dictionary:
+	if province == null:
+		return {"gold": 0, "times": 0, "node": ""}
+	for nid in researched(state, faction_id):
+		var n := int(node_effects(nid).get("capture_gold", 0))
+		if n > 0:
+			return {"gold": n * province.income, "times": n, "node": nid}
+	return {"gold": 0, "times": 0, "node": ""}
+
+
+## "twice its income".
+static func times_text(times: int) -> String:
+	return "%s its income" % String(TIMES_WORDS.get(times, "%d times" % times))
+
+
+## The raided sentence (§9.5): "Raiding Parties: the Thornmane Clans took 18 gold from Rivermarch (twice
+## its income). Gold: 31 → 49."
+static func raided_text(state: GameState, faction_id: String, province: Province, raid: Dictionary, before: int, after: int) -> String:
+	return "%s: %s took %d gold from %s (%s). Gold: %d → %d." % [node_name(String(raid.node)), _the_faction(state, faction_id),
+		int(raid.gold), province.name, times_text(int(raid.times)), before, after]
+
+
+# Forest Stride (§4.8) --------------------------------------------------------------------------------
+
+static func has_forest_stride(state: GameState, faction_id: String) -> bool:
+	for nid in researched(state, faction_id):
+		if bool(node_effects(nid).get("forest_stride", false)):
+			return true
+	return false
+
+
+## True when the faction's path has Forest Stride at all (to mention it in a rejection).
+static func path_has_forest_stride(faction_id: String) -> bool:
+	for nid in node_ids(faction_id):
+		if bool(node_effects(nid).get("forest_stride", false)):
+			return true
+	return false
+
+
+## Why Forest Stride doesn't allow a road move through `via` into `dest` for the faction ("" when it does):
+## both forest, and `via` owned at the start of the turn (`state`). Adjacency is TurnResolver's check.
+static func forest_stride_why(state: GameState, faction_id: String, via: Province, dest: Province) -> String:
+	if not has_forest_stride(state, faction_id):
+		return "Only a faction with Forest Stride can move through a forest into another forest."
+	if via.terrain != FOREST:
+		return "Forest Stride runs only through a forest you owned at the start of the turn, and %s is %s." % [via.name, via.terrain]
+	if via.owner != faction_id:
+		return "Forest Stride runs only through a forest you owned at the start of the turn, and %s is not yours." % via.name
+	if dest.terrain != FOREST:
+		return "Forest Stride ends only in another forest, and %s is %s." % [dest.name, dest.terrain]
+	return ""
+
+
+# The Wild Spreads (§4.6) -----------------------------------------------------------------------------
+
+## How many provinces the Wild Spreads grows for the faction this turn: the rule's value (1), or Deep Roots'
+## "wild_spreads" (2); 0 without the Thorn Wild.
+static func wild_spread_count(state: GameState, faction_id: String) -> int:
+	var rule := province_rule(state, faction_id)
+	if String(rule.get("id", "")) != WILD_SPREADS:
+		return 0
+	return maxi(int(rule.value), mandate_value(state, faction_id, "wild_spreads", 0))
+
+
+## The provinces the Wild Spreads turns to forest, in order, as `state` stands, without changing it (§4.6):
+## each pick is, among the provinces the faction owns that are not forest, not a capital and next to a
+## forest it owns, the one with the highest base income, ties to the first by id; the next pick counts the
+## first as forest (Deep Roots). `count` < 0 uses wild_spread_count. Returns [{"province", "name",
+## "from_terrain", "grown_from": [the forest ids it owns next to it, sorted]}].
+static func wild_spread_picks(state: GameState, faction_id: String, count: int = -1) -> Array:
+	if count < 0:
+		count = wild_spread_count(state, faction_id)
+	var out := []
+	if count <= 0:
+		return out
+	var forest := {}
+	for p in state.provinces:
+		if p.terrain == FOREST:
+			forest[p.id] = true
+	var provinces: Array = state.provinces.duplicate()
+	provinces.sort_custom(func(a, b): return a.id < b.id)
+	for i in count:
+		var best: Province = null
+		var from := []
+		for p in provinces:
+			if p.owner != faction_id or forest.has(p.id) or p.is_capital:
+				continue
+			var near := []
+			for n in p.neighbors:
+				var q := state.find_province(String(n))
+				if q != null and q.owner == faction_id and forest.has(q.id):
+					near.append(q.id)
+			if near.is_empty():
+				continue
+			if best == null or p.income > best.income:  # id order, so a tie keeps the first
+				best = p
+				near.sort()
+				from = near
+		if best == null:
+			break
+		forest[best.id] = true
+		out.append({"province": best.id, "name": best.name, "from_terrain": best.terrain, "grown_from": from})
+	return out
+
+
+## What a province's terrain says about the Wild (tooltips, §9.2): "grown by the Wild Spreads; it was
+## hills" for a forest that was not forest on the map at the start, "" otherwise.
+static func terrain_note(province: Province) -> String:
+	if province == null or province.terrain != FOREST:
+		return ""
+	for p in MapData.PROVINCES:
+		if p.id == province.id and String(p.terrain) != FOREST:
+			return "grown by the Wild Spreads; it was %s" % String(p.terrain)
+	return ""
+
+
+## The wild_spread sentence (§4.6): "The Thorn Wild spread into Bloodfen. It is forest now: whoever holds it
+## defends with +2 defense (instead of nothing on plains), and Knights charge there for +3 instead of +4."
+static func wild_spread_text(state: GameState, faction_id: String, pick: Dictionary) -> String:
+	return "%s spread into %s. It is forest now, for the rest of the game: %s" % [_cap(branch_ref(branch(state, faction_id))),
+		String(pick.name), forest_change_text(String(pick.from_terrain))]
+
+
+## What turning from `from_terrain` to forest changes in battle, from AutoBattleResolver's numbers.
+static func forest_change_text(from_terrain: String) -> String:
+	var forest: Dictionary = AutoBattleResolver.TERRAIN.get(FOREST, {})
+	var was: Dictionary = AutoBattleResolver.TERRAIN.get(from_terrain, {})
+	var was_parts := []
+	if int(was.get("defense", 0)) > 0:
+		was_parts.append("+%d defense" % int(was.defense))
+	if int(was.get("attack", 0)) > 0:
+		was_parts.append("+%d attack" % int(was.attack))
+	var was_text := "nothing on %s" % from_terrain if was_parts.is_empty() else "the %s' %s" % [from_terrain, " and ".join(was_parts)]
+	return "whoever holds it defends with +%d defense (instead of %s), and Knights charge there for +%d instead of +%d." % [
+		int(forest.get("defense", 0)), was_text, AutoBattleResolver.CHARGE_DAMAGE_FOREST, AutoBattleResolver.CHARGE_DAMAGE]
+
+
+# Hallowed Land and the Forges (§4.7) ----------------------------------------------------------------
+
+## Who Hallowed Land or the Forges heals in this turn's research phase, as `state` stands, without changing
+## it: each wounded unit and commander of the faction in a province it owns (the Forges: with a fort).
+## Rulers heal on their own and are skipped. Returns {} without either rule, otherwise {"rule", "name",
+## "codex", "amount" (hp each; 0 means to full), "healed": [{"army", "province", "unit" (type id), "name",
+## "commander", "before", "after", "max"}], "fighters", "total", "provinces" ([ids, sorted]), "armies"}.
+static func heal_targets(state: GameState, faction_id: String) -> Dictionary:
+	return _heal_plan(state, faction_id).info
+
+
+static func _heal_plan(state: GameState, faction_id: String) -> Dictionary:
+	var rule := province_rule(state, faction_id)
+	var rid := String(rule.get("id", ""))
+	if rid != HALLOWED_LAND and rid != FORGES:
+		return {"info": {}, "units": []}
+	var amount := 0
+	if rid == HALLOWED_LAND:
+		amount = int(rule.value) * maxi(1, mandate_value(state, faction_id, "heal_multiplier", 1))
+	var healed := []
+	var units := []
+	var provinces := []
+	var armies := []
+	var total := 0
+	var sorted: Array = state.armies.duplicate()
+	sorted.sort_custom(func(a, b): return a.id < b.id)
+	for a in sorted:
+		if a.owner != faction_id:
+			continue
+		var p := state.find_province(a.location)
+		if p == null or p.owner != faction_id or (rid == FORGES and not p.has_fort):
+			continue
+		var fighters: Array = a.units.duplicate()
+		if a.commander != null:
+			fighters.append(a.commander)
+		for u in fighters:
+			var mx := RulerRules.unit_max_hp(state, u)
+			if u.current_hp >= mx:
+				continue
+			var after := mx if amount <= 0 else mini(mx, u.current_hp + amount)
+			healed.append({"army": a.id, "province": p.id, "unit": u.type.id, "name": u.type.name,
+				"commander": u.type.is_commander, "before": u.current_hp, "after": after, "max": mx})
+			units.append(u)
+			total += after - u.current_hp
+			if not provinces.has(p.id):
+				provinces.append(p.id)
+			if not armies.has(a.id):
+				armies.append(a.id)
+	provinces.sort()
+	return {"info": {"rule": rid, "name": String(rule.name), "codex": String(rule.codex), "amount": amount,
+		"healed": healed, "fighters": healed.size(), "total": total, "provinces": provinces, "armies": armies}, "units": units}
+
+
+## The path_healed sentence (§9.5): "Hallowed Land: 5 wounded fighters of the Aurel Crown healed 13 hit points
+## at Highcrag and Thornvale." / "The Forges: 3 wounded fighters of the Aurel Crown healed to full at Stonegate
+## (+17 hit points)."
+static func healed_text(state: GameState, faction_id: String, info: Dictionary) -> String:
+	var names := []
+	for pid in info.get("provinces", []):
+		var p := state.find_province(String(pid))
+		names.append(p.name if p else String(pid))
+	var who := "%s of %s" % [_count(int(info.fighters), "wounded fighter", "wounded fighters"), _the_faction(state, faction_id)]
+	if int(info.amount) <= 0:
+		return "%s: %s healed to full at %s (+%d hit points)." % [_cap(String(info.name)), who, _and_list(names), int(info.total)]
+	return "%s: %s healed %d hit points at %s (up to %d each)." % [_cap(String(info.name)), who, int(info.total), _and_list(names), int(info.amount)]
+
+
+# The research phase's province rules (§2.2 step 4, §7) -----------------------------------------------
+
+## One faction's transformation province rules in its research phase, in place, after research_step: the
+## Wild Spreads (each pick becomes forest for good), then Hallowed Land or the Forges. Returns {"spread":
+## [wild_spread_picks], "healed": heal_targets' info, or {}}.
+static func province_rules_step(state: GameState, faction_id: String) -> Dictionary:
+	if not has_paths(state):
+		return {"spread": [], "healed": {}}
+	var spread := wild_spread_picks(state, faction_id)
+	for pick in spread:
+		state.find_province(String(pick.province)).terrain = FOREST
+	var plan := _heal_plan(state, faction_id)
+	var info: Dictionary = plan.info
+	if not info.is_empty():
+		for i in plan.units.size():
+			plan.units[i].current_hp = int(info.healed[i].after)
+	return {"spread": spread, "healed": info}
+
+
+## The state as it will stand after `faction_id`'s research step this turn, for forecasts of the province
+## rules (§3.4: a transformation that completes this turn works in this turn's research phase): `state`
+## itself unless the queued ResearchOrder in `orders` (or else the current target) is a transformation
+## that this turn's research pays for, then a copy with the step applied. The board is read as it stands.
+## Only for the faction's own screens: it reads its private target.
+static func after_research(state: GameState, faction_id: String, orders: Array = []) -> GameState:
+	var f: Faction = state.find_faction(faction_id) if has_paths(state) else null
+	if f == null:
+		return state
+	var target := f.research_target
+	var queued := queued_research(orders)
+	if queued != null and check_research(state, faction_id, queued.node_id).is_empty():
+		target = queued.node_id
+	if target.is_empty() or node_kind(target) != PathData.TRANSFORMATION or not check_research(state, faction_id, target).is_empty():
+		return state
+	if f.research_points + int(research_rate(state, faction_id).rate) < node_cost(target):
+		return state
+	var copy := state.deep_copy([])
+	if copy == null:
+		return state
+	set_target(copy, faction_id, target)
+	research_step(copy, faction_id, copy.current_turn + 1)
+	return copy
+
+
+# The transformed event (§9.5) ------------------------------------------------------------------------
+
+## The transformed sentence for a transformation `faction_id` just completed in `state` (the state after
+## it). `own` speaks to the faction ("Your people have become the Celestial Host. Your Spearmen are
+## Sunspears now ..."), otherwise to the rival ("The Aurel Crown has become the Celestial Host. Their ...").
+## `turn` is the turn it completed at the end of; the new unit can be recruited from the next.
+static func transformed_text(state: GameState, faction_id: String, node_id: String, turn: int, own: bool) -> String:
+	var fx := node_effects(node_id)
+	var f := state.find_faction(faction_id)
+	var side := String(node_data(node_id).get("branch", ""))
+	var their := "your" if own else "their"
+	var they := "you" if own else "they"
+	var sentences := []
+	sentences.append("Your people have become %s." % branch_ref(side) if own
+		else "%s has become %s." % [_cap(_the_faction(state, faction_id)), branch_ref(side)])
+	var renames: Dictionary = fx.get("rename", {})
+	var units: Dictionary = fx.get("unit", {})
+	for type_id in renames:
+		var us := RulerRules.unit_stats(state, faction_id, String(type_id))
+		var bits := []
+		for stat in ["hp", "attack", "defense", "morale", "cost"]:
+			if units.get(type_id, {}).has(stat) and us.get("ok", false):
+				bits.append(_stat_bit(stat, int(us[stat])))
+		sentences.append("%s %s are %s now%s." % [_cap(their), base_unit_name(faction_id, String(type_id)), String(renames[type_id]),
+			" (%s)" % ", ".join(bits) if not bits.is_empty() else ""])
+	var new_id := String(fx.get("new_unit", ""))
+	if not new_id.is_empty() and f != null:
+		var us := RulerRules.unit_stats(state, faction_id, new_id)
+		if us.get("ok", false):
+			var cap := state.find_province(f.capital)
+			var ut := TurnResolver.recruitable_type(f, new_id)
+			sentences.append("%s can recruit %s (%s, %s, %s, %d gold, %s) at %s from turn %d." % [_cap(they), String(us.name),
+				_stat_bit("hp", int(us.hp)), _stat_bit("attack", int(us.attack)), _stat_bit("defense", int(us.defense)), int(us.cost),
+				ut.trait_id, cap.name if cap else "the capital", turn + 1])
+	var rule := province_rule(state, faction_id)
+	if not rule.is_empty():
+		sentences.append(province_rule_sentence(state, faction_id, own))
+	var opens := String(fx.get("opens_mandate", ""))
+	var forswears := String(fx.get("forswears", ""))
+	if not opens.is_empty() or not forswears.is_empty():
+		var bits := []
+		if not opens.is_empty():
+			bits.append("%s can now be bought by sacrifice" % RulerRules.mandate_name(opens))
+		if not forswears.is_empty():
+			var kept := " (%s keep the one %s have)" % [they, they] if RulerRules.has_mandate(state, faction_id, forswears) else ""
+			bits.append("%s can't%s" % [RulerRules.mandate_name(forswears), kept])
+		sentences.append("%s." % "; ".join(bits))
+	return " ".join(sentences)
+
+
+## The province rule in one sentence, with the faction's numbers now: "Your wounded heal 3 hit points each
+## turn in every province you own (Hallowed Land)." `own` false speaks of "their". "" without one.
+static func province_rule_sentence(state: GameState, faction_id: String, own: bool = true) -> String:
+	var rule := province_rule(state, faction_id)
+	var their := "Your" if own else "Their"
+	var you := "you" if own else "they"
+	match String(rule.get("id", "")):
+		HALLOWED_LAND:
+			var amount := int(heal_amount(state, faction_id))
+			return "%s wounded heal %d hit points each turn in every province %s own (Hallowed Land)." % [their, amount, you]
+		FORGES:
+			return "%s wounded heal to full each turn in every province with a fort %s own (the Forges)." % [their, you]
+		WILD_SPREADS:
+			var n := wild_spread_count(state, faction_id)
+			return "Each turn %s next to %s forests turns to forest for good (the Wild Spreads)." % [
+				"one province %s own" % you if n == 1 else "%d provinces %s own" % [n, you], their.to_lower()]
+		DREAD_LANDS:
+			return "Invaders have %d less morale in province battles on %s land (Dread Lands)." % [int(rule.value), their.to_lower()]
+	return ""
+
+
+## Hallowed Land's heal per fighter for the faction now (Hymn of Dawn doubles it), or 0.
+static func heal_amount(state: GameState, faction_id: String) -> int:
+	var rule := province_rule(state, faction_id)
+	if String(rule.get("id", "")) != HALLOWED_LAND:
+		return 0
+	return int(rule.value) * maxi(1, mandate_value(state, faction_id, "heal_multiplier", 1))
+
+
+static func _stat_bit(stat: String, value: int) -> String:
+	match stat:
+		"hp":
+			return "%d hp" % value
+		"cost":
+			return "%d gold" % value
+	return "%s %d" % [stat, value]
+
+
+## "a quarter", "a third", "a fifth" for a divisor.
+static func _fraction_word(divisor: int) -> String:
+	match divisor:
+		2:
+			return "half"
+		3:
+			return "a third"
+		4:
+			return "a quarter"
+		5:
+			return "a fifth"
+	return "1/%d" % divisor
+
+
 # --- validation (GameState.validate) --------------------------------------------------------------
 
 ## Checks the path rules a state must keep (§11): without paths, no faction has research; with paths,
@@ -687,6 +1242,10 @@ static func validate(state: GameState, errors = null) -> bool:
 			if f.research_points != 0 or not f.research_target.is_empty() or not f.researched.is_empty() or not f.path_branch.is_empty():
 				_report(errors, "%s has research, but this game has no paths." % name)
 				ok = false
+			for ut in f.unit_types:
+				if PathData.NEW_UNITS.has(ut.id):
+					_report(errors, "%s can recruit %s, but this game has no paths, and only a transformation brings them." % [name, ut.name])
+					ok = false
 			continue
 		if not f.has_ruler():
 			_report(errors, "%s has no ruler, but paths need rulers: a game with paths gives every faction a ruler." % name)
@@ -746,6 +1305,44 @@ static func validate(state: GameState, errors = null) -> bool:
 			if not check.is_empty():
 				_report(errors, "%s is researching something it can't: %s" % [name, String(check.reason)])
 				ok = false
+		if not _validate_roster(f, seen, name, errors):
+			ok = false
+	return ok
+
+
+## The roster agrees with the researched transformations, both ways (§11, M4-2): for every transformation
+## on the faction's path, researched means its changed unit carries the new name and its new unit is on the
+## roster; not researched means neither. `done` holds the researched node ids.
+static func _validate_roster(f: Faction, done: Dictionary, name: String, errors) -> bool:
+	var ok := true
+	for nid in node_ids(f.id):
+		var fx := node_effects(nid)
+		var has := done.has(nid)
+		var renames: Dictionary = fx.get("rename", {})
+		for type_id in renames:
+			var ut := TurnResolver.recruitable_type(f, String(type_id))
+			if ut == null:
+				continue
+			var new_name := String(renames[type_id])
+			if has and ut.name != new_name:
+				_report(errors, "%s has become %s, so its %s should be called %s, but they are called %s." % [name,
+					branch_ref(String(node_data(nid).branch)), base_unit_name(f.id, ut.id), new_name, ut.name])
+				ok = false
+			elif not has and ut.name == new_name:
+				_report(errors, "%s's %s are called %s, but it has not researched %s, which renames them." % [name,
+					base_unit_name(f.id, ut.id), new_name, node_ref(nid)])
+				ok = false
+		var new_id := String(fx.get("new_unit", ""))
+		if new_id.is_empty():
+			continue
+		var on_roster := TurnResolver.recruitable_type(f, new_id) != null
+		var unit_name := String(PathData.NEW_UNITS.get(new_id, {}).get("name", new_id))
+		if has and not on_roster:
+			_report(errors, "%s has become %s, but %s are not on its roster." % [name, branch_ref(String(node_data(nid).branch)), unit_name])
+			ok = false
+		elif not has and on_roster:
+			_report(errors, "%s can recruit %s, but it has not researched %s, which brings them." % [name, unit_name, node_ref(nid)])
+			ok = false
 	return ok
 
 

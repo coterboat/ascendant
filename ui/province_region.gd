@@ -63,6 +63,9 @@ var vassal_marker: Control = null
 var vassal_seat := -2  # the pennant's seat; -1 neutral (contested); -2 no pennant
 ## M2-6: the capital's countdown badge while a successor is pending ("heir in 2 turns"), or null.
 var countdown_badge: Label = null
+## M4-2, the Wild Spreads: a sprout for the province that turns to forest at the end of the turn; its
+## tooltip is the forecast. null when none.
+var wild_marker: Control = null
 
 
 ## Builds the region for `province_id` from `state`. `center` is in the map canvas' design space.
@@ -92,8 +95,9 @@ func setup(state: GameState, p: Province, center: Vector2, seats: Array = []) ->
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var owner_name := "nobody (neutral)" if p.owner.is_empty() else state.find_faction(p.owner).faction_name
-	tooltip_text = TooltipText.plain("%s: %s, owned by %s" % [p.name, p.terrain.capitalize(), owner_name],
-		"%s Click to see its terrain, income and armies." % marks_text(p))
+	var grown := AscensionRules.terrain_note(p)  # M4-2: "grown by the Wild Spreads; it was hills"
+	tooltip_text = TooltipText.plain("%s: %s%s, owned by %s" % [p.name, p.terrain.capitalize(), " (%s)" % grown if not grown.is_empty() else "",
+		owner_name], "%s Click to see its terrain, income and armies." % marks_text(p))
 	_base_tooltip = tooltip_text
 	CodexLink.attach(self, TooltipText.codex_for("province"), codex_requested.emit)
 
@@ -175,14 +179,15 @@ func _countdown_badge(state: GameState, faction_id: String) -> Label:
 
 ## King's Roads (M2): marks this province as a road destination of the selected army (`on`), going
 ## through `via_name`, or clears the mark. The tooltip says so; clicking orders the road move.
-func set_road_target(on: bool, via_name: String = "") -> void:
+## M4-2: `rule_name` is the rule the road move uses ("King's Roads" or "Forest Stride").
+func set_road_target(on: bool, via_name: String = "", rule_name: String = "King's Roads") -> void:
 	if on == road_target and (not on or via_name == _road_via):
 		return
 	road_target = on
 	_road_via = via_name if on else ""
 	var text := _base_tooltip
 	if on:
-		text += "\n\n" + TooltipText.wrap_text("King's Roads: the selected army can reach this province this turn through %s. Click to order the road move (dashed gilt ring)." % via_name)
+		text += "\n\n" + TooltipText.wrap_text("%s: the selected army can reach this province this turn through %s. Click to order the road move (dashed gilt ring)." % [rule_name, via_name])
 	tooltip_text = text
 	CodexLink.attach(self, TooltipText.codex_for("province"), codex_requested.emit)  # puts the codex line back
 	queue_redraw()
@@ -231,6 +236,50 @@ func _draw_pennant() -> void:
 		# Contested: a cross over the slate flag.
 		vassal_marker.draw_line(Vector2(pole_x + 5, 6), Vector2(pole_x + 12, 14), UiPalette.TEXT_PRIMARY, 2.0, true)
 		vassal_marker.draw_line(Vector2(pole_x + 12, 6), Vector2(pole_x + 5, 14), UiPalette.TEXT_PRIMARY, 2.0, true)
+
+
+## The Wild Spreads (M4-2, §4.6): shows a sprout for the province that turns to forest at the end of the
+## turn, with `tooltip` (the forecast), or removes it ("").
+func set_wild_mark(tooltip: String) -> void:
+	if tooltip.is_empty():
+		if wild_marker != null:
+			wild_marker.queue_free()
+			remove_child(wild_marker)
+			wild_marker = null
+		return
+	if wild_marker == null:
+		wild_marker = Control.new()
+		wild_marker.name = "WildMarker"
+		wild_marker.size = Vector2(26, 26)
+		wild_marker.mouse_filter = Control.MOUSE_FILTER_PASS
+		wild_marker.draw.connect(_draw_sprout)
+		var r := size.x / 2.0
+		wild_marker.position = Vector2(r * (1.58 if _east else 0.42), r * 1.5) - wild_marker.size / 2.0
+		add_child(wild_marker)
+	wild_marker.tooltip_text = tooltip
+	CodexLink.attach(wild_marker, "wild_spreads", codex_requested.emit)
+	wild_marker.queue_redraw()
+
+
+## Hallowed Land or the Forges (M4-2, §9.4): adds the heal forecast `text` to the badge of `army_id` here.
+func set_heal_note(army_id: String, text: String) -> void:
+	if army_box == null or text.is_empty():
+		return
+	var b := army_box.get_node_or_null("Army_%s" % army_id.validate_node_name()) as Button
+	if b != null and not b.tooltip_text.contains(text):
+		b.tooltip_text += "\n\n" + TooltipText.wrap_text(text)
+
+
+## A small green sprout on an ink disc: the province the Wild Spreads grows this turn.
+func _draw_sprout() -> void:
+	if wild_marker == null:
+		return
+	var c := wild_marker.size / 2.0
+	wild_marker.draw_circle(c, 12.0, UiPalette.KEYLINE_INK)
+	wild_marker.draw_circle(c, 10.0, UiPalette.terrain_color("forest").lightened(0.25))
+	wild_marker.draw_line(c + Vector2(0, 7), c + Vector2(0, -3), UiPalette.KEYLINE_INK, 2.0, true)
+	wild_marker.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -2), c + Vector2(-7, -6), c + Vector2(-2, 1)]), UiPalette.KEYLINE_INK)
+	wild_marker.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -3), c + Vector2(7, -8), c + Vector2(3, 0)]), UiPalette.KEYLINE_INK)
 
 
 ## What the ring and markers say, in words: "Player 1's province: Vermilion ring, circle emblem.

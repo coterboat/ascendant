@@ -622,6 +622,7 @@ func _orders_changed() -> void:
 func _update_map_marks() -> void:
 	_update_road_targets()
 	_update_vassal_marks()
+	_update_province_rule_marks()
 
 
 ## With one of your armies selected, marks every province two steps away that a click would reach by
@@ -636,9 +637,11 @@ func _update_road_targets() -> void:
 	for id in regions:
 		var vias: Array = targets.get(id, [])
 		var via_name := ""
+		var rule := "King's Roads"
 		if not vias.is_empty():
 			via_name = state.find_province(vias[0]).name
-		regions[id].set_road_target(not vias.is_empty(), via_name)
+			rule = orders.road_rule_name(army.id, id, vias[0])  # M4-2: or Forest Stride
+		regions[id].set_road_target(not vias.is_empty(), via_name, rule)
 
 
 ## Marks the province each faction's Sworn Vassals will take at the end of the turn (Forecast.vassal,
@@ -665,6 +668,28 @@ func _update_vassal_marks() -> void:
 		# Two factions after one province: it joins nobody, so the mark is the neutral one.
 		var seat := -1 if list.size() > 1 else UiPalette.seat_index(state, list[0].faction, seats)
 		regions[id].set_vassal_mark(seat, TooltipText.plain("Sworn Vassals", " ".join(texts) + " " + RulesCodex.text("mandate_sworn_vassals")))
+
+
+## The transformations' province rules (M4-2, §9.4): a sprout on each province the Wild Spreads grows at
+## the end of the turn, and the heal forecast on each army Hallowed Land or the Forges heals, from
+## OrdersController.province_rule_forecasts (the rules' own picks).
+func _update_province_rule_marks() -> void:
+	if state == null or orders == null:
+		return
+	var wild := {}  # province id -> [forecast texts]
+	for pr in orders.province_rule_forecasts():
+		for pick in pr.spread:
+			if not wild.has(pick.province):
+				wild[pick.province] = []
+			wild[pick.province].append(String(pick.text))
+		for army_id in pr.by_army:
+			var a := state.find_army(String(army_id))
+			if a != null and regions.has(a.location):
+				regions[a.location].set_heal_note(String(army_id), String(pr.by_army[army_id].text))
+	for id in regions:
+		var texts: Array = wild.get(id, [])
+		regions[id].set_wild_mark("" if texts.is_empty() else TooltipText.plain("The Wild Spreads",
+			" ".join(texts) + " " + RulesCodex.text("wild_spreads")))
 
 
 ## One arrow per queued move, from the army's province to its destination. A road move (King's Roads)
