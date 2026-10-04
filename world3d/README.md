@@ -221,6 +221,11 @@ code never rolls dice or resolves a turn. `tests/test_world3d.gd` keeps the spik
   are three lines in `board3d.gd _camera`, `army_rect` and `army_plate_point`.
 - **The musician's rung**: from quality rung 2 (`Armies.MUSICIAN_OFF_RUNG`, `Board3D.set_quality_rung`) the
   musicians stand down from every colour party; the bearers stay, they carry the banners.
+- **Forest trays** (`trays.gd`): in a forest province every army's blocks stand on movement trays, one per block
+  and one under the command group, in the owner's colour (a little darker, so each figure's base still pops) on
+  an ink rim, a gilt ring for a ruler's army. Woods-green figures (the Thorn Wild's) no longer pass for trees.
+  A tray covers its block's slots; a figure WIDE times wider than its slot (a Briarwarden's canopy) widens its
+  tray to its width. One mesh; hidden while a turn plays and under the stands. The hook is one line in `_camera`.
 - **Path-unit variants** (#126): a unit row's `variants` entry for a faction's transformation is merged over the
   row (`Models.figure_row(type, variant)`, `variant_of(type, AscensionRules.transformation(state, faction))`), and
   every mesh cache, MultiMesh and stand key carries the variant. The board reads the transformation from its
