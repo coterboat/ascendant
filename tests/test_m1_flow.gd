@@ -110,8 +110,8 @@ func test_a_whole_game_from_the_title_screen_to_the_victory_screen() -> void:
 	_assert_no_raw_ids(_visible_text(game), "the first orders phase")
 
 	# Turns 1 and 2: both armies march up the northern road to the hill forts.
-	_play_turn(game, [["beasts-2", "ebonpeak"]], [["kingdom-1", "westwatch"]])
-	_play_turn(game, [["beasts-2", "blackwood"]], [["kingdom-1", "stonegate"]])
+	_play_turn(game, [["beasts-1", "ebonpeak"]], [["kingdom-1", "westwatch"]])
+	_play_turn(game, [["beasts-1", "blackwood"]], [["kingdom-1", "stonegate"]])
 	# Turn 3: the Thornmane army holds Blackwood and the Aurel Crown attacks it.
 	_play_turn(game, [], [["kingdom-1", "blackwood"]])
 	assert_eq(session.turns_played(), 3)
@@ -161,8 +161,8 @@ func test_a_whole_game_from_the_title_screen_to_the_victory_screen() -> void:
 
 	# The battle's winner marches on the enemy capital; the loser has no army left to stop it.
 	var s := session.state()
-	var mover := "beasts-2" if s.find_army("beasts-2") != null else "kingdom-1"
-	var march: Array = ["stonegate", "westwatch", "crownkeep"] if mover == "beasts-2" else ["ebonpeak", "fangridge"]
+	var mover := "beasts-1" if s.find_army("beasts-1") != null else "kingdom-1"
+	var march: Array = ["stonegate", "westwatch", "crownkeep"] if mover == "beasts-1" else ["ebonpeak", "fangridge"]
 	var winner := s.find_army(mover).owner if s.find_army(mover) else ""
 	assert_false(winner.is_empty(), "one army survived the battle")
 	assert_eq(s.armies.size(), 1, "and it is the only army left")
@@ -222,8 +222,8 @@ func test_the_same_seed_and_orders_give_the_same_game() -> void:
 	var a := _start_from_title(SEED)
 	var b := _start_from_title(SEED)
 	for game in [a, b]:
-		_play_turn(game, [["beasts-2", "ebonpeak"], ["tuskers"]], [["kingdom-1", "westwatch"], ["spearmen"]])
-		_play_turn(game, [["beasts-2", "blackwood"]], [["kingdom-1", "stonegate"]])
+		_play_turn(game, [["beasts-1", "ebonpeak"], ["tuskers"]], [["kingdom-1", "westwatch"], ["spearmen"]])
+		_play_turn(game, [["beasts-1", "blackwood"]], [["kingdom-1", "stonegate"]])
 		_play_turn(game, [], [["kingdom-1", "blackwood"]])
 	assert_eq(a.session.battle_events().size(), 1, "the scripted turns include a battle")
 	assert_eq(var_to_str(a.session.state().to_dict()), var_to_str(b.session.state().to_dict()), "same state")

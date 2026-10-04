@@ -1,8 +1,11 @@
 extends "res://tests/test_case.gd"
 ## M4-1 (#66) acceptance, "with paths off": M1 and M2 games are byte-identical to `main`. The fixture
-## tests/fixtures/main_records.json holds AI games recorded on main (f98c8b5) before paths existed, with a
-## digest of every turn's state and events (tools/replay_fixture.gd made it). Each is replayed with the
-## current engine and must match turn by turn. Paths add no save keys, phases or events to those games.
+## tests/fixtures/main_records.json holds AI games with a digest of every turn's state and events
+## (tools/replay_fixture.gd made it on main at f98c8b5, before paths existed). Each is replayed with the
+## current engine from its stored orders and must match turn by turn. Paths add no save keys, phases or events
+## to those games. #94 re-recorded them once: its new computer plays M2 games differently (at 7627f0f the old
+## records still replayed identically from their stored orders: the rules were unchanged), and it then had each
+## faction number its own armies, which renames the armies in every game.
 
 const FIXTURE := "res://tests/fixtures/main_records.json"
 const Fixture := preload("res://tools/replay_fixture.gd")

@@ -122,7 +122,7 @@ func test_full_turn_through_ui_then_report_lists_every_event_and_focuses_provinc
 	var screen := _handoff()
 	var panel := _panel()
 	_play_turn_through_ui(session, screen,
-		[["kingdom-1", "westwatch"], ["spearmen"]], [["beasts-2", "ebonpeak"], ["tuskers"]])
+		[["kingdom-1", "westwatch"], ["spearmen"]], [["beasts-1", "ebonpeak"], ["tuskers"]])
 
 	# Back to seat 1, with the results waiting behind the cover.
 	assert_eq(session.phase(), GameSession.Phase.HANDOFF)
@@ -185,9 +185,9 @@ func test_full_turn_through_ui_then_report_lists_every_event_and_focuses_provinc
 func test_only_battle_events_get_a_battle_report_button() -> void:
 	var session := _session()
 	var screen := _handoff()
-	_play_turn_through_ui(session, screen, [["kingdom-1", "westwatch"]], [["beasts-2", "ebonpeak"]])
+	_play_turn_through_ui(session, screen, [["kingdom-1", "westwatch"]], [["beasts-1", "ebonpeak"]])
 	assert_eq(session.acknowledge_handoff(), "")
-	_play_turn_through_ui(session, screen, [["kingdom-1", "stonegate"]], [["beasts-2", "blackwood"]])
+	_play_turn_through_ui(session, screen, [["kingdom-1", "stonegate"]], [["beasts-1", "blackwood"]])
 	assert_eq(session.acknowledge_handoff(), "")
 	# Kingdom attacks Blackwood, where the beasts army holds.
 	_play_turn_through_ui(session, screen, [["kingdom-1", "blackwood"]], [])

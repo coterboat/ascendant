@@ -38,7 +38,7 @@ const WHAT := {
 	"border": "A border battle: the Crown and the Clans swap Rivermarch and Greenglade and meet on the border.",
 	"one_round": "A one-round battle: a lone Crown Spearmen holding Rivermarch is swept away in the first round (M3-2's turning point has none).",
 	"mutual_rout": "A mutual rout: both sides break in the same round on the Rivermarch-Greenglade border, and the one with more strength left keeps the field.",
-	"biggest": "The biggest battle measured in AI-vs-AI games with rulers (design/M3_BATTLES.md §1.3): game seed 9, turn 34, 277 fighters, 898 attacks, 4 rounds, rebuilt from the game's record.",
+	"biggest": "The biggest battle measured in AI-vs-AI games with rulers (design/M3_BATTLES.md §1.3): game seed 9, turn 34, 277 fighters, 742 attacks, 3 rounds, rebuilt from the game's record.",
 }
 
 const CROWN := "kingdom"
@@ -96,7 +96,9 @@ static func shows(name: String, battle_log: Dictionary, report: Dictionary) -> b
 			return events[BattleLog.find_event(battle_log, "end")].how == "mutual"
 		"biggest":
 			var attacks := events.filter(func(e): return e.t == "attack").size()
-			return battle_log.fighters.size() == 277 and attacks == 898 and int(report.rounds_fought) == 4
+			# #94 renamed the armies of its game (each faction numbers its own), which reorders who strikes when:
+			# the same 277 fighters now fight 742 attacks over 3 rounds (898 over 4 before), with the same winner.
+			return battle_log.fighters.size() == 277 and attacks == 742 and int(report.rounds_fought) == 3
 	return false
 
 

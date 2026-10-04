@@ -121,8 +121,8 @@ func test_select_army_selects_its_province_and_signals() -> void:
 	var screen := _open(GameState.new())
 	var armies := []
 	screen.army_selected.connect(func(id): armies.append(id))
-	var army := screen.state.find_army("beasts-2")
-	assert_true(army != null, "fixture: the beasts start with army beasts-2")
+	var army := screen.state.find_army("beasts-1")
+	assert_true(army != null, "fixture: the beasts start with army beasts-1")
 	screen.select_army(army.id)
 	assert_eq(armies, [army.id], "army_selected fires")
 	assert_eq(screen.selected_province_id, "fangridge", "selecting an army selects where it is")

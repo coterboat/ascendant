@@ -143,7 +143,7 @@ func test_map_screen_two_click_move_and_cancel() -> void:
 func _border_state() -> GameState:
 	var s := _state()
 	s.find_army("kingdom-1").location = "stonegate"
-	s.find_army("beasts-2").location = "blackwood"
+	s.find_army("beasts-1").location = "blackwood"
 	s.find_province("stonegate").owner = "kingdom"
 	s.find_province("blackwood").owner = "beasts"
 	var extra := Army.new()

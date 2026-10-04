@@ -326,3 +326,24 @@ func test_dread_lands_does_not_stack_with_dread() -> void:
 		else:
 			assert_eq(int(parts.get(AutoBattleResolver.DREAD_LANDS, 0)), -value, "Dread Lands without the Thornmane")
 	assert_true(RulesCodex.text("dread_lands").contains("doesn't add to the Great Thornmane's Dread"))
+
+
+func test_the_fixture_tool_re_records_only_when_the_rules_are_unchanged() -> void:
+	# #94: tools/replay_fixture.gd replays the records already in main_records.json from their stored orders
+	# before writing new ones; it writes only when every turn still matches (the rules are unchanged).
+	const Fixture := preload("res://tools/replay_fixture.gd")
+	var ok := Fixture.check_existing("res://tests/fixtures/main_records.json")
+	assert_true(ok.ok, ok.text)
+	assert_true(String(ok.text).contains("replayed identically"), ok.text)
+	# A record whose digest no longer matches (as a rules change would make it) stops it.
+	var data = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/main_records.json"))
+	var g: Dictionary = data.games[0]
+	g.turns[1].state = "0".repeat(32)
+	var path := "user://test_fixture_%d.json" % OS.get_process_id()
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(JSON.stringify(data))
+	f.close()
+	var bad := Fixture.check_existing(path)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	assert_false(bad.ok)
+	assert_true(String(bad.text).contains(String(g.name)) and String(bad.text).contains("turn 2"), bad.text)
