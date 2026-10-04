@@ -25,6 +25,7 @@ class_name RulerRules
 ## taken, a preset id (BuildPresetData) may stand in for one.
 ## Death and succession (M2-3, #31; TurnResolver calls these):
 ##   has_living_ruler(state, fid)           alive and on the map (no ability, ruler morale or sacrifice otherwise)
+##   ruler_alive(state, fid)                alive, wherever it is (M5: a view may not know where; §2.7)
 ##   record_death(state, fid, turn)         dead; the successor falls due at the end of turn + delay
 ##   succession_info(state, fid)            who succeeds a dead ruler, where, when, with what kept power
 ##   crown_successor(state, fid, turn)      the due successor arrives at the capital, if the faction holds it
@@ -318,6 +319,15 @@ const DEATH_VERBS := {"mortal": ["fell", "was lost"], "undying": ["was struck do
 static func has_living_ruler(state: GameState, faction_id: String) -> bool:
 	var f := state.find_faction(faction_id)
 	return f != null and f.has_ruler() and f.ruler_status == ALIVE and ruler_army(state, faction_id) != null
+
+
+## True when the faction's ruler is alive, from its status alone (M5, design/M5_MAGIC_FOG.md §2.7): unlike
+## has_living_ruler it doesn't need the ruler's army on the map, because under fog a player's view may know a
+## rival ruler lives without knowing where. Screens that show a rival's ruler read this and handle "alive, location
+## unknown" (M5-1 adds the view handling). has_living_ruler is unchanged.
+static func ruler_alive(state: GameState, faction_id: String) -> bool:
+	var f := state.find_faction(faction_id)
+	return f != null and f.has_ruler() and f.ruler_status == ALIVE
 
 
 ## Hit points a living ruler with `max_hp` heals in the rulers phase: a quarter, rounded up (§1.7).

@@ -16,6 +16,12 @@ class_name GameState
 ## 1, or GameState.with_sieges(seed, builds, flags). Each fort gets its level and full walls, `sieges` turns
 ## true, and from then on provinces save their fort and siege fields and armies their engines. Without it
 ## nothing of that is saved, so M1, M2 and M4 games stay byte-identical. Rules: SiegeRules.
+##
+## Magic and fog of war (M5, design/M5_MAGIC_FOG.md §14; the fields came first, in the M5-0 scaffold, #111) are
+## opt-in too, and each of their keys is saved only when set: `fog`, `magic` (with `enchantments` and the factions'
+## magic fields), and `is_view` with the stand-ins' view notes (Army.seen) in a player's view. Without them a game
+## saves byte-identically to before. Rules: MagicRules (validate checks the magic fields against `magic`); a view
+## note only in a view (_validate_views). The per-faction army numbers M5 asks for are next_army_ids (#94).
 
 var provinces: Array[Province] = []
 var factions: Array[Faction] = []
@@ -30,6 +36,13 @@ var seed_value: int = 0
 var next_army_ids: Dictionary = {}
 var paths: bool = false  # M4: every faction has a path and researches (AscensionRules); saved only when true
 var sieges: bool = false  # M3c: forts have levels and walls, and armies besiege them (SiegeRules); saved only when true
+# --- M5, magic and fog of war (design/M5_MAGIC_FOG.md §14) ---
+var fog: bool = false  # fog of war: a lens on what each player is shown, never a rule (§2.1); saved only when true
+var magic: bool = false  # spells, rituals and enchantments (MagicRules); needs paths; saved only when true
+## The enchantments in play (§6.4), kept sorted by id: {"id", "ritual", "faction", "kind", "province", "armies",
+## "cast_turn", "until_turn", "bonus", "ending"} each (MagicRules.ENCHANTMENT_KEYS). Saved only in a magic game.
+var enchantments: Array = []
+var is_view: bool = false  # one player's view of the game (FogRules, §2.7), never the true state; saved only when true
 
 func _init(map_seed: int = 12345) -> void:
 	seed_value = map_seed
@@ -294,6 +307,26 @@ func validate(errors = null) -> bool:
 		ok = false
 	if not _living_rulers_on_map(errors):
 		ok = false
+	# Magic (M5): MagicRules owns those rules; a game without magic carries none of its fields.
+	if not MagicRules.validate(self, errors):
+		ok = false
+	if not _validate_views(errors):
+		ok = false
+	return ok
+
+
+## M5 (§2.7): a view note (Army.seen) belongs only to a stand-in in a player's view, and has its fixed shape there
+## (Army.validate_seen). A true state never has one.
+func _validate_views(errors) -> bool:
+	var ok := true
+	for a in armies:
+		if a.seen.is_empty():
+			continue
+		if not is_view:
+			_report(errors, "Army '%s' carries a view note, but this is the true game, not a player's view of it. Only a view's stand-ins carry notes." % a.id)
+			ok = false
+		elif not a.validate_seen(errors):
+			ok = false
 	return ok
 
 
@@ -318,7 +351,7 @@ func to_dict() -> Dictionary:
 
 	var faction_dicts := []
 	for f in factions:
-		faction_dicts.append(f.to_dict(paths))
+		faction_dicts.append(f.to_dict(paths, magic))
 
 	var army_dicts := []
 	for a in armies:
@@ -341,6 +374,16 @@ func to_dict() -> Dictionary:
 		d["paths"] = true  # only a game with paths carries the key, so M1 and M2 save exactly as before
 	if sieges:
 		d["sieges"] = true  # M3c: only a game with sieges carries the key
+	if fog:
+		d["fog"] = true  # M5: only a game with fog of war carries the key
+	if magic:
+		d["magic"] = true  # M5: only a game with magic carries the key, its enchantments and its factions' magic fields
+		var enchantment_dicts := []
+		for e in enchantments:
+			enchantment_dicts.append(MagicRules.enchantment_copy(e))
+		d["enchantments"] = enchantment_dicts
+	if is_view:
+		d["is_view"] = true  # M5: only a player's view carries the key
 	return d
 
 ## Rebuilds a state from to_dict() output (or the same data after a JSON round-trip). Returns null when
@@ -365,6 +408,19 @@ static func from_dict(data, errors = null) -> GameState:
 	if sieges_flag == null:
 		return null
 	state.sieges = sieges_flag
+	for key in ["fog", "magic", "is_view"]:  # M5: present only when set
+		var flag = Serial.expect(data, key, TYPE_BOOL, errors, WHO, false)
+		if flag == null:
+			return null
+		state.set(key, flag)
+	var enchantment_list = Serial.expect_dicts(data, "enchantments", errors, WHO, "enchantment")  # M5: magic games only
+	if enchantment_list == null:
+		return null
+	for i in enchantment_list.size():
+		var e = MagicRules.enchantment_from_dict(enchantment_list[i], errors, Serial.label("enchantment", enchantment_list[i], i))
+		if e == null:
+			return null
+		state.enchantments.append(e)
 
 	var rng_data = Serial.expect(data, "rng", TYPE_DICTIONARY, errors, WHO, {})
 	if rng_data == null:
