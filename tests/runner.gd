@@ -7,8 +7,12 @@ extends SceneTree
 ## Saves and settings go to a temporary folder for the run (SaveStore.default_root and
 ## GameSettings.default_path), so no test ever touches the player's user://saves or settings.cfg.
 ## `-- --only=<a>,<b>` runs only the test files whose path contains one of those texts (a quick local loop).
+## `-- --perf` (or ASCENDANT_PERF=1) turns on wall-clock checks (time budgets, overhead ratios: see
+## test_case.gd's assert_perf). They are off by default because a loaded machine fails them at random;
+## without the flag those tests still do their work and check their results, and print "perf skipped".
 
 const TEST_ROOT := "res://tests"
+const TestCase := preload("res://tests/test_case.gd")
 
 
 class ErrorCatcher extends Logger:
@@ -35,6 +39,9 @@ func _initialize() -> void:
 	OS.add_logger(catcher)
 	var passed := 0
 	var failed := 0
+	var perf_skipped := 0
+	var perf := TestCase.perf_enabled()
+	print("wall-clock perf checks: %s" % ("ON (--perf)" if perf else "off (run with -- --perf, or ASCENDANT_PERF=1, on a quiet machine)"))
 
 	var scratch := "user://test_run_%d" % OS.get_process_id()
 	SaveStore.default_root = scratch.path_join("saves")
@@ -76,6 +83,7 @@ func _initialize() -> void:
 			instance.call(method_name)
 			var problems: PackedStringArray = instance.get_failures()
 			problems.append_array(catcher.take())
+			var notes: PackedStringArray = instance.get_notes()
 			var label := "%s::%s" % [path.trim_prefix(TEST_ROOT + "/"), method_name]
 			if problems.is_empty():
 				passed += 1
@@ -85,9 +93,15 @@ func _initialize() -> void:
 				print("FAIL %s" % label)
 				for p in problems:
 					print("     %s" % p)
+			for n in notes:
+				print("     note: %s" % n)
+				if n.begins_with(TestCase.PERF_SKIPPED):
+					perf_skipped += 1
 
 	OS.remove_logger(catcher)
 	_remove_tree(scratch)
+	if perf_skipped > 0:
+		print("\n%d wall-clock perf checks skipped (run with -- --perf on a quiet machine to check them)" % perf_skipped)
 	print("\n%d passed, %d failed" % [passed, failed])
 	if passed + failed == 0:
 		print("no tests found under %s" % TEST_ROOT)
