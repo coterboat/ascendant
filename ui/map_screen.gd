@@ -383,6 +383,8 @@ func set_board(new_board: Control) -> void:
 		map_view.move_child(board, 0)
 		board.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		board.map = self
+		if board.has_signal("closeup_changed"):
+			board.closeup_changed.connect(func(_pid): _show_details())
 		_sync_board()
 
 
@@ -854,6 +856,7 @@ func _add_orders_section() -> void:
 	if selected_province_id == f.capital:
 		var capital := state.find_province(f.capital)
 		_add_heading("Recruit at %s" % capital.name, 18)
+		_add_fortress_view_button(f.capital)
 		for ut in orders.recruitable_types():
 			var b := Button.new()
 			b.name = "Recruit_%s" % ut.id.validate_node_name()
@@ -864,6 +867,28 @@ func _add_orders_section() -> void:
 			b.pressed.connect(queue_recruit.bind(ut.id))
 			details.add_child(b)
 	_add_ruler_recruit_section()
+
+
+## M3a.2: on the 3D board, "View fortress" swoops the camera into the capital's muster yard, where each
+## queued recruit appears at once as a ghost in its slot (and back to the map when the view is open).
+func _add_fortress_view_button(capital_id: String) -> void:
+	if board == null or not board.has_method("can_closeup") or not board.can_closeup(capital_id):
+		return
+	var open: bool = String(board.closeup) == capital_id
+	var b := Button.new()
+	b.name = "ViewFortressButton"
+	b.text = "Back to the map (Esc)" if open else "View fortress: see your muster yard"
+	b.focus_mode = Control.FOCUS_NONE
+	b.add_theme_font_size_override("font_size", 16)
+	b.add_theme_color_override("font_color", UiPalette.GILT)
+	b.tooltip_text = TooltipText.plain("View fortress",
+		"A close look at %s's muster yard. Your armies stand there a block to a slot, facing the gate, and each recruit you queue below appears at once as a translucent figure in the slot it will take. An army the yard can't hold musters in the war camp outside the walls. Esc or zooming out goes back to the map." % state.find_province(capital_id).name)
+	b.pressed.connect(func():
+		if String(board.closeup) == capital_id:
+			board.exit_closeup()
+		else:
+			board.enter_closeup(capital_id))
+	details.add_child(b)
 
 
 ## Warband Muster (§1.4): with the Ninth Fang's province selected, a "Recruit with the Ninth Fang"

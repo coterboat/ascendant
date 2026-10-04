@@ -25,6 +25,10 @@ uniform vec3 mean_plains = vec3(0.62, 0.72, 0.36); // the tiles' mean colours (w
 uniform vec3 mean_hills = vec3(0.62, 0.55, 0.33);
 uniform int hover_id = -1;
 uniform int select_id = -1;
+// M3a.2: a capture's sweep. Each: xy the arriving column (world), z the front's radius, w the province's
+// index (-1: none). Outside the front the province still shows sweep_old (its old owner: rgb, a owned).
+uniform vec4 sweep_a[4];
+uniform vec4 sweep_old[4];
 
 varying vec2 mp;
 varying float wy;
@@ -109,6 +113,16 @@ Ground paint_ground() {
 	col = mix(mix(vec3(0.72, 0.66, 0.48), vec3(0.20, 0.34, 0.38), smoothstep(0.0, 16.0, -g.coast)), col, sand);
 	// owners: a wash of the owner's colour inside the province's edge
 	vec4 st = texture(owner_tex, vec2((float(g.id) + 0.5) / 16.0, 0.5));
+	float sweep_edge = 0.0;
+	for (int i = 0; i < 4; i++) {
+		if (sweep_a[i].w >= 0.0 && int(sweep_a[i].w + 0.5) == g.id) {
+			float sd = distance(mp, sweep_a[i].xy) - sweep_a[i].z;
+			if (sd > 0.0) {
+				st = sweep_old[i];
+			}
+			sweep_edge = max(sweep_edge, 1.0 - smoothstep(0.0, 5.0, abs(sd + 2.0)));
+		}
+	}
 	g.owner = st.rgb;
 	g.owned = (g.id < 255) ? st.a : 0.0;
 	if (g.owned > 0.5 && rocky < 0.5) {
@@ -126,6 +140,8 @@ Ground paint_ground() {
 		col = mix(col, st.rgb * 1.05, band * 0.85 * k);
 		col = mix(col, vec3(0.102, 0.086, 0.071), keyl * 0.55 * k);
 	}
+	// a capture's sweep front: a gilt edge running out from the arriving column
+	col = mix(col, vec3(1.0, 0.86, 0.45), sweep_edge * 0.75 * sand);
 	// the board's highlights, drawn on the ground in code (STYLE_BIBLE.md 8.1: selection a white band,
 	// hover a cream one, at a constant screen width inside the province's edge, its coast included)
 	if (g.id < 255) {

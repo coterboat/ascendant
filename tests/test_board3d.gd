@@ -21,7 +21,7 @@ const Models := preload("res://world3d/models.gd")
 const BOARD_SIZE := Vector2(1200, 836)
 const BOARD_FILES := ["res://world3d/board3d.gd", "res://world3d/board_overlay.gd", "res://world3d/armies.gd",
 	"res://world3d/world_view.gd", "res://world3d/playback.gd", "res://world3d/models.gd", "res://world3d/kit.gd",
-	"res://world3d/terrain3d.gd"]
+	"res://world3d/terrain3d.gd", "res://world3d/muster.gd", "res://world3d/choreo.gd"]
 
 
 # --- fixtures -------------------------------------------------------------------------------------
@@ -352,39 +352,58 @@ func test_playing_the_events_gives_the_next_state_board_model() -> void:
 
 
 func test_the_played_board_stands_as_one_built_from_the_next_state() -> void:
+	## M3a.2: over several games, the phased playback (marches, battle exchanges with their fallen,
+	## capture sweeps, recruits marching in, war camps) still ends exactly where a board built from the
+	## state after stands, with a planning player's gathered columns standing before the turn
 	var played_any := 0
-	var turns := _autoplay(4242, 8, true)
-	var b: Board3D = null
-	for turn in turns:
-		var before: GameState = turn["before"]
-		var after: GameState = turn["after"]
-		if b == null:
-			b = _board_for(before)
-		var dict_before: Dictionary = before.to_dict()
-		var dict_after: Dictionary = after.to_dict()
-		## as the game does it: the map shows the state after, and the board plays the turn up to it
-		b.map.set_state(after, before.factions[0].id)
-		b.armies.snap_at_end = false
-		if not b.play_turn(before, turn["events"], after):
-			continue
-		played_any += 1
-		var guard := 0
-		while b.is_playing() and guard < 4000:
-			b.armies.step_playback(1.0 / 30.0)
-			guard += 1
-		assert_false(b.is_playing(), "the playback ends by itself")
-		var played_snap: Dictionary = b.armies.snapshot()
-		var played_owners: Dictionary = b.wv.owners_painted()
-		## a board built straight from the state after
-		b.armies.snap_at_end = true
-		b.stand(after)
-		assert_eq(played_snap, b.armies.snapshot(), "turn %d: every army stands where a board built from the state after puts it" % after.current_turn)
-		assert_eq(played_owners, b.wv.owners_painted(), "turn %d: the land's owners are the state after's" % after.current_turn)
-		assert_eq(before.to_dict(), dict_before, "turn %d: the state before is untouched by the playback" % after.current_turn)
-		assert_eq(after.to_dict(), dict_after, "turn %d: the state after is untouched by the playback" % after.current_turn)
-	assert_true(played_any >= 4, "several turns played out (%d)" % played_any)
-	if b != null:
-		_free_board(b)
+	var battles := 0
+	for game_seed in [4242, 77, 11]:
+		var turns := _autoplay(game_seed, 14, true)
+		var b: Board3D = null
+		for turn in turns:
+			var before: GameState = turn["before"]
+			var after: GameState = turn["after"]
+			if b == null:
+				b = _board_for(before)
+			var dict_before: Dictionary = before.to_dict()
+			var dict_after: Dictionary = after.to_dict()
+			## a plan stood on the board before the turn: the first faction's armies gathered to march
+			b.stand(before)
+			var dep := {}
+			for a in before.armies:
+				if a.owner == before.factions[0].id and not before.find_province(a.location).neighbors.is_empty():
+					dep[a.id] = {"to": before.find_province(a.location).neighbors[0], "via": ""}
+			b.armies.show_plan({"departing": dep, "owner": before.factions[0].id})
+			## as the game does it: the map shows the state after, and the board plays the turn up to it
+			b.map.set_state(after, before.factions[0].id)
+			b.armies.snap_at_end = false
+			if not b.play_turn(before, turn["events"], after):
+				continue
+			played_any += 1
+			battles += Playback.plan(before, turn["events"], after)["battles"].size()
+			var guard := 0
+			while b.is_playing() and guard < 6000:
+				b.armies.step_playback(1.0 / 30.0)
+				guard += 1
+			assert_false(b.is_playing(), "the playback ends by itself")
+			var played_snap: Dictionary = b.armies.snapshot()
+			var played_owners: Dictionary = b.wv.owners_painted()
+			var played_tents: int = b.armies.tent_count()
+			assert_eq(b.armies.ghost_count(), 0, "no ghosts stand after a playback")
+			assert_true(b.wv.sweeps.is_empty(), "every capture's sweep is done")
+			## a board built straight from the state after
+			b.armies.snap_at_end = true
+			b.stand(after)
+			var label := "seed %d turn %d" % [game_seed, after.current_turn]
+			assert_eq(played_snap, b.armies.snapshot(), "%s: every army stands where a board built from the state after puts it" % label)
+			assert_eq(played_owners, b.wv.owners_painted(), "%s: the land's owners are the state after's" % label)
+			assert_eq(played_tents, b.armies.tent_count(), "%s: the war camps are the state after's" % label)
+			assert_eq(before.to_dict(), dict_before, "%s: the state before is untouched by the playback" % label)
+			assert_eq(after.to_dict(), dict_after, "%s: the state after is untouched by the playback" % label)
+		if b != null:
+			_free_board(b)
+	assert_true(played_any >= 12, "many turns played out (%d)" % played_any)
+	assert_true(battles >= 2, "battles among them (%d)" % battles)
 
 
 func test_a_game_plays_out_on_the_board_before_the_report_opens() -> void:
