@@ -6,9 +6,11 @@ A planned three-lab room to set the **starting ground for ASCENDANT's lore**: th
 
 | seat | status |
 |---|---|
-| Claude | **R1 in** (`R1-claude.md`, bake-off entry `../bakeoff/claude_batch.json`) |
-| Codex | **R1 in** (`R1-codex.md`, 2026-10-04) |
-| Grok | **R1 in** (`R1-grok.md`; plus `R1-grok-full.md`, the uncapped cut Alex asked for, 2026-10-04) |
+| Claude | **R2 in** (`R1-claude.md`, `R2-claude-critique.md`, `R2-claude.md`; bake-off entry `../bakeoff/claude_batch.json`) |
+| Codex | **R2 in** (`R1-codex.md`, `R2-codex-critique.md`, `R2-codex.md`) |
+| Grok | **R2 in** (`R1-grok.md` and the uncapped `R1-grok-full.md`, `R2-grok-critique.md`, `R2-grok.md`) |
+
+R2 ran on 2026-10-05. Each seat read the packet, its own R1 and the other two R1 pitches, then wrote a critique and a revised pitch. The revised pitches run past the 3,500-word cap (Codex 4,299, Grok 4,621), in the spirit of Alex's "don't limit ourselves unnecessarily". R3, the synthesis and the red-team vote, is next.
 
 Codex and Grok are external services. Alex allowed them on 2026-10-04 (the `codex exec` / `grok --prompt-file` rule in the main checkout's `.claude/settings.local.json`). The director runs each seat with `PACKET.md` and a short seat brief. That brief adds one new fact, the independents (#142, "the Free Holds"), which each seat may fold into its world.
 
