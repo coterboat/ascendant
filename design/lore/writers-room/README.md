@@ -7,10 +7,10 @@ A planned three-lab room to set the **starting ground for ASCENDANT's lore**: th
 | seat | status |
 |---|---|
 | Claude | **R1 in** (`R1-claude.md`, bake-off entry `../bakeoff/claude_batch.json`) |
-| Codex | **on hold: pending Alex's permission** |
-| Grok | **on hold: pending Alex's permission** |
+| Codex | **R1 in** (`R1-codex.md`, 2026-10-04) |
+| Grok | **R1 in** (`R1-grok.md`; plus `R1-grok-full.md`, the uncapped cut Alex asked for, 2026-10-04) |
 
-Codex and Grok are external services. Nothing from this repo goes to them until Alex says yes. Until then the room stays local, and only the Claude seat has written.
+Codex and Grok are external services. Alex allowed them on 2026-10-04 (the `codex exec` / `grok --prompt-file` rule in the main checkout's `.claude/settings.local.json`). The director runs each seat with `PACKET.md` and a short seat brief. That brief adds one new fact, the independents (#142, "the Free Holds"), which each seat may fold into its world.
 
 ## Format
 
@@ -37,6 +37,9 @@ Codex and Grok are external services. Nothing from this repo goes to them until 
 
 - `PACKET.md`: the shared packet. Every seat reads it, and nobody edits it during a round.
 - `R1-claude.md`: Claude's pitch. The world is **Halfmade**, the maker who stopped at noon is **the Wright**, and ascension sites are **Noonmarks**. Its favourites for the bake-off are the Candlewake and the Stormherd.
+- `R1-codex.md`: Codex's pitch, **The Oathscar** (3,381 words). Its new factions are the Glasswake Compact, the Ember Orchard, the Interval Court and the Underweather Assembly.
+- `R1-grok.md`: Grok's pitch, **The Strung** (3,500 words): a world of strings held between the High Peg and the Low Peg. Its new factions are the Glazewell Choir, the Kite Houses, the Amber Procession and the Open Knot. This capped version is the one R2 critiques.
+- `R1-grok-full.md`: the same world uncapped (12,297 words), kept at Alex's request. Read it for depth; R2 works from the capped pitch, so the seats compare like with like.
 - `../bakeoff/claude_batch.json`: Claude's bake-off entry, 9 slots, planned only. It estimates 10.0 cr, or 21.0 with a full re-roll reserve and one fallback, under a hard cap of 25.
 
 ## Rules for every seat
