@@ -16,6 +16,10 @@ const SH_MODEL_LIT := preload("res://world3d/shaders/model_lit.gdshader")
 const SH_OUTLINE := preload("res://world3d/shaders/outline.gdshader")
 const SH_WATER := preload("res://world3d/shaders/water.gdshader")
 const SH_BANNER := preload("res://world3d/shaders/banner.gdshader")
+const SH_GHOST := preload("res://world3d/shaders/ghost.gdshader")
+const SH_SMOKE := preload("res://world3d/shaders/smoke.gdshader")
+const SH_DUST := preload("res://world3d/shaders/dust.gdshader")
+const SiegeBoard := preload("res://world3d/siege_board.gd")
 const FORTRESS_SIDE := 76.0
 const SWEEP_TIME := 1.2 ## a capture's colour sweep, seconds at 1x
 const SWEEP_REACH := 170.0 ## how far the sweep's front runs from the arriving column
@@ -57,6 +61,16 @@ var prop_models := false ## M3a.2: the woods and rocks drawn with the model tabl
 var _prop_prims: Array = [] ## the primitive woods' and rocks' MultiMeshes (one each, the whole map)
 var _prop_chunks: Array = [] ## the model woods' and rocks' MultiMeshes, in chunks the camera culls
 const PROP_CHUNK := 200.0 ## world units a side of a model-props chunk
+## M3c S-4 (#102): forts and sieges drawn from the state (show_forts; design/M3C_SIEGES.md §10.1)
+var fort_rows := {} ## province id -> the SiegeBoard.board_table row drawn now (a game with sieges)
+var fort_draw := {} ## province id -> {"root" (a fort's own frame node, null at a capital), "dress", "mats", "h", "hs", "frame", "colour"}
+var _sieges_drawn := false ## the map's forts were taken over by show_forts (a game with sieges)
+var _ghost_scaffolds := {} ## province id -> Node3D: the viewer's own queued Fortify orders (set_fortify_ghosts)
+var _fx: Array = [] ## one-shot dust bursts: [{"node", "mat", "t", "life"}]
+var _kits := {} ## map_kits()
+var _geom := {} ## "pid|kind|kit" -> a fort's yard (fort_geom)
+var _village_at := {} ## province id -> [{"mm", "k", "xf", "pos", "r"}]: its village and landmark instances
+var _dmg_cut := {} ## province id -> [Vector4 plane, float y]: a capital's damage look (the close-up restores it)
 
 ## the camera rig: looks at `target` from `pitch` degrees above the horizon, from `yaw` degrees
 ## round from the south, framing `span` world units top to bottom
@@ -805,8 +819,13 @@ func _place_villages() -> void:
 			var v: Dictionary = list[k]
 			var b := Basis(Vector3.UP, float(v["yaw"]) + yaw0).scaled(Vector3.ONE * s)
 			var at: Vector3 = t.ground_at(v["pos"]) - Vector3(0, 0.25, 0)
-			mm.set_instance_transform(k, Transform3D(b, at) * Transform3D(Basis(), Vector3(-c.x, -aabb.position.y, -c.z)))
+			var xf := Transform3D(b, at) * Transform3D(Basis(), Vector3(-c.x, -aabb.position.y, -c.z))
+			mm.set_instance_transform(k, xf)
 			mm.set_instance_custom_data(k, Color(1, 1, 1, 1))
+			## M3c S-4: kept per province, so a fort built over it can clear it away (_clear_villages)
+			if not _village_at.has(v["province"]):
+				_village_at[v["province"]] = []
+			_village_at[v["province"]].append({"mm": mm, "k": k, "xf": xf, "pos": v["pos"], "r": v["r"]})
 		var mi := MultiMeshInstance3D.new()
 		mi.name = "Village_" + path.get_file().get_basename()
 		mi.multimesh = mm
@@ -937,9 +956,14 @@ func _place_fortress(id: String, c: Vector2, gate: Vector2) -> void:
 		bn.position = Vector3(gx * banner_at.x, banner_at.y, gate_z.x - 8.0 if not glb.is_empty() else -side * 0.5 + 1.0)
 		root.add_child(bn)
 		banners.append(bn.get_child(1).material_override)
+	var model_h := 24.0
+	for ch in root.get_children():
+		if ch is MeshInstance3D and (ch as MeshInstance3D).mesh != null:
+			model_h = maxf((ch as MeshInstance3D).mesh.get_aabb().size.y * (ch as MeshInstance3D).scale.y, 6.0)
+			break
 	fortresses[id] = {"node": root, "gate_dir": gate, "yaw": yaw, "mat": mat, "court": court,
 		"frame": root.transform, "banners": banners, "gate_z": gate_z, "pal_mat": pal_mat,
-		"floor": floor_y} ## the courtyard's floor over the stage
+		"floor": floor_y, "side": side, "h": model_h} ## the courtyard's floor over the stage
 
 
 func _give_own_outline(m: ShaderMaterial) -> void:
@@ -962,6 +986,10 @@ func set_cutaway(province_id: String, on: bool, above: float = 2.6) -> void:
 	var f: Dictionary = fortresses[province_id]
 	var plane := Vector4.ZERO
 	var y := 0.0
+	if not on and _dmg_cut.has(province_id):
+		## M3c S-4: off, a damaged capital's walls go back to their damage look
+		plane = _dmg_cut[province_id][0]
+		y = _dmg_cut[province_id][1]
 	if on:
 		var root: Node3D = f["node"]
 		var court: Rect2 = f["court"]
@@ -1010,6 +1038,534 @@ func gate_points(id: String) -> Array:
 	var inner: Vector3 = root.transform * Vector3(0, 0, gz.x)
 	var outer: Vector3 = root.transform * Vector3(0, 0, gz.y)
 	return [Vector2(inner.x, inner.z), Vector2(outer.x, outer.z)]
+
+
+# ------------------------------------------------------------------ M3c S-4: forts and sieges from the state
+
+## The kit each province's fort wears when nobody built it (SiegeBoard.board_table's `map_kits`): a capital its own
+## faction's, any other the nearest capital's (a fort on the map; captured, it keeps its look).
+func map_kits() -> Dictionary:
+	if _kits.is_empty():
+		for i in terrain.ids.size():
+			var id: String = terrain.ids[i]
+			_kits[id] = String(capital_of.get(id, "")) if terrain.is_capital[i] else nearest_capital_faction(terrain, i)
+	return _kits
+
+
+## What the board should draw of `s`'s forts (SiegeBoard.board_table; {} without sieges).
+func table_of(s: GameState) -> Dictionary:
+	return SiegeBoard.board_table(SiegeBoard.model_of(s), map_kits())
+
+
+## What the board draws now: the board_table rows show_forts drew (tests compare it with table_of(the state)).
+func fort_table() -> Dictionary:
+	return fort_rows.duplicate(true)
+
+
+## How many chevron banners stand round the walls at `province_id` (0 with no siege).
+func chevrons_at(province_id: String) -> int:
+	var d: Dictionary = fort_draw.get(province_id, {})
+	var mi: Variant = d.get("chev")
+	return (mi as MultiMeshInstance3D).multimesh.instance_count if mi != null and is_instance_valid(mi) else 0
+
+
+## Draws the forts of a game with sieges (§10.1) from a board_table: each fort in the kit of its level (palisade,
+## keep, citadel) and of its builder (else the map's), its damage look (the look's model when the table has one,
+## else the code fallback: the corner or the gate side of the walls cut away as a dither, rubble at the foot, smoke
+## and fire when battered), construction scaffolding round a site with the next level rising by a cut plane, and
+## the besieger's chevron banners round a besieged fort's walls. `colours`: faction id -> its player colour (the
+## chevrons and a rising level's roofs). An empty table (a game without sieges) puts the map's forts back.
+func show_forts(table: Dictionary, colours: Dictionary = {}) -> void:
+	if table.is_empty():
+		if _sieges_drawn:
+			_restore_map_forts()
+		return
+	var ids := {}
+	for k in fort_rows.keys():
+		ids[k] = true
+	for k in table.keys():
+		ids[k] = true
+	if not _sieges_drawn:
+		_sieges_drawn = true
+		for k in forts.keys():
+			ids[k] = true
+	var keys: Array = ids.keys()
+	keys.sort()
+	for pid in keys:
+		var row: Dictionary = table.get(pid, {})
+		var col: Color = colours.get(String(row.get("besieger", "")), colours.get(String((row.get("scaffold", {}) as Dictionary).get("faction", "")), Color.WHITE))
+		var old: Dictionary = fort_rows.get(pid, {})
+		var d: Dictionary = fort_draw.get(pid, {})
+		if old == row and not d.is_empty() and (d.get("colour", Color.WHITE) as Color).is_equal_approx(col):
+			continue
+		_draw_fort(pid, row, old, col)
+		if row.is_empty():
+			fort_rows.erase(pid)
+		else:
+			fort_rows[pid] = row.duplicate(true)
+
+
+## A game without sieges again (a test reusing the board): the map's forts as the board placed them at the start.
+func _restore_map_forts() -> void:
+	for pid in fort_draw.keys():
+		_clear_dress(pid)
+		var d: Dictionary = fort_draw[pid]
+		if d.get("root") != null and is_instance_valid(d["root"]):
+			(d["root"] as Node).queue_free()
+		forts.erase(pid)
+		_show_villages(pid, true)
+	fort_draw.clear()
+	fort_rows.clear()
+	for pid in _dmg_cut.keys():
+		_cut_mats(_capital_mats(pid), Vector4.ZERO, 0.0)
+	_dmg_cut.clear()
+	_sieges_drawn = false
+	for i in terrain.ids.size():
+		if terrain.has_fort[i] and not terrain.is_capital[i] and not forts.has(terrain.ids[i]):
+			_place_fort(terrain.ids[i], i, gate_dir(terrain.ids[i]))
+
+
+func _draw_fort(pid: String, row: Dictionary, old: Dictionary, col: Color) -> void:
+	var capital := fortresses.has(pid)
+	var d: Dictionary = fort_draw.get(pid, {})
+	if not capital:
+		var kind := String(row.get("kind", ""))
+		var kit := String(row.get("kit", ""))
+		var same: bool = not d.is_empty() and kind == String(old.get("kind", "")) and kit == String(old.get("kit", "")) and d.get("root") != null
+		if not same:
+			if d.get("root") != null and is_instance_valid(d["root"]):
+				(d["root"] as Node).queue_free()
+			elif forts.has(pid) and is_instance_valid(forts[pid]["node"]):
+				(forts[pid]["node"] as Node).queue_free() ## the map's fort, placed at the start
+			var team: Color = (forts[pid]["mat"] as ShaderMaterial).get_shader_parameter("team") if forts.has(pid) else NEUTRAL_ROOF
+			forts.erase(pid)
+			d = {"root": null}
+			if not kind.is_empty():
+				var built := _build_fort(pid, kind, kit)
+				d = built
+				(built["mat"] as ShaderMaterial).set_shader_parameter("team", team)
+				forts[pid] = {"node": built["root"], "mat": built["mat"]}
+		_show_villages(pid, kind.is_empty() and (row.get("scaffold", {}) as Dictionary).is_empty())
+	_clear_dress(pid)
+	d["colour"] = col
+	fort_draw[pid] = d
+	var dress := Node3D.new()
+	dress.name = "FortDress_" + pid
+	buildings.add_child(dress)
+	d["dress"] = dress
+	var g: Dictionary = _fort_frame(pid, capital, d)
+	if g.is_empty():
+		return
+	var frame: Transform3D = g["frame"]
+	var hs: float = g["hs"]
+	var h: float = g["h"]
+	## the damage look: its model when the table has one, else the code fallback
+	var look := String(row.get("look", ""))
+	var cut: Array = _damage_cut(frame, hs, h, look)
+	var mats: Array = _capital_mats(pid) if capital else d.get("mats", [])
+	if capital:
+		if look.is_empty() or look == "intact":
+			_dmg_cut.erase(pid)
+		else:
+			_dmg_cut[pid] = cut
+		if not bool(fortresses[pid].get("cut", false)):
+			_cut_mats(mats, cut[0], cut[1])
+	else:
+		_cut_mats(mats, cut[0], cut[1])
+	if look in ["damaged", "battered"]:
+		_rubble(dress, frame, [Vector2(0.7 * hs, -0.95 * hs), Vector2(0.92 * hs, -0.72 * hs)], hs / 16.0)
+		if look == "battered":
+			_smoke(dress, frame * Vector3(0.82 * hs, h * 0.45, -0.82 * hs), 6, 1.2)
+			_fire(dress, frame * Vector3(0.7 * hs, h * 0.35, -0.75 * hs), hs / 18.0)
+	elif look == "breached":
+		_rubble(dress, frame, [Vector2(-0.45 * hs, -0.85 * hs), Vector2(0.1 * hs, -0.95 * hs), Vector2(0.5 * hs, -0.82 * hs)], hs / 13.0)
+		_smoke(dress, frame * Vector3(0.0, h * 0.15, -hs), 3, 0.7)
+	## construction: scaffolding round the site, the next level rising by a cut plane
+	var sc: Dictionary = row.get("scaffold", {})
+	if not sc.is_empty():
+		_rising(dress, pid, String(sc.get("to_kind", "")), String(sc.get("kit", "")), float(sc.get("rise", 0.0)), col)
+	## a siege: the besieger's chevron banners round the walls
+	if not String(row.get("besieger", "")).is_empty():
+		d["chev"] = _chevrons(dress, frame, hs + 5.0, col)
+
+
+const NEUTRAL_ROOF := Color(0.6, 0.6, 0.6)
+
+
+func _clear_dress(pid: String) -> void:
+	var d: Dictionary = fort_draw.get(pid, {})
+	if d.get("dress") != null and is_instance_valid(d["dress"]):
+		(d["dress"] as Node).queue_free()
+	d.erase("dress")
+	d.erase("chev")
+
+
+## A fort province's frame (gate on local -Z, turned to the stage), its half side and height: {"frame", "hs", "h"}.
+func _fort_frame(pid: String, capital: bool, d: Dictionary) -> Dictionary:
+	if capital:
+		var f: Dictionary = fortresses[pid]
+		return {"frame": (f["node"] as Node3D).transform, "hs": float(f.get("side", FORTRESS_SIDE)) * 0.5, "h": float(f.get("h", 24.0))}
+	if d.get("root") != null:
+		return {"frame": (d["root"] as Node3D).transform, "hs": float(d["hs"]), "h": float(d["h"])}
+	## a site with no fort yet: the spot it will stand on
+	var i: int = terrain.index_of(pid)
+	if i < 0:
+		return {}
+	var gate := gate_dir(pid)
+	var at: Vector2 = fort_spot(terrain, i)[0]
+	return {"frame": Transform3D(Basis(Vector3.UP, atan2(-gate.x, -gate.y)), terrain.ground_at(at) - Vector3(0, 0.3, 0)), "hs": 12.0, "h": 8.0}
+
+
+## Builds a fort of `kind` in `kit` at `pid` (its model, else its primitive), in the fort frame: gate on local -Z,
+## facing the stage. {"root", "mat", "mats", "hs", "h"}.
+func _build_fort(pid: String, kind: String, kit: String) -> Dictionary:
+	var g := fort_geom(pid, kind, kit)
+	var root := Node3D.new()
+	root.name = "Fort_" + pid
+	root.transform = g["frame"]
+	buildings.add_child(root)
+	var piece := _fort_piece(kind, kit)
+	var mi: MeshInstance3D = piece["mi"]
+	root.add_child(mi)
+	return {"root": root, "mat": piece["mat"], "mats": [piece["mat"]], "hs": float(g["radius"]), "h": float(piece["h"])}
+
+
+## A fort's model (or primitive) as a MeshInstance3D in the fort frame, with its own material and outline (the damage
+## look and the rising cut go on them): {"mi", "mat", "h"}.
+func _fort_piece(kind: String, kit: String) -> Dictionary:
+	var row: Dictionary = Models.building_row(kind, kit)
+	var glb: Dictionary = Models.building_model(kind, kit)
+	var mi := MeshInstance3D.new()
+	var mat: ShaderMaterial
+	var h := 10.0
+	if not glb.is_empty():
+		var aabb: AABB = glb["aabb"]
+		var side: float = float(row.get("side", 26.0))
+		var s: float = side / maxf(aabb.size.x, aabb.size.z)
+		mi.mesh = glb["mesh"]
+		mi.scale = Vector3.ONE * s
+		## the row's yaw turns the model's gate onto the frame's -Z, toward the stage and its roads (the map's own
+		## forts, placed at the start of a game without sieges, keep their M3a turn)
+		mi.rotation.y = deg_to_rad(float(row.get("yaw", 180.0)))
+		var centre: Vector3 = aabb.get_center()
+		mi.position = (Basis(Vector3.UP, mi.rotation.y) * Vector3(-centre.x, -aabb.position.y, -centre.z)) * s
+		mi.position.y -= float(row.get("sink", 0.0))
+		mat = model_mat(Color.WHITE, glb["tex"], float(row.get("key_hue", -1.0)), false, float(row.get("tint", 0.9)), Color.WHITE, float(row.get("grade", BUILDING_GRADE)))
+		h = aabb.size.y * s
+	else:
+		mi.mesh = Models.building_primitive(kind, kit)
+		mat = model_mat(Color.WHITE, null, -1.0, false, 0.9, Color.WHITE, BUILDING_GRADE)
+		h = mi.mesh.get_aabb().size.y
+	_give_own_outline(mat)
+	mi.material_override = mat
+	return {"mi": mi, "mat": mat, "h": h}
+
+
+## A fort's yard in the world (pure of nodes, cached): {"pid", "kind", "kit", "capital", "frame" (gate on local -Z),
+## "court" (Rect2 in the frame), "gate_z", "gate_dir", "yaw", "floor_y", "centre", "radius", "gate": [inner, outer]}.
+func fort_geom(pid: String, kind: String, kit: String) -> Dictionary:
+	var key := "%s|%s|%s" % [pid, kind, kit]
+	if _geom.has(key):
+		return _geom[key]
+	var t = terrain
+	var i: int = t.index_of(pid)
+	var gate := gate_dir(pid)
+	var at: Vector2 = fort_spot(t, i)[0]
+	var frame := Transform3D(Basis(Vector3.UP, atan2(-gate.x, -gate.y)), t.ground_at(at) - Vector3(0, 0.3, 0))
+	var row: Dictionary = Models.building_row(kind, kit)
+	var has_model: bool = not Models.building_model(kind, kit).is_empty()
+	var prim: Dictionary = Kit.PALISADE_YARD if kind == "palisade" else Kit.FORT_YARD
+	var cr: Array = row.get("court", []) if has_model else []
+	if cr.size() != 4:
+		cr = prim["court"]
+	var gz: Array = row.get("gate_z", []) if has_model else []
+	if gz.size() != 2:
+		gz = prim["gate_z"]
+	var side: float = float(row.get("side", prim["side"])) if has_model else float(prim["side"])
+	var out := {"pid": pid, "kind": kind, "kit": kit, "capital": false, "frame": frame,
+		"court": Rect2(Vector2(cr[0], cr[1]), Vector2(cr[2], cr[3])), "gate_z": Vector2(gz[0], gz[1]),
+		"gate_dir": gate, "yaw": atan2(-gate.x, -gate.y), "floor_y": frame.origin.y + float(row.get("floor", 0.3)),
+		"centre": at, "radius": side * 0.5}
+	out["gate"] = _gates_in(frame, out["gate_z"])
+	_geom[key] = out
+	return out
+
+
+## The yard where `pid`'s owner's armies stand in `s`: a capital's fortress always; in a game with sieges, every fort
+## (the kit of its level and builder). {} for a province without one. See fort_geom for the keys.
+func yard_of(pid: String, s: GameState) -> Dictionary:
+	if fortresses.has(pid):
+		## a capital's fortress (not cached: the preview can rebuild it)
+		var f: Dictionary = fortresses[pid]
+		var frame: Transform3D = (f["node"] as Node3D).transform
+		var i: int = terrain.index_of(pid)
+		return {"pid": pid, "kind": "fortress", "kit": String(capital_of.get(pid, "")), "capital": true, "frame": frame,
+			"court": f["court"], "gate_z": f["gate_z"], "gate_dir": f["gate_dir"], "yaw": f["yaw"],
+			"floor_y": terrain.stage_h[i] + float(f["floor"]), "centre": Vector2(frame.origin.x, frame.origin.z),
+			"radius": float(f.get("side", FORTRESS_SIDE)) * 0.5, "gate": gate_points(pid)}
+	if s == null or not s.sieges:
+		return {}
+	var p := s.find_province(pid)
+	if p == null or p.fort_level <= 0 or terrain.index_of(pid) < 0:
+		return {}
+	var kit: String = p.fort_by if not p.fort_by.is_empty() else String(map_kits().get(pid, ""))
+	return fort_geom(pid, SiegeBoard.kind_of(p.fort_level), kit)
+
+
+## A yard's muster point and facing in the world, as courtyard() gives a capital's: [centre, facing, width, depth, yaw].
+static func court_of(y: Dictionary) -> Array:
+	var r: Rect2 = y["court"]
+	var frame: Transform3D = y["frame"]
+	var p: Vector3 = frame * Vector3(r.get_center().x, 0, r.position.y)
+	return [Vector2(p.x, p.z), y["gate_dir"], r.size.x, r.size.y, y["yaw"]]
+
+
+static func _gates_in(frame: Transform3D, gz: Vector2) -> Array:
+	var inner: Vector3 = frame * Vector3(0, 0, gz.x)
+	var outer: Vector3 = frame * Vector3(0, 0, gz.y)
+	return [Vector2(inner.x, inner.z), Vector2(outer.x, outer.z)]
+
+
+func _capital_mats(pid: String) -> Array:
+	var f: Dictionary = fortresses.get(pid, {})
+	return [f.get("mat"), f.get("pal_mat")].filter(func(m): return m != null)
+
+
+func _cut_mats(mats: Array, plane: Vector4, y: float) -> void:
+	for m in mats:
+		(m as ShaderMaterial).set_shader_parameter("cut_plane", plane)
+		(m as ShaderMaterial).set_shader_parameter("cut_y", y)
+		var om: ShaderMaterial = _own_outline.get(m)
+		if om != null:
+			om.set_shader_parameter("cut_plane", plane)
+			om.set_shader_parameter("cut_y", y)
+
+
+## The code fallback of a damage look (§10.1, §13.3): a dither cut through the walls, in the fort frame (gate on -Z).
+## `h` is the model's whole height (its towers' roofs included; the curtain walls stand about half of it). Damaged:
+## the gate-side corner knocked down from about half the walls' height; battered: a wider corner, lower; breached:
+## the whole gate side down to its footing. [Vector4 plane, float y] (a zero plane for an intact fort).
+static func _damage_cut(frame: Transform3D, hs: float, h: float, look: String) -> Array:
+	var n_local := Vector3.ZERO
+	var d_local := 0.0
+	var y_k := 0.0
+	match look:
+		"damaged":
+			n_local = Vector3(0.6, 0, -0.8)
+			d_local = 0.86 * hs
+			y_k = 0.26
+		"battered":
+			n_local = Vector3(0.6, 0, -0.8)
+			d_local = 0.7 * hs
+			y_k = 0.13
+		"breached":
+			n_local = Vector3(0, 0, -1)
+			d_local = 0.5 * hs
+			y_k = 0.04
+		_:
+			return [Vector4.ZERO, 0.0]
+	var n: Vector3 = (frame.basis.orthonormalized() * n_local).normalized()
+	return [Vector4(n.x, 0.0, n.z, n.dot(frame.origin) + d_local), frame.origin.y + h * y_k]
+
+
+func _rubble(parent: Node3D, frame: Transform3D, spots: Array, s: float) -> void:
+	var glb: Dictionary = Models.building_model("rubble")
+	var mesh: Mesh = glb["mesh"] if not glb.is_empty() else Models.building_primitive("rubble")
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = spots.size()
+	for k in spots.size():
+		var lp: Vector2 = spots[k]
+		var w: Vector3 = frame * Vector3(lp.x, 0, lp.y)
+		w.y = maxf(terrain.height_at(Vector2(w.x, w.z)), 0.0) - 0.2
+		mm.set_instance_transform(k, Transform3D(Basis(Vector3.UP, 0.9 * k).scaled(Vector3.ONE * maxf(s, 0.8)), w))
+	var mi := MultiMeshInstance3D.new()
+	mi.name = "Rubble"
+	mi.multimesh = mm
+	mi.material_override = model_mat(Color.WHITE, glb.get("tex"), -1.0, false, 0.9, Color.WHITE, BUILDING_GRADE)
+	parent.add_child(mi)
+
+
+func _smoke(parent: Node3D, at: Vector3, puffs: int, k: float) -> void:
+	var sm := MultiMesh.new()
+	sm.transform_format = MultiMesh.TRANSFORM_3D
+	var quad := QuadMesh.new()
+	quad.size = Vector2.ONE * k
+	sm.mesh = quad
+	sm.instance_count = puffs
+	for i in puffs:
+		sm.set_instance_transform(i, Transform3D(Basis(), at))
+	var smi := MultiMeshInstance3D.new()
+	smi.name = "Smoke"
+	smi.multimesh = sm
+	var smat := ShaderMaterial.new()
+	smat.shader = SH_SMOKE
+	smi.material_override = smat
+	smi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(smi)
+
+
+func _fire(parent: Node3D, at: Vector3, s: float) -> void:
+	var fmi := MeshInstance3D.new()
+	fmi.name = "Fire"
+	fmi.mesh = Kit.campfire()
+	fmi.transform = Transform3D(Basis().scaled(Vector3.ONE * maxf(s, 1.0)), at)
+	fmi.material_override = model_mat(Color.WHITE)
+	parent.add_child(fmi)
+
+
+## The next level rising out of its scaffolding: its model drawn solid up to `rise` of its height and as a faint
+## dither above (the part still to come), inside a lattice of timber.
+func _rising(parent: Node3D, pid: String, to_kind: String, kit: String, rise: float, col: Color) -> void:
+	if to_kind.is_empty() or terrain.index_of(pid) < 0:
+		return
+	var g := fort_geom(pid, to_kind, kit)
+	var frame: Transform3D = g["frame"]
+	var piece := _fort_piece(to_kind, kit)
+	var holder := Node3D.new()
+	holder.name = "Rising"
+	holder.transform = frame
+	parent.add_child(holder)
+	holder.add_child(piece["mi"])
+	(piece["mat"] as ShaderMaterial).set_shader_parameter("team", col)
+	var top: float = frame.origin.y + float(piece["h"]) * clampf(rise, 0.02, 1.0)
+	_cut_mats([piece["mat"]], Vector4(0, 1, 0, top), top)
+	var sc_row: Dictionary = Models.building_row("scaffold", kit)
+	var sc_glb: Dictionary = Models.building_model("scaffold", kit)
+	var lat := MeshInstance3D.new()
+	lat.name = "Scaffold"
+	lat.mesh = sc_glb["mesh"] if not sc_glb.is_empty() else Kit.scaffold(float(g["radius"]) * 2.0 * 0.86, maxf(float(piece["h"]) * 0.75, 6.0), kit)
+	lat.material_override = model_mat(Color.WHITE, sc_glb.get("tex"), float(sc_row.get("key_hue", -1.0)), false, 0.95)
+	holder.add_child(lat)
+
+
+func _chevrons(parent: Node3D, frame: Transform3D, r: float, col: Color) -> MultiMeshInstance3D:
+	var angles: Array = SiegeBoard.chevron_angles()
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
+	mm.mesh = Kit.chevron_banner()
+	mm.instance_count = angles.size()
+	var c: Vector3 = frame.origin
+	for k in angles.size():
+		var a: float = float(angles[k])
+		var dl := Vector3(sin(a), 0, -cos(a))
+		var w: Vector3 = frame * (dl * r)
+		w.y = maxf(terrain.height_at(Vector2(w.x, w.z)), 0.0)
+		var outward := Vector2(w.x - c.x, w.z - c.z).normalized()
+		mm.set_instance_transform(k, Transform3D(Basis(Vector3.UP, atan2(outward.x, outward.y)).scaled(Vector3.ONE * 1.3), w))
+		mm.set_instance_custom_data(k, col.srgb_to_linear())
+	var mi := MultiMeshInstance3D.new()
+	mi.name = "Chevrons"
+	mi.multimesh = mm
+	mi.material_override = model_mat(Color.WHITE, null, -1.0, true)
+	parent.add_child(mi)
+	return mi
+
+
+## Clears a province's village and landmark from under a fort built there (`show` false), or puts them back.
+func _show_villages(pid: String, show: bool) -> void:
+	var i: int = terrain.index_of(pid)
+	if i < 0 or terrain.has_fort[i]:
+		return
+	var at: Vector2 = fort_spot(terrain, i)[0]
+	for v in _village_at.get(pid, []):
+		var near: bool = (v["pos"] as Vector2).distance_to(at) < float(v["r"]) + Kit.PALISADE_R + 12.0
+		var xf: Transform3D = v["xf"]
+		(v["mm"] as MultiMesh).set_instance_transform(int(v["k"]), xf if (show or not near) else Transform3D(Basis().scaled(Vector3.ONE * 0.001), xf.origin))
+
+
+## The viewer's own queued Fortify orders (design/M3C_SIEGES.md §10.2, "ghost scaffolding shows only in its owner's
+## view"): `sites` province id -> the kind that will rise; each stands as a translucent scaffold in `colour`. The
+## board passes only the viewing player's orders, and none while the board is covered (a hotseat handoff).
+func set_fortify_ghosts(sites: Dictionary, colour: Color = Color.WHITE) -> void:
+	for pid in _ghost_scaffolds.keys():
+		if not sites.has(pid):
+			(_ghost_scaffolds[pid] as Node).queue_free()
+			_ghost_scaffolds.erase(pid)
+	for pid in sites.keys():
+		if _ghost_scaffolds.has(pid) or terrain.index_of(pid) < 0:
+			continue
+		var g := fort_geom(pid, String(sites[pid]), String(map_kits().get(pid, "")))
+		var mi := MeshInstance3D.new()
+		mi.name = "GhostScaffold_" + pid
+		mi.mesh = Kit.scaffold(float(g["radius"]) * 2.0 * 0.86, 9.0)
+		mi.transform = g["frame"]
+		var gm := ShaderMaterial.new()
+		gm.shader = SH_GHOST
+		gm.set_shader_parameter("team", colour)
+		mi.material_override = gm
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		buildings.add_child(mi)
+		_ghost_scaffolds[pid] = mi
+
+
+## The provinces with a ghost scaffold now, sorted (tests).
+func fortify_ghosts() -> Array:
+	var out: Array = _ghost_scaffolds.keys()
+	out.sort()
+	return out
+
+
+## A one-shot dust burst at `at` (§10.2's strikes, collapses and masons): `spread` and `size` in world units.
+func burst(at: Vector3, spread: float = 6.0, size: float = 3.0, puffs: int = 10, life: float = 1.2, tint: Color = Color(0.80, 0.74, 0.64)) -> void:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	var quad := QuadMesh.new()
+	quad.size = Vector2.ONE
+	mm.mesh = quad
+	mm.instance_count = puffs
+	for i in puffs:
+		mm.set_instance_transform(i, Transform3D(Basis(), at))
+	var mi := MultiMeshInstance3D.new()
+	mi.name = "Dust"
+	mi.multimesh = mm
+	var mat := ShaderMaterial.new()
+	mat.shader = SH_DUST
+	mat.set_shader_parameter("spread", spread)
+	mat.set_shader_parameter("lift", spread * 0.8)
+	mat.set_shader_parameter("size", size)
+	mat.set_shader_parameter("tint", tint)
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	buildings.add_child(mi)
+	_fx.append({"node": mi, "mat": mat, "t": 0.0, "life": life})
+
+
+## Ages the dust bursts by `delta` seconds (the board steps it with the playback's speed) and clears the finished.
+func step_fx(delta: float) -> void:
+	if _fx.is_empty():
+		return
+	var keep: Array = []
+	for fx in _fx:
+		fx["t"] = float(fx["t"]) + delta
+		var k: float = float(fx["t"]) / float(fx["life"])
+		if k >= 1.0:
+			(fx["node"] as Node).queue_free()
+			continue
+		(fx["mat"] as ShaderMaterial).set_shader_parameter("age", k)
+		keep.append(fx)
+	_fx = keep
+
+
+func clear_fx() -> void:
+	for fx in _fx:
+		(fx["node"] as Node).queue_free()
+	_fx.clear()
+
+
+## Where a beat at a fort plays (the gate side of its walls), and its half side: [Vector3, float]; [] for none.
+func wall_point(pid: String, s: GameState = null) -> Array:
+	var y := yard_of(pid, s)
+	if y.is_empty():
+		var d: Dictionary = fort_draw.get(pid, {})
+		var g := _fort_frame(pid, false, d) if terrain.index_of(pid) >= 0 else {}
+		if g.is_empty():
+			return []
+		return [(g["frame"] as Transform3D) * Vector3(0, 2.0, 0), float(g["hs"])]
+	var frame: Transform3D = y["frame"]
+	return [frame * Vector3(0.0, 4.0, -float(y["radius"]) * 0.9), float(y["radius"])]
 
 
 # ------------------------------------------------------------------ the camera

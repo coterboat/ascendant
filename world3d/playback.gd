@@ -8,22 +8,35 @@
 ## playback is driven by the events, and it can't disagree with the game.
 ##
 ##   model_of(state)                -> {"owners": {province id: faction id or ""}, "armies": {army id: province id}}
+##                                     M3c S-4, in a game with sieges also "forts", "works", "sieges", "inside" and
+##                                     "army_owner" (world3d/siege_board.gd: levels, damage looks, construction, the
+##                                     camp rings, who stands inside the walls)
 ##   apply_events(model, events)    -> the model after those events (only the events are read)
-##   plan(before, events, after)    -> the beats: marches, battles, captures, recruits and arrivals
+##   plan(before, events, after)    -> the beats: marches, battles, captures, recruits and arrivals; with sieges the
+##                                     fort beats (sieges, walls, construction) and each battle's siege block
 extends RefCounted
 
+const SiegeBoard := preload("res://world3d/siege_board.gd")
 const BATTLES := ["battle", "border_battle"]
 
 
-## What the board shows of a state: who owns each province and where every army stands.
+## What the board shows of a state: who owns each province and where every army stands (with sieges, its forts).
 static func model_of(state: GameState) -> Dictionary:
 	var owners := {}
 	for p in state.provinces:
 		owners[p.id] = p.owner
 	var armies := {}
+	var army_owner := {}
 	for a in state.armies:
 		armies[a.id] = a.location
-	return {"owners": owners, "armies": armies}
+		army_owner[a.id] = a.owner
+	var out := {"owners": owners, "armies": armies}
+	var forts := SiegeBoard.model_of(state)
+	if not forts.is_empty():
+		out.merge(forts)
+		out["army_owner"] = army_owner
+		out["inside"] = SiegeBoard.inside_of(forts["forts"], owners, armies, army_owner)
+	return out
 
 
 ## The model after a turn's events, from the events alone:
@@ -33,12 +46,19 @@ static func model_of(state: GameState) -> Dictionary:
 ##   captured, vassal_joined   the province now belongs to the event's first faction
 ##   recruited              the army it joined (or formed) stands at the event's province
 ##   ruler_arrived          the new ruler's army stands at the capital
+##   M3c S-4, with sieges: the forts part moves as SiegeBoard.apply_events says; a new army (recruited, ruler_arrived)
+##   belongs to the event's faction, and who stands inside follows the owners and armies
 static func apply_events(model: Dictionary, events: Array) -> Dictionary:
 	var owners: Dictionary = (model.get("owners", {}) as Dictionary).duplicate()
 	var armies: Dictionary = (model.get("armies", {}) as Dictionary).duplicate()
+	var army_owner: Dictionary = (model.get("army_owner", {}) as Dictionary).duplicate()
 	for e in events:
 		var provs: Array = e.get("provinces", [])
 		var ids: Array = e.get("armies", [])
+		if model.has("forts") and String(e.get("type", "")) in ["recruited", "ruler_arrived"] and not ids.is_empty():
+			var fids0: Array = e.get("factions", [])
+			if not army_owner.has(ids[0]) and not fids0.is_empty():
+				army_owner[ids[0]] = fids0[0]
 		match String(e.get("type", "")):
 			"army_moved":
 				if not ids.is_empty() and not provs.is_empty():
@@ -57,7 +77,15 @@ static func apply_events(model: Dictionary, events: Array) -> Dictionary:
 			"recruited", "ruler_arrived":
 				if not ids.is_empty() and not provs.is_empty():
 					armies[ids[0]] = provs[0]
-	return {"owners": owners, "armies": armies}
+	var out := {"owners": owners, "armies": armies}
+	if model.has("forts"):
+		out.merge(SiegeBoard.apply_events(model, events))
+		for aid in army_owner.keys():
+			if not armies.has(aid):
+				army_owner.erase(aid)
+		out["army_owner"] = army_owner
+		out["inside"] = SiegeBoard.inside_of(out["forts"], owners, armies, army_owner)
+	return out
 
 
 ## The beats of a turn, in the order they play:
@@ -70,12 +98,19 @@ static func apply_events(model: Dictionary, events: Array) -> Dictionary:
 ##   "arrivals"  [{"army", "province"}] (a successor ruler at the capital)
 ##   "fallen"    {army id: index of the battle it fell in}
 ##   "turn"      the 1-based turn that resolved
+## M3c S-4, in a game with sieges: a battle at a fort also carries "siege" (the battle's siege block, numbers.siege:
+## its "kind" storm / open / breach, "why", "from_inside" ...; {} elsewhere), and
+##   "forts"     [{"kind": the event type (SiegeBoard.FORT_EVENTS), "province", "phase", "numbers", "armies",
+##                "factions", "text" (the turn report's own line, TurnReportText.line), "label" (the caption's words,
+##                SiegeBoard.beat_label), "event" (the event itself, for SiegeBoard.apply_one)}] in report order: the
+##                sieges phase's beats, a site started in recruitment, a site razed in capture
 static func plan(before: GameState, events: Array, after: GameState) -> Dictionary:
 	var marches: Array = []
 	var battles: Array = []
 	var captures: Array = []
 	var recruits: Array = []
 	var arrivals: Array = []
+	var forts: Array = []
 	var fallen := {}
 	var marching := {}  # army id -> index in marches
 	var battle_at := {}  # province id -> battle index (province battles)
@@ -83,11 +118,20 @@ static func plan(before: GameState, events: Array, after: GameState) -> Dictiona
 		var t := String(e.get("type", ""))
 		var provs: Array = e.get("provinces", [])
 		var ids: Array = e.get("armies", [])
+		if SiegeBoard.FORT_EVENTS.has(t) and not provs.is_empty():
+			var fb := {"kind": t, "province": provs[0], "phase": String(e.get("phase", "")),
+				"numbers": (e.get("numbers", {}) as Dictionary).duplicate(true), "armies": ids.duplicate(),
+				"factions": (e.get("factions", []) as Array).duplicate(), "text": TurnReportText.line(e, events, after),
+				"event": e}
+			fb["label"] = SiegeBoard.beat_label(fb, after)
+			forts.append(fb)
+			continue
 		if t in BATTLES:
 			var n: Dictionary = e.get("numbers", {})
 			var bi := battles.size()
 			battles.append({"kind": t, "provinces": provs.duplicate(), "winner": String(n.get("winner", "")),
-				"destroyed": (n.get("destroyed", []) as Array).duplicate(), "armies": ids.duplicate(), "text": TurnReportText.line(e, events, after)})
+				"destroyed": (n.get("destroyed", []) as Array).duplicate(), "armies": ids.duplicate(), "text": TurnReportText.line(e, events, after),
+				"siege": (n.get("siege", {}) as Dictionary).duplicate(true)})
 			for aid in n.get("destroyed", []):
 				fallen[aid] = bi
 			if t == "battle" and not provs.is_empty():
@@ -130,7 +174,15 @@ static func plan(before: GameState, events: Array, after: GameState) -> Dictiona
 		if fallen.has(m["army"]):
 			m["survived"] = false
 	return {"marches": marches, "battles": battles, "captures": captures, "recruits": recruits, "arrivals": arrivals,
-		"fallen": fallen, "turn": after.current_turn}
+		"fallen": fallen, "turn": after.current_turn, "forts": forts}
+
+
+## True when a plan has nothing to play (no march, battle, capture, recruit, arrival or fort beat).
+static func is_empty(plan: Dictionary) -> bool:
+	for k in ["marches", "battles", "recruits", "arrivals", "captures", "forts"]:
+		if not (plan.get(k, []) as Array).is_empty():
+			return false
+	return true
 
 
 ## The province a battle is drawn at: a province battle's province, or a border battle's two ends.
@@ -142,4 +194,17 @@ static func battle_label(b: Dictionary, state: GameState) -> String:
 		names.append(p.name if p != null else "")
 	if b.get("kind", "") == "border_battle" and names.size() >= 2:
 		return "Battle on the border of %s and %s" % [names[0], names[1]]
-	return "Battle at %s" % (names[0] if not names.is_empty() else "")
+	var at: String = names[0] if not names.is_empty() else ""
+	## M3c S-4: a battle at a fort's walls says which (its siege block's "why", design/M3C_SIEGES.md §3.9)
+	match String((b.get("siege", {}) as Dictionary).get("why", "")):
+		"storm":
+			return "Storm of %s" % at
+		"breach":
+			return "Battle in the breach at %s" % at
+		"sally", "gate":
+			return "The garrison of %s sallies" % at
+		"relief":
+			return "Relief of %s" % at
+		"relief_sally":
+			return "Relief of %s, the garrison sallying" % at
+	return "Battle at %s" % at

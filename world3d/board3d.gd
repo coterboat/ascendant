@@ -30,6 +30,12 @@ extends Control
 ## queued recruits stand as ghosts in the yard slots they will take, armies ordered to march gather at
 ## their gate (or their stage's edge) facing the road, and the yard closes ranks behind them.
 ##
+## Forts and sieges (M3c S-4, #102; design/M3C_SIEGES.md §10): in a game with sieges every stand draws the forts
+## from the state (world_view.gd show_forts: kits by level, damage looks, scaffolding, chevrons; armies.gd the yards,
+## the packed garrisons and the camp rings), a turn's fort beats play in their phases with a dust burst at the walls
+## (and a rule-bound shake at a breach, off with reduced motion), and the viewer's own queued Fortify orders stand as
+## ghost scaffolds, never another seat's and never while the board is hidden behind a handoff.
+##
 ## The fortress close-up (M3a.2, design/3D_DIRECTION.md 8.3): View fortress in the recruit panel, or a
 ## double-click on a fortress, swoops the camera down into the yard (turned to look in through the gate);
 ## each queued recruit appears there at once as a ghost. Esc, zooming out, F, C or selecting another
@@ -55,6 +61,7 @@ const Muster := preload("res://world3d/muster.gd")
 const Choreo := preload("res://world3d/choreo.gd")
 const Stands := preload("res://world3d/stands.gd")
 const Trays := preload("res://world3d/trays.gd")
+const SiegeBoard := preload("res://world3d/siege_board.gd")
 
 const SPAN_NEAR := 70.0
 const PITCH_FAR := 60.0
@@ -110,6 +117,9 @@ var _playing := false
 var closeup := "" ## the fortress whose yard the close-up shows ("" none)
 var _pre_closeup := {} ## the camera before the close-up: {"goal", "zoom"}
 var sounds: Array = [] ## (tests) the beats' sounds this board asked for, in order
+var shakes := 0 ## (tests) the breach shakes the board played
+var _shake_t := 0.0 ## M3c S-4: a breach's camera shake, seconds left
+var _shake_limit := BattleFx.ShakeLimiter.new()
 
 
 func _init() -> void:
@@ -203,6 +213,7 @@ func _build_world() -> void:
 	armies.beat.connect(_on_beat)
 	armies.clash_started.connect(_on_clash_started)
 	armies.playback_finished.connect(_on_playback_finished)
+	armies.fort_beat.connect(_on_fort_beat)
 	stands = Stands.new()
 	stands.wv = wv
 	wv.add_child(stands)
@@ -252,6 +263,11 @@ func _paint_owners(st: GameState) -> void:
 		if not p.owner.is_empty():
 			cols[p.id] = UiPalette.owner_color(st, p.owner, seats)
 	wv.set_owners(cols)
+	## M3c S-4: the forts of a game with sieges as the state has them (an empty table puts the map's back)
+	var fcols := {}
+	for f in st.factions:
+		fcols[f.id] = UiPalette.owner_color(st, f.id, seats)
+	wv.show_forts(wv.table_of(st), fcols)
 	for id in wv.fortresses.keys():
 		var p := st.find_province(id)
 		wv.set_fortress_colour(id, UiPalette.owner_color(st, p.owner, seats) if p != null and not p.owner.is_empty() else UiPalette.NEUTRAL)
@@ -291,7 +307,19 @@ func _sync_marks() -> void:
 func _sync_plan() -> void:
 	if _playing:
 		return
-	armies.show_plan(plan_of_orders())
+	var ctx := plan_of_orders()
+	armies.show_plan(ctx)
+	_sync_fortify_ghosts(ctx)
+
+
+## M3c S-4: the viewer's own queued Fortify orders as ghost scaffolds, while the board can be seen.
+func _sync_fortify_ghosts(ctx: Dictionary) -> void:
+	if wv == null:
+		return
+	var sites: Dictionary = ctx.get("fortify", {}) if _seen() and not _covered() else {}
+	var st: GameState = map.state if map != null else null
+	var col: Color = UiPalette.owner_color(st, String(ctx.get("owner", "")), seats) if st != null and ctx.has("owner") else Color.WHITE
+	wv.set_fortify_ghosts(sites, col)
 
 
 ## The plan the viewing player's orders draw: {"departing": {army id: {"to", "via"}}, "ghosts":
@@ -308,11 +336,18 @@ func plan_of_orders() -> Dictionary:
 	var by_place := {}
 	var order: Array = []
 	var departing := {}
+	var fortify := {}
 	for o in map.orders.orders():
 		if o is MoveOrder:
 			var a := st.find_army(o.army_id)
 			if a != null and a.owner == fid:
 				departing[o.army_id] = {"to": o.to, "via": o.via if o.is_road_move() else ""}
+			continue
+		if o is FortifyOrder:
+			## M3c S-4: a ghost scaffold where the fort will rise (the next level: a palisade, or a keep on one)
+			var fp := st.find_province(o.province)
+			if fp != null and st.sieges:
+				fortify[o.province] = SiegeBoard.kind_of(mini(fp.fort_level + 1, FortData.MAX_BUILT))
 			continue
 		if not (o is RecruitOrder):
 			continue
@@ -320,6 +355,9 @@ func plan_of_orders() -> Dictionary:
 		if o.is_with_ruler():
 			var ra := RulerRules.ruler_army(st, fid)
 			where = ra.location if ra != null else ""
+		elif st.sieges:
+			## M3c S-4: a recruit at any fort the faction holds stands as a ghost in that fort's yard
+			where = SiegeRules.recruit_place(st, f, TurnResolver.recruit_at(st, f, o))
 		if where.is_empty():
 			continue
 		if not by_place.has(where):
@@ -334,6 +372,8 @@ func plan_of_orders() -> Dictionary:
 		ctx["departing"] = departing
 	if not ghosts.is_empty():
 		ctx["ghosts"] = ghosts
+	if not fortify.is_empty():
+		ctx["fortify"] = fortify
 	if not ctx.is_empty():
 		ctx["owner"] = fid
 	return ctx
@@ -348,8 +388,7 @@ func play_turn(before: GameState, events: Array, after: GameState) -> bool:
 	if not prepared or before == null or after == null:
 		return false
 	var plan := Playback.plan(before, events, after)
-	if plan["marches"].is_empty() and plan["battles"].is_empty() and plan["recruits"].is_empty() \
-			and plan["arrivals"].is_empty() and plan["captures"].is_empty():
+	if Playback.is_empty(plan):
 		return false
 	exit_closeup(true)
 	shown = before
@@ -357,6 +396,8 @@ func play_turn(before: GameState, events: Array, after: GameState) -> bool:
 	armies.speed = float(GameSettings.load_from().playback_speed)
 	armies.seats = seats
 	wv.clear_sweeps()
+	wv.clear_fx()
+	wv.set_fortify_ghosts({})
 	_paint_owners(before)
 	_playing = true
 	armies.play(plan, before, after)
@@ -380,6 +421,12 @@ func _frame_action(plan: Dictionary) -> void:
 				pts.append(t.centre_of(pid))
 		for aid in b["armies"]:
 			fighting[aid] = true
+	## M3c S-4: a siege's beats are action too
+	for fb in plan.get("forts", []):
+		if fb["phase"] == "sieges" and t.index_of(fb["province"]) >= 0:
+			pts.append(t.centre_of(fb["province"]))
+			for aid in fb.get("armies", []):
+				fighting[aid] = true
 	var me: String = map.viewing_faction_id if map != null else ""
 	for pass_i in 3:
 		for m in plan["marches"]:
@@ -438,6 +485,41 @@ func _on_clash_started(_label: String) -> void:
 	var at: Vector3 = cl[cl.size() - 1]["at"]
 	zoom = maxf(zoom, BATTLE_ZOOM)
 	goal = rig_for(Vector2(at.x, at.z) + Vector2(0, 6), zoom)
+
+
+## Whether the board and every control above it are shown (in the tree or not: tests build it headless).
+func _seen() -> bool:
+	var n: Node = self
+	while n != null:
+		if n is CanvasItem and not (n as CanvasItem).visible:
+			return false
+		n = n.get_parent()
+	return true
+
+
+## M3c S-4: a fort beat plays (§10.2): dust at the walls where the siege strikes, a rubble burst and a rule-bound
+## camera shake where they are breached (M3 §4.5: off with reduced motion or screen shake off, at most one every
+## BattleFx.SHAKE_SPACING), masons' dust at a repair, smoke where scaffolding falls. Cosmetic: it never changes anything.
+func _on_fort_beat(province_id: String, kind: String, _index: int) -> void:
+	var wp: Array = wv.wall_point(province_id, armies.state)
+	if wp.is_empty():
+		return
+	var at: Vector3 = wp[0]
+	var r: float = wp[1]
+	match kind:
+		"siege", "wall_hit":
+			wv.burst(at, r * 0.35, 3.0, 10, 1.3)
+		"breach":
+			wv.burst(at, r * 0.6, 5.0, 18, 1.8, Color(0.72, 0.66, 0.58))
+			var fx := BattleFx.settings()
+			_shake_limit.enabled = bool(fx.get("screen_shake", true)) and not bool(fx.get("reduced_motion", false))
+			if _shake_limit.allow(Time.get_ticks_msec() / 1000.0):
+				_shake_t = 0.5
+				shakes += 1
+		"repair", "built", "scaffold":
+			wv.burst(at, r * 0.3, 2.4, 8, 1.1, Color(0.86, 0.82, 0.74))
+		"razed":
+			wv.burst(at, r * 0.45, 3.6, 14, 1.6, Color(0.45, 0.42, 0.40))
 
 
 ## A capture's sweep begins: the wash's old colour stays outside a front running out from `from`.
@@ -747,7 +829,16 @@ func _camera(delta: float) -> void:
 	r["span"] = exp(lerpf(log(float(r["span"])), log(float(goal["span"])), k))
 	r["pitch"] = lerpf(r["pitch"], goal["pitch"], k)
 	r["yaw"] = float(r["yaw"]) + wrapf(float(goal["yaw"]) - float(r["yaw"]), -180.0, 180.0) * k
+	## M3c S-4: a breach's shake (a short decaying wobble of the camera's target; the rig itself never drifts)
+	var shake := Vector3.ZERO
+	if _shake_t > 0.0:
+		_shake_t = maxf(0.0, _shake_t - delta)
+		var amp: float = float(r["span"]) * 0.006 * (_shake_t / 0.5)
+		var tt: float = Time.get_ticks_msec() / 1000.0
+		shake = Vector3(sin(tt * 61.0), 0.0, cos(tt * 47.0)) * amp
+	r["target"] = (r["target"] as Vector3) + shake
 	wv.apply_rig()
+	r["target"] = (r["target"] as Vector3) - shake
 	view_rig = r.duplicate()
 	## far out the figures stand taller (toy scale) so every army reads as a marker over the map, and a
 	## man-sized figure never stands shorter than MIN_FIG_PX on screen (design 6.1, piece scale)
@@ -807,6 +898,8 @@ func _process(delta: float) -> void:
 		queue_redraw()
 		return
 	var live := is_visible_in_tree() and not _covered()
+	if not live and not wv.fortify_ghosts().is_empty():
+		wv.set_fortify_ghosts({}) ## M3c S-4: covered or hidden (a hotseat handoff), no private scaffold ghost is drawn
 	if live != _live:
 		_live = live
 		_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS if live else SubViewport.UPDATE_ONCE
@@ -818,6 +911,7 @@ func _process(delta: float) -> void:
 	_camera(delta)
 	if not wv.sweeps.is_empty():
 		wv.step_sweeps(delta * (armies.speed if _playing else 1.0))
+	wv.step_fx(delta * (armies.speed if _playing else 1.0))
 	if not _flash.is_empty():
 		for id in _flash.keys():
 			_flash[id] = float(_flash[id]) - delta * 1.6
