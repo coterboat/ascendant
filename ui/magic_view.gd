@@ -54,6 +54,7 @@ static func card(state: GameState, fid: String, nid: String, orders: Array = [])
 		lines.append(String(c.reason))
 	lines.append(PREVIEW_NOTE)
 	c.detail = "\n\n".join(lines)
+	c["compact"] = true  # the research panel puts the kind on the name's line, so a school's four cards fit
 	return c
 
 

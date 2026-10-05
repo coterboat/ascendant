@@ -211,7 +211,7 @@ func _refresh_magic() -> void:
 	status_label.text = status_text
 	status_label.visible = not status_text.is_empty()
 	_fill_magic_sidebar()
-	footer_label.text = "Spells are researched like path nodes, from the same research pool, one target at a time. Nothing in the arcana closes anything; only your Oath opens a school's greater working. Hover a card for its numbers with your casters now; right-click, or press F1, for its codex entry."
+	footer_label.text = "Spells come from the same research pool as your path, one target at a time; only your Oath opens a greater working. Hover a card for its numbers now; F1 for its codex entry."
 	links.queue_redraw()
 
 
@@ -219,7 +219,7 @@ func _magic_column(col: Dictionary) -> VBoxContainer:
 	var box := VBoxContainer.new()
 	box.name = "School_%s" % String(col.school)
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	box.add_theme_constant_override("separation", 10)
+	box.add_theme_constant_override("separation", 6)
 	var h := _label(box, "School of %s" % String(col.title), 18, UiPalette.GILT)
 	h.name = "SchoolTitle"
 	_tip(h, "School of %s" % String(col.title), RulesCodex.text(String(col.codex)), String(col.codex))
@@ -365,15 +365,23 @@ func _card(c: Dictionary, own: bool) -> PanelContainer:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)
 	panel.add_child(box)
-	var name_label := _label(box, String(c.name), 18, UiPalette.TEXT_PRIMARY if st != AscensionRules.CLOSED else UiPalette.TEXT_DISABLED)
+	var compact := bool(c.get("compact", false))  # M5-5: an arcana card puts its kind on the name's line
+	var top: Container = box
+	if compact:
+		top = HBoxContainer.new()
+		top.add_theme_constant_override("separation", 10)
+		box.add_child(top)
+	var name_label := _label(top, String(c.name), 18, UiPalette.TEXT_PRIMARY if st != AscensionRules.CLOSED else UiPalette.TEXT_DISABLED)
 	name_label.name = "Name"
 	name_label.tooltip_text = TooltipText.plain(String(c.name), "%s%s" % [String(c.detail), ("\n\n" + String(c.reason)) if not String(c.reason).is_empty() else ""])
 	CodexLink.attach(name_label, String(c.codex), codex_requested.emit)
 	var kind := RulerRules._cap(String(c.kind_name))  # "Tier II", "Oath", "Transformation"
 	if not String(c.branch).is_empty():
 		kind = "%s · %s" % [kind, AscensionRules.branch_name(String(c.branch))]
-	var kind_label := _label(box, kind, 13, UiPalette.TEXT_SECONDARY)
+	var kind_label := _label(top, kind, 13, UiPalette.TEXT_SECONDARY)
 	kind_label.name = "Kind"
+	if compact:
+		kind_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var effect := _label(box, String(c.effect), 14, UiPalette.TEXT_SECONDARY)
 	effect.name = "Effect"
 	effect.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

@@ -147,7 +147,7 @@ func test_the_cast_legality_table_with_plain_reasons() -> void:
 	poor.find_faction(CLANS).gold = rot - 1
 	var broke := _check(poor, CLANS, CastOrder.new("bloodrot", shamans.id, near))
 	assert_eq(_code(broke), "not_enough_gold")
-	assert_eq(String(broke.reason), "Bloodrot costs %d gold, but you only have %d gold." % [rot, rot - 1])
+	assert_eq(String(broke.reason), "Bloodrot costs %d gold, but you have only %d gold." % [rot, rot - 1])
 	# Far Sight needs no research, and any caster casts it, a mage or a ruler with magic.
 	assert_eq(_check(s, CLANS, CastOrder.new("far_sight", shamans.id, far)), {})
 	assert_eq(_check(s, CLANS, CastOrder.new("far_sight", fang.id, far)), {})

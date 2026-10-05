@@ -201,36 +201,29 @@ static func summon_fades(type_id: String) -> bool:
 	return MagicData.SUMMONS.get(type_id, {}).get("fades", false) == true
 
 
-## The build screen's magic line for ruler `ruler_id` at `kept` power (§7.3), with its numbers at the start of a
-## game (mastery = ability rank - 1, no node or transformation yet): "Casts Sunlance in battle (5 damage now) and
-## every Crown battle spell and ritual you research." / "Casts the Wild's rituals: up to 4 wolves (20 gold) once you
-## research Call the Pack." / "Casts nothing: an ordinary man."
+## The build screen's magic line for ruler `ruler_id` at `kept` power (§7.3), one short sentence with its number at the
+## start of a game (mastery = ability rank - 1, at most the cap): "Magic: casts Sunlance in battle (5 damage now) and
+## every Crown spell you research." / "Magic: casts Wild rituals, up to 4 wolves (20 gold) once you research Call the
+## Pack." / "Magic: casts nothing, an ordinary man." The card's tooltip and the codex say the rest.
 static func ruler_line(ruler_id: String, kept: int) -> String:
 	var rm := ruler_magic(ruler_id)
 	var own: Array = rm.get("schools", [])
 	if own.is_empty():
 		return "Magic: casts nothing, an ordinary man."
 	var bonus := mini(RulerRules.ability_rank(kept) - 1, int(MagicData.MASTERY.cap))
-	var bits := []
+	var faction := String(school_data(String(own[0])).get("faction", ""))
+	var who := _faction_display(null, faction).get_slice(" ", _faction_display(null, faction).get_slice_count(" ") - 1)
 	if not String(rm.get("own_spell", "")).is_empty():
 		var sid := String(rm.own_spell)
-		bits.append("casts %s in battle from turn 1 (%d damage now) and every battle spell of its schools you research" % [
-			spell_name(sid), int(spell_numbers(sid, bonus).value)])
-	for school in own:
-		for nid in school_data(school).nodes:
-			var sp := spell_data(String(nid))
-			if sp.is_empty() or is_battle_spell(String(nid)) or String(sp.get("tier", "")) != "II":
-				continue
-			var n := spell_numbers(String(nid), bonus)
-			match String(nid):
-				"call_the_pack":
-					bits.append("once you research Call the Pack, calls up to %d wolves (%d gold)" % [n.count, n.count * int(sp.cost)])
-				"bloodrot", "dawn_blessing":
-					bits.append("once you research %s, it moves %d hit points a turn" % [spell_name(String(nid)), n.value])
-				"sanctum_ward":
-					bits.append("once you research Sanctum Ward, it lasts through turn T + %d" % n.duration)
-	var schools_text := _and_list(own.map(func(sc): return school_ref(String(sc))))
-	return "Magic (mastery %s): casts the rituals of %s you research, and Far Sight; %s." % [_signed(bonus), schools_text, "; ".join(bits)]
+		return "Magic: casts %s in battle (%d damage now) and every %s spell you research." % [spell_name(sid),
+			int(spell_numbers(sid, bonus).value), who]
+	var ritual := String(school_data(String(own[0])).nodes[1])
+	var n := spell_numbers(ritual, bonus)
+	var school := school_name(String(own[0]))
+	if ritual == "call_the_pack":
+		return "Magic: casts %s rituals, up to %d wolves (%d gold) once you research Call the Pack." % [school.trim_prefix("the "),
+			n.count, n.count * int(spell_data(ritual).cost)]
+	return "Magic: casts %s rituals; %s takes %d hit points a turn once researched." % [school.trim_prefix("the "), spell_name(ritual), n.value]
 
 
 ## The ruler's magic (MagicData.RULER_MAGIC): {"schools", "battle", "own_spell", "line"}, or {}.
