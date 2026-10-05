@@ -337,6 +337,8 @@ func _cue_report(delay_s: float) -> void:
 ## build get their balanced preset. Null when a build is illegal (the session then explains).
 static func starting_state(game_config: Dictionary) -> GameState:
 	var state := _starting_state(game_config)
+	if state != null and (game_config.get("independents", false) or OS.get_cmdline_user_args().has("--independents")):
+		state.setup_independents([])  # IND-1 (#142): Free Holds garrisons in every neutral province
 	if state != null and (game_config.get("fog", false) or OS.get_cmdline_user_args().has("--fog")):
 		state.setup_fog([])  # M5-1: fog is a lens on whichever game the other boxes make
 	return state

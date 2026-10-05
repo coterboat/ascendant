@@ -1203,8 +1203,8 @@ static func _capture(s: GameState, battle_sites: Dictionary, events: Array) -> v
 		if occupants.size() != 1:
 			continue
 		var fid: String = occupants.keys()[0]
-		if p.owner == fid:
-			continue
+		if p.owner == fid or IndependentData.is_independent(fid):
+			continue  # IND-1: a garrison that held keeps its province neutral
 		var previous: String = p.owner
 		p.owner = fid
 		var cause: String
@@ -1318,9 +1318,16 @@ static func _sworn_vassals(s: GameState, events: Array) -> void:
 		if s.sieges:
 			_take_fort(s, p, fid, "")  # M3c: Sworn Vassals sets owned_since too
 		var name := _faction_name(s, fid)
-		events.append(_event("vassal_joined", "capture", [p.id], [fid], [], "sworn_vassals", {"income": p.income},
-			"%s swore fealty to %s (Sworn Vassals) and joined it without a fight. It now pays %s %d gold per turn." % [
-				p.name, name, name, p.income], "mandate_sworn_vassals"))
+		var numbers := {"income": p.income}
+		var home := ""
+		var garrison := s.garrison_at(p.id)  # IND-1: the garrison swears too, lays down its arms and goes home
+		if garrison != null:
+			s.armies.erase(garrison)
+			numbers["garrison"] = garrison.id
+			home = " Its %s laid down their arms and went home." % IndependentData.garrison_kind(p.terrain)
+		events.append(_event("vassal_joined", "capture", [p.id], [fid], [], "sworn_vassals", numbers,
+			"%s swore fealty to %s (Sworn Vassals) and joined it without a fight.%s It now pays %s %d gold per turn." % [
+				p.name, name, home, name, p.income], "mandate_sworn_vassals"))
 	var contested: Array = picks.contested.keys()
 	contested.sort()
 	for pid in contested:

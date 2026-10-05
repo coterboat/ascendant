@@ -41,7 +41,12 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 	var would_capture := false
 	if state.sieges and dest.fort_level > 0:
 		return _fort_move(state, faction_id, order, other_orders, army, here, dest, text, arrival)  # M3c: which row of §3.9
-	if not enemies.is_empty():
+	var garrison := state.garrison_at(dest.id)
+	if garrison != null and enemies == [IndependentData.FACTION_ID]:
+		# IND-1 (#142): a garrison never moves, so there is no border meeting to warn about.
+		text += " %s holds it for the %s: a garrison never moves, so you fight a battle there and it defends (%s). Win, and %s is yours with %d gold per turn." % [
+			RulerRules._cap(TurnReportText.army_name(state, garrison.id)), IndependentData.FACTION_NAME, defender_ground(dest), dest.name, dest.income]
+	elif not enemies.is_empty():
 		var names := []
 		for fid in enemies:
 			names.append(state.find_faction(fid).faction_name)
@@ -166,6 +171,8 @@ static func projected_board(state: GameState, orders: Array = []) -> Dictionary:
 		owners[p.id] = p.owner
 	var factions_at := {}  # province id -> {faction id: true} after the projected moves
 	for a in state.armies:
+		if a.owner == IndependentData.FACTION_ID:
+			continue  # IND-1: a garrison neither takes its province nor keeps a vassal out
 		var at: String = dest.get(a.id, a.location)
 		if not factions_at.has(at):
 			factions_at[at] = {}

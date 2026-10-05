@@ -13,7 +13,7 @@ extends SceneTree
 ##   --turns=N          stop after N turns (default 40) or when the game ends
 ##   --every=K          a map shot every K turns, plus every turn with a battle the person fought (default 5)
 ##   --battles=N        watch up to N of the person's battles in the battle host, one shot each (default 3)
-##   --rulers / --paths / --sieges / --fog   switch those systems on (paths turn rulers on)
+##   --rulers / --paths / --sieges / --fog / --independents   switch those systems on (paths turn rulers on)
 ##   --no-menus         skip the title, new game and build screen shots
 ##   --fast             skip the board's playback on turns that get no shot
 ## Windowed only: headless has no renderer, so the shots would be blank. walk.md lists every shot with the
@@ -27,7 +27,7 @@ var human := "kingdom"
 var max_turns := 40
 var every := 5
 var max_battles := 3
-var flags := {"rulers": false, "paths": false, "sieges": false, "fog": false}
+var flags := {"rulers": false, "paths": false, "sieges": false, "fog": false, "independents": false}
 var menus := true
 var fast := false
 var walk: PackedStringArray = []
@@ -53,6 +53,9 @@ func _initialize() -> void:
 		flags.rulers = true
 	DirAccess.make_dir_recursive_absolute(out)
 	DisplayServer.window_set_size(Vector2i(W, H))
+	# Without vsync the frame loop never waits on the display, so a window covered by other windows (macOS stops
+	# its display link) still renders at full speed and the walk doesn't stall.
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	_run()
 
 
@@ -89,7 +92,7 @@ func _config() -> Dictionary:
 		cfg.rulers = true
 		cfg.builds = {human: RulerRules.preset_build(RulerRules.balanced_preset(human)),
 			foe: BuildScreen.computer_build(foe, game_seed, 1)}
-	for k in ["paths", "sieges", "fog"]:
+	for k in ["paths", "sieges", "fog", "independents"]:
 		if flags[k]:
 			cfg[k] = true
 	return cfg
@@ -182,6 +185,7 @@ func _menus() -> void:
 	ng.set_paths(flags.paths)
 	ng.set_sieges(flags.sieges)
 	ng.set_fog(flags.fog)
+	ng.set_independents(flags.independents)
 	await _shot("new_game", "Config: %s" % JSON.stringify(ng.config()))
 	if flags.rulers:
 		ng.start()

@@ -24,6 +24,11 @@ class_name GameState
 ## note only in a view (_validate_views). The per-faction army numbers M5 asks for are next_army_ids (#94).
 ## M5-1: setup_fog() turns fog on for any game before turn 1; a view (FogRules.view_state) also saves `view_of`, its
 ## viewer, and validate relaxes four checks for the view's rivals (view_relaxes).
+##
+## Independents (IND-1, #142; data/independents.gd) are opt-in too, for any game: setup_independents() before turn 1
+## puts a Free Holds garrison army in every neutral province, and `independents` turns true (saved only when set, so
+## every other game saves byte-identically). The Free Holds are never in `factions`: find_faction() hands out their
+## faction object for names and unit types, and every loop over the players never sees them.
 
 var provinces: Array[Province] = []
 var factions: Array[Faction] = []
@@ -48,6 +53,8 @@ var is_view: bool = false  # one player's view of the game (FogRules, §2.7), ne
 ## Whose view it is (M5-1, FogRules.view_state): the viewer's faction id, saved with is_view. validate relaxes four
 ## checks for the other factions of a view, its rivals (view_relaxes); "" in a true state.
 var view_of: String = ""
+var independents: bool = false  # IND-1: neutral provinces hold Free Holds garrisons (IndependentData); saved only when true
+var _free_holds: Faction = null  # IND-1: the Free Holds' faction object, made on first find_faction; never saved
 
 func _init(map_seed: int = 12345) -> void:
 	seed_value = map_seed
@@ -208,6 +215,50 @@ func setup_fog(errors = null) -> bool:
 	return validate(errors)
 
 
+## Independents for any game (IND-1, #142): before turn 1, every neutral province that no army stands in gets its
+## Free Holds garrison (IndependentData.garrison_units for its terrain and income), army id "free-<province id>".
+## Returns false, with a plain reason in `errors`, when it is too late.
+func setup_independents(errors = null) -> bool:
+	if current_turn != 0:
+		_report(errors, "Independents are chosen before the game starts.")
+		return false
+	independents = true
+	var holds := find_faction(IndependentData.FACTION_ID)
+	var types := {}
+	for ut in holds.unit_types:
+		types[ut.id] = ut
+	for p in provinces:
+		if not p.owner.is_empty() or p.is_capital:
+			continue
+		var taken := false
+		for a in armies:
+			if a.location == p.id:
+				taken = true
+				break
+		if taken:
+			continue
+		var army := Army.new()
+		army.id = IndependentData.army_id(p.id)
+		army.owner = IndependentData.FACTION_ID
+		army.location = p.id
+		for type_id in IndependentData.garrison_units(p.terrain, p.income):
+			army.units.append(Unit.new(types[type_id], IndependentData.FACTION_ID))
+		if IndependentData.has_captain(p.income):
+			army.commander = Unit.new(holds.commander_type, IndependentData.FACTION_ID)
+		armies.append(army)
+	return validate(errors)
+
+
+## The Free Holds garrison standing in `province_id` (IND-1), or null.
+func garrison_at(province_id: String) -> Army:
+	if not independents:
+		return null
+	for a in armies:
+		if a.location == province_id and a.owner == IndependentData.FACTION_ID:
+			return a
+	return null
+
+
 ## True when `faction_id` is a rival in a player's view (M5-1, §2.7): validate relaxes exactly four checks for it,
 ## because a view holds only what its viewer knows of a rival: AscensionRules.validate's prerequisites and order of
 ## `researched`, RulerRules.validate_factions' kept-power arithmetic and sacrifice-only check, _living_rulers_on_map,
@@ -254,6 +305,10 @@ func find_faction(id: String) -> Faction:
 	for f in factions:
 		if f.id == id:
 			return f
+	if independents and id == IndependentData.FACTION_ID:  # IND-1: never in `factions`, found for names and unit types
+		if _free_holds == null:
+			_free_holds = IndependentData.faction()
+		return _free_holds
 	return null
 
 func find_army(id: String) -> Army:
@@ -319,7 +374,12 @@ func validate(errors = null) -> bool:
 			_report(errors, "Two armies share the id '%s'." % a.id)
 			ok = false
 		army_ids[a.id] = true
-		if not faction_by_id.has(a.owner):
+		if a.owner == IndependentData.FACTION_ID and independents:  # IND-1: a garrison holds a neutral province
+			var where := province_by_id.get(a.location) as Province
+			if where != null and not where.owner.is_empty():
+				_report(errors, "The Free Holds garrison '%s' stands in %s, which is owned by '%s'. A garrison only ever holds a neutral province." % [a.id, a.location, where.owner])
+				ok = false
+		elif not faction_by_id.has(a.owner):
 			_report(errors, "Army '%s' belongs to '%s', which is not a faction in this game." % [a.id, a.owner])
 			ok = false
 	# Rulers, kept power, mandates and ruler armies (M2): RulerRules owns those rules.
@@ -414,6 +474,8 @@ func to_dict() -> Dictionary:
 		for e in enchantments:
 			enchantment_dicts.append(MagicRules.enchantment_copy(e))
 		d["enchantments"] = enchantment_dicts
+	if independents:
+		d["independents"] = true  # IND-1: only a game with independents carries the key
 	if is_view:
 		d["is_view"] = true  # M5: only a player's view carries the key
 		d["view_of"] = view_of  # M5-1: whose view it is
@@ -441,7 +503,7 @@ static func from_dict(data, errors = null) -> GameState:
 	if sieges_flag == null:
 		return null
 	state.sieges = sieges_flag
-	for key in ["fog", "magic", "is_view"]:  # M5: present only when set
+	for key in ["fog", "magic", "is_view", "independents"]:  # M5, IND-1: present only when set
 		var flag = Serial.expect(data, key, TYPE_BOOL, errors, WHO, false)
 		if flag == null:
 			return null
@@ -503,6 +565,11 @@ static func from_dict(data, errors = null) -> GameState:
 			return null
 		RulerRules.refresh_ruler_type(f)
 		all_unit_types[f.ruler_unit_type.id] = f.ruler_unit_type
+	if state.independents:  # IND-1: the garrisons' unit types and the Hold Captain
+		var holds := state.find_faction(IndependentData.FACTION_ID)
+		for ut in holds.unit_types:
+			all_unit_types[ut.id] = ut
+		all_unit_types[holds.commander_type.id] = holds.commander_type
 	if not RulerRules.validate_factions(state, errors):
 		return null
 

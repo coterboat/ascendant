@@ -269,6 +269,14 @@ const ENTRIES := {
 		"title": "Moving into an undefended province",
 		"text": "Moving into an enemy or neutral province with no enemy army in it captures it, as long as no enemy army arrives there too.",
 	},
+	# IND-1 (#142): the numbers are IndependentData's; tests/test_independents.gd checks they match. A constant here can't
+	# read that class: it needs AutoBattleResolver, which needs this one.
+	"independents": {
+		"title": "Independents: the Free Holds",
+		"text": "In a game with independents, every neutral province starts with a garrison of the Free Holds, local fighters who answer to no ruler. To take the province you must beat its garrison: moving in starts a battle in which the garrison holds the ground, so it gets the province's terrain and fort bonuses. If you win, the garrison is gone and the province is yours. If you lose, your armies are destroyed like any loser's, the province stays neutral, and the garrison keeps its wounds. A garrison never moves, recruits, heals or takes a province, and it is never a threat to your land."
+			+ " It follows the land: the plains raise a Free Company of Free Spears and Hill Slingers, the hills a Hillguard of slingers behind a few spears, and the forests the Wildkin, unaligned beastfolk of the deep woods. A province earning up to 6 gold holds 3 units, 7 to 8 gold holds 4, and 9 or more holds 5; from 8 gold a Hold Captain leads it."
+			+ " Every garrison is public knowledge, even under fog of war, and the move preview gives your odds against it. With Sworn Vassals, a province that swears fealty brings no fight: its garrison lays down its arms and goes home.",
+	},
 	# The battle_* entries state AutoBattleResolver's rules, with its numbers taken from its constants.
 	"battle_rounds": {
 		"title": "Battles",

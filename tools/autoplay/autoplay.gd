@@ -20,6 +20,8 @@ extends SceneTree
 ##                    RULER+MANDATE+... (e.g. ever_regent keeps all 10 power,
 ##                    ever_regent+royal_armories+heavy_tithes+veteran_levies spends all 10), or "roll" to
 ##                    keep that seat's roll
+##   --independents   play with independents (IND-1, #142): Free Holds garrisons in every neutral province
+##                    (GameState.setup_independents), on top of whatever else is chosen
 ##   --paths          play with paths of ascension (M4; implies --rulers): GameState.with_paths. The computer
 ##                    (ai, ai_easy) researches along its build's plan and rolls its side of the fork with
 ##                    AIPlayer.choose_branch for the seed and seat, as an AI seat does; the report adds wins
@@ -99,7 +101,8 @@ func _initialize() -> void:
 		return
 	var started := Time.get_ticks_msec()
 	# Every engine or script error logged during a game is filed under that game's seed and turn.
-	var options := {"rulers": opts.rulers, "builds": opts.builds, "paths": opts.paths, "branches": opts.branches}
+	var options := {"rulers": opts.rulers, "builds": opts.builds, "paths": opts.paths, "branches": opts.branches,
+		"independents": opts.independents}
 	var results := Simulator.run_batch(opts.games, opts.seed, opts.seats, opts.policies, opts.turn_cap, catcher.take, options)
 	var summary := Simulator.summarize(results)
 	var seconds := (Time.get_ticks_msec() - started) / 1000.0
@@ -144,7 +147,7 @@ func _initialize() -> void:
 
 func _parse(args: PackedStringArray) -> Dictionary:
 	var opts := {"games": 50, "seed": 1, "policies": ["greedy", "greedy"], "seats": FACTIONS.duplicate(),
-		"turn_cap": Simulator.TURN_CAP, "out": "", "list": false, "rulers": false, "builds": ["", ""], "paths": false, "branches": ["", ""],
+		"turn_cap": Simulator.TURN_CAP, "out": "", "list": false, "rulers": false, "builds": ["", ""], "paths": false, "independents": false, "branches": ["", ""],
 		"matrix": false, "jobs": clampi(OS.get_processor_count(), 1, MAX_JOBS), "scale": 1.0, "work_dir": "user://autoplay_matrix",
 		"worker": false, "cell": "", "from": 0, "count": 0, "only": "", "record_m2": "", "note": ""}
 	var builds_arg := ""
@@ -158,6 +161,10 @@ func _parse(args: PackedStringArray) -> Dictionary:
 			continue
 		if key == "--rulers":
 			opts.rulers = true
+			i += 1
+			continue
+		if key == "--independents":
+			opts.independents = true
 			i += 1
 			continue
 		if key == "--paths":
