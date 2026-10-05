@@ -373,6 +373,15 @@ func describe_order(faction_id: String, order) -> String:
 			return "Research %s." % AscensionRules.node_name(order.node_id)
 		return "Research %s next (%d research, done at the end of %s)." % [fc.name, fc.cost,
 			"this turn" if int(fc.eta) == 1 else ("turn %d" % int(fc.done_turn) if int(fc.eta) > 0 else "no turn at this pace")]
+	if order is SpellbookOrder:  # M5-5: the battle spellbook, in order, with the spells switched off
+		return "Set your battle spellbook: %s." % MagicRules.spellbook_text(order.order, order.off)
+	if order is CastOrder:  # M5-5
+		var army := _state.find_army(order.army_id)
+		var who := "%s at %s" % [TurnReportText.army_title(_state, army, false), TurnResolver._province_name(_state, army.location)] \
+			if army != null else "an army that is not on the map"
+		var on := " on %s" % TurnResolver._province_name(_state, order.target) if not order.target.is_empty() else ""
+		var paid := "in blood" if order.pay == CastOrder.BLOOD else "for %d gold" % int(MagicRules.price(_state, faction_id, order.ritual, order.size).gold)
+		return "Cast %s%s from %s, %s." % [MagicRules.spell_name(order.ritual), on, who, paid]
 	return "An order this game does not know."
 
 

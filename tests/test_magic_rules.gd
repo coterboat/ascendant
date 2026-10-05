@@ -130,6 +130,9 @@ func test_the_cast_legality_table_with_plain_reasons() -> void:
 		[CastOrder.new("bloodrot", shamans.id, near, CastOrder.BLOOD), [], "no_tithe", "Paying in blood needs the mandate Tithe of Blood."],
 		[CastOrder.new("bloodrot", shamans.id, near, "silver"), [], "bad_pay", "paid in gold, or in blood"],
 		[CastOrder.new("bloodrot", shamans.id, "atlantis"), [], "unknown_target", "'atlantis' is not a province on this map."],
+		# The pin: a move for an army that casts this turn is refused (the other way round, the cast drops the move).
+		[MoveOrder.new(shamans.id, plain), [CastOrder.new("bloodrot", shamans.id, near)], "pinned",
+			"Your army at %s is casting Bloodrot this turn, so it holds. It can't move this turn." % s.find_province(home).name],
 	]
 	for row in rows:
 		var check := _check(s, CLANS, row[0], row[1])
@@ -138,6 +141,13 @@ func test_the_cast_legality_table_with_plain_reasons() -> void:
 			assert_true(String(check.get("reason", "")).contains(row[3]), "%s: %s" % [row[3], check.get("reason", "")])
 		for word in [check.get("reason", "")]:
 			assert_false(String(word).contains("_") and _code(check) != "unknown_ritual", "no raw id: %s" % word)
+	# The budget: a gold-paid ritual must fit the gold left after queued recruits and rituals.
+	var poor := s.deep_copy([])
+	var rot := int(MagicRules.price(poor, CLANS, "bloodrot").gold)
+	poor.find_faction(CLANS).gold = rot - 1
+	var broke := _check(poor, CLANS, CastOrder.new("bloodrot", shamans.id, near))
+	assert_eq(_code(broke), "not_enough_gold")
+	assert_eq(String(broke.reason), "Bloodrot costs %d gold, but you only have %d gold." % [rot, rot - 1])
 	# Far Sight needs no research, and any caster casts it, a mage or a ruler with magic.
 	assert_eq(_check(s, CLANS, CastOrder.new("far_sight", shamans.id, far)), {})
 	assert_eq(_check(s, CLANS, CastOrder.new("far_sight", fang.id, far)), {})
@@ -383,6 +393,7 @@ func test_recruits_and_rituals_share_one_budget() -> void:
 	assert_eq(book.submit(s, CLANS, r1), "")
 	var no := book.submit(s, CLANS, r2)
 	assert_true(no.contains("but you only have 1 gold left"), no)
+	assert_true(no.contains("Your queued rituals hold %d of your %d gold." % [rot, rot + tuskers + 1]), "the refusal says where the gold went: %s" % no)
 	# The recruits first: the cast no longer fits, and says why.
 	var book2 := OrderBook.new()
 	assert_eq(book2.submit(s, CLANS, r1), "")
@@ -402,6 +413,48 @@ func test_recruits_and_rituals_share_one_budget() -> void:
 	assert_eq(MagicRules.queued_gold(tithe, CLANS, [blood]), 0)
 
 
+func test_the_resolver_pins_the_casting_army_as_the_order_book_does() -> void:
+	var s := _game({CLANS: ["bloodbolt", "bloodrot"]})
+	var army := _field_army(s, CLANS)
+	var from := army.location
+	var to: String = s.find_province(from).neighbors[0]
+	var move := MoveOrder.new(army.id, to)
+	var cast := CastOrder.new("bloodrot", army.id, _at(s, from, 2))
+	for orders in [[move, cast], [cast, move]]:
+		var r := TurnResolver.resolve(s, {CLANS: orders}, 1)
+		var rejected: Array = r.events.filter(func(e): return e.type == "order_rejected")
+		assert_eq(rejected.map(func(e): return String(e.cause)).filter(func(c): return c != "rituals_not_ready"), ["pinned"], "the move is refused")
+		assert_eq(rejected.filter(func(e): return String(e.cause) == "rituals_not_ready").size(), 1, "the cast is reported, not cast")
+		assert_eq(r.new_state.find_army(army.id).location, from, "the casting army held")
+		assert_eq(r.new_state.find_faction(CLANS).gold, TurnResolver.resolve(s, {}, 1).new_state.find_faction(CLANS).gold, "nothing was paid")
+		for e in rejected:
+			assert_false(String(e.text).contains("_"), "no raw id: %s" % e.text)
+	# Forecast equals result: OrderBook keeps exactly the orders the resolver accepts.
+	assert_eq(OrderBook.recheck(s, CLANS, [move, cast]).kept, [cast])
+	# An illegal cast (its own province is the Clans') pins nothing: the move goes ahead, and the cast says why.
+	var bad := CastOrder.new("bloodrot", army.id, from)
+	var r2 := TurnResolver.resolve(s, {CLANS: [move, bad]}, 1)
+	assert_eq(r2.new_state.find_army(army.id).location, to, "the army marched")
+	var why: Array = r2.events.filter(func(e): return e.type == "order_rejected").map(func(e): return String(e.cause))
+	assert_eq(why, [String(MagicRules.check_cast(s, CLANS, bad).code)])
+	# Without a cast the resolver is as before: the same events and state as a game with no magic order.
+	var plain := TurnResolver.resolve(s, {CLANS: [move]}, 1)
+	assert_eq(plain.new_state.find_army(army.id).location, to)
+
+
+func test_cast_and_spellbook_orders_read_in_plain_words() -> void:
+	var s := _game({CLANS: ["bloodbolt", "bloodrot"]})
+	var army := _field_army(s, CLANS)
+	var target := _at(s, army.location, 2)
+	var session := GameSession.new(s, [CROWN, CLANS], 7)
+	var text := session.describe_order(CLANS, CastOrder.new("bloodrot", army.id, target))
+	assert_true(text.begins_with("Cast Bloodrot on %s from " % s.find_province(target).name), text)
+	assert_true(text.ends_with("for %d gold." % int(MagicRules.price(s, CLANS, "bloodrot").gold)), text)
+	assert_eq(session.describe_order(CROWN, SpellbookOrder.new(["sunlance", "sunburst", "shield_of_law"], ["sunburst"])),
+		"Set your battle spellbook: Sunlance, Sunburst (off) and Shield of Law.")
+	assert_eq(OrderBook.short_text(s, CLANS, CastOrder.new("bloodrot", army.id, target)), "Cast Bloodrot on %s" % s.find_province(target).name)
+
+
 # --- the spellbook (§5.1) ----------------------------------------------------------------------------------
 
 func test_the_spellbook_order_is_checked_set_and_saved() -> void:
@@ -418,7 +471,8 @@ func test_the_spellbook_order_is_checked_set_and_saved() -> void:
 	for c in cases:
 		var check := MagicRules.check_spellbook(s, CROWN, SpellbookOrder.new(c[0], c[1]))
 		assert_eq(_code(check), c[2], str(c))
-		assert_true(String(check.get("reason", "")).contains(c[3]), "%s: %s" % [c[3], check.get("reason", "")])
+		if not String(c[3]).is_empty():
+			assert_true(String(check.get("reason", "")).contains(c[3]), "%s: %s" % [c[3], check.get("reason", "")])
 	# One per turn in the book: a new one replaces it.
 	var book := OrderBook.new()
 	assert_eq(book.submit(s, CROWN, SpellbookOrder.new(["sunlance", "sunburst", "shield_of_law"], ["sunburst"])), "")
@@ -471,7 +525,8 @@ func test_casters_healing_under_a_curse_and_far_sight() -> void:
 	assert_true(MagicRules.can_heal(s, CLANS, home), "a curse never hurts its caster's faction")
 	assert_true(MagicRules.can_heal(s, CROWN, "wildmoor"))
 	assert_true(MagicRules.can_heal(s, CROWN, ""), "a border battle is in no province")
-	assert_eq(MagicRules.vision_grants(s, CROWN), ["wildmoor"], "Far Sight grants sight")
+	# Far Sight is cast only once the rituals phase exists (M5-6): until then vision_grants is M5-0's stub.
+	assert_eq(MagicRules.vision_grants(s, CROWN), [], "no sight through magic before Far Sight can be cast")
 	assert_eq(MagicRules.vision_grants(s, CLANS), [])
 
 
@@ -487,8 +542,8 @@ func test_the_ritual_price_and_research_sold_breakdowns() -> void:
 	assert_eq(Breakdown.sum_of_lines(sold), int(sold.total))
 	assert_eq(int(sold.gold), floori(11.0 / MagicData.RESEARCH_SOLD))
 	assert_eq(MagicRules.research_sold(11), {"gold": 5, "research": 10, "left": 1})
-	assert_eq(MagicRules.sold_text({"gold": 5, "research": 10, "left": 1}),
-		"Nothing is left to research: your scholars sold their learning for 5 gold (10 research). 1 research carried to next turn.")
+	assert_eq(MagicRules.sold_text(s, CLANS, {"gold": 5, "research": 10, "left": 1}),
+		"Nothing is left for the Thornmane Clans to research, so its scholars sold their learning: 10 research for 5 gold (%d research a gold). 1 research is carried to next turn." % MagicData.RESEARCH_SOLD)
 
 
 func _sum(parts: Array) -> int:

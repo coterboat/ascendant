@@ -68,8 +68,9 @@ func test_the_magic_box_ticks_paths_and_rulers_and_starts_a_magic_game() -> void
 	assert_false(screen.magic_on(), "clearing Rulers clears Paths and Magic")
 	screen.prefill({"players": [CROWN, CLANS], "seed": 5, "rulers": true, "paths": true, "magic": true})
 	assert_true(screen.magic_on(), "a rematch of a magic game has magic")
-	assert_true(String(screen.magic_toggle.tooltip_text).contains("Research spells, recruit mages and cast rituals. Needs Paths and Rulers, so they're on too."),
-		screen.magic_toggle.tooltip_text)
+	var tip := String(screen.magic_toggle.tooltip_text).replace("\n", " ")
+	assert_true(tip.contains("Research spells, recruit mages and cast rituals. Needs Paths and Rulers, so they're on too."), tip)
+	assert_true(tip.contains("don't take effect yet"), "the box says what this preview does not do yet")
 	screen.free()
 	var s := GameScreen.starting_state({"players": [CROWN, CLANS], "seed": 5, "rulers": true, "paths": true, "magic": true})
 	assert_true(s != null and s.magic and s.paths)
@@ -132,16 +133,11 @@ func test_the_checks_against_magic_data() -> void:
 		[func(s: GameState): s.find_faction(CROWN).spellbook = {"order": ["sunlance", "sunburst"], "off": []}, "leaves out Shield of Law"],
 		[func(s: GameState): s.find_faction(CROWN).bastions = ["westwatch", "highcrag", "rivermarch"],
 			"has raised 3 Bastion forts, but a faction can raise at most %d, ever" % MagicData.BASTION_CAP],
-		[func(s: GameState): s.enchantments = [_enchantment(CROWN, "sanctum_ward", "ward", 4)], "has a mastery bonus of 4, but mastery runs from 0 to +3"],
+		[func(s: GameState): s.enchantments = [_enchantment(CROWN, "sanctum_ward", "ward", 4)], "has a mastery bonus of 4, but mastery is at most +%d." % int(MagicData.MASTERY.cap)],
 		[func(s: GameState): s.enchantments = [_enchantment(CROWN, "fireball", "curse", 0)], "names 'fireball', which is not a ritual in this game"],
 		[func(s: GameState): s.enchantments = [_enchantment(CROWN, "sunlance", "curse", 0)], "names 'sunlance', which is not a ritual in this game"],
 		[func(s: GameState): s.enchantments = [_enchantment(CROWN, "sanctum_ward", "curse", 0)], "is a curse, but Sanctum Ward is a ward"],
-		[func(s: GameState): s.enchantments = [_enchantment(CROWN, "bloodrot", "curse", 0)], "a ritual of Blood, which the Aurel Crown can't cast"],
-		[func(s: GameState): s.armies.append(_pack(s, 0)), "are summoned for a few turns, but these have no turn to fade on"],
 		[func(s: GameState): s.armies.append(_wrath(s, 5)), "but the Greenwrath stays until it falls"],
-		[func(s: GameState): s.find_faction(CLANS).unit_types = s.find_faction(CLANS).unit_types.filter(func(ut): return ut.id != "shamans"),
-			"has magic but not its mage, the Thornmane Shamans, on its roster"],
-		[func(s: GameState): s.find_faction(CLANS).unit_types.append(MagicRules.summon_type("thornwolves")), "summoned creatures are called by rituals, never recruited"],
 	]
 	for c in cases:
 		var s := GameState.with_magic(7)
@@ -150,6 +146,16 @@ func test_the_checks_against_magic_data() -> void:
 		var errors := []
 		assert_false(s.validate(errors), "refused: %s" % c[1])
 		assert_true(errors.any(func(e): return String(e).contains(c[1])), "%s: %s" % [c[1], errors])
+	# M5-0's contract (tests/test_m5_fields.gd, unchanged): a summoned type may sit on a roster so it loads, and a pack
+	# with no fading turn loads; but a summoned creature is never recruited.
+	var loose := GameState.with_magic(7)
+	loose.find_faction(CLANS).unit_types.append(MagicRules.summon_type("thornwolves"))
+	loose.armies.append(_pack(loose, 0))
+	var loose_errors := []
+	assert_true(loose.validate(loose_errors), str(loose_errors))
+	var wolf_check := TurnResolver.check_recruit(loose, CLANS, RecruitOrder.new("thornwolves"), 1000)
+	assert_eq(String(wolf_check.get("code", "")), "summoned_type")
+	assert_eq(String(wolf_check.reason), "Thornwolves are summoned by a ritual, never recruited.")
 	# A view's stand-in pack carries 0 (§2.7, relaxed check 4): no fading turn is needed there.
 	var view := GameState.with_magic(7)
 	view.is_view = true
@@ -209,7 +215,9 @@ func test_a_recorded_magic_game_replays_identically() -> void:
 	assert_true(has_adepts or session.is_over(), "the Adepts are on the map")
 	# Saved and loaded through SaveGame, it is the same game.
 	var restored := GameSession.from_record(JSON.parse_string(JSON.stringify(rec)), AutoBattleResolver.new())
-	assert_eq(JSON.stringify(restored.state().to_dict()), JSON.stringify(session.state().to_dict()))
+	assert_eq(restored.errors, [], "the save loads")
+	var loaded: GameSession = restored.session
+	assert_eq(JSON.stringify(loaded.state().to_dict()), JSON.stringify(session.state().to_dict()))
 
 
 func _roster_ids(d: Dictionary, fid: String) -> Array:

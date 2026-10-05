@@ -150,8 +150,10 @@ static func mage_type(faction_id: String) -> UnitType:
 	return ut
 
 
-## What the Mage trait does, for the unit card until the battle rules name it (AutoBattleResolver.TRAIT_TEXT).
-const MAGE_TEXT := "Casts a spell from your spellbook every round instead of attacking. Fights from the second rank: safe while your front rank is at least as big; Fangthrowers and Seraphs can always reach it."
+## What the Mage trait does, for the unit card until the battle rules name it (AutoBattleResolver.TRAIT_TEXT, M5-7).
+## Magic is a preview still being built: until battle spells take effect, a mage fights as any soldier does, and the
+## card says so, so it never promises what a battle won't do.
+const MAGE_TEXT := "Mage: casts a spell from your battle spellbook every round instead of attacking, from the second rank (safe while your front rank is at least as big; Fangthrowers and Seraphs can always reach it). Magic is a preview still being built: until battle spells take effect, mages fight as ordinary soldiers in the front rank."
 
 
 ## True for a mage: a regular unit with the trait Mage.
@@ -197,6 +199,38 @@ static func summon_types() -> Dictionary:
 ## Whether summoned creatures of this type fade (Thornwolves) or stay until they fall (the Greenwrath).
 static func summon_fades(type_id: String) -> bool:
 	return MagicData.SUMMONS.get(type_id, {}).get("fades", false) == true
+
+
+## The build screen's magic line for ruler `ruler_id` at `kept` power (§7.3), with its numbers at the start of a
+## game (mastery = ability rank - 1, no node or transformation yet): "Casts Sunlance in battle (5 damage now) and
+## every Crown battle spell and ritual you research." / "Casts the Wild's rituals: up to 4 wolves (20 gold) once you
+## research Call the Pack." / "Casts nothing: an ordinary man."
+static func ruler_line(ruler_id: String, kept: int) -> String:
+	var rm := ruler_magic(ruler_id)
+	var own: Array = rm.get("schools", [])
+	if own.is_empty():
+		return "Magic: casts nothing, an ordinary man."
+	var bonus := mini(RulerRules.ability_rank(kept) - 1, int(MagicData.MASTERY.cap))
+	var bits := []
+	if not String(rm.get("own_spell", "")).is_empty():
+		var sid := String(rm.own_spell)
+		bits.append("casts %s in battle from turn 1 (%d damage now) and every battle spell of its schools you research" % [
+			spell_name(sid), int(spell_numbers(sid, bonus).value)])
+	for school in own:
+		for nid in school_data(school).nodes:
+			var sp := spell_data(String(nid))
+			if sp.is_empty() or is_battle_spell(String(nid)) or String(sp.get("tier", "")) != "II":
+				continue
+			var n := spell_numbers(String(nid), bonus)
+			match String(nid):
+				"call_the_pack":
+					bits.append("once you research Call the Pack, calls up to %d wolves (%d gold)" % [n.count, n.count * int(sp.cost)])
+				"bloodrot", "dawn_blessing":
+					bits.append("once you research %s, it moves %d hit points a turn" % [spell_name(String(nid)), n.value])
+				"sanctum_ward":
+					bits.append("once you research Sanctum Ward, it lasts through turn T + %d" % n.duration)
+	var schools_text := _and_list(own.map(func(sc): return school_ref(String(sc))))
+	return "Magic (mastery %s): casts the rituals of %s you research, and Far Sight; %s." % [_signed(bonus), schools_text, "; ".join(bits)]
 
 
 ## The ruler's magic (MagicData.RULER_MAGIC): {"schools", "battle", "own_spell", "line"}, or {}.
@@ -704,17 +738,12 @@ static func can_heal(state: GameState, faction_id: String, province_id: String) 
 	return true
 
 
-## The province ids `faction_id` sees in clear sight through magic (Far Sight's sight enchantments, §6.2, §6.4),
-## sorted. FogRules.sight (M5-1) calls it. [] without magic.
-static func vision_grants(state: GameState, faction_id: String) -> Array:
-	var out := []
-	if not has_magic(state):
-		return out
-	for e in state.enchantments:
-		if String(e.kind) == "sight" and String(e.faction) == faction_id and not out.has(String(e.province)):
-			out.append(String(e.province))
-	out.sort()
-	return out
+## The province ids `faction_id` sees in clear sight through magic (Far Sight, §6.2, §6.4), sorted. FogRules.sight
+## (M5-1) calls it. Still M5-0's stub, which grants nothing: Far Sight is cast only once the rituals phase exists
+## (M5-6), and M5-6 turns this on with it (reading the faction's "sight" enchantments), so no fog game sees anything
+## through magic before a ritual can put it there.
+static func vision_grants(_state: GameState, _faction_id: String) -> Array:
+	return []
 
 
 # --- research sold (§4) -----------------------------------------------------------------------------
@@ -726,13 +755,47 @@ static func research_sold(pool: int) -> Dictionary:
 	return {"gold": gold, "research": gold * MagicData.RESEARCH_SOLD, "left": pool - gold * MagicData.RESEARCH_SOLD}
 
 
-## "Nothing is left to research: your scholars sold their learning for 5 gold (11 research)." `sold` is a
-## research_sold() result plus "pool" (the research before the sale).
-static func sold_text(sold: Dictionary) -> String:
-	var text := "Nothing is left to research: your scholars sold their learning for %d gold (%d research)." % [int(sold.gold), int(sold.research)]
+## The research_sold sentence (§4), for the turn report, which names the faction (in hotseat every seat reads it;
+## under fog only its own, FogData.AUDIENCE): "Nothing is left for the Aurel Crown to research, so its scholars
+## sold their learning: 10 research for 5 gold (2 research a gold). 1 research is carried to next turn." `sold` is
+## a research_sold() result.
+static func sold_text(state: GameState, faction_id: String, sold: Dictionary) -> String:
+	var text := "Nothing is left for %s to research, so its scholars sold their learning: %d research for %d gold (%d research a gold)." % [
+		AscensionRules._the_faction(state, faction_id), int(sold.research), int(sold.gold), MagicData.RESEARCH_SOLD]
 	if int(sold.left) > 0:
-		text += " %d research carried to next turn." % int(sold.left)
+		text += " %d research is carried to next turn." % int(sold.left)
 	return text
+
+
+## The research_done sentence for an arcana node (§4, §11.2), for the turn report: what it is, its one plain line
+## (MagicData), and, for the faction's first spell, the mage gate opening. `state` is the state after the node is
+## done, at the end of `turn`. "Sunlance researched by the Aurel Crown: a battle spell of the Sun. 4 sure damage to
+## ... The Aurel Crown can now recruit Sunstone Adepts at Crownkeep, from turn 3."
+static func done_text(state: GameState, faction_id: String, node_id: String, turn: int) -> String:
+	var n := arcana_node(node_id)
+	var who := AscensionRules._the_faction(state, faction_id)
+	var school := String(n.get("school", ""))
+	var text := "%s researched by %s: " % [AscensionRules.node_name(node_id), who]
+	if String(n.get("kind", "")) == MagicData.MASTERY_KIND:
+		text += "+%d mastery in %s for every caster of theirs (at most +%d)." % [int(MagicData.MASTERY.node), school_ref(school), int(MagicData.MASTERY.cap)]
+		return text
+	var sp := spell_data(node_id)
+	if is_battle_spell(node_id):
+		text += "a battle spell of %s. %s" % [school_ref(school), String(sp.text)]
+	else:
+		text += "a ritual of %s, cast on the map with an order. %s" % [school_ref(school), String(sp.text)]
+	if known_spells(state, faction_id) == [node_id]:
+		var mage := String(mage_data(faction_id).get("name", ""))
+		var f := state.find_faction(faction_id)
+		var cap := state.find_province(f.capital) if f != null else null
+		if not mage.is_empty():
+			text += " %s can now recruit %s at %s, from turn %d." % [Serial.cap(who), mage, cap.name if cap else "their capital", turn + 1]
+	return text
+
+
+## "the Sun", "Law", "the Wild", "Blood": a school as running text reads it (MagicData.SCHOOLS "ref").
+static func school_ref(school_id: String) -> String:
+	return String(school_data(school_id).get("ref", school_name(school_id)))
 
 
 # --- text -------------------------------------------------------------------------------------------
@@ -763,6 +826,14 @@ static func mastery_text(bonus: Dictionary) -> String:
 	for p in bonus.parts:
 		bits.append("%s (%s)" % [p.name, _signed(int(p.value))])
 	return "Mastery in %s %s: %s" % [school_name(String(bonus.school)), _signed(int(bonus.value)), _and_list(bits)]
+
+
+## A spellbook as a list: "Sunburst (off), Sunlance and Shield of Law" (`order` in order, `off` switched off).
+static func spellbook_text(order: Array, off: Array) -> String:
+	var names := []
+	for sid in order:
+		names.append("%s%s" % [spell_name(String(sid)), " (off)" if off.has(sid) else ""])
+	return _and_list(names)
 
 
 ## A caster for messages: "your Thornmane Shamans" or "the Ninth Fang".
@@ -871,13 +942,9 @@ static func validate(state: GameState, errors = null) -> bool:
 	for a in state.armies:
 		for i in a.units.size():
 			var u: Unit = a.units[i]
-			var who := "%s (unit %d of army '%s')" % [u.type.name, i + 1, a.id]
-			if u.type.summoned and summon_fades(u.type.id) and u.until == 0 and a.seen.is_empty():
-				# A view's stand-ins carry 0 (§2.7, relaxed check 4); a true pack always knows when it fades.
-				_report(errors, "%s are summoned for a few turns, but these have no turn to fade on." % Serial.cap(who))
-				ok = false
 			if u.until == 0:
-				continue
+				continue  # a creature that stays until it falls, or a view's stand-in (§2.7: they carry 0)
+			var who := "%s (unit %d of army '%s')" % [u.type.name, i + 1, a.id]
 			if not u.type.summoned:
 				_report(errors, "%s fades at the end of turn %d, but only summoned creatures fade." % [Serial.cap(who), u.until])
 				ok = false
@@ -990,15 +1057,6 @@ static func _validate_faction(f: Faction, provinces: Dictionary, errors) -> bool
 	if f.bastions.size() > MagicData.BASTION_CAP:
 		_report(errors, "%s has raised %d Bastion forts, but a faction can raise at most %d, ever." % [name, f.bastions.size(), MagicData.BASTION_CAP])
 		ok = false
-	var mage := String(mage_data(f.id).get("id", ""))
-	if not mage.is_empty() and TurnResolver.recruitable_type(f, mage) == null:
-		_report(errors, "%s has magic but not its mage, the %s, on its roster. In a game with magic every faction's mage is on its roster from turn 1." % [
-			name, String(mage_data(f.id).name)])
-		ok = false
-	for ut in _types(f):
-		if ut.summoned:
-			_report(errors, "%s has the summoned creature %s on its roster, but summoned creatures are called by rituals, never recruited." % [name, ut.name])
-			ok = false
 	for mid in f.mandates:
 		var md := RulerRules.mandate_data(mid)
 		var excludes := String(md.get("excludes", ""))
@@ -1049,10 +1107,6 @@ static func _validate_enchantments(state: GameState, provinces: Dictionary, erro
 			if String(spell_data(ritual).kind) != kind and ENCHANTMENT_KINDS.has(kind):
 				_report(errors, "%s is a %s, but %s is a %s." % [what, kind, spell_name(ritual), String(spell_data(ritual).kind)])
 				ok = false
-			if f != null and not faction_has_school(fid, String(spell_data(ritual).school)):
-				_report(errors, "%s is %s, a ritual of %s, which the %s can't cast." % [what, spell_name(ritual),
-					school_name(String(spell_data(ritual).school)), f.faction_name])
-				ok = false
 		if not ENCHANTMENT_KINDS.has(kind):
 			_report(errors, "%s is of kind '%s', but an enchantment is a blessing, a ward, a curse, a global or a sight." % [what, kind])
 			ok = false
@@ -1093,8 +1147,11 @@ static func _validate_enchantments(state: GameState, provinces: Dictionary, erro
 			_report(errors, "%s lasted through turn %d, and turn %d is over, so it should have ended." % [what, until, state.current_turn])
 			ok = false
 		var bonus := Serial.to_int(e.get("bonus", 0))
-		if bonus < 0 or bonus > int(MagicData.MASTERY.cap):
-			_report(errors, "%s has a mastery bonus of %d, but mastery runs from 0 to +%d." % [what, bonus, int(MagicData.MASTERY.cap)])
+		if bonus < 0:
+			_report(errors, "%s has a mastery bonus of %d, but a bonus is never below 0." % [what, bonus])
+			ok = false
+		elif bonus > int(MagicData.MASTERY.cap):
+			_report(errors, "%s has a mastery bonus of %d, but mastery is at most +%d." % [what, bonus, int(MagicData.MASTERY.cap)])
 			ok = false
 		if e.get("ending") == true and kind != "curse":
 			_report(errors, "%s is ending early, but only a curse is ended early (by a ward)." % what)

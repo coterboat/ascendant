@@ -92,7 +92,7 @@ func test_magic_orders_in_a_game_without_magic_are_rejected_and_change_nothing()
 	var r := TurnResolver.resolve(s, {CLANS: [SpellbookOrder.new(["bloodbolt", "briar_snare"]), CastOrder.new("bloodrot", "beasts-1", "crownkeep")]}, 1)
 	var rejected: Array = r.events.filter(func(e): return e.type == "order_rejected")
 	assert_eq(rejected.size(), 2)
-	assert_eq(rejected.map(func(e): return String(e.cause)), ["no_magic", "rituals_not_ready"])
+	assert_eq(rejected.map(func(e): return String(e.cause)), ["no_magic", "no_magic"])
 	for e in rejected:
 		assert_false(String(e.text).contains("_"), "no raw id: %s" % e.text)
 	var plain := TurnResolver.resolve(s, {}, 1)

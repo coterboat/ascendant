@@ -186,7 +186,7 @@ func select_ruler(rid: String) -> bool:
 
 ## Ticks (on) or clears a mandate. Returns false, changing nothing, when the build would be illegal.
 func set_mandate(mandate_id: String, on: bool) -> bool:
-	if step != Step.BUILDING or not RulerRules.available_mandates(faction_id).has(mandate_id):
+	if step != Step.BUILDING or not _mandate_ids().has(mandate_id):
 		_refresh()
 		return false
 	if on == mandates.has(mandate_id):
@@ -341,6 +341,7 @@ func _start_building() -> void:
 	var start: Dictionary = remembered[faction_id] if from_rematch else RulerRules.preset_build(RulerRules.balanced_preset(faction_id))
 	ruler_id = String(start.get("ruler", ""))
 	mandates = Array(start.get("mandates", [])).duplicate()
+	mandates = mandates.filter(func(m): return _mandate_ids().has(m))  # M5-5: no mandate of magic without magic
 	cover.visible = false
 	page.visible = true
 	_build_body()
@@ -428,9 +429,28 @@ func _seed() -> int:
 
 # --- what the build gives: every number from RulerRules and Breakdown --------------------------------
 
-## The starting state this build gives (what GameScreen.starting_state builds), or null.
+## The starting state this build gives (what GameScreen.starting_state builds), or null. M5-5: in a game with magic,
+## the magic game (GameState.with_magic), where a mandate of magic such as Tithe of Blood is legal.
 func _state_for(build: Dictionary) -> GameState:
+	if _magic_on():
+		return GameState.with_magic(_seed(), {faction_id: build}, [])
 	return GameState.with_rulers(_seed(), {faction_id: build}, [])
+
+
+## M5-5: the game being built for has magic (the new game screen's "Magic (M5 preview)" box).
+func _magic_on() -> bool:
+	return game_config.get("magic", false) == true
+
+
+## The mandates this seat can take before the game: RulerRules.available_mandates, and in a game with magic the
+## faction's mandates of magic (MandateData.MAGIC_MANDATES: Tithe of Blood), last.
+func _mandate_ids() -> Array:
+	var out := RulerRules.available_mandates(faction_id)
+	if _magic_on():
+		for m in MandateData.MAGIC_MANDATES:
+			if String(m.faction).is_empty() or m.faction == faction_id:
+				out.append(m.id)
+	return out
 
 
 func _kept() -> int:
@@ -533,6 +553,11 @@ func _refresh() -> void:
 			["ability_rank_at", rid, kept])
 		var sb := successor_breakdown(rid, kept, _capital_name())
 		_number(cl.succession, _succession_short(rid), sb, ["successor", rid, kept])
+		var ml: Label = cl.magic  # M5-5: what this ruler casts, at this kept power (§7.3)
+		ml.visible = _magic_on()
+		if ml.visible:
+			_rule(ml, MagicRules.ruler_line(rid, kept), TooltipText.plain(CodexLink.title("caster"), "%s %s" % [
+				RulesCodex.text("caster"), RulesCodex.text("mastery")]), "caster")
 
 	# The picked ruler at this kept power, next to spending all (0 kept) and keeping all (10 kept).
 	var keeps := [kept, 0, RulerData.POWER_POOL]
@@ -588,7 +613,11 @@ func _refresh() -> void:
 		CodexLink.attach(check, String(md.codex), open_codex)
 		var reason: Label = mandate_reasons[mid]
 		reason.visible = check.disabled
-		if check.disabled:
+		var clash := _excluded_by(mid)  # M5-5: Tithe of Blood and Feast of Victory exclude each other
+		if check.disabled and not clash.is_empty():
+			_rule(reason, "Not with %s" % RulerRules.mandate_name(clash), TooltipText.wrap_text("You can't take %s: %s" % [md.name,
+				RulerRules.exclusion_reason(mid, clash)]), String(md.codex))
+		elif check.disabled:
 			_number(reason, "Needs %d power; %d left." % [int(md.cost), kept], kb, ["build_kept_power"], "",
 				TooltipText.wrap_text("You can't take %s: %s" % [md.name, " ".join(errors)]))
 		var row: Control = mandate_rows[mid]
@@ -730,6 +759,15 @@ func _mandate_tooltip(mid: String, errors: Array) -> String:
 		lines.append("")
 		lines.append(TooltipText.wrap_text("You can't take it now: %s" % " ".join(errors)))
 	return "\n".join(lines)
+
+
+## M5-5: the taken mandate `mid` can't be held with (MandateData "excludes", either way round), or "".
+func _excluded_by(mid: String) -> String:
+	for owned in mandates:
+		if owned != mid and (String(RulerRules.mandate_data(owned).get("excludes", "")) == mid \
+				or String(RulerRules.mandate_data(mid).get("excludes", "")) == owned):
+			return String(owned)
+	return ""
 
 
 static func _mandate_list(ids: Array) -> String:
@@ -1058,7 +1096,10 @@ func _ruler_card(rid: String) -> Control:
 	ability.add_child(ability_value)
 	var succession := _label("Succession_%s" % rid, "", SMALL_SIZE, UiPalette.TEXT_SECONDARY, true)
 	box.add_child(succession)
-	_card_labels[rid] = {"body": body_labels, "ability": ability_value, "succession": succession}
+	var magic := _label("Magic_%s" % rid, "", SMALL_SIZE, UiPalette.LINK, true)  # M5-5: shown in a game with magic
+	magic.visible = false
+	box.add_child(magic)
+	_card_labels[rid] = {"body": body_labels, "ability": ability_value, "succession": succession, "magic": magic}
 	return card
 
 
@@ -1117,7 +1158,7 @@ func _power_column() -> Control:
 	col.add_child(meter_sentence)
 	col.add_child(_heading("MandatesHeading", "Mandates for your whole nation", "mandates"))
 	var f := _model.find_faction(faction_id)
-	for mid in RulerRules.available_mandates(faction_id):
+	for mid in _mandate_ids():
 		col.add_child(_mandate_row(mid, f.faction_name if f else ""))
 	return panel
 

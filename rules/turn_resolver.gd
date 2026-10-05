@@ -263,6 +263,8 @@ static func check_recruit(state: GameState, faction_id: String, order, gold_avai
 				var other_ut := recruitable_type(other, order.unit_type_id, state)
 				return _reject("not_in_roster", "%s belong to %s. %s can only recruit its own units." % [other_ut.name, other.faction_name, faction.faction_name])
 		return _reject("unknown_unit_type", "That is not a unit type in this game. Recruit from your faction's roster.")
+	if ut.summoned:  # M5-5 (§6.2): summoned creatures come from rituals, never from recruiting
+		return _reject("summoned_type", "%s are summoned by a ritual, never recruited." % ut.name)
 	if MagicRules.is_mage(ut) and not MagicRules.knows_a_spell(state, faction_id):  # M5-5: the mage gate (§3.2)
 		return _reject("mage_needs_spell", MagicRules.mage_gate_reason(state, faction_id, ut))
 	var at := recruit_at(state, faction, order)
@@ -421,6 +423,8 @@ static func price_recruits(state: GameState, faction_id: String, orders: Array, 
 		if state.sieges and order is RecruitOrder and faction != null and at != RecruitOrder.AT_RULER:
 			place = SiegeRules.recruit_place(state, faction, recruit_at(state, faction, order))
 		var check := check_recruit(state, faction_id, order, gold, with_ruler, start, int(at_counts.get(place, 0)))
+		if reserved > 0 and String(check.get("code", "")) == "not_enough_gold":  # M5-5: say where the gold went
+			check.reason = "%s Your queued rituals hold %d of your %d gold." % [String(check.reason), reserved, gold_before + reserved]
 		var ut: UnitType = recruitable_type(faction, order.unit_type_id, state) if check.is_empty() else null
 		var engine := SiegeRules.is_engine(ut)
 		if engine and _carrier_room(state, faction_id, place, carriers) <= 0:
@@ -596,8 +600,18 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 		var fortify_given := 0  # M3c: Fortify orders that passed this turn
 		var valid_moves := []  # M3c: this faction's valid move orders, for its siege orders
 		var siege_list := []  # M3c: its storm and sally orders, checked after every move
+		# M5-5 (§6.1, §9): cast orders are checked first, and pin their armies: a pinned army's move is rejected,
+		# whenever it was given, as OrderBook drops it. {} without a cast order.
+		var pins := MagicRules.pinned_armies(s, fid, list)
+		var before := []  # every order before this one but the casts that failed, as pinned_armies counts them
 		recruits[fid] = []
 		for order in list:
+			if not (order is CastOrder):
+				before.append(order)
+			if order is MoveOrder and pins.has(order.army_id):
+				events.append(_rejected_event(s, fid, order, _reject("pinned", "%s It can't move this turn." % MagicRules.pinned_reason(
+					s, order.army_id, String(pins[order.army_id]))), "orders"))
+				continue
 			if order is MoveOrder:
 				var check := check_move(s, fid, order, ordered)
 				if not check.is_empty():
@@ -635,9 +649,13 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 				spellbook_given = true
 				MagicRules.set_spellbook(s, fid, order)
 			elif order is CastOrder:
-				# M5-5: casts are checked and queued (OrderBook), but the rituals phase that resolves them comes with M5-6.
-				events.append(_rejected_event(s, fid, order, _reject("rituals_not_ready",
-					"Rituals don't take effect in this version of the game yet, so nothing was cast and nothing was paid."), "orders"))
+				# M5-5: a cast is checked here (it pins its army, above), but the rituals phase that casts it comes with
+				# M5-6: until then a legal cast is reported as not cast, at no price.
+				var check := MagicRules.check_cast(s, fid, order, before)
+				if check.is_empty():
+					before.append(order)
+					check = _reject("rituals_not_ready", "Rituals don't take effect in this build of the magic preview yet: nothing was cast and nothing was paid. The army held this turn, as a casting army does.")
+				events.append(_rejected_event(s, fid, order, check, "orders"))
 			elif order is ResearchOrder:
 				# M4: sets the research target (silently: the target is private). One per turn.
 				var check := _check_research_order(s, fid, order, research_given)
@@ -1631,7 +1649,7 @@ static func _research_phase(s: GameState, events: Array) -> void:
 			var sold: Dictionary = step.sold
 			events.append(_event("research_sold", "research", [], [fid], [], "research_sold",
 				{"research": int(sold.research), "gold": int(sold.gold), "carried": int(sold.left), "pool": int(sold.pool)},
-				MagicRules.sold_text(sold), "research_sold"))
+				MagicRules.sold_text(s, fid, sold), "research_sold"))
 		_province_rules(s, fid, events)
 
 
@@ -1658,8 +1676,9 @@ static func _research_done_event(s: GameState, fid: String, step: Dictionary, tu
 		events.append(_event("transformed", "research", [], [fid], [], "transformation", numbers,
 			AscensionRules.transformed_text(s, fid, nid, turn, false), codex))
 	else:
-		events.append(_event("research_done", "research", [], [fid], [], "researched", numbers,
-			AscensionRules.done_text(s, fid, nid, step.applied), codex))
+		var text := MagicRules.done_text(s, fid, nid, turn) if AscensionRules.is_arcana(nid) \
+			else AscensionRules.done_text(s, fid, nid, step.applied)  # M5-5: an arcana node says what it opens
+		events.append(_event("research_done", "research", [], [fid], [], "researched", numbers, text, codex))
 
 
 ## The transformation's province rules for `fid` in the research phase (M4-2), with their events.

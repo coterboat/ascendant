@@ -224,7 +224,7 @@ static func sidebar(state: GameState, fid: String, orders: Array = [], own: bool
 	var out := {"rate": rate, "rate_text": "Research per turn: %d" % int(rate.total), "pool": 0, "pool_text": "",
 		"progress": {}, "target": "", "target_name": "", "cost": 0, "forecast": {}, "target_text": "", "routes": [],
 		"people": AscensionRules.people_name(state, fid), "sworn_text": sworn_text(state, fid, own),
-		"complete": AscensionRules.path_complete(state, fid)}
+		"complete": AscensionRules.all_complete(state, fid)}  # M5-5: the arcana too, in a magic game
 	if not own:
 		return out
 	var view := view_state(state, fid, orders)
@@ -317,8 +317,9 @@ static func chip(state: GameState, fid: String, orders: Array = []) -> Dictionar
 	var progress := Breakdown.research_progress(state, fid, orders)
 	var target := String(fc.get("target", ""))
 	var pool := AscensionRules.research_points(state, fid)
-	if AscensionRules.path_complete(state, fid):
-		return {"text": "Research\npath complete", "breakdown": progress, "attention": false, "codex": "research"}
+	if AscensionRules.all_complete(state, fid):  # M5-5: in a magic game, the arcana too; research is then sold
+		var done := "nothing left" if MagicRules.has_magic(state) else "path complete"
+		return {"text": "Research\n%s" % done, "breakdown": progress, "attention": false, "codex": "research_sold" if MagicRules.has_magic(state) else "research"}
 	if target.is_empty() or not fc.get("ok", false):
 		return {"text": "Research: choose\n%d waiting" % pool, "breakdown": progress, "attention": true, "codex": "research_order"}
 	var when := "never" if int(fc.eta) < 0 else ("this turn" if int(fc.eta) == 1 else "turn %d" % int(fc.done_turn))
@@ -331,7 +332,7 @@ static func chip(state: GameState, fid: String, orders: Array = []) -> Dictionar
 static func needs_you(state: GameState, fid: String) -> String:
 	if not AscensionRules.has_paths(state) or state.find_faction(fid) == null:
 		return ""
-	if not AscensionRules.research_target(state, fid).is_empty() or AscensionRules.path_complete(state, fid):
+	if not AscensionRules.research_target(state, fid).is_empty() or AscensionRules.all_complete(state, fid):
 		return ""
 	return "Choose what to research: %d research is waiting, and you gain %d a turn. Open the research panel from the top bar." % [
 		AscensionRules.research_points(state, fid), int(AscensionRules.research_rate(state, fid).rate)]

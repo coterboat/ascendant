@@ -100,11 +100,23 @@ func test_the_mage_gate_opens_on_the_first_spell() -> void:
 		assert_eq(TurnResolver.check_recruit(learned, fid, RecruitOrder.new(mage_id), 1000), {}, "%s: open once %s is known" % [fid, first])
 	assert_eq(MagicRules.mage_gate_reason(s, CROWN, TurnResolver.recruitable_type(s.find_faction(CROWN), "adepts")),
 		"The Sunstone Adepts can be recruited once the Aurel Crown knows a spell. Research Sunlance or Shield of Law (10 research). The Ever-Regent's own Sunlance doesn't count.")
-	# Researched at the end of a turn, recruited the next: the resolver agrees with the check.
+	# Researched at the end of a turn, recruited the next: the resolver agrees with the check, and the turn report
+	# says the gate opened (§11.2's first spell).
 	var r := TurnResolver.resolve(s, {CROWN: [ResearchOrder.new("sunlance")]}, 1)
-	var state := r.new_state
+	var state: GameState = r.new_state
+	var done_events: Array = r.events.filter(func(e): return e.type == "research_done")
 	while MagicRules.known_spells(state, CROWN).is_empty():
-		state = TurnResolver.resolve(state, {}, TurnResolver.seed_for_turn(state)).new_state
+		var step := TurnResolver.resolve(state, {}, TurnResolver.seed_for_turn(state))
+		done_events.append_array(step.events.filter(func(e): return e.type == "research_done"))
+		state = step.new_state
+	assert_eq(done_events.size(), 1)
+	var line := String(done_events[0].text)
+	var capital := state.find_province(state.find_faction(CROWN).capital).name
+	assert_true(line.begins_with("Sunlance researched by the Aurel Crown: a battle spell of the Sun."), line)
+	assert_true(line.contains("The Aurel Crown can now recruit Sunstone Adepts at %s, from turn %d." % [capital, int(done_events[0].numbers.turn) + 1]), line)
+	var second := AscensionRules.with_nodes(state, CROWN, ["shield_of_law"])
+	assert_false(MagicRules.done_text(second, CROWN, "shield_of_law", 3).contains("can now recruit"), "only the first spell opens the gate")
+	assert_true(MagicRules.done_text(second, CROWN, "sun_mastery", 3).contains("+1 mastery in the Sun for every caster"))
 	state.find_faction(CROWN).gold = 100
 	var rec := TurnResolver.resolve(state, {CROWN: [RecruitOrder.new("adepts")]}, TurnResolver.seed_for_turn(state))
 	assert_eq(rec.events.filter(func(e): return e.type == "recruited").size(), 1, "the Adepts are recruited")
@@ -133,10 +145,18 @@ func test_research_is_sold_only_when_nothing_is_left_and_only_with_magic() -> vo
 	assert_eq(int(sold[0].numbers.carried), int(want.left))
 	assert_eq(String(sold[0].phase), "research")
 	assert_eq(String(sold[0].codex), "research_sold")
-	assert_eq(String(sold[0].text), MagicRules.sold_text(want))
+	assert_eq(String(sold[0].text), MagicRules.sold_text(done, CROWN, want))
 	assert_eq(r2.new_state.find_faction(CROWN).research_points, int(want.left), "the spare point is carried")
 	var income := int(TurnResolver.income_of(done, CROWN).total)
 	assert_eq(r2.new_state.find_faction(CROWN).gold, gold + income + int(want.gold), "the gold arrives in the research phase")
+	# The research forecast and the chip say what happens to research now (MagicRules.research_sold, never redone).
+	var fc := Forecast.research(done, CROWN)
+	var next := MagicRules.research_sold(AscensionRules.research_points(done, CROWN) + int(AscensionRules.research_rate(done, CROWN).rate))
+	assert_true(String(fc.text).contains("your scholars sell %d research for %d gold" % [int(next.research), int(next.gold)]), fc.text)
+	assert_eq(String(PathView.chip(done, CROWN).text), "Research\nnothing left")
+	assert_eq(PathView.needs_you(done, CROWN), "", "nothing left to choose")
+	# Path complete but arcana left: the forecast points at the Magic tab, and the chip asks for a choice.
+	assert_true(String(Forecast.research(s, CROWN).text).contains("choose a spell in the Magic tab"), Forecast.research(s, CROWN).text)
 	# The same complete path in a game without magic sells nothing: research piles up as in M4.
 	var m4 := AscensionRules.with_nodes(GameState.with_paths(7), CROWN, path)
 	assert_true(AscensionRules.all_complete(m4, CROWN), "without magic, the path is everything")
