@@ -125,6 +125,8 @@ func _initialize() -> void:
 			extra += " --builds %s" % ",".join(opts.builds.map(func(b): return "roll" if str(b).is_empty() else str(b)))
 		if opts.branches.any(func(b): return not str(b).is_empty()):
 			extra += " --branches %s" % ",".join(opts.branches.map(func(b): return "roll" if str(b).is_empty() else str(b)))
+	if opts.independents:
+		extra += " --independents"
 	md += "\n- **Run:** `--games %d --seed %d --p1 %s --p2 %s --seat1 %s --turn-cap %d%s`, %.1f s." % [opts.games, opts.seed,
 		opts.policies[0], opts.policies[1], opts.seats[0], opts.turn_cap, extra, seconds]
 	if opts.list:
