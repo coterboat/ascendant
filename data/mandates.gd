@@ -117,3 +117,18 @@ const PATH_MANDATES: Array[Dictionary] = [
 		"codex": "mandate_red_harvest", "sacrifice_only": true, "path": "beasts_blood_pact",
 	},
 ]
+
+## The mandates of magic (M5, design/M5_MAGIC_FOG.md §7.1; M5-5). Kept apart from MANDATES and PATH_MANDATES, so the
+## M2 build screen, the presets and every game without magic are exactly as before: they can be taken only in a game
+## with magic (GameState.magic), before the game or by sacrifice. RulerRules.mandate_data reads this list too.
+##   magic            true: only in a game with magic
+##   excludes         a mandate it can't be held with, either way round, in a build or by sacrifice
+##   excludes_why     why, in a few words
+const MAGIC_MANDATES: Array[Dictionary] = [
+	{
+		"id": "tithe_of_blood", "name": "Tithe of Blood", "faction": "beasts", "cost": 3, "area": "economy",
+		"effect": "Rituals your Shamans cast can be paid in hit points instead of gold: 1 hit point a gold, from the regular units in the Shamans' own army, one soldier at a time. Rituals your ruler casts always cost gold. Can't be held with Feast of Victory.",
+		"codex": "mandate_tithe_of_blood", "magic": true, "excludes": "feast_of_victory",
+		"excludes_why": "blood given is not taken back",
+	},
+]

@@ -13,11 +13,16 @@ extends Control
 ## the side they swore and what it closed, and their research per turn. Never their target, so neither
 ## "researching" nor "available" nor an ETA is shown for them (tests check the screen is the same whatever
 ## their target is). Reads the state and the orders; never changes them. All words come from PathView.
+## M5-5 (#116; design/M5_MAGIC_FOG.md §4, §5.1, §11.2), in a game with magic only: a Magic tab shows your arcana as two
+## school columns of four cards (the same cards, ETAs and "Research this" as the path, from the same pool), each
+## school's mastery for your casters, and the battle spellbook: tick a spell on or off and move it up or down, which
+## asks the host to queue a SpellbookOrder (spellbook_requested). All words come from MagicView.
 
 signal research_requested(node_id: String)
 signal preview_requested(node_id: String)
 signal closed
 signal codex_requested(key: String)
+signal spellbook_requested(order: Array, off: Array)  # M5-5: the battle spellbook after a change
 
 const PANEL_SIZE := Vector2(1560, 850)
 const SIDEBAR_WIDTH := 390.0
@@ -39,6 +44,9 @@ var status_text := ""
 var title_label: Label
 var people_label: Label
 var own_tab: Button
+var magic_tab: Button  # M5-5: the arcana and the battle spellbook, in a game with magic
+var showing_magic := false  # M5-5: the Magic tab is open
+var spellbook_checks := {}  # M5-5: spell id -> its on/off CheckBox (for tests)
 var enemy_tabs: HBoxContainer
 var close_button: Button
 var tree_box: HBoxContainer
@@ -66,6 +74,7 @@ func show_for(p_state: GameState, p_viewer: String, p_orders: Array = [], p_can_
 	orders = p_orders.duplicate()
 	can_order = p_can_order
 	showing_fid = p_viewer
+	showing_magic = false
 	status_text = ""
 	refresh()
 	visible = true
@@ -74,11 +83,22 @@ func show_for(p_state: GameState, p_viewer: String, p_orders: Array = [], p_can_
 ## The enemy's path, read-only (public facts only).
 func show_enemy(fid: String) -> void:
 	showing_fid = fid
+	showing_magic = false
 	refresh()
 
 
 func show_own() -> void:
 	showing_fid = viewer_fid
+	showing_magic = false
+	refresh()
+
+
+## M5-5: your arcana and battle spellbook (a game with magic only).
+func show_magic() -> void:
+	if state == null or not MagicRules.has_magic(state):
+		return
+	showing_fid = viewer_fid
+	showing_magic = true
 	refresh()
 
 
@@ -109,12 +129,19 @@ func _unhandled_input(event: InputEvent) -> void:
 func refresh() -> void:
 	cards.clear()
 	buttons.clear()
+	spellbook_checks.clear()
 	for box in [tree_box, sidebar, enemy_tabs]:
 		for c in box.get_children():
 			box.remove_child(c)
 			c.queue_free()
 	if state == null or state.find_faction(showing_fid) == null:
 		return
+	magic_tab.visible = MagicRules.has_magic(state)
+	if showing_magic and is_own() and MagicRules.has_magic(state):
+		_refresh_magic()
+		return
+	showing_magic = false
+	magic_tab.button_pressed = false
 	var own := is_own()
 	var f := state.find_faction(showing_fid)
 	var path := AscensionRules.path_name(showing_fid)
@@ -150,6 +177,146 @@ func refresh() -> void:
 	footer_label.text = "Your research target is yours alone: the enemy sees what you have researched and the Oath you swore, never what you are researching. Hover a number for where it comes from; right-click it, or press F1, for its codex entry." if own \
 		else "Read-only. Everything here is public: what they researched and when, the Oath they swore and their research per turn. What they are researching now is their secret, as yours is to them."
 	links.queue_redraw()
+
+
+## M5-5: the Magic tab: the two school columns, and the sidebar's research lines and battle spellbook.
+func _refresh_magic() -> void:
+	var f := state.find_faction(viewer_fid)
+	title_label.text = "Research: Magic (the arcana)"
+	title_label.tooltip_text = TooltipText.plain(title_label.text, RulesCodex.text("arcana"))
+	CodexLink.attach(title_label, "arcana", codex_requested.emit)
+	var names := []
+	for sc in MagicRules.schools(viewer_fid):
+		names.append(MagicRules.school_name(String(sc)))
+	people_label.text = "%s · %s" % [f.faction_name, " and ".join(names)]
+	people_label.tooltip_text = TooltipText.plain(people_label.text, RulesCodex.text("magic"))
+	CodexLink.attach(people_label, "magic", codex_requested.emit)
+	own_tab.button_pressed = false
+	magic_tab.button_pressed = true
+	for other in state.factions:
+		if other.id == viewer_fid:
+			continue
+		var tab := Button.new()
+		tab.name = "EnemyTab_%s" % other.id.validate_node_name()
+		tab.text = "Enemy path: %s" % other.faction_name
+		tab.toggle_mode = true
+		tab.focus_mode = Control.FOCUS_NONE
+		tab.add_theme_font_size_override("font_size", 16)
+		tab.tooltip_text = TooltipText.plain("The %s's path" % other.faction_name, "What they have researched, the Oath they swore and their research per turn are public. What they are researching is not.")
+		CodexLink.attach(tab, "path", codex_requested.emit)
+		tab.pressed.connect(show_enemy.bind(other.id))
+		enemy_tabs.add_child(tab)
+	for col in MagicView.columns(state, viewer_fid, orders):
+		tree_box.add_child(_magic_column(col))
+	status_label.text = status_text
+	status_label.visible = not status_text.is_empty()
+	_fill_magic_sidebar()
+	footer_label.text = "Spells come from the same research pool as your path, one target at a time; only your Oath opens a greater working. Hover a card for its numbers now; F1 for its codex entry."
+	links.queue_redraw()
+
+
+func _magic_column(col: Dictionary) -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.name = "School_%s" % String(col.school)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation", 6)
+	var h := _label(box, "School of %s" % String(col.title), 18, UiPalette.GILT)
+	h.name = "SchoolTitle"
+	_tip(h, "School of %s" % String(col.title), RulesCodex.text(String(col.codex)), String(col.codex))
+	var row := HBoxContainer.new()
+	row.name = "Mastery"
+	row.add_theme_constant_override("separation", 14)
+	box.add_child(row)
+	var head := _label(row, "Mastery:", 14, UiPalette.TEXT_SECONDARY)
+	_tip(head, "Mastery", RulesCodex.text("mastery"), "mastery")
+	head.set_meta("rule_text", true)
+	for line in col.mastery:
+		var l := _label(row, String(line.text), 14, UiPalette.TEXT_PRIMARY)
+		_bd(l, line.breakdown)
+	for c in col.cards:
+		box.add_child(_card(c, true))
+	return box
+
+
+func _fill_magic_sidebar() -> void:
+	var s := PathView.sidebar(state, viewer_fid, orders, true)
+	_heading(sidebar, "Research per turn", "research_points")
+	var rate := _label(sidebar, String(s.rate_text), 17, UiPalette.TEXT_PRIMARY)
+	rate.name = "RateLabel"
+	_bd(rate, s.rate)
+	var pool := _label(sidebar, String(s.pool_text), 16, UiPalette.TEXT_PRIMARY)
+	pool.name = "PoolLabel"
+	_bd(pool, s.progress)
+	var target := _label(sidebar, String(s.target_text), 14, UiPalette.TEXT_SECONDARY)
+	target.name = "TargetText"
+	target.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_bd(target, s.progress)
+	if bool(s.complete):
+		var sold := _label(sidebar, "Nothing is left to research: each turn your research is sold for gold.", 14, UiPalette.GILT)
+		sold.name = "SoldLabel"
+		sold.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_bd(sold, Breakdown.research_sold(state, viewer_fid))
+	sidebar.add_child(HSeparator.new())
+	_heading(sidebar, "Battle spellbook", "spellbook")
+	var how := _label(sidebar, "Each round every caster casts the first useful spell nobody on its side has cast yet. Tick a spell on or off; the arrows change the order.", 13, UiPalette.TEXT_SECONDARY)
+	how.name = "SpellbookHow"
+	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tip(how, "Battle spellbook", RulesCodex.text("spellbook"), "spellbook")
+	how.set_meta("rule_text", true)
+	var book := MagicView.spellbook(state, viewer_fid, orders)
+	for r in MagicView.spellbook_rows(state, viewer_fid, orders):
+		sidebar.add_child(_spellbook_row(r, book))
+	sidebar.add_child(HSeparator.new())
+	var casters := _label(sidebar, MagicView.casters_text(state, viewer_fid), 13, UiPalette.TEXT_SECONDARY)
+	casters.name = "CastersText"
+	casters.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tip(casters, "Casters", "%s\n\n%s" % [RulesCodex.text("caster"), RulesCodex.text("mage")], "caster")
+	casters.set_meta("rule_text", true)
+	var note := _label(sidebar, MagicView.preview_note(), 13, UiPalette.TEXT_DISABLED)
+	note.name = "PreviewNote"
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tip(note, "Magic (M5 preview)", RulesCodex.text("magic"), "magic")
+	note.set_meta("rule_text", true)
+
+
+## One spellbook row: on or off, the spell, whether your casters can cast it now, and the arrows.
+func _spellbook_row(r: Dictionary, book: Dictionary) -> Control:
+	var row := HBoxContainer.new()
+	row.name = "Spell_%s" % String(r.spell)
+	row.add_theme_constant_override("separation", 6)
+	var sid := String(r.spell)
+	var check := CheckBox.new()
+	check.name = "On"
+	check.text = String(r.name)
+	check.button_pressed = bool(r.on)
+	check.focus_mode = Control.FOCUS_NONE
+	check.add_theme_font_size_override("font_size", 15)
+	check.disabled = not can_order
+	check.tooltip_text = TooltipText.plain(String(r.name), String(r.tooltip))
+	CodexLink.attach(check, String(r.codex), codex_requested.emit)
+	check.toggled.connect(func(on: bool): _request_spellbook(MagicView.toggled(book, sid, on)))
+	row.add_child(check)
+	spellbook_checks[sid] = check
+	var status := _label(row, String(r.status), 12, UiPalette.POSITIVE if bool(r.known) else UiPalette.TEXT_DISABLED)
+	status.name = "Status"
+	status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_tip(status, String(r.name), String(r.tooltip), String(r.codex))
+	status.set_meta("rule_text", true)
+	for step in [-1, 1]:
+		var b := Button.new()
+		b.name = "Up" if step < 0 else "Down"
+		b.text = "▲" if step < 0 else "▼"
+		b.focus_mode = Control.FOCUS_NONE
+		b.disabled = not can_order or (step < 0 and bool(r.first)) or (step > 0 and bool(r.last))
+		b.tooltip_text = "Move %s %s the spellbook: casters try the spells in order." % [String(r.name), "up" if step < 0 else "down"]
+		var by := int(step)
+		b.pressed.connect(func(): _request_spellbook(MagicView.moved(book, sid, by)))
+		row.add_child(b)
+	return row
+
+
+func _request_spellbook(book: Dictionary) -> void:
+	spellbook_requested.emit(book.order, book.off)
 
 
 func _column(col: Dictionary, own: bool) -> VBoxContainer:
@@ -198,15 +365,23 @@ func _card(c: Dictionary, own: bool) -> PanelContainer:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)
 	panel.add_child(box)
-	var name_label := _label(box, String(c.name), 18, UiPalette.TEXT_PRIMARY if st != AscensionRules.CLOSED else UiPalette.TEXT_DISABLED)
+	var compact := bool(c.get("compact", false))  # M5-5: an arcana card puts its kind on the name's line
+	var top: Container = box
+	if compact:
+		top = HBoxContainer.new()
+		top.add_theme_constant_override("separation", 10)
+		box.add_child(top)
+	var name_label := _label(top, String(c.name), 18, UiPalette.TEXT_PRIMARY if st != AscensionRules.CLOSED else UiPalette.TEXT_DISABLED)
 	name_label.name = "Name"
 	name_label.tooltip_text = TooltipText.plain(String(c.name), "%s%s" % [String(c.detail), ("\n\n" + String(c.reason)) if not String(c.reason).is_empty() else ""])
 	CodexLink.attach(name_label, String(c.codex), codex_requested.emit)
 	var kind := RulerRules._cap(String(c.kind_name))  # "Tier II", "Oath", "Transformation"
 	if not String(c.branch).is_empty():
 		kind = "%s · %s" % [kind, AscensionRules.branch_name(String(c.branch))]
-	var kind_label := _label(box, kind, 13, UiPalette.TEXT_SECONDARY)
+	var kind_label := _label(top, kind, 13, UiPalette.TEXT_SECONDARY)
 	kind_label.name = "Kind"
+	if compact:
+		kind_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var effect := _label(box, String(c.effect), 14, UiPalette.TEXT_SECONDARY)
 	effect.name = "Effect"
 	effect.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -426,6 +601,16 @@ func _build() -> void:
 	own_tab.tooltip_text = TooltipText.plain("Your path", RulesCodex.text("path"))
 	own_tab.pressed.connect(show_own)
 	head.add_child(own_tab)
+	magic_tab = Button.new()  # M5-5
+	magic_tab.name = "MagicTab"
+	magic_tab.text = "Magic"
+	magic_tab.toggle_mode = true
+	magic_tab.focus_mode = Control.FOCUS_NONE
+	magic_tab.visible = false
+	magic_tab.add_theme_font_size_override("font_size", 16)
+	magic_tab.tooltip_text = TooltipText.plain("Magic: your arcana", RulesCodex.text("arcana"))
+	magic_tab.pressed.connect(show_magic)
+	head.add_child(magic_tab)
 	enemy_tabs = HBoxContainer.new()
 	enemy_tabs.name = "EnemyTabs"
 	head.add_child(enemy_tabs)
@@ -493,7 +678,7 @@ class Links extends Control:
 		if panel == null or panel.state == null:
 			return
 		var fid := panel.showing_fid
-		for nid in AscensionRules.node_ids(fid):
+		for nid in panel.cards:  # M5-5: the arcana's cards too, on the Magic tab
 			var n := AscensionRules.node_data(nid)
 			for r in n.get("requires", []):
 				_link(String(r), nid, UiPalette.PANEL_BORDER.lightened(0.3), 3.0)

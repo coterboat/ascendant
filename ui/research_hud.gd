@@ -74,6 +74,7 @@ func open_panel() -> void:
 	if panel == null:
 		panel = ResearchPanel.new()
 		panel.research_requested.connect(queue)
+		panel.spellbook_requested.connect(queue_spellbook)  # M5-5: the Magic tab's battle spellbook
 		panel.preview_requested.connect(open_preview)
 		panel.codex_requested.connect(game.open_codex)
 		panel.closed.connect(func(): if preview != null: preview.visible = false)
@@ -106,6 +107,20 @@ func queue(node_id: String) -> String:
 		status = "Research order given: %s It replaces any research order you gave this turn, and you can cancel it in your orders list until you end the turn." % String(fc.get("text", ""))
 		if game.map.has_method("_orders_changed"):
 			game.map._orders_changed()  # the side panel's orders list, End turn's count and this chip
+	if panel != null and panel.visible:
+		panel.set_orders(game.session.current_orders(), status)
+	return why
+
+
+## M5-5: queues a SpellbookOrder (the Magic tab's battle spellbook) through the session; a new one replaces the
+## one given this turn. Returns "" or the rules' reason, shown in the panel's status line either way.
+func queue_spellbook(order: Array, off: Array) -> String:
+	var why := game.session.queue_spellbook(order, off)
+	var status := why
+	if why.is_empty():
+		status = "Battle spellbook set: %s. It applies from this turn and is kept until you change it; you can cancel it in your orders list until you end the turn." % MagicRules.spellbook_text(order, off)
+		if game.map.has_method("_orders_changed"):
+			game.map._orders_changed()
 	if panel != null and panel.visible:
 		panel.set_orders(game.session.current_orders(), status)
 	return why
