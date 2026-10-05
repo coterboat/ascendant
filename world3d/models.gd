@@ -28,6 +28,9 @@ const Kit := preload("res://world3d/kit.gd")
 const TABLE_PATH := "res://world3d/models.json"
 ## The pose models a figure can have (rulers add "cheer"; without a model a pose draws the ready one).
 const POSES := ["ready", "march", "strike", "fallen", "cheer"]
+## The Kit pieces a building row may fall back to (M3c S-4 adds the siege kinds' placeholders).
+const BUILDING_PIECES := ["fortress", "fort", "cottage", "broadleaf", "pine", "rock", "palisade", "scaffold", "siege_works",
+	"siege_engine", "rubble"]
 
 static var _table: Dictionary = {}
 static var _meshes: Dictionary = {} ## cache key -> {"mesh": Mesh, "tex": Texture2D or null, "source": "model"/"primitive"}
@@ -253,6 +256,17 @@ static func building_primitive(kind: String, variant: String = "") -> Mesh:
 			m = Kit.pine()
 		"rock":
 			m = Kit.rock()
+		## M3c S-4 (#102): the siege kinds' placeholders (design/M3C_SIEGES.md §13.3), each in its faction's style
+		"palisade":
+			m = Kit.palisade_fort(variant)
+		"scaffold":
+			m = Kit.scaffold(26.0, 12.0, variant)
+		"siege_works":
+			m = Kit.siege_works(variant)
+		"siege_engine":
+			m = Kit.siege_engine(variant)
+		"rubble":
+			m = Kit.rubble()
 		_:
 			m = Kit.cottage(0)
 	_meshes[key] = {"mesh": m, "tex": null, "source": "primitive"}
@@ -325,7 +339,7 @@ static func problems() -> Array:
 	var blds: Dictionary = table().get("buildings", {})
 	for id in blds.keys():
 		var row: Dictionary = blds[id]
-		if not ["fortress", "fort", "cottage", "broadleaf", "pine", "rock"].has(String(row.get("fallback", ""))):
+		if not BUILDING_PIECES.has(String(row.get("fallback", ""))):
 			out.append("building %s: its fallback '%s' is not a Kit piece" % [id, row.get("fallback", "")])
 		var p := String(row.get("model", ""))
 		if not p.is_empty() and not ResourceLoader.exists(p):

@@ -13,22 +13,23 @@
 ## knocks back for 0.15 s; a fall topples about the feet, then the fallen pose takes over; a cheer hops.
 ## Every phase offset comes from a hash of the figure's id, never from a random number generator.
 ##
-## Phases, in the turn report's order (TurnReportPanel.PHASE_TITLES keys): movement, battles, capture,
-## recruitment. Each plays only when the turn has something in it, under its caption.
+## Phases, in the turn report's order (TurnReportPanel.PHASE_TITLES keys): movement, battles, sieges (M3c S-4, a game
+## with sieges), capture, recruitment. Each plays only when the turn has something in it, under its caption.
 ##
 ## Sounds (GameAudio.sfx, from the board): a beat's sound comes from its kind and its index in the turn
 ## (sound_for), never from a random number generator, and playing it never changes anything.
 extends RefCounted
 
 ## The report's phase keys the playback shows, in order, with their captions.
-const PHASES := ["movement", "battles", "capture", "recruitment"]
-const CAPTIONS := {"movement": "Movement", "battles": "Battles", "capture": "Captures", "recruitment": "Recruits"}
+const PHASES := ["movement", "battles", "sieges", "capture", "recruitment"]
+const CAPTIONS := {"movement": "Movement", "battles": "Battles", "sieges": "Sieges", "capture": "Captures", "recruitment": "Recruits"}
 ## What each caption means, for the playback bar's tooltip and the legend.
 const CAPTION_HELP := {
 	"movement": "Every army ordered to march leaves by its gate (or the edge of its province) and marches the roads. Armies that will meet the enemy stop where the battle is.",
-	"battles": "Each battle plays a short exchange where it is fought: the blows, then the fallen. Losers topple; a winner's losses fall too. The turn report has the full battle.",
+	"battles": "Each battle plays a short exchange where it is fought: the blows, then the fallen. Losers topple; a winner's losses fall too. At a fort, a sally spills out of the gate, a storm meets the walls and a breach battle meets in the gap. The turn report has the full battle.",
+	"sieges": "Each fort's turn of siege, in the report's order: the besiegers' camps go up round the walls with their chevron banners, the siege works and engines strike and the walls take their damage look, a breach collapses the gate side, a lifted siege folds its camps; masons repair walls, and scaffolding raises a new fort.",
 	"capture": "Land changes hands: the new owner's colour sweeps out from its arriving column, and a captured fortress raises its banners.",
-	"recruitment": "Recruits march in through the gate and form up in the yard; everyone settles where the turn left them.",
+	"recruitment": "Recruits march in through their fort's gate and form up in its yard; scaffolding goes up where a fort was ordered; everyone settles where the turn left them.",
 }
 
 ## The kinds of beat the playback has, and the pose each one shows.
@@ -48,6 +49,22 @@ const BEAT_SOUNDS := {
 	"fall": ["unit_fall"],
 	"capture": ["capital_captured"],
 	"recruit": ["recruit"],
+	## M3c S-4: the fort beats (Playback.plan's "forts"), by the kind armies.gd gives them (FORT_BEATS)
+	"siege": ["rout_horn"],
+	"wall_hit": ["battle_hit", "battle_clash"],
+	"breach": ["battle_charge"],
+	"siege_over": ["rout_horn"],
+	"repair": ["order_queued"],
+	"scaffold": ["order_queued"],
+	"built": ["research_complete"],
+	"razed": ["unit_fall"],
+}
+
+## M3c S-4: each fort event's beat kind (the sound above, the board's dust and shake).
+const FORT_BEATS := {
+	"siege_started": "siege", "walls_damaged": "wall_hit", "walls_breached": "breach", "siege_lifted": "siege_over",
+	"siege_ended": "siege_over", "walls_repaired": "repair", "construction_started": "scaffold",
+	"construction_halted": "halted", "fort_built": "built", "construction_razed": "razed",
 }
 
 const HOP := 0.75 ## a march step's hop, world units at piece scale
