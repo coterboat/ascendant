@@ -60,6 +60,12 @@ Run it windowed to see the title screen:
 /home/box/playtester/godot/godot --path .
 ```
 
+Screenshot walk (look at what a player sees before calling a visual change done): a bot plays one seat against the computer on the real screens and saves a PNG at each step, plus `walk.md` with every order and report line. Windowed only; the options are in the script's header:
+
+```sh
+/home/box/playtester/godot/godot --path . --resolution 1600x900 -s res://tools/shots/play_shots.gd -- --out=/tmp/walk --paths --sieges --every=4 --battles=3 --fast
+```
+
 ### layout
 
 - `rules/`: pure game-rules code. No `Node`, scene, or UI dependencies, so it can be unit-tested and replayed from a seed.
