@@ -1688,11 +1688,11 @@ static func _spell_plan(sid: String, c: Dictionary, sides: Array, standing: Arra
 			if units.is_empty():
 				plan.why = "nothing but rulers and commanders was in reach, so %s" % who
 			elif sid == "sunlance":
-				plan.why = "%s %s the highest maximum hp in reach (%d)%s" % [_the(who), "has" if not who.ends_with("s") else "have", int(best.max),
+				plan.why = "%s %s the highest maximum hp in reach (%d)%s" % [_the(who), "have" if _plural(who) else "has", int(best.max),
 					", the most hurt of those" if pool.filter(func(t): return t.max == best.max).size() > 1 else ""]
 			else:
 				plan.why = "%s %s the fewest hp left in reach (%d) and %s not yet going to die this round" % [_the(who),
-					"has" if not who.ends_with("s") else "have", int(best.hp - best.pending), "is" if not who.ends_with("s") else "are"]
+					"have" if _plural(who) else "has", int(best.hp - best.pending), "are" if _plural(who) else "is"]
 		"hex":
 			if sp.has("round"):
 				# Sunburst: every enemy fighter in the front rank, rulers included, once per side per battle.
@@ -1813,7 +1813,7 @@ static func _shield_skip(side: Dictionary, env: Dictionary, key: String) -> Stri
 				bits.append("the walls' +%d" % int(siege.get("walls_defense", 0)) if String(siege.get("kind", "")) == SiegeRules.STORM \
 					else "the cover of the walls (+%d)" % int(siege.get("cover_defense", 0)))
 			return "the %s %s %s defense, and %s never covers a unit with a terrain or fort bonus" % [_bare(String(f.name)),
-				"have" if String(f.name).ends_with("s") else "has", " and ".join(bits), name]
+				"have" if _plural(String(f.name)) else "has", " and ".join(bits), name]
 	return "every one of its front-rank units is already shielded this round"
 
 
@@ -1878,6 +1878,11 @@ static func _apply_cast(plan: Dictionary, c: Dictionary, sides: Array, round_no:
 	if not skipped.is_empty():
 		ev["skipped"] = skipped.duplicate(true)
 	_log_push(rec.log, rec.cap, ev)
+
+
+## Whether a unit's name reads as a plural ("Spearmen", "Knights"; not "War Bear"), for "has" or "have".
+static func _plural(name: String) -> bool:
+	return name.ends_with("s") or name.ends_with("men")
 
 
 ## A caster in running text: "the Thornmane Shamans", "the Ever-Regent".
