@@ -1169,7 +1169,10 @@ func _show_province_details() -> void:
 		return
 
 	_add_province_header(p)
+	var garrison := state.garrison_at(p.id)  # IND-1 (#142): the Free Holds garrison you must beat to take it
 	var owner_name := "Nobody (neutral)" if p.owner.is_empty() else state.find_faction(p.owner).faction_name
+	if garrison != null:
+		owner_name = "Neutral, held by %s" % TurnReportText.army_name(state, garrison.id)
 	var seats := seat_order()
 	var owner_seat := UiPalette.seat_index(state, p.owner, seats)
 	var owner_help := RulesCodex.text("neutral")
@@ -1181,7 +1184,6 @@ func _show_province_details() -> void:
 	owner_label.name = "OwnerLabel"
 	owner_label.add_theme_color_override("font_color", UiPalette.owner_color(state, p.owner, seats).lightened(0.3))
 	_link(owner_label, TooltipText.owner_kind(p.owner))
-	var garrison := state.garrison_at(p.id)  # IND-1 (#142): the Free Holds garrison you must beat to take it
 	if garrison != null:
 		var n := garrison.units.size()
 		var who := TurnReportText.army_name(state, garrison.id)

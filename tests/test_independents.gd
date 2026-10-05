@@ -96,7 +96,8 @@ func test_garrison_unit_stats_follow_the_breakpoint_rules() -> void:
 		var d: int = ut.defense + (AutoBattleResolver.SHIELD_WALL_DEFENSE if ut.trait_id == AutoBattleResolver.SHIELD_WALL else 0)
 		assert_true(d % 4 <= 1, "%s's defense %d sits on a breakpoint" % [ut.id, d])
 		assert_eq(ut.cost, 0, "nobody recruits them")
-		assert_ne(ut.trait_description, "", "%s's trait explains itself" % ut.id)
+		if not ut.trait_id.is_empty():
+			assert_ne(ut.trait_description, "", "%s's trait explains itself" % ut.id)
 
 
 # --- turns ----------------------------------------------------------------------------------------
@@ -231,6 +232,18 @@ func test_the_move_forecast_names_the_garrison_and_never_warns_of_a_border_meeti
 	assert_true(text.contains(RulerRules._cap(TurnReportText.army_name(s, IndependentData.army_id("westwatch")))), "names the garrison: %s" % text)
 	assert_false(text.contains("moves toward you"), "a garrison never moves")
 	assert_false(text.contains("is undefended"), "it isn't")
+
+
+func test_the_turn_report_names_the_garrison_in_its_battle_line() -> void:
+	var s := _game()
+	var army := _start_army(s, CROWN)
+	var result := TurnResolver.resolve(s, _orders(CROWN, [MoveOrder.new(army.id, "westwatch")]), 5, AutoBattleResolver.new())
+	var battles: Array = result.events.filter(func(e): return e.type == "battle")
+	assert_eq(battles.size(), 1)
+	var text := TurnReportText.line(battles[0], result.events, result.new_state, CROWN, s)
+	var name := TurnReportText.army_name(s, IndependentData.army_id("westwatch"))
+	assert_true(text.contains(name), "the battle line names %s: %s" % [name, text])
+	assert_false(text.contains("attacked %s'" % IndependentData.FACTION_NAME), "not as the Free Holds' units: %s" % text)
 
 
 func test_the_codex_states_the_garrison_table() -> void:

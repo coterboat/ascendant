@@ -854,6 +854,9 @@ static func _side(fid: String, e: Dictionary, ctx: Dictionary) -> Dictionary:
 static func _side_phrase(fid: String, side: Dictionary, ctx: Dictionary) -> String:
 	if side.entries.is_empty():
 		return "%s (%s)" % [_names(side.armies, ctx), side.size]
+	if fid == IndependentData.FACTION_ID and not side.armies.is_empty():
+		# IND-1 (#142): a garrison goes by its name, "the Ebonpeak Hillguard (2 Hill Slingers and Free Spears, 26 hp)".
+		return "%s (%s, %s)" % [_names(side.armies, ctx), units_phrase(side.entries), side.size]
 	return "%s %s (%s)" % [_possessive(_faction_name(ctx.state, fid)), units_phrase(side.entries), side.size]
 
 

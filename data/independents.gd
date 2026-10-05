@@ -22,16 +22,18 @@ const FACTION_NAME := "Free Holds"
 ## A garrison's army id is this prefix and its province's id ("free-stonegate"): one per neutral province, fixed.
 const ARMY_PREFIX := "free-"
 
-## Morale is high on purpose: a hold fights for its own fields and rarely breaks (tuned on 2026-10-04 so a starting
-## army takes a small hold for about a third of a unit, a forest hold for one or two, and a rich hold only about half
-## the time; numbers in #142).
+## Morale is high on purpose: a hold fights for its own fields and rarely breaks. Tuned on 2026-10-04 (PR for #142,
+## 160 battles each) so a starting army takes a small hold for about half a unit, a 4-unit forest hold for about two,
+## and the rich plains hold beside each capital only some of the time (Crown 35%, Clans 46%): on turn 1 the choice is
+## the sure small fight, the gamble, or waiting a turn to recruit. The hill forts mid-map stay hard (17% / 48%).
 const UNIT_TYPES: Array[Dictionary] = [
 	{"id": "free_spears", "name": "Free Spears", "hp": 10, "attack": 9, "defense": 7, "morale": 11, "trait": "Shield Wall"},
 	{"id": "hill_slingers", "name": "Hill Slingers", "hp": 8, "attack": 11, "defense": 5, "morale": 11, "trait": "Skirmish"},
 	{"id": "wildkin", "name": "Wildkin", "hp": 16, "attack": 11, "defense": 4, "morale": 11, "trait": "Berserk"},
 ]
 ## A rich hold (income CAPTAIN_FROM and more) is led by a Hold Captain.
-const COMMANDER := {"id": "hold_captain", "name": "Hold Captain", "hp": 20, "attack": 11, "defense": 8, "morale": 11, "trait": "Inspire"}
+## No trait: with Inspire the rich holds were a shut door (a starting army won 12% / 33%).
+const COMMANDER := {"id": "hold_captain", "name": "Hold Captain", "hp": 20, "attack": 11, "defense": 8, "morale": 11, "trait": ""}
 const CAPTAIN_FROM := 8
 
 ## Per terrain: the garrison's name and its units in order; a garrison of n units takes the first n.

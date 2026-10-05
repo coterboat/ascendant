@@ -44,7 +44,7 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 	var garrison := state.garrison_at(dest.id)
 	if garrison != null and enemies == [IndependentData.FACTION_ID]:
 		# IND-1 (#142): a garrison never moves, so there is no border meeting to warn about.
-		text += " %s holds it for the %s: a garrison never moves, so you fight a battle there and it defends (%s). Win, and %s is yours with %d gold per turn." % [
+		text += " %s holds it for the %s: a garrison never moves, so you fight a battle there and it defends (%s). Win, and %s is yours with %d gold per turn. Lose, and your army is destroyed while the garrison keeps its wounds: a garrison never heals, so a second attack meets fewer." % [
 			RulerRules._cap(TurnReportText.army_name(state, garrison.id)), IndependentData.FACTION_NAME, defender_ground(dest), dest.name, dest.income]
 	elif not enemies.is_empty():
 		var names := []
