@@ -610,7 +610,9 @@ const ENTRIES := {
 	},
 	"mandate_blood_frenzy": {
 		"title": "Blood Frenzy",
-		"text": "Thornmane Clans mandate, 3 power. Each of your fighters below its full hit points has +3 attack: units, commanders and the ruler. A Tusker's Berserk adds to it, for +6. Wounds carry over between battles, so a wounded army starts its next battle in a frenzy.",
+		"text": "Thornmane Clans mandate, 3 power. Each of your fighters below its full hit points has +%d attack: units, commanders and the ruler." % MandateData.BLOOD_FRENZY_ATTACK
+			+ " A Tusker's Berserk adds to it, for +%d." % (MandateData.BLOOD_FRENZY_ATTACK + AutoBattleResolver.BERSERK_ATTACK)
+			+ " Wounds carry over between battles, so a wounded army starts its next battle in a frenzy.",
 	},
 	"mandate_feast_of_victory": {
 		"title": "Feast of Victory",
