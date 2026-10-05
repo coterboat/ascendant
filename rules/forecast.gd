@@ -23,10 +23,17 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 	var here := state.find_province(army.location)
 	var dest := state.find_province(order.to)
 	var enemies := []
+	var remembered := []  # M5-2: in a fog view, rivals only remembered there (ghosts): not there now, as far as you know
 	for a in state.armies:
 		if a.location == dest.id and a.owner != faction_id and not enemies.has(a.owner):
+			if String(a.seen.get("level", "")) == FogData.MEMORY:
+				if not remembered.has(a.owner):
+					remembered.append(a.owner)
+				continue
 			enemies.append(a.owner)
 	enemies.sort()
+	var fog := is_fog_view(state)
+	var veiled := fog and String(FogRules.sight(state, faction_id).get(dest.id, FogRules.VEILED)) == FogRules.VEILED
 	var arrival := state.current_turn + 2
 	# The army as the map and the turn report name it (TurnReportText.army_title), from where it stands.
 	var label := RulerRules._cap(TurnReportText.army_title(state, army, false))
@@ -40,12 +47,17 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 			label, state.find_province(order.via).name, dest.name, arrival, dest.name]
 	var would_capture := false
 	if state.sieges and dest.fort_level > 0:
-		return _fort_move(state, faction_id, order, other_orders, army, here, dest, text, arrival)  # M3c: which row of §3.9
+		return _with_sight(state, faction_id, order, army,  # M3c: which row of §3.9
+			_fort_move(state, faction_id, order, other_orders, army, here, dest, text, arrival))
 	var garrison := state.garrison_at(dest.id)
 	if garrison != null and enemies == [IndependentData.FACTION_ID]:
 		# IND-1 (#142): a garrison never moves, so there is no border meeting to warn about.
 		text += " %s holds it for the %s: a garrison never moves, so you fight a battle there and it defends (%s). Win, and %s is yours with %d gold per turn. Lose, and your army is destroyed while the garrison keeps its wounds: a garrison never heals, so a second attack meets fewer." % [
 			RulerRules._cap(TurnReportText.army_name(state, garrison.id)), IndependentData.FACTION_NAME, defender_ground(dest), dest.name, dest.income]
+	elif fog and not enemies.is_empty():
+		text += " " + _fog_enemies_text(state, faction_id, dest, enemies, order.is_road_move())  # M5-2: what you can see there
+	elif veiled:
+		text += " " + _veiled_move_text(state, faction_id, dest, remembered)  # M5-2: out of sight: it may hold anything
 	elif not enemies.is_empty():
 		var names := []
 		for fid in enemies:
@@ -62,8 +74,8 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 		if int(raid.gold) > 0:
 			text = text.trim_suffix(".") + ", and %d gold at once (%s: %s)." % [int(raid.gold),
 				AscensionRules.node_name(String(raid.node)), AscensionRules.times_text(int(raid.times))]
-	return {"ok": true, "code": "", "reason": "", "from": here.id, "to": dest.id, "via": order.via, "arrival_turn": arrival,
-		"enemy_present": not enemies.is_empty(), "would_capture": would_capture, "text": text}
+	return _with_sight(state, faction_id, order, army, {"ok": true, "code": "", "reason": "", "from": here.id, "to": dest.id,
+		"via": order.via, "arrival_turn": arrival, "enemy_present": not enemies.is_empty(), "would_capture": would_capture, "text": text})
 
 
 ## M3c (§9.2): the move forecast into a fort in a game with sieges says which row of §3.9 it will be, if the other
@@ -154,8 +166,11 @@ static func vassal(state: GameState, faction_id: String, orders: Array = [], vie
 		return {"ok": true, "province": p.id, "income": p.income, "contested_with": others, "text":
 			"Sworn Vassals: %s (%d gold) would swear fealty to %s, but the %s Sworn Vassals seeks it too, so it joins nobody this turn unless that changes." % [
 				p.name, p.income, who, " and ".join(names.map(func(n): return RulerRules._possessive(n)))]}
+	var unless := "unless an army ends the turn there"
+	if is_fog_view(state):
+		unless = "unless an army ends the turn there, or one you can't see stands there now"  # M5-2 (§2.10): it picks on the truth
 	return {"ok": true, "province": p.id, "income": p.income, "contested_with": [], "text":
-		"Sworn Vassals: %s (%d gold) swears fealty to %s at the end of this turn, unless an army ends the turn there." % [p.name, p.income, who]}
+		"Sworn Vassals: %s (%d gold) swears fealty to %s at the end of this turn, %s." % [p.name, p.income, who, unless]}
 
 
 ## The board after this turn's captures if the moves in `orders` arrive and every other army holds
@@ -1336,6 +1351,295 @@ static func _sieges_of(state: GameState, faction_id: String) -> Array:
 		if p.owner != faction_id and SiegeRules.is_besieged(state, p.id) and SiegeRules.besieging_faction(state, p.id) == faction_id:
 			out.append(p.id)
 	return out
+
+
+# --- fog of war (M5-2, #113; design/M5_MAGIC_FOG.md §2.10, §11.1) -------------------------------------------
+# Under fog every forecast runs on the viewer's view (FogRules.view_state, GameState.is_view) and says so briefly: the
+# short line, with its guesses one hover away (the ⓘ). Nothing here reads a true state, and the numbers come from the
+# same battle_odds and check_move as without fog: fog changes what a forecast knows, never how it counts.
+
+## The mark that a forecast's guesses are one hover away (§2.10).
+const INFO := "ⓘ"
+
+
+## True when `state` is one player's view of a fog game (§2.7): its forecasts carry the fog text.
+static func is_fog_view(state: GameState) -> bool:
+	return state != null and state.fog and state.is_view
+
+
+## The battle forecast as a fog game shows it (§2.10): battle_odds on the view, plus {"fog", "level" (the target's sight
+## level), "no_odds", "short" (the line the hover preview shows), "assumptions" (the ⓘ lines: the sighting with its
+## ranges, the mandates and path you know, the kept power you know or assume, "they may have more"), "top" (glimpsed
+## only: battle_odds with every glimpsed type at the top of its range)}. Out of sight there are no odds: "ok" false,
+## "no_odds" true, "code" "out_of_sight". `memory` and `intel` are the viewer's (GameSession.memory, intel): they say when
+## a province was last seen and whether a kept power is known. On a state that is not a fog view this is battle_odds,
+## with "fog" false.
+static func view_odds(state: GameState, faction_id: String, army_ids: Array, province_id: String, memory: Dictionary = {},
+		intel: Dictionary = {}) -> Dictionary:
+	if not is_fog_view(state):
+		var plain := battle_odds(state, faction_id, army_ids, province_id)
+		plain["fog"] = false
+		return plain
+	var p := state.find_province(province_id)
+	if p == null:
+		return {"ok": false, "fog": true, "no_odds": true, "level": "", "short": "That is not a province on the map.",
+			"text": "That is not a province on the map.", "assumptions": []}
+	var level := String(FogRules.sight(state, faction_id).get(province_id, FogRules.VEILED))
+	if level == FogRules.VEILED:
+		var line := out_of_sight_text(state, faction_id, province_id, memory)
+		return {"ok": false, "fog": true, "no_odds": true, "code": "out_of_sight", "level": level, "short": line, "text": line,
+			"assumptions": []}
+	var odds := battle_odds(state, faction_id, army_ids, province_id)
+	odds["fog"] = true
+	odds["level"] = level
+	odds["no_odds"] = false
+	odds["assumptions"] = []
+	if not bool(odds.get("ok", false)):
+		odds["short"] = String(odds.get("text", ""))
+		return odds
+	var short := "Odds against what you can see: %d%% (%s)" % [roundi(float(odds.win_rate) * 100), String(odds.label)]
+	var top_state := top_of_range(state, faction_id, province_id) if level == FogRules.GLIMPSE else state
+	if top_state != state:  # the top of the range adds fighters: the second odds (a "1-2" is at its top already)
+		var top := battle_odds(top_state, faction_id, army_ids, province_id)
+		if bool(top.get("ok", false)):
+			odds["top"] = top
+			short += ", %d%% if they are at the top of the range" % roundi(float(top.win_rate) * 100)
+	odds["short"] = "%s %s" % [short, INFO]
+	odds["assumptions"] = fog_assumptions(state, faction_id, province_id, intel)
+	return odds
+
+
+## The view with every glimpsed rival type at `province_id` at the top of its range (§2.4: the second odds). Each type's
+## missing fighters join that rival's first stand-in there at full hit points; commanders and rulers are exact already.
+## `state` itself when the top adds no one (every type is at the top of its range already).
+static func top_of_range(state: GameState, faction_id: String, province_id: String) -> GameState:
+	var d := state.to_dict()
+	var done := {}
+	var added := {}  # army index -> the index of its first added unit
+	for i in d.armies.size():
+		var ad: Dictionary = d.armies[i]
+		var note: Dictionary = ad.get("seen", {})
+		var fid := String(ad.owner)
+		if fid == faction_id or String(ad.location) != province_id or String(note.get("level", "")) != FogRules.GLIMPSE \
+				or done.has(fid) or ad.has("ruler"):
+			continue
+		done[fid] = true
+		added[i] = ad.units.size()
+		var counts: Dictionary = note.get("counts", {})
+		for type_id in counts:
+			for k in maxi(0, int(counts[type_id].high) - int(counts[type_id].shown)):
+				ad.units.append({"type_id": String(type_id), "current_hp": 1, "owner": fid})
+		if ad.units.size() == int(added[i]):
+			added.erase(i)
+	if added.is_empty():
+		return state
+	var errors := []
+	var out := GameState.from_dict(d, errors)
+	if out == null:
+		return state
+	for i in added:
+		var units: Array = out.armies[i].units
+		for k in range(int(added[i]), units.size()):
+			units[k].current_hp = RulerRules.unit_max_hp(out, units[k])
+	return out
+
+
+## The ⓘ lines of a fog forecast at `province_id` (§2.10): for each rival there, what you see of it with its ranges,
+## the mandates and path nodes you know, its ruler's kept power (known, with the turn, or assumed at the most it could
+## be), and that they may have more.
+static func fog_assumptions(state: GameState, faction_id: String, province_id: String, intel: Dictionary = {}) -> Array:
+	var out := []
+	var rivals := []
+	for a in state.armies:
+		if a.location == province_id and a.owner != faction_id and not rivals.has(a.owner):
+			rivals.append(a.owner)
+	rivals.sort()
+	for fid in rivals:
+		out.append(sighting_text(state, faction_id, fid, province_id))
+		var f := state.find_faction(fid)
+		if f.has_ruler():
+			var names := f.mandates.map(func(mid): return RulerRules.mandate_name(String(mid)))
+			out.append("Mandates you know of: %s." % RulerRules._and_list(names) if not names.is_empty() else "You know none of their mandates.")
+			var k: Dictionary = intel.get(fid, {})
+			if int(k.get("kept_power", -1)) >= 0:
+				out.append("Their ruler's kept power: %d, seen on turn %d." % [f.kept_power, int(k.get("kept_turn", 0))])
+			else:
+				out.append("Their ruler's kept power: assumed %d, the most it could be with the mandates you know." % f.kept_power)
+		if state.paths:
+			var nodes := AscensionRules.researched(state, fid).map(func(nid): return AscensionRules.node_name(String(nid)))
+			if not nodes.is_empty():
+				out.append("Path you know of: %s." % RulerRules._and_list(nodes))
+	var more := "They may have more you haven't seen."
+	if state.magic:
+		more = "They may have more you haven't seen, and they may summon creatures or raise a fort there this turn."
+	out.append(more)
+	return out
+
+
+## What `viewer` sees of `fid`'s armies at `province_id`, with the ranges (§2.4): "Their armies there: about 20 (18-22)
+## fighters of the Thornmane Clans: about 15 Tuskers (13-17) and about 5 Fangthrowers (3-7), led by a Warchief." Exact
+## in clear sight; a remembered army says when it was seen.
+static func sighting_text(state: GameState, viewer: String, fid: String, province_id: String) -> String:
+	var note := {}
+	var commanders := []
+	var ruler := ""
+	for a in state.armies:
+		if a.owner != fid or a.location != province_id:
+			continue
+		if a.ruler != null:
+			ruler = a.ruler.type.name
+			continue
+		if note.is_empty():
+			note = a.seen
+		if a.commander != null:
+			commanders.append(a.commander.type.name)
+	var who := _faction_name(state, fid)
+	var level := String(note.get("level", ""))
+	var types := []
+	var counts: Dictionary = note.get("counts", {})
+	for type_id in counts:
+		var c: Dictionary = counts[type_id]
+		var name := FogRules.type_name(state, fid, String(type_id))
+		if level == FogRules.GLIMPSE:
+			types.append("about %d %s (%d-%d)" % [int(c.shown), name, int(c.low), int(c.high)] if int(c.low) != int(c.high) else "%d %s" % [int(c.shown), name])
+		else:
+			types.append("%d %s" % [int(c.shown), name])
+	var total: Dictionary = note.get("total", FogRules.round_count(0))
+	var text := ""
+	match level:
+		FogRules.GLIMPSE:
+			text = "Their armies there: %s fighters of the %s, at full health as far as you know" % [_range_words(total), who]
+		FogRules.CLEAR:
+			text = "Their armies there: exactly %d fighters of the %s, with the wounds you see" % [int(total.shown), who]
+		FogData.MEMORY:
+			text = "Remembered there: %s fighters of the %s, %s" % [String(total.text), who, seen_when(state, int(note.get("turn", 0)))]
+		_:
+			text = "Their ruler is there"
+	if not types.is_empty():
+		text += ": %s" % RulerRules._and_list(types)
+	if not commanders.is_empty():
+		text += ", led by %s" % RulerRules._and_list(commanders.map(func(n): return "a %s" % n))
+	if not ruler.is_empty():
+		text += ", with their ruler, %s (shown at full hit points)" % ruler
+	return text + "."
+
+
+## A glimpsed total as players read it: "about 20 (18-22)", or "1-2" (its own range).
+static func _range_words(rc: Dictionary) -> String:
+	if String(rc.get("text", "")) == FogData.FEW_TEXT or int(rc.get("low", 0)) == int(rc.get("high", 0)):
+		return String(rc.get("text", ""))
+	return "%s (%d-%d)" % [String(rc.text), int(rc.low), int(rc.high)]
+
+
+## "2 turns ago, at the end of turn 5", or "at the start of the game": when a sighting taken after `turn` resolved turns
+## was taken, read on the turn `state` is at (the turn being ordered is state.current_turn + 1).
+static func seen_when(state: GameState, turn: int) -> String:
+	if turn <= 0:
+		return "at the start of the game"
+	var ago := state.current_turn + 1 - turn
+	return "%s, at the end of turn %d" % ["1 turn ago" if ago == 1 else "%d turns ago" % ago, turn]
+
+
+## The forecast's line for a province out of sight (§2.10): "You can't see Wildmoor (last seen empty 3 turns ago, at the
+## end of turn 6 / never seen): any army there will be a surprise. No odds." A remembered army there is named, "if it is
+## still there". `memory` (the viewer's) says when it was last seen; without it only a remembered army is named.
+static func out_of_sight_text(state: GameState, faction_id: String, province_id: String, memory: Dictionary = {}) -> String:
+	var p := state.find_province(province_id)
+	var name := p.name if p != null else province_id
+	var ghosts := []
+	for a in state.armies:
+		if a.location == province_id and a.owner != faction_id and String(a.seen.get("level", "")) == FogData.MEMORY and a.ruler == null \
+				and not ghosts.has(a.owner):
+			ghosts.append(a.owner)
+	var entry: Dictionary = memory.get("provinces", {}).get(province_id, {})
+	var seen_turn := int(entry.get("seen_turn", -1))
+	if not ghosts.is_empty():
+		var who := sighting_text(state, faction_id, String(ghosts[0]), province_id).trim_prefix("Remembered there: ").trim_suffix(".")
+		return "You can't see %s (last seen with %s): if they are still there you fight them there, and any other army there will be a surprise. No odds." % [name, who]
+	if seen_turn >= 0:
+		return "You can't see %s (last seen empty %s): any army there will be a surprise. No odds." % [name, seen_when(state, seen_turn)]
+	if not memory.is_empty():
+		return "You can't see %s (never seen): any army there will be a surprise. No odds." % name
+	return "You can't see %s: any army there will be a surprise. No odds." % name
+
+
+## The move forecast's sentence about a destination with rival armies you can see (§2.10).
+static func _fog_enemies_text(state: GameState, faction_id: String, dest: Province, enemies: Array, road: bool) -> String:
+	var parts := []
+	for fid in enemies:
+		parts.append(_sighting_short(state, String(fid), dest.id))
+	var text := "At %s you see %s: if they stay, you fight a battle and they defend (%s)." % [dest.name, " and ".join(parts), defender_ground(dest)]
+	if not road:
+		text += " If they move toward you instead, you meet on the border, where nobody gets terrain."
+	return text
+
+
+## "about 20 (18-22) fighters of the Thornmane Clans (Tuskers, Fangthrowers and a Warchief)": a sighting in a move line.
+static func _sighting_short(state: GameState, fid: String, pid: String) -> String:
+	var note := {}
+	var names := []
+	for a in state.armies:
+		if a.owner != fid or a.location != pid:
+			continue
+		if a.ruler != null:
+			names.append("their ruler")
+			continue
+		if note.is_empty():
+			note = a.seen
+		for u in a.units:
+			if not names.has(u.type.name):
+				names.append(u.type.name)
+		if a.commander != null:
+			names.append("a %s" % a.commander.type.name)
+	var total: Dictionary = note.get("total", FogRules.round_count(0))
+	var count := _range_words(total) if String(note.get("level", "")) == FogRules.GLIMPSE else str(int(total.get("shown", 0)))
+	var head := "%s fighters of the %s" % [count, _faction_name(state, fid)] if not note.is_empty() else "the ruler of the %s" % _faction_name(state, fid)
+	return "%s (%s)" % [head, RulerRules._and_list(names)] if not names.is_empty() and not note.is_empty() else head
+
+
+## The move forecast's sentence about a destination out of sight (§2.10).
+static func _veiled_move_text(state: GameState, faction_id: String, dest: Province, remembered: Array) -> String:
+	var last := ""
+	if not remembered.is_empty():
+		last = " (you last saw %s there)" % sighting_text(state, faction_id, String(remembered[0]), dest.id).trim_prefix("Remembered there: ").trim_suffix(".")
+	return "You can't see %s%s: if nobody is there, you capture it, but any army there will be a surprise." % [dest.name, last]
+
+
+## Sight in `move` (§2.10, §11.1): adds to a fog move forecast "sees" (the provinces it will see next turn that are out
+## of your sight now, by id), "sight_range" and the sentence. Unchanged without fog, or when the move can't be given.
+static func _with_sight(state: GameState, faction_id: String, order: MoveOrder, army: Army, out: Dictionary) -> Dictionary:
+	if not is_fog_view(state) or not bool(out.get("ok", false)):
+		return out
+	var s := FogRules.army_sight(army)
+	var now := FogRules.sight(state, faction_id)
+	var sees := []
+	for pid in FogRules.distances(state, order.to, int(s.range)):
+		if String(now.get(pid, FogRules.VEILED)) == FogRules.VEILED:
+			sees.append(String(pid))
+	sees.sort()
+	out["sees"] = sees
+	out["sight_range"] = int(s.range)
+	out["text"] = "%s %s" % [String(out.text), sight_text(state, s, order.to, sees)]
+	return out
+
+
+## "Next turn this army will see Wildmoor and Fangridge, out of your sight now (it has Knights: range 2)." or "From
+## Thornvale it sees nothing new (range 1): everything that close is in your sight already."
+static func sight_text(state: GameState, army_sight: Dictionary, to: String, sees: Array) -> String:
+	var why := "an army sees the provinces next to it"
+	match String(army_sight.get("why", "")):
+		"scout":
+			why = "it has %s" % String(army_sight.scout)
+		"commander":
+			why = "it has a commander"
+		"ruler":
+			why = "your ruler is with it"
+	var r := int(army_sight.get("range", 1))
+	if sees.is_empty():
+		return "From %s it sees nothing new (%s: range %d): everything that close is in your sight already." % [
+			TurnResolver._province_name(state, to), why, r]
+	var names := sees.map(func(pid): return TurnResolver._province_name(state, String(pid)))
+	return "Next turn this army will see %s, out of your sight now (%s: range %d)." % [RulerRules._and_list(names), why, r]
 
 
 static func _faction_name(state: GameState, fid: String) -> String:

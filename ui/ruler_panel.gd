@@ -16,12 +16,19 @@ extends Control
 ## Art (#10): each column flies its faction's banner by the heading and shows the ruler's portrait card
 ## (Art.ruler_card: a styled placeholder with the ruler's initial until the ruler portraits land) to the
 ## left of its numbers.
+## M5-2 fog of war (#113, design/M5_MAGIC_FOG.md §2.6, §11.1): in a fog game `state` is the viewer's view, and the enemy
+## column says what you know of them (FogView.rival_summary, with `fog_intel`, the viewer's intel): their ruler "alive,
+## location unknown" (or glimpsed, or last seen), its kept power as seen or the most it could be, the mandates you know,
+## and that they may have more.
 
 signal closed
 signal sacrifice_requested
 signal codex_requested(key: String)
 
 const PANEL_SIZE := Vector2(1320, 800)
+const FOOTER := "Builds are public from turn 1, so both rulers are shown. Only you can sacrifice for your own ruler, and the other player learns of it from the turn report. Hover a number for where it comes from; right-click it, or press F1, for its codex entry."
+## M5-2: under fog a rival's build is learned, not public (design/M5_MAGIC_FOG.md §2.6).
+const FOG_FOOTER := "Fog of war is on: you see a rival's ruler, mandates and kept power only as you have seen or fought them, and they may have more. Only you can sacrifice for your own ruler. Hover a number for where it comes from; right-click it, or press F1, for its codex entry."
 const PORTRAIT_SIZE := Vector2(120, 160)
 
 var state: GameState = null
@@ -31,6 +38,8 @@ var columns: HBoxContainer  # one column per faction: yours first, then the othe
 var close_button: Button
 var sacrifice_button: Button = null  # in your column, while you can give orders
 var footer_label: Label
+## M5-2: the viewer's intel (GameSession.intel) in a fog game: when a rival's kept power was seen. {} without fog.
+var fog_intel := {}
 
 
 func _init() -> void:
@@ -92,7 +101,7 @@ func _init() -> void:
 	footer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	footer_label.add_theme_font_size_override("font_size", 15)
 	footer_label.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
-	footer_label.text = "Builds are public from turn 1, so both rulers are shown. Only you can sacrifice for your own ruler, and the other player learns of it from the turn report. Hover a number for where it comes from; right-click it, or press F1, for its codex entry."
+	footer_label.text = FOOTER
 	box.add_child(footer_label)
 
 
@@ -124,6 +133,7 @@ func refresh() -> void:
 	for fid in fids:
 		var col := _column(fid, fid == viewing_faction_id)
 		columns.add_child(col)
+	footer_label.text = FOG_FOOTER if FogView.active(state) else FOOTER  # M5-2: under fog, builds are learned
 
 
 func close() -> void:
@@ -187,6 +197,9 @@ func _column(fid: String, own: bool) -> VBoxContainer:
 		UiPalette.TEXT_SECONDARY)
 	kind.name = "KindLabel"
 	_codex_link(kind, "ruler_rank")
+	if not own and FogView.active(state):
+		_rival_under_fog(col, f)  # M5-2: what you know of them
+		return outer
 	if RulerRules.has_living_ruler(state, fid):
 		_living(col, f)
 	elif not RulerRules.succession_info(state, fid).is_empty():
@@ -206,6 +219,47 @@ func _column(fid: String, own: bool) -> VBoxContainer:
 	if own:
 		_sacrifice_section(col, f)
 	return outer
+
+
+## M5-2: an enemy column under fog (§11.1): what you know of them, where their ruler is as far as you know, its kept
+## power as seen or the most it could be, and the mandates you know. A dead ruler's succession is heralded, so it shows
+## as without fog.
+func _rival_under_fog(col: VBoxContainer, f: Faction) -> void:
+	var sum := FogView.rival_summary(state, viewing_faction_id, f.id, fog_intel)
+	var known := _text(col, String(sum.text), TooltipText.plain("What you know about the %s" % f.faction_name, RulesCodex.text("intel")),
+		UiPalette.TEXT_PRIMARY)
+	known.name = "KnownLabel"
+	_codex_link(known, "intel")
+	if not RulerRules.ruler_alive(state, f.id) and not RulerRules.succession_info(state, f.id).is_empty():
+		_dead(col, f)
+	else:
+		var where := _text(col, String(sum.where), TooltipText.plain("Where their ruler is", "%s %s" % [
+			"Under fog you see a rival ruler only where you can see; it is remembered where you saw it last.", RulesCodex.text("ruler_army")]))
+		where.name = "StatusLabel"
+		_codex_link(where, "ruler_army")
+		var kept := _text(col, "Kept power: %s" % String(sum.kept), TooltipText.plain("Their kept power", RulesCodex.text("intel")))
+		kept.name = "KeptPowerLabel"
+		_codex_link(kept, "intel")
+		var rank := Breakdown.ability_rank(state, f.id)
+		var ability := _text(col, "Ability: %s, rank %d at most (from that kept power)" % [RulerRules.ability_name(f.ruler_type), int(rank.total)],
+			TooltipText.from_breakdown(rank), UiPalette.TEXT_SECONDARY)
+		ability.name = "AbilityLabel"
+		_codex_link(ability, String(rank.codex))
+	col.add_child(HSeparator.new())
+	var heading := _heading(col, "Mandates you know of (%d)" % f.mandates.size(), 18)
+	heading.name = "MandatesHeading"
+	heading.tooltip_text = TooltipText.plain("Mandates of the %s" % f.faction_name, "%s %s" % [RulesCodex.text("mandates"), RulesCodex.text("intel")])
+	heading.mouse_filter = Control.MOUSE_FILTER_PASS
+	_codex_link(heading, "intel")
+	for mid in f.mandates:
+		var md := RulerRules.mandate_data(mid)
+		var row := _text(col, String(md.get("name", mid)), TooltipText.plain(String(md.get("name", "")), _their(String(md.get("effect", "")))))
+		row.name = "Mandate_%s" % String(mid).validate_node_name()
+		_codex_link(row, String(md.get("codex", "mandates")))
+	var more := _text(col, "They may have more you haven't seen: you learn a mandate when a battle you fought or a report line names it.",
+		TooltipText.plain("They may have more", RulesCodex.text("intel")), UiPalette.TEXT_SECONDARY)
+	more.name = "MayHaveMore"
+	_codex_link(more, "intel")
 
 
 ## A living ruler's numbers, each with its breakdown and codex link.

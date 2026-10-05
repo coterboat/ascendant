@@ -14,6 +14,10 @@ extends Control
 ## sieges won and storms fought, from `siege_stats` (SiegeChronicle.stats(), which the game screen sets), each
 ## line explained on hover and linked to the codex.
 ##
+## M5-2 (#113, design/M5_MAGIC_FOG.md §2.1): in a fog game, "The fog lifts" block shows what every faction really had at
+## the end (its ruler and kept power, mandates, path, gold and armies) and every "what you didn't see" of the game, from
+## `fog_lift` (FogView.lift, which the game screen sets from the observer once the game is over).
+##
 ## API:
 ##   show_for(session) -> bool    shows session.victory(); false (and hidden) while the game runs
 ##   show_victory(victory, state = null, players = [], computer_seats = {})
@@ -66,6 +70,14 @@ var _path_labels: Array[Label] = []
 var siege_stats := {}
 var sieges_heading: Label
 var sieges_box: VBoxContainer
+## M5-2: {"factions": [{"faction", "name", "lines"}], "missed": [{"turn", "faction", "text"}]} (FogView.lift); {}: none.
+var fog_lift := {}
+var fog_heading: Label
+var fog_box: VBoxContainer
+var _scroll: ScrollContainer
+var _box: VBoxContainer
+## The panel's body is never taller than this outside the tree (in the tree: the window less the panel's margins).
+const MAX_BODY_HEIGHT := 760.0
 var _siege_labels: Array[Label] = []
 
 
@@ -187,6 +199,7 @@ func show_victory(summary: Dictionary, state: GameState = null, players: Array =
 	paths_box.visible = not _path_labels.is_empty()
 	paths_heading.visible = paths_box.visible
 	_show_siege_stats(state, seats)  # M3c S-3
+	_show_fog_lift(state)  # M5-2
 	visible = true
 	if is_inside_tree():
 		new_game_button.grab_focus.call_deferred()
@@ -221,6 +234,52 @@ func _show_siege_stats(state: GameState, seats: Array) -> void:
 		CodexLink.attach(l, "siege", codex_requested.emit)
 		sieges_box.add_child(l)
 		_siege_labels.append(l)
+
+
+## M5-2 (§2.1): "The fog lifts": each faction as it really was at the end, and every "what you didn't see" of the game.
+func _show_fog_lift(state: GameState) -> void:
+	for c in fog_box.get_children():
+		fog_box.remove_child(c)
+		c.queue_free()
+	var on := state != null and state.fog and not fog_lift.is_empty()
+	fog_box.visible = on
+	fog_heading.visible = on
+	if not on:
+		return
+	for row in fog_lift.get("factions", []):
+		var l := _label("%s: %s" % [String(row.name), " ".join(row.lines)], 18, UiPalette.TEXT_PRIMARY)
+		l.name = "Lift_%s" % String(row.faction).validate_node_name()
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.mouse_filter = Control.MOUSE_FILTER_PASS
+		l.tooltip_text = TooltipText.plain("What the %s really had" % String(row.name), RulesCodex.text("fog_of_war"))
+		CodexLink.attach(l, "fog_of_war", codex_requested.emit)
+		fog_box.add_child(l)
+	var missed: Array = fog_lift.get("missed", [])
+	var head := _label("What you didn't see (%d)" % missed.size() if not missed.is_empty() else "What you didn't see: nothing, every battle was what it looked like.",
+		18, UiPalette.GILT)
+	head.name = "MissedHeading"
+	head.mouse_filter = Control.MOUSE_FILTER_PASS
+	head.tooltip_text = TooltipText.plain("What you didn't see", RulesCodex.text("view_odds"))
+	CodexLink.attach(head, "view_odds", codex_requested.emit)
+	fog_box.add_child(head)
+	for m in missed:
+		var l := _label("Turn %d, %s: %s" % [int(m.get("turn", 0)), _faction_name(String(m.get("faction", "")), state), String(m.get("text", ""))],
+			16, UiPalette.TEXT_SECONDARY)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.mouse_filter = Control.MOUSE_FILTER_PASS
+		l.tooltip_text = TooltipText.plain("What you didn't see", "Turn %d: the battle the %s fought was not what they saw at the start of the turn." % [
+			int(m.get("turn", 0)), _faction_name(String(m.get("faction", "")), state)])
+		fog_box.add_child(l)
+
+
+## M5-2: the scrolling body is as tall as its content, but never taller than the window allows.
+func _fit_scroll() -> void:
+	if _scroll == null or _box == null:
+		return
+	var limit := MAX_BODY_HEIGHT
+	if is_inside_tree():
+		limit = maxf(240.0, get_viewport_rect().size.y - 2 * 36 - 48)
+	_scroll.custom_minimum_size = Vector2(0, minf(_box.get_combined_minimum_size().y, limit))
 
 
 ## Adds a smaller button for the host's own action in a row above "New game". Returns it so the host
@@ -405,11 +464,20 @@ func _build() -> void:
 	panel.add_theme_stylebox_override("panel", style)
 	center.add_child(panel)
 
+	# M5-2: the body scrolls when it is taller than the window (a game with sieges and fog adds blocks), so the buttons
+	# at its foot are always reachable.
+	_scroll = ScrollContainer.new()
+	_scroll.name = "Scroll"
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(_scroll)
 	var box := VBoxContainer.new()
 	box.name = "Box"
 	box.custom_minimum_size = Vector2(860, 0)
 	box.add_theme_constant_override("separation", 14)
-	panel.add_child(box)
+	_scroll.add_child(box)
+	_box = box
+	box.minimum_size_changed.connect(_fit_scroll)
+	resized.connect(_fit_scroll)
 
 	# The hero: the winner's banner, then the caption, the headline and who won.
 	var hero := HBoxContainer.new()
@@ -501,6 +569,18 @@ func _build() -> void:
 	sieges_box.add_theme_constant_override("separation", 4)
 	sieges_box.visible = false
 	box.add_child(sieges_box)
+
+	fog_heading = _heading("The fog lifts", TooltipText.plain("The fog lifts", "%s %s" % [
+		"The game is over, so everything hidden is shown: what each side really had, and every battle that was not what it looked like.",
+		RulesCodex.text("fog_of_war")]))
+	fog_heading.name = "FogHeading"
+	fog_heading.visible = false
+	box.add_child(fog_heading)
+	fog_box = VBoxContainer.new()
+	fog_box.name = "FogLift"
+	fog_box.add_theme_constant_override("separation", 4)
+	fog_box.visible = false
+	box.add_child(fog_box)
 
 	captures_box = VBoxContainer.new()
 	captures_box.name = "Captures"
