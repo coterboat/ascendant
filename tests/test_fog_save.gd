@@ -82,8 +82,9 @@ func test_a_fog_record_replays_identically_with_fog_stripped() -> void:
 
 func test_the_resolver_never_reads_fog() -> void:
 	# Fog is a lens (§2.1): outside the fog rules, the state's own fields and the session's per-viewer doors, no rules
-	# code mentions it.
-	var allowed := ["fog_rules.gd", "game_state.gd", "game_session.gd", "rules_codex.gd"]
+	# code mentions it. M5-2: the forecasts' fog text lives in forecast.gd (§14: "the view note in every forecast's text,
+	# two odds against sightings, 'no odds' out of sight, sight in move"), which the resolver never calls (checked below).
+	var allowed := ["fog_rules.gd", "game_state.gd", "game_session.gd", "rules_codex.gd", "forecast.gd"]
 	var reads := RegEx.create_from_string("\\.fog\\b|has_fog|FogRules\\.|FogData\\.")
 	var dir := DirAccess.open("res://rules")
 	var scanned := 0
@@ -98,6 +99,14 @@ func test_the_resolver_never_reads_fog() -> void:
 		for m in reads.search_all("\n".join(code)):
 			fail("rules/%s reads fog: %s" % [file, m.get_string()])
 	assert_true(scanned > 20, "the scan saw the rules (%d files)" % scanned)
+	# The resolver, the battles and the order checks never call a forecast, so forecast.gd's fog text can't reach them.
+	var calls := RegEx.create_from_string("\\bForecast\\.")
+	for file in ["turn_resolver.gd", "auto_battle_resolver.gd", "order_book.gd", "siege_rules.gd", "ruler_rules.gd", "ascension_rules.gd"]:
+		for line in FileAccess.get_file_as_string("res://rules/" + file).split("\n"):
+			var hash_at := line.find("#")
+			var code := line if hash_at < 0 else line.substr(0, hash_at)
+			if calls.search(code) != null:
+				fail("rules/%s calls a forecast: %s" % [file, line.strip_edges()])
 
 
 func test_memory_costs_little_on_load() -> void:

@@ -31,6 +31,11 @@ const NO_ENEMY_TEXT := "No enemy army there now; enemies may still move in."
 
 var state: GameState
 var faction_id := ""
+## M5-2, fog of war (design/M5_MAGIC_FOG.md §2.10): in a fog game `state` is this faction's view, and the forecasts say
+## so (Forecast.view_odds): the short line with two odds and its guesses (ⓘ), or "no odds" out of sight. The map sets
+## the viewer's memory and intel (GameSession.memory, intel) here, for "last seen" and a known kept power.
+var fog_memory := {}
+var fog_intel := {}
 var book := OrderBook.new()
 var session: GameSession = null
 var _odds_cache := {}  # "army ids>province" -> move_odds() result; the state never changes under us
@@ -230,6 +235,9 @@ func move_odds(army_id: String, to: String) -> Dictionary:
 		return _odds_cache[key]
 	# Forecast.battle_odds checks for enemy armies there itself (M1 has no fog: all are visible). A queued
 	# sacrifice counts: its mandate fights in this turn's battles.
+	if Forecast.is_fog_view(view):
+		_odds_cache[key] = _fog_odds(view, ids, to)  # M5-2: odds against what you can see
+		return _odds_cache[key]
 	var odds := Forecast.battle_odds(view, faction_id, ids, to)
 	var out := {"enemy_present": false, "odds": {}, "line": NO_ENEMY_TEXT, "text": NO_ENEMY_TEXT}
 	if odds.get("ok", false):
@@ -239,6 +247,21 @@ func move_odds(army_id: String, to: String) -> Dictionary:
 		out = {"enemy_present": true, "odds": odds, "line": line, "text": odds.text}
 	_odds_cache[key] = out
 	return out
+
+
+## M5-2: move_odds in a fog game (§2.10): the forecast's short line ("Odds against what you can see: 58% (close), 41% if
+## they are at the top of the range ⓘ", or "You can't see ... No odds."), with its guesses in "text" for the tooltip.
+func _fog_odds(view: GameState, ids: Array, to: String) -> Dictionary:
+	var vo := Forecast.view_odds(view, faction_id, ids, to, fog_memory, fog_intel)
+	if bool(vo.get("no_odds", false)):
+		return {"enemy_present": false, "odds": vo, "line": String(vo.short), "text": "%s %s" % [String(vo.short), RulesCodex.text("view_odds")], "fog": true}
+	if not bool(vo.get("ok", false)):
+		return {"enemy_present": false, "odds": {}, "line": NO_ENEMY_TEXT, "text": NO_ENEMY_TEXT, "fog": true}
+	var line := String(vo.short)
+	if not vo.reasons.is_empty():
+		line += " Main reasons: %s." % "; ".join(vo.reasons)
+	var text := "%s %s %s: %s %s" % [String(vo.short), String(vo.text), Forecast.INFO, " ".join(vo.assumptions), RulesCodex.text("view_odds")]
+	return {"enemy_present": true, "odds": vo, "line": line, "text": text, "fog": true}
 
 
 ## What clicking `to` with `army_id` selected would do, before the click (the map's hover preview):
@@ -422,7 +445,7 @@ func order_breakdown(index: int) -> Dictionary:
 		if not f.ok:
 			return _bd("Move order", f.reason, [], "Arrives at the start of turn", 0)
 		var odds := move_odds(o.army_id, o.to)
-		var odds_desc: String = "%s %s" % [odds.text, RulesCodex.text("battle_odds")] if odds.enemy_present else odds.text
+		var odds_desc: String = "%s %s" % [odds.text, RulesCodex.text("battle_odds")] if odds.enemy_present and not odds.get("fog", false) else odds.text
 		var step := _line("Moving one province", 1, "armies move one neighboring province per turn")
 		var rule := RulesCodex.text("move")
 		if o.is_road_move() and TurnResolver.road_rule(view_state(), faction_id, o) == "forest_stride":
@@ -484,7 +507,10 @@ func order_codex_kind(index: int) -> String:
 		var kind := siege_kind(o.army_id, o.to)  # M3c: a siege, a relief, the breach or an empty fort
 		if kind in ["besiege", "relief", "breach", "empty"]:
 			return {"besiege": "siege_move", "relief": "relief", "breach": "breach", "empty": "empty_fort"}[kind]
-		if move_odds(o.army_id, o.to).enemy_present:
+		var odds := move_odds(o.army_id, o.to)
+		if odds.get("fog", false) and (odds.enemy_present or bool(odds.odds.get("no_odds", false))):
+			return "view_odds"  # M5-2: odds against what you can see
+		if odds.enemy_present:
 			return "move_odds"
 		return "road_move" if o.is_road_move() else "move_order"
 	if o is RecruitOrder and o.is_with_ruler():

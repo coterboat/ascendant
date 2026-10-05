@@ -15,6 +15,11 @@ extends Control
 ## storm steps, the besieger's chevrons, a construction site's progress) stands under the income instead of the
 ## tower, and a province the viewer has a Fortify order for shows a dashed scaffold ghost (set_fortify_ghost),
 ## which the map sets from the viewer's own orders only.
+## M5-2 fog of war (#113, design/M5_MAGIC_FOG.md §11.1): in a fog game the map calls setup_fog with the viewer's view,
+## memory and view at the start of the last turn. The tooltip adds why the province is seen, or what is remembered of
+## it; a rival's badge shows its sighting ("≈20", or a greyed "≈10 · 2 turns ago" for one remembered) with every type's
+## range on hover; your badges say how far each army sees. A veil (VEIL) darkens what you can't see, with 45° hatching out
+## of sight, stronger in the Vision map mode (vision_mode), where clear land is untouched and glimpsed land lightly veiled.
 ## Reads the GameState only. Clicking it emits `pressed`; clicking an army badge emits `army_pressed`.
 ## The region, its income and its army badges link to their codex entries: right-clicking one (or F1)
 ## emits codex_requested.
@@ -30,6 +35,12 @@ const BADGE_EMBLEM_SIZE := 16.0
 ## The ruler's gilt ring: how far outside the badge it sits, and its width (design space).
 const RULER_RING_GAP := 3.0
 const RULER_RING_WIDTH := 3.0
+## M5-2: the fog veil (STYLE_BIBLE.md §2.4 "unscouted (fog)": a cool veil, hatched out of sight) and its strength per
+## sight level, on the map and in the Vision map mode.
+const VEIL := Color("#1B2233")
+const VEIL_ALPHA := {"glimpse": 0.0, "veiled": 0.30, "never": 0.42}
+const VISION_ALPHA := {"glimpse": 0.18, "veiled": 0.5, "never": 0.66}
+const HATCH_GAP := 14.0
 ## One terrain tile covers this many design-space units (the map view scales them about 1.2x at
 ## 1600x900, so a 512 px tile shows at about 260 px: forest canopies read as trees, not noise).
 const TERRAIN_TILE := 215.0
@@ -75,6 +86,10 @@ var fort_chip: FortChip = null
 ## M3c S-3: true while the viewer has a Fortify order here (a dashed scaffold ghost; set_fortify_ghost).
 var fortify_ghost := false
 var ghost_marker: Control = null
+## M5-2: this province's sight level for the viewer in a fog game ("clear", "glimpse", "veiled", "never"; "" without fog),
+## and whether the map shows the Vision map mode (a stronger veil, glimpsed land veiled too).
+var vision_level := ""
+var vision_mode := false
 
 
 ## Builds the region for `province_id` from `state`. `center` is in the map canvas' design space.
@@ -162,6 +177,71 @@ func setup(state: GameState, p: Province, center: Vector2, seats: Array = []) ->
 			countdown_badge = _countdown_badge(state, f.id)
 			box.add_child(countdown_badge)
 	queue_redraw()
+
+
+## M5-2: the fog of war on this region, for `viewer` (its view `state`, its memory and its view at the start of the last
+## resolved turn): the sight level, the tooltip's fog paragraph, and the badges of rival armies as their sightings.
+func setup_fog(state: GameState, viewer: String, memory: Dictionary, before: GameState) -> void:
+	vision_level = FogView.vision_level(state, viewer, province_id, memory)
+	if vision_level.is_empty():
+		return
+	var text := FogView.province_text(state, viewer, province_id, memory)
+	_base_tooltip += "\n\n" + TooltipText.wrap_text(text)
+	tooltip_text = _base_tooltip
+	for a in state.armies:
+		if a.location != province_id:
+			continue
+		var b := army_box.get_node_or_null("Army_%s" % a.id.validate_node_name()) as Button
+		if b == null:
+			continue
+		if a.owner == viewer:
+			b.tooltip_text += "\n\n" + TooltipText.wrap_text(FogView.army_sight_line(a))
+			continue
+		if not FogView.is_stand_in(a):
+			continue
+		var level := String(a.seen.get("level", ""))
+		if a.ruler != null:
+			b.tooltip_text = TooltipText.wrap_text("%s. A ruler is hard to hide: you see its numbers as far as you know them, not its wounds." % FogView.army_heading(state, a)) \
+				+ "\n\n" + b.tooltip_text
+		else:
+			b.text = FogView.badge_text(state, a)
+			b.tooltip_text = TooltipText.from_breakdown(FogView.army_breakdown(state, viewer, a, before)) + "\n\n" + TooltipText.wrap_text("Click to see it in the side panel.")
+			CodexLink.attach(b, "last_seen" if level == FogData.MEMORY else "estimates", codex_requested.emit)
+		if level == FogData.MEMORY:
+			b.modulate = Color(0.78, 0.78, 0.82, 0.7)  # a grey ghost: remembered, not seen
+	queue_redraw()
+
+
+## A swatch for the Vision legend row `key` (FogView.legend_rows): the veil the map draws for that level, or the badge
+## of a glimpsed or remembered army.
+static func legend_swatch(key: String) -> Control:
+	var swatch := _Swatch.new()
+	swatch.key = key
+	swatch.custom_minimum_size = Vector2(44, 26)
+	swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return swatch
+
+
+class _Swatch extends Control:
+	var key := ""
+
+	func _draw() -> void:
+		var r := Rect2(Vector2.ZERO, size)
+		draw_rect(r, UiPalette.terrain_color("plains"))
+		match key:
+			"glimpse", "veiled", "never":
+				draw_rect(r, Color(ProvinceRegion.VEIL, float(ProvinceRegion.VISION_ALPHA[key])))
+				if key != "glimpse":
+					for x in range(-int(size.y), int(size.x), 7):
+						draw_line(Vector2(x, size.y), Vector2(x + size.y, 0), Color(UiPalette.KEYLINE_INK, 0.45), 1.2, true)
+			"plate", "ghost":
+				draw_rect(r, UiPalette.PANEL_RAISED)
+				draw_string(ThemeDB.fallback_font, Vector2(4, 18), "≈20" if key == "plate" else "≈10", HORIZONTAL_ALIGNMENT_LEFT, -1, 14,
+					UiPalette.TEXT_PRIMARY if key == "plate" else Color(0.78, 0.78, 0.82, 0.7))
+			"eye":
+				draw_circle(r.get_center(), 8.0, UiPalette.GILT)
+		draw_rect(r, UiPalette.KEYLINE_INK, false, 1.0)
 
 
 ## The capital's countdown badge (§5.4): "heir in 2 turns" while a dead ruler's successor is pending,
@@ -455,6 +535,7 @@ func _draw() -> void:
 	var closed := _polygon.duplicate()
 	closed.append(_polygon[0])
 	_draw_edge_shade(closed)
+	_draw_veil()  # M5-2: the fog of war, under the owner ring (owners are public)
 	# Owner ring with the bible's keylines: ink inside, halo outside, so the colour reads on any terrain.
 	draw_polyline(closed, UiPalette.KEYLINE_HALO, 9.0, true)
 	draw_polyline(closed, ring_color, 6.0, true)
@@ -474,6 +555,27 @@ func _draw() -> void:
 	if _has_fort:
 		_draw_fort(Vector2(r * (1.58 if _east else 0.42), r * 1.55))
 	SeatEmblem.draw_emblem(self, emblem_position(), RING_EMBLEM_RADIUS, owner_seat)
+
+
+## M5-2: the fog veil for this region's sight level: a cool wash, with 45° hatching out of sight (STYLE_BIBLE.md §2.4).
+## In the Vision map mode it is stronger and glimpsed land is veiled too; clear land is never veiled.
+func _draw_veil() -> void:
+	var table: Dictionary = VISION_ALPHA if vision_mode else VEIL_ALPHA
+	var alpha := float(table.get(vision_level, 0.0))
+	if alpha <= 0.0:
+		return
+	draw_colored_polygon(_polygon, Color(VEIL, alpha))
+	if vision_level == FogRules.GLIMPSE:
+		return
+	var ink := Color(UiPalette.KEYLINE_INK, 0.35 if vision_mode else 0.25)
+	var span := size.x + size.y
+	var x := -size.y
+	while x < size.x:
+		var line := PackedVector2Array([Vector2(x, size.y), Vector2(x + span, size.y - span)])
+		for seg in Geometry2D.intersect_polyline_with_polygon(line, _polygon):
+			if seg.size() >= 2:
+				draw_line(seg[0], seg[seg.size() - 1], ink, 1.5, true)
+		x += HATCH_GAP
 
 
 ## Edge shading: a soft ink band just inside the ring, darker towards the lower right (light comes from

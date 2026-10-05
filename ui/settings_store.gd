@@ -177,6 +177,30 @@ func apply(tree: SceneTree) -> void:
 		DisplayServer.window_set_mode(want)
 
 
+## M5-2: one-time hints ("fog": the first fog turn's line, design/M5_MAGIC_FOG.md §11.1) are remembered in the file's
+## [hints] section once the player presses Got it, so they never show again. The other settings are not touched.
+const HINTS := "hints"
+
+
+static func hint_seen(key: String, file_path: String = "") -> bool:
+	var cfg := ConfigFile.new()
+	if cfg.load(file_path if not file_path.is_empty() else default_path) != OK:
+		return false
+	return cfg.get_value(HINTS, key, false) == true
+
+
+static func mark_hint_seen(key: String, file_path: String = "") -> String:
+	var p := file_path if not file_path.is_empty() else default_path
+	var cfg := ConfigFile.new()
+	if FileAccess.file_exists(p):
+		cfg.load(p)
+	cfg.set_value(HINTS, key, true)
+	var folder := p.get_base_dir()
+	if not folder.is_empty() and not DirAccess.dir_exists_absolute(folder):
+		DirAccess.make_dir_recursive_absolute(folder)
+	return "" if cfg.save(p) == OK else "Your settings could not be saved."
+
+
 ## Applies the saved settings once per run (the title screen calls this when it first appears).
 static func apply_saved_once(tree: SceneTree) -> void:
 	if _applied_at_start or tree == null:

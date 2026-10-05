@@ -11,6 +11,7 @@ extends Node
 ##   GameAudio.battle(on)                 a battle is on screen: music_battle and amb_battle, with the map
 ##                                        music ducked under them; battle(false) brings the map back
 ##   GameAudio.report(events, delay_s)    the turn report's headline cues (report_cues), staggered
+##   GameAudio.hush(on)                   M5-2: drop one-shot effects while on (a hotseat fog game's playback)
 ## The node's own API: play(event, delay_s), play_music(event), set_ambiance(event), push_mood(music,
 ## ambiance), pop_mood(). Volumes and mute are GameSettings' (master/music/sfx/ambiance, applied to the
 ## buses by GameSettings.apply_audio).
@@ -65,6 +66,10 @@ var warnings: PackedStringArray = []
 var history: Array[String] = []  # the last HISTORY_SIZE cues that played, oldest first
 var last_pitch := {}  # event name -> the pitch_scale of its last play
 var music_name := ""  # the music track or sting playing (or fading in) now
+## M5-2 (§2.9): while true, one-shot effects are dropped (and kept in `hushed_cues`): a hotseat fog game's turn playback
+## is silent but for the music and the ambient bed, because the other player is in the room. GameAudio.hush sets it.
+var hushed := false
+var hushed_cues: Array[String] = []
 var ambiance_name := ""
 
 var _loaded := false
@@ -127,6 +132,12 @@ static func music(event: String) -> void:
 static func ambiance(event: String) -> void:
 	if current != null:
 		current.set_ambiance(event)
+
+
+## M5-2: hushes one-shot effects (`on`) or lets them play again; music and the ambient bed go on (§2.9).
+static func hush(on: bool) -> void:
+	if current != null:
+		current.hushed = on
 
 
 ## A battle on screen (the battle report viewer, later its playback): battle music and bed over the
@@ -247,6 +258,9 @@ func play(event: String, delay_s: float = 0.0) -> bool:
 			return play_music(event)
 		"Ambiance":
 			return set_ambiance(event)
+	if hushed:  # M5-2: a hotseat fog game's playback
+		hushed_cues.append(event)
+		return false
 	if delay_s > 0.0 and live():
 		_pending.append({"event": event, "at": _clock + delay_s})
 		return true

@@ -4,12 +4,19 @@ extends Control
 ## player's orders, names who should take the computer next, and waits for "Ready".
 ## Reads the session only; the one rules call it makes is GameSession.acknowledge_handoff() when the
 ## player presses Ready. Builds its children in code so it works outside the scene tree (tests).
+## M5-2: Ready emits `uncovering` while the cover is still up (the host rebuilds the next seat's screen then), and
+## `acknowledged` once it is down; under fog the cover says each player sees only their own view.
 
+## M5-2 (§2.9): Ready was pressed and accepted, and the cover is still up: the host rebuilds the next seat's screen now.
+## `acknowledged` follows once the cover is down.
+signal uncovering
 signal acknowledged
 
 const BACKGROUND := Color(0.06, 0.07, 0.09, 1.0)
 
 var session: GameSession = null
+## M5-2: a fog game (the host sets it before show_for): the cover adds the fog line, FogView.COVER_LINE.
+var fog := false
 var title_label: Label
 var turn_label: Label
 var body_label: Label
@@ -38,6 +45,9 @@ func show_for(game_session: GameSession) -> bool:
 	title_label.text = "Pass to %s" % info.get("faction_name", "the next player")
 	turn_label.text = "Turn %d  ·  Player %d" % [session.turn_number(), info.get("seat", 0)]
 	body_label.text = session.handoff_text()
+	if fog:  # M5-2: "Fog of war is on: each player sees only their own view. Continue only when ..."
+		body_label.text = body_label.text.replace(" " + FogView.CONTINUE, " " + FogView.COVER_LINE)
+	hint_label.text = RulesCodex.text("handoff")
 	visible = true
 	if is_inside_tree():
 		ready_button.grab_focus.call_deferred()
@@ -51,6 +61,7 @@ func _on_ready_pressed() -> void:
 	if not why.is_empty():
 		error_label.text = why
 		return
+	uncovering.emit()
 	visible = false
 	acknowledged.emit()
 

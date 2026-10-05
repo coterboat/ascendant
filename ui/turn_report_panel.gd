@@ -32,6 +32,10 @@ extends PanelContainer
 ## forts it besieges and any breach (show_siege_needs_you, FortView.needs_you); and with the game screen's
 ## chronicle set, the first siege, storm, sally and breach of the game each get two plain sentences under their
 ## line, with a codex link, once per player (SiegeChronicle.teach).
+## M5-2 fog of war (#113, design/M5_MAGIC_FOG.md §2.8, §11.1): show_report reads the session as its viewer does
+## (turn_report_for, state_for, view_before): the report is the viewer's own, with the line "Fog of war: this report shows
+## what you saw" under the header (fog_label), and under each battle you fought where the enemy differed from what you
+## saw at the start of the turn, its "what you didn't see" (FogView.missed_text).
 
 signal province_focus_requested(province_id: String)
 signal battle_report_requested(event: Dictionary)
@@ -88,6 +92,10 @@ var needs_you_label: Label = null  # M4-4: "Choose what to research: ..." at the
 ## M3c S-3: the game's siege chronicle (the game screen sets it), for the first-siege sentences; null: none.
 var chronicle: SiegeChronicle = null
 var siege_needs_you: VBoxContainer = null  # M3c S-3: the siege "needs you" lines at the top, when there are any
+## M5-2: the fog header line (hidden without fog), and the viewer's view at the start of the reported turn, for "what you
+## didn't see" (show_report sets it; null: no such lines).
+var fog_label: Label
+var fog_before: GameState = null
 
 
 func _init() -> void:
@@ -96,20 +104,28 @@ func _init() -> void:
 	_build()
 
 
-## Rebuilds the panel from session.turn_report(). `computer_notes` (AISeat.report_notes) fills the
-## "What the computer was thinking" section; leave it empty in a hotseat game.
-func show_report(session: GameSession, computer_notes: Array = []) -> void:
+## Rebuilds the panel from the session's report as `eyes` read it (GameScreen.viewer(): the person at the controls, or
+## the observer once nobody in particular is; M5-2). Without `eyes`, the person giving orders now, or nobody in
+## particular. `computer_notes` (AISeat.report_notes) fills the "What the computer was thinking" section; leave it
+## empty in a hotseat game.
+func show_report(session: GameSession, computer_notes: Array = [], eyes: String = "") -> void:
 	# M4-4: the person at the controls reads their own transformation as "Your people have become ..." and,
 	# with nothing to research chosen, the "needs you" line. Nobody (watch mode, game over) reads public text.
 	var viewer := ""
 	if session != null and session.phase() == GameSession.Phase.ORDERS and not session.is_computer(session.current_player()):
 		viewer = session.current_player()
-	show_report_data(session.turn_report() if session != null else {}, viewer, session != null,
-		session.state() if session != null else null)
-	if not viewer.is_empty():
-		show_needs_you(PathView.needs_you(session.state(), viewer))
-		show_siege_needs_you(FortView.needs_you(session.state(), viewer, int(session.turn_report().turn)))  # M3c
-	_show_seats(session)
+	if eyes.is_empty():
+		eyes = viewer
+	elif session != null and session.players().has(eyes) and session.phase() != GameSession.Phase.GAME_OVER:
+		viewer = eyes
+	var report := session.turn_report_for(eyes) if session != null else {}
+	var after: GameState = session.state_for(eyes) if session != null else null
+	fog_before = session.view_before(eyes) if session != null and bool(report.get("fog", false)) else null
+	show_report_data(report, viewer, session != null, after)
+	if not viewer.is_empty() and after != null:
+		show_needs_you(PathView.needs_you(after, viewer))
+		show_siege_needs_you(FortView.needs_you(after, viewer, int(report.get("turn", 0))))  # M3c
+	_show_seats(session, after)
 	show_computer_notes(computer_notes)
 
 
@@ -123,6 +139,7 @@ func show_report_data(report: Dictionary, viewer: String = "", rebuild: bool = f
 	_clear_seats()
 	show_computer_notes([])
 	header_label.text = report.get("header", "No turns have been resolved yet.")
+	fog_label.visible = bool(report.get("fog", false))  # M5-2
 	var events: Array = report.get("events", [])
 	empty_label.visible = events.is_empty() and int(report.get("turn", 0)) > 0
 
@@ -145,6 +162,10 @@ func show_report_data(report: Dictionary, viewer: String = "", rebuild: bool = f
 			current_phase = phase
 			rows_box.add_child(_phase_heading(phase))
 		rows_box.add_child(_event_row(e, String(row.text), state != null))
+		if fog_label.visible and fog_before != null:
+			var missed := FogView.missed_text(e, viewer, fog_before)  # M5-2: what you didn't see
+			if not missed.is_empty():
+				rows_box.add_child(_missed_row(missed))
 		for t in teach:
 			if is_same(t.event, e):
 				rows_box.add_child(_teach_row(t))  # M3c: the first siege, storm, sally or breach of the game
@@ -245,12 +266,12 @@ func _refresh_notes_toggle() -> void:
 	notes_scroll.visible = computer_notes_open
 
 
-## The seats under the header, each computer faction with its tag. Only for games with a computer seat.
-func _show_seats(session: GameSession) -> void:
+## The seats under the header, each computer faction with its tag. Only for games with a computer seat. `state` is the
+## game as the reader sees it (names only).
+func _show_seats(session: GameSession, state: GameState) -> void:
 	_clear_seats()
-	if session == null or session.computer_seats().is_empty():
+	if session == null or state == null or session.computer_seats().is_empty():
 		return
-	var state := session.state()
 	var players := session.players()
 	for i in players.size():
 		var fid := String(players[i])
@@ -407,6 +428,28 @@ func show_siege_needs_you(lines: Array) -> void:
 		siege_needs_you.add_child(b)
 	rows_box.add_child(siege_needs_you)
 	rows_box.move_child(siege_needs_you, 1 if needs_you_label != null else 0)
+
+
+## M5-2 (§2.8): "What you didn't see: ..." under a battle you fought, linked to the odds-against-what-you-can-see entry.
+func _missed_row(text: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = "Missed"
+	row.add_theme_constant_override("separation", 12)
+	var pad := Control.new()
+	pad.custom_minimum_size = Vector2(28, 0)
+	row.add_child(pad)
+	var l := Label.new()
+	l.name = "MissedText"
+	l.text = "What you didn't see: %s" % text
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l.add_theme_font_size_override("font_size", 16)
+	l.add_theme_color_override("font_color", UiPalette.GILT)
+	l.mouse_filter = Control.MOUSE_FILTER_PASS
+	l.tooltip_text = TooltipText.plain("What you didn't see", "The enemy that fought you was not what you saw at the start of the turn: armies can join during a turn, and a glimpse rounds what it shows. %s" % RulesCodex.text("view_odds"))
+	CodexLink.attach(l, "view_odds", codex_requested.emit)
+	row.add_child(l)
+	return row
 
 
 ## M3c S-3 (§9.5): a first-siege sentence under its line: "Your first siege. A siege: ...", linked to its entry.
@@ -586,6 +629,17 @@ func _build() -> void:
 		"Close the report and play this turn on the board once more: the marches, the battles, the captures and the recruits, exactly as the rules decided them. Watching never changes anything. The report opens again when it ends.")
 	watch_again_button.pressed.connect(func(): watch_again_requested.emit())
 	head_row.add_child(watch_again_button)
+
+	fog_label = Label.new()
+	fog_label.name = "FogLabel"
+	fog_label.text = FogView.REPORT_HEADER
+	fog_label.visible = false
+	fog_label.add_theme_font_size_override("font_size", 16)
+	fog_label.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
+	fog_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	fog_label.tooltip_text = TooltipText.plain("Fog of war", RulesCodex.text("fog_of_war"))
+	CodexLink.attach(fog_label, "fog_of_war", codex_requested.emit)
+	box.add_child(fog_label)
 
 	seats_box = HBoxContainer.new()
 	seats_box.name = "Seats"

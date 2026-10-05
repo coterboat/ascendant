@@ -16,10 +16,12 @@ extends Control
 ##   optional: signal codex_requested(key), signal report_requested(event), vars reduced_motion, screen_shake
 ##
 ## API:
-##   open(events, start_index = 0, session = null, viewer = "") -> String
-##        plays events[start_index], with the rest as the queue. `session` gives the state and seat colours
-##        (and, through rebuild_with, a missing log); `viewer` is the faction watching, whose side's result
-##        plays the victory or defeat sting ("" for nobody). Returns "" or why nothing can be watched.
+##   open(events, start_index = 0, session = null, viewer = "", state = null) -> String
+##        plays events[start_index], with the rest as the queue. `session` gives the seat colours (and,
+##        through rebuild_with, a missing log); `state` is the game as the watcher sees it (M5-2: their view in a
+##        fog game; without it, session.state_for(viewer)); `viewer` is the faction watching, whose side's result
+##        plays the victory or defeat sting ("" for nobody). Returns "" or why nothing can be watched. Under fog a
+##        battle can be watched only by a side that fought it (fog_problem).
 ##   next(), previous()      move through the queue; next() on the last battle closes (back to the report)
 ##   close()                 closes the view and the host (emits closed)
 ##   current_event(), index, queue, view, view_kind ("simple" | "3d": what is on screen)
@@ -31,6 +33,7 @@ extends Control
 ##           battle_opened(index)
 ## Static helpers, pure (the turn report and the game screen use them for the Watch buttons):
 ##   watch_problem(event, can_rebuild = false) -> String   "" when it can be watched, else the plain reason
+##   fog_problem(event, viewer, fog) -> String              M5-2: under fog, why `viewer` may not watch it ("" if it may)
 ##   watchable(events, can_rebuild = false) -> Array        the battles that can be watched, in order
 ##   battles_of(events, faction) -> Array                   the battles `faction` fought ("" = all), in order
 ##   sting_for(log, viewer) -> String                       "sting_victory", "sting_defeat" or ""
@@ -54,6 +57,8 @@ const MORE_SIDES := "Battles with more than two sides can't be watched yet."
 const NOT_KEPT := "This battle's playback isn't kept any more, and there is no game record here to rebuild it from."
 const NOT_A_BATTLE := "Only battles can be watched."
 const REBUILDING := "Regenerating this battle's playback from the game record…"
+## M5-2 (§2.8): under fog only the sides that fought a battle saw it.
+const NOT_YOURS := "Under fog of war you can watch only the battles you fought: you didn't see this one."
 ## How long the victory or defeat sting holds the battle music down before it comes back up (s, real time).
 const STING_HOLD_S := 8.0
 const NOTE_S := 6.0
@@ -69,6 +74,8 @@ var queue: Array = []
 var index := -1
 var session: GameSession = null
 var viewer := ""
+## M5-2: the game as the watcher sees it (open's `state`): names, ground and colours come from here.
+var watch_state: GameState = null
 var view: Control = null
 var view_kind := ""
 var rebuild_with: Callable = Callable()
@@ -125,7 +132,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## Plays events[start_index] (battle events only; anything else is left out of the queue). See the class
 ## comment. Returns "" or why nothing can be watched.
-func open(events: Array, start_index: int = 0, p_session: GameSession = null, p_viewer: String = "") -> String:
+func open(events: Array, start_index: int = 0, p_session: GameSession = null, p_viewer: String = "", p_state: GameState = null) -> String:
 	var battles := []
 	var start := -1
 	for i in events.size():
@@ -140,6 +147,9 @@ func open(events: Array, start_index: int = 0, p_session: GameSession = null, p_
 	queue = battles
 	session = p_session
 	viewer = p_viewer
+	watch_state = p_state
+	if watch_state == null and session != null and not viewer.is_empty():
+		watch_state = session.state_for(viewer)
 	_logs = {}
 	visible = true
 	_play(clampi(start, 0, battles.size() - 1))
@@ -199,6 +209,8 @@ func _play(i: int) -> void:
 	var battle_log: Dictionary = _logs.get(i, numbers.get("log", {}))
 	var problem := watch_problem(event, rebuild_with.is_valid()) if battle_log.is_empty() \
 		else watch_problem({"type": "battle", "numbers": {"log": battle_log}})
+	if problem.is_empty():
+		problem = fog_problem(event, viewer, watch_state != null and watch_state.fog)  # M5-2: participants only
 	_use_view(chosen_view(settings_path))
 	if problem.is_empty() and battle_log.is_empty():
 		# The log isn't kept: rebuild it from the game record first (next frame, so the note shows).
@@ -217,7 +229,7 @@ func _play(i: int) -> void:
 		view.set("reduced_motion", bool(st.reduced_motion))
 	if "screen_shake" in view:
 		view.set("screen_shake", bool(st.screen_shake))
-	var why: String = view.play(battle_log, numbers.get("report", {}), session.state() if session != null else null,
+	var why: String = view.play(battle_log, numbers.get("report", {}), watch_state,
 		session.players() if session != null else [])
 	if not why.is_empty():
 		_hide_view()
@@ -415,6 +427,14 @@ static func watch_problem(event: Dictionary, can_rebuild: bool = false) -> Strin
 	if not (report is Dictionary) or report.is_empty():
 		return NO_LOG
 	return "" if can_rebuild else NOT_KEPT
+
+
+## M5-2 (§2.8): under fog (`fog`), a battle can be watched only by a side that fought it: "" when `viewer` fought it (or
+## nobody in particular watches, or there is no fog), otherwise why not.
+static func fog_problem(event: Dictionary, watcher: String, fog: bool) -> String:
+	if not fog or watcher.is_empty() or Array(event.get("factions", [])).has(watcher):
+		return ""
+	return NOT_YOURS
 
 
 ## True when `event` has a report but its log isn't kept (it can be rebuilt from the game record).
