@@ -276,7 +276,7 @@ func test_the_biggest_fixture_fits_the_size_budget() -> void:
 	var lg: Dictionary = BattleLog.from_json(JSON.stringify(fx.log, "", false)).log
 	var bytes := BattleLog.to_json(lg).to_utf8_buffer().size()
 	assert_eq(lg.fighters.size(), 277, "the biggest measured battle's fighters")
-	assert_eq(_attacks(lg).size(), 742, "and attacks (898 before #94 renamed its game's armies)")
+	assert_eq(_attacks(lg).size(), 746, "and attacks (898 before #94 renamed its game's armies, 742 before #131's Blood Frenzy +2)")
 	assert_eq(int(fx.report.rounds_fought), 3, "and rounds (4 before)")
 	assert_true(bytes <= SIZE_BUDGET, "its log is %d bytes of JSON, within %d" % [bytes, SIZE_BUDGET])
 	assert_true(lg.events.size() < BattleLog.MAX_EVENTS / 5, "far below the cap")
