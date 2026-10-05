@@ -238,6 +238,49 @@ code never rolls dice or resolves a turn. `tests/test_world3d.gd` keeps the spik
   alone). A file's figure falls with its last fighter; its plate sums its fighters with a "×n" badge of those
   standing; its tooltip lists each one. `--fixture massive` (322 fighters) shows it.
 
+## Forts and sieges on the board (M3c S-4, #102)
+
+design/M3C_SIEGES.md §10.1 and §10.2, in a game with sieges. Without sieges nothing changes: the map's forts stand
+as M3a placed them and every M3a test passes unmodified.
+
+- **The pure part** (`siege_board.gd`): the forts part of the board model (`model_of`: each fort's level, walls,
+  damage look and kit, the construction sites, each siege's besieger and camps), how a turn's fort events move it
+  (`apply_events`, one event at a time with `apply_one`), and the table the board draws (`board_table`: kit by
+  level, look, scaffold and how far the next level has risen, the chevrons' faction). `playback.gd` folds it into
+  the board model, so playback = state covers it, and its plan carries each fort beat with the report's own line.
+- **Forts from the state** (`world_view.gd show_forts`, `fort_table()` says what it drew): a palisade (`palisade.
+  <faction>`, primitive: a stake ring round a small yard), a keep (`fort.<faction>`), a citadel (the capital's
+  fortress); a built fort wears its builder's kit, a map fort the nearest capital's, a captured one keeps its look.
+  Every fort's gate faces its stage. **Damage looks**: the look's model when the table has one, else the code
+  fallback through the close-up's `cut_plane` dither: one step lost knocks the gate-side corner down, two
+  (battered) knock it lower with rubble, smoke and fire, the breach takes the whole gate side down to its footing
+  with rubble in the gap. **Construction**: a timber scaffold with the site's materials, the next level's model
+  solid up to the work done and faint above. **Sieges**: 8 chevron banners in the besieger's colour round the walls.
+- **Yards at every fort** (`world_view.gd yard_of`, `muster.gd packed`): a fort's owner's armies pack into its
+  yard, tighter the bigger the garrison (down to `Muster.PACK_MIN`); the rest muster in the war camp outside its
+  gate, or, besieged, pack at the gate. A besieged capital packs its garrison the same way. Recruits at any fort
+  march in through its gate; marches leave by it.
+- **The camp ring** (`armies.gd _layout_ring`): one camp per besieging army round the walls (slots from
+  `SiegeBoard.ring_angles`, beside the gate first, skipping ground that isn't the province's), each army facing
+  the walls with its tent and fire behind it; the besieger's siege works before the gate and the engines its armies
+  carry at the walls (`siege_works.<faction>`, `siege_engine.<faction>`; primitives until S-9's models).
+- **The beats** (`armies.gd play`, the Sieges phase between Battles and Captures): the camps go up and the chevrons
+  rise, the camp and the engines strike the walls (dust bursts, `shaders/dust.gdshader`) and the look changes at
+  the end of the beat, a breach collapses the gate side with a rubble burst and a rule-bound shake (off with reduced
+  motion or screen shake off), a lifted siege folds its camps, masons repair; scaffolding goes up in Recruits and a
+  razed site collapses in Captures. In Battles a sally's armies file out of the gate two abreast and form up facing
+  the camps (and walk back in by it), a storm meets at the walls, a breach battle in the gap. Each beat names
+  itself in the caption, and its turn report line is the caption's tooltip.
+- **Planning, private**: a queued recruit at a fort stands as a ghost in that fort's yard; a queued Fortify stands
+  as a ghost scaffold with a plate, only in its owner's view and never while the board is covered or hidden.
+- **Explanations**: each plate carries S-3's fort chip; a province's tooltip says what the board shows at its
+  fort (`SiegeBoard.describe`); the legend has a forts and sieges section; the Sieges caption explains itself.
+- **Tests**: `tests/test_board3d_sieges.gd` (the board model of a state and what the board draws of it, playback =
+  state over 5 seeds x 15 autoplayed turns and a scripted siege with every fort event, a played board standing as
+  one built from the state after with the states deep-equal, the sally out of the gate, recruits by a fort's gate,
+  the model table's siege kinds, the explanations, no dice or resolver anywhere in `world3d/`, and no private
+  scaffold ghost on a covered hotseat screen).
+
 ### Measuring the minimum-spec rung (3D_DIRECTION 3.5, #62)
 
 The budget is p95 ≤ 33.3 ms at 1920×1080 on a 2020+ integrated GPU (Iris Xe, Vega 7/680M, M1) at its Auto

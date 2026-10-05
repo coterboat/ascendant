@@ -385,6 +385,171 @@ static func fort() -> ArrayMesh:
 	return b.mesh()
 
 
+## M3c S-4 (#102): the yards of the primitive forts, in their own frame (gate on -Z): the court [x, z, w, d] where
+## the garrison stands, the gate's [inner, outer] z, the footprint's side. A fort's model row overrides them.
+const FORT_YARD := {"court": [-8.6, -10.2, 17.2, 5.4], "gate_z": [-10.6, -15.0], "side": 24.0}
+const PALISADE_R := 12.5
+const PALISADE_YARD := {"court": [-8.2, -9.4, 16.4, 12.0], "gate_z": [-11.0, -16.0], "side": 27.0}
+
+
+## M3c S-4: the level 1 kit's placeholder (design/M3C_SIEGES.md §13.3): a ring of timber stakes round a packed-earth
+## yard, open at the gate on -Z. "kingdom": an earth bank under the stockade and a small gate tower with a roof in the
+## owner's colour; "beasts": sharpened stakes with bone tips and a lookout platform at the back.
+static func palisade_fort(style: String = "kingdom") -> ArrayMesh:
+	var b := Builder.new()
+	var r := PALISADE_R
+	b.cyl(r + 0.6, r + 1.0, 0.5, Vector3(0, 0.25, 0), Color("#C9B48A"), 20)
+	var n: int = int(TAU * r / 1.5)
+	for k in n:
+		var a: float = TAU * k / n
+		var dir := Vector2(sin(a), -cos(a)) ## a = 0 is the gate (-Z)
+		if absf(wrapf(a, -PI, PI)) < 0.2:
+			continue
+		var hgt: float = 4.4 + float(k % 3) * 0.45
+		var at := Vector3(dir.x * r, 0.0, dir.y * r)
+		b.cyl(0.5, 0.56, hgt, at + Vector3(0, hgt * 0.5, 0), WOOD, 5)
+		if style == "beasts":
+			b.cyl(0.0, 0.5, 1.1, at + Vector3(0, hgt + 0.55, 0), BONE, 5)
+	if style == "beasts":
+		## a lookout at the back: four poles and a platform with a hide roof
+		for cx in [-1.0, 1.0]:
+			for cz in [-1.0, 1.0]:
+				b.cyl(0.3, 0.34, 9.0, Vector3(cx * 1.8, 4.5, r - 4.0 + cz * 1.8), WOOD, 5)
+		b.box(Vector3(5.0, 0.5, 5.0), Vector3(0, 8.0, r - 4.0), WOOD)
+		b.cyl(0.0, 3.6, 2.6, Vector3(0, 10.3, r - 4.0), FUR, 8)
+		b.box(Vector3(0.12, 1.4, 1.8), Vector3(0, 12.2, r - 4.0), TEAM, Basis(), true)
+	else:
+		## an earth bank under the stockade, and a timber gate tower over the gap with a roof in the owner's colour
+		for k in 20:
+			var a2: float = TAU * (k + 0.5) / 20.0
+			if absf(wrapf(a2, -PI, PI)) < 0.3:
+				continue
+			var d2 := Vector2(sin(a2), -cos(a2))
+			b.box(Vector3(TAU * r / 20.0 + 0.6, 1.0, 2.6), Vector3(d2.x * (r + 0.6), 0.4, d2.y * (r + 0.6)), Color("#8A6A44"), Basis(Vector3.UP, -a2))
+		for gx in [-1.0, 1.0]:
+			b.box(Vector3(1.2, 7.5, 1.2), Vector3(gx * 2.4, 3.75, -r), WOOD)
+		b.box(Vector3(6.4, 1.6, 2.4), Vector3(0, 7.0, -r), WOOD)
+		b.cyl(0.0, 3.4, 2.4, Vector3(0, 9.0, -r), TEAM, 4, Basis(Vector3.UP, PI * 0.25), true)
+	return b.mesh()
+
+
+## M3c S-4: construction scaffolding (§13.3: "a code lattice of thin boxes"), round a footprint of `side` (gate on
+## -Z), `height` tall: posts every few units on the four sides, ledgers at three heights and a brace on each side.
+static func scaffold(side: float, height: float, style: String = "kingdom") -> ArrayMesh:
+	var b := Builder.new()
+	var hs: float = side * 0.5 + 1.2
+	var wood: Color = WOOD if style != "beasts" else FUR_DK
+	var posts: int = maxi(3, int(side / 6.0))
+	for s in 4:
+		var rot := Basis(Vector3.UP, s * PI * 0.5)
+		for k in posts + 1:
+			var x: float = -hs + 2.0 * hs * k / posts
+			b.box(Vector3(0.4, height, 0.4), rot * Vector3(x, height * 0.5, -hs), wood, rot)
+		for lv in 3:
+			var y: float = height * (0.3 + 0.33 * lv)
+			b.box(Vector3(2.0 * hs, 0.3, 0.5), rot * Vector3(0, y, -hs), wood, rot)
+			b.box(Vector3(2.0 * hs, 0.15, 1.6), rot * Vector3(0, y - 0.25, -hs + 0.7), Color("#A5784A"), rot)
+		var diag := Vector2(2.0 * hs, height).length()
+		b.box(Vector3(diag, 0.25, 0.25), rot * Vector3(0, height * 0.5, -hs - 0.1), wood, rot * Basis(Vector3.BACK, atan2(height, 2.0 * hs)))
+	if style == "beasts":
+		for k in 6:
+			var a: float = TAU * k / 6.0
+			b.cyl(0.05, 0.05, height * 0.9, Vector3(cos(a) * hs, height * 0.45, sin(a) * hs), LEATHER, 3, Basis(Vector3(sin(a), 0, -cos(a)), 0.5))
+	## the site's materials: a stack of timber and a pile of dressed stone by the gate side, a hoist's mast
+	for k in 4:
+		b.cyl(0.35, 0.35, 5.0, Vector3(-hs + 3.0, 0.35 + (k % 2) * 0.6, -hs + 2.0 + k * 0.75), wood, 6, Basis(Vector3.BACK, PI * 0.5))
+	for k in 5:
+		b.box(Vector3(1.4, 0.9, 1.0), Vector3(hs - 3.0 + (k % 2) * 1.5, 0.45 + (k / 2) * 0.9, -hs + 2.5 + (k % 3) * 1.1), STONE)
+	b.box(Vector3(0.4, height + 3.0, 0.4), Vector3(hs - 1.5, (height + 3.0) * 0.5, hs - 1.5), wood)
+	b.box(Vector3(5.0, 0.3, 0.3), Vector3(hs - 3.6, height + 2.6, hs - 1.5), wood)
+	return b.mesh()
+
+
+## M3c S-4: a besieger's siege works before the gate (§13.3), facing the walls on -Z. "kingdom": mantlets on wheels
+## and two ladders; "beasts": an earth mound, a line of stakes and a rack of logs.
+static func siege_works(style: String = "kingdom") -> ArrayMesh:
+	var b := Builder.new()
+	if style == "beasts":
+		b.ball(4.0, Vector3(0, 0.0, 1.0), Color("#8A6A44"), Vector3(1.6, 0.55, 0.8), 10)
+		for k in 7:
+			var x: float = -6.0 + 2.0 * k
+			b.cyl(0.0, 0.4, 3.4, Vector3(x, 1.4, -2.6), WOOD, 5, Basis(Vector3.RIGHT, -0.5))
+		for lv in 3:
+			for k in 3 - lv:
+				b.cyl(0.55, 0.55, 7.0, Vector3(-1.1 + k * 1.1 + lv * 0.55, 0.55 + lv * 0.95, 3.6), WOOD, 7, Basis(Vector3.BACK, PI * 0.5))
+		b.box(Vector3(0.12, 1.2, 1.6), Vector3(4.6, 3.8, 1.0), TEAM, Basis(), true)
+		b.cyl(0.08, 0.08, 3.0, Vector3(4.6, 2.5, 1.8), WOOD, 4)
+	else:
+		for k in 3:
+			var x2: float = -5.0 + 5.0 * k
+			b.box(Vector3(4.0, 3.2, 0.5), Vector3(x2, 2.0, -1.0), WOOD, Basis(Vector3.RIGHT, -0.18))
+			b.box(Vector3(4.2, 0.4, 0.6), Vector3(x2, 3.6, -1.3), LEATHER)
+			for wx in [-1.5, 1.5]:
+				b.cyl(0.55, 0.55, 0.3, Vector3(x2 + wx, 0.55, -0.5), DOOR, 8, Basis(Vector3.BACK, PI * 0.5))
+		for lx in [-3.0, 3.0]:
+			for side in [-0.6, 0.6]:
+				b.box(Vector3(0.18, 0.18, 8.0), Vector3(lx + side, 0.25, 3.0), WOOD)
+			for rung in 6:
+				b.box(Vector3(1.2, 0.12, 0.12), Vector3(lx, 0.3, 0.0 + rung * 1.25), WOOD)
+		b.box(Vector3(0.12, 1.0, 1.6), Vector3(0, 4.6, -1.3), TEAM, Basis(), true)
+	return b.mesh()
+
+
+## M3c S-4: a siege engine (§13.3), its business end on -Z. "kingdom", the Siege Ram: a roofed housing on four wheels
+## with an iron-headed ram log; "beasts", the Wallbreakers: a great trunk slung on a sled with ropes.
+static func siege_engine(style: String = "kingdom") -> ArrayMesh:
+	var b := Builder.new()
+	if style == "beasts":
+		for sx in [-1.2, 1.2]:
+			b.box(Vector3(0.4, 0.4, 7.0), Vector3(sx, 0.2, 0.0), WOOD)
+		for sz in [-2.4, 0.0, 2.4]:
+			b.box(Vector3(3.0, 0.3, 0.4), Vector3(0, 0.45, sz), WOOD)
+		for sz2 in [-1.8, 1.8]:
+			b.cyl(0.12, 0.12, 2.6, Vector3(0, 1.8, sz2), LEATHER, 4)
+		b.cyl(0.75, 0.9, 7.6, Vector3(0, 2.9, -0.4), FUR_DK, 9, Basis(Vector3.RIGHT, PI * 0.5))
+		b.ball(0.95, Vector3(0, 2.9, -4.2), BONE, Vector3(1.0, 1.0, 0.7), 8)
+		b.box(Vector3(0.1, 0.9, 1.2), Vector3(0, 3.9, 2.0), TEAM, Basis(), true)
+	else:
+		for wx in [-1.6, 1.6]:
+			for wz in [-2.2, 2.2]:
+				b.cyl(0.8, 0.8, 0.35, Vector3(wx, 0.8, wz), DOOR, 10, Basis(Vector3.BACK, PI * 0.5))
+		b.box(Vector3(3.0, 0.4, 6.2), Vector3(0, 1.2, 0.0), WOOD)
+		for px in [-1.3, 1.3]:
+			b.box(Vector3(0.3, 2.6, 5.6), Vector3(px, 2.6, 0.0), WOOD)
+		b.prism(Vector3(3.6, 1.6, 6.4), Vector3(0, 4.6, 0.0), LEATHER)
+		b.cyl(0.42, 0.42, 7.4, Vector3(0, 2.5, -1.0), WOOD, 8, Basis(Vector3.RIGHT, PI * 0.5))
+		b.cyl(0.0, 0.65, 1.1, Vector3(0, 2.5, -5.2), STEEL_DK, 8, Basis(Vector3.RIGHT, -PI * 0.5))
+		b.box(Vector3(0.1, 0.8, 1.2), Vector3(0, 6.0, 1.8), TEAM, Basis(), true)
+	return b.mesh()
+
+
+## M3c S-4: a rubble pile (the shared prop for breaches and badly damaged walls): a low heap of earth and dust
+## under tumbled blocks of weathered stone, darker than the walls they fell from.
+static func rubble() -> ArrayMesh:
+	var b := Builder.new()
+	var cols: Array = [Color("#7E776D"), Color("#8C857B"), Color("#6B655D"), Color("#9A9083")]
+	b.ball(2.6, Vector3(0, -0.6, 0), Color("#8A7A62"), Vector3(1.3, 0.55, 1.0), 9)
+	for k in 14:
+		var a: float = TAU * k / 14.0 + float(k % 3) * 0.4
+		var d: float = 0.4 + float((k * 7) % 5) * 0.5
+		var s: float = 0.6 + float((k * 3) % 4) * 0.22
+		b.box(Vector3(s * 1.3, s * 0.8, s * 1.0), Vector3(cos(a) * d, 0.4 + s * 0.3 + float(k % 2) * 0.35, sin(a) * d * 0.8), cols[k % 4],
+			Basis(Vector3(0.3, 1.0, 0.2).normalized(), a * 1.7))
+	return b.mesh()
+
+
+## M3c S-4: a besieger's chevron banner (the bible's "besieged" marker, drawn in code): a staff with a pennant in the
+## besieger's colour (a team part) bearing a white chevron, the cloth to +X.
+static func chevron_banner() -> ArrayMesh:
+	var b := Builder.new()
+	b.cyl(0.12, 0.15, 7.0, Vector3(0, 3.5, 0), WOOD, 5)
+	b.cyl(0.0, 0.26, 0.6, Vector3(0, 7.3, 0), GOLD, 5)
+	b.box(Vector3(3.0, 2.0, 0.12), Vector3(1.6, 5.8, 0), TEAM, Basis(), true)
+	for sx in [-1.0, 1.0]:
+		b.box(Vector3(1.5, 0.34, 0.16), Vector3(1.6 + sx * 0.55, 5.85 + 0.25, 0), LINEN, Basis(Vector3.BACK, sx * 0.6))
+	return b.mesh()
+
+
 ## A ring of sharpened timber stakes round a fortress (the Clans' kit variant), open at the gate on -Z,
 ## with bone-white tips and a low earth bank under it.
 static func palisade(radius: float) -> ArrayMesh:

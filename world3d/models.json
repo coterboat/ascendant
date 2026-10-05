@@ -40,6 +40,25 @@
 		"watchtower": {"model": "res://assets/models/buildings/watchtower.glb", "fallback": "cottage", "side": 18.0, "yaw": 180.0},
 		"camp.kingdom": {"model": "res://assets/models/buildings/camp_kingdom.glb", "fallback": "cottage", "side": 30.0, "yaw": 180.0, "key_hue": 0.599},
 		"camp.beasts": {"model": "res://assets/models/buildings/camp_beasts.glb", "fallback": "cottage", "side": 30.0, "yaw": 180.0, "key_hue": -1.0},
-		"standing_stones": {"fallback": "rock", "model": "res://assets/models/props/standing_stones.glb", "yaw": 180.0, "side": 30.0}
+		"standing_stones": {"fallback": "rock", "model": "res://assets/models/props/standing_stones.glb", "yaw": 180.0, "side": 30.0},
+		"palisade.kingdom": {"model": "", "fallback": "palisade", "side": 27.0, "yaw": 180.0, "key_hue": -1.0, "tint": 0.9},
+		"palisade_breached.kingdom": {"model": "", "fallback": "palisade", "side": 27.0, "yaw": 180.0},
+		"fort_damaged.kingdom": {"model": "", "fallback": "fort", "side": 42.0, "yaw": 180.0},
+		"fort_breached.kingdom": {"model": "", "fallback": "fort", "side": 42.0, "yaw": 180.0},
+		"fortress_damaged.kingdom": {"model": "", "fallback": "fortress", "side": 76.0, "yaw": 180.0},
+		"fortress_breached.kingdom": {"model": "", "fallback": "fortress", "side": 76.0, "yaw": 180.0},
+		"scaffold.kingdom": {"model": "", "fallback": "scaffold", "yaw": 180.0},
+		"siege_works.kingdom": {"model": "", "fallback": "siege_works", "side": 16.0, "yaw": 180.0},
+		"siege_engine.kingdom": {"model": "", "fallback": "siege_engine", "side": 7.5, "yaw": 180.0, "poses": {"ready": "", "strike": "", "wrecked": ""}},
+		"palisade.beasts": {"model": "", "fallback": "palisade", "side": 27.0, "yaw": 180.0, "key_hue": -1.0, "tint": 0.9},
+		"palisade_breached.beasts": {"model": "", "fallback": "palisade", "side": 27.0, "yaw": 180.0},
+		"fort_damaged.beasts": {"model": "", "fallback": "fort", "side": 42.0, "yaw": 180.0},
+		"fort_breached.beasts": {"model": "", "fallback": "fort", "side": 42.0, "yaw": 180.0},
+		"fortress_damaged.beasts": {"model": "", "fallback": "fortress", "side": 76.0, "yaw": 180.0},
+		"fortress_breached.beasts": {"model": "", "fallback": "fortress", "side": 76.0, "yaw": 180.0},
+		"scaffold.beasts": {"model": "", "fallback": "scaffold", "yaw": 180.0},
+		"siege_works.beasts": {"model": "", "fallback": "siege_works", "side": 16.0, "yaw": 180.0},
+		"siege_engine.beasts": {"model": "", "fallback": "siege_engine", "side": 7.5, "yaw": 180.0, "poses": {"ready": "", "strike": "", "wrecked": ""}},
+		"rubble": {"model": "", "fallback": "rubble", "side": 9.0, "yaw": 180.0}
 	}
 }

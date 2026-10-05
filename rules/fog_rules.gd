@@ -619,6 +619,9 @@ static func build_view(state: GameState, viewer: String, memory: Dictionary = {}
 	for a in truth.armies:
 		if a.owner == viewer:
 			armies.append(a.duplicate(true))
+	for a in truth.armies:
+		if a.owner == IndependentData.FACTION_ID:
+			armies.append(a.duplicate(true))  # IND-1 (#142): a Free Holds garrison is public knowledge, wounds and all
 	var full := []  # [army index, unit index] of stand-in units shown at full hp
 	for s in ins:
 		var ad := {"id": s.id, "owner": s.owner, "location": s.location, "units": [], "commander": {}}
@@ -660,6 +663,8 @@ static func build_view(state: GameState, viewer: String, memory: Dictionary = {}
 		d["sieges"] = true
 	if state.fog:
 		d["fog"] = true
+	if state.independents:
+		d["independents"] = true
 	if state.magic:
 		d["magic"] = true
 		d["enchantments"] = _view_enchantments(state, viewer, view_sight, ins)

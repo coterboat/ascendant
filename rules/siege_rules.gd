@@ -552,7 +552,11 @@ static func next_battle(state: GameState, province_id: String, moved: Dictionary
 	if inside.is_empty():
 		if not fought.is_empty() or _factions_of(relief + enemies).size() < 2:
 			return {}
-		return _plan(state, p, OPEN, "empty", relief, enemies, "", [])
+		var holder := ""  # IND-1: a neutral fort's Free Holds garrison meets you in the open, holding its ground
+		for a in enemies:
+			if a.owner == IndependentData.FACTION_ID:
+				holder = a.owner
+		return _plan(state, p, OPEN, "empty", relief, enemies, holder, [])
 	var sallying := sallying_armies(state, province_id, moved, siege_orders)
 	var stormers := storming_factions(state, province_id, siege_orders)
 	# The open battle outside the walls (rows 3-8, 12, 15): at most one, before any storm.

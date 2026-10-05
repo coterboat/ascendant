@@ -1220,7 +1220,8 @@ static func board_now(state: GameState) -> Dictionary:
 		owners[p.id] = p.owner
 	var occupied := {}
 	for a in state.armies:
-		occupied[a.location] = true
+		if a.owner != IndependentData.FACTION_ID:  # IND-1: a garrison swears fealty with its province
+			occupied[a.location] = true
 	return {"owners": owners, "occupied": occupied}
 
 

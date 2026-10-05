@@ -139,6 +139,10 @@ static func army_name(state: GameState, army_id: String, owner: String = "", rul
 	var a: Army = state.find_army(army_id) if state != null else null
 	if a != null and a.ruler != null:
 		return a.ruler.type.name
+	if army_id.begins_with(IndependentData.ARMY_PREFIX):  # IND-1: "the Highcrag Hillguard", named for its province
+		var p: Province = state.find_province(army_id.trim_prefix(IndependentData.ARMY_PREFIX)) if state != null else null
+		if p != null:
+			return "the %s %s" % [p.name, IndependentData.garrison_kind(p.terrain)]
 	var fid := owner
 	if fid.is_empty():
 		fid = a.owner if a != null else faction_of(army_id)
@@ -157,6 +161,8 @@ static func army_number(army_id: String) -> int:
 
 ## The faction id at the front of an army id ("kingdom-12" -> "kingdom"), or "".
 static func faction_of(army_id: String) -> String:
+	if army_id.begins_with(IndependentData.ARMY_PREFIX):
+		return IndependentData.FACTION_ID  # IND-1: a garrison's id names its province, not its faction
 	var dash := army_id.rfind("-")
 	return army_id.substr(0, dash) if dash > 0 else ""
 
@@ -848,6 +854,9 @@ static func _side(fid: String, e: Dictionary, ctx: Dictionary) -> Dictionary:
 static func _side_phrase(fid: String, side: Dictionary, ctx: Dictionary) -> String:
 	if side.entries.is_empty():
 		return "%s (%s)" % [_names(side.armies, ctx), side.size]
+	if fid == IndependentData.FACTION_ID and not side.armies.is_empty():
+		# IND-1 (#142): a garrison goes by its name, "the Ebonpeak Hillguard (2 Hill Slingers and Free Spears, 26 hp)".
+		return "%s (%s, %s)" % [_names(side.armies, ctx), units_phrase(side.entries), side.size]
 	return "%s %s (%s)" % [_possessive(_faction_name(ctx.state, fid)), units_phrase(side.entries), side.size]
 
 

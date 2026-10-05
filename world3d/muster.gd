@@ -284,3 +284,81 @@ static func ghost_places(m: Dictionary, descs: Array, ghosts: Array) -> Array:
 				out.append({"type": t, "role": "unit", "pos": place_in_slot(camp_block_centre(camp_k), sp, 0), "where": "camp"})
 				camp_k += 1
 	return out
+
+
+# ------------------------------------------------------------------ M3c S-4: forts' yards and packed garrisons
+
+const PACK_MIN := Vector2(2.1, 2.3) ## the tightest a packed garrison stands (design/M3C_SIEGES.md §10.1, "packed garrisons")
+const GATE_ROW := 4 ## figures abreast in the overflow packed at a besieged fort's gate
+
+
+## An army's figures in their standing order (its colour party, then its blocks), types and roles only.
+static func figure_list(d: Dictionary) -> Array:
+	var slots := army_slots(d)
+	var centres: Array = []
+	for i in slots.size():
+		centres.append(Vector2.ZERO)
+	return figures_at(slots, centres)
+
+
+## A fort's yard (M3c S-4, #102: a palisade, a keep, or a besieged capital): its owner's armies packed in rows across
+## the court from the gate side, each army whole and in id order, its figures in their standing order. The spacing
+## starts at the yard's drill spacing and tightens (down to PACK_MIN) until every army fits, so a bigger garrison
+## stands packed tighter; the armies that still don't fit (whole, and every later one) are the overflow: outside the
+## gate in the war camp, or, while the fort is besieged, packed at the gate (gate_packed). `w` across, `d` deep.
+## Returns {"yard": {army id: [{"type", "role", "pos": Vector2(x across from the middle, z inward from the gate
+## side)}]}, "overflow": [the descs that didn't fit], "spacing": Vector2}.
+static func packed(descs: Array, w: float, d: float) -> Dictionary:
+	var sorted: Array = descs.duplicate()
+	sorted.sort_custom(func(a, b): return String(a["id"]) < String(b["id"]))
+	var lists := {}
+	var total := 0
+	for desc in sorted:
+		var figs := figure_list(desc)
+		lists[desc["id"]] = figs
+		total += figs.size()
+	var sp: Vector2 = DRILL
+	while _pack_cap(w, d, sp) < total and sp.x > PACK_MIN.x + 0.001:
+		sp = Vector2(maxf(sp.x * 0.92, PACK_MIN.x), maxf(sp.y * 0.92, PACK_MIN.y))
+	var cols: int = maxi(1, int(floor(w / sp.x + 0.001)))
+	var cap: int = _pack_cap(w, d, sp)
+	var out := {"yard": {}, "overflow": [], "spacing": sp}
+	var k := 0
+	var full := false
+	for desc in sorted:
+		var figs: Array = lists[desc["id"]]
+		if full or k + figs.size() > cap:
+			full = true
+			out["overflow"].append(desc)
+			continue
+		var placed: Array = []
+		for f in figs:
+			var c: int = k % cols
+			var r: int = k / cols
+			placed.append({"type": f["type"], "role": f["role"], "pos": Vector2((c - (cols - 1) * 0.5) * sp.x, sp.y * 0.5 + r * sp.y)})
+			k += 1
+		out["yard"][desc["id"]] = placed
+	return out
+
+
+static func _pack_cap(w: float, d: float, sp: Vector2) -> int:
+	return maxi(1, int(floor(w / sp.x + 0.001))) * maxi(1, int(floor(d / sp.y + 0.001)))
+
+
+## A besieged fort's overflow, packed at its gate (the war camp's ground outside belongs to the besiegers): GATE_ROW
+## abreast at PACK_MIN spacing, every army whole and in id order, from the gate outward. Returns {army id: [{"type",
+## "role", "pos": Vector2(x across, z outward from the gate's outer point)}]}.
+static func gate_packed(descs: Array) -> Dictionary:
+	var sorted: Array = descs.duplicate()
+	sorted.sort_custom(func(a, b): return String(a["id"]) < String(b["id"]))
+	var out := {}
+	var k := 0
+	for desc in sorted:
+		var placed: Array = []
+		for f in figure_list(desc):
+			var c: int = k % GATE_ROW
+			var r: int = k / GATE_ROW
+			placed.append({"type": f["type"], "role": f["role"], "pos": Vector2((c - (GATE_ROW - 1) * 0.5) * PACK_MIN.x, PACK_MIN.y * 0.5 + r * PACK_MIN.y)})
+			k += 1
+		out[desc["id"]] = placed
+	return out

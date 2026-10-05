@@ -15,7 +15,11 @@
 ##   * M3a.2: a gathered army's plate carries a march mark (ordered to march: it waits at the gate); a
 ##     ghost block's plate the gold left; the fortress close-up's chip (Esc or zoom out to leave) and a
 ##     compass while the view is turned;
-##   * the board's legend in the corner, whose tooltip explains every mark on the land.
+##   * the board's legend in the corner, whose tooltip explains every mark on the land;
+##   * M3c S-4, in a game with sieges: each plate carries the fort chip (FortChip, S-3's: the level, the walls bar
+##     marking the storm steps, the besieger's chevrons, a site's turns of work), a province's tooltip says what the
+##     board shows at its fort (SiegeBoard.describe), the legend explains the kits, damage looks, scaffolding, camp
+##     rings, siege works, chevrons and packed garrisons, and a queued Fortify's ghost scaffold carries a plate.
 ## Reads the map screen (state, selection, orders, regions' marks) and never changes the game.
 extends Control
 
@@ -23,12 +27,15 @@ const Terrain3D := preload("res://world3d/terrain3d.gd")
 const Playback := preload("res://world3d/playback.gd")
 const Models := preload("res://world3d/models.gd")
 const Choreo := preload("res://world3d/choreo.gd")
+const SiegeBoard := preload("res://world3d/siege_board.gd")
 const ARROW := Color("#FFFFFF")
 const ARROW_HALO := Color(0.102, 0.086, 0.071, 0.85)
-const LEGEND := "The 3D board, what you see:\n- A province's colour wash and inner border: its owner, in their player colour.\n- A white band inside a province: the one you selected. A cream band: the one under the mouse.\n- A soft gilt glow at the edges: where your selected army can march this turn.\n- A dashed gilt band: a King's Roads destination two provinces away.\n- Figures: each army as blocks of its units (a block per unit type, %s), its commander and banner bearer at the back. The plate above gives the exact count.\n- In the woods every block stands on a tray in its owner's colour (a gilt ring for a ruler's army), so woods-green figures never pass for trees.\n- Zoomed far out, each army becomes a stand: a base in its owner's colour (a gilt ring for a ruler's army), its banner, and one figure for each of its three most numerous unit types, under its count plate. Zoom in and the blocks come back.\n- A fortress's muster yard: its armies stand a block to a slot (a capital holds 6 blocks), facing the gate. An army the yard can't hold musters in the war camp outside the walls: tents, a fire and its smoke. A big camp means a big muster: war is coming.\n- Translucent figures in a yard: the recruits you queued, in the slot each will take. Only you see them.\n- An army in a column at its gate (or the edge of its province), facing a road, with a gilt arrow on its plate: one you ordered to march. It leaves when the turn ends. Only you see it gathered.\n- White arrows along the roads: your queued moves.\n- During a turn's playback the captions follow the turn report's phases: Movement, Battles, Captures, Recruits. Crossed swords mark a battle: the lines trade blows and the fallen lie where they fell. A capture's colour sweeps out from the arriving column.\n- View fortress (in the recruit panel) or a double-click on a fortress: a close-up of its yard. Esc or zooming out leaves it.\n\nDrag or WASD to pan, the wheel to zoom, double-click to glide to a province, C your capital, F the whole map, L Look A or B. Settings can switch to the 2D map."
+const LEGEND := "The 3D board, what you see:\n- A province's colour wash and inner border: its owner, in their player colour.\n- A white band inside a province: the one you selected. A cream band: the one under the mouse.\n- A soft gilt glow at the edges: where your selected army can march this turn.\n- A dashed gilt band: a King's Roads destination two provinces away.\n- Figures: each army as blocks of its units (a block per unit type, %s), its commander and banner bearer at the back. The plate above gives the exact count.\n- In the woods every block stands on a tray in its owner's colour (a gilt ring for a ruler's army), so woods-green figures never pass for trees.\n- Zoomed far out, each army becomes a stand: a base in its owner's colour (a gilt ring for a ruler's army), its banner, and one figure for each of its three most numerous unit types, under its count plate. Zoom in and the blocks come back.\n- A fortress's muster yard: its armies stand a block to a slot (a capital holds 6 blocks), facing the gate. An army the yard can't hold musters in the war camp outside the walls: tents, a fire and its smoke. A big camp means a big muster: war is coming.\n- Translucent figures in a yard: the recruits you queued, in the slot each will take. Only you see them.\n- An army in a column at its gate (or the edge of its province), facing a road, with a gilt arrow on its plate: one you ordered to march. It leaves when the turn ends. Only you see it gathered.\n- White arrows along the roads: your queued moves.\n- During a turn's playback the captions follow the turn report's phases: Movement, Battles, Captures, Recruits. Crossed swords mark a battle: the lines trade blows and the fallen lie where they fell. A capture's colour sweeps out from the arriving column.\n- View fortress (in the recruit panel) or a double-click on a fortress: a close-up of its yard. Esc or zooming out leaves it.%s\n\nDrag or WASD to pan, the wheel to zoom, double-click to glide to a province, C your capital, F the whole map, L Look A or B. Settings can switch to the 2D map."
 
 var board: Control ## board3d.gd
-var _plates := {} ## province id -> {"root": Control, "name": Label, "income": Label, "glyph": Control, "pennant": Control, "badge": Label}
+var _plates := {} ## province id -> {"root": Control, "name": Label, "income": Label, "glyph": Control, "pennant": Control, "badge": Label, "chip": FortChip or null}
+## M3c S-4: the forts and sieges part of the legend (a game with sieges), between the close-up line and the keys.
+const SIEGE_LEGEND := "\n\nForts and sieges (M3c preview):\n- A fort's kit shows its level: a palisade (a ring of stakes round a small yard), a keep (a walled fort), a citadel (a capital's fortress). A fort someone built wears its builder's kit; a captured fort keeps its look and flies its new owner's colours. The chip on its plate gives the level and the exact walls.\n- Damaged walls: one step of 3 wall strength lost knocks a corner of the gate-side wall down; two steps (battered) knock it lower, with smoke, fire and rubble at its foot; at 0 the whole gate side is down to its footing, rubble in the gap: breached. The look changes exactly where a storm's defense does.\n- Scaffolding round a fort: a level being built. The new walls rise inside it as the work is done (solid up to the turns of work done, faint above). Translucent scaffolding is a Fortify you queued: only you see it.\n- A besieged fort: the besiegers camp in a ring round its walls (a tent and a fire behind each army, facing the walls), their siege works stand before the gate (ladders and mantlets, or a mound, stakes and logs), the siege engines they carry stand at the walls, and chevron banners in their colour are planted round the walls. The garrison stands packed inside, tighter the bigger it is; what doesn't fit packs at the gate.\n- During a turn's playback, Sieges: the camps go up, the camp and engines strike the walls in a burst of dust and the damage look changes; a breach collapses the gate side and shakes the camera; a lifted siege folds its camps. In the Battles, a sally's garrison files out of the gate two abreast, a storm meets at the walls, a breach battle in the gap. Recruits at any fort march in through its gate."
 var _army_plates := {} ## army id -> PanelContainer
 var _built_for: GameState = null
 var _army_sig := ""
@@ -38,6 +45,8 @@ var _play_bar: PanelContainer
 var _play_label: Label
 var _speed_buttons := {}
 var _legend: Label
+var _legend_sieges := false
+var _fortify_plates := {} ## M3c S-4: province id -> the plate over a queued Fortify's ghost scaffold
 var _caption: PanelContainer
 var _caption_title: Label
 var _caption_detail: Label
@@ -72,6 +81,9 @@ func refresh() -> void:
 	if _built_for != map.state:
 		_built_for = map.state
 		_build_province_plates()
+		if map.state.sieges != _legend_sieges:
+			_legend_tip()
+	_build_fortify_plates()
 	_update_province_marks()
 	_dirty = true
 	var sig := "%s|%s|%s|%s" % [map.state.get_instance_id(), map.selected_army_id, board.armies.armies.size(), JSON.stringify(board.armies.gathered)]
@@ -143,6 +155,47 @@ func _build_ghost_plates(ghosts: Array) -> void:
 		_ghost_plates.append(pc)
 
 
+## M3c S-4: a plate over each ghost scaffold (the viewer's own queued Fortify orders): what will rise, and that only
+## they see it. The order's own text is its tooltip.
+func _build_fortify_plates() -> void:
+	var want: Array = board.wv.fortify_ghosts()
+	for pid in _fortify_plates.keys():
+		if not want.has(pid):
+			(_fortify_plates[pid] as Node).queue_free()
+			_fortify_plates.erase(pid)
+	var map: Control = board.map
+	for pid in want:
+		if _fortify_plates.has(pid):
+			continue
+		var p: Province = map.state.find_province(pid)
+		var to: int = mini((p.fort_level if p != null else 0) + 1, FortData.MAX_BUILT)
+		var pc := PanelContainer.new()
+		pc.name = "FortifyPlate_%s" % pid
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(UiPalette.PANEL_BG, 0.75)
+		sb.border_color = UiPalette.GILT
+		sb.set_border_width_all(1)
+		sb.set_corner_radius_all(6)
+		sb.content_margin_left = 6
+		sb.content_margin_right = 6
+		pc.add_theme_stylebox_override("panel", sb)
+		var lb := Label.new()
+		lb.text = "%s queued" % SiegeRules.level_name(to)
+		lb.add_theme_font_size_override("font_size", 13)
+		lb.add_theme_color_override("font_color", UiPalette.GILT)
+		lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		pc.add_child(lb)
+		pc.mouse_filter = Control.MOUSE_FILTER_PASS
+		var i: int = map.orders.fortify_index(pid) if map.orders != null and map.orders.has_method("fortify_index") else -1
+		var order_text: String = String(map.orders.order_texts()[i]) if i >= 0 else ""
+		pc.tooltip_text = TooltipText.plain("Fortify queued: %s at %s" % [SiegeRules.fort_phrase(to), p.name if p != null else pid],
+			"The translucent scaffolding marks where it will rise. The gold is paid when the turn ends; from the next turn the scaffolding stands, and the walls rise inside it as the work is done. Only you see it.%s" % (("\n\n" + order_text) if not order_text.is_empty() else ""))
+		CodexLink.attach(pc, "fortify", map.request_codex)
+		add_child(pc)
+		_fortify_plates[pid] = pc
+	_dirty = true
+
+
 func _unit_name(st: GameState, faction_id: String, type_id: String) -> String:
 	var f := st.find_faction(faction_id)
 	var ut: UnitType = TurnResolver.recruitable_type(f, type_id) if f != null else null
@@ -170,7 +223,7 @@ func _build_province_plates() -> void:
 		row.add_theme_constant_override("separation", 3)
 		root.add_child(row)
 		var glyph: Control = null
-		if p.is_capital or p.has_fort:
+		if p.is_capital or (p.has_fort and not st.sieges): ## M3c S-4: with sieges the fort chip replaces the tower
 			glyph = _Glyph.new()
 			glyph.kind = "crown" if p.is_capital else "tower"
 			glyph.custom_minimum_size = Vector2(20, 16)
@@ -210,8 +263,34 @@ func _build_province_plates() -> void:
 			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 				board.map.select_province(pid)
 				inc.accept_event())
-		root.add_child(inc)
-		_plates[p.id] = {"root": root, "name": name_label, "income": inc, "glyph": glyph, "pennant": null, "badge": null, "sprout": null}
+		var cut_mark: Control = null
+		if st.sieges and SiegeRules.is_cut_off(st, p.id):
+			## M3c S-4 (§10.1, the cut-off): the income with a siege mark, an arrow to the besieger's colour
+			var inc_row := HBoxContainer.new()
+			inc_row.alignment = BoxContainer.ALIGNMENT_CENTER
+			inc_row.add_theme_constant_override("separation", 2)
+			inc_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			root.add_child(inc_row)
+			inc_row.add_child(inc)
+			var mark := _CutMark.new()
+			mark.name = "CutMark"
+			mark.colour = UiPalette.owner_color(st, SiegeRules.besieging_faction(st, p.id), map.seat_order())
+			mark.custom_minimum_size = Vector2(26, 14)
+			mark.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			mark.mouse_filter = Control.MOUSE_FILTER_PASS
+			mark.tooltip_text = TooltipText.plain("Cut off", "%s is besieged and cut off: its %d gold a turn goes to the %s (the arrow, in their colour), and nobody can recruit there until the siege is lifted." % [
+				p.name, p.income, FortView.besieger_name(st, p.id)])
+			CodexLink.attach(mark, "cut_off", map.request_codex)
+			inc_row.add_child(mark)
+			cut_mark = mark
+		else:
+			root.add_child(inc)
+		## M3c S-4: the fort chip (S-3's FortChip, the same on the 2D map and here): level, walls bar, chevrons, site
+		var chip: FortChip = FortChip.make(st, p.id, map.seat_order(), map.request_codex)
+		if chip != null:
+			chip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+			root.add_child(chip)
+		_plates[p.id] = {"root": root, "name": name_label, "income": inc, "glyph": glyph, "pennant": null, "badge": null, "sprout": null, "chip": chip, "cut": cut_mark}
 
 
 ## The map's Sworn Vassals pennants and heir countdowns, mirrored onto the plates (their tooltips are
@@ -381,7 +460,27 @@ func province_tooltip(pid: String) -> String:
 	var income: Dictionary = Breakdown.province_income(st, pid).duplicate(true)
 	income["description"] = ""
 	text += "\n\n" + TooltipText.from_breakdown(income).strip_edges()
+	## M3c S-4: what the board shows at its fort, in words (its kit, damage look, scaffolding, the camp ring)
+	var fort_words := SiegeBoard.describe(st, pid, FortView.besieger_name(st, pid) if SiegeRules.is_besieged(st, pid) else "")
+	if not fort_words.is_empty():
+		text += "\n\n" + TooltipText.wrap_text("On the board: " + fort_words)
 	return CodexLink.with_link(text, TooltipText.codex_for("province"))
+
+
+## M3c S-4: whether `pid`'s plate carries the fort chip (tests).
+func has_fort_chip(pid: String) -> bool:
+	return _plates.has(pid) and _plates[pid].get("chip") != null
+
+
+## M3c S-4: whether `pid`'s plate carries the cut-off mark beside its gold (tests).
+func has_cut_mark(pid: String) -> bool:
+	return _plates.has(pid) and _plates[pid].get("cut") != null
+
+
+## The legend's text for the state the board shows (the siege lines only in a game with sieges).
+func legend_text() -> String:
+	var st: GameState = board.map.state if board != null and board.map != null else null
+	return LEGEND % [Models.block_rule_text(), SIEGE_LEGEND if st != null and st.sieges else ""]
 
 
 ## An army's tooltip: its 2D badge's own (its units' breakdown or the ruler's summary, whose it is, a
@@ -424,14 +523,27 @@ func standing_note(aid: String) -> String:
 	if gathered.has(aid):
 		var to := st.find_province(String(gathered[aid]))
 		return "Ordered to march to %s: it has gathered in a column at %s, facing the road it will take, and leaves when the turn ends. Only you see it gathered." % [
-			to.name if to != null else "its destination", "its gate" if board.wv.fortresses.has(a.location) else "the edge of its province"]
-	if not board.wv.fortresses.has(a.location):
+			to.name if to != null else "its destination", "its gate" if not board.wv.yard_of(a.location, st).is_empty() else "the edge of its province"]
+	var yard: Dictionary = board.wv.yard_of(a.location, st)
+	if yard.is_empty():
 		return ""
 	var p := st.find_province(a.location)
-	var m: Dictionary = board.armies.layout_of(st, board.armies.plan_ctx)["musters"].get(a.location, {})
+	var pn: String = p.name if p != null else "the fort"
+	## M3c S-4: a besieger in the camp ring, a garrison packed inside its walls
+	if board.armies.ring_of(a.location).has(aid):
+		return "It besieges %s: it camps in the ring round the walls (its tent and fire behind it, facing the walls), its side's chevron banners planted round them." % pn
+	var lay: Dictionary = board.armies.layout_of(st, board.armies.plan_ctx)
+	var m: Dictionary = lay["musters"].get(a.location, {})
+	if m.has("overflow"):
+		var inside: bool = (m.get("yard", {}) as Dictionary).has(aid)
+		if SiegeRules.is_besieged(st, a.location):
+			return ("The garrison of %s: it stands packed in the yard, inside the walls, the tighter the bigger the garrison." % pn) if inside else \
+				("%s's yard is full, so this part of the garrison packs tight at the gate: the ground outside belongs to the besiegers." % pn)
+		return ("It stands in %s's yard, inside the walls, facing the gate it will march out of." % pn) if inside else \
+			("%s's yard is full, so this army musters in the war camp outside its gate (a tent behind every block)." % pn)
 	if (m.get("camp", {}) as Dictionary).has(aid):
-		return "%s's yard is full, so this army musters in the war camp outside its walls (a tent behind every block). A camp outgrowing its fortress is a muster getting ready for war." % (p.name if p != null else "The fortress")
-	return "It musters in %s's yard, a block to a slot, facing the gate it will march out of." % (p.name if p != null else "the fortress")
+		return "%s's yard is full, so this army musters in the war camp outside its walls (a tent behind every block). A camp outgrowing its fortress is a muster getting ready for war." % pn
+	return "It musters in %s's yard, a block to a slot, facing the gate it will march out of." % pn
 
 
 # ------------------------------------------------------------------ every frame
@@ -505,6 +617,14 @@ func _process(_delta: float) -> void:
 		placed.append(grect)
 		gp.position = grect.position.round()
 		gp.visible = s3.x > -100 and s3.x < vp.x + 100 and s3.y > -50 and s3.y < vp.y + 50
+	for pid in _fortify_plates.keys():
+		var fpc: PanelContainer = _fortify_plates[pid]
+		var y: Dictionary = board.wv.fort_geom(pid, "palisade", String(board.wv.map_kits().get(pid, "")))
+		var s4: Vector2 = board.project(y["centre"], 12.0)
+		if fpc.size.x <= 1.0:
+			fpc.reset_size()
+		fpc.position = (s4 - Vector2(fpc.size.x * 0.5, fpc.size.y)).round()
+		fpc.visible = not _playing and s4.x > -100 and s4.x < vp.x + 100 and s4.y > -50 and s4.y < vp.y + 50
 	if _playing:
 		_play_label.text = _play_text()
 		_update_caption()
@@ -910,11 +1030,17 @@ func _build_legend() -> void:
 	_legend.add_theme_stylebox_override("normal", style)
 	_legend.position = Vector2(10, 8)
 	_legend.mouse_filter = Control.MOUSE_FILTER_PASS
+	_legend_tip()
+	add_child(_legend)
+
+
+## The legend's tooltip for the state shown (refresh() rebuilds it when a game with sieges comes or goes).
+func _legend_tip() -> void:
 	var lines: Array = []
-	for line in (LEGEND % Models.block_rule_text()).split("\n"):
+	for line in legend_text().split("\n"):
 		lines.append(TooltipText.wrap_text(line) if line.begins_with("- ") or line.length() > TooltipText.WRAP else line)
 	_legend.tooltip_text = "\n".join(lines)
-	add_child(_legend)
+	_legend_sieges = board != null and board.map != null and board.map.state != null and board.map.state.sieges
 
 
 ## The march mark on a gathered army's plate: a small gilt arrow (ordered to march, waiting at the gate).
@@ -950,6 +1076,23 @@ class _Glyph extends Control:
 		var closed := pts.duplicate()
 		closed.append(pts[0])
 		draw_polyline(closed, UiPalette.KEYLINE_INK, 1.5, true)
+
+
+## M3c S-4: a cut-off province's siege mark beside its gold: a small chevron, then an arrow, in the besieger's colour.
+class _CutMark extends Control:
+	var colour := Color.WHITE
+
+	func _draw() -> void:
+		var c := Vector2(6, size.y * 0.5)
+		var chev := PackedVector2Array([c + Vector2(-5, -1), c + Vector2(0, -5), c + Vector2(5, -1), c + Vector2(5, 3), c + Vector2(0, -1), c + Vector2(-5, 3)])
+		draw_colored_polygon(chev, colour)
+		var closed := chev.duplicate()
+		closed.append(chev[0])
+		draw_polyline(closed, UiPalette.KEYLINE_INK, 1.2, true)
+		var a := Vector2(14, size.y * 0.5)
+		draw_line(a, a + Vector2(9, 0), UiPalette.KEYLINE_INK, 4.0)
+		draw_line(a, a + Vector2(9, 0), colour, 2.0)
+		draw_colored_polygon(PackedVector2Array([a + Vector2(12, 0), a + Vector2(7, -4), a + Vector2(7, 4)]), colour)
 
 
 ## The Wild Spreads' sprout (M4-2): the province turns to forest at the end of the turn.

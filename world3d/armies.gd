@@ -7,6 +7,11 @@
 ##   * at a capital: in the fortress's muster yard, a block to a slot (world3d/muster.gd), facing the
 ##     gate; armies the yard can't hold muster in a war camp outside the walls, a tent behind every
 ##     block, a fire and its smoke for every army there;
+##   * M3c S-4, in a game with sieges, at every other fort (a palisade, a keep): its owner's armies packed in its
+##     yard (Muster.packed), the overflow in the war camp outside its gate; at a besieged fort (a capital too) the
+##     garrison packs into the yard, tighter the bigger it is, and what still doesn't fit packs at the gate, while
+##     the besiegers camp in a ring round the walls (a tent and a fire behind each army, facing the walls), their
+##     siege works before the gate and the engines they carry at the walls;
 ##   * elsewhere: on the province's stage, facing its roads.
 ## While a player plans (show_plan(), their own orders only): queued recruits stand as ghosts in the
 ## slots they will take, and armies ordered to march gather in a column at the gate (or the edge of
@@ -18,10 +23,15 @@
 ##             its new place;
 ##   Battles   each battle in turn: the defenders step out to their line (before their gate at a
 ##             fortress), the two lines trade blows (strike poses, lunges, recoils), the fallen topple
-##             and lie in their fallen pose, the winners cheer; a border battle's winners march on;
+##             and lie in their fallen pose, the winners cheer; a border battle's winners march on; at a fort
+##             (M3c S-4) a sally's armies file out of the gate two abreast and form up facing the camps, a storm
+##             meets at the walls, a breach battle in the gap;
+##   Sieges    (M3c S-4) each fort beat in the report's order: the camps go up and the chevrons rise, the camp
+##             and the engines strike the walls and the damage look changes, a breach collapses the gate side
+##             with a rubble burst, a lifted siege folds its camps, masons repair, a new level stands;
 ##   Captures  the new owner's colour sweeps out from its arriving column, the fortress takes its banners;
-##   Recruits  recruits march in through the gate (or appear on the stage) and form up; everyone settles
-##             in their place of the state after.
+##   Recruits  recruits march in through their fort's gate (or appear on the stage) and form up; scaffolding
+##             goes up where a fort was ordered; everyone settles in their place of the state after.
 ## Each phase plays only when the turn has something in it. Beats (march, clash, strike, fall, capture,
 ## recruit) are signalled for the board's sounds. It reads the states and events only and never
 ## changes them; at the end the board stands exactly as built from the state after (tests).
@@ -37,6 +47,8 @@ const Models := preload("res://world3d/models.gd")
 const Playback := preload("res://world3d/playback.gd")
 const Muster := preload("res://world3d/muster.gd")
 const Choreo := preload("res://world3d/choreo.gd")
+const WorldView := preload("res://world3d/world_view.gd")
+const SiegeBoard := preload("res://world3d/siege_board.gd")
 const SH_GHOST := preload("res://world3d/shaders/ghost.gdshader")
 const SH_SMOKE := preload("res://world3d/shaders/smoke.gdshader")
 const SPEED := 21.0 ## march speed, world units a second at 1x
@@ -57,6 +69,11 @@ const CAMP_OUT := 5.0 ## the war camp's first row, out from the gate
 const ROAD_CLEAR := 7.0 ## the camp keeps this far off the road out of the gate
 const SMOKE_PUFFS := 6
 const MUSICIAN_OFF_RUNG := 2 ## #125: the musician stands down from this quality rung (world_view.gd set_quality)
+const RING_GAP := 12.0 ## M3c S-4: a besieging army's front stands this far outside the walls
+const RING_TENT := 4.5 ## its tent stands this far behind its last rank
+const GATE_APRON := 9.0 ## a besieged garrison's overflow packs this deep outside its gate
+const SIEGE_BEAT := 1.15 ## a fort beat of the sieges phase (seconds at 1x); a breach takes longer
+const BREACH_BEAT := 1.6
 
 ## #125: the musician in every colour party (off on the lower quality rungs: the board sets it, musicians_at).
 static var musicians := true
@@ -72,6 +89,8 @@ signal clash_started(label: String)
 signal beat(kind: String, index: int)
 ## The whole turn has played (or was skipped); the board now shows the state after.
 signal playback_finished
+## M3c S-4: a fort beat plays (the board's dust and shake): `kind` from Choreo.FORT_BEATS, at the fort's province.
+signal fort_beat(province_id: String, kind: String, index: int)
 
 var wv: Node3D ## world_view.gd
 var prefer_models := true ## false: every figure as its primitive (the preview's P key)
@@ -80,12 +99,14 @@ var seats: Array = []
 var armies := {} ## army id -> entry: {"id", "owner", "colour", "emblem", "figs", "types", "banner", "province", "units", "ruler", "ghost"}
 var ghost_root: Node3D
 var camp_root: Node3D
-var camps := {} ## province id -> {"tents": [{"pos", "yaw", "y", "style", "colour"}], "fires": [Vector3]}: the camps standing now
+var camps := {} ## province id -> {"tents": [{"pos", "yaw", "y", "style", "colour", "ring"}], "fires": [Vector3], "works": [{"pos", "yaw", "y", "style", "colour", "kind"}]}: the camps standing now
+var rings := {} ## M3c S-4: province id -> {"besieger", "camps": [army ids]}: the besieged forts' camp rings standing now
 var gathered := {} ## army id -> the province it was ordered to: armies gathered at their gate (planning cue)
 var plan_ctx := {} ## the viewing player's plan the board shows (show_plan)
 var _ghost_entries: Array = []
 var _plan_key := ""
 var _camp_key := ""
+var _engines: Array = [] ## M3c S-4: the siege engines standing at besieged forts: [{"mm", "i", "xf", "fwd", "pos"}]
 var _mats := {}
 var _play: Dictionary = {}
 var clock := 0.0
@@ -160,6 +181,7 @@ func show_state(s: GameState, p_seats: Array, ctx: Dictionary = {}) -> void:
 	gathered = lay["gathered"]
 	_set_ghosts(lay["ghosts"])
 	_set_camps(lay["camps"])
+	rings = lay["rings"]
 
 
 ## The viewing player's plan, drawn on the standing armies (their own orders only; the board never
@@ -198,6 +220,7 @@ func show_plan(ctx: Dictionary) -> void:
 	gathered = lay["gathered"]
 	_set_ghosts(lay["ghosts"])
 	_set_camps(lay["camps"])
+	rings = lay["rings"]
 
 
 static func _key_of(ctx: Dictionary) -> String:
@@ -272,9 +295,10 @@ func arrange(s: GameState, ctx: Dictionary = {}) -> Dictionary:
 
 ## The whole layout of `s` under the plan `ctx` (show_plan's format): {"places": army id -> figure
 ## places, "ghosts": [{"province", "owner", "types", "figs": [places]}], "camps": province id -> camp,
-## "gathered": army id -> destination, "musters": province id -> Muster.layout()}. Pure of nodes.
+## "gathered": army id -> destination, "musters": province id -> Muster.layout() (or, at a fort's yard,
+## Muster.packed()), "rings": province id -> {"besieger", "camps": [army ids]} (M3c S-4)}. Pure of nodes.
 func layout_of(s: GameState, ctx: Dictionary = {}) -> Dictionary:
-	var out := {"places": {}, "ghosts": [], "camps": {}, "gathered": {}, "musters": {}}
+	var out := {"places": {}, "ghosts": [], "camps": {}, "gathered": {}, "musters": {}, "rings": {}}
 	var departing: Dictionary = ctx.get("departing", {})
 	var by_prov := {}
 	var dep_prov := {}
@@ -305,13 +329,23 @@ func layout_of(s: GameState, ctx: Dictionary = {}) -> Dictionary:
 			continue
 		var list: Array = by_prov.get(pid, [])
 		var gh: Array = _ghost_entries_for(s, pid, ghost_by.get(pid, []), departing)
-		if wv.fortresses.has(pid):
-			_layout_fortress(s, pid, list, gh, out)
-		else:
+		var y: Dictionary = wv.yard_of(pid, s)
+		if y.is_empty():
 			_layout_stage(pid, list, gh, out)
+		else:
+			var p := s.find_province(pid)
+			var owner: String = p.owner if p != null else ""
+			var besieged: bool = s.sieges and SiegeRules.is_besieged(s, pid)
+			if bool(y["capital"]) and not besieged:
+				_layout_fortress(s, pid, y, list, gh, out)
+			else:
+				_layout_packed(pid, y, list.filter(func(d): return d["owner"] == owner), gh, out, besieged)
+				var others: Array = list.filter(func(d): return d["owner"] != owner)
+				if not others.is_empty():
+					_layout_ring(s, pid, y, others, out)
 		var deps: Array = dep_prov.get(pid, [])
 		if not deps.is_empty():
-			_layout_gather(pid, deps, departing, out)
+			_layout_gather(pid, deps, departing, out, y)
 	return out
 
 
@@ -345,10 +379,11 @@ func _ghost_entries_for(s: GameState, pid: String, groups: Array, departing: Dic
 	return out
 
 
-## A fortress's armies in its muster yard and war camp (Muster.layout), its ghosts in their slots.
-func _layout_fortress(s: GameState, pid: String, list: Array, ghosts: Array, out: Dictionary) -> void:
+## A fortress's armies in its muster yard and war camp (Muster.layout), its ghosts in their slots. `y` its
+## yard (WorldView.yard_of).
+func _layout_fortress(s: GameState, pid: String, y: Dictionary, list: Array, ghosts: Array, out: Dictionary) -> void:
 	var t = wv.terrain
-	var ct: Array = wv.courtyard(pid)
+	var ct: Array = WorldView.court_of(y)
 	var facing: Vector2 = ct[1]
 	var row: Dictionary = Models.building_row("fortress", String(wv.capital_of.get(pid, "")))
 	var mrow: Dictionary = row.get("muster", {})
@@ -356,15 +391,15 @@ func _layout_fortress(s: GameState, pid: String, list: Array, ghosts: Array, out
 	var p := s.find_province(pid)
 	var m := Muster.layout(list, g, p.owner if p != null else "")
 	out["musters"][pid] = m
-	var fr := yard_frame(pid)
+	var fr := yard_frame(pid, y)
 	var yaw: float = atan2(-facing.x, -facing.y)
-	var floor_y: float = t.stage_h[t.index_of(pid)] + float(wv.fortresses[pid]["floor"])
+	var floor_y: float = float(y["floor_y"])
 	for aid in m["yard"].keys():
 		var placed: Array = []
 		for f in m["yard"][aid]:
 			placed.append({"type": f["type"], "role": f["role"], "pos": _yard_point(fr, f["pos"]), "yaw": yaw, "y": floor_y})
 		out["places"][aid] = placed
-	var cf := camp_frame(pid)
+	var cf := camp_frame(pid, y)
 	var tents: Array = []
 	var fires: Array = []
 	var owner_of := {}
@@ -398,9 +433,10 @@ func _layout_fortress(s: GameState, pid: String, list: Array, ghosts: Array, out
 	out["ghosts"].append({"province": pid, "owner": owner2, "types": types, "figs": figs})
 
 
-## The yard's frame in the world: {"o" the slot grid's front middle, "x" across, "z" into the yard}.
-func yard_frame(pid: String) -> Dictionary:
-	var ct: Array = wv.courtyard(pid)
+## The yard's frame in the world: {"o" the slot grid's front middle, "x" across, "z" into the yard}. `y` the
+## yard (WorldView.yard_of; a capital's when omitted).
+func yard_frame(pid: String, y: Dictionary = {}) -> Dictionary:
+	var ct: Array = WorldView.court_of(y if not y.is_empty() else wv.yard_of(pid, state))
 	var facing: Vector2 = ct[1]
 	var row: Dictionary = Models.building_row("fortress", String(wv.capital_of.get(pid, "")))
 	var g := Muster.grid(float(ct[2]), float(ct[3]), int((row.get("muster", {}) as Dictionary).get("slots", Muster.YARD_SLOTS)))
@@ -412,9 +448,10 @@ func yard_frame(pid: String) -> Dictionary:
 
 
 ## The war camp's frame: outside the gate, beside the road, {"o", "x" along the wall, "z" outward}.
-func camp_frame(pid: String) -> Dictionary:
-	var g: Array = wv.gate_points(pid)
-	var facing: Vector2 = wv.fortresses[pid]["gate_dir"]
+func camp_frame(pid: String, y: Dictionary = {}) -> Dictionary:
+	var yd: Dictionary = y if not y.is_empty() else wv.yard_of(pid, state)
+	var g: Array = yd["gate"]
+	var facing: Vector2 = yd["gate_dir"]
 	var right := Vector2(-facing.y, facing.x)
 	var o: Vector2 = (g[1] as Vector2) + facing * CAMP_OUT + right * ROAD_CLEAR
 	return {"o": o, "x": right, "z": facing}
@@ -475,15 +512,181 @@ func _layout_stage(pid: String, list0: Array, ghosts: Array, out: Dictionary) ->
 			out["places"][d["id"]] = placed
 
 
+## M3c S-4: a fort's yard (a palisade's or a keep's, or any besieged fort's): its owner's armies packed in the court
+## (Muster.packed), tighter the bigger the garrison; the armies that don't fit muster in the war camp outside the gate
+## or, while the fort is `besieged`, pack at the gate (the camp ground belongs to the besiegers). Queued recruits
+## (ghosts) take the next places.
+func _layout_packed(pid: String, y: Dictionary, mine: Array, ghosts: Array, out: Dictionary, besieged: bool) -> void:
+	var t = wv.terrain
+	var ct: Array = WorldView.court_of(y)
+	var facing: Vector2 = ct[1]
+	var yaw: float = atan2(-facing.x, -facing.y)
+	var descs: Array = mine.duplicate()
+	var gdesc := _ghost_desc(pid, ghosts)
+	if not gdesc.is_empty():
+		descs.append(gdesc)
+	var m := Muster.packed(descs, float(ct[2]), float(ct[3]))
+	out["musters"][pid] = m
+	var o: Vector2 = ct[0]
+	var inward: Vector2 = -facing
+	var right := Vector2(-facing.y, facing.x)
+	var floor_y: float = float(y["floor_y"])
+	var placed_of := {}
+	for aid in m["yard"].keys():
+		var placed: Array = []
+		for f in m["yard"][aid]:
+			var lp: Vector2 = f["pos"]
+			placed.append({"type": f["type"], "role": f["role"], "pos": o + right * lp.x + inward * lp.y, "yaw": yaw, "y": floor_y})
+		placed_of[aid] = placed
+	var over: Array = m["overflow"]
+	if not over.is_empty():
+		if besieged:
+			var gp: Array = y["gate"]
+			for aid in Muster.gate_packed(over).keys():
+				var placed2: Array = []
+				for f in Muster.gate_packed(over)[aid]:
+					var lp2: Vector2 = f["pos"]
+					var w: Vector2 = (gp[1] as Vector2) + right * lp2.x + facing * minf(lp2.y, GATE_APRON)
+					placed2.append({"type": f["type"], "role": f["role"], "pos": w, "yaw": yaw, "y": maxf(t.height_at(w), 0.0)})
+				placed_of[aid] = placed2
+		else:
+			var cf := camp_frame(pid, y)
+			var tents: Array = []
+			var fires: Array = []
+			var k := 0
+			for d in over:
+				var need: Array = Muster.army_slots(d)
+				var centres: Array = []
+				var first := k
+				for j in need.size():
+					centres.append(Muster.camp_block_centre(k))
+					var tp := _camp_point(cf, Muster.camp_tent_point(k))
+					if d["id"] != "~ghost":
+						tents.append({"pos": tp, "yaw": yaw, "y": maxf(t.height_at(tp), 0.0), "style": d["owner"], "colour": _colour_of(d["owner"])})
+					k += 1
+				var placed3: Array = []
+				for f in Muster.figures_at(need, centres):
+					var w2 := _camp_point(cf, f["pos"])
+					placed3.append({"type": f["type"], "role": f["role"], "pos": w2, "yaw": yaw, "y": maxf(t.height_at(w2), 0.0)})
+				placed_of[d["id"]] = placed3
+				if d["id"] != "~ghost":
+					var fp := _camp_point(cf, Muster.camp_fire_point(first))
+					fires.append(Vector3(fp.x, maxf(t.height_at(fp), 0.0), fp.y))
+			if not tents.is_empty():
+				out["camps"][pid] = {"tents": tents, "fires": fires}
+	for aid in placed_of.keys():
+		if aid == "~ghost":
+			var gf: Array = (placed_of[aid] as Array).filter(func(sl): return sl["role"] != "bearer" and sl["role"] != "musician")
+			out["ghosts"].append({"province": pid, "owner": gdesc["owner"], "types": gdesc["types"], "figs": gf})
+		else:
+			out["places"][aid] = placed_of[aid]
+
+
+## Queued recruits at a yard or a stage as one block description ("~ghost"), or {} for none.
+func _ghost_desc(pid: String, ghosts: Array) -> Dictionary:
+	if ghosts.is_empty():
+		return {}
+	var blocks: Array = []
+	var leaders: Array = []
+	var types: Array = []
+	for gh in ghosts:
+		for q in int(gh["n"]):
+			types.append(gh["type"])
+		if bool(gh["leader"]):
+			leaders.append({"type": gh["type"], "role": "commander", "rank": 2, "sp": gh["sp"]})
+		else:
+			blocks.append({"type": gh["type"], "n": int(gh["n"]), "rank": Models.rank_of(gh["type"]), "sp": gh["sp"]})
+	return {"id": "~ghost", "owner": ghosts[0]["owner"], "location": pid, "blocks": blocks, "leaders": leaders, "types": types, "extras": []}
+
+
+## M3c S-4 (§10.1): a besieged fort's besiegers in a ring of camps outside the walls, one per army in id order: the
+## army's formation facing the walls, its tent and fire behind it; the slots start beside the gate and go round
+## (SiegeBoard.ring_angles), skipping ground that isn't the province's own. Their siege works stand before the gate
+## and the engines they carry at the walls, in the besieging faction's kit.
+func _layout_ring(s: GameState, pid: String, y: Dictionary, others: Array, out: Dictionary) -> void:
+	var t = wv.terrain
+	var list: Array = others.duplicate()
+	list.sort_custom(func(a, b): return a["id"] < b["id"])
+	var centre: Vector2 = y["centre"]
+	var gd: Vector2 = y["gate_dir"]
+	var r0: float = float(y["radius"])
+	var besieger: String = SiegeRules.besieging_faction(s, pid) if s.sieges else String(list[0]["owner"])
+	if besieger.is_empty():
+		besieger = String(list[0]["owner"])
+	var cands: Array = SiegeBoard.ring_angles(8)
+	for k in 8:
+		cands.append(deg_to_rad(18.0 + 45.0 * k) * (1.0 if k % 2 == 0 else -1.0))
+	var used: Array = []
+	var tents: Array = []
+	var fires: Array = []
+	var ids: Array = []
+	for d in list:
+		var slots: Array = Kit.formation_blocks(d["blocks"], d["leaders"], 26.0, d.get("extras", ["bearer"]))
+		var depth: float = Kit.formation_depth(slots)
+		var pick := -1
+		for ci in cands.size():
+			if used.has(ci):
+				continue
+			var dir0: Vector2 = gd.rotated(float(cands[ci]))
+			var far: Vector2 = centre + dir0 * (r0 + RING_GAP + depth + RING_TENT + 3.0)
+			var near: Vector2 = centre + dir0 * (r0 + RING_GAP)
+			if t.province_at(far) == pid and t.province_at(near) == pid and t.coast_at(far) > 2.0:
+				pick = ci
+				break
+		if pick < 0:
+			for ci2 in cands.size():
+				if not used.has(ci2):
+					pick = ci2
+					break
+		used.append(pick)
+		var dir: Vector2 = gd.rotated(float(cands[pick]))
+		var facing: Vector2 = -dir
+		var origin: Vector2 = centre + dir * (r0 + RING_GAP)
+		var basis := Basis.looking_at(Vector3(facing.x, 0, facing.y), Vector3.UP)
+		var placed: Array = []
+		for sl in slots:
+			var lp: Vector2 = sl["pos"]
+			var w3: Vector3 = basis * Vector3(lp.x, 0, lp.y)
+			var p: Vector2 = origin + Vector2(w3.x, w3.z)
+			placed.append({"type": sl["type"], "role": sl["role"], "pos": p, "yaw": atan2(-facing.x, -facing.y), "y": maxf(t.height_at(p), 0.0)})
+		out["places"][d["id"]] = placed
+		ids.append(d["id"])
+		var tp: Vector2 = origin + dir * (depth + RING_TENT)
+		tents.append({"pos": tp, "yaw": atan2(-facing.x, -facing.y), "y": maxf(t.height_at(tp), 0.0), "style": d["owner"], "colour": _colour_of(d["owner"]), "ring": true})
+		var fp: Vector2 = tp + Vector2(-dir.y, dir.x) * (Muster.SLOT.x * 0.5 + 1.5)
+		fires.append(Vector3(fp.x, maxf(t.height_at(fp), 0.0), fp.y))
+	## the siege works before the gate, and the engines the besiegers carry at the walls
+	var works: Array = []
+	var wyaw: float = atan2(gd.x, gd.y) ## the works' and engines' front (-Z) faces the walls
+	var wp: Vector2 = centre + gd * (r0 + 8.0)
+	works.append({"pos": wp, "yaw": wyaw, "y": maxf(t.height_at(wp), 0.0), "style": besieger, "colour": _colour_of(besieger), "kind": "siege_works"})
+	var engines := 0
+	for a in s.armies:
+		if a.location == pid and ids.has(a.id):
+			engines += a.engines
+	var shown: int = mini(engines, 6)
+	var side := Vector2(-gd.y, gd.x)
+	for k in shown:
+		var ep: Vector2 = centre + gd * (r0 + 3.5) + side * ((k - (shown - 1) * 0.5) * 6.0 + (7.0 if k >= shown / 2 else -7.0))
+		works.append({"pos": ep, "yaw": wyaw, "y": maxf(t.height_at(ep), 0.0), "style": besieger, "colour": _colour_of(besieger), "kind": "siege_engine"})
+	var camp: Dictionary = out["camps"].get(pid, {"tents": [], "fires": []})
+	(camp["tents"] as Array).append_array(tents)
+	(camp["fires"] as Array).append_array(fires)
+	camp["works"] = works
+	out["camps"][pid] = camp
+	ids.sort()
+	out["rings"][pid] = {"besieger": besieger, "camps": ids}
+
+
 ## Armies ordered to march (the planning player's own) gather in a column, two abreast with the banner at
 ## the head: outside the gate on the road to their first border at a fortress, else at their stage's edge
 ## facing it. Several columns at one gate stand side by side.
-func _layout_gather(pid: String, deps0: Array, departing: Dictionary, out: Dictionary) -> void:
+func _layout_gather(pid: String, deps0: Array, departing: Dictionary, out: Dictionary, yard: Dictionary = {}) -> void:
 	var t = wv.terrain
 	var deps: Array = deps0.duplicate()
 	deps.sort_custom(func(x, y): return x["id"] < y["id"])
 	var c: Vector2 = t.centre_of(pid)
-	var in_fort: bool = wv.fortresses.has(pid)
+	var in_fort: bool = not yard.is_empty()
 	for ci in deps.size():
 		var d: Dictionary = deps[ci]
 		var dep: Dictionary = departing[d["id"]]
@@ -497,8 +700,8 @@ func _layout_gather(pid: String, deps0: Array, departing: Dictionary, out: Dicti
 		var tail: Vector2
 		var dir: Vector2
 		if in_fort:
-			var gp: Array = wv.gate_points(pid)
-			var facing: Vector2 = wv.fortresses[pid]["gate_dir"]
+			var gp: Array = yard["gate"]
+			var facing: Vector2 = yard["gate_dir"]
 			tail = (gp[1] as Vector2) + facing * 2.0
 			dir = ((cross - tail).normalized() + facing).normalized()
 		else:
@@ -616,6 +819,8 @@ func _fill_entry(e: Dictionary, placed: Array, ghost: bool = false) -> void:
 		if sl.has("in_path"):
 			f["in_path"] = sl["in_path"]
 			f["in_t0"] = sl["in_t0"]
+			if sl.get("keep_scale", false):
+				f["keep_scale"] = true
 		e["figs"].append(f)
 		k += 1
 	if not e.has("banner") or e["banner"] == null:
@@ -877,12 +1082,14 @@ func _set_camps(c: Dictionary) -> void:
 	if key == _camp_key:
 		return
 	_camp_key = key
+	_engines.clear()
 	for ch in camp_root.get_children():
 		ch.queue_free()
 	if c.is_empty():
 		return
 	var by_style := {}
 	var fires: Array = []
+	var works := {} ## M3c S-4: "kind|style" -> the siege works and engines standing at besieged forts
 	for pid in c.keys():
 		for tn in c[pid]["tents"]:
 			var st := String(tn["style"])
@@ -890,6 +1097,13 @@ func _set_camps(c: Dictionary) -> void:
 				by_style[st] = []
 			by_style[st].append(tn)
 		fires.append_array(c[pid]["fires"])
+		for wk in c[pid].get("works", []):
+			var wkey := "%s|%s" % [wk["kind"], wk["style"]]
+			if not works.has(wkey):
+				works[wkey] = []
+			works[wkey].append(wk)
+	for wkey in works.keys():
+		_build_works(String(wkey).get_slice("|", 0), String(wkey).get_slice("|", 1), works[wkey])
 	for st in by_style.keys():
 		var list: Array = by_style[st]
 		var mm := MultiMesh.new()
@@ -953,6 +1167,78 @@ func _set_camps(c: Dictionary) -> void:
 	camp_root.add_child(smi)
 
 
+## M3c S-4: a besieger's siege works or engines (`kind` "siege_works" or "siege_engine") in `style` (its faction's
+## kit): the model table's model, else the code primitive, in one MultiMesh with the besieger's colour on its team
+## parts. The engines are kept so a strike beat can lunge them at the walls (_strike_engines).
+func _build_works(kind: String, style: String, list: Array) -> void:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
+	var glb: Dictionary = Models.building_model(kind, style)
+	var row: Dictionary = Models.building_row(kind, style)
+	var sc := 1.0
+	var lift := Vector3.ZERO
+	if not glb.is_empty():
+		var aabb: AABB = glb["aabb"]
+		mm.mesh = glb["mesh"]
+		sc = float(row.get("side", 10.0)) / maxf(maxf(aabb.size.x, aabb.size.z), 0.01)
+		lift = Vector3(-aabb.get_center().x, -aabb.position.y, -aabb.get_center().z) * sc
+	else:
+		mm.mesh = Models.building_primitive(kind, style)
+	mm.instance_count = list.size()
+	for i in list.size():
+		var wk: Dictionary = list[i]
+		var p: Vector2 = wk["pos"]
+		var yaw: float = float(wk["yaw"]) + (deg_to_rad(float(row.get("yaw", 180.0))) if not glb.is_empty() else 0.0)
+		var xf := Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * sc), Vector3(p.x, float(wk["y"]) - 0.1, p.y) + Basis(Vector3.UP, yaw) * lift)
+		mm.set_instance_transform(i, xf)
+		mm.set_instance_custom_data(i, (wk["colour"] as Color).srgb_to_linear())
+		if kind == "siege_engine":
+			_engines.append({"mm": mm, "i": i, "xf": xf, "fwd": Vector3(-sin(float(wk["yaw"])), 0, -cos(float(wk["yaw"]))), "pos": p})
+	var mi := MultiMeshInstance3D.new()
+	mi.name = "%s_%s" % [kind.capitalize().replace(" ", ""), style]
+	mi.multimesh = mm
+	mi.material_override = wv.model_mat(Color.WHITE, glb.get("tex"), float(row.get("key_hue", -1.0)) if not glb.is_empty() else -1.0, true, 0.92, Color.WHITE, 1.0)
+	camp_root.add_child(mi)
+
+
+## M3c S-4: the engines at `province_id`'s walls lunge `k` (0..1) of a stroke toward them (a strike beat).
+func _strike_engines(province_id: String, k: float) -> void:
+	var y: Dictionary = wv.yard_of(province_id, state)
+	if y.is_empty():
+		return
+	for en in _engines:
+		if (en["pos"] as Vector2).distance_to(y["centre"]) > float(y["radius"]) + 12.0:
+			continue
+		var xf: Transform3D = en["xf"]
+		(en["mm"] as MultiMesh).set_instance_transform(int(en["i"]), Transform3D(xf.basis, xf.origin + (en["fwd"] as Vector3) * 2.2 * k))
+
+
+## M3c S-4: the besieging armies camped round `province_id`'s walls, sorted ([] with no siege there).
+func ring_of(province_id: String) -> Array:
+	return ((rings.get(province_id, {}) as Dictionary).get("camps", []) as Array).duplicate()
+
+
+## M3c S-4: how many tents stand in `province_id`'s camp ring.
+func ring_tents(province_id: String) -> int:
+	var n := 0
+	for tn in (camps.get(province_id, {}) as Dictionary).get("tents", []):
+		if bool(tn.get("ring", false)):
+			n += 1
+	return n
+
+
+## Every army's figures where they stand now: {army id: [{"type", "pos", "y"}]} (tests).
+func full_snapshot_by_army() -> Dictionary:
+	var out := {}
+	for id in armies.keys():
+		var list: Array = []
+		for f in armies[id]["figs"]:
+			list.append({"type": f["type"], "pos": f["pos"], "y": f["y"]})
+		out[id] = list
+	return out
+
+
 ## How many tents stand in war camps now (tests, the legend).
 func tent_count() -> int:
 	var n := 0
@@ -975,7 +1261,8 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 	_set_ghosts([])
 	show_state(before, seats, {"departing": departing})
 	var t = wv.terrain
-	var dest: Dictionary = arrange(after)
+	var lay_after := layout_of(after)
+	var dest: Dictionary = lay_after["places"]
 	var battles: Array = plan.get("battles", [])
 	var marches: Array = plan.get("marches", [])
 	var march_of := {}
@@ -1049,10 +1336,27 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 		for aid in b["armies"]:
 			if arrive.has(aid) and ways.has(aid):
 				ready = maxf(ready, float(arrive[aid]))
+		## M3c S-4: a sally (or the garrison coming out with a relief) spills out of the gate in a column two abreast
+		## and forms up facing the camps
+		var sallied := {}
+		var sg2: Dictionary = b.get("siege", {})
+		if String(sg2.get("kind", "")) == "open" and g.has("yard"):
+			var yd: Dictionary = g["yard"]
+			var gpts: Array = yd["gate"]
+			var gate_way := PackedVector2Array([gpts[0], gpts[1], (gpts[1] as Vector2) + (yd["gate_dir"] as Vector2) * 5.0])
+			for aid in sg2.get("from_inside", []):
+				if ways.has(aid) or not armies.has(aid) or not g["lines"].has(aid):
+					continue
+				var arr_s := cursor
+				for sc in _march(armies[aid], gate_way, g["lines"][aid], cursor):
+					_add_leg(sc["fig"], sc)
+					arr_s = maxf(arr_s, float(sc["t_arrive"]))
+				ready = maxf(ready, arr_s)
+				sallied[aid] = true
 		var tb := ready
 		## defenders (they did not march) step out to their line
 		for aid in b["armies"]:
-			if ways.has(aid) or not armies.has(aid) or not g["lines"].has(aid):
+			if ways.has(aid) or sallied.has(aid) or not armies.has(aid) or not g["lines"].has(aid):
 				continue
 			var e2: Dictionary = armies[aid]
 			var line: Array = g["lines"][aid]
@@ -1122,8 +1426,26 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 		for f in armies[aid]["figs"]:
 			if not f.has("die_at"):
 				f["die_at"] = battles_end - 0.6 + Choreo.hash01(aid, int(f["phase"] * 100.0)) * 0.3
+	## Sieges (M3c S-4, §10.2): each fort beat of the sieges phase in the report's order, at its fort; the forts'
+	## looks, camps and chevrons change as each beat plays (step_playback: _fort_camps, _apply_fort)
+	var fort_steps: Array = []
+	var t_s0: float = (battles_end + PHASE_GAP) if not battles.is_empty() else ((t_move_end + PHASE_GAP) if not ways.is_empty() else T0)
+	var ts := t_s0
+	var fort_i := 0
+	for fb in plan.get("forts", []):
+		if String(fb["phase"]) != "sieges":
+			continue
+		var fkind := String(Choreo.FORT_BEATS.get(fb["kind"], ""))
+		var dur: float = BREACH_BEAT if fb["kind"] == "walls_breached" else SIEGE_BEAT
+		fort_steps.append({"t": ts, "apply": ts + dur * 0.7, "t1": ts + dur, "beat": fb, "kind": fkind, "index": fort_i})
+		beats.append({"kind": fkind, "t": ts, "phase": "sieges", "index": fort_i})
+		if fb["kind"] in ["siege_started", "walls_damaged"]:
+			_siege_strikes(fb, ts, dur)
+		fort_i += 1
+		ts += dur
+	var t_s_end := ts
 	## Captures: the new owner's colour sweeps out from its arriving column
-	var t_c0: float = (battles_end + PHASE_GAP) if not battles.is_empty() else (t_move_end + PHASE_GAP)
+	var t_c0: float = (t_s_end + PHASE_GAP) if not fort_steps.is_empty() else ((battles_end + PHASE_GAP) if not battles.is_empty() else (t_move_end + PHASE_GAP))
 	var caps: Array = []
 	var caps_list: Array = plan.get("captures", [])
 	for i in caps_list.size():
@@ -1161,6 +1483,19 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 	var t_c_end: float = t_c0
 	if not caps.is_empty():
 		t_c_end = t_c0 + (caps.size() - 1) * CAPTURE_STEP + SWEEP_TIME
+	## a site razed in capture collapses as its province's colour sweeps in
+	for fb2 in plan.get("forts", []):
+		if String(fb2["phase"]) != "capture":
+			continue
+		var tr: float = t_c0
+		for cp in caps:
+			if cp["province"] == fb2["province"]:
+				tr = float(cp["t"]) + 0.3
+		var k2 := String(Choreo.FORT_BEATS.get(fb2["kind"], ""))
+		fort_steps.append({"t": tr, "apply": tr + 0.2, "t1": tr + SIEGE_BEAT, "beat": fb2, "kind": k2, "index": fort_i})
+		beats.append({"kind": k2, "t": tr, "phase": "capture", "index": fort_i})
+		fort_i += 1
+		t_c_end = maxf(t_c_end, tr + SIEGE_BEAT)
 	if not pending_walk.is_empty():
 		t_c_end = maxf(t_c_end, t_c0 + 1.6)
 	## every leg done before the re-form
@@ -1188,12 +1523,29 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 					names.append(pp.name)
 			phases.append({"key": "movement", "t0": clashes_end + 0.1, "t1": battles_end,
 				"detail": "The winners march on to %s" % " and ".join(names) if not names.is_empty() else "The winners march on"})
+	var sieges_steps: Array = fort_steps.filter(func(st): return st["beat"]["phase"] == "sieges")
+	if not sieges_steps.is_empty():
+		phases.append({"key": "sieges", "t0": t_s0 - 0.1, "t1": t_s_end, "detail": String(sieges_steps[0]["beat"]["label"])})
 	if not caps.is_empty():
 		phases.append({"key": "capture", "t0": t_c0 - 0.1, "t1": t_c_end, "detail": _capture_text(caps[0], after)})
 	var recruits: Array = plan.get("recruits", [])
 	var arrivals: Array = plan.get("arrivals", [])
-	if not recruits.is_empty() or not arrivals.is_empty():
-		phases.append({"key": "recruitment", "t0": t_reform, "t1": t_reform + REFORM, "detail": _recruit_text(recruits, arrivals, after)})
+	## scaffolding goes up where a fort was ordered, as the recruits come in
+	var sites: Array = []
+	for fb3 in plan.get("forts", []):
+		if String(fb3["phase"]) != "recruitment":
+			continue
+		var tq: float = t_reform + 0.3 + sites.size() * 0.35
+		var k3 := String(Choreo.FORT_BEATS.get(fb3["kind"], ""))
+		fort_steps.append({"t": tq, "apply": tq + 0.1, "t1": tq + SIEGE_BEAT, "beat": fb3, "kind": k3, "index": fort_i})
+		beats.append({"kind": k3, "t": tq, "phase": "recruitment", "index": fort_i})
+		sites.append(fb3)
+		fort_i += 1
+	if not recruits.is_empty() or not arrivals.is_empty() or not sites.is_empty():
+		var rdetail: String = _recruit_text(recruits, arrivals, after)
+		if rdetail.is_empty():
+			rdetail = String(sites[0]["label"])
+		phases.append({"key": "recruitment", "t0": t_reform, "t1": t_reform + REFORM, "detail": rdetail})
 	var active: Array = []
 	for aid in armies.keys():
 		for f in armies[aid]["figs"]:
@@ -1206,9 +1558,107 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 		if bt["kind"] == "march":
 			bt["index"] = march_i
 			march_i += 1
+	fort_steps.sort_custom(func(a, b): return float(a["t"]) < float(b["t"]))
+	var t_end: float = t_reform + REFORM + TAIL
+	for st in fort_steps:
+		t_end = maxf(t_end, float(st["t1"]) + TAIL)
+	var fm := SiegeBoard.model_of(before)
 	_play = {"t": 0.0, "clashes": clashes, "caps": caps, "t_march": t_move_end, "t_reform": t_reform,
-		"t_end": t_reform + REFORM + TAIL, "after": after, "dest": dest, "reformed": false, "plan": plan,
-		"phases": phases, "beats": beats, "active": active, "recruit_beats": 0}
+		"t_end": t_end, "after": after, "dest": dest, "reformed": false, "plan": plan,
+		"phases": phases, "beats": beats, "active": active, "recruit_beats": 0,
+		## M3c S-4: the forts as they stand through the turn (SiegeBoard's part of the board model), stepped by
+		## each fort beat; the camps and rings of the state after, which a siege's beats put up or fold
+		"fort_steps": fort_steps, "fm": fm, "worked": SiegeBoard.worked_sites(fm.get("works", {})), "worked_done": false,
+		"camps_after": lay_after["camps"], "rings_after": lay_after["rings"]}
+
+
+## M3c S-4: a siege's strike at the walls (siege_started, walls_damaged): the besieging armies turn to the walls and
+## strike twice through the beat (the exchange's strike poses and lunges, with no enemy to recoil).
+func _siege_strikes(fb: Dictionary, ts: float, dur: float) -> void:
+	var y: Dictionary = wv.yard_of(String(fb["province"]), state)
+	if y.is_empty():
+		return
+	var wall: Vector2 = y["centre"]
+	for aid in fb.get("armies", []):
+		if not armies.has(aid):
+			continue
+		var figs: Array = armies[aid]["figs"]
+		for i in figs.size():
+			var f: Dictionary = figs[i]
+			var j: float = Choreo.hash01(String(aid), i + 3) * 0.12
+			if not f.has("battles"):
+				f["battles"] = []
+			f["battles"].append({"t0": ts, "t1": ts + dur * 0.8, "face": wall, "strikes": [ts + 0.12 + j, ts + 0.52 + j],
+				"recoils": [], "cheer": -1.0, "gap": 2.4})
+
+
+## M3c S-4: a fort beat's camps: a siege that starts or goes on stands its ring as the state after has it (the tents
+## go up, the works and engines take their places); a siege lifted or ended folds it.
+func _fort_camps(st: Dictionary) -> void:
+	var pid := String(st["beat"]["province"])
+	var c: Dictionary = camps.duplicate()
+	match String(st["beat"]["kind"]):
+		"siege_started", "walls_damaged":
+			var after_camp: Dictionary = (_play["camps_after"] as Dictionary).get(pid, {})
+			if after_camp.is_empty():
+				return
+			c[pid] = after_camp
+			rings[pid] = (_play["rings_after"] as Dictionary).get(pid, {})
+		"siege_lifted", "siege_ended":
+			c.erase(pid)
+			rings.erase(pid)
+		_:
+			return
+	_set_camps(c)
+
+
+## M3c S-4: one fort beat onto the forts as they stand (SiegeBoard.apply_one, the event alone).
+func _apply_fort(st: Dictionary) -> void:
+	if st.has("applied") or _play.is_empty():
+		return
+	st["applied"] = true
+	var fm: Dictionary = _play["fm"]
+	if fm.is_empty():
+		return
+	SiegeBoard.apply_one(fm["forts"], fm["works"], fm["sieges"], st["beat"]["event"], _play["worked"])
+
+
+## M3c S-4: the turn of work every site standing at the start of the turn got (it has no event), once.
+func _work_sites() -> void:
+	if _play.is_empty() or bool(_play["worked_done"]) or (_play["fm"] as Dictionary).is_empty():
+		return
+	_play["worked_done"] = true
+	SiegeBoard.finish_work(_play["fm"]["works"], _play["worked"])
+
+
+## M3c S-4: the board draws the forts as they stand now in the playback.
+func _push_forts() -> void:
+	if _play.is_empty() or (_play["fm"] as Dictionary).is_empty():
+		return
+	wv.show_forts(SiegeBoard.board_table(_play["fm"], wv.map_kits()), fort_colours())
+
+
+## M3c S-4: the playback ends: every fort beat applied and the sites worked, so the forts stand as the state after's.
+func _finish_forts() -> void:
+	for st in _play.get("fort_steps", []):
+		_apply_fort(st)
+	_work_sites()
+	_push_forts()
+	_strike_engines_all(0.0)
+
+
+func _strike_engines_all(k: float) -> void:
+	for pid in rings.keys():
+		_strike_engines(pid, k)
+
+
+## Every faction's player colour (the chevrons, a rising fort's roofs).
+func fort_colours() -> Dictionary:
+	var out := {}
+	if state != null:
+		for f in state.factions:
+			out[f.id] = _colour_of(f.id)
+	return out
 
 
 ## Where a battle is fought and where each army stands for it: {"front": Vector2, "lines": army id ->
@@ -1258,6 +1708,30 @@ func _battle_geometry(b: Dictionary, ways: Dictionary) -> Dictionary:
 				var last2: Vector2 = way3[way3.size() - 1]
 				approach[aid] = (last2 - front).normalized() if last2.distance_to(front) > 0.1 else mean
 				out["cut"][aid] = -1.0
+		## M3c S-4 (§10.2): a battle at a fort's walls. The fort owner's side stands on the gate's side of the front,
+		## everyone else outside: a storm meets at the walls, a breach battle in the gap, a battle in the open
+		## before the gate (a sally's armies file out of it to their line).
+		var sg: Dictionary = b.get("siege", {})
+		var yard: Dictionary = wv.yard_of(pid, state) if not sg.is_empty() else {}
+		if not yard.is_empty():
+			var gd: Vector2 = yard["gate_dir"]
+			var gp2: Array = yard["gate"]
+			match String(sg.get("kind", "")):
+				"storm":
+					front = (gp2[1] as Vector2) + gd * 2.0
+				"breach":
+					front = gp2[1]
+				_:
+					front = (gp2[1] as Vector2) + gd * 14.0
+			var pp := state.find_province(pid) if state != null else null
+			var fort_owner: String = pp.owner if pp != null else ""
+			for aid in b["armies"]:
+				if not armies.has(aid):
+					continue
+				approach[aid] = -gd if String(armies[aid]["owner"]) == fort_owner else gd
+				if ways.has(aid):
+					out["cut"][aid] = -1.0
+			out["yard"] = yard
 	## defenders face the attackers from the other side of the front
 	var att := Vector2.ZERO
 	for aid in approach.keys():
@@ -1461,6 +1935,12 @@ func phase_now() -> Dictionary:
 		for c in _play["caps"]:
 			if now >= float(c["t"]) - 0.05:
 				detail = _capture_text(c, _play["after"])
+	if cur["key"] in ["sieges", "capture", "recruitment"]:
+		## M3c S-4: a fort beat names itself, and its turn report line lights up as it plays
+		for st in _play.get("fort_steps", []):
+			if String(st["beat"]["phase"]) == cur["key"] and now >= float(st["t"]) - 0.05:
+				detail = String(st["beat"]["label"])
+				line = String(st["beat"]["text"])
 	var span: float = maxf(float(cur["t1"]) - float(cur["t0"]), 0.01)
 	return {"key": cur["key"], "caption": Choreo.caption(cur["key"]), "detail": detail, "k": clampf((now - float(cur["t0"])) / span, 0.0, 1.0), "index": ci,
 		"line": line}
@@ -1498,12 +1978,15 @@ func _way(e: Dictionary, hops: Array, to_border: bool) -> PackedVector2Array:
 	var from: String = hops[0]
 	var to: String = hops[hops.size() - 1]
 	var way := PackedVector2Array()
+	var yard: Dictionary = wv.yard_of(from, state)
+	var fp := state.find_province(from) if state != null else null
 	if gathered.has(e["id"]) and not (e["figs"] as Array).is_empty():
 		## gathered at the gate (or the stage's edge): the column marches on from its head
 		way.append(e["figs"][0]["pos"])
-	elif wv.fortresses.has(from):
-		var g: Array = wv.gate_points(from)
-		if _in_court(e, from):
+	elif not yard.is_empty() and (fp == null or fp.owner == e["owner"]):
+		## out of the gate (M3c S-4: any fort's, in a game with sieges); a besieger leaves from its camp
+		var g: Array = yard["gate"]
+		if _in_court(e, yard):
 			way.append(g[0])
 		way.append(g[1])
 	else:
@@ -1586,11 +2069,11 @@ func _add_leg(f: Dictionary, leg: Dictionary) -> void:
 		f["to_yaw"] = leg["to_yaw"]
 
 
-func _in_court(e: Dictionary, pid: String) -> bool:
+func _in_court(e: Dictionary, yard: Dictionary) -> bool:
 	if e["figs"].is_empty():
 		return false
-	var ct: Array = wv.courtyard(pid)
-	var g: Array = wv.gate_points(pid)
+	var ct: Array = WorldView.court_of(yard)
+	var g: Array = yard["gate"]
 	var p: Vector2 = e["figs"][0]["pos"]
 	return p.distance_to(ct[0]) < (g[1] as Vector2).distance_to(ct[0])
 
@@ -1717,6 +2200,19 @@ func step_playback(delta: float, skipping: bool = false) -> void:
 					if ci < (_play["clashes"] as Array).size():
 						clash_started.emit(String(_play["clashes"][ci]["label"]))
 				beat.emit(String(bt["kind"]), int(bt.get("index", 0)))
+	## M3c S-4: the fort beats: the camps go up or fold as each fires, the forts' looks change at its end
+	for st in _play.get("fort_steps", []):
+		if not st.has("fired") and (now >= float(st["t"]) or skipping):
+			st["fired"] = true
+			if not skipping:
+				fort_beat.emit(String(st["beat"]["province"]), String(st["kind"]), int(st["index"]))
+			_fort_camps(st)
+		if not st.has("applied") and (now >= float(st["apply"]) or skipping):
+			_apply_fort(st)
+			_push_forts()
+		if not skipping and String(st["kind"]) in ["siege", "wall_hit"]:
+			var dt: float = now - float(st["t"])
+			_strike_engines(String(st["beat"]["province"]), absf(sin(dt * PI / 0.4)) if dt >= 0.0 and dt < 0.8 else 0.0)
 	## the land changes hands: the sweep from the arriving column
 	for c in _play["caps"]:
 		if not c["done"] and (now >= float(c["t"]) or skipping):
@@ -1753,6 +2249,7 @@ func step_playback(delta: float, skipping: bool = false) -> void:
 			_sync(e)
 	if now >= float(_play["t_end"]) or skipping:
 		var after: GameState = _play["after"]
+		_finish_forts()
 		_play = {}
 		if snap_at_end:
 			show_state(after, seats)
@@ -1860,8 +2357,13 @@ func _leg_at(s: Dictionary, now: float, f: Dictionary) -> Array:
 	return [s["to"], s["to_y"], Vector2.ZERO, false]
 
 
+## M3c S-4: whether a point is inside a yard's walls.
+static func _inside(yard: Dictionary, p: Vector2) -> bool:
+	return p.distance_to(yard["centre"]) < float(yard["radius"]) - 0.5
+
+
 ## A recruit marching in: along its path (the outer gate, the inner gate, its slot) from its start time,
-## fading in as it comes through.
+## fading in as it comes through (a figure walking back in through the gate keeps its size).
 func _march_in_step(f: Dictionary, now: float, skipping: bool) -> void:
 	var path: PackedVector2Array = f["in_path"]
 	var lens := _lens(path)
@@ -1876,16 +2378,17 @@ func _march_in_step(f: Dictionary, now: float, skipping: bool) -> void:
 		f["tilt"] = 0.0
 		f["pose"] = "ready"
 		return
+	var keep: bool = f.get("keep_scale", false)
 	if dt < 0.0:
 		f["pos"] = path[0]
-		f["scale"] = 0.0
+		f["scale"] = 1.0 if keep else 0.0
 		return
 	var at: Array = _along(path, lens, dt * IN_SPEED)
 	var dir: Vector2 = at[1]
 	f["pos"] = at[0]
 	f["y"] = lerpf(float(f["from_y"]), float(f["to_y"]), clampf(dt * IN_SPEED / maxf(total, 0.01), 0.0, 1.0))
 	f["yaw"] = atan2(-dir.x, -dir.y)
-	f["scale"] = smoothstep(0.0, 0.3, dt)
+	f["scale"] = 1.0 if keep else smoothstep(0.0, 0.3, dt)
 	var mo := Choreo.motion("march_in", now, float(f["phase"]))
 	f["hop"] = mo["hop"]
 	f["tilt"] = mo["tilt"]
@@ -1907,7 +2410,14 @@ func _begin_reform() -> void:
 	var new_k := {} ## province id -> recruits marching in there so far
 	var recruit_end: float = t_reform + REFORM
 	var first_new := {} ## army id -> when its first recruit comes through
+	## M3c S-4: the forts as they stand once the sieges and captures are done and the sites worked
+	for st in _play.get("fort_steps", []):
+		if String(st["beat"]["phase"]) != "recruitment":
+			_apply_fort(st)
+	_work_sites()
+	_push_forts()
 	for a in after.armies:
+		var yard_a: Dictionary = wv.yard_of(a.location, after)
 		var slots: Array = dest.get(a.id, [])
 		var placed: Array = []
 		var e_old: Dictionary = old.get(a.id, {})
@@ -1930,14 +2440,22 @@ func _begin_reform() -> void:
 				item["from_yaw"] = f0["yaw"]
 				item["from_y"] = f0["y"]
 				item["from_scale"] = f0["scale"]
+				## M3c S-4: a figure coming back inside the walls (a sally's survivors) walks in by the gate
+				if not yard_a.is_empty() and _inside(yard_a, sl["pos"]) and not _inside(yard_a, f0["pos"]) \
+						and (f0["pos"] as Vector2).distance_to(yard_a["centre"]) < float(yard_a["radius"]) + 40.0:
+					var gq: Array = yard_a["gate"]
+					item["in_path"] = PackedVector2Array([f0["pos"], gq[1], gq[0], sl["pos"]])
+					item["in_t0"] = t_reform + 0.1
+					item["keep_scale"] = true
 			else:
-				## a new figure: through the gate at a fortress, else from the edge of its formation
+				## a new figure: through the gate at a fortress (M3c S-4: at any fort, in a game with sieges), else
+				## from the edge of its formation
 				var pid: String = a.location
 				var path := PackedVector2Array()
 				var from_y: float = sl["y"]
-				if wv.fortresses.has(pid):
-					var gp: Array = wv.gate_points(pid)
-					var facing: Vector2 = wv.fortresses[pid]["gate_dir"]
+				if not yard_a.is_empty() and _inside(yard_a, sl["pos"]):
+					var gp: Array = yard_a["gate"]
+					var facing: Vector2 = yard_a["gate_dir"]
 					path.append((gp[1] as Vector2) + facing * 6.0)
 					path.append(gp[1])
 					if (sl["pos"] as Vector2).distance_to(gp[0]) < (sl["pos"] as Vector2).distance_to(gp[1] as Vector2 + facing * 6.0):
@@ -2012,4 +2530,5 @@ func _begin_reform() -> void:
 			p["t1"] = recruit_end
 	_play["t_end"] = maxf(float(_play["t_end"]), recruit_end + TAIL)
 	## the camps of the state after
-	_set_camps(layout_of(after)["camps"])
+	_set_camps(_play["camps_after"])
+	rings = _play["rings_after"]

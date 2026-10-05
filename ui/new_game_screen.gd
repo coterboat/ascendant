@@ -33,6 +33,10 @@ extends Control
 ## Fog of war (M5-1, #112; design/M5_MAGIC_FOG.md §1.3): the "Fog of war (M5 preview)" box, off by default (launching
 ## with `-- --fog` ticks it), independent of every other box. Ticked, config() adds "fog": true (GameScreen.starting_state
 ## then calls GameState.setup_fog on whichever game the other boxes make).
+## Independents (IND-1, #142): the "Independents" box, off by default like every other system until the MVP defaults
+## flip (launching with `-- --independents` ticks it), independent of every other box. Ticked, config() adds
+## "independents": true (GameScreen.starting_state then calls GameState.setup_independents: a Free Holds garrison in
+## every neutral province). Quick start always has them.
 ## Builds its children in code, so it works before it is in the tree (headless tests).
 ##
 ## API:
@@ -57,6 +61,7 @@ extends Control
 ##   set_sieges(on), sieges_on()     the "Forts & sieges (M3c preview)" box (M3c), on its own
 ##   set_magic(on), magic_on()       the "Magic (M5 preview)" box (M5-5); ticking it ticks paths and rulers
 ##   set_fog(on), fog_on()           the "Fog of war (M5 preview)" box (M5-1), on its own
+##   set_independents(on), independents_on()   the "Independents" box (IND-1), on its own
 ##   quick_start_config(rng) -> Dictionary   Quick start's config (static): a random faction for the person
 ##                                   in seat 1, the computer at Normal in seat 2, rulers on with the balanced
 ##                                   preset for the person, and a random seed
@@ -103,6 +108,7 @@ var paths_toggle: CheckBox  # M4-1: "Paths (M4 preview)": off by default; needs 
 var sieges_toggle: CheckBox  # M3c: "Forts & sieges (M3c preview)": off by default; independent of rulers and paths
 var magic_toggle: CheckBox  # M5-5: "Magic (M5 preview)": off by default; needs paths
 var fog_toggle: CheckBox  # M5-1: "Fog of war (M5 preview)": off by default; works with any game
+var independents_toggle: CheckBox  # IND-1: "Independents": off by default for now; works with any game
 var build_screen: BuildScreen = null  # opened by Start while rulers are on; built on first use
 var _last_builds := {}  # faction id -> the last game's build of a human seat (rematch)
 var _model: GameState
@@ -155,6 +161,8 @@ func config() -> Dictionary:
 		out["magic"] = true
 	if fog_on():
 		out["fog"] = true
+	if independents_on():
+		out["independents"] = true
 	return out
 
 
@@ -236,6 +244,8 @@ func prefill(last_game: Dictionary) -> void:
 		set_fog(true)
 	elif last_game.has("players"):
 		set_fog(_fog_by_default())
+	if last_game.has("players"):  # IND-1: a rematch keeps the last game's choice
+		set_independents(last_game.get("independents", false) == true)
 	new_seed(int(last_game.get("seed", -1)))
 
 
@@ -401,6 +411,21 @@ static func _fog_by_default() -> bool:
 	return OS.get_cmdline_user_args().has("--fog")
 
 
+## Ticks or clears the "Independents" box (IND-1). It needs no other box.
+func set_independents(on: bool) -> void:
+	independents_toggle.set_pressed_no_signal(on)
+	_refresh()
+
+
+func independents_on() -> bool:
+	return independents_toggle.button_pressed
+
+
+## Independents start ticked when the game was launched with `-- --independents` (GameScreen.starting_state).
+static func _independents_by_default() -> bool:
+	return OS.get_cmdline_user_args().has("--independents")
+
+
 func build_screen_open() -> bool:
 	return build_screen != null and build_screen.visible
 
@@ -428,7 +453,8 @@ static func quick_start_config(rng: RandomNumberGenerator = null) -> Dictionary:
 	var game_seed := dice.randi_range(1, MAX_RANDOM_SEED)
 	var builds := {human: RulerRules.preset_build(RulerRules.balanced_preset(human)),
 		opponent: BuildScreen.computer_build(opponent, game_seed, 1)}
-	return {"players": [human, opponent], "seed": game_seed, "ai": {opponent: DEFAULT_LEVEL}, "rulers": true, "builds": builds}
+	return {"players": [human, opponent], "seed": game_seed, "ai": {opponent: DEFAULT_LEVEL}, "rulers": true, "builds": builds,
+		"independents": true}
 
 
 func _open_builds() -> void:
@@ -745,6 +771,7 @@ func _build() -> void:
 	_build_sieges_row(box)
 	_build_magic_row(box)
 	_build_fog_row(box)
+	_build_independents_row(box)
 
 	error_label = _label("ErrorLabel", "", 19, NEGATIVE)
 	error_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -856,6 +883,29 @@ func _build_fog_row(box: Container) -> void:
 	fog_toggle.set_pressed_no_signal(_fog_by_default())
 	fog_toggle.toggled.connect(func(on: bool): set_fog(on))
 	row.add_child(fog_toggle)
+
+
+## IND-1: the "Independents" box under the fog box. Its tooltip says what it does, with the codex
+## entry one click away.
+func _build_independents_row(box: Container) -> void:
+	var row := HBoxContainer.new()
+	row.name = "IndependentsRow"
+	row.add_theme_constant_override("separation", 14)
+	box.add_child(row)
+	independents_toggle = CheckBox.new()
+	independents_toggle.name = "IndependentsToggle"
+	independents_toggle.text = "Independents"
+	independents_toggle.add_theme_font_size_override("font_size", 20)
+	independents_toggle.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	independents_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Independents", independents_tooltip()), "independents")
+	independents_toggle.set_pressed_no_signal(_independents_by_default())
+	independents_toggle.toggled.connect(func(on: bool): set_independents(on))
+	row.add_child(independents_toggle)
+
+
+## The independents box's explanation.
+static func independents_tooltip() -> String:
+	return "Every neutral province starts with a garrison of the %s, local fighters who answer to no ruler. To take a province you must beat its garrison in battle, so expanding costs troops and the richest provinces need a real army. Unticked, neutral provinces are empty and fall to the first army that walks in. It works with every other box." % IndependentData.FACTION_NAME
 
 
 ## The fog box's explanation (design/M5_MAGIC_FOG.md §1.3), then what the preview has so far.
