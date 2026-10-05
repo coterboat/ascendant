@@ -1069,7 +1069,8 @@ static func forest_change_text(from_terrain: String) -> String:
 # Hallowed Land and the Forges (§4.7) ----------------------------------------------------------------
 
 ## Who Hallowed Land or the Forges heals in this turn's research phase, as `state` stands, without changing
-## it: each wounded unit and commander of the faction in a province it owns (the Forges: with a fort).
+## it: each wounded unit and commander of the faction in a province it owns (the Forges: with a fort), unless a
+## rival's curse lies on it (M5-6: cursed fighters heal from nothing).
 ## Rulers heal on their own and are skipped. Returns {} without either rule, otherwise {"rule", "name",
 ## "codex", "amount" (hp each; 0 means to full), "healed": [{"army", "province", "unit" (type id), "name",
 ## "commander", "before", "after", "max"}], "fighters", "total", "provinces" ([ids, sorted]), "armies"}.
@@ -1098,6 +1099,8 @@ static func _heal_plan(state: GameState, faction_id: String) -> Dictionary:
 		var p := state.find_province(a.location)
 		if p == null or p.owner != faction_id or (rid == FORGES and not p.has_fort):
 			continue
+		if not MagicRules.can_heal(state, faction_id, p.id):
+			continue  # M5-6 (design/M5_MAGIC_FOG.md §6.3): cursed fighters heal from nothing
 		var fighters: Array = a.units.duplicate()
 		if a.commander != null:
 			fighters.append(a.commander)

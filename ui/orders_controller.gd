@@ -97,6 +97,61 @@ func queue_sacrifice(mandate_id: String) -> String:
 	return _queue(SacrificeOrder.new(mandate_id))
 
 
+## Queues a cast order (M5-6, design/M5_MAGIC_FOG.md §6.1): `army_id`'s caster casts `ritual` on `target`, paid in
+## `pay` (gold, or blood under Tithe of Blood), with Call the Pack's `size`. Returns "" when accepted, otherwise the
+## rules' reason. A move given to that army is removed (the army holds): see last_removed().
+func queue_cast(ritual: String, army_id: String, target: String, pay: String = CastOrder.GOLD, size: int = 0) -> String:
+	return _queue(CastOrder.new(ritual, army_id, target, pay, size))
+
+
+## What the cast dialog offers `army_id` (M5-6): one row per ritual of the faction's schools it knows, and Far Sight in a fog
+## game (§6.2: without fog it has nothing to show, so it is never offered), in the Magic tab's order:
+## {"ritual", "name", "price" (words), "ok", "reason" (why not), "line" (where it can go), "targets" (legal province
+## ids; [""] for a ritual with no target), "sizes" (Call the Pack's [least, most] wolves, else []), "blood" (whether it
+## may be paid in blood: Tithe of Blood and a mage casting it)}.
+func cast_options(army_id: String) -> Array:
+	var out := []
+	var view := view_state()
+	var army: Army = view.find_army(army_id) if view != null else null
+	if army == null or not MagicRules.has_magic(view) or army.owner != faction_id:
+		return out
+	var rituals := []
+	for school in MagicRules.schools(faction_id):
+		for nid in MagicRules.school_data(school).nodes:
+			if MagicRules.is_ritual(String(nid)) and MagicRules.knows(view, faction_id, String(nid)):
+				rituals.append(String(nid))  # the ones still to research are in the Magic tab
+	if view.fog:
+		rituals.append("far_sight")
+	for rid in rituals:
+		var sp := MagicRules.spell_data(rid)
+		var targets := MagicRules.ritual_targets(view, faction_id, rid, army_id)
+		var sizes: Array = MagicRules.pack_sizes(view, faction_id, army) if String(sp.get("summon", "")) == "thornwolves" else []
+		var probe := String(targets[0]) if not targets.is_empty() else ("" if String(sp.target) == "none" else army.location)
+		var caster := MagicRules.caster_for(view, faction_id, army, rid)
+		var blood: bool = RulerRules.has_mandate(view, faction_id, MagicRules.TITHE_OF_BLOOD) and String(caster.get("kind", "")) == MagicRules.MAGE
+		var check := OrderBook.check_order(state, faction_id, CastOrder.new(rid, army_id, probe, CastOrder.GOLD,
+			int(sizes[0]) if not sizes.is_empty() else 0), orders())
+		if not check.is_empty() and blood:
+			var in_blood := OrderBook.check_order(state, faction_id, CastOrder.new(rid, army_id, probe, CastOrder.BLOOD,
+				int(sizes[0]) if not sizes.is_empty() else 0), orders())
+			if in_blood.is_empty():
+				check = in_blood
+		var names := targets.map(func(pid): return _province_name(String(pid)))
+		var line := "Covers every battle." if String(sp.target) == "none" else "Can be cast on %s." % RulerRules._and_list(names)
+		var price := "%d gold a wolf" % int(sp.cost) if not sizes.is_empty() else "%d gold" % int(sp.cost)
+		out.append({"ritual": rid, "name": MagicRules.spell_name(rid), "price": price, "ok": check.is_empty(),
+			"reason": String(check.get("reason", "")), "line": line, "targets": targets, "sizes": sizes, "blood": blood})
+	return out
+
+
+## The cast dialog's forecast (MagicRules.forecast_ritual) for one choice, with this faction's queued orders.
+func cast_preview(ritual: String, army_id: String, target: String, pay: String = CastOrder.GOLD, size: int = 0) -> Dictionary:
+	var order := CastOrder.new(ritual, army_id, target, pay, size)
+	var list := orders()
+	list.append(order)
+	return MagicRules.forecast_ritual(state, faction_id, order, list)
+
+
 ## The queued Sacrifice order, or null.
 func queued_sacrifice() -> SacrificeOrder:
 	return RulerRules.queued_sacrifice(orders())
@@ -400,11 +455,13 @@ func order_text(index: int) -> String:
 		return "Research: %s" % String(fc.text) if fc.ok else "Not researched: %s" % String(fc.reason)
 	if o is SpellbookOrder:  # M5-5: the battle spellbook, kept until changed
 		return "Battle spellbook: %s. Your casters try the spells in this order each round, from this turn's battles on; it is kept until you change it." % MagicRules.spellbook_text(o.order, o.off)
-	if o is CastOrder:  # M5-5
+	if o is CastOrder:  # M5-5; M5-6: with what it will do (its forecast; the tooltip has the rest)
 		var army := state.find_army(o.army_id)
 		var paid := "paid in blood" if o.pay == CastOrder.BLOOD else "%d gold" % int(MagicRules.price(view_state(), faction_id, o.ritual, o.size).gold)
-		return "Cast %s%s from your army at %s (%s). That army holds this turn." % [MagicRules.spell_name(o.ritual),
+		var text := "Cast %s%s from your army at %s (%s). That army holds this turn." % [MagicRules.spell_name(o.ritual),
 			" on %s" % _province_name(o.target) if not o.target.is_empty() else "", _province_name(army.location) if army else "nowhere", paid]
+		var fc := MagicRules.forecast_ritual(state, faction_id, o, list)
+		return "%s %s" % [text, String(fc.get("effect_text", ""))] if fc.ok else text
 	var r := _recruit_result_at(index)
 	if not r.ok:
 		return "Not recruited: %s" % r.reason
@@ -472,8 +529,11 @@ func order_breakdown(index: int) -> Dictionary:
 			if not o.off.has(sid):
 				lines.append(_line(MagicRules.spell_name(String(sid)), 1, "known" if MagicRules.knows(view_state(), faction_id, String(sid)) else "not researched yet"))
 		return _bd("Battle spellbook", "%s %s" % [MagicRules.spellbook_text(o.order, o.off), RulesCodex.text("spellbook")], lines, "Spells switched on", lines.size())
-	if o is CastOrder:  # M5-5: the ritual's price
-		return Breakdown.ritual_price(view_state(), faction_id, o.ritual, o.size)
+	if o is CastOrder:  # M5-5: the ritual's price; M5-6: under the forecast
+		var b := Breakdown.ritual_price(view_state(), faction_id, o.ritual, o.size)
+		var fc := MagicRules.forecast_ritual(state, faction_id, o, orders())
+		b.description = "%s %s" % [String(fc.get("text", "")), String(b.get("description", ""))]
+		return b
 	var r := _recruit_result_at(index)
 	if not r.ok:
 		return _bd("Recruit order", r.reason, [], "Gold spent", 0)

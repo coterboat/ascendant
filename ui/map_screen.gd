@@ -104,6 +104,7 @@ var hover_label: Label
 var own_codex: CodexPanel = null  # map preview only: opened when no game screen listens for codex_requested
 var ruler_panel: RulerPanel = null  # M2-6: opened by open_ruler_panel(), over the map and the side panel
 var sacrifice_dialog: SacrificeDialog = null  # M2-6: opened from the ruler panel
+var cast_dialog: CastDialog = null  # M5-6: opened from an army of yours that holds a caster
 ## M3a.1: the 3D board (Board3D) drawn in the map view instead of the 2D regions, or null for the 2D map.
 ## The regions are still built (hidden): they keep the tooltips and marks the board mirrors.
 var board: Control = null
@@ -391,6 +392,45 @@ func queue_sacrifice(mandate_id: String) -> String:
 
 func _on_sacrifice_confirmed(mandate_id: String) -> void:
 	queue_sacrifice(mandate_id)
+
+
+## M5-6: opens the cast dialog for `army_id` (an army of yours that holds a caster), showing `ritual` or the first it can
+## cast.
+func open_cast_dialog(army_id: String, ritual: String = "") -> void:
+	if orders == null or state == null or not MagicRules.has_magic(state) or state.find_faction(viewing_faction_id) == null:
+		return
+	if cast_dialog == null:
+		cast_dialog = CastDialog.new()
+		cast_dialog.codex_requested.connect(request_codex)
+		cast_dialog.confirmed.connect(_on_cast_confirmed)
+		add_child(cast_dialog)
+	move_child(cast_dialog, get_child_count() - 1)
+	cast_dialog.show_for(orders, army_id, ritual)
+	_raise_own_codex()
+
+
+func close_cast_dialog() -> void:
+	if cast_dialog != null and cast_dialog.visible:
+		cast_dialog.close()
+
+
+## M5-6: queues a cast order for the viewing faction. Returns "" or the rules' reason (also in the status line). A move
+## given to the casting army is removed, and the status line says so.
+func queue_cast(ritual: String, army_id: String, target: String, pay: String = CastOrder.GOLD, size: int = 0) -> String:
+	var reason := orders.queue_cast(ritual, army_id, target, pay, size)
+	if reason.is_empty():
+		GameAudio.sfx("sacrifice")
+		status_text = "Ritual ordered: %s. It is cast before anyone moves when the turn ends, and the army holds; click the cross to cancel." % \
+			MagicRules.spell_name(ritual)
+		status_text += _removed_text(orders.last_removed())
+	else:
+		status_text = reason
+	_orders_changed()
+	return reason
+
+
+func _on_cast_confirmed(ritual: String, army_id: String, target: String, pay: String, size: int) -> void:
+	queue_cast(ritual, army_id, target, pay, size)
 
 
 ## " Removed, because they no longer pass: ..." for a list of removed-order lines, "" for none.
@@ -1374,6 +1414,7 @@ func _show_province_details() -> void:
 	_link(neighbors_label, "neighbors")
 	if FogView.active(state):
 		_add_vision_line(p)  # M5-2: in clear sight, glimpsed or out of sight, and why
+	_add_enchantment_lines(p)  # M5-6: wards, curses and Far Sight on it
 
 	details.add_child(HSeparator.new())
 	_add_heading("Armies here", 20)
@@ -1476,6 +1517,7 @@ func _add_army(a: Army) -> void:
 		if FogView.active(state):
 			_add_sight_line(a, box)
 		RulerPanel.fill(box, state, a, request_codex)
+		_add_magic_lines(a, box)  # M5-6
 		var open := Button.new()
 		open.name = "OpenRulerPanel"
 		open.text = "Ruler panel: both rulers, mandates and sacrifice"
@@ -1527,6 +1569,71 @@ func _add_army(a: Army) -> void:
 		count_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		# The count's tooltip has the unit's stats and trait; its entry is Units, which links on to each.
 		_link(count_label, "unit_count", b)
+	_add_magic_lines(a, box)  # M5-6
+
+
+## M5-6 (design/M5_MAGIC_FOG.md §6.4, §11.2): an army's magic on its panel: its blessing and when it ends, when its
+## summoned creatures fade, and for an army of yours that holds a caster, "Cast a ritual…" (the cast dialog). Only what
+## the state shows: under fog a rival's blessing appears only where you can see it (the view's enchantments).
+func _add_magic_lines(a: Army, box: Control) -> void:
+	if not MagicRules.has_magic(state):
+		return
+	var blessing := MagicRules.blessing_of(state, a.id)
+	if not blessing.is_empty():
+		var heal := int(MagicRules.spell_numbers(String(blessing.ritual), int(blessing.bonus)).value)
+		var line := _add_text("Blessed: %s, through turn %d" % [MagicRules.spell_name(String(blessing.ritual)), int(blessing.until_turn)],
+			TooltipText.plain("Blessed", "This army heals %d hit points at the end of every turn through turn %d, one at a time to its most wounded fighter, wherever it goes, and a side at least half blessed fights with +1 morale. %s" % [
+				heal, int(blessing.until_turn), RulesCodex.text("blessing")]), UiPalette.GILT, box)
+		line.name = "BlessedLine"
+		CodexLink.attach(line, "blessing", request_codex)
+	var fading := {}
+	for u in a.units:
+		if u.until > 0:
+			fading[u.type.name] = u.until
+	for type_name in fading:
+		var line := _add_text("%s fade at the end of turn %d" % [type_name, int(fading[type_name])], TooltipText.plain("Summoned",
+			RulesCodex.text("summoned")), UiPalette.TEXT_SECONDARY, box)
+		line.name = "FadesLine"
+		CodexLink.attach(line, "summoned", request_codex)
+	if orders == null or a.owner != viewing_faction_id or MagicRules.casters(state, a).is_empty() or FogView.is_stand_in(a):
+		return
+	var cast := Button.new()
+	cast.name = "CastRitual"
+	cast.text = "Cast a ritual…"
+	cast.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	cast.focus_mode = Control.FOCUS_NONE
+	cast.tooltip_text = TooltipText.plain("Cast a ritual", "%s holds %s. %s" % [RulerRules._cap(TurnReportText.army_name(state, a.id)),
+		MagicRules._and_list(MagicRules.casters(state, a).map(func(c): return MagicRules.caster_name(c))), RulesCodex.text("cast_order")])
+	CodexLink.attach(cast, "cast_order", request_codex)
+	cast.pressed.connect(open_cast_dialog.bind(a.id, ""))
+	box.add_child(cast)
+
+
+## M5-6: the enchantments on a province (§6.4, §11.2), each with who cast it, what it does and through which turn,
+## from the state shown (under fog, the view: only the ones you can see).
+func _add_enchantment_lines(p: Province) -> void:
+	if not MagicRules.has_magic(state):
+		return
+	for e in state.enchantments:
+		if String(e.province) != p.id or String(e.kind) == "blessing":
+			continue
+		var what := ""
+		var n := MagicRules.spell_numbers(String(e.ritual), int(e.bonus))
+		var who := MagicRules._faction_display(state, String(e.faction))
+		match String(e.kind):
+			"curse":
+				what = "Fighters here not of the %s can't heal, and it takes %d hit points from them at the end of every turn, the healthiest first, never below 1." % [who, int(n.value)]
+				if e.ending == true:
+					what += " A Sanctum Ward ends it at the end of this turn."
+			"ward":
+				what = "Rival rituals aimed here are turned aside while the %s hold it, and battles here are outside the Blood Moon." % who
+			"sight":
+				what = "The %s see it in clear sight through Far Sight." % who
+		var line := _add_text("%s (%s), through turn %d" % [MagicRules.spell_name(String(e.ritual)), who, int(e.until_turn)],
+			TooltipText.plain(MagicRules.spell_name(String(e.ritual)), "%s %s" % [what, RulesCodex.text(String(e.kind))]),
+			UiPalette.GILT, details)
+		line.name = "Enchantment_%s" % String(e.ritual).validate_node_name()
+		CodexLink.attach(line, MagicRules.spell_codex(String(e.ritual)), request_codex)
 
 
 ## M5-2: "Vision: Glimpsed", "Vision: Out of sight (last seen 2 turns ago)": the province's sight level for the

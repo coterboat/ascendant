@@ -25,7 +25,7 @@ const ENTRIES := {
 	},
 	"fort": {
 		"title": "Fort",
-		"text": "Some provinces have a fort, drawn as a small tower on the map. An army holding a province with a fort gets +2 defense in battles there, on top of the terrain. Only the defender gets it, never armies that just arrived. A fort does not change income. In a game with forts and sieges (the M3c preview), a fort has a level (a palisade, a keep or a citadel) and walls instead: it is where you recruit, an enemy army that marches in besieges it instead of fighting while its walls stand, and its walls help a stormed garrison. See Fort levels, Walls and Siege.",
+		"text": "Some provinces have a fort, drawn as a small tower on the map. An army holding a province with a fort gets +2 defense in battles there, on top of the terrain. Only the defender gets it, never armies that just arrived. A fort does not change income. In a game with magic, the Crown's Bastion raises a fort for good, at most 2 per faction, ever. In a game with forts and sieges (the M3c preview), a fort has a level (a palisade, a keep or a citadel) and walls instead: it is where you recruit, an enemy army that marches in besieges it instead of fighting while its walls stand, and its walls help a stormed garrison. See Fort levels, Walls and Siege.",
 	},
 	# --- forts and sieges (M3c S-1a, #98; design/M3C_SIEGES.md §9.6): only a game with sieges uses these rules. The
 	# numbers come from FortData, so a retuned fort shows up here by itself. Plain text: tooltips quote them.
@@ -239,7 +239,7 @@ const ENTRIES := {
 	},
 	"phase_order": {
 		"title": "How a turn resolves",
-		"text": "Everyone gives orders first. Then the whole turn resolves at once, always in this order: 1. sacrifice: each ruler's Sacrifice order is checked and applied, faction by faction, so its new mandate already counts this turn; 2. orders: every other order is checked against the state after the sacrifices; 3. movement; 4. battles; 5. capture, then Sworn Vassals; 6. recruitment; 7. income; 8. rulers: Mending Light heals, rulers heal, then successors who are due arrive. Without rulers, steps 1 and 8 have nothing to do. In a game with paths (the M4 preview), research resolves between income and rulers: see the research phase. The same orders and seed always give the same result. In a game with forts and sieges (the M3c preview), sieges resolve between battles and capture: a siege starts or goes on and the walls drop, a siege is lifted or a fort falls, walls repair where no enemy stands and construction works; Fortify orders are paid with the recruits.",
+		"text": "Everyone gives orders first. Then the whole turn resolves at once, always in this order: 1. sacrifice: each ruler's Sacrifice order is checked and applied, faction by faction, so its new mandate already counts this turn; 2. orders: every other order is checked against the state after the sacrifices; 3. movement; 4. battles; 5. capture, then Sworn Vassals; 6. recruitment; 7. income; 8. rulers: Mending Light heals, rulers heal, then successors who are due arrive. Without rulers, steps 1 and 8 have nothing to do. In a game with paths (the M4 preview), research resolves between income and rulers: see the research phase. The same orders and seed always give the same result. In a game with forts and sieges (the M3c preview), sieges resolve between battles and capture: a siege starts or goes on and the walls drop, a siege is lifted or a fort falls, walls repair where no enemy stands and construction works; Fortify orders are paid with the recruits. In a game with magic (the M5 preview) the order is: 1. sacrifice; 2. orders (spellbook orders apply, cast orders are checked first and pin their armies, then every other order); 3. rituals: each cast is turned aside, fails, or is paid and takes effect, wards first, then curses, blessings, summons, raisings, the global ritual and sight; 4. movement (pinned armies and new summons hold); 5. battles; 6. capture; 7. recruitment (priced from the gold left after rituals); 8. income; 9. research (healing skips cursed fighters); 10. rulers (healing skips cursed fighters); 11. enchantments: blessings heal, curses bite, then what lasted through this turn ends and summoned creatures whose time is up fade.",
 	},
 	"orders": {
 		"title": "Orders",
@@ -498,7 +498,7 @@ const ENTRIES := {
 	},
 	"ruler_healing": {
 		"title": "Ruler healing",
-		"text": "At the end of every turn a living ruler heals a quarter of its maximum hit points, rounded up, wherever it is, even after a battle that turn: a King with 46 maximum hit points heals 12. This happens in the rulers phase, the last step of the turn after income: first Mending Light heals, then rulers heal, then successors who are due arrive. Regular units and commanders do not heal on their own; only Mending Light and Feast of Victory heal them.",
+		"text": "At the end of every turn a living ruler heals a quarter of its maximum hit points, rounded up, wherever it is, even after a battle that turn: a King with 46 maximum hit points heals 12. This happens in the rulers phase, the last step of the turn after income: first Mending Light heals, then rulers heal, then successors who are due arrive. Regular units and commanders do not heal on their own; only Mending Light and Feast of Victory heal them. In a game with magic, a fighter standing in a rival's curse (Bloodrot) heals from nothing: no ruler healing, Mending Light, Hallowed Land, the Forges or Dawn Blessing.",
 	},
 	"ruler_army": {
 		"title": "The ruler's army",
@@ -566,7 +566,7 @@ const ENTRIES := {
 	},
 	"ability_mending_light": {
 		"title": "Mending Light",
-		"text": "The Ever-Regent's province ability. At the end of each turn, each of your wounded units and commanders in the Regent's province heals 3 hit points at ability rank 1, 6 at rank 2, 9 at rank 3 or 12 at rank 4, up to its maximum. It doesn't heal rulers; they heal on their own.",
+		"text": "The Ever-Regent's province ability. At the end of each turn, each of your wounded units and commanders in the Regent's province heals 3 hit points at ability rank 1, 6 at rank 2, 9 at rank 3 or 12 at rank 4, up to its maximum. It doesn't heal rulers; they heal on their own. Under a rival's curse on the Regent's province it heals nobody.",
 	},
 	"ability_dread": {
 		"title": "Dread",
@@ -773,11 +773,11 @@ const ENTRIES := {
 	},
 	"hallowed_land": {
 		"title": "Hallowed Land",
-		"text": "The province rule of the Celestial Host. At the end of every turn, in the research phase, each of your wounded units and commanders in a province you own heals 3 hit points, up to its maximum (6 with Hymn of Dawn). Rulers heal on their own and are skipped. An army that will heal shows it in its tooltip, if it ends the turn there and you still hold the province; the turn report says who healed where.",
+		"text": "The province rule of the Celestial Host. At the end of every turn, in the research phase, each of your wounded units and commanders in a province you own heals 3 hit points, up to its maximum (6 with Hymn of Dawn). Rulers heal on their own and are skipped. An army that will heal shows it in its tooltip, if it ends the turn there and you still hold the province; the turn report says who healed where. Not where a rival's curse lies.",
 	},
 	"the_forges": {
 		"title": "The Forges",
-		"text": "The province rule of Living Iron. At the end of every turn, in the research phase, each of your wounded units and commanders in a province with a fort that you own heals to full. The forts are Crownkeep, Stonegate, Blackwood and Fangridge. Rulers heal on their own and are skipped. An army that will heal shows it in its tooltip, if it ends the turn there and you still hold the fort.",
+		"text": "The province rule of Living Iron. At the end of every turn, in the research phase, each of your wounded units and commanders in a province with a fort that you own heals to full. The forts are Crownkeep, Stonegate, Blackwood and Fangridge. Rulers heal on their own and are skipped. An army that will heal shows it in its tooltip, if it ends the turn there and you still hold the fort. Not where a rival's curse lies; a fort Bastion raised counts like any other.",
 	},
 	"wild_spreads": {
 		"title": "The Wild Spreads",

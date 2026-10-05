@@ -480,10 +480,15 @@ func test_bad_view_notes_are_refused_with_plain_reasons() -> void:
 
 # --- the stubs ---------------------------------------------------------------------------------------
 
-func test_vision_grants_is_a_stub_that_grants_nothing() -> void:
-	for s in [GameState.new(5), GameState.with_rulers(5), GameState.with_paths(5), _magic_state()]:
+func test_vision_grants_reads_far_sight_and_nothing_else() -> void:
+	# M5-0's stub granted nothing; M5-6 (#117) turned it on together with Far Sight, as #143 said it would: it reads a
+	# faction's own "sight" enchantments, and grants nothing in a game without magic.
+	for s in [GameState.new(5), GameState.with_rulers(5), GameState.with_paths(5)]:
 		for f in s.factions:
-			assert_eq(MagicRules.vision_grants(s, f.id), [], "%s sees nothing through magic until Far Sight (M5-6)" % f.id)
+			assert_eq(MagicRules.vision_grants(s, f.id), [], "%s sees nothing through magic without magic" % f.id)
+	var m := _magic_state()
+	assert_eq(MagicRules.vision_grants(m, CROWN), [m.find_faction(CLANS).capital], "the Crown's Far Sight")
+	assert_eq(MagicRules.vision_grants(m, CLANS), [], "the Clans cast none")
 
 
 func test_ruler_alive_reads_the_ruler_status_alone() -> void:
