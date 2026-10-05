@@ -20,17 +20,23 @@ class_name BattleCaptions
 ##              sooner."), Iron Discipline's last round, or, in a mutual rout, who kept the field
 ##   "ruler"    a ruler fell ("Round 2: King Corvane I fell in the front rank (started with 26 hp, 4 kept
 ##              power).")
+##   "greater"  M5-7: a greater working (a tier III battle spell) was cast ("Round 1: the Aurel Crown's Sunstone Adepts
+##              called down Sunburst: the 16 Thornmane Clans fighters in the front rank have −2 attack this round.")
 ##   "held"     a morale part kept a side from breaking ("Round 2: the Knight Captain's +2 morale kept Aurel
 ##              Crown in the fight: it has lost 62%, and holds to 70% (60% without it)."), or Iron
 ##              Discipline held it
 ##   "exposed"  a rank became reachable ("Round 3: Aurel Crown's Crossbowmen are exposed: only 1 front-rank
 ##              fighter stands in front of 2 in the second rank.")
 ##   "impact"   the biggest worth this round among the report's chosen factors ("Round 1: Aurel Crown's
-##              Knights' charge added about 8 damage.")
+##              Knights' charge added about 8 damage."; a spell: "Round 1: the Thornmane Shamans' Briar Snare slowed
+##              6 Knights: −2 attack this round, about 7 damage saved.")
 ##   "totals"   otherwise the round's totals ("Round 4: Aurel Crown dealt 12 (3 of 4 hits), Thornmane Clans
 ##              dealt 9 (2 of 3).")
 ## Line 2, when line 1 left it free: "round_cap" in the last round of a battle that ran to the round cap
-## ("Nobody broke in 8 rounds, so the defender, Aurel Crown, holds its ground and wins."), otherwise "luck", when a side's damage this round beat what was expected by at
+## ("Nobody broke in 8 rounds, so the defender, Aurel Crown, holds its ground and wins."), then M5-7's "first_spell": the
+## first cast of each spell (per side) is named once, on the first free line 2 from its round on, unless a line already
+## named it ("The Sunstone Adepts cast Shield of Law: 6 Spearmen +4 defense this round."; spells still waiting in the
+## battle's last round share one more line), otherwise "luck", when a side's damage this round beat what was expected by at
 ## least LUCK_MIN and by at least LUCK_SHARE of it ("Lucky round for Aurel Crown: 20 damage where about 12
 ## was expected.").
 ## A round the log doesn't hold (a log cut short at BattleLog.MAX_EVENTS) gets rule "cut": "Round 5: the
@@ -40,11 +46,14 @@ const LUCK_MIN := 5.0
 const LUCK_SHARE := 0.25
 ## The smallest worth (in damage, rounded) a factor needs to be a round's caption.
 const MIN_WORTH := 1
+## M5-7: the minus sign spell captions use (§5.4's "−2 attack").
+const MINUS := "\u2212"
 
 
 ## Round `n`'s caption lines.
 static func for_round(battle_log: Dictionary, report: Dictionary, n: int) -> Array:
-	return _caption(battle_log, report, _rounds(battle_log), n)
+	var info := _rounds(battle_log)
+	return _caption(battle_log, report, info, n, _spell_plan(battle_log, report, info))
 
 
 ## Every round's caption: [{"round", "lines"}], for each round fought (the report's count when the log was
@@ -58,8 +67,9 @@ static func all_rounds(battle_log: Dictionary, report: Dictionary) -> Array:
 	elif not report.is_empty():
 		count = maxi(count, int(report.get("rounds_fought", 0)))
 	var out := []
+	var plan := _spell_plan(battle_log, report, info)
 	for n in range(1, count + 1):
-		out.append({"round": n, "lines": _caption(battle_log, report, info, n)})
+		out.append({"round": n, "lines": _caption(battle_log, report, info, n, plan)})
 	return out
 
 
@@ -73,9 +83,27 @@ static func text(lines: Array) -> String:
 
 # --- the rules ----------------------------------------------------------------------------------------
 
-static func _caption(battle_log: Dictionary, report: Dictionary, info: Array, n: int) -> Array:
+static func _caption(battle_log: Dictionary, report: Dictionary, info: Array, n: int, plan: Dictionary = {}) -> Array:
 	if n < 1 or n >= info.size() or info[n].round_end < 0:
 		return [_mk("Round %d: the playback log stops here; the battle report has the rest." % n, "cut", "", "battle_playback", -1, report)]
+	var r: Dictionary = info[n]
+	var head := _line1(battle_log, report, info, n)
+	var lines: Array = head.lines
+	if not head.line2_used:
+		var cap := _round_cap(battle_log, report, n)
+		if cap.is_empty():
+			cap = plan.get("line2", {}).get(n, {})  # M5-7: a spell's first cast
+		if cap.is_empty():
+			cap = _luck(battle_log, report, r)
+		if not cap.is_empty():
+			lines.append(cap)
+	if plan.get("extra", {}).has(n):
+		lines.append(plan.extra[n])  # M5-7: first casts still unnamed in the last round
+	return lines
+
+
+## Line 1 (and a second line when the "left" rule uses it): {"lines", "line2_used"}.
+static func _line1(battle_log: Dictionary, report: Dictionary, info: Array, n: int) -> Dictionary:
 	var r: Dictionary = info[n]
 	var lines := []
 	var line2_used := false
@@ -88,6 +116,8 @@ static func _caption(battle_log: Dictionary, report: Dictionary, info: Array, n:
 	if lines.is_empty():
 		var l := _ruler_fell(battle_log, report, r, n)
 		if l.is_empty():
+			l = _greater(battle_log, report, r, n)
+		if l.is_empty():
 			l = _held(battle_log, report, r, n)
 		if l.is_empty():
 			l = _exposed(battle_log, report, info, n)
@@ -96,13 +126,175 @@ static func _caption(battle_log: Dictionary, report: Dictionary, info: Array, n:
 		if l.is_empty():
 			l = _totals(battle_log, report, r, n)
 		lines.append(l)
-	if not line2_used:
-		var cap := _round_cap(battle_log, report, n)
-		if cap.is_empty():
-			cap = _luck(battle_log, report, r)
-		if not cap.is_empty():
-			lines.append(cap)
-	return lines
+	return {"lines": lines, "line2_used": line2_used}
+
+
+# --- battle spells (M5-7, design/M5_MAGIC_FOG.md §5.4) -----------------------------------------------------
+
+## Rule "greater": a tier III battle spell cast this round (Sunburst), named on line 1 after "ruler".
+static func _greater(battle_log: Dictionary, report: Dictionary, r: Dictionary, n: int) -> Dictionary:
+	for i in r.casts:
+		var e: Dictionary = battle_log.events[int(i)]
+		var sp := MagicRules.spell_data(String(e.spell))
+		if String(sp.get("tier", "")) != "III":
+			continue
+		var c: Dictionary = battle_log.fighters[int(e.by)]
+		var si := int(c.side)
+		var who := String(c.name) if c.role == "ruler" else "the %s %s" % [BattleExplain.poss(String(battle_log.sides[si].name).trim_prefix("the ")),
+			BattleExplain._bare(String(c.name))]
+		var whom := {}
+		for t in e.targets:
+			whom[int(battle_log.fighters[int(t)].side)] = true
+		var names := []
+		for oi in whom:
+			names.append(String(battle_log.sides[int(oi)].name))
+		var effect := "%s%d %s this round" % [MINUS, -int(e.part.value), String(e.part.stat)] if e.has("part") and int(e.part.value) < 0 \
+			else "+%d %s this round" % [int(e.get("part", {}).get("value", 0)), String(e.get("part", {}).get("stat", ""))]
+		var l := _mk("Round %d: %s called down %s: the %d %s fighters in the front rank have %s." % [n, who, String(sp.name), Array(e.targets).size(),
+			" and ".join(names), effect], "greater", "spell_" + String(e.spell), String(sp.get("codex", "magic")), si, report)
+		l["spell"] = String(e.spell)
+		return l
+	return {}
+
+
+## Which round names each spell's first cast (rule "first_spell"): {"line2": {round: line}, "extra": {last round: line}}.
+## A spell (per side) waits from the round of its first cast for the first round whose line 2 is free and isn't the
+## round cap's, unless a line 1 names it first (the "greater" or "impact" rule); whatever still waits in the battle's
+## last round shares one more line there. Empty without magic.
+static func _spell_plan(battle_log: Dictionary, report: Dictionary, info: Array) -> Dictionary:
+	var out := {"line2": {}, "extra": {}}
+	if not battle_log.get("magic", false):
+		return out
+	var last := 0
+	for n in range(1, info.size()):
+		if info[n].round_end >= 0:
+			last = n
+	var queue := []  # cast event indices, first casts not yet named
+	var seen := {}
+	for n in range(1, last + 1):
+		for i in info[n].casts:
+			var e: Dictionary = battle_log.events[int(i)]
+			var key := "%d|%s" % [int(battle_log.fighters[int(e.by)].side), String(e.spell)]
+			if not seen.has(key):
+				seen[key] = true
+				queue.append(int(i))
+		var head := _line1(battle_log, report, info, n)
+		var named := {}
+		for l in head.lines:
+			if String(l.rule) in ["greater", "impact"] and String(l.get("spell", "")).length() > 0:
+				named["%d|%s" % [int(l.side), String(l.spell)]] = true
+		queue = queue.filter(func(i): return not named.has("%d|%s" % [int(battle_log.fighters[int(battle_log.events[i].by)].side),
+			String(battle_log.events[i].spell)]))
+		if not head.line2_used and _round_cap(battle_log, report, n).is_empty() and not queue.is_empty():
+			out.line2[n] = _first_spell_line(battle_log, report, int(queue.pop_front()), n)
+		if n == last and not queue.is_empty():
+			var bits := []
+			for i in queue:
+				bits.append(String(_first_spell_line(battle_log, report, int(i), n).text).trim_suffix("."))
+			var first: Dictionary = _first_spell_line(battle_log, report, int(queue[0]), n)
+			first.text = "Spells this battle: %s." % "; ".join(bits.map(func(b): return b[0].to_lower() + b.substr(1)))
+			out.extra[n] = first
+	return out
+
+
+## Rule "first_spell": "The Sunstone Adepts cast Shield of Law: 6 Spearmen +4 defense this round." for cast event `i`,
+## named in round `n` ("In round 1, ..., that round." when it came earlier).
+static func _first_spell_line(battle_log: Dictionary, report: Dictionary, i: int, n: int) -> Dictionary:
+	var e: Dictionary = battle_log.events[i]
+	var c: Dictionary = battle_log.fighters[int(e.by)]
+	var name := MagicRules.spell_name(String(e.spell))
+	var when := "this round" if int(e.n) == n else "that round"
+	var effect := ""
+	match String(e.kind):
+		"bolt":
+			effect = "%d sure damage to %s" % [int(e.damage), _target_words(battle_log, e.targets)]
+			if int(e.get("self", 0)) > 0:
+				effect += " (it bleeds %d)" % int(e.self)
+		_:
+			var v := int(e.part.value)
+			effect = "%s %s%d %s %s" % [_target_words(battle_log, e.targets), "+" if v >= 0 else MINUS, absi(v), String(e.part.stat), when]
+	var who := _caster_words(c)
+	var text := "%s cast %s: %s." % [BattleExplain._cap(who), name, effect] if int(e.n) == n \
+		else "In round %d, %s cast %s: %s." % [int(e.n), who, name, effect]
+	var l := _mk(text, "first_spell", "spell_" + String(e.spell), String(MagicRules.spell_data(String(e.spell)).get("codex", "magic")), int(c.side), report)
+	l["spell"] = String(e.spell)
+	return l
+
+
+## A caster in running text: "the Thornmane Shamans", "the Ever-Regent".
+static func _caster_words(c: Dictionary) -> String:
+	return String(c.name) if c.role == "ruler" else BattleExplain._the(BattleExplain._bare(String(c.name)))
+
+
+## Targets by name with counts: "6 Knights", "4 Spearmen and 2 Knights", "the War Bear" (one alone).
+static func _target_words(battle_log: Dictionary, ids: Array) -> String:
+	var counts := {}
+	var order := []
+	for t in ids:
+		var f: Dictionary = battle_log.fighters[int(t)]
+		var nm := String(f.name) if f.role != "unit" else BattleExplain._bare(String(f.name))
+		if not counts.has(nm):
+			counts[nm] = 0
+			order.append(nm)
+		counts[nm] += 1
+	if ids.size() == 1:
+		return BattleExplain._the(String(order[0]))
+	var parts := []
+	for nm in order:
+		parts.append("%d %s" % [int(counts[nm]), nm])
+	return " and ".join(parts)
+
+
+## A spell factor's worth in round `n` in words (the "impact" rule), from that round's casts by side `si`.
+static func _spell_phrase(battle_log: Dictionary, id: String, si: int, worth: int, n: int) -> String:
+	var sid := id.trim_prefix(AutoBattleResolver.SPELL_PREFIX)
+	var sp := MagicRules.spell_data(sid)
+	var side := String(battle_log.sides[si].name)
+	if sid == "blood_moon":
+		return "under the Blood Moon, %s healed back %d hp" % [side, worth]
+	var casts := []
+	var targets := []
+	var casters := []
+	for e in battle_log.events:
+		if e.t != "cast" or String(e.spell) != sid or int(battle_log.fighters[int(e.by)].side) != si or (n > 0 and int(e.n) != n):
+			continue
+		casts.append(e)
+		targets.append_array(e.targets)
+		var w := _caster_words(battle_log.fighters[int(e.by)])
+		if not casters.has(w):
+			casters.append(w)
+	if casts.is_empty():
+		return ""
+	var name := String(sp.name)
+	var whose := "%s %s" % [BattleExplain.poss(String(casters[0])), name] if casters.size() == 1 else "%s (cast by %s)" % [name, " and ".join(casters)]
+	match String(sp.kind):
+		"bolt":
+			return "%s struck %s for %d damage (%d %s, never missing)" % [name, _target_words(battle_log, _uniq(targets)), worth, casts.size(),
+				"cast" if casts.size() == 1 else "casts"]
+		"hex":
+			var v := int(sp.value)
+			var whom := "the %d %s fighters in the front rank" % [targets.size(), _others(battle_log, si)] if sp.has("round") else _target_words(battle_log, targets)
+			return "%s slowed %s: %s%d %s this round, about %d damage saved" % [whose, whom, MINUS if v < 0 else "+", absi(v), String(sp.stat), worth]
+		"shield":
+			return "%s gave %s +%d %s this round: about %d damage blocked" % [whose, _target_words(battle_log, targets), int(sp.value), String(sp.stat), worth]
+	return ""
+
+
+static func _uniq(ids: Array) -> Array:
+	var out := []
+	for v in ids:
+		if not out.has(int(v)):
+			out.append(int(v))
+	return out
+
+
+## Every side but `si`, by name.
+static func _others(battle_log: Dictionary, si: int) -> String:
+	var out := []
+	for s in battle_log.sides:
+		if int(s.index) != si:
+			out.append(String(s.name))
+	return " and ".join(out)
 
 
 ## Line 2 in the last round of a battle that ran to the round cap: who won, and why.
@@ -255,7 +447,8 @@ static func _exposed(battle_log: Dictionary, report: Dictionary, info: Array, n:
 			else:
 				why = "only %d front-rank %s in front of %d in the second rank" % [counts[0], "fighter stands" if counts[0] == 1 else "fighters stand",
 					counts[1]]
-			var codex := "battle_commanders" if tier == 2 else ("trait_volley" if _tier_has_trait(battle_log, si, 1, AutoBattleResolver.VOLLEY) else "ruler_rank")
+			var codex := "battle_commanders" if tier == 2 else ("trait_volley" if _tier_has_trait(battle_log, si, 1, AutoBattleResolver.VOLLEY)
+				else ("trait_mage" if _tier_has_trait(battle_log, si, 1, AutoBattleResolver.MAGE) else "ruler_rank"))
 			return _mk("Round %d: %s %s exposed: %s." % [n, who, are, why], "exposed", "", codex, si, report)
 	return {}
 
@@ -278,11 +471,14 @@ static func _impact(battle_log: Dictionary, report: Dictionary, r: Dictionary, n
 			best = {"id": id, "side": si, "worth": worth}
 	if best.is_empty():
 		return {}
-	var phrase := _worth_phrase(battle_log, String(best.id), int(best.side), roundi(float(best.worth)))
+	var phrase := _worth_phrase(battle_log, String(best.id), int(best.side), roundi(float(best.worth)), n)
 	if phrase.is_empty():
 		return {}
-	return _mk("Round %d: %s." % [n, phrase], "impact", String(best.id), _codex_or(BattleExplain.factor_entry(String(best.id)), "battle_rounds"),
+	var l := _mk("Round %d: %s." % [n, phrase], "impact", String(best.id), _codex_or(BattleExplain.factor_entry(String(best.id)), "battle_rounds"),
 		int(best.side), report)
+	if String(best.id).begins_with(AutoBattleResolver.SPELL_PREFIX):
+		l["spell"] = String(best.id).trim_prefix(AutoBattleResolver.SPELL_PREFIX)  # M5-7: this line names the spell
+	return l
 
 
 ## Rule 6: the round's totals.
@@ -320,10 +516,13 @@ static func _luck(battle_log: Dictionary, report: Dictionary, r: Dictionary) -> 
 
 # --- words --------------------------------------------------------------------------------------------
 
-## A factor's worth this round in words, without the "Round n: ".
-static func _worth_phrase(battle_log: Dictionary, id: String, si: int, worth: int) -> String:
+## A factor's worth this round in words, without the "Round n: ". `n`: the round (M5-7's spell phrases read its casts;
+## 0 reads every round's).
+static func _worth_phrase(battle_log: Dictionary, id: String, si: int, worth: int, n: int = 0) -> String:
 	var side := String(battle_log.sides[si].name)
 	var who := BattleExplain.poss(side)
+	if id.begins_with(AutoBattleResolver.SPELL_PREFIX):
+		return _spell_phrase(battle_log, id, si, worth, n)
 	match id:
 		"terrain":
 			return "the %s was worth about %d damage to the defending %s" % [String(battle_log.terrain), worth, side]
@@ -464,7 +663,7 @@ static func _rounds(battle_log: Dictionary) -> Array:
 		match e.t:
 			"round":
 				cur = {"start": i, "round_end": -1, "end_event": {}, "morale": {}, "routs": [], "deaths": [], "reach": {}, "counts": {},
-					"alive": alive.duplicate(), "standing_after": []}
+					"alive": alive.duplicate(), "standing_after": [], "casts": []}
 				for entry in e.reach:
 					var si := int(entry.side)
 					cur.reach[si] = BattleLog._ints(entry.tiers)
@@ -478,6 +677,9 @@ static func _rounds(battle_log: Dictionary) -> Array:
 				alive[int(e.f)] = false
 				if not cur.is_empty():
 					cur.deaths.append(int(e.f))
+			"cast":
+				if not cur.is_empty():
+					cur.casts.append(i)  # M5-7
 			"morale":
 				if not cur.is_empty():
 					cur.morale[int(e.side)] = e

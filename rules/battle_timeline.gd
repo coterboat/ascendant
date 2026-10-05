@@ -18,7 +18,10 @@ extends RefCounted
 ##    "fighters": [{"hp", "pending" (damage that lands at the end of the round), "alive", "fled", "lost"}],
 ##    "sides": [{"hp", "pending", "morale", "break_pct", "lost_pct", "out" ("" | "routed" | "destroyed"), "held"}]}
 ## by fighter id and side index. "lost" marks fighters destroyed with their side's armies (the aftermath),
-## "held" a side Iron Discipline kept from breaking at its last morale check. Keyframes at every round
+## "held" a side Iron Discipline kept from breaking at its last morale check.
+## M5-7, in a log with magic only: each fighter also has "spells" ({part key: {"stat", "value", "by"}}: the hexes and
+## shields on it this round, cleared at the next round event) and each side "bled" (hp its own casters bled and haven't
+## got back). A cast event's beat is "casts"; a bolt's damage waits in "pending" like a hit's. Keyframes at every round
 ## event make state_at() cheap: at most one round of events is folded on top of one.
 
 var _log: Dictionary = {}
@@ -131,6 +134,8 @@ func display_order(n: int) -> Array:
 ##    "shielded": its rank isn't one ordinary enemies can reach this round,
 ##    "auras": the morale it gives while it stands: "commander", "Inspire", "ruler" (its own side's) and
 ##             "Fury", "Dread" (every enemy side's)}
+## M5-7, in a log with magic, also "snared" (a hex lowers its attack this round), "spell_shielded" (a shield raises its
+## defense this round) and "spell_parts" ({part key: value}).
 func statuses(state: Dictionary, fid: int) -> Dictionary:
 	var f: Dictionary = _log.fighters[fid]
 	var fs: Dictionary = state.fighters[fid]
@@ -158,13 +163,27 @@ func statuses(state: Dictionary, fid: int) -> Dictionary:
 				auras.append(AutoBattleResolver.DREAD)
 		if f.trait == AutoBattleResolver.FURY:
 			auras.append(AutoBattleResolver.FURY)
-	return {"standing": fs.alive and not fs.fled,
+	var out := {"standing": fs.alive and not fs.fled,
 		"shield_wall": f.trait == AutoBattleResolver.SHIELD_WALL and others,
 		"berserk": f.trait == AutoBattleResolver.BERSERK and below_max,
 		"blood_frenzy": int(side.frenzy) > 0 and below_max,
 		"pack_leader": f.role == "unit" and pack,
 		"shielded": not _reach_tiers(state, int(f.side)).has(int(f.tier)),
 		"auras": auras}
+	if fs.has("spells"):
+		var parts := {}
+		var snared := false
+		var warded := false
+		for k in fs.spells:
+			parts[k] = int(fs.spells[k].value)
+			if String(fs.spells[k].stat) == "attack" and int(fs.spells[k].value) < 0:
+				snared = true
+			if String(fs.spells[k].stat) == "defense" and int(fs.spells[k].value) > 0:
+				warded = true
+		out["snared"] = snared
+		out["spell_shielded"] = warded
+		out["spell_parts"] = parts
+	return out
 
 
 ## The tiers ordinary enemies can reach on side `si`: the current round's, or, before round 1, the
@@ -185,14 +204,21 @@ func _reach_tiers(state: Dictionary, si: int) -> Array:
 ## The state before the battle's first event: every fighter at its starting hp, each side at its starting
 ## morale, nothing pending.
 static func initial_state(battle_log: Dictionary) -> Dictionary:
+	var magic: bool = battle_log.get("magic", false)
 	var fighters := []
 	for f in battle_log.fighters:
-		fighters.append({"hp": int(f.hp), "pending": 0, "alive": int(f.hp) > 0, "fled": false, "lost": false})
+		var fs := {"hp": int(f.hp), "pending": 0, "alive": int(f.hp) > 0, "fled": false, "lost": false}
+		if magic:
+			fs["spells"] = {}
+		fighters.append(fs)
 	var sides := []
 	for s in battle_log.sides:
 		var sm: Dictionary = s.start_morale
-		sides.append({"hp": int(s.hp_start), "pending": 0, "morale": int(sm.morale), "break_pct": int(sm.break_pct), "lost_pct": 0,
-			"out": "", "held": false})
+		var ss := {"hp": int(s.hp_start), "pending": 0, "morale": int(sm.morale), "break_pct": int(sm.break_pct), "lost_pct": 0,
+			"out": "", "held": false}
+		if magic:
+			ss["bled"] = 0
+		sides.append(ss)
 	return {"event": 0, "round": 0, "beat": "deploy", "winner": -1, "reach": [], "fighters": fighters, "sides": sides}
 
 
@@ -206,6 +232,19 @@ static func apply(battle_log: Dictionary, state: Dictionary, i: int) -> void:
 			state.round = int(e.n)
 			state.beat = "attacks"
 			state.reach = e.reach
+			for fs in fighters:
+				if fs.has("spells"):
+					fs.spells = {}  # M5-7: last round's hexes and shields are gone
+		"cast":
+			# M5-7: a bolt's damage waits for the round's wounds; a hex or shield is on its targets for the round.
+			state.beat = "casts"
+			for t in e.targets:
+				var tid := int(t)
+				if String(e.kind) == "bolt":
+					fighters[tid].pending += int(e.damage)
+					sides[int(battle_log.fighters[tid].side)].pending += int(e.damage)
+				elif e.has("part"):
+					fighters[tid].spells["spell_" + String(e.spell)] = {"stat": String(e.part.stat), "value": int(e.part.value), "by": int(e.by)}
 		"attack":
 			state.beat = "attacks"
 			if e.hit:
@@ -221,6 +260,8 @@ static func apply(battle_log: Dictionary, state: Dictionary, i: int) -> void:
 			s.hp -= int(e.from) - int(e.to)
 			fs.pending = 0
 			fs.hp = int(e.to)
+			if e.has("bled"):
+				s.bled = int(s.get("bled", 0)) + int(e.bled)  # M5-7: Bloodbolt's bleeding
 		"death":
 			state.beat = "wounds"
 			fighters[int(e.f)].alive = false
@@ -256,6 +297,15 @@ static func apply(battle_log: Dictionary, state: Dictionary, i: int) -> void:
 				sides[w].out = ""
 				for fid in battle_log.sides[w].fighters:
 					fighters[int(fid)].fled = false
+		"bleed_closed":
+			# M5-7: the winner's bled hp come back after the battle.
+			state.beat = "end"
+			for h in e.closed:
+				var cid := int(h[0])
+				var cs: Dictionary = sides[int(battle_log.fighters[cid].side)]
+				cs.hp += int(h[2]) - int(h[1])
+				cs.bled = maxi(0, int(cs.get("bled", 0)) - (int(h[2]) - int(h[1])))
+				fighters[cid].hp = int(h[2])
 		"feast":
 			state.beat = "end"
 			for h in e.healed:

@@ -693,8 +693,8 @@ func _why_entry() -> String:
 
 
 static func _factor_entry(factor_id: String) -> String:
-	if factor_id in [AutoBattleResolver.WALLS, AutoBattleResolver.COVER]:
-		return BattleExplain.factor_entry(factor_id)  # M3c S-3: battle_walls, battle_open (S-2), one map with BattleExplain
+	if factor_id in [AutoBattleResolver.WALLS, AutoBattleResolver.COVER] or factor_id.trim_prefix("morale_").begins_with(AutoBattleResolver.SPELL_PREFIX):
+		return BattleExplain.factor_entry(factor_id)  # M3c S-3: battle_walls, battle_open (S-2); M5-7: spell_<id>. One map with BattleExplain
 	if FACTOR_ENTRIES.has(factor_id):
 		return FACTOR_ENTRIES[factor_id]
 	if factor_id.begins_with(AutoBattleResolver.MANDATE_PREFIX):

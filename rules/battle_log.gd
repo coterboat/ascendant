@@ -59,6 +59,23 @@ class_name BattleLog
 ##              defenders; never a relief army), "turn_of_siege" (0 when there was no siege at the start of turn)}
 ##   attack     in a storm every attack on a fighter of a from_inside army carries defense part "walls"; in a sally
 ##              or breach battle it carries "cover". A siege battle never has the flat "fort" part.
+##
+## Battle spells (M5-7, #118; design/M5_MAGIC_FOG.md §5.4). A battle in a game with magic writes "magic": true at the
+## top level and these additions to the same version-1 schema (every other log is unchanged, byte for byte):
+##   side       "casters" (fighter ids of its mages and a ruler that casts), "spellbook" (its on spells, in order),
+##              "enchantments" ([{"id", "ritual", "effect"}]: Dawn Blessing, the Blood Moon, a rival's curse in play)
+##   fighter    "mastery" ({school: bonus}) for a caster; "summoned": true for a summoned creature
+##   cast       {n, by, spell, school, kind ("bolt" | "hex" | "shield"), bonus, targets (fighter ids, in order),
+##              value and resist (bolt: its damage with mastery, and a ruler's spell resistance), part ({"stat",
+##              "value"}: hex and shield, for the round), damage (bolt: per target, after resistance; else 0), self
+##              (Bloodbolt's bleed, else 0), why (plain words), skipped ([{"spell", "reason"}] when it passed over
+##              spells that weren't useful)}. After the round event and before the round's attacks, one per cast.
+##              Casts draw nothing. A caster that casts makes no attack that round.
+##   attack     attack and defense parts can hold "spell_<id>" (Briar Snare, Sunburst; Shield of Law)
+##   wound      "by" names the casters whose bolt hit it, and a bleeding caster itself; "bled": the hp it bled
+##   morale     "bled": hp the side's own casters bled so far, which lost_pct leaves out
+##   heal       "spell": "blood_moon" in place of "trait" when the moon's share was the one used
+##   bleed_closed {side, closed: [[fighter, from, to]]}: after the end, before feast, the winner's bled hp come back
 
 const VERSION := 1
 ## M3c: what a battle at a fort can be (the siege block's "kind"), and the "why" each kind allows (§3.9).
@@ -66,9 +83,11 @@ const SIEGE_WHYS := {"storm": ["storm"], "breach": ["breach"], "open": ["sally",
 const SIEGE_FORTS := ["palisade", "keep", "citadel"]
 const MAX_EVENTS := 12000
 const EVENT_TYPES := ["round", "attack", "wound", "death", "morale", "rout", "destroyed", "round_end", "end", "feast", "aftermath",
-	"heal", "harvest"]
+	"heal", "harvest", "cast", "bleed_closed"]
 ## Events without a round number.
-const UNROUNDED := ["end", "feast", "aftermath", "harvest"]
+const UNROUNDED := ["end", "feast", "aftermath", "harvest", "bleed_closed"]
+## M5-7: the battle spell kinds a cast event can have.
+const CAST_KINDS := ["bolt", "hex", "shield"]
 const ROLES := ["unit", "commander", "ruler"]
 const REACH_WORDS := ["front", "second", "back", "skirmish", "wings"]
 const MORALE_RESULTS := ["holds", "breaks", "held"]
@@ -139,6 +158,9 @@ static func final_hp(battle_log: Dictionary) -> Array:
 			hp[int(e.f)] = int(e.to)
 		elif e.t == "feast":
 			for h in e.healed:
+				hp[int(h[0])] = int(h[2])
+		elif e.t == "bleed_closed":
+			for h in e.closed:
 				hp[int(h[0])] = int(h[2])
 	return hp
 
@@ -380,8 +402,17 @@ static func validate(battle_log) -> Array:
 				for h in e.get("healed", []):
 					if not (h is Array) or h.size() != 3 or not _in_range(h[0], nf) or int(_num(h[2], 0)) <= int(_num(h[1], 0)):
 						_add(r, "%s should list [fighter, hit points before, hit points after] for each fighter it healed." % what)
+			"cast":
+				_validate_cast(r, what, e, battle_log)
+			"bleed_closed":
+				if not _in_range(e.get("side"), ns):
+					_add(r, "%s names side %s, but the log has %d sides." % [what, str(e.get("side")), ns])
+				for h in e.get("closed", []):
+					if not (h is Array) or h.size() != 3 or not _in_range(h[0], nf) or int(_num(h[2], 0)) <= int(_num(h[1], 0)) \
+							or int(_num(h[2], 0)) > int(_num(fighters[int(h[0])].get("max_hp"), 0)):
+						_add(r, "%s should list [fighter, hit points before, hit points after] for each caster whose bleeding closed." % what)
 			"heal":
-				# M4-3: Lifedrinker. Up, never past the fighter's maximum.
+				# M4-3: Lifedrinker (M5-7: or the Blood Moon, "spell"). Up, never past the fighter's maximum.
 				if not _in_range(e.get("f"), nf):
 					_add(r, "%s names fighter %s, but the log has %d fighters." % [what, str(e.get("f")), nf])
 				elif not _is_int(e.get("from")) or not _is_int(e.get("to")) or int(e.to) <= int(e.from) \
@@ -497,6 +528,56 @@ static func _validate_siege_parts(r: Array, battle_log: Dictionary) -> void:
 			_add(r, "Event %d (attack in round %d): the target's cover part is %d, but it should be %d." % [i, int(e.n), cover, want_cover])
 		if not sg.is_empty() and parts.has("fort"):
 			_add(r, "Event %d (attack in round %d): a battle at a fort with sieges has no flat fort part; the walls replace it." % [i, int(e.n)])
+
+
+## M5-7: a cast event's fields and what they must agree with: a known battle spell of its school and kind, cast by one
+## of its side's casters, a bolt on exactly one enemy for at least 1, a hex on enemies and a shield on its own side with
+## their part.
+static func _validate_cast(r: Array, what: String, e: Dictionary, battle_log: Dictionary) -> void:
+	var fighters: Array = battle_log.fighters
+	var nf := fighters.size()
+	if not battle_log.get("magic", false):
+		_add(r, "%s is a cast in a battle without magic." % what)
+		return
+	if not _in_range(e.get("by"), nf):
+		_add(r, "%s names fighter %s as its caster, but the log has %d fighters." % [what, str(e.get("by")), nf])
+		return
+	var sid := str(e.get("spell", ""))
+	var sp := MagicRules.spell_data(sid)
+	if sp.is_empty() or not MagicRules.is_battle_spell(sid):
+		_add(r, "%s casts '%s', which is not a battle spell." % [what, sid])
+		return
+	if str(e.get("school", "")) != String(sp.school) or str(e.get("kind", "")) != String(sp.kind) or not CAST_KINDS.has(String(sp.kind)):
+		_add(r, "%s gives %s school '%s' and kind '%s'; it is %s's %s." % [what, String(sp.name), str(e.get("school")), str(e.get("kind")),
+			String(sp.school), String(sp.kind)])
+	var side: Dictionary = battle_log.sides[int(fighters[int(e.by)].side)]
+	if not Array(side.get("casters", [])).map(func(x): return int(x)).has(int(e.by)):
+		_add(r, "%s is cast by fighter %d, who is not one of its side's casters." % [what, int(e.by)])
+	for key in ["bonus", "damage", "self"]:
+		if not _is_int(e.get(key)) or int(e.get(key)) < 0:
+			_add(r, "%s should have a whole number, 0 or more, for '%s'." % [what, key])
+			return
+	if not (e.get("targets") is Array) or e.targets.is_empty():
+		_add(r, "%s should name its targets." % what)
+		return
+	for t in e.targets:
+		if not _in_range(t, nf):
+			_add(r, "%s targets fighter %s, but the log has %d fighters." % [what, str(t), nf])
+			return
+		var own: bool = int(fighters[int(t)].side) == int(fighters[int(e.by)].side)
+		if own != (String(sp.kind) == "shield"):
+			_add(r, "%s puts %s on fighter %d; a %s goes on %s." % [what, String(sp.name), int(t), String(sp.kind),
+				"its own side" if String(sp.kind) == "shield" else "the enemy"])
+	match String(sp.kind):
+		"bolt":
+			if e.targets.size() != 1 or int(e.damage) < 1:
+				_add(r, "%s is a bolt: one target, at least 1 damage." % what)
+			elif int(e.get("value", -1)) - int(e.get("resist", -1)) != int(e.damage) or int(e.get("resist", -1)) < 0:
+				_add(r, "%s deals %d, but its value %s less resistance %s isn't that." % [what, int(e.damage), str(e.get("value")), str(e.get("resist"))])
+		"hex", "shield":
+			var part = e.get("part")
+			if not (part is Dictionary) or str(part.get("stat", "")) != String(sp.get("stat", "")) or int(_num(part.get("value"), 0)) != int(sp.get("value", 0)):
+				_add(r, "%s should carry its part: %s %+d." % [what, String(sp.get("stat", "")), int(sp.get("value", 0))])
 
 
 static func _validate_attack(r: Array, what: String, e: Dictionary, nf: int) -> void:
@@ -669,6 +750,13 @@ static func cross_check(battle_log: Dictionary, report: Dictionary) -> Array:
 	var end_event := {}
 	var feast_healed := -1
 	var round_dealt := {}  # M4-3: fighter id -> damage its hits dealt this round (Lifedrinker's heal)
+	var cast_now := {}  # M5-7: caster id -> true when it cast this round (so it makes no attack)
+	var self_bleed := {}  # M5-7: caster id -> the bleed its cast this round asks for
+	var moon_sides := {}  # M5-7: side index -> true when the Blood Moon shines on it in this battle
+	for sd in sides:
+		for en in sd.get("enchantments", []):
+			if String(en.get("ritual", "")) == "blood_moon" and not String(en.get("effect", "")).begins_with("outside"):
+				moon_sides[int(sd.index)] = true
 	for i in events.size():
 		var e: Dictionary = events[i]
 		match e.t:
@@ -678,10 +766,33 @@ static func cross_check(battle_log: Dictionary, report: Dictionary) -> Array:
 					reach[int(entry.side)] = entry
 				pending = {}
 				round_dealt = {}
+				cast_now = {}
+				self_bleed = {}
 				tally = []
 				for s in sides:
 					tally.append([0, 0, 0])
+			"cast":
+				# M5-7: a standing caster casts on standing targets; a bolt's damage waits for the wounds like a hit.
+				var by := int(e.by)
+				if not state.fighters[by].alive or state.fighters[by].fled:
+					_add(r, "Round %d, event %d: fighter %d casts, but it isn't standing." % [int(e.n), i, by])
+				if cast_now.has(by):
+					_add(r, "Round %d, event %d: fighter %d casts twice in one round." % [int(e.n), i, by])
+				cast_now[by] = true
+				for t in e.targets:
+					if not state.fighters[int(t)].alive or state.fighters[int(t)].fled:
+						_add(r, "Round %d, event %d: %s lands on fighter %d, who isn't standing." % [int(e.n), i, String(e.spell), int(t)])
+				if String(e.kind) == "bolt":
+					var p: Dictionary = pending.get(int(e.targets[0]), {"dmg": 0, "by": []})
+					p.dmg += int(e.damage)
+					p.by.append(by)
+					pending[int(e.targets[0])] = p
+				if int(e.self) > 0:
+					self_bleed[by] = int(e.self)
 			"attack":
+				if cast_now.has(int(e.by)):
+					_add(r, "Round %d, event %d: fighter %d attacks in a round it cast a spell." % [int(e.n), i, int(e.by)])
+				_check_spell_parts(r, i, e, state)
 				_check_attack(r, i, e, battle_log, state, reach, tl, frenzy_key)
 				var a: Dictionary = fighters[int(e.by)]
 				var si := int(a.side)
@@ -706,13 +817,23 @@ static func cross_check(battle_log: Dictionary, report: Dictionary) -> Array:
 			"wound":
 				var p: Dictionary = pending.get(int(e.f), {"dmg": 0, "by": []})
 				var want := maxi(0, int(e.from) - int(p.dmg))
+				var by_want: Array = p.by.duplicate()
+				# M5-7: a Bloodbolt's bleed lands after the round's damage, never below 1 hp.
+				var bled := mini(int(self_bleed.get(int(e.f), 0)), maxi(0, want - 1))
+				want -= bled
+				if bled > 0:
+					by_want.append(int(e.f))
+				if int(e.get("bled", 0)) != bled:
+					_add(r, "Round %d: fighter %d's wound says it bled %d, but its cast asked for %d and it could bleed %d." % [int(e.n), int(e.f),
+						int(e.get("bled", 0)), int(self_bleed.get(int(e.f), 0)), bled])
 				if int(e.from) != int(state.fighters[int(e.f)].hp) or int(e.to) != want:
 					_add(r, "Round %d: fighter %d's wound goes from %d to %d hp, but it had %d hp and took %d damage in hits." % [
 						int(e.n), int(e.f), int(e.from), int(e.to), int(state.fighters[int(e.f)].hp), int(p.dmg)])
-				if _ints(e.by) != p.by:
+				if _ints(e.by) != by_want:
 					_add(r, "Round %d: fighter %d's wound names %s as its attackers, but the hits on it came from %s." % [
-						int(e.n), int(e.f), str(_ints(e.by)), str(p.by)])
+						int(e.n), int(e.f), str(_ints(e.by)), str(by_want)])
 				pending.erase(int(e.f))
+				self_bleed.erase(int(e.f))
 			"death":
 				deaths[int(fighters[int(e.f)].side)].append(String(fighters[int(e.f)].name))
 			"heal":
@@ -720,9 +841,15 @@ static func cross_check(battle_log: Dictionary, report: Dictionary) -> Array:
 				# round, rounded up, up to its maximum.
 				var hf: Dictionary = fighters[int(e.f)]
 				var drunk := int(round_dealt.get(int(e.f), 0))
-				var want := mini(int(hf.max_hp), int(e.from) + ceili(float(drunk) / AutoBattleResolver.LIFEDRINK_DIVISOR))
-				if String(hf.trait) != AutoBattleResolver.LIFEDRINKER or not state.fighters[int(e.f)].alive:
-					_add(r, "Round %d: fighter %d heals, but only a standing fighter with Lifedrinker does." % [int(e.n), int(e.f)])
+				# M5-7: under the Blood Moon a quarter, rounded down ("spell"), and never above maximum - 1.
+				var moon: bool = moon_sides.has(int(hf.side))
+				var top := int(hf.max_hp) - (1 if moon else 0)
+				var by_moon := String(e.get("spell", "")) == "blood_moon"
+				var share := floori(float(drunk) / int(MagicData.SPELLS.blood_moon.share)) if by_moon \
+					else ceili(float(drunk) / AutoBattleResolver.LIFEDRINK_DIVISOR)
+				var want := mini(top, int(e.from) + share)
+				if (by_moon and not moon) or (not by_moon and String(hf.trait) != AutoBattleResolver.LIFEDRINKER) or not state.fighters[int(e.f)].alive:
+					_add(r, "Round %d: fighter %d heals, but only a standing fighter with Lifedrinker, or under the Blood Moon, does." % [int(e.n), int(e.f)])
 				elif int(e.from) != int(state.fighters[int(e.f)].hp) or int(e.to) != want or int(e.dealt) != drunk:
 					_add(r, "Round %d: fighter %d heals from %d to %d after dealing %d, but it had %d hp and its hits dealt %d this round." % [
 						int(e.n), int(e.f), int(e.from), int(e.to), int(e.dealt), int(state.fighters[int(e.f)].hp), drunk])
@@ -898,6 +1025,23 @@ static func _check_attack(r: Array, i: int, e: Dictionary, battle_log: Dictionar
 			["shielded", st_a.shielded, bool(e.screened)]]:
 		if bool(c[1]) != bool(c[2]):
 			_add(r, "%s: the derived %s status is %s, but the attack says %s." % [where, c[0], str(c[1]), str(c[2])])
+
+
+## M5-7: an attack's spell parts are exactly the hexes on its attacker and the shields on its target this round.
+static func _check_spell_parts(r: Array, i: int, e: Dictionary, state: Dictionary) -> void:
+	for c in [["attack", int(e.by)], ["defense", int(e.to)]]:
+		var got := {}
+		for p in e[c[0]].parts:
+			if String(p).begins_with(AutoBattleResolver.SPELL_PREFIX):
+				got[String(p)] = int(e[c[0]].parts[p])
+		var want := {}
+		var on: Dictionary = state.fighters[int(c[1])].get("spells", {})
+		for p in on:
+			if String(on[p].stat) == c[0]:
+				want[String(p)] = int(on[p].value)
+		if got != want:
+			_add(r, "Round %d, event %d: the %s's spell parts are %s, but the casts this round put %s on it." % [int(e.n), i,
+				"attacker" if c[0] == "attack" else "target", str(got), str(want)])
 
 
 static func _check_morale_log(r: Array, name: String, morale_log, events: Array) -> void:

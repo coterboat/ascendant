@@ -858,7 +858,7 @@ func _build_magic_row(box: Container) -> void:
 	magic_toggle.add_theme_font_size_override("font_size", 20)
 	magic_toggle.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	magic_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Magic (preview)",
-		"Research spells, recruit mages and cast rituals. Needs Paths and Rulers, so they're on too. Magic is still being built: battle spells and rituals don't take effect yet, but you can research the arcana, recruit mages and set your spellbook. %s" % RulesCodex.text("magic")), "magic")
+		"Research spells, recruit mages and cast rituals. Needs Paths and Rulers, so they're on too. Magic is still being built: battle spells work, but rituals don't take effect yet. %s" % RulesCodex.text("magic")), "magic")
 	magic_toggle.set_pressed_no_signal(_magic_by_default())
 	if magic_toggle.button_pressed:
 		paths_toggle.set_pressed_no_signal(true)

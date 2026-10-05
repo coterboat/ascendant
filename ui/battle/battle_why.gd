@@ -23,7 +23,7 @@ extends RefCounted
 ##                     when its factor has worth this round ("Charge: +8 this round")
 ##   }
 ##
-## Feed entries are the round's deaths, exposed ranks, morale checks, routs, heals, charges, big hits
+## Feed entries are the round's casts (M5-7), deaths, exposed ranks, morale checks, routs, heals, charges, big hits
 ## (damage >= BattlePlayer.BIG_HIT), lucky hits (chance <= LUCKY_CHANCE) and unlucky misses (chance >=
 ## UNLUCKY_CHANCE). Jumping to one lands right after its beat (BattlePlayer.seek_beat(beat + 1)), so the
 ## panel then explains it.
@@ -110,8 +110,15 @@ func _build() -> void:
 				_feed(rnd, k, ev, "death", "%s fell." % _cap(BattleExplain.label(_log, int(b.fighter))),
 					"ruler_death" if ruler else "battle_pending_damage")
 			"heal":
-				_feed(rnd, k, ev, "heal", "%s drank back %d hp (Lifedrinker)." % [_cap(BattleExplain.label(_log, int(b.fighter))),
-					int(b.data.healed)], "trait_lifedrinker")
+				if String(_log.events[ev].get("spell", "")) == "blood_moon":
+					_feed(rnd, k, ev, "heal", "%s healed back %d hp under the Blood Moon." % [_cap(BattleExplain.label(_log, int(b.fighter))),
+						int(b.data.healed)], "spell_blood_moon")
+				else:
+					_feed(rnd, k, ev, "heal", "%s drank back %d hp (Lifedrinker)." % [_cap(BattleExplain.label(_log, int(b.fighter))),
+						int(b.data.healed)], "trait_lifedrinker")
+			"cast":
+				# M5-7: every cast is a notable event.
+				_feed(rnd, k, ev, "cast", "Spell: %s" % String(b.data.text), "spell_" + String(b.data.spell))
 			"morale":
 				_rounds[rnd].morale.append([k, ev])
 				var me: Dictionary = events[ev]
@@ -230,6 +237,9 @@ func _now(p: int, n: int, state: Dictionary, info: Dictionary, totals: Array, fe
 			parts.append("%s with %d fighters" % [_side_name(si), _log.sides[si].fighters.size()])
 		return "Before round 1: the armies deploy, %s." % " against ".join(parts)
 	match String(state.beat):
+		"casts":
+			var cast := feed.filter(func(f): return f.kind == "cast").size()
+			return "Round %d · spells: %d cast so far. Spells always land: they don't roll." % [n, cast]
 		"attacks":
 			var landed := 0
 			var hits := 0

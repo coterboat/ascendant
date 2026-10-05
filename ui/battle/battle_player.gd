@@ -16,6 +16,8 @@ extends RefCounted
 ## same log always gives the same beats and times (nothing depends on the frame rate, the view or its
 ## settings); 2x and 4x only run the clock faster. A round is:
 ##   round_start  0.4 s       the banner ("Round 3 of at most 8")
+##   casts        M5-7: the round's cast events in log order, cast k at k x min(CAST_STAGGER, CAST_SPAN / C), then
+##                CAST_HOLD; only in a round with a cast (a game with magic)
 ##   attacks      the round's attacks in BattleTimeline.display_order (round-robin across sides). Attack k
 ##                starts at k x stagger, stagger = min(0.25 s, 1.6 s / A); it lands MELEE_IMPACT later for
 ##                melee, or after its projectile's flight (PROJECTILES). The phase lasts until the last lands.
@@ -33,6 +35,8 @@ extends RefCounted
 ## log event it shows, -1 for none), "round", "fighter", "target", "side" (ids, -1 when none), "data"}:
 ##   deploy                                   data {}
 ##   round_start      event: the round        data {"round_cap", "banner"}
+##   cast             fighter -> target       data {"spell", "name", "kind", "school", "targets", "damage", "part", "self",
+##                                                 "text" (BattleExplain.explain_cast's summary)}  (M5-7)
 ##   attack_started   fighter -> target       data {"hit", "damage", "big", "charge", "first_charge" (its
 ##   attack_landed    (both per attack)            side's first Charge attack), "projectile" ("" for melee,
 ##                                                 "bolt", "javelin", "arcane", or "dive" for Wings), "arc",
@@ -123,13 +127,17 @@ const PROJECTILES := {
 const SHAKE_BIG := {"amp": 3.0, "dur": 0.15}
 const SHAKE_CHARGE := {"amp": 4.0, "dur": 0.2}
 const SHAKE_RULER := {"amp": 6.0, "dur": 0.25}
-const KINDS := ["deploy", "round_start", "attack_started", "attack_landed", "wound", "death", "heal", "morale", "rout", "destroyed",
+## M5-7: the cast step's beats, before the round's attacks.
+const CAST_STAGGER := 0.3
+const CAST_SPAN := 1.2
+const CAST_HOLD := 0.35
+const KINDS := ["cast", "deploy", "round_start", "attack_started", "attack_landed", "wound", "death", "heal", "morale", "rout", "destroyed",
 	"caption", "round_end", "moment", "end", "feast", "harvest", "aftermath", "event", "result"]
 ## Beat kinds that apply their log event to the state when they fire. "event" is any log event of a kind
 ## this player doesn't know yet: it still gets its one beat, so the state stays exact.
-const APPLYING := ["round_start", "attack_landed", "wound", "death", "heal", "morale", "rout", "destroyed", "round_end", "end", "feast",
+const APPLYING := ["cast", "round_start", "attack_landed", "wound", "death", "heal", "morale", "rout", "destroyed", "round_end", "end", "feast",
 	"harvest", "aftermath", "event"]
-const _APPLIES := {"round_start": true, "attack_landed": true, "wound": true, "death": true, "heal": true, "morale": true, "rout": true,
+const _APPLIES := {"cast": true, "round_start": true, "attack_landed": true, "wound": true, "death": true, "heal": true, "morale": true, "rout": true,
 	"destroyed": true, "round_end": true, "end": true, "feast": true, "harvest": true, "aftermath": true, "event": true}
 ## The log event kinds with a beat of their own name; any other becomes an "event" beat.
 const _OWN_BEAT := {"wound": true, "death": true, "heal": true, "morale": true, "rout": true, "destroyed": true, "round_end": true,
@@ -229,6 +237,16 @@ func _build() -> void:
 		pending.append(rb)
 		_round_times.append({"round": n, "t": t})
 		t += BANNER
+		# M5-7: the cast step comes before the attacks, each cast in log order.
+		var casts := []
+		for i in range(rs + 1, next_rs):
+			if String(events[i].t) == "cast":
+				casts.append(i)
+		if not casts.is_empty():
+			var cast_gap := minf(CAST_STAGGER, CAST_SPAN / casts.size())
+			for k in casts.size():
+				pending.append(_cast_beat(int(casts[k]), t + k * cast_gap, n))
+			t += cast_gap * casts.size() + CAST_HOLD
 		# Attacks, staggered in display order.
 		var order := _tl.display_order(n)
 		var count := order.size()
@@ -266,7 +284,7 @@ func _build() -> void:
 		var phase := 0
 		for i in range(rs + 1, next_rs):
 			var kind := String(events[i].t)
-			if kind == "attack":
+			if kind == "attack" or kind == "cast":
 				continue
 			phase = maxi(phase, int(PHASE_OF.get(kind, phase)))
 			phases[phase].append(i)
@@ -344,6 +362,19 @@ func _push(b: Dictionary) -> void:
 
 func _beat(kind: String, t: float, dur: float, event: int, round_no: int) -> Dictionary:
 	return {"i": -1, "kind": kind, "t": t, "dur": dur, "event": event, "round": round_no, "fighter": -1, "target": -1, "side": -1, "data": {}}
+
+
+## M5-7: the beat for cast event `i`.
+func _cast_beat(i: int, t: float, round_no: int) -> Dictionary:
+	var e: Dictionary = _log.events[i]
+	var b := _beat("cast", t, CAST_STAGGER, i, round_no)
+	b.fighter = int(e.by)
+	b.target = int(e.targets[0]) if not Array(e.targets).is_empty() else -1
+	b.side = _side_of(int(e.by))
+	b.data = {"spell": String(e.spell), "name": MagicRules.spell_name(String(e.spell)), "kind": String(e.kind), "school": String(e.school),
+		"targets": BattleLog._ints(e.targets), "damage": int(e.get("damage", 0)), "part": e.get("part", {}).duplicate(), "self": int(e.get("self", 0)),
+		"text": BattleExplain._cap(String(BattleExplain.explain_cast(_log, i).get("what", ""))) + "."}
+	return b
 
 
 ## The beat for a non-attack log event.

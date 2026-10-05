@@ -119,6 +119,8 @@ func bind(p_player: BattlePlayer, settings: Dictionary = {}) -> void:
 		var b: Button = moment_buttons[kind]
 		var have := player.moments().filter(func(m): return m.kind == kind)
 		b.disabled = have.is_empty()
+		if kind == "spell":
+			b.visible = player.battle_log().get("magic", false)  # M5-7: only a battle in a game with magic has spells
 		if have.is_empty():
 			b.tooltip_text = TooltipText.wrap_text(String(missing.get(kind, "Not in this battle.")))
 		else:

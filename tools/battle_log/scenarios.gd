@@ -14,6 +14,10 @@ extends RefCounted
 ## "biggest": the biggest battle measured in AI-vs-AI games with rulers (§1.3, §8.1), rebuilt with
 ## BattleLog.regenerate from that game's record, which is stored beside the fixtures (BIGGEST_RECORD;
 ## --fixtures plays the game again only when the file is missing, so changes to the AI don't move it).
+##
+## M5-7 (#118): the scripted magic battles (MAGIC_NAMES), fought the same way in a game with magic, each showing a
+## battle spell at work. They aren't stored as fixtures: tests fight them on the first seed that shows what they are for
+## (find_seed), so they follow the rules as they are. run(), shows(), find_seed() and direct() take their names too.
 
 const Games := preload("res://tools/battle_log/games.gd")
 
@@ -26,6 +30,8 @@ const BIGGEST_RECORD := "res://tests/fixtures/battles/biggest_game.json"
 
 const NAMES := ["starting_plains", "forest_fort", "knights_charge", "skirmish", "iron_discipline", "king_falls_wins",
 	"dread_feast_frenzy", "round_cap_defender", "border", "biggest", "one_round", "mutual_rout"]
+## M5-7: the scripted magic battles (not stored fixtures; see above).
+const MAGIC_NAMES := ["magic_shamans", "magic_regent", "magic_fort", "magic_sunburst", "magic_blood_moon", "magic_free_holds"]
 const WHAT := {
 	"starting_plains": "The starting armies on plains: the Clans attack the Crown at Rivermarch (no rulers).",
 	"forest_fort": "A forest defence with a fort: the Crown holds Thornvale (given a fort for this fixture) against the Clans.",
@@ -39,6 +45,12 @@ const WHAT := {
 	"one_round": "A one-round battle: a lone Crown Spearmen holding Rivermarch is swept away in the first round (M3-2's turning point has none).",
 	"mutual_rout": "A mutual rout: both sides break in the same round on the Rivermarch-Greenglade border, and the one with more strength left keeps the field.",
 	"biggest": "The biggest battle measured in AI-vs-AI games with rulers (design/M3_BATTLES.md §1.3): game seed 9, turn 34, 277 fighters, 742 attacks, 3 rounds, rebuilt from the game's record.",
+	"magic_shamans": "Two Thornmane Shamans (Briar Snare and Bloodbolt) with a Clans warband attack the Crown at Rivermarch: the M5-7 playtest battle.",
+	"magic_regent": "The Ever-Regent and two Sunstone Adepts (Sunlance, Shield of Law) march blessed out of Crownkeep to attack the Clans at Rivermarch.",
+	"magic_fort": "Two Sunstone Adepts help hold the Crownkeep fort against the Clans: Shield of Law is skipped behind the walls, so they cast Sunlance.",
+	"magic_sunburst": "The Crown, sworn to the Dawn, calls down Sunburst on a Clans front rank in round 1 at Rivermarch.",
+	"magic_blood_moon": "The Blood Pact under its Blood Moon, with Shamans casting Bloodbolt, attacks the Crown at Rivermarch: fighters heal back and the casters bleed.",
+	"magic_free_holds": "Two Thornmane Shamans (Briar Snare) and a Clans warband storm a Free Holds garrison at Ironspike in a game with independents.",
 }
 
 const CROWN := "kingdom"
@@ -94,6 +106,25 @@ static func shows(name: String, battle_log: Dictionary, report: Dictionary) -> b
 			return int(events[BattleLog.find_event(battle_log, "end")].rounds) == 1
 		"mutual_rout":
 			return events[BattleLog.find_event(battle_log, "end")].how == "mutual"
+		"magic_shamans":
+			return _cast(battle_log, "briar_snare") and _cast(battle_log, "bloodbolt")
+		"magic_regent":
+			var regent := _ruler_id(battle_log, CROWN)
+			return events.any(func(e): return e.t == "cast" and int(e.by) == regent and e.spell == "sunlance") and _cast(battle_log, "shield_of_law") \
+				and events.any(func(e): return e.t == "morale" and e.parts.has(AutoBattleResolver.BLESSING))
+		"magic_fort":
+			return events.any(func(e): return e.t == "cast" and Array(e.get("skipped", [])).any(func(x): return x.spell == "shield_of_law"))
+		"magic_sunburst":
+			return events.any(func(e): return e.t == "cast" and e.spell == "sunburst" and int(e.n) == 1)
+		"magic_blood_moon":
+			return events.any(func(e): return e.t == "heal" and e.get("spell", "") == "blood_moon") \
+				and events.any(func(e): return e.t == "wound" and int(e.get("bled", 0)) > 0)
+		"magic_free_holds":
+			var holds := -1
+			for sd in battle_log.sides:
+				if String(sd.faction) == IndependentData.FACTION_ID:
+					holds = int(sd.index)
+			return holds >= 0 and events.any(func(e): return e.t == "cast" and int(battle_log.fighters[int(e.targets[0])].side) == holds)
 		"biggest":
 			var attacks := events.filter(func(e): return e.t == "attack").size()
 			# #94 renamed the armies of its game (each faction numbers its own), which reorders who strikes when:
@@ -329,7 +360,59 @@ static func _setup(name: String) -> Dictionary:
 			_army(s, "kingdom-1", CROWN, "rivermarch", ["spearmen", "spearmen", "crossbowmen"])
 			_army(s, "beasts-2", CLANS, "greenglade", ["tuskers", "fangthrowers", "fangthrowers"])
 			return {"state": s, "orders": {CROWN: [MoveOrder.new("kingdom-1", "greenglade")], CLANS: [MoveOrder.new("beasts-2", "rivermarch")]}}
-	return {"error": "There is no fixture scenario called '%s'. The scenarios are: %s." % [name, ", ".join(NAMES)]}
+		# M5-7: the scripted magic battles.
+		"magic_shamans":
+			var s := _magic_state({}, [CLANS, ["briar_snare", "bloodbolt"]])
+			if s == null:
+				return {"error": "The magic_shamans set-up failed."}
+			_army(s, "kingdom-21", CROWN, "rivermarch", ["spearmen", "spearmen", "spearmen", "spearmen", "crossbowmen", "crossbowmen", "knights",
+				"knights", "knight_captain"])
+			_army(s, "beasts-22", CLANS, "greenglade", ["tuskers", "tuskers", "tuskers", "tuskers", "fangthrowers", "fangthrowers", "war_bear",
+				"shamans", "shamans", "warchief"])
+			return {"state": s, "orders": {CLANS: [MoveOrder.new("beasts-22", "rivermarch")]}}
+		"magic_regent":
+			var s := _magic_state({CROWN: {"ruler": "ever_regent", "mandates": []}}, [CROWN, ["sunlance", "shield_of_law"]])
+			if s == null:
+				return {"error": "The magic_regent set-up failed."}
+			var reg := RulerRules.ruler_army(s, CROWN)
+			_army(s, "kingdom-21", CROWN, "crownkeep", ["spearmen", "spearmen", "spearmen", "spearmen", "spearmen", "knights", "adepts", "adepts"])
+			_army(s, "beasts-22", CLANS, "rivermarch", ["tuskers", "tuskers", "tuskers", "tuskers", "fangthrowers", "war_bear", "war_bear", "warchief"])
+			_enchant(s, "dawn_blessing", CROWN, "crownkeep", ["kingdom-21", reg.id])
+			return {"state": s, "orders": {CROWN: [MoveOrder.new("kingdom-21", "rivermarch"), MoveOrder.new(reg.id, "rivermarch")]}}
+		"magic_fort":
+			var s := _magic_state({}, [CROWN, ["sunlance", "shield_of_law"]])
+			if s == null:
+				return {"error": "The magic_fort set-up failed."}
+			_army(s, "kingdom-21", CROWN, "crownkeep", ["spearmen", "spearmen", "spearmen", "spearmen", "crossbowmen", "adepts", "adepts", "knight_captain"])
+			_army(s, "beasts-22", CLANS, "rivermarch", ["tuskers", "tuskers", "tuskers", "tuskers", "tuskers", "fangthrowers", "war_bear", "warchief"])
+			return {"state": s, "orders": {CLANS: [MoveOrder.new("beasts-22", "crownkeep")]}}
+		"magic_sunburst":
+			var s := _magic_state({}, [CROWN, ["crown_drillyard", "crown_charters", "crown_oath_dawn", "sunlance", "dawn_blessing", "sunburst"]])
+			if s == null:
+				return {"error": "The magic_sunburst set-up failed."}
+			_army(s, "kingdom-21", CROWN, "crownkeep", ["spearmen", "spearmen", "spearmen", "spearmen", "spearmen", "spearmen", "knights", "knights",
+				"adepts", "adepts", "adepts"])
+			_army(s, "beasts-22", CLANS, "rivermarch", ["tuskers", "tuskers", "tuskers", "tuskers", "tuskers", "tuskers", "fangthrowers", "war_bear",
+				"warchief"])
+			return {"state": s, "orders": {CROWN: [MoveOrder.new("kingdom-21", "rivermarch")]}}
+		"magic_blood_moon":
+			var s := _magic_state({}, [CLANS, ["beasts_boar_hide", "beasts_raiding", "beasts_oath_blood", "beasts_blood_pact", "bloodbolt",
+				"bloodrot", "blood_moon"]])
+			if s == null:
+				return {"error": "The magic_blood_moon set-up failed."}
+			_army(s, "kingdom-21", CROWN, "rivermarch", ["spearmen", "spearmen", "spearmen", "spearmen", "crossbowmen", "knights", "knights",
+				"knight_captain"])
+			_army(s, "beasts-22", CLANS, "greenglade", ["tuskers", "tuskers", "tuskers", "bloodsworn", "bloodsworn", "fangthrowers", "shamans",
+				"shamans", "warchief"])
+			_enchant(s, "blood_moon", CLANS, "", [])
+			return {"state": s, "orders": {CLANS: [MoveOrder.new("beasts-22", "rivermarch")]}}
+		"magic_free_holds":
+			var s := _magic_state({}, [CLANS, ["briar_snare"]], "ironspike")
+			if s == null:
+				return {"error": "The magic_free_holds set-up failed."}
+			_army(s, "beasts-22", CLANS, "fangridge", ["tuskers", "tuskers", "tuskers", "tuskers", "fangthrowers", "shamans", "shamans", "warchief"])
+			return {"state": s, "orders": {CLANS: [MoveOrder.new("beasts-22", "ironspike")]}}
+	return {"error": "There is no fixture scenario called '%s'. The scenarios are: %s." % [name, ", ".join(NAMES + MAGIC_NAMES)]}
 
 
 ## A state with the real factions and map and no armies. With `builds`, a game with rulers in which no
@@ -350,6 +433,43 @@ static func _state(builds: Dictionary = {}) -> GameState:
 		f.successor_turn = 999
 		f.successor_power = f.kept_power
 	return s
+
+
+## M5-7: a game with magic (and rulers and paths) with `research` = [faction id, [node ids]] researched, and no armies
+## but the rulers' own at their capitals. With `holds`, a game with independents too, keeping only the Free Holds
+## garrison of that province.
+static func _magic_state(builds: Dictionary, research: Array = [], holds: String = "") -> GameState:
+	var b := {CROWN: {"ruler": "aurel_king", "mandates": []}, CLANS: {"ruler": "fang_chieftain", "mandates": []}}
+	for fid in builds:
+		b[fid] = builds[fid]
+	var errors := []
+	var s := GameState.with_magic(1, b, errors)
+	if s == null or (not holds.is_empty() and not s.setup_independents(errors)):
+		push_error("battle log scenarios: %s" % " ".join(errors))
+		return null
+	var keep: Array[Army] = []
+	for a in s.armies:
+		if a.ruler != null or (a.owner == IndependentData.FACTION_ID and a.location == holds):
+			keep.append(a)
+	s.armies = keep
+	if not research.is_empty():
+		s = AscensionRules.with_nodes(s, String(research[0]), research[1], 0)
+	return s
+
+
+## M5-7: an enchantment written by hand (M5-6 casts them in a real game), in its saved form, cast on turn 1.
+static func _enchant(s: GameState, ritual: String, fid: String, province: String, armies: Array) -> void:
+	var f := s.find_faction(fid)
+	f.enchant_counter += 1
+	s.enchantments.append({"id": "%s-e%d" % [fid, f.enchant_counter], "ritual": ritual, "faction": fid,
+		"kind": String(MagicRules.spell_data(ritual).kind), "province": province, "armies": armies.duplicate(), "cast_turn": 1,
+		"until_turn": 3, "bonus": 0, "ending": false})
+	s.enchantments.sort_custom(func(x, y): return String(x.id) < String(y.id))
+
+
+## Whether `battle_log` has a cast of spell `sid`.
+static func _cast(battle_log: Dictionary, sid: String) -> bool:
+	return battle_log.events.any(func(e): return e.t == "cast" and e.spell == sid)
 
 
 ## An army of `owner` at `location` with these unit and commander ids, every unit at its maximum hp.

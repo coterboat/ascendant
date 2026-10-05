@@ -254,6 +254,7 @@ static func overlay_rows(seat: int = 0) -> Array:
 		_moment_row("ruler_falls", "A ruler falls."),
 		_moment_row("turning_point", "From here on the winner stayed further from breaking."),
 		_moment_row("rout", "A side breaks or has no one left."),
+		_moment_row("spell", "The first spell cast, and each greater working (games with magic)."),
 	]
 
 

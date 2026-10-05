@@ -106,6 +106,12 @@ static func draw_moment_icon(ci: CanvasItem, kind: String, c: Vector2, size: flo
 		"turning_point":
 			pts = PackedVector2Array([c + Vector2(0, -h), c + Vector2(h, 0), c + Vector2(0, h), c + Vector2(-h, 0)])
 			col = UiPalette.TEXT_PRIMARY
+		"spell":
+			# M5-7: a four-pointed spark.
+			var k := h * 0.32
+			pts = PackedVector2Array([c + Vector2(0, -h), c + Vector2(k, -k), c + Vector2(h, 0), c + Vector2(k, k), c + Vector2(0, h),
+				c + Vector2(-k, k), c + Vector2(-h, 0), c + Vector2(-k, -k)])
+			col = UiPalette.GILT
 		_:
 			pts = PackedVector2Array([c + Vector2(-h * 0.6, -h), c + Vector2(h, -h * 0.55), c + Vector2(-h * 0.1, -h * 0.1), c + Vector2(h * 0.2, h),
 				c + Vector2(-h * 0.6, h)])

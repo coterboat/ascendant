@@ -15,9 +15,9 @@ class_name MagicView
 ##   preview_note()                       what this build of the preview does with spells (honest about it)
 ##
 ## Magic is a preview still being built (M5-5): spells are researched, mages recruited and the spellbook set, but
-## battle spells and rituals take effect only in later builds (M5-6, M5-7). preview_note() says so wherever it matters.
+## rituals take effect only in a later build (M5-6); battle spells work since M5-7. preview_note() says so wherever it matters.
 
-const PREVIEW_NOTE := "Magic is a preview still being built: battle spells and rituals don't take effect yet. You can research spells, recruit mages and set your spellbook now; it is kept, and used once battle spells arrive."
+const PREVIEW_NOTE := "Magic is a preview still being built: battle spells work, but rituals don't take effect yet. Your casters cast from this spellbook in every battle."
 
 
 ## The school columns of `fid`'s arcana, in MagicData.FACTION_SCHOOLS order, each with its four cards in data order
