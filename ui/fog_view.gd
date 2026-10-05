@@ -17,7 +17,8 @@ class_name FogView
 ## Sight levels and sources come from FogRules; estimates from the view notes FogRules wrote (Army.seen).
 
 const REPORT_HEADER := "Fog of war: this report shows what you saw."
-const COVER_LINE := "Fog of war is on: each player sees only their own view. Continue only when nobody else can see the screen."
+const CONTINUE := "Continue only when nobody else can see the screen."
+const COVER_LINE := "Fog of war is on: each player sees only their own view. " + CONTINUE
 const NOTES_HIDDEN := "Hidden while the fog of war lasts: the computer's notes name its hidden armies and plans. They show here once the game is over."
 ## The Vision map mode's level for a province out of sight that was never seen.
 const NEVER := "never"
@@ -370,7 +371,9 @@ static func missed_text(event: Dictionary, viewer: String, before: GameState) ->
 			var verb := String({"glimpse": "had glimpsed", "memory": "remembered", "clear": "had seen"}.get(level, "had seen"))
 			var parts := []
 			for type_id in seen:
-				parts.append("%s %d %s" % ["about" if level != FogRules.CLEAR else "", int(seen[type_id]), names.get(type_id, type_id)])
+				var n := int(seen[type_id])
+				var unit_name := String(names.get(type_id, type_id))
+				parts.append("%s %d %s" % ["about" if level != FogRules.CLEAR else "", n, unit_name if n == 1 else TurnReportText._plural_name(unit_name)])
 			text = "You %s %s at %s" % [verb, RulerRules._and_list(parts.map(func(s): return String(s).strip_edges())), where]
 		var total := 0
 		for type_id in truth:
@@ -509,16 +512,16 @@ static func lift(truth: GameState, players: Array, missed: Array) -> Dictionary:
 
 # --- the Vision map mode (§11.1) -------------------------------------------------------------------
 
-## The Vision map mode's legend: [{"key", "title", "text", "codex"}], one row per mark.
+## The Vision map mode's legend: [{"key", "title", "short" (the row), "text" (its hover), "codex"}], one row per mark.
 static func legend_rows(state: GameState) -> Array:
 	var rows := [
-		{"key": "clear", "title": "In clear sight", "text": "No veil: land you own or stand in. You see every army there exactly.", "codex": "vision_clear"},
-		{"key": "glimpse", "title": "Glimpsed", "text": "A light veil: next to your land and armies, two away from forts, commanders, rulers and scouts. Armies show rounded.", "codex": "vision_glimpsed"},
-		{"key": "veiled", "title": "Out of sight", "text": "A dark veil with hatching: you see only what you saw there last. Owners, terrain and forts stay true.", "codex": "vision_out_of_sight"},
-		{"key": "never", "title": "Never seen", "text": "The darkest veil: you have never seen an army there.", "codex": "last_seen"},
-		{"key": "plate", "title": "≈20", "text": "A glimpsed army: about 20 fighters, rounded. Hover it for the range.", "codex": "estimates"},
-		{"key": "ghost", "title": "≈10 · 3 turns ago", "text": "A grey badge: an army you remembered, last seen there 3 turns ago. It may have moved.", "codex": "last_seen"},
+		{"key": "clear", "title": "In clear sight", "short": "exact", "text": "No veil: land you own or stand in. You see every army there exactly.", "codex": "vision_clear"},
+		{"key": "glimpse", "title": "Glimpsed", "short": "rough numbers", "text": "A light veil: next to your land and armies, two away from forts, commanders, rulers and scouts. Armies show rounded.", "codex": "vision_glimpsed"},
+		{"key": "veiled", "title": "Out of sight", "short": "as you last saw it", "text": "A dark veil with hatching: you see only what you saw there last. Owners, terrain and forts stay true.", "codex": "vision_out_of_sight"},
+		{"key": "never", "title": "Never seen", "short": "nothing known", "text": "The darkest veil: you have never seen an army there.", "codex": "last_seen"},
+		{"key": "plate", "title": "≈20", "short": "glimpsed, rounded", "text": "A glimpsed army: about 20 fighters, rounded. Hover it for the range.", "codex": "estimates"},
+		{"key": "ghost", "title": "≈10 · 3 turns ago", "short": "remembered", "text": "A grey badge: an army you remembered, last seen there 3 turns ago. It may have moved.", "codex": "last_seen"},
 	]
 	if state != null and state.magic:
-		rows.append({"key": "eye", "title": "The eye", "text": "Your Far Sight: that province is in clear sight.", "codex": "sight"})
+		rows.append({"key": "eye", "title": "The eye", "short": "Far Sight", "text": "Your Far Sight: that province is in clear sight.", "codex": "sight"})
 	return rows

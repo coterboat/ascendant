@@ -579,12 +579,13 @@ func _show_current_player(play: bool = true) -> void:
 	_update_hud()
 
 
-## M5-2 (§11.1): the first fog turn's one-line hint, until a player presses Got it (remembered in the settings).
+## M5-2 (§11.1): the first fog turn's one-line hint, until a player presses Got it (remembered in the settings). Only
+## on the game's first turn, before any report: the notice sits above the overlays, and must never cover a report.
 const FOG_HINT := "Fog of war is on. You see exactly where you own land or stand; next to that you glimpse armies roughly (two away from forts, commanders, rulers and scouts); beyond, only what you saw last."
 
 
 func _fog_hint() -> void:
-	if not FogView.active(map.state) or GameSettings.hint_seen("fog"):
+	if not FogView.active(map.state) or _report_turn() > 0 or GameSettings.hint_seen("fog"):
 		return
 	show_notice("Fog of war", FOG_HINT)
 	_fog_hint_up = true

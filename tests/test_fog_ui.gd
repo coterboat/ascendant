@@ -402,6 +402,17 @@ func test_the_first_fog_turn_has_its_hint_until_got_it() -> void:
 	assert_false(game.notice_panel.visible)
 	assert_true(GameSettings.hint_seen("fog"), "Got it is remembered in the settings")
 	game.free()
+	# The hint is for the first turn only: it never sits over a turn report (the notice is above the overlays).
+	var cfg0 := ConfigFile.new()
+	cfg0.load(GameSettings.default_path)
+	cfg0.erase_section(GameSettings.HINTS)
+	cfg0.save(GameSettings.default_path)
+	var later := _game({"players": [CROWN, CLANS], "seed": 4244, "fog": true, "ai": {CLANS: "normal"}})
+	later.end_turn()
+	assert_true(later.report_overlay.visible, "the turn 1 report opens")
+	assert_false(later.notice_panel.visible and later.notice_label.text == GameScreen.FOG_HINT, "no hint over the report")
+	later.free()
+	GameSettings.mark_hint_seen("fog")
 	var again := _game({"players": [CROWN, CLANS], "seed": 4243, "fog": true, "ai": {CLANS: "normal"}})
 	assert_false(again.notice_panel.visible and again.notice_label.text == GameScreen.FOG_HINT, "never again")
 	again.free()
@@ -600,6 +611,17 @@ func test_the_forecasts_fog_text() -> void:
 	for pid in sight:
 		if sight[pid] == FogRules.VEILED:
 			far = pid
+	# A glimpse of 1-2 is at the top of its range already: one odds, and the count reads "1-2", not "1-2 (1-2)".
+	var s2 := GameState.new(93)
+	s2.setup_fog([])
+	var army2 := _army_of(s2, CROWN)
+	_set_units(s2, _army_of(s2, CLANS), target, "tuskers", 1)
+	var view2 := FogRules.view_state(s2, CROWN, FogRules.new_memory(s2, CROWN), FogRules.new_intel(s2, CROWN))
+	var few := Forecast.view_odds(view2, CROWN, [army2.id], target)
+	assert_eq(String(few.short).count("%"), 1, "one odds when the top adds no one: %s" % few.short)
+	assert_false(few.has("top"))
+	var move_text := String(Forecast.move(view2, CROWN, MoveOrder.new(army2.id, target)).text)
+	assert_true(move_text.contains("1-2 fighters") and not move_text.contains("1-2 (1-2)"), move_text)
 	var no := Forecast.view_odds(view, CROWN, [army.id], far, FogRules.new_memory(s, CROWN))
 	assert_true(bool(no.no_odds), "no odds out of sight")
 	assert_true(String(no.short).contains("You can't see %s" % s.find_province(far).name) and String(no.short).contains("never seen") \

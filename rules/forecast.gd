@@ -1384,8 +1384,9 @@ static func view_odds(state: GameState, faction_id: String, army_ids: Array, pro
 		odds["short"] = String(odds.get("text", ""))
 		return odds
 	var short := "Odds against what you can see: %d%% (%s)" % [roundi(float(odds.win_rate) * 100), String(odds.label)]
-	if level == FogRules.GLIMPSE:
-		var top := battle_odds(top_of_range(state, faction_id, province_id), faction_id, army_ids, province_id)
+	var top_state := top_of_range(state, faction_id, province_id) if level == FogRules.GLIMPSE else state
+	if top_state != state:  # the top of the range adds fighters: the second odds (a "1-2" is at its top already)
+		var top := battle_odds(top_state, faction_id, army_ids, province_id)
 		if bool(top.get("ok", false)):
 			odds["top"] = top
 			short += ", %d%% if they are at the top of the range" % roundi(float(top.win_rate) * 100)
@@ -1396,6 +1397,7 @@ static func view_odds(state: GameState, faction_id: String, army_ids: Array, pro
 
 ## The view with every glimpsed rival type at `province_id` at the top of its range (§2.4: the second odds). Each type's
 ## missing fighters join that rival's first stand-in there at full hit points; commanders and rulers are exact already.
+## `state` itself when the top adds no one (every type is at the top of its range already).
 static func top_of_range(state: GameState, faction_id: String, province_id: String) -> GameState:
 	var d := state.to_dict()
 	var done := {}
@@ -1413,6 +1415,10 @@ static func top_of_range(state: GameState, faction_id: String, province_id: Stri
 		for type_id in counts:
 			for k in maxi(0, int(counts[type_id].high) - int(counts[type_id].shown)):
 				ad.units.append({"type_id": String(type_id), "current_hp": 1, "owner": fid})
+		if ad.units.size() == int(added[i]):
+			added.erase(i)
+	if added.is_empty():
+		return state
 	var errors := []
 	var out := GameState.from_dict(d, errors)
 	if out == null:
@@ -1481,15 +1487,14 @@ static func sighting_text(state: GameState, viewer: String, fid: String, provinc
 		var c: Dictionary = counts[type_id]
 		var name := FogRules.type_name(state, fid, String(type_id))
 		if level == FogRules.GLIMPSE:
-			types.append("about %d %s (%d-%d)" % [int(c.shown), name, int(c.low), int(c.high)])
+			types.append("about %d %s (%d-%d)" % [int(c.shown), name, int(c.low), int(c.high)] if int(c.low) != int(c.high) else "%d %s" % [int(c.shown), name])
 		else:
 			types.append("%d %s" % [int(c.shown), name])
 	var total: Dictionary = note.get("total", FogRules.round_count(0))
 	var text := ""
 	match level:
 		FogRules.GLIMPSE:
-			text = "Their armies there: %s fighters of the %s, at full health as far as you know" % [
-				"%s (%d-%d)" % [String(total.text), int(total.low), int(total.high)] if int(total.low) != int(total.high) else String(total.text), who]
+			text = "Their armies there: %s fighters of the %s, at full health as far as you know" % [_range_words(total), who]
 		FogRules.CLEAR:
 			text = "Their armies there: exactly %d fighters of the %s, with the wounds you see" % [int(total.shown), who]
 		FogData.MEMORY:
@@ -1503,6 +1508,13 @@ static func sighting_text(state: GameState, viewer: String, fid: String, provinc
 	if not ruler.is_empty():
 		text += ", with their ruler, %s (shown at full hit points)" % ruler
 	return text + "."
+
+
+## A glimpsed total as players read it: "about 20 (18-22)", or "1-2" (its own range).
+static func _range_words(rc: Dictionary) -> String:
+	if String(rc.get("text", "")) == FogData.FEW_TEXT or int(rc.get("low", 0)) == int(rc.get("high", 0)):
+		return String(rc.get("text", ""))
+	return "%s (%d-%d)" % [String(rc.text), int(rc.low), int(rc.high)]
 
 
 ## "2 turns ago, at the end of turn 5", or "at the start of the game": when a sighting taken after `turn` resolved turns
@@ -1541,11 +1553,34 @@ static func out_of_sight_text(state: GameState, faction_id: String, province_id:
 static func _fog_enemies_text(state: GameState, faction_id: String, dest: Province, enemies: Array, road: bool) -> String:
 	var parts := []
 	for fid in enemies:
-		parts.append(sighting_text(state, faction_id, String(fid), dest.id).trim_prefix("Their armies there: ").trim_suffix("."))
-	var text := "You see %s at %s: if they stay, you fight a battle and they defend (%s)." % [" and ".join(parts), dest.name, defender_ground(dest)]
+		parts.append(_sighting_short(state, String(fid), dest.id))
+	var text := "At %s you see %s: if they stay, you fight a battle and they defend (%s)." % [dest.name, " and ".join(parts), defender_ground(dest)]
 	if not road:
 		text += " If they move toward you instead, you meet on the border, where nobody gets terrain."
 	return text
+
+
+## "about 20 (18-22) fighters of the Thornmane Clans (Tuskers, Fangthrowers and a Warchief)": a sighting in a move line.
+static func _sighting_short(state: GameState, fid: String, pid: String) -> String:
+	var note := {}
+	var names := []
+	for a in state.armies:
+		if a.owner != fid or a.location != pid:
+			continue
+		if a.ruler != null:
+			names.append("their ruler")
+			continue
+		if note.is_empty():
+			note = a.seen
+		for u in a.units:
+			if not names.has(u.type.name):
+				names.append(u.type.name)
+		if a.commander != null:
+			names.append("a %s" % a.commander.type.name)
+	var total: Dictionary = note.get("total", FogRules.round_count(0))
+	var count := _range_words(total) if String(note.get("level", "")) == FogRules.GLIMPSE else str(int(total.get("shown", 0)))
+	var head := "%s fighters of the %s" % [count, _faction_name(state, fid)] if not note.is_empty() else "the ruler of the %s" % _faction_name(state, fid)
+	return "%s (%s)" % [head, RulerRules._and_list(names)] if not names.is_empty() and not note.is_empty() else head
 
 
 ## The move forecast's sentence about a destination out of sight (§2.10).

@@ -26,6 +26,9 @@ signal sacrifice_requested
 signal codex_requested(key: String)
 
 const PANEL_SIZE := Vector2(1320, 800)
+const FOOTER := "Builds are public from turn 1, so both rulers are shown. Only you can sacrifice for your own ruler, and the other player learns of it from the turn report. Hover a number for where it comes from; right-click it, or press F1, for its codex entry."
+## M5-2: under fog a rival's build is learned, not public (design/M5_MAGIC_FOG.md §2.6).
+const FOG_FOOTER := "Fog of war is on: you see a rival's ruler, mandates and kept power only as you have seen or fought them, and they may have more. Only you can sacrifice for your own ruler. Hover a number for where it comes from; right-click it, or press F1, for its codex entry."
 const PORTRAIT_SIZE := Vector2(120, 160)
 
 var state: GameState = null
@@ -98,7 +101,7 @@ func _init() -> void:
 	footer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	footer_label.add_theme_font_size_override("font_size", 15)
 	footer_label.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
-	footer_label.text = "Builds are public from turn 1, so both rulers are shown. Only you can sacrifice for your own ruler, and the other player learns of it from the turn report. Hover a number for where it comes from; right-click it, or press F1, for its codex entry."
+	footer_label.text = FOOTER
 	box.add_child(footer_label)
 
 
@@ -130,6 +133,7 @@ func refresh() -> void:
 	for fid in fids:
 		var col := _column(fid, fid == viewing_faction_id)
 		columns.add_child(col)
+	footer_label.text = FOG_FOOTER if FogView.active(state) else FOOTER  # M5-2: under fog, builds are learned
 
 
 func close() -> void:

@@ -578,7 +578,7 @@ func _build_vision() -> void:
 	vision_legend.add_theme_stylebox_override("panel", style)
 	vision_legend.anchor_left = 1.0
 	vision_legend.anchor_right = 1.0
-	vision_legend.offset_left = -372
+	vision_legend.offset_left = -282
 	vision_legend.offset_right = -12
 	vision_legend.offset_top = 54
 	vision_legend.grow_horizontal = Control.GROW_DIRECTION_BEGIN
@@ -609,14 +609,11 @@ func _fill_vision_legend() -> void:
 		var swatch := ProvinceRegion.legend_swatch(String(row.key))
 		line.add_child(swatch)
 		var l := Label.new()
-		l.text = "%s: %s" % [String(row.title), String(row.text)]
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size = Vector2(300, 0)
-		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		l.add_theme_font_size_override("font_size", 14)
+		l.text = "%s: %s" % [String(row.title), String(row.short)]
+		l.add_theme_font_size_override("font_size", 15)
 		l.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
-		l.tooltip_text = TooltipText.plain(String(row.title), RulesCodex.text(String(row.codex)))
+		l.tooltip_text = TooltipText.plain(String(row.title), "%s %s" % [String(row.text), RulesCodex.text(String(row.codex))])
 		CodexLink.attach(l, String(row.codex), request_codex)
 		line.add_child(l)
 

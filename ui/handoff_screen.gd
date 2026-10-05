@@ -45,7 +45,9 @@ func show_for(game_session: GameSession) -> bool:
 	title_label.text = "Pass to %s" % info.get("faction_name", "the next player")
 	turn_label.text = "Turn %d  ·  Player %d" % [session.turn_number(), info.get("seat", 0)]
 	body_label.text = session.handoff_text()
-	hint_label.text = "%s\n\n%s" % [FogView.COVER_LINE, RulesCodex.text("handoff")] if fog else RulesCodex.text("handoff")
+	if fog:  # M5-2: "Fog of war is on: each player sees only their own view. Continue only when ..."
+		body_label.text = body_label.text.replace(" " + FogView.CONTINUE, " " + FogView.COVER_LINE)
+	hint_label.text = RulesCodex.text("handoff")
 	visible = true
 	if is_inside_tree():
 		ready_button.grab_focus.call_deferred()
