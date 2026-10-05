@@ -74,6 +74,10 @@ var sieges_box: VBoxContainer
 var fog_lift := {}
 var fog_heading: Label
 var fog_box: VBoxContainer
+var _scroll: ScrollContainer
+var _box: VBoxContainer
+## The panel's body is never taller than this outside the tree (in the tree: the window less the panel's margins).
+const MAX_BODY_HEIGHT := 760.0
 var _siege_labels: Array[Label] = []
 
 
@@ -268,6 +272,16 @@ func _show_fog_lift(state: GameState) -> void:
 		fog_box.add_child(l)
 
 
+## M5-2: the scrolling body is as tall as its content, but never taller than the window allows.
+func _fit_scroll() -> void:
+	if _scroll == null or _box == null:
+		return
+	var limit := MAX_BODY_HEIGHT
+	if is_inside_tree():
+		limit = maxf(240.0, get_viewport_rect().size.y - 2 * 36 - 48)
+	_scroll.custom_minimum_size = Vector2(0, minf(_box.get_combined_minimum_size().y, limit))
+
+
 ## Adds a smaller button for the host's own action in a row above "New game". Returns it so the host
 ## can connect `pressed`.
 func add_action(node_name: String, text: String, tooltip: String) -> Button:
@@ -450,11 +464,20 @@ func _build() -> void:
 	panel.add_theme_stylebox_override("panel", style)
 	center.add_child(panel)
 
+	# M5-2: the body scrolls when it is taller than the window (a game with sieges and fog adds blocks), so the buttons
+	# at its foot are always reachable.
+	_scroll = ScrollContainer.new()
+	_scroll.name = "Scroll"
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(_scroll)
 	var box := VBoxContainer.new()
 	box.name = "Box"
 	box.custom_minimum_size = Vector2(860, 0)
 	box.add_theme_constant_override("separation", 14)
-	panel.add_child(box)
+	_scroll.add_child(box)
+	_box = box
+	box.minimum_size_changed.connect(_fit_scroll)
+	resized.connect(_fit_scroll)
 
 	# The hero: the winner's banner, then the caption, the headline and who won.
 	var hero := HBoxContainer.new()
