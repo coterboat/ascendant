@@ -998,6 +998,60 @@ const ENTRIES := {
 		"title": "Tithe of Blood",
 		"text": "Thornmane Clans mandate of magic, 3 power (4 by sacrifice), only in a game with magic. Rituals your Shamans cast can be paid in hit points instead of gold: 1 hit point a gold, from the regular units in the Shamans' own army, one soldier at a time: the one with the most hit points gives until it is at 1, then the next. Rituals your ruler casts always cost gold, because a ruler stands alone. If the army can't give it all, the ritual can't be paid in blood. Can't be held with Feast of Victory: blood given is not taken back.",
 	},
+	# --- fog of war (M5-1, #112; design/M5_MAGIC_FOG.md §2, §11.4): only a game with fog of war uses these rules. The
+	# ranges and the rounding come from FogData, so a retuned number shows up here by itself. Plain text: tooltips quote them.
+	"fog_of_war": {
+		"title": "Fog of war",
+		"text": "In a game with fog of war (the M5 preview), the world is dark beyond your borders. Every province is in clear sight, glimpsed or out of sight for you. In clear sight you see exactly what is there; glimpsed, you see rival armies roughly (\"about 20 fighters\"); out of sight, you see only what you saw there last. Fog changes only what each player is shown, never the rules: battles, moves and captures resolve exactly as they would without it. Province owners, terrain, forts and capitals stay public, and so do each rival's ruler, its death and its successor, Oaths and transformations. Armies, gold, recruits, research, mandates and kept power are hidden until you see them, fight them or learn of them. In hotseat, each player sees only their own view.",
+	},
+	"sight": {
+		"title": "Sight",
+		"text": "How far you see. A province you own sees %d province around it," % FogData.SIGHT.owned
+			+ " and an army of yours %d." % FogData.SIGHT.army
+			+ " A fort you own sees %d provinces around it," % FogData.SIGHT.fort
+			+ " and so does an army holding a commander, your ruler or a scout (%d)." % FogData.SIGHT.scout
+			+ " Distances count steps along the roads. Where you own the province or have an army, it is in clear sight; within range of one of your sources, it is glimpsed; anywhere else, it is out of sight. Sight is worked out at the start of each turn, and the hover on a province says what sees it. Sight never turns a glimpse into clear sight: exact numbers of a rival's armies come only from fighting them.",
+	},
+	"vision_clear": {
+		"title": "In clear sight",
+		"text": "A province you own or have an army in. You see exactly what stands there: every rival fighter with its hit points, its commanders and its ruler. Rival armies are shown pooled per faction, so you see what they have there, not how it is split into armies.",
+	},
+	"vision_glimpsed": {
+		"title": "Glimpsed",
+		"text": "A province within range of your land, forts or armies, but not one you own or stand in. You see rival armies there roughly: the number of fighters rounded (see Estimates), shared out over their unit types, their commanders and ruler exactly, but not their wounds or how many armies they are. Forecasts assume the shown numbers, and also the top of the range.",
+	},
+	"vision_out_of_sight": {
+		"title": "Out of sight",
+		"text": "A province none of your land, forts or armies can see. You see the province's owner, terrain and fort, which are public, but not the armies in it: the map shows what you saw there last, if anything (see Last seen). A forecast against a province out of sight gives no odds: any army there will be a surprise.",
+	},
+	"estimates": {
+		"title": "Estimates",
+		"text": "How a glimpse counts fighters. The total of a rival's units in a province is rounded: 1 or 2 shows as %s;" % FogData.FEW_TEXT
+			+ " from 3 to 49 to the nearest %d" % FogData.STEP_SMALL + " (at least %d);" % FogData.STEP_SMALL
+			+ " from 50 to the nearest %d." % FogData.STEP_LARGE
+			+ " So about 5 means 3 to 7, about 15 means 13 to 17, about 50 means 48 to 54 and about 60 means 55 to 64. The rounded total is then shared out over the unit types present by their true numbers, each getting at least 1, so many small groups can't hide fighters. Commanders and the ruler are shown exactly. The hover shows the range and what the last turn showed, so a number crossing a band doesn't read as new recruits.",
+	},
+	"last_seen": {
+		"title": "Last seen",
+		"text": "What you remember of a province out of sight: the last rival armies you saw there and the turn you saw them, drawn as grey ghosts that fade as they age. An army seen marching away is remembered where it was heading. After a battle, the enemy's survivors are remembered exactly. A rival ruler is remembered once, where you saw it last, until its death is heralded. A province you have never seen says so. Forecasts against a remembered army say \"if it is still there\". Memory is never saved: it is rebuilt from the game itself when a save loads.",
+	},
+	"scouts": {
+		"title": "Scouts",
+		"text": "Unit types that see %d provinces instead of 1:" % FogData.SIGHT.scout
+			+ " Knights, Fangthrowers and Seraphs (Iron Knights and Thornthrowers too). An army with a scout, a commander or a ruler sees that far.",
+	},
+	"intel": {
+		"title": "What you know",
+		"text": "Under fog of war, a rival's mandates, path and kept power are private. You learn a mandate or a path node when something you are shown names it: a battle you fought lists the mandates and path parts that worked in it, and a turn report line can name one (a province joining by Sworn Vassals). Oaths and transformations are heralded to everyone. A rival's kept power is learned whenever you see or fight its ruler, and at its death and succession; until then it is assumed to be 10 minus the cost of the mandates you know, the most it could be. What you learn stays learned, and panels say they may have more.",
+	},
+	"public_facts": {
+		"title": "Public facts",
+		"text": "What everyone sees, fog or not: province owners, terrain, forts (with their levels and walls), capitals, every faction's roster, each ruler with its death, successor and the successor's kept power, Oaths and transformations. The map's colours always tell the truth. Everything a player can order depends only on public facts and their own state, so a legal order is never refused because of something hidden.",
+	},
+	"view_odds": {
+		"title": "Odds against what you can see",
+		"text": "Under fog of war, a battle forecast is worked out against what you can see: the shown numbers of a glimpsed army at full health, the mandates and spells you know, and the kept power you know or assume. It gives two odds, at the shown numbers and at the top of the range, and lists its guesses on hover. They may have more you haven't seen. Against a province out of sight it gives no odds. After a battle, the report says what you didn't see.",
+	},
 }
 
 

@@ -16,6 +16,15 @@ extends RefCounted
 ## reads view_state(), the start-of-turn state with the queued Sacrifice order applied (the same copy
 ## OrderBook checks against). Cancelling an order checks the others again; last_removed() names the ones
 ## that no longer pass, with the reason.
+##
+## Forts and sieges (M3c S-3, #101; design/M3C_SIEGES.md §9), only in a game with sieges: Fortify orders
+## (queue_fortify, fortify_preview), the storm of a fort (set_storm) and per-army sallies (set_sally), each
+## checked by OrderBook with the rules' reasons before it is offered (storm_check, sally_check); recruits at any
+## fort you own (queue_recruit(type, at), recruit_places() for the "Recruit at" picker); and a move into a fort
+## previewed and listed as what it will be: a siege ("Besiege", with "Storm now"), a relief (whose garrison comes
+## out to join it: queue_move ties a sally to it for every garrison army but the ruler's), or an empty fort taken.
+## Recruits and Fortify orders share one gold pool (paid_orders). Every number comes from SiegeRules, Forecast
+## and Breakdown; odds come through FortView.siege_odds, S-2's seam.
 
 ## Shown instead of battle odds when no enemy army is in the destination (M1 has no fog of war).
 const NO_ENEMY_TEXT := "No enemy army there now; enemies may still move in."
@@ -28,6 +37,8 @@ var _odds_cache := {}  # "army ids>province" -> move_odds() result; the state ne
 var _view: GameState = null  # view_state() for the sacrifice in _view_key
 var _view_key := ""
 var _removed: Array = []  # texts of the orders the last queue or cancel removed (M2-6)
+## M3c: the garrison armies the last queue_move sent out to join its relief (tied sallies), by id.
+var last_relief: Array = []
 
 
 func _init(p_state: GameState = null, p_faction_id: String = "", p_session: GameSession = null) -> void:
@@ -39,13 +50,34 @@ func _init(p_state: GameState = null, p_faction_id: String = "", p_session: Game
 ## Queues a move. A province two steps away that King's Roads reach is ordered as a road move through
 ## the first legal province by id (move_order_for). Returns "" when accepted, otherwise the rules' reason
 ## it was refused.
+## M3c: a move into your own besieged fort is a relief, and the garrison comes out to join it (§3.6, §9.2):
+## a sally tied to the relief is queued for every garrison army but the ruler's (last_relief names them; untick
+## them in the fort panel), and a sally ticked before the relief is tied to it.
 func queue_move(army_id: String, to_province: String) -> String:
-	return _queue(move_order_for(army_id, to_province))
+	last_relief = []
+	var garrison := relief_garrison(army_id, to_province)
+	var why := _queue(move_order_for(army_id, to_province))
+	if not why.is_empty() or garrison.is_empty():
+		return why
+	var removed := _removed.duplicate()
+	for a in garrison:
+		var i := sally_index(a.id)
+		if i >= 0 and String(orders()[i].with_army).is_empty():
+			cancel(i)  # a sally ticked before the relief now goes out with it, and stays in if the relief never comes
+			removed.append_array(_removed)
+		elif a.ruler != null or i >= 0:
+			continue
+		if _queue(SiegeOrder.sally(a.id, army_id)).is_empty():
+			last_relief.append(a.id)
+		removed.append_array(_removed)
+	_removed = removed
+	return ""
 
 
-## Queues one recruit at the capital. Returns "" when accepted, otherwise the rules' reason.
-func queue_recruit(unit_type_id: String) -> String:
-	return _queue(RecruitOrder.new(unit_type_id))
+## Queues one recruit at the capital, or (M3c, a game with sieges) at the fort `at` names. Returns "" when
+## accepted, otherwise the rules' reason.
+func queue_recruit(unit_type_id: String, at: String = RecruitOrder.AT_CAPITAL) -> String:
+	return _queue(RecruitOrder.new(unit_type_id, at))
 
 
 ## Queues one recruit with the ruler (Warband Muster: the unit appears where the Ninth Fang ends the
@@ -172,6 +204,11 @@ func recruit_orders() -> Array:
 	return out
 
 
+## The orders paid from gold in the recruitment phase, in the order given: recruits and (M3c) Fortify orders.
+func paid_orders() -> Array:
+	return orders().filter(func(o): return o is RecruitOrder or o is FortifyOrder)
+
+
 ## Forecast for a move that is not queued yet (catches a second move for the same army). A province
 ## two steps away is forecast as the road move a click would order.
 func move_forecast(army_id: String, to: String) -> Dictionary:
@@ -210,13 +247,16 @@ func move_preview(army_id: String, to: String) -> Dictionary:
 	var f := move_forecast(army_id, to)
 	if not f.ok:
 		return {"ok": false, "text": "This move can't be ordered: %s" % f.reason}
+	var siege := siege_move_text(army_id, to, orders(), false)  # M3c: a move into a fort says what it will be
+	if not siege.is_empty():
+		return {"ok": true, "text": siege}
 	return {"ok": true, "text": "Click to order this move. %s %s" % [f.text, move_odds(army_id, to).line]}
 
 
 ## Gold after the queued recruits and the income forecast. Your queued moves count for Royal Court,
 ## which pays where the King ends the turn.
 func gold_after_recruits() -> Dictionary:
-	return Forecast.gold_after_recruits(view_state(), faction_id, recruit_orders(), orders())
+	return Forecast.gold_after_recruits(view_state(), faction_id, paid_orders(), orders())
 
 
 ## The price of one unit, the same the recruitment phase charges (Muster Grounds included).
@@ -227,7 +267,7 @@ func recruit_cost(unit_type_id: String) -> int:
 ## "16 gold (20 - Muster Grounds 4)", or "20 gold" when no mandate changes the price.
 func price_text(unit_type_id: String) -> String:
 	var f := state.find_faction(faction_id)
-	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id) if f else null
+	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id, state) if f else null
 	return RulerRules.price_text(view_state(), faction_id, ut) if ut else ""
 
 
@@ -319,15 +359,31 @@ func order_text(index: int) -> String:
 	var o = list[index]
 	if o is MoveOrder:
 		var f := _move_forecast_at(index)
+		if f.ok:  # M3c: a move into a fort is listed as the siege, relief or capture it will be
+			var others := list.duplicate()
+			others.remove_at(index)
+			var siege := siege_move_text(o.army_id, o.to, others, true, o)
+			if not siege.is_empty():
+				return siege
 		return "%s %s" % [f.text, move_odds(o.army_id, o.to).line] if f.ok else f.reason
 	if o is SacrificeOrder:
 		return sacrifice_text(o)
+	if o is FortifyOrder:  # M3c
+		return fortify_text(index)
+	if o is SiegeOrder:  # M3c
+		return siege_order_text(o)
 	if o is ResearchOrder:  # M4-4: the research target, with its forecast (only its own player sees it)
 		var fc := Forecast.research(state, faction_id, list)
 		return "Research: %s" % String(fc.text) if fc.ok else "Not researched: %s" % String(fc.reason)
 	var r := _recruit_result_at(index)
 	if not r.ok:
 		return "Not recruited: %s" % r.reason
+	if state.sieges and r.has("fort") and r.at != RecruitOrder.AT_RULER:  # M3c: at a fort, with its count
+		var head := "Recruit %s at %s (%d of %d this turn) for %d gold, leaving %d gold." % [_unit_phrase(String(r.unit_type)),
+			_province_name(String(r.province)), int(r.count), int(r.limit), int(r.cost), int(r.gold_after)]
+		if bool(r.get("engine", false)):
+			head += " It rides with an army of yours there and never fights."
+		return head + _arrival_note(r)
 	if r.at == RecruitOrder.AT_RULER:
 		var name := RulerRules.current_name(state, faction_id)
 		return "Recruit one %s with %s for %d gold, leaving %d gold. It gathers at %s, where %s starts this turn, and joins your armies there at the end of the turn, if you still own %s then and %s stands; if not, it is cancelled and costs nothing." % [
@@ -342,7 +398,7 @@ func _arrival_note(r: Dictionary) -> String:
 	if int(r.get("hp", 0)) >= int(r.get("max_hp", 0)):
 		return ""
 	var f := state.find_faction(faction_id)
-	var ut: UnitType = TurnResolver.recruitable_type(f, String(r.unit_type)) if f else null
+	var ut: UnitType = TurnResolver.recruitable_type(f, String(r.unit_type), state) if f else null
 	return " " + AscensionRules.arrival_text(ut, int(r.hp), int(r.max_hp), AscensionRules.blood_levy_divisor(view_state(), faction_id)).replace("They arrive", "It arrives")
 
 
@@ -376,6 +432,10 @@ func order_breakdown(index: int) -> Dictionary:
 			"Arrives at the start of turn", f.arrival_turn)
 	if o is ResearchOrder:  # M4-4
 		return Breakdown.research_progress(state, faction_id, orders())
+	if o is FortifyOrder:  # M3c
+		return fortify_breakdown(index)
+	if o is SiegeOrder:  # M3c
+		return siege_order_breakdown(o)
 	var r := _recruit_result_at(index)
 	if not r.ok:
 		return _bd("Recruit order", r.reason, [], "Gold spent", 0)
@@ -397,7 +457,14 @@ func order_codex_kind(index: int) -> String:
 		return "sacrifice"
 	if o is ResearchOrder:  # M4-4
 		return "research_order"
+	if o is FortifyOrder:  # M3c
+		return "fortify_order"
+	if o is SiegeOrder:  # M3c
+		return "storm_order" if o.is_storm() else "sally_order"
 	if o is MoveOrder:
+		var kind := siege_kind(o.army_id, o.to)  # M3c: a siege, a relief, the breach or an empty fort
+		if kind in ["besiege", "relief", "breach", "empty"]:
+			return {"besiege": "siege_move", "relief": "relief", "breach": "breach", "empty": "empty_fort"}[kind]
 		if move_odds(o.army_id, o.to).enemy_present:
 			return "move_odds"
 		return "road_move" if o.is_road_move() else "move_order"
@@ -418,7 +485,7 @@ func recruit_breakdown(unit_type_id: String, at: String = RecruitOrder.AT_CAPITA
 	var g := gold_after_recruits()
 	var cost := recruit_cost(unit_type_id)
 	var f := state.find_faction(faction_id)
-	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id) if f else null
+	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id, state) if f else null
 	var rules := RulesCodex.text("recruit")
 	var title := "Recruit %s" % _unit_name(unit_type_id)
 	if at == RecruitOrder.AT_RULER:
@@ -429,9 +496,350 @@ func recruit_breakdown(unit_type_id: String, at: String = RecruitOrder.AT_CAPITA
 	var fc := Forecast.recruit(state, faction_id, unit_type_id, orders())  # M4-2: Blood Levy's wounded arrivals
 	if fc.ok and int(fc.hp) < int(fc.max_hp):
 		desc = "%s %s" % [fc.text, desc]
+	if state.sieges and at != RecruitOrder.AT_RULER:  # M3c: the fort, its count, and the army it joins
+		var at_fort := Forecast.recruit_at(state, faction_id, unit_type_id, at, orders())
+		desc = "%s %s %s" % [String(at_fort.text), desc, RulesCodex.text("recruit_at_forts")]
 	return _bd(title, desc.strip_edges(), [_line("Gold left after queued recruits", g.gold_after, ""),
 		_line("Cost of one %s" % _unit_name(unit_type_id), -cost, _price_note(unit_type_id))],
 		"Gold left if you recruit it", g.gold_after - cost)
+
+
+# --- forts and sieges (M3c S-3, #101; design/M3C_SIEGES.md §9) -----------------------------------------
+
+## What a move of `army_id` into `to` meets at a fort (§3.9, §9.2): "besiege" (an enemy fort with standing walls
+## and a garrison inside), "breach" (its walls are down), "empty" (an enemy or neutral fort nobody holds),
+## "relief" (your own besieged fort), "own" (your own fort, with no siege), or "" (no sieges, or no fort there).
+func siege_kind(army_id: String, to: String) -> String:
+	var view := view_state()
+	if view == null or not view.sieges:
+		return ""
+	var dest := view.find_province(to)
+	var army := view.find_army(army_id)
+	if dest == null or army == null or dest.fort_level <= 0 or army.location == to:
+		return ""
+	if dest.owner == faction_id:
+		return "relief" if SiegeRules.siege_stands(view, to) else "own"
+	if SiegeRules.garrison(view, to).is_empty():
+		return "empty"
+	return "breach" if dest.walls <= 0 else "besiege"
+
+
+## The garrison armies that come out to join a relief of `to` by `army_id` (§3.6): your armies inside with no
+## move queued, the ruler's included (the caller leaves it in). [] when the move is no relief, or the walls are
+## down (the battle there then comes on its own).
+func relief_garrison(army_id: String, to: String) -> Array:
+	if siege_kind(army_id, to) != "relief" or view_state().find_province(to).walls <= 0:
+		return []
+	var moving := {}
+	for o in orders():
+		if o is MoveOrder:
+			moving[o.army_id] = true
+	return SiegeRules.garrison(view_state(), to).filter(func(a): return not moving.has(a.id) and a.id != army_id)
+
+
+## The move preview (queued false) or the order line (queued true) of a move into a fort: Besiege with Storm now,
+## a relief with the garrison coming out, the breach, an empty fort taken, or your own fort. "" for any other
+## move. `others` are the faction's other orders (the move itself left out); `queued_move` is the queued order
+## itself for an order line (a click's move for a preview).
+func siege_move_text(army_id: String, to: String, others: Array, queued: bool, queued_move: MoveOrder = null) -> String:
+	var kind := siege_kind(army_id, to)
+	if kind.is_empty():
+		return ""
+	var view := view_state()
+	var move: MoveOrder = queued_move if queued_move != null else move_order_for(army_id, to)
+	var f := Forecast.move(view, faction_id, move, others)
+	if not f.ok:
+		return ""
+	var arrive := _arrival_sentence(f)
+	var p := view.find_province(to)
+	var with_move: Array = others + [move]
+	match kind:
+		"besiege":
+			var fc := FortView.siege_forecast(view, faction_id, to, with_move)  # with S-2's odds lines: they are on screen
+			var storm_odds := FortView.odds_text(FortView.siege_odds("storm", view, faction_id, to, with_move))
+			var odds := ""  # the forecast's own lines carry the storm, the breach and a relief's odds
+			if queued and storm_index(to) >= 0:
+				var ruler := storm_armies(to).any(func(a): return a.ruler != null)
+				return "Storm %s from the march: %s Every army of yours there attacks its garrison behind its walls (%d of %d: +%d defense)%s.%s" % [
+					p.name, _decap(arrive), p.walls, SiegeRules.walls_max(p.fort_level), SiegeRules.walls_defense(p.walls),
+					", your ruler's included" if ruler else "", " Odds: %s." % storm_odds if not storm_odds.is_empty() else ""]
+			var joins := SiegeRules.besiegers(view, to).any(func(a): return a.owner == faction_id)
+			var verb := "Join the siege of %s" % p.name if joins else "Besiege %s" % p.name
+			if queued:
+				return "%s: %s %s To storm instead, tick Storm now under this order.%s" % [verb, _decap(arrive), String(fc.text), odds]
+			return "Click to %s. %s %s Storm now instead: after the click, tick Storm now under this move in your orders.%s" % [
+				verb.left(1).to_lower() + verb.substr(1), arrive, String(fc.text), odds]
+		"breach":
+			var fc2 := Forecast.siege(view, faction_id, to, with_move)
+			var breach_odds := FortView.odds_text(FortView.siege_odds("breach", view, faction_id, to, with_move))
+			return "%s %s %s%s" % ["Attack through the breach at %s:" % p.name if queued else "Click to attack through the breach at %s." % p.name,
+				_decap(arrive) if queued else arrive, String(fc2.text), " Odds: %s." % breach_odds if not breach_odds.is_empty() else ""]
+		"empty":
+			var fc3 := Forecast.siege(view, faction_id, to, with_move)
+			return "%s %s %s" % ["Take the fort at %s:" % p.name if queued else "Click to take the fort at %s." % p.name,
+				_decap(arrive) if queued else arrive, String(fc3.text)]
+		"relief":
+			return _relief_text(army_id, to, arrive, with_move, queued)
+	return "%s %s %s is your own fort: the army goes inside its walls. If an enemy army arrives there this turn too, you meet outside the walls, where nobody gets walls or ground." % [
+		"Move to %s:" % p.name if queued else "Click to order this move.", _decap(arrive) if queued else arrive, p.name]
+
+
+func _relief_text(army_id: String, to: String, arrive: String, with_move: Array, queued: bool) -> String:
+	var view := view_state()
+	var p := view.find_province(to)
+	var lead := ("Relief for %s:" if queued else "Click to send relief to %s.") % p.name
+	if queued:
+		arrive = _decap(arrive)
+	if p.walls <= 0:
+		return "%s %s The walls are down, so the battle there comes this turn on its own, in the open: your army fights beside the garrison, whose fighters keep +%d cover; yours get none." % [
+			lead, arrive, FortData.COVER_DEFENSE]
+	var text := "%s %s It meets the siege lines outside the walls, in the open, where nobody gets walls or ground and the relief gets no cover." % [lead, arrive]
+	var out := []
+	var stay := []
+	if queued:
+		for a in SiegeRules.garrison(view, to):
+			(out if sally_index(a.id) >= 0 else stay).append(a)
+	else:
+		for a in relief_garrison(army_id, to):
+			(stay if a.ruler != null else out).append(a)
+	var names := func(list: Array) -> String: return RulerRules._and_list(list.map(func(a): return TurnReportText.army_name(view, a.id, a.owner)))
+	if not out.is_empty():
+		text += " The garrison comes out to join you: %s" % names.call(out)
+		text += " (%s %s inside)" % [names.call(stay), "stays" if stay.size() == 1 else "stay"] if not stay.is_empty() else ""
+		var them := "them" if out.size() > 1 else "it"
+		text += ". " + ("Untick %s in %s's fort panel to keep %s in." % [them, p.name, them] if not queued else "If the relief doesn't arrive, %s inside." % ("they stay" if out.size() > 1 else "it stays"))
+	elif not stay.is_empty():
+		text += " The garrison stays inside: %s. Tick a sally in %s's fort panel to bring an army out with you." % [names.call(stay), p.name]
+	# A preview's odds count the sallies the click will tie to the relief.
+	var odds_orders: Array = with_move if queued else with_move + out.map(func(a): return SiegeOrder.sally(a.id, army_id))
+	var odds := FortView.odds_text(FortView.siege_odds("relief", view, faction_id, to, odds_orders))
+	if not odds.is_empty():
+		text += " Odds: %s." % odds
+	return text
+
+
+## "The Crown's 3rd" -> "the Crown's 3rd", for a sentence that goes on after a colon.
+static func _decap(text: String) -> String:
+	return "t" + text.substr(1) if text.begins_with("The ") else text
+
+
+## "the Crown's 3rd (Knights) moves from Westwatch to Stonegate and is there at the start of turn 3." from a
+## move forecast, without what it says about the enemy there (the siege text says that instead).
+static func _arrival_sentence(f: Dictionary) -> String:
+	var marker := "at the start of turn %d." % int(f.get("arrival_turn", 0))
+	var text := String(f.get("text", ""))
+	var at := text.find(marker)
+	return text.substr(0, at + marker.length()) if at >= 0 else text
+
+
+## The fort a queued move at `index` besieges, so its order row offers Storm now; "" for any other order.
+func storm_target(index: int) -> String:
+	var list := orders()
+	if index < 0 or index >= list.size() or not (list[index] is MoveOrder):
+		return ""
+	return list[index].to if siege_kind(list[index].army_id, list[index].to) == "besiege" else ""
+
+
+## The index of the queued storm of `province_id`, or -1.
+func storm_index(province_id: String) -> int:
+	var list := orders()
+	for i in list.size():
+		if list[i] is SiegeOrder and list[i].is_storm() and list[i].province == province_id:
+			return i
+	return -1
+
+
+## The index of `army_id`'s queued sally, or -1.
+func sally_index(army_id: String) -> int:
+	var list := orders()
+	for i in list.size():
+		if list[i] is SiegeOrder and list[i].is_sally() and list[i].army_id == army_id:
+			return i
+	return -1
+
+
+## The queued relief move into `province_id` (an army of yours from outside), as its army id, or "".
+func relief_into(province_id: String) -> String:
+	for o in orders():
+		if o is MoveOrder and o.to == province_id and siege_kind(o.army_id, province_id) == "relief":
+			return o.army_id
+	return ""
+
+
+## Whether a storm of `province_id` would be accepted now: {} or the rules' {"code", "reason"} (OrderBook's).
+func storm_check(province_id: String) -> Dictionary:
+	if storm_index(province_id) >= 0:
+		return {}
+	return OrderBook.check_order(state, faction_id, SiegeOrder.storm(province_id), orders())
+
+
+## Whether `army_id` could sally now (tied to a queued relief into its fort): {} or the rules' reason.
+func sally_check(army_id: String) -> Dictionary:
+	if sally_index(army_id) >= 0:
+		return {}
+	var a := state.find_army(army_id)
+	var relief := relief_into(a.location) if a != null else ""
+	return OrderBook.check_order(state, faction_id, SiegeOrder.sally(army_id, relief), orders())
+
+
+## The Storm toggle: queues the storm of `province_id` (on) or cancels it. "" or the rules' reason.
+func set_storm(province_id: String, on: bool) -> String:
+	var i := storm_index(province_id)
+	if on and i < 0:
+		return _queue(SiegeOrder.storm(province_id))
+	if not on and i >= 0:
+		return cancel(i)
+	return ""
+
+
+## A Sally tick: queues `army_id`'s sally (tied to a queued relief into its fort, if any) or cancels it.
+func set_sally(army_id: String, on: bool) -> String:
+	var i := sally_index(army_id)
+	if on and i < 0:
+		var a := state.find_army(army_id)
+		return _queue(SiegeOrder.sally(army_id, relief_into(a.location) if a != null else ""))
+	if not on and i >= 0:
+		return cancel(i)
+	return ""
+
+
+## Your armies that would storm `province_id` this turn: those there now and those marching in, in id order.
+func storm_armies(province_id: String) -> Array:
+	var out := []
+	var coming := {}
+	for o in orders():
+		if o is MoveOrder and o.to == province_id:
+			coming[o.army_id] = true
+	for a in TurnResolver._sorted_armies(state):
+		if a.owner == faction_id and (a.location == province_id or coming.has(a.id)):
+			out.append(a)
+	return out
+
+
+## Queues a Fortify order for `province_id`. "" or the rules' reason.
+func queue_fortify(province_id: String) -> String:
+	return _queue(FortifyOrder.new(province_id))
+
+
+## The index of the queued Fortify order for `province_id`, or -1.
+func fortify_index(province_id: String) -> int:
+	var list := orders()
+	for i in list.size():
+		if list[i] is FortifyOrder and list[i].province == province_id:
+			return i
+	return -1
+
+
+## The Fortify preview (Forecast.fortify) for `province_id`, after your queued recruits and Fortify orders (those
+## before it, when it is queued itself).
+func fortify_preview(province_id: String) -> Dictionary:
+	var list := orders()
+	var i := fortify_index(province_id)
+	return Forecast.fortify(state, faction_id, province_id, list.slice(0, i) if i >= 0 else list)
+
+
+## The order line of the Fortify order at `index`.
+func fortify_text(index: int) -> String:
+	var o: FortifyOrder = orders()[index]
+	var r := _recruit_result_at(index)
+	if not r.ok:
+		return "Not fortified: %s" % String(r.reason)
+	var fc := fortify_preview(o.province)
+	if not fc.ok:
+		return "Not fortified: %s" % String(fc.reason)
+	return "Fortify %s: %s for %d gold (%d gold left). It stands at the end of turn %d if no enemy army stands there, and takes %d recruits a turn from turn %d." % [
+		_province_name(o.province), SiegeRules.fort_phrase(int(fc.level)), int(fc.cost), int(r.gold_after), int(fc.stands), int(fc.recruits), int(fc.recruit_from)]
+
+
+func fortify_breakdown(index: int) -> Dictionary:
+	var o: FortifyOrder = orders()[index]
+	var r := _recruit_result_at(index)
+	if not r.ok:
+		return _bd("Fortify order", String(r.reason), [], "Gold spent", 0)
+	var desc := "%s %s" % [String(fortify_preview(o.province).text), RulesCodex.text("fortify")]
+	var b := _bd("Fortify %s" % _province_name(o.province), desc, [_line("Gold before this order", int(r.gold_after) + int(r.cost), ""),
+		_line(SiegeRules.level_name(int(r.to)), -int(r.cost), "paid with your recruits, in the order given")], "Gold left after it", int(r.gold_after))
+	b["codex"] = "fortify"
+	return b
+
+
+## The order line of a storm or a sally.
+func siege_order_text(o: SiegeOrder) -> String:
+	if o.is_storm():
+		var p := state.find_province(o.province)
+		if p == null:
+			return "Storm a place that is not on the map."
+		var who := storm_armies(o.province).map(func(a): return TurnReportText.army_name(state, a.id, a.owner))
+		var odds := FortView.odds_text(FortView.siege_odds("storm", state, faction_id, o.province, orders()))
+		return "Storm the walls of %s with %s: the garrison defends behind %d of %d walls (+%d defense) and its %s. To keep an army out, move it away.%s" % [
+			p.name, RulerRules._and_list(who) if not who.is_empty() else "every army of yours there", p.walls, SiegeRules.walls_max(p.fort_level),
+			SiegeRules.walls_defense(p.walls), p.terrain, " Odds: %s." % odds if not odds.is_empty() else ""]
+	var a := state.find_army(o.army_id)
+	if a == null:
+		return "Sally out with an army that is not on the map."
+	var where := _province_name(a.location)
+	var text := "Sally out of %s with %s: it fights the siege lines in the open, keeping +%d cover from the walls. If it loses, it is destroyed." % [
+		where, TurnReportText.army_name(state, a.id, a.owner), FortData.COVER_DEFENSE]
+	if not o.with_army.is_empty():
+		var relief := state.find_army(o.with_army)
+		text += " It goes out together with the relief from %s, and stays inside if that relief doesn't arrive." % (_province_name(relief.location) if relief else "an army that is not on the map")
+	var odds2 := FortView.odds_text(FortView.siege_odds("sally", state, faction_id, a.location, orders()))
+	return text + (" Odds: %s." % odds2 if not odds2.is_empty() else "")
+
+
+func siege_order_breakdown(o: SiegeOrder) -> Dictionary:
+	if o.is_storm():
+		var b := Breakdown.walls_defense(state, o.province)
+		b.description = "%s %s" % [siege_order_text(o), RulesCodex.text("storm")]
+		b["codex"] = "storm"
+		return b
+	var a := state.find_army(o.army_id)
+	var t := FortView.troops_breakdown(state, [a] if a != null else [], "Sallying out", "sally")
+	t.description = "%s %s" % [siege_order_text(o), RulesCodex.text("sally")]
+	return t
+
+
+## The forts you can recruit at, for the "Recruit at" picker (§9.1): [{"province", "name", "level", "count"
+## (recruits queued there), "limit", "ok", "code", "reason"}], the capital first, then by name. A fort refused by
+## the rules (cut off, full, just captured) carries SiegeRules.check_recruit_at's reason.
+func recruit_places() -> Array:
+	var out := []
+	var view := view_state()
+	var f := view.find_faction(faction_id) if view != null else null
+	if f == null or not view.sieges or f.unit_types.is_empty():
+		return out
+	var counts := {}
+	for o in orders():
+		if o is RecruitOrder and not o.is_with_ruler():
+			var place := SiegeRules.recruit_place(view, f, TurnResolver.recruit_at(view, f, o))
+			counts[place] = int(counts.get(place, 0)) + 1
+	var forts := view.provinces.filter(func(p): return p.owner == faction_id and p.fort_level > 0)
+	forts.sort_custom(func(a, b): return a.id == f.capital or (b.id != f.capital and a.name < b.name))
+	for p in forts:
+		var n := int(counts.get(p.id, 0))
+		var check := SiegeRules.check_recruit_at(view, faction_id, p.id, f.unit_types[0], n)
+		out.append({"province": p.id, "name": p.name, "level": p.fort_level, "count": n, "limit": SiegeRules.recruit_limit(p.fort_level),
+			"ok": check.is_empty(), "code": String(check.get("code", "")), "reason": String(check.get("reason", ""))})
+	return out
+
+
+## What can be recruited at the fort `province_id`: the roster, and the siege engine at a keep or a citadel.
+func recruitable_types_at(province_id: String) -> Array:
+	var out := recruitable_types()
+	var view := view_state()
+	var p := view.find_province(province_id) if view != null else null
+	var engine := SiegeRules.engine_type(faction_id)
+	if p != null and view.sieges and engine != null and SiegeRules.may_recruit(p.fort_level, engine):
+		out.append(engine)
+	return out
+
+
+## "one Spearmen", "a Siege Ram", "Wallbreakers" for a recruit order line.
+func _unit_phrase(unit_type_id: String) -> String:
+	var name := _unit_name(unit_type_id)
+	if not FortData.engine_by_id(unit_type_id).is_empty():
+		return name if name.ends_with("s") else "a %s" % name
+	return "one %s" % name
 
 
 # --- helpers --------------------------------------------------------------------------------------
@@ -464,7 +872,7 @@ func sacrifice_text(order: SacrificeOrder) -> String:
 ## 4)"), "" otherwise, so an M1 tooltip reads exactly as before.
 func _price_note(unit_type_id: String) -> String:
 	var f := state.find_faction(faction_id)
-	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id) if f else null
+	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id, state) if f else null
 	return price_text(unit_type_id) if ut and not RulerRules.price_mods(view_state(), faction_id, ut).is_empty() else ""
 
 
@@ -490,14 +898,14 @@ func _recruit_result_at(index: int) -> Dictionary:
 	var list := orders()
 	var k := 0
 	for i in index:
-		if list[i] is RecruitOrder:
+		if list[i] is RecruitOrder or list[i] is FortifyOrder:  # M3c: Fortify orders are paid in the same list
 			k += 1
 	return gold_after_recruits().results[k]
 
 
 func _unit_name(unit_type_id: String) -> String:
 	var f := state.find_faction(faction_id)
-	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id) if f else null
+	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id, state) if f else null
 	return ut.name if ut else "unknown unit"
 
 

@@ -330,11 +330,30 @@ static func has_living_ruler(state: GameState, faction_id: String) -> bool:
 
 ## True when the faction's ruler is alive, from its status alone (M5, design/M5_MAGIC_FOG.md §2.7): unlike
 ## has_living_ruler it doesn't need the ruler's army on the map, because under fog a player's view may know a
-## rival ruler lives without knowing where. Screens that show a rival's ruler read this and handle "alive, location
-## unknown" (M5-1 adds the view handling). has_living_ruler is unchanged.
+## rival ruler lives without knowing where (the status is public, its army is seen only in sight). Screens that show
+## a rival's ruler read this, and ruler_whereabouts for "alive, location unknown". has_living_ruler is unchanged:
+## in a true state a living ruler is always on the map, so the two agree there.
 static func ruler_alive(state: GameState, faction_id: String) -> bool:
 	var f := state.find_faction(faction_id)
 	return f != null and f.has_ruler() and f.ruler_status == ALIVE
+
+
+## Where a faction's ruler is, as `state` (a true state or a player's view) knows it (M5-1, §2.7, §11.1): {"alive",
+## "province" ("" when dead or not on this map), "known" (its army is on this map), "text"}: "alive, at Thornvale",
+## "alive, location unknown" (a living rival ruler a view doesn't see), or "dead". In a view the province is where the
+## ruler was seen, or last seen (a remembered ruler: its army's view note says "memory").
+static func ruler_whereabouts(state: GameState, faction_id: String) -> Dictionary:
+	if not ruler_alive(state, faction_id):
+		var f := state.find_faction(faction_id)
+		var has := f != null and f.has_ruler()
+		return {"alive": false, "province": "", "known": has, "text": "dead" if has else ""}
+	var army := ruler_army(state, faction_id)
+	if army == null:
+		return {"alive": true, "province": "", "known": false, "text": "alive, location unknown"}
+	var where := _province_name(state, army.location)
+	var remembered := String(army.seen.get("level", "")) == "memory"
+	return {"alive": true, "province": army.location, "known": true,
+		"text": ("alive, last seen at %s on turn %d" % [where, int(army.seen.get("turn", 0))]) if remembered else "alive, at %s" % where}
 
 
 ## Hit points a living ruler with `max_hp` heals in the rulers phase: a quarter, rounded up (§1.7).
@@ -1565,6 +1584,9 @@ static func validate(state: GameState, errors = null) -> bool:
 
 ## The faction half of validate(): rulers, kept power, mandates, sacrifices and successors.
 ## GameState.from_dict runs it before loading armies, so these problems are named first.
+## M5-1 (design/M5_MAGIC_FOG.md §2.7): for a rival in a player's view (GameState.view_relaxes) the kept-power arithmetic
+## and the sacrifice-only check are relaxed: a view knows only some of a rival's mandates, none of its sacrifices, and
+## assumes the most kept power it could have.
 static func validate_factions(state: GameState, errors = null) -> bool:
 	var ok := true
 	for f in state.factions:
@@ -1614,15 +1636,15 @@ static func validate_factions(state: GameState, errors = null) -> bool:
 			if not String(md.faction).is_empty() and md.faction != f.id:
 				_report(errors, "%s has %s, which only the %s can take." % [name, md.name, _faction_name(state, md.faction)])
 				ok = false
-			if md.get("sacrifice_only", false) and not sacrificed.has(mid):
+			if md.get("sacrifice_only", false) and not sacrificed.has(mid) and not state.view_relaxes(f.id):
 				_report(errors, "%s has %s without a sacrifice for it. %s" % [name, md.name, path_mandate_reason(mid, name)])
 				ok = false
 			if not sacrificed.has(mid):
 				pre_game += int(md.cost)
-		if pre_game > RulerData.POWER_POOL:
+		if pre_game > RulerData.POWER_POOL and not state.view_relaxes(f.id):
 			_report(errors, "%s chose mandates worth %d power before the game, more than the pool of %d." % [name, pre_game, RulerData.POWER_POOL])
 			ok = false
-		elif f.kept_power > RulerData.POWER_POOL - pre_game - spent:
+		elif f.kept_power > RulerData.POWER_POOL - pre_game - spent and not state.view_relaxes(f.id):
 			_report(errors, "%s has %d kept power, but its mandates and sacrifices leave at most %d. Kept power never goes up." % [
 				name, f.kept_power, maxi(0, RulerData.POWER_POOL - pre_game - spent)])
 			ok = false

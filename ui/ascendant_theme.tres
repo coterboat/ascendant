@@ -1,4 +1,9 @@
-[gd_resource type="Theme" load_steps=13 format=3]
+[gd_resource type="Theme" load_steps=17 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/ui/checkbox_on.svg" id="1_check_on"]
+[ext_resource type="Texture2D" path="res://assets/ui/checkbox_off.svg" id="2_check_off"]
+[ext_resource type="Texture2D" path="res://assets/ui/checkbox_on_disabled.svg" id="3_check_on_dis"]
+[ext_resource type="Texture2D" path="res://assets/ui/checkbox_off_disabled.svg" id="4_check_off_dis"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tooltip"]
 content_margin_left = 12.0
@@ -147,6 +152,10 @@ Button/styles/hover = SubResource("StyleBoxFlat_button_hover")
 Button/styles/hover_pressed = SubResource("StyleBoxFlat_button_pressed")
 Button/styles/normal = SubResource("StyleBoxFlat_button_normal")
 Button/styles/pressed = SubResource("StyleBoxFlat_button_pressed")
+CheckBox/icons/checked = ExtResource("1_check_on")
+CheckBox/icons/checked_disabled = ExtResource("3_check_on_dis")
+CheckBox/icons/unchecked = ExtResource("2_check_off")
+CheckBox/icons/unchecked_disabled = ExtResource("4_check_off_dis")
 CheckBox/styles/disabled = SubResource("StyleBoxEmpty_check")
 CheckBox/styles/hover = SubResource("StyleBoxEmpty_check")
 CheckBox/styles/hover_pressed = SubResource("StyleBoxEmpty_check")

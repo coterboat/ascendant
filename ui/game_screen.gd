@@ -74,6 +74,10 @@ extends Control
 ##   save_store           where saves go (SaveStore, user://saves unless set before the game starts).
 ##   next_scene           the screen this one switched to (SceneFlow), e.g. the title after "New game".
 ##
+## Forts and sieges (M3c S-3, #101): `chronicle` (SiegeChronicle) keeps what the game has seen from each resolved
+## turn's report (and is rebuilt from the record when a game loads): the turn report's first-siege sentences,
+## once per player, and the victory screen's forts built, sieges won and storms.
+##
 ## The 3D board (M3a.1): with Settings "Board: 3D world" (the default), the map is drawn as the 3D world
 ## (Board3D, world3d/board3d.gd) once this screen is in the tree; "2D map" keeps the 2D board. After a
 ## turn resolves, its moves, battles and captures play out on the board (from the start-of-turn state
@@ -151,6 +155,7 @@ var _turn_before: GameState = null  # M3a.1: the start-of-turn state of the turn
 var _played_for := {}  # M3a.1: faction id -> the report turn already played out on the board for them
 var _replay := {}  # M3a.2: {"turn", "before"}: the last resolved turn's start, for every seat's playback and "Watch this turn again"
 var _auto_watched := {}  # M3-5: faction id -> the report turn whose battles auto-watch already played for them
+var chronicle := SiegeChronicle.new()  # M3c S-3: the first-siege sentences and the victory screen's siege numbers
 
 
 func _ready() -> void:
@@ -192,6 +197,7 @@ func start_game(game_config: Dictionary = {}) -> void:
 	_turn_before = null
 	_played_for = {}
 	_auto_watched = {}
+	chronicle = SiegeChronicle.new()
 	# The state's seed and the game seed are the same, so GameSession's turn seeds match TurnResolver's.
 	session = GameSession.new(starting_state(config), config.players, config.seed, AutoBattleResolver.new(), ai)
 	computer = AISeat.new(session, config.seed)
@@ -223,6 +229,7 @@ func load_game(save: Dictionary) -> String:
 	loaded_header = restored.header
 	session = restored.session
 	computer = restored.computer
+	chronicle = SiegeChronicle.rebuild(session.record(), AutoBattleResolver.new())  # M3c S-3: empty without sieges
 	map.session = session
 	_build_opponent_tag()
 	# M3-5: a loaded game doesn't auto-watch the battles of the turn it was saved after.
@@ -286,10 +293,18 @@ func _check_turn_start() -> void:
 		return
 	_turn_start_turns = session.turns_played()
 	_snapshot = SaveGame.computer_snapshot(computer, session)
+	_sync_chronicle()
 	if autosave_enabled and not session.is_over():
 		var why := autosave()
 		if not why.is_empty():
 			show_notice("Autosave failed", why)
+
+
+## M3c S-3: the chronicle counts the turn that just resolved (each turn once).
+func _sync_chronicle() -> void:
+	if session != null and session.turn_report().turn > 0:
+		var report := session.turn_report()
+		chronicle.add_turn(int(report.turn), report.events)
 
 
 ## A game starts or loads: the map theme and the map bed (crossfading from whatever played before).
@@ -318,9 +333,17 @@ func _cue_report(delay_s: float) -> void:
 ## ("rulers": true, or "builds") or the game was launched with `-- --rulers`; with paths (M4-1) when it has
 ## "paths": true or the game was launched with `-- --paths`; with forts and sieges (M3c) when it has "sieges": true or
 ## the game was launched with `-- --sieges`; with magic (M5-5, paths and rulers included) when it has "magic": true or
-## the game was launched with `-- --magic`. Factions without a
+## the game was launched with `-- --magic`; and with fog of war (M5-1) on top of any of these when it has "fog": true
+## or the game was launched with `-- --fog`. Factions without a
 ## build get their balanced preset. Null when a build is illegal (the session then explains).
 static func starting_state(game_config: Dictionary) -> GameState:
+	var state := _starting_state(game_config)
+	if state != null and (game_config.get("fog", false) or OS.get_cmdline_user_args().has("--fog")):
+		state.setup_fog([])  # M5-1: fog is a lens on whichever game the other boxes make
+	return state
+
+
+static func _starting_state(game_config: Dictionary) -> GameState:
 	var seed_value := int(game_config.get("seed", 0))
 	var args := OS.get_cmdline_user_args()
 	if game_config.get("magic", false) or args.has("--magic"):
@@ -389,6 +412,8 @@ func open_turn_report() -> void:
 	if session == null or session.turn_report().turn == 0:
 		return
 	# The computer's notes are those of the turn the report shows, which has resolved (AISeat.report_notes).
+	_sync_chronicle()
+	report_panel.chronicle = chronicle  # M3c S-3: the first-siege sentences
 	report_panel.show_report(session, computer.report_notes(session) if computer else [])
 	_keep_replay()
 	report_panel.set_watch_again(can_watch_again())
@@ -416,6 +441,8 @@ func open_ruler_panel() -> void:
 ## The victory screen again (the Results button after "View the map").
 func show_results() -> void:
 	_bind()
+	_sync_chronicle()
+	victory_screen.siege_stats = chronicle.stats()  # M3c S-3: forts built, sieges won, storms
 	if session != null and victory_screen.show_for(session):
 		_raise(victory_screen)
 

@@ -141,6 +141,24 @@ func test_bands_are_judged_from_the_games() -> void:
 	assert_true(Matrix.head_to_head(strong, even) > 0.7, "3:1 odds against 1:1")
 
 
+## #131: AI-against-AI games are close to deterministic per pairing, so a band B share can snap to 0% or 100%.
+## Each pairing counts its distinct endings (winner and length) and how many games share the most common one.
+func test_pairings_count_distinct_endings() -> void:
+	var a: String = RulerRules.presets_for("kingdom")[0].id
+	var b: String = RulerRules.presets_for("beasts")[0].id
+	var games := [_game(a, b, "beasts", 18), _game(a, b, "beasts", 18), _game(a, b, "beasts", 18), _game(a, b, "beasts", 21),
+		_game(a, b, "kingdom", 18), _game(a, b, "", 60), _game(a, b, "draw", 30)]
+	var prs := Matrix._pairings(games)
+	assert_eq(prs.size(), 1)
+	var pr: Dictionary = prs[0]
+	assert_eq(pr.endings, 5, "Clans on 18, Clans on 21, Crown on 18, the unfinished game and the draw")
+	assert_eq(pr.top_ending, 3, "three games end with the Clans winning on turn 18")
+	assert_eq(pr.top_label, "%s, turn 18" % Simulator.faction_name("beasts"))
+	var md := Matrix.to_markdown({"bands": [], "pairings": prs, "b_results": [], "a2_results": []})
+	assert_true(md.contains("| distinct endings |"), "the pairings table has the column")
+	assert_true(md.contains("| 5 (3 of 7: %s, turn 18) |" % Simulator.faction_name("beasts")), md)
+
+
 # --- the simulator's report data ----------------------------------------------------------------------
 
 func test_a_game_logs_rulers_and_replays_identically() -> void:

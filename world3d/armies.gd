@@ -56,6 +56,10 @@ const TAIL := 0.6
 const CAMP_OUT := 5.0 ## the war camp's first row, out from the gate
 const ROAD_CLEAR := 7.0 ## the camp keeps this far off the road out of the gate
 const SMOKE_PUFFS := 6
+const MUSICIAN_OFF_RUNG := 2 ## #125: the musician stands down from this quality rung (world_view.gd set_quality)
+
+## #125: the musician in every colour party (off on the lower quality rungs: the board sets it, musicians_at).
+static var musicians := true
 
 ## The land changed hands: the board repaints the province's wash and its fortress.
 signal captured(province_id: String, owner_id: String)
@@ -86,6 +90,7 @@ var _mats := {}
 var _play: Dictionary = {}
 var clock := 0.0
 var fig_scale := 1.0 ## toy scale: figures stand taller when the camera is far, so the army reads
+var blend := 1.0 ## #125: the figures' share against the far-zoom stands (stands.gd): 0 hides them
 var fig_shadows := true ## figures cast shadows only from the default zoom in (far out they are a few pixels)
 var speed := 1.0 ## playback speed (1, 2, 4)
 var snap_at_end := true ## rebuild from the state after when the playback ends (tests turn it off to compare)
@@ -110,6 +115,18 @@ func set_fig_shadows(on: bool) -> void:
 		for t in e["types"].keys():
 			for mi in e["types"][t]["mis"]:
 				(mi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+## The figures' share against the far-zoom stands (stands.gd, #125): they shrink away as the stands grow in.
+func set_blend(v: float) -> void:
+	v = clampf(v, 0.0, 1.0)
+	if absf(v - blend) < 0.004:
+		return
+	blend = v
+	for e in armies.values():
+		_sync(e)
+	for g in _ghost_entries:
+		_sync(g)
 
 
 ## Sets the toy scale (the board eases it with the zoom) and restands every figure.
@@ -227,9 +244,16 @@ func _desc_of(a: Army) -> Dictionary:
 
 
 ## The army's cosmetic extras (design 6.2): the standard bearer, and the musician when the model table
-## has one. They never count; the plate's number leaves them out.
+## has one and `musicians` is on (#125: the board turns it off on the quality ladder's lower rungs,
+## extras_for_rung). They never count; the plate's number leaves them out.
 static func extras() -> Array:
-	return ["bearer", "musician"] if Models.has_musician() else ["bearer"]
+	return ["bearer", "musician"] if Models.has_musician() and musicians else ["bearer"]
+
+
+## Whether a quality rung keeps the musician (#92 measured it at 18% more figures): from MUSICIAN_OFF_RUNG
+## down it stands down. The bearer always stays: it carries the army's banner, its owner's colour and emblem.
+static func musicians_at(rung: int) -> bool:
+	return rung < MUSICIAN_OFF_RUNG
 
 
 func _spacing(t: String) -> Vector2:
@@ -521,7 +545,8 @@ func _make_entry(d: Dictionary, placed: Array, ghost: bool = false) -> Dictionar
 	var seat: int = UiPalette.seat_index(state, d["owner"], seats)
 	var col: Color = UiPalette.seat_color(seat)
 	var e := {"id": d["id"], "owner": d["owner"], "colour": col, "emblem": maxi(seat, 0), "figs": [], "types": {},
-		"province": d["location"], "units": d.get("units", 0), "ruler": d.get("ruler", false), "ghost": ghost}
+		"province": d["location"], "units": d.get("units", 0), "ruler": d.get("ruler", false), "ghost": ghost,
+		"transformation": AscensionRules.transformation(state, String(d["owner"])) if state != null else ""}
 	_fill_entry(e, placed, ghost)
 	return e
 
@@ -542,7 +567,9 @@ func _fill_entry(e: Dictionary, placed: Array, ghost: bool = false) -> void:
 	var lin: Color = col.srgb_to_linear()
 	var parent: Node = ghost_root if ghost else self
 	for t in order:
-		var pm: Dictionary = {"ready": Models.figure_mesh(t, prefer_models)} if ghost else Models.pose_meshes(t, prefer_models, String(e["owner"]))
+		## #125: a transformed faction's units wear their variant's model family (Models.variant_of)
+		var vt := Models.variant_of(t, String(e.get("transformation", "")))
+		var pm: Dictionary = {"ready": Models.figure_mesh(t, prefer_models, "ready", "", vt)} if ghost else Models.pose_meshes(t, prefer_models, String(e["owner"]), vt)
 		var groups := {}
 		var mis: Array = []
 		var by_mesh := {}
@@ -575,7 +602,7 @@ func _fill_entry(e: Dictionary, placed: Array, ghost: bool = false) -> void:
 			by_mesh[mid] = mis.size()
 			groups[pose] = mis.size()
 			mis.append(mi)
-		e["types"][t] = {"groups": groups, "mis": mis, "lying": (not ghost) and Models.has_pose_model(t, "fallen", prefer_models)}
+		e["types"][t] = {"groups": groups, "mis": mis, "lying": (not ghost) and Models.has_pose_model(t, "fallen", prefer_models, vt), "variant": vt}
 	var k := 0
 	for sl in placed:
 		var f := {"type": sl["type"], "role": sl["role"],
@@ -658,22 +685,22 @@ func _sync(e: Dictionary) -> void:
 		var push: float = float(f["lunge"]) - float(f["back"])
 		if push != 0.0:
 			p += Vector2(-sin(yaw), -cos(yaw)) * push
-		var xf := Transform3D(basis.scaled(Vector3.ONE * maxf(sc * fig_scale, 0.001)), Vector3(p.x, float(f["y"]) + float(f["hop"]) * fig_scale, p.y))
+		var xf := Transform3D(basis.scaled(Vector3.ONE * maxf(sc * fig_scale * blend, 0.001)), Vector3(p.x, float(f["y"]) + float(f["hop"]) * fig_scale * blend, p.y))
 		var arr: Array = counters[f["type"]]
 		var idx: int = arr[gi]
 		arr[gi] = idx + 1
 		((te["mis"][gi] as MultiMeshInstance3D).multimesh).set_instance_transform(idx, xf)
 		if f["role"] == "bearer" and e.get("banner") != null:
 			var bn: Node3D = e["banner"]
-			bn.transform = Transform3D(Basis(Vector3.UP, yaw + PI * 0.5).scaled(Vector3.ONE * fig_scale), xf * Vector3(0.95, 1.2, 0.0))
-			bn.visible = sc > 0.05 and float(f["fall"]) < 0.5
+			bn.transform = Transform3D(Basis(Vector3.UP, yaw + PI * 0.5).scaled(Vector3.ONE * maxf(fig_scale * blend, 0.001)), xf * Vector3(0.95, 1.2, 0.0))
+			bn.visible = sc > 0.05 and float(f["fall"]) < 0.5 and blend > 0.02
 	for t in e["types"].keys():
 		var mis: Array = e["types"][t]["mis"]
 		for gi in mis.size():
 			var n: int = counters[t][gi]
 			var mi: MultiMeshInstance3D = mis[gi]
 			mi.multimesh.visible_instance_count = n
-			mi.visible = n > 0
+			mi.visible = n > 0 and blend > 0.01
 
 
 ## The middle of an army's standing figures and the height of its plate's foot (for its count plate),

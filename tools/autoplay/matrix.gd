@@ -428,7 +428,10 @@ static func _is_keep_winner(r: Dictionary) -> bool:
 
 
 ## Band B per pairing: [{"a" (Crown preset), "b" (Clans preset), "games", "decisive", "a_wins",
-## "b_wins", "draws", "unfinished", "median"}], in plan order.
+## "b_wins", "draws", "unfinished", "median", "endings", "top_ending", "top_label"}], in plan order.
+## #131: "endings" counts the distinct ways its games ended (winner and turn: _ending), "top_ending" the games
+## that share the most common one and "top_label" names it. Both seats run the same AIPlayer, so the seeds
+## differ only in the dice; a pairing whose games mostly end alike swings its band B share to 0% or 100%.
 static func _pairings(b_res: Array) -> Array:
 	var by := {}
 	var order := []
@@ -436,10 +439,13 @@ static func _pairings(b_res: Array) -> Array:
 		var key := str(r.pairing)
 		if not by.has(key):
 			var ids := key.split("|")
-			by[key] = {"a": ids[0], "b": ids[1], "games": 0, "decisive": 0, "a_wins": 0, "b_wins": 0, "draws": 0, "unfinished": 0, "lengths": []}
+			by[key] = {"a": ids[0], "b": ids[1], "games": 0, "decisive": 0, "a_wins": 0, "b_wins": 0, "draws": 0, "unfinished": 0, "lengths": [],
+				"ending_counts": {}}
 			order.append(key)
 		var pr: Dictionary = by[key]
 		pr.games += 1
+		var ending := _ending(r)
+		pr.ending_counts[ending] = int(pr.ending_counts.get(ending, 0)) + 1
 		if not bool(r.finished):
 			pr.unfinished += 1
 		elif bool(r.draw):
@@ -455,8 +461,29 @@ static func _pairings(b_res: Array) -> Array:
 	for key in order:
 		var pr: Dictionary = by[key]
 		pr["median"] = Simulator.stats_of(pr.lengths).median
+		var counts: Dictionary = pr.ending_counts
+		var keys: Array = counts.keys()
+		keys.sort()  # ties go to the first label, so the report is the same on every run
+		var top := ""
+		for k in keys:
+			if top.is_empty() or int(counts[k]) > int(counts[top]):
+				top = k
+		pr["endings"] = keys.size()
+		pr["top_ending"] = int(counts.get(top, 0))
+		pr["top_label"] = top
+		pr.erase("ending_counts")
 		out.append(pr)
 	return out
+
+
+## How game `r` ended, for _pairings' distinct endings: "<winner>, turn N", "draw, turn N" or "unfinished, turn N".
+static func _ending(r: Dictionary) -> String:
+	var how := "unfinished"
+	if decisive(r):
+		how = Simulator.faction_name(str(r.winner))
+	elif bool(r.finished):
+		how = "draw"
+	return "%s, turn %d" % [how, int(r.turns)]
 
 
 ## The whole matrix report as markdown: the bands table, band B's pairings, then the autoplay report
@@ -478,11 +505,12 @@ static func to_markdown(j: Dictionary, header: String = "") -> String:
 	L.append("")
 	L.append("### Band B pairings (wins of decisive games)")
 	L.append("")
-	L.append("| Aurel Crown preset | Thornmane Clans preset | games | decisive | Crown wins | Clans wins | draws | at the cap | median length |")
-	L.append("|---|---|---|---|---|---|---|---|---|")
+	L.append("| Aurel Crown preset | Thornmane Clans preset | games | decisive | Crown wins | Clans wins | draws | at the cap | median length | distinct endings |")
+	L.append("|---|---|---|---|---|---|---|---|---|---|")
 	for pr in j.pairings:
-		L.append("| %s | %s | %d | %d | %d (%s) | %d (%s) | %d | %d | %s |" % [Simulator.build_name(pr.a), Simulator.build_name(pr.b), pr.games, pr.decisive,
-			pr.a_wins, _pct(_ratio(pr.a_wins, pr.decisive)), pr.b_wins, _pct(_ratio(pr.b_wins, pr.decisive)), pr.draws, pr.unfinished, Simulator._num(pr.median)])
+		L.append("| %s | %s | %d | %d | %d (%s) | %d (%s) | %d | %d | %s | %d (%d of %d: %s) |" % [Simulator.build_name(pr.a), Simulator.build_name(pr.b), pr.games, pr.decisive,
+			pr.a_wins, _pct(_ratio(pr.a_wins, pr.decisive)), pr.b_wins, _pct(_ratio(pr.b_wins, pr.decisive)), pr.draws, pr.unfinished, Simulator._num(pr.median),
+			pr.endings, pr.top_ending, pr.games, pr.top_label])
 	for part in [["Band B games", j.b_results], ["Band A2 games (explicit builds)", j.a2_results]]:
 		if part[1].is_empty():
 			continue

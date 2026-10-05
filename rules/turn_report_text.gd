@@ -36,6 +36,16 @@ class_name TurnReportText
 ##   6. A rejected order says the result: where the army stays, and for a recruit short of gold what it
 ##      cost, what the faction had, and whether this turn's income would have covered it. No lone "you".
 ##   7. Moves are grouped by destination.
+##   8. Forts and sieges (M3c, design/M3C_SIEGES.md §9.4), in a game with sieges:
+##      - a recruit's line names its fort and count, "(keep, 3 of 4 this turn)", and a capture's says the fort came
+##        with it, "It came with its keep (walls 2 of 6): ..." (both from the events' numbers);
+##      - an open or breach battle at a fort says where the armies met: "through the breach", "outside the walls,
+##        as the garrison sallied", "... as a relief arrived";
+##      - every turn word is the reader's: the report of turn T is read at the start of turn T + 1, the turn the top
+##        bar shows, so a siege line says "this turn (T + 1)", "next turn (T + 2)", "in 3 turns (turn T + 3)"
+##        (reader_turn, reader_end), where the event's own text says "next turn (T + 1)". The phrase comes from the
+##        event's numbers (breach_turn, cut_off_from, battle_turn, recruit_from); the rest of the line is the
+##        resolver's own words, so the two never disagree on anything else.
 
 const BORDER := "border_battle"
 const BATTLE := "battle"
@@ -419,6 +429,8 @@ static func _line_at(i: int, ctx: Dictionary) -> String:
 			text = _captured_line(e, ctx)
 		"recruited":
 			text = _recruited_line(e, ctx)
+		"siege_started", "walls_damaged", "walls_breached", "siege_lifted", "fort_built":
+			text = _siege_line(e, ctx)  # M3c: the reader's turn words
 	return text if not text.is_empty() else own_text(e, ctx.viewer)
 
 
@@ -762,6 +774,8 @@ static func _battle_line(e: Dictionary, ctx: Dictionary) -> String:
 	var kind := String(e.get("type", ""))
 	if kind == BORDER and provinces.size() >= 2:
 		head = "On the border between %s, where they tried to swap places, %s beat %s" % [_border_name(e, s), won, beaten]
+	elif defender.is_empty() and not siege_where(e).is_empty():  # M3c: an open or breach battle at a fort
+		head = "In %s, %s, %s beat %s" % [_province_name(s, String(provinces[0])), siege_where(e), won, beaten]
 	elif defender.is_empty():
 		head = "In %s, where %s arrived at the same time, %s beat %s" % [_province_name(s, String(provinces[0])),
 			"both" if fids.size() == 2 else "all of them", won, beaten]
@@ -977,7 +991,7 @@ static func _captured_line(e: Dictionary, ctx: Dictionary) -> String:
 		for f in s.factions:
 			if f.capital == pid and f.id != fid:
 				text += " This is the capital of %s: it cannot recruit until it retakes it." % f.faction_name
-	return text
+	return text + _fort_came_with(e, fname, ctx)
 
 
 ## An enemy province taken without a battle: what became of the armies that left it this turn.
@@ -1056,6 +1070,107 @@ static func _started_in(id: String, pid: String, battle: Dictionary, ctx: Dictio
 	return false
 
 
+# --- forts and sieges (M3c, rule 8) ---------------------------------------------------------------------
+
+## "this turn (8)", "next turn (9)", "in 3 turns (turn 10)": `turn`, as someone reading at the start of turn `now`
+## counts it (the turn they are playing counts as one).
+static func reader_turn(turn: int, now: int) -> String:
+	var n := turn - now + 1
+	if n <= 1:
+		return "this turn (%d)" % turn
+	if n == 2:
+		return "next turn (%d)" % turn
+	return "in %d turns (turn %d)" % [n, turn]
+
+
+## "at the end of this turn (8)", "at the end of next turn (9)", "in 3 turns (end of turn 10)": the end of `turn`, as
+## someone reading at the start of turn `now` counts it.
+static func reader_end(turn: int, now: int) -> String:
+	var n := turn - now + 1
+	if n <= 2:
+		return "at the end of %s" % reader_turn(turn, now)
+	return "in %d turns (end of turn %d)" % [n, turn]
+
+
+## Where an open or breach battle at a fort was fought, from its siege block (numbers.siege): "through the breach",
+## "outside the walls, as the garrison sallied", "outside the walls, as a relief arrived", "outside the walls, as a
+## relief arrived and the garrison sallied to join it", "outside the walls". "" for any other battle (a storm, a
+## battle away from a fort, or armies arriving together at an empty fort, which "arrived at the same time" says).
+static func siege_where(e: Dictionary) -> String:
+	var siege = e.get("numbers", {}).get("siege", {})
+	if not (siege is Dictionary) or (siege as Dictionary).is_empty():
+		return ""
+	match String(siege.get("kind", "")):
+		"breach":
+			return "through the breach"
+		"open":
+			match String(siege.get("why", "")):
+				"sally", "gate":
+					return "outside the walls, as the garrison sallied"
+				"relief":
+					return "outside the walls, as a relief arrived"
+				"relief_sally":
+					return "outside the walls, as a relief arrived and the garrison sallied to join it"
+				"empty":
+					return ""
+			return "outside the walls"
+	return ""
+
+
+## A siege event's line (rule 8): the event's own words, with its turn phrase in the reader's terms, composed from
+## the event's numbers. The report of turn T is read at the start of turn T + 1 (the state after the turn has
+## current_turn T).
+static func _siege_line(e: Dictionary, ctx: Dictionary) -> String:
+	var text := String(e.get("text", ""))
+	var numbers: Dictionary = e.get("numbers", {})
+	var reported := int((ctx.state as GameState).current_turn)
+	var now := reported + 1
+	match String(e.get("type", "")):
+		"siege_started", "walls_damaged":
+			if int(numbers.get("walls", 0)) > 0 and numbers.has("breach_turn"):
+				var end := int(numbers.breach_turn)
+				text = text.replace("The walls reach 0 %s," % SiegeRules.report_when(end, reported), "The walls reach 0 %s," % reader_end(end, now))
+			if int(numbers.get("cut_off_from", 0)) > 0:
+				var from := int(numbers.cut_off_from)
+				text = text.replace("From next turn (%d) " % from, "From %s " % reader_turn(from, now))
+		"walls_breached":
+			var battle := int(numbers.get("battle_turn", now))
+			text = text.replace("still there next turn (%d)," % battle, "still there %s," % reader_turn(battle, now))
+		"siege_lifted":
+			text = text.replace("from next turn (%d)." % now, "from %s." % reader_turn(now, now))
+		"fort_built":
+			var from := int(numbers.get("recruit_from", now))
+			text = text.replace("from next turn (%d)," % from, "from %s," % reader_turn(from, now))
+	return text
+
+
+## A capture's fort clause (rule 8), from the event's numbers: " It came with its keep (walls 2 of 6): the Aurel Crown
+## can recruit there from next turn (9)." A fort retaken within FortData.RETAKE_TURNS recruits at once. "" when no
+## fort came with the province.
+static func _fort_came_with(e: Dictionary, fname: String, ctx: Dictionary) -> String:
+	var numbers: Dictionary = e.get("numbers", {})
+	var level := int(numbers.get("fort_level", 0))
+	if level <= 0:
+		return ""
+	var now := int((ctx.state as GameState).current_turn) + 1
+	var from := int(numbers.get("recruit_from", now + 1))
+	var when := "from %s" % reader_turn(from, now)
+	if from <= now:
+		when += ", since they retook it within %d turns of losing it" % FortData.RETAKE_TURNS
+	return " It came with its %s (walls %d of %d): the %s can recruit there %s." % [SiegeRules.level_word(level), int(numbers.get("walls", 0)),
+		SiegeRules.walls_max(level), fname, when]
+
+
+## The level word of the fort a recruit was made at ("keep"), from the recruit limit the event carries (each level
+## takes a different number), else from the state.
+static func _fort_word(numbers: Dictionary, pid: String, s: GameState) -> String:
+	for lv in FortData.LEVELS:
+		if int(lv.level) > 0 and int(lv.recruits) == int(numbers.get("limit", -1)):
+			return SiegeRules.level_word(int(lv.level))
+	var p := s.find_province(pid) if s != null else null
+	return SiegeRules.level_word(p.fort_level) if p != null else "fort"
+
+
 # --- recruits -------------------------------------------------------------------------------------
 
 static func _recruited_line(e: Dictionary, ctx: Dictionary) -> String:
@@ -1073,6 +1188,8 @@ static func _recruited_line(e: Dictionary, ctx: Dictionary) -> String:
 		return ""
 	var where := _province_name(s, String(provinces[0]))
 	var how := "at %s" % where
+	if numbers.has("fort") and numbers.has("limit"):  # M3c: "at Stonegate (keep, 3 of 4 this turn)"
+		how += " (%s, %d of %d this turn)" % [_fort_word(numbers, String(provinces[0]), s), int(numbers.get("count", 0)), int(numbers.limit)]
 	if String(e.get("cause", "")) == "with_ruler":
 		var ruler := RulerRules.current_name(s, fid)
 		how = "with %s at %s, where it started the turn," % [ruler if not ruler.is_empty() else "its ruler", where]
