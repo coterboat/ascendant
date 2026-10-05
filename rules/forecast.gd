@@ -697,7 +697,14 @@ static func research(state: GameState, faction_id: String, orders: Array = [], n
 			target = AscensionRules.research_target(view, faction_id)
 	if target.is_empty():
 		out.ok = true
-		if AscensionRules.path_complete(view, faction_id):
+		if MagicRules.has_magic(view) and AscensionRules.all_complete(view, faction_id):
+			# M5-5 (§4): nothing is left to research in a magic game, so research is sold in the research phase.
+			var sold := MagicRules.research_sold(pool + per_turn)
+			out.text = "Nothing is left to research: your path and your arcana are researched or closed. At the end of this turn your scholars sell %d research for %d gold (%d research a gold)." % [
+				int(sold.research), int(sold.gold), MagicData.RESEARCH_SOLD]
+		elif AscensionRules.path_complete(view, faction_id) and MagicRules.has_magic(view):
+			out.text = "Path complete. Your arcana are still open: choose a spell in the Magic tab (%d research waiting, %d a turn)." % [pool, per_turn]
+		elif AscensionRules.path_complete(view, faction_id):
 			out.text = "Path complete: everything on your path is researched or closed. Research keeps saving up (%d now, %d a turn)." % [pool, per_turn]
 		else:
 			out.text = "Choose what to research: %d research is waiting, and you gain %d a turn (%s)." % [pool, per_turn, rate.short]

@@ -607,8 +607,8 @@ static func _unit_mods(cache: Dictionary, fid: String, ut: UnitType, state) -> D
 	if cache.has(ut.id):
 		return cache[ut.id]
 	var out := {"attack": [], "defense": [], "hp": [], "morale": []}
-	if state is GameState and not ut.is_commander and not ut.is_ruler \
-			and (not RulerRules.mandates(state, fid).is_empty() or AscensionRules.has_paths(state)):
+	if state is GameState and not ut.is_commander and not ut.is_ruler and not ut.summoned \
+			and (not RulerRules.mandates(state, fid).is_empty() or AscensionRules.has_paths(state)):  # M5-5: never summoned creatures
 		var us := RulerRules.unit_stats(state, fid, ut.id)
 		if us.get("ok", false):
 			for stat in out:
