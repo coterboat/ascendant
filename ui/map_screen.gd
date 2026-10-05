@@ -1169,7 +1169,10 @@ func _show_province_details() -> void:
 		return
 
 	_add_province_header(p)
+	var garrison := state.garrison_at(p.id)  # IND-1 (#142): the Free Holds garrison you must beat to take it
 	var owner_name := "Nobody (neutral)" if p.owner.is_empty() else state.find_faction(p.owner).faction_name
+	if garrison != null:
+		owner_name = "Neutral, held by %s" % TurnReportText.army_name(state, garrison.id)
 	var seats := seat_order()
 	var owner_seat := UiPalette.seat_index(state, p.owner, seats)
 	var owner_help := RulesCodex.text("neutral")
@@ -1181,6 +1184,15 @@ func _show_province_details() -> void:
 	owner_label.name = "OwnerLabel"
 	owner_label.add_theme_color_override("font_color", UiPalette.owner_color(state, p.owner, seats).lightened(0.3))
 	_link(owner_label, TooltipText.owner_kind(p.owner))
+	if garrison != null:
+		var n := garrison.units.size()
+		var who := TurnReportText.army_name(state, garrison.id)
+		var garrison_label := _add_text("Garrison: %s, %d %s%s" % [who.trim_prefix("the "), n, "unit" if n == 1 else "units",
+			" and a Hold Captain" if garrison.commander != null else ""], TooltipText.plain("Garrison of the %s" % IndependentData.FACTION_NAME,
+			"To take %s you must beat %s: moving in starts a battle where it holds the ground. Select one of your armies next to it to see your odds. %s" % [
+				p.name, who, RulesCodex.text("independents")]), UiPalette.TEXT_SECONDARY)
+		garrison_label.name = "GarrisonLabel"
+		_link(garrison_label, "independents")
 	# Terrain, capital and fort explain themselves with their codex entries' own words.
 	var terrain_kind := TooltipText.terrain_kind(p.terrain)
 	var terrain_label := _add_text("Terrain: %s" % p.terrain.capitalize(), TooltipText.plain("Terrain: %s" % p.terrain.capitalize(),

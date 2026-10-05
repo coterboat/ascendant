@@ -162,6 +162,12 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 			for e in build_errors:
 				_error(result, 0, "setup: %s" % e)
 			return result
+	if options.get("independents", false):
+		var ind_errors := []
+		if not start.setup_independents(ind_errors):  # IND-1 (#142): Free Holds garrisons in every neutral province
+			for e in ind_errors:
+				_error(result, 0, "setup: %s" % e)
+			return result
 	var session := GameSession.new(start, seat_factions, game_seed, AutoBattleResolver.new())
 	for e in session.setup_errors():
 		_error(result, 0, "setup: %s" % e)
@@ -454,7 +460,7 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 	for a in state.armies:
 		if not provinces.has(a.location):
 			out.append({"check": "army_location_unknown", "detail": "Army %s is at unknown province '%s'." % [a.id, a.location]})
-		if not faction_ids.has(a.owner):
+		if not faction_ids.has(a.owner) and not (state.independents and a.owner == IndependentData.FACTION_ID):
 			out.append({"check": "army_owner_unknown", "detail": "Army %s belongs to unknown faction '%s'." % [a.id, a.owner]})
 		if a.units.is_empty() and a.commander == null and a.ruler == null:  # a ruler's army holds only its ruler
 			out.append({"check": "army_empty", "detail": "Army %s at %s has no units and no commander." % [a.id, a.location]})
@@ -484,7 +490,8 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 				and owners.has(p.owner)
 			if not siege:  # M3c: a garrison and its besiegers share their fort's province
 				out.append({"check": "hostile_armies_share_province", "detail": "%s holds armies of %s after the turn." % [pid, ", ".join(owners)]})
-		elif provinces.has(pid) and provinces[pid].owner != owners[0]:
+		elif provinces.has(pid) and provinces[pid].owner != owners[0] \
+				and not (owners[0] == IndependentData.FACTION_ID and provinces[pid].owner.is_empty()):  # IND-1: a garrison holds a neutral province
 			out.append({"check": "occupied_not_captured", "detail": "%s holds only %s armies but belongs to '%s'." % [pid, owners[0], provinces[pid].owner]})
 	var spent := {}
 	var income := {}

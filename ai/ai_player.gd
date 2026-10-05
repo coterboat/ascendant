@@ -142,6 +142,9 @@ const STRAGGLER_SHARE := 0.15  # enemy armies this small are not worth a step aw
 const GARRISON_RATIO := 1.3  # recruits alone must be this strong for the garrison to leave
 const SURPLUS_RATIO := 2.5  # extra armies in a threatened capital may leave if the rest are this strong
 const WALK_IN_RATIO := 0.8  # walk into an undefended enemy capital unless rescuers are stronger
+## IND-1 (#142): attack a Free Holds garrison only at these odds or better (per level). A garrison never moves, so it
+## is never a threat, only a price on its province: the armies marching in together must clear it.
+const HOLD_ATTACK_RATE := {"easy": 0.55, "normal": 0.7}
 ## Sally: the garrison may attack the enemy army next to the capital when it wins this surely. That
 ## army can then only reach the capital by fighting the garrison on the border (RulesCodex "swap").
 const SALLY_WIN := 0.9
@@ -247,6 +250,7 @@ var _branch := ""  # the side of the fork we plan for this turn
 var _ctx := {}  # {"stats": {"<faction>|<type id>": {"attack", "defense", "morale", "hp"}}, "forest_share", "front", "forest",
 	# "iron_discipline": {faction: bool}, "frenzy": {faction: Blood Frenzy's attack}}
 var _threat_cache := {}  # province id -> enemy armies that can reach it this turn (_threats_to)
+var _holds := {}  # IND-1: province id -> the Free Holds garrison there (never in _foes)
 var _arrival := {}  # unit type id -> the hp a recruit of it arrives with
 # #94 stand-offs: read afresh from the state every plan, never carried over.
 var _standoff := {}  # standoff_info for us, or {} when there is no stand-off
@@ -293,6 +297,7 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 		_sieges.plan_builds()  # M3c: Fortify, with its gold set aside before the troops are planned
 	if _level != "easy":
 		_recruit_plan = _plan_recruits(_armies_ending_at(_me.capital))
+	_guard_holds()  # IND-1: no march into a garrison the armies going there together can't beat
 	out.append_array(_checked_moves())
 	if _state.sieges:
 		out.append_array(_sieges.siege_orders(out))
@@ -310,6 +315,7 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 	_ruler = null
 	_ctx = {}
 	_threat_cache = {}
+	_holds = {}
 	_arrival = {}
 	_hunt = {}
 	_foe_cache = {}
@@ -464,8 +470,12 @@ func _begin(state: GameState, faction_id: String, rng: SeededRNG, difficulty: St
 func _collect_armies() -> void:
 	_mine = []
 	_foes = []
+	_holds = {}
 	_ruler = null
 	for a in _state.armies:
+		if a.owner == IndependentData.FACTION_ID:
+			_holds[a.location] = a  # IND-1: a garrison is a price on its province, not a foe
+			continue
 		if a.owner == _fid:
 			if a.ruler != null:
 				_ruler = a
@@ -937,6 +947,9 @@ func _best_capture(g: Dictionary, is_main: bool, objective: String, claimed: Dic
 			continue
 		if not _safe_at(g.armies, n):
 			continue
+		var hold_rate := _hold_rate(g.armies, n)  # IND-1: 1.0 where no garrison stands
+		if hold_rate < float(HOLD_ATTACK_RATE[_level]):
+			continue
 		var score: float
 		if _paths:
 			score = _capture_worth(p) + _rng.randf() * float(JITTER[_level])
@@ -946,6 +959,7 @@ func _best_capture(g: Dictionary, is_main: bool, objective: String, claimed: Dic
 			score -= 0.01 * _d(n, objective)
 		if _state.sieges:
 			score += _sieges.muster_value(p)  # M3c: a fort is a recruiting post
+		score *= hold_rate  # IND-1: a garrison's fight discounts the prize
 		if score > best_score:
 			best = n
 			best_score = score
@@ -1639,6 +1653,48 @@ func _hold(a: Army) -> void:
 	_moves.erase(a.id)
 	_vias.erase(a.id)
 	_busy[a.id] = true
+
+
+# --- IND-1: Free Holds garrisons (#142) ------------------------------------------------------------
+
+## Our win rate if `attackers` attack the garrison of `pid` together; 1.0 where no garrison stands. The rough
+## guess decides when it is lopsided, otherwise Forecast.battle_odds (the same forecast players see).
+func _hold_rate(attackers: Array, pid: String) -> float:
+	var g: Army = _holds.get(pid)
+	if g == null or attackers.is_empty():
+		return 1.0
+	var ratio := _ratio(attackers, [g], 1.0, _ground_bonus(pid))
+	if ratio >= SURE_RATIO:
+		return 0.95
+	if ratio <= HOPELESS_RATIO:
+		return 0.05
+	var ids := []
+	for a in attackers:
+		ids.append(a.id)
+	var r: Dictionary = _odds(_state, _fid, ids, pid, false)
+	return float(r.win_rate) if r.has("win_rate") else _rate_from_ratio(ratio)
+
+
+## Every province with a garrison that this plan marches into: the armies going there together must beat it at
+## HOLD_ATTACK_RATE or better, or they all hold where they are (and mass for next turn).
+func _guard_holds() -> void:
+	var into := {}  # province id -> our armies moving there
+	for id in _moves:
+		var dest := String(_moves[id])
+		if _holds.has(dest):
+			if not into.has(dest):
+				into[dest] = []
+			into[dest].append(_state.find_army(String(id)))
+	var pids: Array = into.keys()
+	pids.sort()
+	for pid in pids:
+		var rate := _hold_rate(into[pid], pid)
+		if rate >= float(HOLD_ATTACK_RATE[_level]):
+			_note("Attacking the %s: %d%% to win." % [TurnReportText.army_name(_state, _holds[pid].id).trim_prefix("the "), roundi(rate * 100.0)])
+			continue
+		for a in into[pid]:
+			_hold(a)
+		_note("Holding back from %s: its garrison is too strong for now (%d%% to win)." % [_province_name(pid), roundi(rate * 100.0)])
 
 
 func _skips() -> bool:
