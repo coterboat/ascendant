@@ -1119,6 +1119,8 @@ func _restore_map_forts() -> void:
 	for pid in _dmg_cut.keys():
 		_cut_mats(_capital_mats(pid), Vector4.ZERO, 0.0)
 	_dmg_cut.clear()
+	for pid in fortresses.keys():
+		_capital_piece(pid, "fortress")
 	_sieges_drawn = false
 	for i in terrain.ids.size():
 		if terrain.has_fort[i] and not terrain.is_capital[i] and not forts.has(terrain.ids[i]):
@@ -1128,10 +1130,16 @@ func _restore_map_forts() -> void:
 func _draw_fort(pid: String, row: Dictionary, old: Dictionary, col: Color) -> void:
 	var capital := fortresses.has(pid)
 	var d: Dictionary = fort_draw.get(pid, {})
-	if not capital:
+	var look := String(row.get("look", ""))
+	## the damage look's own model when the table has one (S-9's), drawn instead of the intact kit
+	var piece := look_piece(String(row.get("kind", "")), String(row.get("kit", "")), int(row.get("level", 0)), look)
+	if capital:
+		_capital_piece(pid, piece)
+	else:
 		var kind := String(row.get("kind", ""))
 		var kit := String(row.get("kit", ""))
-		var same: bool = not d.is_empty() and kind == String(old.get("kind", "")) and kit == String(old.get("kit", "")) and d.get("root") != null
+		var same: bool = not d.is_empty() and kind == String(old.get("kind", "")) and kit == String(old.get("kit", "")) and d.get("root") != null \
+			and piece == String(d.get("piece", ""))
 		if not same:
 			if d.get("root") != null and is_instance_valid(d["root"]):
 				(d["root"] as Node).queue_free()
@@ -1141,7 +1149,7 @@ func _draw_fort(pid: String, row: Dictionary, old: Dictionary, col: Color) -> vo
 			forts.erase(pid)
 			d = {"root": null}
 			if not kind.is_empty():
-				var built := _build_fort(pid, kind, kit)
+				var built := _build_fort(pid, kind, kit, piece)
 				d = built
 				(built["mat"] as ShaderMaterial).set_shader_parameter("team", team)
 				forts[pid] = {"node": built["root"], "mat": built["mat"]}
@@ -1159,9 +1167,8 @@ func _draw_fort(pid: String, row: Dictionary, old: Dictionary, col: Color) -> vo
 	var frame: Transform3D = g["frame"]
 	var hs: float = g["hs"]
 	var h: float = g["h"]
-	## the damage look: its model when the table has one, else the code fallback
-	var look := String(row.get("look", ""))
-	var cut: Array = _damage_cut(frame, hs, h, look)
+	## the damage look: its model when the table has one, else the code fallback (the cut through the walls)
+	var cut: Array = _damage_cut(frame, hs, h, look if piece == String(row.get("kind", "")) else "")
 	var mats: Array = _capital_mats(pid) if capital else d.get("mats", [])
 	if capital:
 		if look.is_empty() or look == "intact":
@@ -1218,16 +1225,74 @@ func _fort_frame(pid: String, capital: bool, d: Dictionary) -> Dictionary:
 
 ## Builds a fort of `kind` in `kit` at `pid` (its model, else its primitive), in the fort frame: gate on local -Z,
 ## facing the stage. {"root", "mat", "mats", "hs", "h"}.
-func _build_fort(pid: String, kind: String, kit: String) -> Dictionary:
+func _build_fort(pid: String, kind: String, kit: String, piece_kind: String = "") -> Dictionary:
 	var g := fort_geom(pid, kind, kit)
 	var root := Node3D.new()
 	root.name = "Fort_" + pid
 	root.transform = g["frame"]
 	buildings.add_child(root)
-	var piece := _fort_piece(kind, kit)
+	var pk: String = piece_kind if not piece_kind.is_empty() else kind
+	var piece := _fort_piece(pk, kit)
 	var mi: MeshInstance3D = piece["mi"]
 	root.add_child(mi)
-	return {"root": root, "mat": piece["mat"], "mats": [piece["mat"]], "hs": float(g["radius"]), "h": float(piece["h"])}
+	return {"root": root, "mat": piece["mat"], "mats": [piece["mat"]], "hs": float(g["radius"]), "h": float(piece["h"]), "piece": pk}
+
+
+## The model-table kind a fort is drawn with: the damage look's kind ("fort_damaged", "fortress_breached"; a battered
+## fort wears the damaged one) when that row has a model on disk, else the intact kit's `kind` (the code fallback
+## then cuts the walls).
+static func look_piece(kind: String, kit: String, level: int, look: String) -> String:
+	var lk := SiegeBoard.look_kind(level, look)
+	if not lk.is_empty() and not Models.building_model(lk, kit).is_empty():
+		return lk
+	return kind
+
+
+## Which model-table kind each fort is drawn with now (tests: a damage look's model replaces the code fallback).
+func fort_piece(pid: String) -> String:
+	if fortresses.has(pid):
+		return String(fortresses[pid].get("piece", "fortress"))
+	return String((fort_draw.get(pid, {}) as Dictionary).get("piece", ""))
+
+
+## A capital's fortress in a damage look's model (S-9's), or back in its own: the model swaps in place, normalised to
+## the fortress's side as the kit is, so its yard, gate and banners stay where they were.
+func _capital_piece(pid: String, piece: String) -> void:
+	var f: Dictionary = fortresses[pid]
+	if String(f.get("piece", "fortress")) == piece:
+		return
+	var mi: MeshInstance3D = null
+	for ch in (f["node"] as Node3D).get_children():
+		if ch is MeshInstance3D:
+			mi = ch
+			break
+	if mi == null:
+		return
+	if not f.has("own_mesh"):
+		f["own_mesh"] = {"mesh": mi.mesh, "scale": mi.scale, "rotation": mi.rotation, "position": mi.position,
+			"tex": (f["mat"] as ShaderMaterial).get_shader_parameter("albedo_tex")}
+	var kit := String(capital_of.get(pid, ""))
+	var glb: Dictionary = Models.building_model(piece, kit) if piece != "fortress" else {}
+	if glb.is_empty():
+		var own: Dictionary = f["own_mesh"]
+		mi.mesh = own["mesh"]
+		mi.scale = own["scale"]
+		mi.rotation = own["rotation"]
+		mi.position = own["position"]
+		(f["mat"] as ShaderMaterial).set_shader_parameter("albedo_tex", own["tex"])
+		f["piece"] = "fortress"
+		return
+	var row: Dictionary = Models.building_row(piece, kit)
+	var aabb: AABB = glb["aabb"]
+	var s: float = float(f.get("side", FORTRESS_SIDE)) / maxf(aabb.size.x, aabb.size.z)
+	mi.mesh = glb["mesh"]
+	mi.scale = Vector3.ONE * s
+	mi.rotation = Vector3(0, deg_to_rad(float(row.get("yaw", 180.0))), 0)
+	var centre: Vector3 = aabb.get_center()
+	mi.position = (Basis(Vector3.UP, mi.rotation.y) * Vector3(-centre.x, -aabb.position.y, -centre.z)) * s
+	(f["mat"] as ShaderMaterial).set_shader_parameter("albedo_tex", glb["tex"])
+	(f["mat"] as ShaderMaterial).set_shader_parameter("use_tex", true)
+	f["piece"] = piece
 
 
 ## A fort's model (or primitive) as a MeshInstance3D in the fort frame, with its own material and outline (the damage

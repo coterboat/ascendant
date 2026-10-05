@@ -1427,7 +1427,7 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 			if not f.has("die_at"):
 				f["die_at"] = battles_end - 0.6 + Choreo.hash01(aid, int(f["phase"] * 100.0)) * 0.3
 	## Sieges (M3c S-4, §10.2): each fort beat of the sieges phase in the report's order, at its fort; the forts'
-	## looks, camps and chevrons change as each beat plays (step_playback, _fort_step)
+	## looks, camps and chevrons change as each beat plays (step_playback: _fort_camps, _apply_fort)
 	var fort_steps: Array = []
 	var t_s0: float = (battles_end + PHASE_GAP) if not battles.is_empty() else ((t_move_end + PHASE_GAP) if not ways.is_empty() else T0)
 	var ts := t_s0

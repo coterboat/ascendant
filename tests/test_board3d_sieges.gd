@@ -537,6 +537,40 @@ func test_the_model_table_has_every_siege_kind_ready_for_its_model() -> void:
 	assert_eq(Models.problems(), [], "every row's fallback is a Kit piece and every named model is on disk")
 
 
+func test_a_damage_looks_own_model_replaces_the_code_fallback() -> void:
+	## S-9 fills the look rows' models later: until then the intact kit is drawn and cut by code; with a model on disk
+	## the board draws that model instead, uncut (any model on disk stands in for one here)
+	var s: GameState = F.state([["b1", CL, "stonegate", F.units("tuskers", 3)], ["b2", CL, "fangridge", F.units("tuskers", 3)]], {"stonegate": CL})
+	var b := _board_for(s)
+	var kits: Dictionary = b.wv.map_kits()
+	var rows: Dictionary = Models.table()["buildings"]
+	var cases := [["stonegate", 2, "fort." + String(kits["stonegate"])], ["fangridge", 3, "fortress." + String(kits["fangridge"])]]
+	for c in cases:
+		var pid: String = c[0]
+		var level: int = c[1]
+		var top := SiegeRules.walls_max(level)
+		var damaged_w := top - FortData.WALL_STEP ## one step lost
+		var lk := SiegeBoard.look_kind(level, SiegeRules.damage_look(level, damaged_w))
+		var key := lk + "." + String(kits[pid])
+		assert_true(rows.has(key) and String(rows[key]["model"]).is_empty(), "%s ships empty for S-9" % key)
+		s.find_province(pid).walls = damaged_w
+		b.stand(s)
+		assert_eq(b.wv.fort_piece(pid), SiegeBoard.kind_of(level), "%s: without the look's model the intact kit stands, cut by code" % pid)
+		rows[key]["model"] = String(rows[String(c[2])]["model"])
+		s.find_province(pid).walls = damaged_w - 1 ## the same look, a new walls count: the board redraws it
+		b.stand(s)
+		assert_eq(b.wv.fort_piece(pid), lk, "%s: with a model on disk the board draws the look's own model" % pid)
+		if pid != "fangridge":
+			var mat: ShaderMaterial = (b.wv.fort_draw[pid]["mats"] as Array)[0]
+			assert_eq(mat.get_shader_parameter("cut_plane"), Vector4.ZERO, "%s: and doesn't cut it" % pid)
+		s.find_province(pid).walls = top
+		b.stand(s)
+		assert_eq(b.wv.fort_piece(pid), SiegeBoard.kind_of(level), "%s: whole again, the intact kit is back" % pid)
+		rows[key]["model"] = ""
+	Models.clear_cache()
+	_free_board(b)
+
+
 func test_the_legend_captions_and_tooltips_explain_the_siege_board() -> void:
 	var turns := _story()
 	var st: GameState = turns[0]["after"] ## Stonegate besieged, a palisade rising at Rivermarch
