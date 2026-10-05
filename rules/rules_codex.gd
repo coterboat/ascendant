@@ -243,7 +243,7 @@ const ENTRIES := {
 	},
 	"orders": {
 		"title": "Orders",
-		"text": "Each turn you can move each army once, to a province next to it, and recruit units at your capital. An army with no move order holds where it is. An order that breaks a rule is rejected, and the turn report says why. In a game with rulers there is more. With King's Roads an army can instead make a road move, two provinces through your own land. With Warband Muster you can also recruit with the Ninth Fang where it stands. And a living ruler can give one Sacrifice order per turn, giving up power for a new mandate: it resolves before every other order, so your other orders are checked as if it had already happened. In a game with paths, a research order chooses what your faction researches. In a game with forts and sieges, you can also recruit at any fort you own, give a Fortify order to build or improve a fort, order your armies at an enemy fort to storm it, and order the armies of your besieged garrison to sally.",
+		"text": "Each turn you can move each army once, to a province next to it, and recruit units at your capital. An army with no move order holds where it is. An order that breaks a rule is rejected, and the turn report says why. In a game with rulers there is more. With King's Roads an army can instead make a road move, two provinces through your own land. With Warband Muster you can also recruit with the Ninth Fang where it stands. And a living ruler can give one Sacrifice order per turn, giving up power for a new mandate: it resolves before every other order, so your other orders are checked as if it had already happened. In a game with paths, a research order chooses what your faction researches. In a game with forts and sieges, you can also recruit at any fort you own, give a Fortify order to build or improve a fort, order your armies at an enemy fort to storm it, and order the armies of your besieged garrison to sally. In a game with magic, a cast order has an army with a caster cast a ritual (that army then holds for the turn), and a spellbook order sets the order your casters try their battle spells in.",
 	},
 	"move": {
 		"title": "Moving",
@@ -550,15 +550,15 @@ const ENTRIES := {
 	},
 	"ruler_ever_regent": {
 		"title": "The Ever-Regent",
-		"text": "Ruler of the Aurel Crown, undying. An archmage who bound his life to the sunstone in Crownkeep: he cannot die, only be broken, and he re-forms slowly. His spells count as attacks until magic comes to the game. He fights in the second rank. Hit points 14, plus 1 for every kept power; attack 8, plus 1 for every kept power; defense 6, plus 1 for every 2 kept power, rounded down; morale 10. With all 10 kept: 24 hit points, attack 18, defense 11. Province ability: Mending Light. When he is destroyed, he re-forms 4 turns later with all his kept power.",
+		"text": "Ruler of the Aurel Crown, undying. An archmage who bound his life to the sunstone in Crownkeep: he cannot die, only be broken, and he re-forms slowly. His spells count as attacks until magic comes to the game. He fights in the second rank. Hit points 14, plus 1 for every kept power; attack 8, plus 1 for every kept power; defense 6, plus 1 for every 2 kept power, rounded down; morale 10. With all 10 kept: 24 hit points, attack 18, defense 11. Province ability: Mending Light. When he is destroyed, he re-forms 4 turns later with all his kept power. In a game with magic he casts in battle: Sunlance from turn 1, and every Crown battle spell you research. He also casts every Crown ritual you research, and Far Sight. His mastery in the Sun and Law is his ability rank - 1.",
 	},
 	"ruler_thornmane_avatar": {
 		"title": "The Great Thornmane",
-		"text": "Ruler of the Thornmane Clans, a god. The clans' beast-god, walking among them in a body of briar and fur: when the body is slain, the god takes a new one, a little less of itself each time. It fights in the front rank. Hit points 24, plus 3 for every kept power; attack 8, plus 1 for every kept power; defense 7, plus 1 for every 2 kept power, rounded down; morale 14. With all 10 kept: 54 hit points, attack 18, defense 12. Province ability: Dread. When its body is slain, the god returns 1 turn later with 3 less kept power, for good.",
+		"text": "Ruler of the Thornmane Clans, a god. The clans' beast-god, walking among them in a body of briar and fur: when the body is slain, the god takes a new one, a little less of itself each time. It fights in the front rank. Hit points 24, plus 3 for every kept power; attack 8, plus 1 for every kept power; defense 7, plus 1 for every 2 kept power, rounded down; morale 14. With all 10 kept: 54 hit points, attack 18, defense 12. Province ability: Dread. When its body is slain, the god returns 1 turn later with 3 less kept power, for good. In a game with magic it casts the Wild's rituals once you research them (Call the Pack, Wake the Greenwrath) and Far Sight, but no battle spells. Its mastery in the Wild is its ability rank - 1.",
 	},
 	"ruler_fang_chieftain": {
 		"title": "The Ninth Fang",
-		"text": "Ruler of the Thornmane Clans, a mortal line. The high chieftain of the old fang bloodline: when one Fang falls, the next of the blood takes the mantle. The Fang fights in the front rank. Hit points 20, plus 2 for every kept power; attack 9, plus 1 for every kept power; defense 7, plus 1 for every 2 kept power, rounded down; morale 12. With all 10 kept: 40 hit points, attack 19, defense 12. Province ability: Warband Muster. When the Fang dies, the next Fang is crowned 2 turns later with half the kept power.",
+		"text": "Ruler of the Thornmane Clans, a mortal line. The high chieftain of the old fang bloodline: when one Fang falls, the next of the blood takes the mantle. The Fang fights in the front rank. Hit points 20, plus 2 for every kept power; attack 9, plus 1 for every kept power; defense 7, plus 1 for every 2 kept power, rounded down; morale 12. With all 10 kept: 40 hit points, attack 19, defense 12. Province ability: Warband Muster. When the Fang dies, the next Fang is crowned 2 turns later with half the kept power. In a game with magic the Fang casts Blood's rituals once you research them (Bloodrot, Blood Moon) and Far Sight, but no battle spells. Its mastery in Blood is its ability rank - 1.",
 	},
 	"ability_royal_court": {
 		"title": "Royal Court",
@@ -614,7 +614,7 @@ const ENTRIES := {
 	},
 	"mandate_feast_of_victory": {
 		"title": "Feast of Victory",
-		"text": "Thornmane Clans mandate, 3 power. After each battle you win, every fighter of yours still standing in it heals to its full hit points: units, commanders and the ruler. It works against Blood Frenzy, which wants wounds.",
+		"text": "Thornmane Clans mandate, 3 power. After each battle you win, every fighter of yours still standing in it heals to its full hit points: units, commanders and the ruler. It works against Blood Frenzy, which wants wounds. In a game with magic it can't be held with Tithe of Blood: blood given is not taken back.",
 	},
 	"road_move": {
 		"title": "Road moves",
@@ -630,7 +630,7 @@ const ENTRIES := {
 	# dread_lands) and M4-3 the new traits.
 	"research": {
 		"title": "Research",
-		"text": "In a game with paths (the M4 preview), every faction researches one node of its path at a time. Research points come from land: 5 a turn for your capital and 1 for every other province you own. They go into one pool, and when the pool holds the cost of your research target, the node is done and its effects start. You choose the target with a research order, and it stays until the node is done or you change it. Switching costs nothing and spare points are never lost. Every node shows how many turns it would take before you pick it.",
+		"text": "In a game with paths (the M4 preview), every faction researches one node of its path at a time. Research points come from land: 5 a turn for your capital and 1 for every other province you own. They go into one pool, and when the pool holds the cost of your research target, the node is done and its effects start. You choose the target with a research order, and it stays until the node is done or you change it. Switching costs nothing and spare points are never lost. Every node shows how many turns it would take before you pick it. In a game with magic the same pool also pays for the arcana, your faction's spells and mastery (the Magic tab), and once nothing at all is left to research, research is sold for gold.",
 	},
 	"research_points": {
 		"title": "Research points",
@@ -802,6 +802,209 @@ const ENTRIES := {
 	"mandate_red_harvest": {
 		"title": "Red Harvest",
 		"text": "Thornmane Clans mandate, 3 power, opened by the Blood Pact: it can be bought only by a sacrifice (4 power) once the Clans have become the Blood Pact, never before the game. After each battle you win, you gain 1 gold for every enemy fighter lost in it, fallen or destroyed with its army.",
+	},
+	# --- M5-5 (#116): magic (design/M5_MAGIC_FOG.md §3-§8, §11.4). Only a game with magic uses these rules. The numbers
+	# match data/magic.gd (MagicData) and the Tithe of Blood row of data/mandates.gd; tests/test_magic_rules.gd checks
+	# them. Plain text: tooltips quote them.
+	"magic": {
+		"title": "Magic",
+		"text": "In a game with magic (the M5 preview, which needs paths and rulers), each faction learns two schools of magic by research: the Aurel Crown the Sun and Law, the Thornmane Clans the Wild and Blood. Each school has a battle spell, a ritual, a mastery node and a greater working. Mages cast battle spells by themselves in every round of a battle, from your spellbook, and never roll dice. Rituals are orders: a caster, a ritual and a target, paid in gold. Your Oath opens one greater working, and your transformation makes your casters better in its school.",
+	},
+	"school_sun": {
+		"title": "School of the Sun",
+		"text": "An Aurel Crown school: light that smites and heals. Its battle spell is Sunlance, its ritual Dawn Blessing, its greater working Sunburst, which only the Oath of the Dawn opens. The Celestial Host adds +1 mastery in the Sun. Each point of mastery adds 1 damage to Sunlance and 4 hit points a turn to Dawn Blessing.",
+	},
+	"school_law": {
+		"title": "School of Law",
+		"text": "An Aurel Crown school: shields for armies on the march, wards against magic, and stone. Its battle spell is Shield of Law, its ritual Sanctum Ward, its greater working Bastion, which only the Oath of the Forge opens. Living Iron adds +1 mastery in Law. Each point of mastery has Shield of Law cover 1 more unit and Sanctum Ward last 1 more turn.",
+	},
+	"school_wild": {
+		"title": "School of the Wild",
+		"text": "A Thornmane Clans school: thorn, beast and forest. Its battle spell is Briar Snare, its ritual Call the Pack, its greater working Wake the Greenwrath, which only the Oath of the Grove opens. The Thorn Wild adds +1 mastery in the Wild. Each point of mastery has Briar Snare cover 1 more unit and lets Call the Pack call 1 more wolf.",
+	},
+	"school_blood": {
+		"title": "School of Blood",
+		"text": "A Thornmane Clans school: the price paid in life. Its battle spell is Bloodbolt, its ritual Bloodrot, its greater working Blood Moon, which only the Oath of Blood opens. The Blood Pact adds +1 mastery in Blood. Each point of mastery adds 1 damage to Bloodbolt and 4 hit points a turn to Bloodrot.",
+	},
+	"arcana": {
+		"title": "Arcana",
+		"text": "Your faction's magic research, the Magic tab of the research panel: two schools of four nodes each, paid from the same research pool as your path, one target at a time. In each school the battle spell (tier I, 10 research) comes first, then the ritual (tier II, 15), then the mastery node (20) and the greater working (tier III, 25), which also needs the school's own Oath, so swearing the other Oath closes it. A whole school is 70 research; everything a faction can learn is 115. Nothing in the arcana closes anything else.",
+	},
+	"caster": {
+		"title": "Caster",
+		"text": "A caster is any mage, or any ruler that can cast rituals, which is every ruler but King Corvane. In battle only mages and the Ever-Regent cast. A mage casts rituals of both your schools and Far Sight; a ruler casts its own schools' rituals and Far Sight. Each caster has a mastery in each school it casts.",
+	},
+	"mage": {
+		"title": "Mages",
+		"text": "Each faction has one mage: the Crown's Sunstone Adepts (8 hit points, attack 7, defense 5, morale 9, 18 gold) and the Clans' Thornmane Shamans (10 hit points, attack 7, defense 4, morale 8, 16 gold). In a game with magic they are on your roster from turn 1, but you can recruit them only once your faction knows a spell; the Ever-Regent's own Sunlance doesn't count. They are regular units, so mandates apply to them, and they have the trait Mage.",
+	},
+	"trait_mage": {
+		"title": "Mage (trait)",
+		"text": "Casts a spell from your spellbook every round instead of attacking, and attacks only when no spell is useful. Fights from the second rank: safe while your front rank is at least as big. Fangthrowers and Seraphs can always reach it. Mages count as second-rank fighters, so an army with more mages and crossbowmen than front-rank fighters has its second rank exposed.",
+	},
+	"mastery": {
+		"title": "Mastery",
+		"text": "A caster's skill in one school, shown as a bonus. A mage starts at +0; a ruler at its ability rank - 1 in its own schools. Your transformation adds +1 in its aligned school, and the school's mastery node +1 for every caster. Mastery is at most +3. Each point adds to exactly two things, one in battle and one on the map: Sunlance and Bloodbolt deal 1 more damage, Shield of Law and Briar Snare cover 1 more unit, Dawn Blessing and Bloodrot move 4 more hit points a turn, Sanctum Ward lasts 1 more turn, and Call the Pack can call 1 more wolf. Nothing else scales.",
+	},
+	"spellbook": {
+		"title": "Battle spellbook",
+		"text": "Your battle doctrine: every battle spell of your schools, in the order your casters try them, each on or off. Each round every caster casts the first useful spell in the spellbook that nobody on its side has cast yet that round; when every useful spell has been cast once, the next caster starts again from the top, and a caster with nothing useful attacks. You set it with a spellbook order, at most one a turn; it applies in the orders phase, so this turn's battles use it, and it stays until you change it. The defaults: Sunburst, Sunlance, Shield of Law for the Crown; Briar Snare, Bloodbolt for the Clans.",
+	},
+	"greater_working": {
+		"title": "Greater workings",
+		"text": "The tier III node of each school: Sunburst, Bastion, Wake the Greenwrath and Blood Moon. Each costs 25 research and needs its school's ritual and its school's own Oath, so a faction can learn only one of its two, and swearing the other Oath closes it for the rest of the game. Mastery never scales a greater working.",
+	},
+	"spell_kind_bolt": {
+		"title": "Bolts",
+		"text": "A bolt is a battle spell that deals sure damage to one enemy it can reach, picked by the spell's rule, at the end of the round. It never rolls, and it ignores defense, Iron Hide and Rooted. A ruler's spell resistance lowers it. Bolts never overkill: a target already going to die from damage aimed at it this round is skipped. Sunlance and Bloodbolt are bolts.",
+	},
+	"spell_kind_hex": {
+		"title": "Hexes",
+		"text": "A hex is a battle spell that gives enemy units a part for the round it is cast in: up to a number of units of one type, or every fighter in a rank. A unit takes a given hex at most once a round. Briar Snare and Sunburst are hexes.",
+	},
+	"spell_kind_shield": {
+		"title": "Spell shields",
+		"text": "A shield is a battle spell that gives your own units a part for the round it is cast in, up to a number of units of one type. A unit takes a given shield at most once a round. Shield of Law is a shield.",
+	},
+	"spell_kind_heals_back": {
+		"title": "Healing back",
+		"text": "Standing fighters heal back a share of the damage their attacks dealt, at the end of the round. Lifedrinker and the Blood Moon heal back; a fighter with both heals the larger share, not both.",
+	},
+	"ritual": {
+		"title": "Rituals",
+		"text": "A ritual is magic cast on the map with a cast order: a caster, a ritual and a target. Rituals cost gold, are cast from where the caster's army starts the turn, and resolve in the rituals phase, before movement, wards first. Each lasts through a turn its card names, written through turn N. The Crown's are Dawn Blessing, Sanctum Ward and Bastion; the Clans' Call the Pack, Wake the Greenwrath, Bloodrot and Blood Moon; every faction with a caster knows Far Sight.",
+	},
+	"cast_order": {
+		"title": "Cast orders",
+		"text": "A cast order names a ritual, the army whose caster casts it and a target. It is legal when the game has magic, your faction knows the ritual, the army is yours and holds a caster for it, the target is in range and fits the ritual, and you can pay: within the gold your queued recruits and other rituals leave, or in blood under Tithe of Blood. One cast order per army and each ritual once per turn. Casting holds the army: a move for it is removed, whenever it was given.",
+	},
+	"pinned": {
+		"title": "Casting holds an army",
+		"text": "An army whose caster casts a ritual holds that turn, in the province it starts in. Queuing the cast removes any move you gave that army, and a move can't be given to it while the cast stands: the order list says which move was removed and why. A field ruler chooses between marching and casting.",
+	},
+	"turned_aside": {
+		"title": "Turned aside",
+		"text": "A ritual aimed at a province a rival has warded, counting wards cast earlier in the same rituals phase, is turned aside: nothing happens, and you pay half its price, rounded down, because the power is spent. A ritual that fails for any other reason costs nothing.",
+	},
+	"enchantment": {
+		"title": "Enchantments",
+		"text": "A ritual that lasts leaves an enchantment: a blessing on armies, a ward or a curse on a province, the Blood Moon over every battle, or Far Sight on a province. Each lasts through the turn its card names and ends in that turn's enchantments phase. The same ritual on the same target restarts it, paid again; it never stacks.",
+	},
+	"blessing": {
+		"title": "Blessings",
+		"text": "Dawn Blessing blesses the armies of yours standing in its province as it resolves, and the blessing goes with them wherever they march. A side gets +1 morale for a whole battle when at least half its fighters are in blessed armies at the start, and each blessed army heals its budget of hit points in the enchantments phase. A destroyed army loses it; recruits who join a blessed army are blessed.",
+	},
+	"ward": {
+		"title": "Wards",
+		"text": "Sanctum Ward protects a province of yours: rival rituals aimed at it are turned aside, a rival curse already there ends after biting once more, and battles there are outside the Blood Moon. A ward protects only its caster's faction, so it stops protecting a province that changes hands. It gives no battle bonus.",
+	},
+	"curse": {
+		"title": "Curses",
+		"text": "Bloodrot curses a province: fighters there not of the caster's faction can't heal (no Mending Light, ruler healing, Hallowed Land, the Forges, Dawn Blessing, Feast of Victory, Lifedrinker or the Blood Moon), and in the enchantments phase it takes its budget of hit points from them, one at a time from the fighter with the most left, never below 1. Only fighters still there at the end of a turn are hit. A ward ends it after one more bite.",
+	},
+	"summoned": {
+		"title": "Summoned creatures",
+		"text": "Creatures a ritual summons: Thornwolves (Call the Pack) and the Greenwrath (Wake the Greenwrath). They form a new army of their own in the caster's province, which holds the turn it arrives. They are never recruited and never on a roster, and mandates, path parts and Blood Levy leave them alone. Thornwolves fade at the end of the turn their card names; the Greenwrath stays until it falls. One pack and one Greenwrath at a time.",
+	},
+	"spell_resistance": {
+		"title": "Spell resistance",
+		"text": "A ruler shrugs off part of every bolt: each bolt on a ruler deals its ability rank divided by 2, rounded down, less damage, never below 1. Rank 1 resists nothing, ranks 2 and 3 resist 1, rank 4 resists 2. Bolts reach rulers and commanders only when nothing else is in reach. Hexes are not bolts.",
+	},
+	"bleed": {
+		"title": "Bleeding",
+		"text": "Bloodbolt costs its caster 2 hit points, landing with the round's wounds: never below 1, and it turns on the caster's Blood Frenzy. It doesn't count as lost for the morale check, which counts only hit points lost to the enemy, and if the caster still stands when the battle ends, the bled hit points come back.",
+	},
+	"phase_rituals": {
+		"title": "Rituals phase",
+		"text": "In a game with magic, cast orders resolve after the orders phase and before movement, in a fixed order of kinds: wards, curses, blessings, summons, raisings, the global ritual, sight; within a kind by faction, then in the order each player gave them. Each ritual is turned aside, fails (and costs nothing), or is paid and takes effect.",
+	},
+	"phase_enchantments": {
+		"title": "Enchantments phase",
+		"text": "In a game with magic, the last phase of the turn: province by province, blessings heal their armies, curses bite, then every enchantment that lasted through this turn ends, and summoned creatures whose time is up fade.",
+	},
+	"research_sold": {
+		"title": "Research sold",
+		"text": "In a game with magic, once nothing is left to research (every node of your path and your arcana is researched or closed), your research becomes gold in the research phase: 2 research for 1 gold, rounded down, with the spare point carried to the next turn. The turn report says how much you sold.",
+	},
+	"spell_sunlance": {
+		"title": "Sunlance",
+		"text": "Sun battle spell, tier I, 10 research. A bolt: 4 sure damage to the enemy unit or creature it can reach with the highest maximum hit points, the most hurt of those first, focused until it falls. Rulers and commanders only when nothing else is in reach. +1 damage per point of Sun mastery. The Ever-Regent knows it from turn 1.",
+	},
+	"spell_shield_of_law": {
+		"title": "Shield of Law",
+		"text": "Law battle spell, tier I, 10 research. A shield: +4 defense this round for up to 6 of your front-rank units of one type, the most numerous with units not yet shielded, that have no terrain or fort bonus. A field spell: it does nothing for defenders in a fort, forest or hills, and helps when you attack and on open plains. +1 unit per point of Law mastery.",
+	},
+	"spell_sunburst": {
+		"title": "Sunburst",
+		"text": "The Sun's greater working, tier III, 25 research, opened only by the Oath of the Dawn. A hex on a whole rank: in round 1 only, once per side per battle, every enemy fighter in the front rank, rulers included, has -2 attack that round.",
+	},
+	"spell_briar_snare": {
+		"title": "Briar Snare",
+		"text": "Wild battle spell, tier I, 10 research. A hex: -2 attack this round for up to 6 enemy front-rank units of one type, 8 in a forest province battle: the most numerous type with units not yet snared, first standing in line. +1 unit per point of Wild mastery.",
+	},
+	"spell_bloodbolt": {
+		"title": "Bloodbolt",
+		"text": "Blood battle spell, tier I, 10 research. A bolt: 5 sure damage to the enemy unit or creature it can reach with the fewest hit points left that isn't already going to die this round. Rulers and commanders only when nothing else is in reach. The caster bleeds 2 hit points and needs 3 or more to cast it. +1 damage per point of Blood mastery.",
+	},
+	"spell_dawn_blessing": {
+		"title": "Dawn Blessing",
+		"text": "Sun ritual, tier II, 15 research, 12 gold. Cast on a province you own within 2 where an army of yours stands, through turn T + 2: every army of yours standing there is blessed, wherever it then goes. A side gets +1 morale in a battle when at least half its fighters are blessed, and each blessed army heals 12 hit points in each enchantments phase, one at a time to its most wounded fighter. +4 hit points per point of Sun mastery.",
+	},
+	"spell_sanctum_ward": {
+		"title": "Sanctum Ward",
+		"text": "Law ritual, tier II, 15 research, 8 gold. Cast on a province you own within 2, through turn T + 1, one more turn per point of Law mastery: rival rituals aimed at it are turned aside, a rival curse there ends after biting once more, and battles there are outside the Blood Moon.",
+	},
+	"spell_bastion": {
+		"title": "Bastion",
+		"text": "Law's greater working, tier III, 25 research, 30 gold, opened only by the Oath of the Forge. Raises a fort for good in a province you own within 1 that has none. At most 2 Bastion forts per faction, ever, whether or not they are later lost; a captured Bastion fort serves its new owner.",
+	},
+	"spell_call_the_pack": {
+		"title": "Call the Pack",
+		"text": "Wild ritual, tier II, 15 research, 5 gold a wolf. Calls 3 Thornwolves, up to 3 plus your Wild mastery, as a new army of their own at the caster's province, which holds that turn. They fade at the end of turn T + 4. A new pack can be called only once the last has faded or fallen.",
+	},
+	"spell_wake_the_greenwrath": {
+		"title": "Wake the Greenwrath",
+		"text": "The Wild's greater working, tier III, 25 research, 30 gold, opened only by the Oath of the Grove. Wakes the Greenwrath as a new army of its own at the caster's province, which must be forest. It stays until it falls. One at a time.",
+	},
+	"spell_bloodrot": {
+		"title": "Bloodrot",
+		"text": "Blood ritual, tier II, 15 research, 15 gold. Curses a province not yours within 2 through turn T + 2: fighters there not of your faction can't heal, and in each enchantments phase it takes 12 hit points from them, one at a time from the fighter with the most left, never below 1. It first bites after this turn's battles. +4 hit points per point of Blood mastery.",
+	},
+	"spell_blood_moon": {
+		"title": "Blood Moon",
+		"text": "Blood's greater working, tier III, 25 research, 30 gold, opened only by the Oath of Blood. Through turn T + 2, in every battle, each of your standing fighters heals back a quarter of the damage its attacks dealt that round, rounded down, never above its maximum - 1. Spell damage isn't healed back, and battles in a rival's warded province are outside the moon. Only one global ritual can be up at a time.",
+	},
+	"spell_far_sight": {
+		"title": "Far Sight",
+		"text": "Common ritual, 6 gold, known by every faction with a caster without research. Cast on any province within 3: you see it in clear sight at the start of your next 2 turns. On a rival's capital you also get a reading: that rival's gold, mandates, kept power, research pool, nodes, spells and spellbook, but not its research target. A rival caster there blocks the reading, not the sight. Without fog of war it has nothing to show.",
+	},
+	"node_sun_mastery": {
+		"title": "Sun Mastery",
+		"text": "Sun mastery node, 20 research, after Dawn Blessing. +1 mastery in the Sun for every caster of yours: Sunlance deals 1 more damage and Dawn Blessing heals 4 more hit points a turn. Mastery is at most +3.",
+	},
+	"node_law_mastery": {
+		"title": "Law Mastery",
+		"text": "Law mastery node, 20 research, after Sanctum Ward. +1 mastery in Law for every caster of yours: Shield of Law covers 1 more unit and Sanctum Ward lasts 1 more turn. Mastery is at most +3.",
+	},
+	"node_wild_mastery": {
+		"title": "Wild Mastery",
+		"text": "Wild mastery node, 20 research, after Call the Pack. +1 mastery in the Wild for every caster of yours: Briar Snare covers 1 more unit and the pack can be 1 wolf bigger. Mastery is at most +3.",
+	},
+	"node_blood_mastery": {
+		"title": "Blood Mastery",
+		"text": "Blood mastery node, 20 research, after Bloodrot. +1 mastery in Blood for every caster of yours: Bloodbolt deals 1 more damage and Bloodrot takes 4 more hit points a turn. Mastery is at most +3.",
+	},
+	"unit_thornwolves": {
+		"title": "Thornwolves",
+		"text": "Summoned by Call the Pack: 9 hit points, attack 11, defense 4, morale 8, Skirmish, and scouts. Never recruited; mandates, path parts and Blood Levy leave them alone. They fade at the end of the turn their card names, and a wiped pack can be called again the next turn, so they are disposable forward fighters at 5 gold each.",
+	},
+	"unit_greenwrath": {
+		"title": "Greenwrath",
+		"text": "Woken by Wake the Greenwrath in a forest: 40 hit points, attack 15, defense 9, morale 14, Rooted. One fighter for every rule, drawn twice as big. Never recruited; mandates and path parts leave it alone. It stays until it falls, and only one can be awake at a time.",
+	},
+	"mandate_tithe_of_blood": {
+		"title": "Tithe of Blood",
+		"text": "Thornmane Clans mandate of magic, 3 power (4 by sacrifice), only in a game with magic. Rituals your Shamans cast can be paid in hit points instead of gold: 1 hit point a gold, from the regular units in the Shamans' own army, one soldier at a time: the one with the most hit points gives until it is at 1, then the next. Rituals your ruler casts always cost gold, because a ruler stands alone. If the army can't give it all, the ritual can't be paid in blood. Can't be held with Feast of Victory: blood given is not taken back.",
 	},
 	# --- fog of war (M5-1, #112; design/M5_MAGIC_FOG.md §2, §11.4): only a game with fog of war uses these rules. The
 	# ranges and the rounding come from FogData, so a retuned number shows up here by itself. Plain text: tooltips quote them.

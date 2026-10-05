@@ -27,6 +27,9 @@ extends Control
 ## Forts & sieges (M3c S-1a, #98; design/M3C_SIEGES.md §1.3): the "Forts & sieges (M3c preview)" box, off by
 ## default (launching with `-- --sieges` ticks it), independent of Rulers and Paths. Ticked, config() adds
 ## "sieges": true (GameScreen.starting_state then uses GameState.with_sieges).
+## Magic (M5-5, #116; design/M5_MAGIC_FOG.md §1.3): the "Magic (M5 preview)" box, off by default (launching with
+## `-- --magic` ticks it). Magic needs Paths: ticking it ticks Paths and Rulers, and clearing Paths (or Rulers)
+## clears it. Ticked, config() adds "magic": true (GameScreen.starting_state then uses GameState.with_magic).
 ## Fog of war (M5-1, #112; design/M5_MAGIC_FOG.md §1.3): the "Fog of war (M5 preview)" box, off by default (launching
 ## with `-- --fog` ticks it), independent of every other box. Ticked, config() adds "fog": true (GameScreen.starting_state
 ## then calls GameState.setup_fog on whichever game the other boxes make).
@@ -56,6 +59,7 @@ extends Control
 ##   set_rulers(on), rulers_on()     the "Rulers" box (ticked by default)
 ##   set_paths(on), paths_on()       the "Paths (M4 preview)" box (M4-1); ticking it ticks rulers
 ##   set_sieges(on), sieges_on()     the "Forts & sieges (M3c preview)" box (M3c), on its own
+##   set_magic(on), magic_on()       the "Magic (M5 preview)" box (M5-5); ticking it ticks paths and rulers
 ##   set_fog(on), fog_on()           the "Fog of war (M5 preview)" box (M5-1), on its own
 ##   set_independents(on), independents_on()   the "Independents" box (IND-1), on its own
 ##   quick_start_config(rng) -> Dictionary   Quick start's config (static): a random faction for the person
@@ -102,6 +106,7 @@ var rulers_toggle: CheckBox  # "Rulers": on by default
 var rulers_label: Label  # what the box does, shown while it is ticked
 var paths_toggle: CheckBox  # M4-1: "Paths (M4 preview)": off by default; needs rulers
 var sieges_toggle: CheckBox  # M3c: "Forts & sieges (M3c preview)": off by default; independent of rulers and paths
+var magic_toggle: CheckBox  # M5-5: "Magic (M5 preview)": off by default; needs paths
 var fog_toggle: CheckBox  # M5-1: "Fog of war (M5 preview)": off by default; works with any game
 var independents_toggle: CheckBox  # IND-1: "Independents": off by default for now; works with any game
 var build_screen: BuildScreen = null  # opened by Start while rulers are on; built on first use
@@ -152,6 +157,8 @@ func config() -> Dictionary:
 		out["paths"] = true
 	if sieges_on():
 		out["sieges"] = true
+	if magic_on():
+		out["magic"] = true
 	if fog_on():
 		out["fog"] = true
 	if independents_on():
@@ -229,6 +236,10 @@ func prefill(last_game: Dictionary) -> void:
 		set_sieges(true)
 	elif last_game.has("players"):
 		set_sieges(_sieges_by_default())
+	if last_game.get("magic", false) == true:  # M5-5
+		set_magic(true)
+	elif last_game.has("players"):
+		set_magic(_magic_by_default())
 	if last_game.get("fog", false) == true:  # M5-1
 		set_fog(true)
 	elif last_game.has("players"):
@@ -367,6 +378,24 @@ static func _sieges_by_default() -> bool:
 	return OS.get_cmdline_user_args().has("--sieges")
 
 
+## Ticks or clears the "Magic (M5 preview)" box (M5-5). Magic needs paths: ticking it ticks paths and rulers too.
+func set_magic(on: bool) -> void:
+	magic_toggle.set_pressed_no_signal(on)
+	if on:
+		paths_toggle.set_pressed_no_signal(true)
+		rulers_toggle.set_pressed_no_signal(true)
+	_refresh()
+
+
+func magic_on() -> bool:
+	return magic_toggle.button_pressed
+
+
+## Magic starts ticked when the game was launched with `-- --magic` (GameScreen.starting_state).
+static func _magic_by_default() -> bool:
+	return OS.get_cmdline_user_args().has("--magic")
+
+
 ## Ticks or clears the "Fog of war (M5 preview)" box (M5-1). It needs no other box.
 func set_fog(on: bool) -> void:
 	fog_toggle.set_pressed_no_signal(on)
@@ -497,6 +526,8 @@ func _problems() -> Array[String]:
 func _refresh() -> void:
 	if paths_toggle != null and paths_on() and not rulers_on():
 		paths_toggle.set_pressed_no_signal(false)  # M4-1: paths need rulers
+	if magic_toggle != null and magic_on() and not paths_on():
+		magic_toggle.set_pressed_no_signal(false)  # M5-5: magic needs paths
 	var problems := _problems()
 	error_label.text = "\n".join(problems)
 	error_label.visible = not problems.is_empty()
@@ -738,6 +769,7 @@ func _build() -> void:
 	rulers_row.add_child(rulers_label)
 	_build_paths_row(box)
 	_build_sieges_row(box)
+	_build_magic_row(box)
 	_build_fog_row(box)
 	_build_independents_row(box)
 
@@ -812,6 +844,27 @@ func _build_sieges_row(box: Container) -> void:
 	sieges_toggle.set_pressed_no_signal(_sieges_by_default())
 	sieges_toggle.toggled.connect(func(on: bool): set_sieges(on))
 	row.add_child(sieges_toggle)
+
+
+## M5-5: the "Magic (M5 preview)" box under the sieges box. Ticking it ticks Paths and Rulers (magic needs them).
+func _build_magic_row(box: Container) -> void:
+	var row := HBoxContainer.new()
+	row.name = "MagicRow"
+	row.add_theme_constant_override("separation", 14)
+	box.add_child(row)
+	magic_toggle = CheckBox.new()
+	magic_toggle.name = "MagicToggle"
+	magic_toggle.text = "Magic (M5 preview)"
+	magic_toggle.add_theme_font_size_override("font_size", 20)
+	magic_toggle.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	magic_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Magic (preview)",
+		"Research spells, recruit mages and cast rituals. Needs Paths and Rulers, so they're on too. Magic is still being built: battle spells and rituals don't take effect yet, but you can research the arcana, recruit mages and set your spellbook. %s" % RulesCodex.text("magic")), "magic")
+	magic_toggle.set_pressed_no_signal(_magic_by_default())
+	if magic_toggle.button_pressed:
+		paths_toggle.set_pressed_no_signal(true)
+		rulers_toggle.set_pressed_no_signal(true)
+	magic_toggle.toggled.connect(func(on: bool): set_magic(on))
+	row.add_child(magic_toggle)
 
 
 ## M5-1: the "Fog of war (M5 preview)" box under the sieges box. It is independent of every other box. Its tooltip is

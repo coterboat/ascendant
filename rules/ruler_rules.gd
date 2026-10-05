@@ -74,6 +74,9 @@ static func mandate_data(mandate_id: String) -> Dictionary:
 	for m in MandateData.PATH_MANDATES:  # M4-2: the mandates a transformation opens (sacrifice only)
 		if m.id == mandate_id:
 			return m
+	for m in MandateData.MAGIC_MANDATES:  # M5-5: the mandates of magic (games with magic only)
+		if m.id == mandate_id:
+			return m
 	return {}
 
 
@@ -118,6 +121,10 @@ static func available_mandates(faction_id: String, state: GameState = null) -> A
 		for mid in AscensionRules.opened_mandates(state, faction_id):
 			if String(mandate_data(mid).get("faction", "")) == faction_id:
 				opened.append(mid)
+		if state.magic:  # M5-5: Tithe of Blood, only in a game with magic
+			for m in MandateData.MAGIC_MANDATES:
+				if String(m.faction).is_empty() or m.faction == faction_id:
+					opened.append(m.id)
 	return shared + own + opened
 
 
@@ -851,6 +858,10 @@ static func build_errors(faction_id: String, build) -> Array:
 			errors.append(path_mandate_reason(mid, fname))
 		cost += int(md.cost)
 		parts.append("%s %d" % [md.name, int(md.cost)])
+	for mid in seen:  # M5-5: a mandate that excludes another (Tithe of Blood and Feast of Victory)
+		var excluded := String(mandate_data(mid).get("excludes", ""))
+		if seen.has(excluded):
+			errors.append(exclusion_reason(mid, excluded))
 	if cost > RulerData.POWER_POOL:
 		errors.append("These mandates cost %d power (%s), but the power pool is only %d. Drop mandates worth at least %d power." % [
 			cost, " + ".join(parts), RulerData.POWER_POOL, cost - RulerData.POWER_POOL])
@@ -1348,6 +1359,12 @@ static func sacrifice_check(state: GameState, faction_id: String, mandate_id: St
 			md.name, _a(_faction_name(state, md.faction)), f.faction_name])
 	if f.mandates.has(mandate_id):
 		return _refusal("owned_mandate", "The %s already has %s. Each mandate can be taken only once." % [f.faction_name, md.name])
+	# M5-5: a mandate of magic only in a game with magic, and never with a mandate it excludes (either way round).
+	if md.get("magic", false) and not state.magic:
+		return _refusal("no_magic", "%s is a mandate of magic, and this game is played without magic." % md.name)
+	for owned in f.mandates:
+		if String(mandate_data(owned).get("excludes", "")) == mandate_id or String(md.get("excludes", "")) == owned:
+			return _refusal("excluded_mandate", "%s The %s has %s." % [exclusion_reason(mandate_id, owned), f.faction_name, mandate_name(owned)])
 	# M4-2 (§6): a transformation forswears one mandate and opens one, which only it can buy.
 	var forsworn := AscensionRules.forsworn_by(state, faction_id, mandate_id)
 	if not forsworn.is_empty():
@@ -1496,12 +1513,21 @@ static func unit_max_hp(state: GameState, unit: Unit) -> int:
 	if unit == null or unit.type == null:
 		return 0
 	var hp := unit.type.hp
-	if unit.type.is_commander or unit.type.is_ruler:
+	if unit.type.is_commander or unit.type.is_ruler or unit.type.summoned:  # M5-5: mandates and paths skip summoned creatures
 		return hp
 	for mid in mandates(state, unit.owner):
 		hp += int(mandate_data(mid).get("units", {}).get("hp", 0))
 	hp += AscensionRules.unit_hp_bonus(state, unit.owner, unit.type)  # M4: Drillyard, Boar Hide, ... (0 without paths)
 	return hp
+
+
+## Why two mandates can't be held together (M5-5, MandateData "excludes"): "Tithe of Blood can't be held with Feast
+## of Victory: blood given is not taken back." Either may be the one that names the other.
+static func exclusion_reason(mandate_a: String, mandate_b: String) -> String:
+	var why := String(mandate_data(mandate_a).get("excludes_why", mandate_data(mandate_b).get("excludes_why", "")))
+	var first := mandate_a if mandate_data(mandate_a).has("excludes") else mandate_b
+	var second := mandate_b if first == mandate_a else mandate_a
+	return "%s can't be held with %s%s." % [mandate_name(first), mandate_name(second), ": " + why if not why.is_empty() else ""]
 
 
 ## When and where a dead ruler's successor arrives, in one sentence (from succession_info): "Corvane II

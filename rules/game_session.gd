@@ -62,6 +62,9 @@ const PHASE_NAMES := ["orders", "handoff", "game_over", "invalid"]
 const REPORT_PHASES := ["sacrifice", "orders", "movement", "battles", "capture", "recruitment", "income", "rulers", "victory"]
 ## The report phases of a game with paths (M4): TurnResolver.PATH_PHASES, then the victory event.
 const PATH_REPORT_PHASES := ["sacrifice", "orders", "movement", "battles", "capture", "recruitment", "income", "research", "rulers", "victory"]
+## The report phases of a game with magic (M5, design/M5_MAGIC_FOG.md §9): PATH_REPORT_PHASES with "rituals" after
+## "orders" and "enchantments" before "victory" (report_phases adds them; M5-6's phases fill them).
+const MAGIC_REPORT_PHASES := ["sacrifice", "orders", "rituals", "movement", "battles", "capture", "recruitment", "income", "research", "rulers", "enchantments", "victory"]
 const BATTLE_TYPES := ["battle", "border_battle"]
 ## RulesCodex entries this flow links to (handoff screen, victory screen, final report).
 const CODEX_KEYS := ["hotseat", "handoff", "victory", "simultaneous_capture", "computer_opponent"]
@@ -132,7 +135,13 @@ func _init(state: GameState = null, players: Array = [], game_seed: int = 0, bat
 ## The report phases of `state`'s game, in display order (M3c, design/M3C_SIEGES.md §6): TurnResolver.phases
 ## (with "sieges" after "battles" in a game with sieges, and "research" in a game with paths), then "victory".
 static func report_phases(state: GameState) -> Array:
-	return TurnResolver.phases(state) + ["victory"]
+	var out: Array = TurnResolver.phases(state) + ["victory"]
+	if state != null and state.magic:  # M5-5: MAGIC_REPORT_PHASES' two magic phases, wherever TurnResolver lacks them
+		if not out.has("rituals"):
+			out.insert(out.find("orders") + 1, "rituals")
+		if not out.has("enchantments"):
+			out.insert(out.find("victory"), "enchantments")
+	return out
 
 
 ## Seed for resolving `turn` (the state's current_turn before resolving) in a game with `game_seed`.
@@ -364,6 +373,15 @@ func describe_order(faction_id: String, order) -> String:
 			return "Research %s." % AscensionRules.node_name(order.node_id)
 		return "Research %s next (%d research, done at the end of %s)." % [fc.name, fc.cost,
 			"this turn" if int(fc.eta) == 1 else ("turn %d" % int(fc.done_turn) if int(fc.eta) > 0 else "no turn at this pace")]
+	if order is SpellbookOrder:  # M5-5: the battle spellbook, in order, with the spells switched off
+		return "Set your battle spellbook: %s." % MagicRules.spellbook_text(order.order, order.off)
+	if order is CastOrder:  # M5-5
+		var army := _state.find_army(order.army_id)
+		var who := "%s at %s" % [TurnReportText.army_title(_state, army, false), TurnResolver._province_name(_state, army.location)] \
+			if army != null else "an army that is not on the map"
+		var on := " on %s" % TurnResolver._province_name(_state, order.target) if not order.target.is_empty() else ""
+		var paid := "in blood" if order.pay == CastOrder.BLOOD else "for %d gold" % int(MagicRules.price(_state, faction_id, order.ritual, order.size).gold)
+		return "Cast %s%s from %s, %s." % [MagicRules.spell_name(order.ritual), on, who, paid]
 	return "An order this game does not know."
 
 
@@ -493,6 +511,17 @@ func queue_storm(province_id: String) -> String:
 
 func queue_sally(army_id: String, relief_id: String = "") -> String:
 	return queue_order(SiegeOrder.sally(army_id, relief_id))
+
+
+## M5-5 (games with magic): queue a cast of `ritual` by the army `army_id` on `target` ("" for the Blood Moon), paid
+## in gold or, under Tithe of Blood, in blood; `size` is Call the Pack's wolves. Or set the battle spellbook: every
+## battle spell in `order`, with `off` switched off. "" when accepted.
+func queue_cast(ritual: String, army_id: String, target: String, pay: String = CastOrder.GOLD, size: int = 0) -> String:
+	return queue_order(CastOrder.new(ritual, army_id, target, pay, size))
+
+
+func queue_spellbook(order: Array, off: Array = []) -> String:
+	return queue_order(SpellbookOrder.new(order, off))
 
 
 ## Withdraws the current player's order at `index` (0-based, as in current_orders()). The other orders

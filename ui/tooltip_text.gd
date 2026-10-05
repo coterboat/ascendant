@@ -53,6 +53,9 @@ const CODEX := {
 	"successor_countdown": "succession",
 	# research (M4-4): a research order in the orders list
 	"research_order": "research_order",
+	# magic (M5-5): the battle spellbook and cast orders in the orders list
+	"spellbook_order": "spellbook",
+	"cast_order": "cast_order",
 	# forts and sieges (M3c S-3): the fort panel, the plate's chip, the recruit picker and the siege orders
 	"fort_levels": "fort_levels",
 	"walls": "walls",

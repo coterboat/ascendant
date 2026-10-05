@@ -13,8 +13,12 @@ extends SceneTree
 ##   --turns=N          stop after N turns (default 40) or when the game ends
 ##   --every=K          a map shot every K turns, plus every turn with a battle the person fought (default 5)
 ##   --battles=N        watch up to N of the person's battles in the battle host, one shot each (default 3)
-##   --rulers / --paths / --sieges / --fog / --independents   switch those systems on (paths turn rulers on)
+##   --rulers / --paths / --sieges / --fog / --magic / --independents   switch those systems on (paths turn rulers on;
+##                      magic turns paths and rulers on, as the new game screen's box does)
 ##   --no-menus         skip the title, new game and build screen shots
+## With --magic the person's seat also walks #116's playtest through the real screens: on turn 1 it opens the
+## research panel's Magic tab (a shot), researches its first spell and sets the battle spellbook (a shot); once the
+## spell is known it opens the tab again (a shot) and recruits two mages (an orders shot that turn).
 ##   --fast             skip the board's playback on turns that get no shot
 ## Windowed only: headless has no renderer, so the shots would be blank. walk.md lists every shot with the
 ## turn report's headline lines, so the walk can be read without opening the images.
@@ -27,11 +31,13 @@ var human := "kingdom"
 var max_turns := 40
 var every := 5
 var max_battles := 3
-var flags := {"rulers": false, "paths": false, "sieges": false, "fog": false, "independents": false}
+var flags := {"rulers": false, "paths": false, "sieges": false, "fog": false, "magic": false, "independents": false}
 var menus := true
 var fast := false
 var walk: PackedStringArray = []
 var shot_n := 0
+var mages_queued := 0  # --magic: the mages the person's seat has recruited
+var spell_seen := false  # --magic: the Magic tab was shot once the first spell was known
 
 
 func _initialize() -> void:
@@ -49,6 +55,8 @@ func _initialize() -> void:
 			_:
 				if flags.has(kv[0]):
 					flags[kv[0]] = true
+	if flags.magic:
+		flags.paths = true  # M5-5: magic needs paths, and paths need rulers
 	if flags.paths:
 		flags.rulers = true
 	DirAccess.make_dir_recursive_absolute(out)
@@ -92,7 +100,7 @@ func _config() -> Dictionary:
 		cfg.rulers = true
 		cfg.builds = {human: RulerRules.preset_build(RulerRules.balanced_preset(human)),
 			foe: BuildScreen.computer_build(foe, game_seed, 1)}
-	for k in ["paths", "sieges", "fog", "independents"]:
+	for k in ["paths", "sieges", "fog", "magic", "independents"]:
 		if flags[k]:
 			cfg[k] = true
 	return cfg
@@ -120,16 +128,21 @@ func _run() -> void:
 	while not game.session.is_over() and game.session.turn_number() <= max_turns:
 		var turn := game.session.turn_number()
 		await _close_overlays(game)
+		var magic_shot := false
+		if flags.magic:
+			magic_shot = await _magic_steps(game, turn)
 		var orders: Array = brain.plan_orders(game.session.state(), human, rng, "normal")
 		var refused := []
 		for o in orders:
+			if flags.magic and o is ResearchOrder and not MagicRules.knows_a_spell(game.session.state(), human):
+				continue  # the person's seat researches its first spell (_magic_steps), not the computer's pick
 			var why := game.session.queue_order(o)
 			if why != "":
 				refused.append(why)
 		if game.map.has_method("_orders_changed"):
 			game.map._orders_changed()
 		var texts := game.session.current_order_texts()
-		if turn == 1 or turn % every == 0:
+		if turn == 1 or turn % every == 0 or magic_shot:
 			await _shot("t%02d_orders" % turn, "Turn %d orders: %s%s" % [turn, "; ".join(texts),
 				("\n  REFUSED: " + "; ".join(refused)) if not refused.is_empty() else ""])
 		print("turn %d: end turn" % turn)
@@ -170,6 +183,46 @@ func _run() -> void:
 	quit()
 
 
+## --magic: the person's seat walks #116's playtest through the real screens (see the header). Returns true on a turn
+## whose orders should be shot (the mages were recruited).
+func _magic_steps(game: GameScreen, turn: int) -> bool:
+	var st := game.session.state()
+	var hud := game.research_hud
+	if turn == 1:
+		hud.open_panel()
+		hud.panel.show_magic()
+		await _shot("t01_magic_tab", "The Magic tab on turn 1: the arcana, mastery and the battle spellbook.")
+		var first := String(MagicRules.school_data(MagicRules.schools(human)[0]).nodes[0])
+		var b: Button = hud.panel.buttons.get(first)
+		if b != null:
+			b.pressed.emit()
+		var book := MagicView.spellbook(st, human, game.session.current_orders())
+		var last := String(book.order.back())
+		hud.panel._request_spellbook(MagicView.moved(book, last, -1))
+		await _shot("t01_magic_tab_queued", "Researching %s; the spellbook changed: %s. Status: %s" % [MagicRules.spell_name(first),
+			MagicRules.spellbook_text(MagicView.spellbook(st, human, game.session.current_orders()).order, []), hud.panel.status_label.text])
+		hud.close_all()
+		return false
+	if not MagicRules.knows_a_spell(st, human):
+		return false
+	if not spell_seen:
+		spell_seen = true
+		hud.open_panel()
+		hud.panel.show_magic()
+		await _shot("t%02d_magic_tab_known" % turn, "The Magic tab once %s is known." % MagicRules.spell_name(MagicRules.known_spells(st, human)[0]))
+		hud.close_all()
+	var shot := false
+	var mage := String(MagicRules.mage_data(human).id)
+	while mages_queued < 2:
+		var why: String = game.map.queue_recruit(mage)
+		if why != "":
+			walk.append("- turn %d: recruiting a mage refused: %s" % [turn, why])
+			break
+		mages_queued += 1
+		shot = true
+	return shot
+
+
 func _menus() -> void:
 	var title: Node = load("res://ui/title_screen.tscn").instantiate()
 	root.add_child(title)
@@ -185,6 +238,7 @@ func _menus() -> void:
 	ng.set_paths(flags.paths)
 	ng.set_sieges(flags.sieges)
 	ng.set_fog(flags.fog)
+	ng.set_magic(flags.magic)
 	ng.set_independents(flags.independents)
 	await _shot("new_game", "Config: %s" % JSON.stringify(ng.config()))
 	if flags.rulers:

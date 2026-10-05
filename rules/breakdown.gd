@@ -421,6 +421,70 @@ static func research_progress(state: GameState, faction_id: String, orders: Arra
 	return _coded(_make("Research of the %s" % f.faction_name, desc, lines, "Research after this turn", pool + gain), "research_phase")
 
 
+# --- magic (M5-5, #116; design/M5_MAGIC_FOG.md §11.3) -----------------------------------------------
+# Every number from MagicRules, never redone here; each breakdown's lines add up to its total.
+
+## A caster's mastery in one school: "Mastery in the Sun +2 = ability rank 2 (+1) + Celestial Host (+1)", with the
+## cap as its own line when it bites. `caster_kind` is MagicRules.MAGE or MagicRules.RULER.
+static func mastery(state: GameState, faction_id: String, school: String, caster_kind: String = MagicRules.MAGE) -> Dictionary:
+	if not MagicRules.has_magic(state):
+		return _coded(_make("Mastery", MagicRules.NO_MAGIC, [], "Mastery", 0), "mastery")
+	var bonus := MagicRules.mastery_bonus(state, faction_id, school, caster_kind)
+	var lines := []
+	for p in bonus.parts:
+		lines.append(_line(String(p.name), int(p.value), String(p.note)))
+	var who := "a mage" if caster_kind == MagicRules.MAGE else RulerRules.current_name(state, faction_id)
+	return _coded(_make("Mastery in %s of %s" % [MagicRules.school_name(school), who], RulesCodex.text("mastery"), lines,
+		"Mastery in %s" % MagicRules.school_name(school), int(bonus.value)), "mastery")
+
+
+## A spell's main number with mastery: "Sunlance 6 = 4 + mastery 2" (damage), "Shield of Law 7 = 6 + mastery 1"
+## (units), "Dawn Blessing 16 = 12 + mastery 1 x 4" (hit points a turn), "Sanctum Ward 2 = 1 + mastery 1" (turns).
+static func spell_number(state: GameState, faction_id: String, spell_id: String, caster_kind: String = MagicRules.MAGE, forest: bool = false) -> Dictionary:
+	var sp := MagicRules.spell_data(spell_id)
+	var school := String(sp.get("school", ""))
+	var bonus := int(MagicRules.mastery_bonus(state, faction_id, school, caster_kind).value)
+	var per: Dictionary = sp.get("per_bonus", {})
+	var field := "value"
+	for key in ["value", "count", "duration"]:
+		if per.has(key):
+			field = key
+	var words := {"value": "damage" if String(sp.get("kind", "")) == "bolt" else ("hit points a turn" if not bool(sp.get("battle", false)) else "part"),
+		"count": "units" if bool(sp.get("battle", false)) else "most wolves", "duration": "turns after the cast turn"}
+	var base := int(MagicRules.spell_numbers(spell_id, 0, forest)[field])
+	var now := int(MagicRules.spell_numbers(spell_id, bonus, forest)[field])
+	var lines := [_line("%s base" % MagicRules.spell_name(spell_id), base, String(words[field]))]
+	if per.has(field):
+		lines.append(_line("Mastery %+d" % bonus, now - base, "%+d per point of mastery in %s" % [int(per[field]), MagicRules.school_name(school)]))
+	return _coded(_make(MagicRules.spell_name(spell_id), String(sp.get("text", "")), lines, "%s (%s)" % [MagicRules.spell_name(spell_id), words[field]], now),
+		String(sp.get("codex", "magic")))
+
+
+## A ritual's price: "Ritual price 15 gold". The description adds Tithe of Blood's other way to pay when the faction
+## holds it ("or 15 hp from your Shamans' army, 1 hp a gold").
+static func ritual_price(state: GameState, faction_id: String, ritual: String, size: int = 0) -> Dictionary:
+	var price := MagicRules.price(state, faction_id, ritual, size)
+	var lines := []
+	for p in price.parts:
+		lines.append(_line(String(p.label), int(p.value), String(p.note)))
+	var desc := "%s %s" % [String(MagicRules.spell_data(ritual).get("text", "")), RulesCodex.text("ritual")]
+	if RulerRules.has_mandate(state, faction_id, MagicRules.TITHE_OF_BLOOD):
+		desc = "Or %d hit points from your Shamans' own army (Tithe of Blood: %d hit point a gold). %s" % [
+			int(price.gold) * MagicData.BLOOD_PER_GOLD, MagicData.BLOOD_PER_GOLD, desc]
+	return _coded(_make("Ritual price of %s" % MagicRules.spell_name(ritual), desc, lines, "Ritual price in gold", int(price.gold)), "ritual")
+
+
+## What a pool sells for once nothing is left to research: "Research 11 -> 5 gold (2 research a gold), 1 carried".
+static func research_sold(state: GameState, faction_id: String) -> Dictionary:
+	var pool := AscensionRules.research_points(state, faction_id)
+	var sold := MagicRules.research_sold(pool)
+	var lines := [_line("Research saved", pool, "your pool"), _line("Carried to next turn", -int(sold.left), "the spare point")]
+	var desc := "%d research a gold, rounded down. %s" % [MagicData.RESEARCH_SOLD, RulesCodex.text("research_sold")]
+	var b := _make("Research sold by the %s" % _faction_name(state, faction_id), desc, lines, "Research sold", int(sold.research))
+	b["gold"] = int(sold.gold)
+	return _coded(b, "research_sold")
+
+
 # --- forts and sieges (M3c, #98; design/M3C_SIEGES.md §9.3) -----------------------------------------
 # Every number from SiegeRules, never redone here; each breakdown's lines add up to its total, and each carries
 # the RulesCodex entry that explains it.

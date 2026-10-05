@@ -1133,7 +1133,7 @@ func _plan_recruits(base: Array) -> Array:
 		return []
 	var roster: Array = []
 	for ut in _me.unit_types:
-		if ut.cost > 0:
+		if ut.cost > 0 and not (MagicRules.is_mage(ut) and not MagicRules.knows_a_spell(_state, _fid)):  # M5-5: the mage gate
 			roster.append(ut)
 	var cmd: UnitType = _me.commander_type if _me.commander_type != null and _me.commander_type.cost > 0 else null
 	var gold := _me.gold - _gold_reserved  # M3c: less what Fortify and engines take (0 without sieges)
