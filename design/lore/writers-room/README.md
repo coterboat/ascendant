@@ -10,7 +10,14 @@ A planned three-lab room to set the **starting ground for ASCENDANT's lore**: th
 | Codex | **R2 in** (`R1-codex.md`, `R2-codex-critique.md`, `R2-codex.md`) |
 | Grok | **R2 in** (`R1-grok.md` and the uncapped `R1-grok-full.md`, `R2-grok-critique.md`, `R2-grok.md`) |
 
-R2 ran on 2026-10-05. Each seat read the packet, its own R1 and the other two R1 pitches, then wrote a critique and a revised pitch. The revised pitches run past the 3,500-word cap (Codex 4,299, Grok 4,621), in the spirit of Alex's "don't limit ourselves unnecessarily". R3, the synthesis and the red-team vote, is next.
+R2 ran on 2026-10-05. Each seat read the packet, its own R1 and the other two R1 pitches, then wrote a critique and a revised pitch. The revised pitches run past the 3,500-word cap (Codex 4,299, Grok 4,621), in the spirit of Alex's "don't limit ourselves unnecessarily".
+
+R3 ran on 2026-10-05.
+- **`R3-synthesis.md`** (about 6,700 words) was written by a Claude editor with every idea credited to its seat. The world is **Halfmade**, driven by Codex's mechanism. The independents are folded in.
+- **The votes:** `R3-claude-votes.md`, `R3-codex-votes.md` and `R3-grok-votes.md` hold each seat's red-team and vote, and `R3-votes.md` is the tally.
+- **On fairness:** all three seats say the merge leaned toward the Claude seat, and all three say Grok's Lacquer Reed deserved a place. The tally records it.
+
+**Status: a proposal to Alex.** Nothing is approved until he signs it off. The art bake-off (format §4) waits on his go-ahead, and Grok asks that the Verdigris Pans or the Lacquer Reed face the Kilnborn there.
 
 Codex and Grok are external services. Alex allowed them on 2026-10-04 (the `codex exec` / `grok --prompt-file` rule in the main checkout's `.claude/settings.local.json`). The director runs each seat with `PACKET.md` and a short seat brief. That brief adds one new fact, the independents (#142, "the Free Holds"), which each seat may fold into its world.
 
