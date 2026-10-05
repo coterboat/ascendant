@@ -50,6 +50,15 @@ extends Control
 ## banner stands by its name in the top bar (with the seat emblem on it), the selected province's
 ## header is painted with its terrain and flies its owner's banner, and units show their portraits in
 ## the army list and on the recruit buttons.
+##
+## Fog of war (M5-2, #113; design/M5_MAGIC_FOG.md §2.4-§2.10, §11.1): in a fog game `state` is the viewer's view
+## (GameSession.state_for), and set_fog(memory, intel, before) gives the map the rest of what that viewer knows (its
+## memory, its intel and its view at the start of the last resolved turn), never the truth. Province tooltips say why a
+## province is seen or what is remembered of it; a rival's army shows as its sighting ("≈20", "≈10 · 2 turns ago"),
+## with every type's range, last turn's sighting and how to see it exactly in the side panel; your armies say how far
+## they see and scouts say so; the forecasts are Forecast's fog forecasts. The Vision map mode (set_map_mode("vision"),
+## the Vision button over the map) draws every province's sight level on the 2D map, with its legend; out of it, the
+## 2D map still veils what you can't see.
 
 signal province_selected(province_id: String)
 signal army_selected(army_id: String)
@@ -98,6 +107,15 @@ var sacrifice_dialog: SacrificeDialog = null  # M2-6: opened from the ruler pane
 ## M3a.1: the 3D board (Board3D) drawn in the map view instead of the 2D regions, or null for the 2D map.
 ## The regions are still built (hidden): they keep the tooltips and marks the board mirrors.
 var board: Control = null
+## M5-2, fog of war: what the viewer knows besides its view (set_fog): its memory and intel, and its view at the start
+## of the last resolved turn (for "last turn" on a sighting). Empty and null without fog.
+var fog_memory := {}
+var fog_intel := {}
+var fog_before: GameState = null
+## M5-2: "" (the map) or "vision" (the Vision map mode: sight levels on the 2D map, with the legend).
+var map_mode := ""
+var vision_button: Button
+var vision_legend: PanelContainer
 
 # Scene nodes, looked up by _bind() rather than @onready so the screen also works before it is in
 # the tree (tests build it headless, and callers may set_state() before adding it).
@@ -124,11 +142,21 @@ func _ready() -> void:
 	_fit_map()
 
 
+## M5-2: what the viewer knows besides its view, in a fog game (GameSession.memory, intel and view_before); set it
+## before set_state. {} and null without fog.
+func set_fog(memory: Dictionary, intel: Dictionary, before: GameState) -> void:
+	fog_memory = memory
+	fog_intel = intel
+	fog_before = before
+
+
 ## Shows `new_state` as seen by `faction_id`. Rebuilds every region; the state is only read.
 func set_state(new_state: GameState, faction_id: String) -> void:
 	if orders == null or orders.state != new_state or orders.faction_id != faction_id or orders.session != session:
 		orders = OrdersController.new(new_state, faction_id, session)
 		status_text = ""
+	orders.fog_memory = fog_memory
+	orders.fog_intel = fog_intel
 	state = new_state
 	viewing_faction_id = faction_id
 	_bind()
@@ -150,6 +178,8 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 		region.mouse_exited.connect(clear_preview)
 		map_canvas.add_child(region)
 		regions[p.id] = region
+		if FogView.active(state):
+			region.setup_fog(state, faction_id, fog_memory, fog_before)  # M5-2: sight, memory and sightings
 	map_canvas.queue_redraw()
 	arrow_layer.queue_redraw()
 	clear_preview()
@@ -161,7 +191,36 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 	_update_map_marks()
 	_show_details()
 	_follow_ruler_panel()
+	vision_button.visible = FogView.active(state)
+	if not FogView.active(state):
+		map_mode = ""
+	_apply_map_mode()
 	_sync_board()
+
+
+## M5-2: the map mode: "" for the map, "vision" for the Vision map mode (fog games only): every province drawn at its
+## sight level on the 2D map (in clear sight, glimpsed, out of sight, never seen), with the legend; on the 3D board the
+## 2D map stands in while it is on.
+func set_map_mode(mode: String) -> void:
+	_bind()
+	map_mode = mode if mode == "vision" and FogView.active(state) else ""
+	_apply_map_mode()
+
+
+func _apply_map_mode() -> void:
+	var vision := map_mode == "vision"
+	for id in regions:
+		regions[id].vision_mode = vision
+		regions[id].queue_redraw()
+	vision_legend.visible = vision
+	if vision:
+		_fill_vision_legend()
+	vision_button.set_pressed_no_signal(vision)
+	vision_button.text = "Vision: on" if vision else "Vision"
+	if board != null:
+		board.visible = not vision
+		map_canvas.visible = vision
+		arrow_layer.visible = vision
 
 
 func select_province(province_id: String) -> void:
@@ -284,6 +343,7 @@ func open_ruler_panel() -> void:
 		ruler_panel.closed.connect(close_sacrifice_dialog)
 		add_child(ruler_panel)
 	clear_preview()
+	ruler_panel.fog_intel = fog_intel  # M5-2: what you know of each rival
 	move_child(ruler_panel, get_child_count() - 1)
 	ruler_panel.show_for(state, viewing_faction_id, orders if state.find_faction(viewing_faction_id) != null else null)
 	_raise_own_codex()
@@ -391,6 +451,7 @@ func set_board(new_board: Control) -> void:
 		board.map = self
 		if board.has_signal("closeup_changed"):
 			board.closeup_changed.connect(func(_pid): _show_details())
+		_apply_map_mode()
 		_sync_board()
 
 
@@ -474,6 +535,7 @@ func _bind() -> void:
 	hover_panel.offset_bottom = -16
 	hover_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	map_view.add_child(hover_panel)
+	_build_vision()
 	hover_label = Label.new()
 	hover_label.name = "HoverLabel"
 	hover_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -481,6 +543,82 @@ func _bind() -> void:
 	hover_label.add_theme_font_size_override("font_size", 17)
 	hover_label.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
 	hover_panel.add_child(hover_label)
+
+
+## M5-2: the Vision button at the map's upper right (fog games only) and the legend it opens under it.
+func _build_vision() -> void:
+	vision_button = Button.new()
+	vision_button.name = "VisionButton"
+	vision_button.text = "Vision"
+	vision_button.toggle_mode = true
+	vision_button.focus_mode = Control.FOCUS_NONE
+	vision_button.visible = false
+	vision_button.add_theme_font_size_override("font_size", 16)
+	vision_button.anchor_left = 1.0
+	vision_button.anchor_right = 1.0
+	vision_button.offset_left = -150
+	vision_button.offset_right = -12
+	vision_button.offset_top = 10
+	vision_button.offset_bottom = 46
+	vision_button.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	vision_button.tooltip_text = TooltipText.plain("Vision", "Show what you can see: every province in clear sight, glimpsed, out of sight or never seen, with what each mark means. Hover a province for why you see it, or what you remember of it. Click again to go back to the map.")
+	vision_button.toggled.connect(func(on: bool): set_map_mode("vision" if on else ""))
+	CodexLink.attach(vision_button, "sight", request_codex)
+	map_view.add_child(vision_button)
+	vision_legend = PanelContainer.new()
+	vision_legend.name = "VisionLegend"
+	vision_legend.visible = false
+	vision_legend.mouse_filter = Control.MOUSE_FILTER_PASS
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(UiPalette.PANEL_BG, 0.94)
+	style.border_color = UiPalette.PANEL_BORDER
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(10)
+	vision_legend.add_theme_stylebox_override("panel", style)
+	vision_legend.anchor_left = 1.0
+	vision_legend.anchor_right = 1.0
+	vision_legend.offset_left = -372
+	vision_legend.offset_right = -12
+	vision_legend.offset_top = 54
+	vision_legend.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	map_view.add_child(vision_legend)
+	var box := VBoxContainer.new()
+	box.name = "Rows"
+	box.add_theme_constant_override("separation", 6)
+	vision_legend.add_child(box)
+
+
+## M5-2: the Vision legend's rows (FogView.legend_rows), each with its swatch: the veil as the 2D map draws it.
+func _fill_vision_legend() -> void:
+	var box := vision_legend.get_node("Rows") as VBoxContainer
+	for c in box.get_children():
+		box.remove_child(c)
+		c.queue_free()
+	var title := Label.new()
+	title.text = "Vision: what you can see"
+	title.add_theme_font_size_override("font_size", 17)
+	title.add_theme_color_override("font_color", UiPalette.GILT)
+	box.add_child(title)
+	for row in FogView.legend_rows(state):
+		var line := HBoxContainer.new()
+		line.name = "Row_%s" % String(row.key)
+		line.add_theme_constant_override("separation", 8)
+		line.mouse_filter = Control.MOUSE_FILTER_PASS
+		box.add_child(line)
+		var swatch := ProvinceRegion.legend_swatch(String(row.key))
+		line.add_child(swatch)
+		var l := Label.new()
+		l.text = "%s: %s" % [String(row.title), String(row.text)]
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size = Vector2(300, 0)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		l.add_theme_font_size_override("font_size", 14)
+		l.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
+		l.mouse_filter = Control.MOUSE_FILTER_PASS
+		l.tooltip_text = TooltipText.plain(String(row.title), RulesCodex.text(String(row.codex)))
+		CodexLink.attach(l, String(row.codex), request_codex)
+		line.add_child(l)
 
 
 ## Scales the design-space canvas to fit the map view, centred, keeping its aspect ratio.
@@ -594,8 +732,10 @@ func _update_top_bar() -> void:
 	if f:
 		var colour := "" if seat < 0 else " You are Player %d: your provinces and armies are drawn in %s, with a %s emblem." % [
 			seat + 1, UiPalette.seat_color_name(seat), SeatEmblem.shape_of(seat)]
+		var fog_line := " Fog of war is on: you see exactly only your own land and armies, the rest roughly or as you last saw it." \
+			if FogView.active(state) else ""
 		faction_label.tooltip_text = TooltipText.plain("You are playing %s" % faction_label.text,
-			"The map, gold and forecasts are shown from this faction's point of view.%s" % colour)
+			"The map, gold and forecasts are shown from this faction's point of view.%s%s" % [colour, fog_line])
 		CodexLink.attach(faction_label, TooltipText.codex_for("faction"), request_codex)
 	# Without a faction (game over, spectator) the gold label is hidden, so the bar has no empty gap.
 	gold_label.visible = f != null
@@ -1008,8 +1148,13 @@ func _add_ruler_recruit_section() -> void:
 
 
 ## A recruit button: the unit's portrait (its face) at the left, then "Recruit <unit> (<cost> gold)",
-## on a raised card that lights its border gilt on hover.
+## on a raised card that lights its border gilt on hover. M5-2: under fog a scout says so on its card.
 func _style_unit_button(b: Button, unit_type_id: String, faction_id: String) -> void:
+	if FogView.active(state):
+		var f := state.find_faction(faction_id)
+		for ut in (f.unit_types if f != null else []):
+			if ut.id == unit_type_id and not FogView.scout_line(ut).is_empty():
+				b.tooltip_text += "\n\n" + TooltipText.wrap_text("%s %s" % [FogView.scout_line(ut), RulesCodex.text("scouts")])
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(0, ROW_PORTRAIT.y + 10)
@@ -1189,7 +1334,10 @@ func _show_province_details() -> void:
 	_link(terrain_label, terrain_kind)
 	var income := Breakdown.province_income(state, p.id)
 	# The total its owner earns (Heavy Tithes and Royal Court included, M2); the tooltip breaks it down.
-	var income_label := _add_text("Income: %d gold per turn" % int(income.total), TooltipText.from_breakdown(income), UiPalette.GILT)
+	var income_tip := TooltipText.from_breakdown(income)
+	if FogView.active(state) and not p.owner.is_empty() and p.owner != viewing_faction_id and RulerRules.has_rulers(state):
+		income_tip += "\n\n" + TooltipText.wrap_text("Under fog this counts only the mandates of theirs you know: they may earn more here.")
+	var income_label := _add_text("Income: %d gold per turn" % int(income.total), income_tip, UiPalette.GILT)
 	income_label.name = "IncomeLabel"
 	_link(income_label, "province_income", income)
 	var capital_text := "No"
@@ -1215,6 +1363,8 @@ func _show_province_details() -> void:
 		"The provinces joined to %s by a road. %s" % [p.name, RulesCodex.text("move")]))
 	neighbors_label.name = "NeighborsLabel"
 	_link(neighbors_label, "neighbors")
+	if FogView.active(state):
+		_add_vision_line(p)  # M5-2: in clear sight, glimpsed or out of sight, and why
 
 	details.add_child(HSeparator.new())
 	_add_heading("Armies here", 20)
@@ -1222,8 +1372,16 @@ func _show_province_details() -> void:
 	for a in state.armies:
 		if a.location == p.id:
 			any = true
-			_add_army(a)
-	if not any:
+			if FogView.is_stand_in(a):
+				_add_stand_in(a)  # M5-2: a rival army as you see it
+			else:
+				_add_army(a)
+	if not any and FogView.active(state) and FogView.vision_level(state, viewing_faction_id, p.id, fog_memory) in [FogRules.VEILED, FogView.NEVER]:
+		var unknown := _add_text("None that you know of: you can't see %s now." % p.name, TooltipText.plain("Out of sight",
+			FogView.province_text(state, viewing_faction_id, p.id, fog_memory)), UiPalette.TEXT_SECONDARY)
+		unknown.name = "NoArmiesKnown"
+		_link(unknown, "remembered")
+	elif not any:
 		var none := _add_text("No armies here.", TooltipText.plain("No armies", RulesCodex.text("undefended")), UiPalette.TEXT_SECONDARY)
 		_link(none, "no_armies")
 
@@ -1306,6 +1464,8 @@ func _add_army(a: Army) -> void:
 		# A ruler's army holds only its ruler (M2): show the ruler's numbers instead of units (RulerPanel).
 		header.tooltip_text = RulerPanel.summary(state, a) + "\n\nClick to select this army."
 		CodexLink.attach(header, "ruler_army", request_codex)
+		if FogView.active(state):
+			_add_sight_line(a, box)
 		RulerPanel.fill(box, state, a, request_codex)
 		var open := Button.new()
 		open.name = "OpenRulerPanel"
@@ -1341,6 +1501,8 @@ func _add_army(a: Army) -> void:
 			UiPalette.TEXT_SECONDARY, box)
 	commander_label.name = "CommanderLabel"
 	_link(commander_label, "commander")
+	if FogView.active(state):
+		_add_sight_line(a, box)  # M5-2: how far it sees
 	var seen := []
 	for u in a.units:
 		if seen.has(u.type.name):
@@ -1348,11 +1510,116 @@ func _add_army(a: Army) -> void:
 		seen.append(u.type.name)
 		var b := Breakdown.unit_count(state, a.id, u.type.name)
 		var row := _unit_row(box, u.type.id, a.owner, int(b.total))
-		var count_label := _add_text("%s ×%d" % [u.type.name, b.total], TooltipText.from_breakdown(b), UiPalette.TEXT_PRIMARY, row)
+		var count_tip := TooltipText.from_breakdown(b)
+		if FogView.active(state) and not FogView.scout_line(u.type).is_empty():
+			count_tip += "\n\n" + TooltipText.wrap_text("%s %s" % [FogView.scout_line(u.type), RulesCodex.text("scouts")])
+		var count_label := _add_text("%s ×%d" % [u.type.name, b.total], count_tip, UiPalette.TEXT_PRIMARY, row)
 		count_label.name = "UnitCount"
 		count_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		# The count's tooltip has the unit's stats and trait; its entry is Units, which links on to each.
 		_link(count_label, "unit_count", b)
+
+
+## M5-2: "Vision: Glimpsed", "Vision: Out of sight (last seen 2 turns ago)": the province's sight level for the
+## viewer, with why it is seen or what is remembered of it on hover.
+func _add_vision_line(p: Province) -> void:
+	var level := FogView.vision_level(state, viewing_faction_id, p.id, fog_memory)
+	var text := "Vision: %s" % String(FogView.LEVEL_TITLES.get(level, level))
+	var seen_turn := int(fog_memory.get("provinces", {}).get(p.id, {}).get("seen_turn", -1))
+	if level == FogRules.VEILED and seen_turn > 0:
+		text += " (last seen %s)" % FogView._ago(state, seen_turn)
+	var l := _add_text(text, TooltipText.plain(String(FogView.LEVEL_TITLES.get(level, level)),
+		"%s %s" % [FogView.province_text(state, viewing_faction_id, p.id, fog_memory), RulesCodex.text(String(FogView.LEVEL_CODEX.get(level, "sight")))]),
+		UiPalette.TEXT_SECONDARY)
+	l.name = "VisionLabel"
+	CodexLink.attach(l, String(FogView.LEVEL_CODEX.get(level, "sight")), request_codex)
+
+
+## M5-2: one of your armies' sight line: "This army sees 2 provinces around it (it has Knights)."
+func _add_sight_line(a: Army, box: Control) -> void:
+	var line := FogView.army_sight_line(a)
+	var l := _add_text(line, TooltipText.plain("Sight", "%s %s" % [line, RulesCodex.text("sight")]), UiPalette.TEXT_SECONDARY, box)
+	l.name = "ArmySight"
+	l.add_theme_font_size_override("font_size", 15)
+	_link(l, "army_sight")
+
+
+## M5-2: a rival army as the viewer sees it (§11.1): its sighting with the range of every type, its commander, last
+## turn's sighting at that place, and how to see it exactly. A remembered army is greyed. Every number explains itself.
+func _add_stand_in(a: Army) -> void:
+	var level := String(a.seen.get("level", ""))
+	var panel := PanelContainer.new()
+	panel.name = "Army_%s" % a.id.validate_node_name()
+	var style := StyleBoxFlat.new()
+	style.bg_color = UiPalette.PANEL_RAISED if level != FogData.MEMORY else UiPalette.PANEL_BG
+	style.border_color = UiPalette.SELECTION if a.id == selected_army_id else UiPalette.owner_color(state, a.owner, seat_order())
+	style.set_border_width_all(3 if a.id == selected_army_id else 2)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(8)
+	panel.add_theme_stylebox_override("panel", style)
+	if level == FogData.MEMORY:
+		panel.modulate = Color(1, 1, 1, 0.72)
+	details.add_child(panel)
+	var box := VBoxContainer.new()
+	panel.add_child(box)
+	var b := FogView.army_breakdown(state, viewing_faction_id, a, fog_before)
+	var tip := TooltipText.from_breakdown(b)
+	var kind := "remembered" if level == FogData.MEMORY else ("glimpse" if level == FogRules.GLIMPSE else "vision")
+	var header := Button.new()
+	header.name = "ArmyHeader"
+	header.text = FogView.army_heading(state, a)
+	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	header.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	header.focus_mode = Control.FOCUS_NONE
+	header.tooltip_text = tip + "\n\nClick to select it."
+	header.pressed.connect(select_army.bind(a.id))
+	_link(header, kind)
+	box.add_child(header)
+	if a.ruler != null:
+		var note := _add_text("A ruler is hard to hide: you see its name and numbers, but not its wounds or exactly where it goes next. Its kept power is what you know, or the most it could be.",
+			TooltipText.plain("A rival ruler", RulesCodex.text("intel")), UiPalette.TEXT_SECONDARY, box)
+		note.name = "RulerFogNote"
+		_link(note, "rival_known")
+		RulerPanel.fill(box, state, a, request_codex)
+		return
+	var total: Dictionary = a.seen.get("total", {})
+	var count_text := FogView.range_text(total)
+	if level == FogData.MEMORY:
+		count_text += ", %s" % FogView._ago(state, int(a.seen.get("turn", 0)))
+	var count := _add_text("Fighters: %s" % count_text, tip, UiPalette.TEXT_PRIMARY, box)
+	count.name = "FightersLabel"
+	_link(count, kind, b)
+	for line in b.lines:
+		var type_id := String(line.get("type", ""))
+		var row: Control = _unit_row(box, type_id, a.owner, int(line.value)) if not type_id.is_empty() else box
+		var ut: UnitType = null
+		for u in a.units:
+			if u.type.id == type_id:
+				ut = u.type
+		var unit_tip := tip
+		if ut != null:
+			unit_tip = "%s\n\n%s" % [tip, TooltipText.wrap_text("%s %s" % [Breakdown.unit_type_description(ut), FogView.scout_line(ut)])]
+		var l := _add_text(String(line.label), unit_tip, UiPalette.TEXT_PRIMARY, row)
+		l.name = "UnitCount"
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_link(l, "unit_count")
+	if a.commander != null:
+		var crow := _unit_row(box, a.commander.type.id, a.owner, 1)
+		var c := _add_text("Led by a %s" % a.commander.type.name, TooltipText.plain("Commander: %s" % a.commander.type.name,
+			Breakdown.unit_type_description(a.commander.type)), UiPalette.GILT, crow)
+		c.name = "CommanderLabel"
+		c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_link(c, "commander")
+	var last := _add_text("Last turn: %s" % FogView.last_turn_text(state, a, fog_before), TooltipText.plain("Last turn",
+		"What you saw at %s at the start of the last turn, for comparison: a band crossing (about 15 to about 20) can be a few fighters, not five. %s" % [
+			TurnResolver._province_name(state, a.location), RulesCodex.text("estimates")]), UiPalette.TEXT_SECONDARY, box)
+	last.name = "LastTurnLabel"
+	_link(last, "glimpse")
+	if level != FogRules.CLEAR:
+		var how := _add_text("Fight them, or cast Far Sight once you have a mage, to see them exactly." if state.magic else "Fight them to see them exactly.",
+			TooltipText.plain("Seeing them exactly", RulesCodex.text("sight")), UiPalette.TEXT_SECONDARY, box)
+		how.name = "SeeExactly"
+		_link(how, "vision")
 
 
 ## A row in the army list: the unit's portrait (its face, with a count badge for more than one), then

@@ -93,6 +93,17 @@ extends Control
 ## the turn's board playback has finished and the report has opened, after any handoff, once per player and
 ## turn (never in watch mode, or for a loaded game's last turn). Nothing is watched behind the handoff cover,
 ## and a handoff closes the battle screen. The viewer's side gets the victory or defeat sting (watch_viewer).
+##
+## Fog of war (M5-2, #113; design/M5_MAGIC_FOG.md §2.1, §2.8, §2.9, §12.1): every screen reads the session through
+## viewer() and the per-viewer accessors (state_for, turn_report_for, view_before, memory, intel): the map, its panels and
+## tooltips, the top bar, the turn report (with its fog header and "what you didn't see"), the battle screens (only
+## battles you fought), the board's playback (from view_before, through your own report) and the report's sound. The
+## truth is read only on the observer paths: viewer() picks the observer in watch mode and once the game is over (the
+## fog lifts), the victory screen, saving and loading, and rebuilding the log of a battle you fought (tests/test_fog_ui.gd
+## scans for it). In a hotseat fog game the cover adds its fog line, Ready rebuilds the next seat's screen and clears
+## the board's kept frame before the cover lifts (handoff_log records it), and the playback is silent but for the
+## ambient bed, because the other player is in the room. The computer's notes name its hidden armies, so under fog they
+## wait until the game is over. With fog off every accessor is the truth and nothing here changes.
 
 const SCENE := "res://ui/game_screen.tscn"
 const CODEX_SCENE := "res://ui/codex_panel.tscn"
@@ -101,6 +112,8 @@ const TURN_START_DELAY := 0.45
 const REPORT_CUE_DELAY := 1.1
 ## M3-5: the z_index of an overlay opened over the battle screen (above its result card and legend).
 const OVER_BATTLE_Z := BattleHost.OVER_Z
+## The Ruler button's help (without fog).
+const RULER_HELP := "Your ruler and the enemy ruler, every number explained, with the mandates each side has and how succession works. Builds are public. Your living ruler can sacrifice power for a new mandate here."
 
 var session: GameSession = null
 var computer: AISeat = null  # plays the computer seats of `session`
@@ -144,6 +157,7 @@ var quit_text: Label
 var notice_panel: PanelContainer  # on the NoticeLayer: "Game saved", "Game loaded"
 var notice_title: Label
 var notice_label: Label
+var notice_ok: Button
 var _report_seen := 0  # the last turn report shown to the only human, so each one opens once
 var _snapshot := {}  # SaveGame.computer_snapshot from the start of the turn being played
 var _turn_start_turns := -1  # session.turns_played() when the current turn started (and was autosaved)
@@ -151,9 +165,18 @@ var _last_autosave_turn := 0  # the turn the last autosave was made at the start
 var _audio_turn := 0  # the turn turn_start last sounded for
 var _battle_audio := false  # the battle report viewer's music is on
 var _bound := false
-var _turn_before: GameState = null  # M3a.1: the start-of-turn state of the turn being resolved, for its playback
+var _turn_from := -1  # M3a.1: current_turn when the turn being resolved started (M5-2: its state is view_before)
 var _played_for := {}  # M3a.1: faction id -> the report turn already played out on the board for them
-var _replay := {}  # M3a.2: {"turn", "before"}: the last resolved turn's start, for every seat's playback and "Watch this turn again"
+var _replay := {}  # M3a.2: {"turn"}: the last resolved turn, played for every seat and by "Watch this turn again"
+## M5-2: one entry per handoff, {"seat", "faction", "covered", "frame_cleared"}: the next seat's screen was rebuilt, and
+## the board's kept frame cleared, while the cover was still up (§2.9).
+var handoff_log: Array = []
+## M5-2: every "what you didn't see" of the game so far ([{"turn", "faction", "text"}]), for the victory screen; from
+## turn _fog_missed_from on (a loaded game replays the earlier turns when the game ends).
+var fog_missed: Array = []
+var _fog_missed_from := 1
+var _fog_missed_turns := {}
+var _fog_hint_up := false  # M5-2: the notice shows the first fog turn's hint (its button says Got it)
 var _auto_watched := {}  # M3-5: faction id -> the report turn whose battles auto-watch already played for them
 var chronicle := SiegeChronicle.new()  # M3c S-3: the first-siege sentences and the victory screen's siege numbers
 
@@ -194,8 +217,11 @@ func start_game(game_config: Dictionary = {}) -> void:
 	_reset_screens()
 	_start_audio()
 	loaded_header = {}
-	_turn_before = null
+	_turn_from = -1
 	_played_for = {}
+	fog_missed = []
+	_fog_missed_from = 1
+	_fog_missed_turns = {}
 	_auto_watched = {}
 	chronicle = SiegeChronicle.new()
 	# The state's seed and the game seed are the same, so GameSession's turn seeds match TurnResolver's.
@@ -222,7 +248,7 @@ func load_game(save: Dictionary) -> String:
 	if not restored.errors.is_empty():
 		return SaveGame.error_text(restored.errors)
 	_reset_screens()
-	_turn_before = null
+	_turn_from = -1
 	_played_for = {}
 	_start_audio()
 	config = restored.config
@@ -235,7 +261,10 @@ func load_game(save: Dictionary) -> String:
 	# M3-5: a loaded game doesn't auto-watch the battles of the turn it was saved after.
 	_auto_watched = {}
 	for fid in session.players():
-		_auto_watched[String(fid)] = session.turn_report().turn
+		_auto_watched[String(fid)] = _report_turn()
+	fog_missed = []
+	_fog_missed_from = session.turns_played() + 1
+	_fog_missed_turns = {}
 	# The save is the start of this turn: it counts as this turn's autosave.
 	_turn_start_turns = session.turns_played()
 	_snapshot = SaveGame.computer_snapshot(computer, session)
@@ -300,11 +329,16 @@ func _check_turn_start() -> void:
 			show_notice("Autosave failed", why)
 
 
-## M3c S-3: the chronicle counts the turn that just resolved (each turn once).
+## M3c S-3: the chronicle counts the turn that just resolved (each turn once). An observer path (the victory screen's
+## numbers): it reads the whole report; what a player is taught comes from their own report (TurnReportPanel).
+## M5-2: in a fog game it also keeps each player's "what you didn't see" of the turn, for the victory screen.
 func _sync_chronicle() -> void:
 	if session != null and session.turn_report().turn > 0:
 		var report := session.turn_report()
 		chronicle.add_turn(int(report.turn), report.events)
+		if session.state().fog and not _fog_missed_turns.has(int(report.turn)) and int(report.turn) >= _fog_missed_from:
+			_fog_missed_turns[int(report.turn)] = true
+			fog_missed.append_array(FogView.missed_of_turn(session))
 
 
 ## A game starts or loads: the map theme and the map bed (crossfading from whatever played before).
@@ -324,9 +358,12 @@ func _cue_turn_start() -> bool:
 	return true
 
 
-## The headline cues of the report that just opened (GameAudio.report_cues), from `delay_s`.
+## The headline cues of the report that just opened (GameAudio.report_cues), from `delay_s`: the viewer's own report.
+## M5-2: none in a hotseat fog game, where the other player is in the room (§2.9).
 func _cue_report(delay_s: float) -> void:
-	GameAudio.report(session.turn_report().get("events", []), delay_s)
+	if _hotseat_fog():
+		return
+	GameAudio.report(_report().get("events", []), delay_s)
 
 
 ## The starting state for `game_config`: the M1 game, or with rulers when the config asks for them
@@ -363,7 +400,7 @@ func end_turn() -> String:
 		return "No game is running."
 	if is_watching():
 		return next_turn()
-	_turn_before = session.state()  # M3a.1: the board plays the turn from here if this End turn resolves it
+	_turn_from = session.turn_number() - 1  # M3a.1: the board plays the turn from its start if this End turn resolves it
 	var why := session.end_turn()
 	if not why.is_empty():
 		map.set_hint(why)
@@ -382,7 +419,7 @@ func next_turn() -> String:
 	if not is_watching():
 		return "Next turn is only for games where the computer plays every seat."
 	_close_overlays()
-	_turn_before = session.state()
+	_turn_from = session.turn_number() - 1
 	GameAudio.sfx("end_turn")
 	computer.play(session)
 	_check_turn_start()
@@ -402,16 +439,76 @@ func is_watching() -> bool:
 ## Shows the last resolved turn's report on top. Does nothing before the first turn is resolved.
 func open_turn_report() -> void:
 	_bind()
-	if session == null or session.turn_report().turn == 0:
+	if session == null or _report_turn() == 0:
 		return
 	# The computer's notes are those of the turn the report shows, which has resolved (AISeat.report_notes).
 	_sync_chronicle()
 	report_panel.chronicle = chronicle  # M3c S-3: the first-siege sentences
-	report_panel.show_report(session, computer.report_notes(session) if computer else [])
+	report_panel.show_report(session, _computer_notes(), viewer())  # M5-2: the viewer's report
 	_keep_replay()
 	report_panel.set_watch_again(can_watch_again())
-	_report_seen = maxi(_report_seen, session.turn_report().turn)
+	_report_seen = maxi(_report_seen, _report_turn())
 	_raise(report_overlay)
+
+
+## The computer's notes for the report (AISeat.report_notes). M5-2: under fog they name its hidden armies and plans, so
+## while a person is looking (the game isn't over) each computer seat shows only why they are hidden (§2.9).
+func _computer_notes() -> Array:
+	if computer == null:
+		return []
+	if map.state == null or not map.state.fog or session.is_over() or session.human_seats() == 0:
+		return computer.report_notes(session)  # no fog, or nobody but the computer plays, or the fog has lifted
+	var out := []
+	var players := session.players()
+	for fid in session.computer_seats():
+		var f := map.state.find_faction(String(fid))
+		out.append({"faction": fid, "faction_name": f.faction_name if f else "The computer", "seat": players.find(fid),
+			"level": session.computer_level(String(fid)), "notes": [FogView.NOTES_HIDDEN]})
+	return out
+
+
+# --- whose eyes (M5-2, fog of war) ---------------------------------------------------------------------
+
+## Whose eyes the screen shows (§2.1): the person at the controls (the seat giving orders in a hotseat game, the only
+## person in a game against the computer), FogRules.OBSERVER when nobody in particular is looking (watch mode, and once
+## the game is over: the fog lifts), and "" behind the handoff cover. The one place the screen picks the observer.
+func viewer() -> String:
+	if session == null or session.phase() == GameSession.Phase.INVALID:
+		return ""
+	if session.is_over() or session.human_seats() == 0:
+		return FogRules.OBSERVER
+	if session.human_seats() == 1:
+		for fid in session.players():
+			if not session.is_computer(String(fid)):
+				return String(fid)
+	if session.phase() == GameSession.Phase.ORDERS and not session.is_computer(session.current_player()):
+		return session.current_player()
+	return ""
+
+
+## The last resolved turn's report as viewer() reads it (GameSession.turn_report_for).
+func _report() -> Dictionary:
+	return session.turn_report_for(viewer()) if session != null else {}
+
+
+## The last resolved turn (0 before the first): the report's turn, which is public.
+func _report_turn() -> int:
+	return int(_report().get("turn", 0))
+
+
+## Shows the game on the map as `faction_id` sees it ("" for nobody in particular: viewer()'s eyes, the observer in watch
+## mode and at game over): its view, with what it remembers and knows and its view at the start of the last turn.
+func _set_map_for(faction_id: String) -> void:
+	var eyes := faction_id if not faction_id.is_empty() else viewer()
+	var st := session.state_for(eyes)
+	var fog := st != null and st.is_view
+	map.set_fog(session.memory(eyes) if fog else {}, session.intel(eyes) if fog else {}, session.view_before(eyes) if fog else null)
+	map.set_state(st, faction_id)
+
+
+## A hotseat game with fog (§2.9): the playback and the report make no sound but the ambient bed.
+func _hotseat_fog() -> bool:
+	return session != null and session.human_seats() > 1 and map.state != null and map.state.fog
 
 
 func close_turn_report() -> void:
@@ -436,6 +533,7 @@ func show_results() -> void:
 	_bind()
 	_sync_chronicle()
 	victory_screen.siege_stats = chronicle.stats()  # M3c S-3: forts built, sieges won, storms
+	victory_screen.fog_lift = _fog_lift_data()  # M5-2: the fog lifts
 	if session != null and victory_screen.show_for(session):
 		_raise(victory_screen)
 
@@ -458,24 +556,39 @@ func _advance() -> void:
 				return
 			_show_current_player()
 			var new_turn := _cue_turn_start()
-			if session.human_seats() == 1 and session.turn_report().turn > _report_seen:
+			if session.human_seats() == 1 and _report_turn() > _report_seen:
 				_open_report_when_played(REPORT_CUE_DELAY if new_turn else 0.2)
 		GameSession.Phase.GAME_OVER:
 			_show_game_over()
 
-## The current player's ORDERS phase: their map, their orders, their capital selected for recruiting.
-func _show_current_player() -> void:
+## The current player's ORDERS phase: their map (their view, in a fog game), their orders, their capital selected for
+## recruiting. `play`: the last turn plays out on the board (false while the handoff cover is still up).
+func _show_current_player(play: bool = true) -> void:
 	var fid := session.current_player()
 	map.visible = true
 	map.selected_army_id = ""
 	map.selected_province_id = ""
-	map.set_state(session.state(), fid)
-	_play_on_board(fid)
+	_set_map_for(fid)
+	if play:
+		_play_on_board(fid)
 	var f := map.state.find_faction(fid)
 	var capital: Province = map.state.find_province(f.capital) if f else null
 	if capital and capital.owner == fid:
 		map.select_province(capital.id)
+	_fog_hint()
 	_update_hud()
+
+
+## M5-2 (§11.1): the first fog turn's one-line hint, until a player presses Got it (remembered in the settings).
+const FOG_HINT := "Fog of war is on. You see exactly where you own land or stand; next to that you glimpse armies roughly (two away from forts, commanders, rulers and scouts); beyond, only what you saw last."
+
+
+func _fog_hint() -> void:
+	if not FogView.active(map.state) or GameSettings.hint_seen("fog"):
+		return
+	show_notice("Fog of war", FOG_HINT)
+	_fog_hint_up = true
+	notice_ok.text = "Got it"
 
 
 ## Watch mode: the map seen by nobody in particular, waiting for Next turn.
@@ -483,7 +596,7 @@ func _show_watch() -> void:
 	map.visible = true
 	map.selected_army_id = ""
 	map.selected_province_id = ""
-	map.set_state(session.state(), "")
+	_set_map_for("")
 	_play_on_board("")
 	map.faction_label.text = "Watching"
 	map.faction_label.tooltip_text = TooltipText.plain("Watching the computer play",
@@ -497,15 +610,40 @@ func _show_handoff() -> void:
 	battle_host.close()  # M3-5: nothing is watched behind the handoff cover
 	map.clear_preview()
 	map.visible = false
+	handoff.fog = map.state != null and map.state.fog  # M5-2: the cover's fog line
 	if handoff.show_for(session):
 		_audio_turn = session.turn_number()
 		GameAudio.sfx("turn_start", TURN_START_DELAY)
 	_update_hud()
 
 
+## M5-2 (§2.9): Ready was pressed and the cover is still up: the next seat's board, overlays and panels are rebuilt
+## now, and the board's kept frame is cleared, so the first frame the next player sees is theirs.
+func _rebuild_under_cover() -> void:
+	_close_overlays()
+	_show_current_player(false)
+	var cleared := _clear_kept_frame()
+	handoff_log.append({"seat": session.current_seat(), "faction": session.current_player(), "covered": handoff.visible,
+		"frame_cleared": cleared and handoff.visible})
+
+
+## The 3D board keeps the last frame it drew while it is covered (Board3D: its SubViewport stops updating). After a
+## handoff that frame is the last seat's, so its viewport is told to clear and draw once more, from the new seat's
+## board, before the cover lifts. The 2D map keeps no frame. True when done.
+func _clear_kept_frame() -> bool:
+	if map.board == null:
+		return true
+	for vp in map.board.find_children("*", "SubViewport", true, false):
+		(vp as SubViewport).render_target_clear_mode = SubViewport.CLEAR_MODE_ONCE
+		(vp as SubViewport).render_target_update_mode = SubViewport.UPDATE_ONCE
+	map.board.queue_redraw()
+	return true
+
+
+## The cover is down (after _rebuild_under_cover): the last turn plays on the board, then the report opens.
 func _on_handoff_acknowledged() -> void:
-	_show_current_player()
-	if session.turn_report().turn > 0:
+	_play_on_board(session.current_player())
+	if _report_turn() > 0:
 		_open_report_when_played(0.2)
 
 
@@ -514,7 +652,7 @@ func _show_game_over() -> void:
 	map.visible = true
 	map.selected_army_id = ""
 	map.selected_province_id = ""
-	map.set_state(session.state(), "")
+	_set_map_for("")  # the observer: the fog lifts
 	var played := _play_on_board("")
 	map.faction_label.text = "Game over"
 	map.faction_label.tooltip_text = TooltipText.plain("Game over", "Nobody gives orders any more. The map shows the final positions.")
@@ -628,6 +766,16 @@ func show_notice(title: String, text: String) -> void:
 	notice_title.text = title
 	notice_label.text = text
 	notice_panel.visible = true
+	_fog_hint_up = false
+	notice_ok.text = "OK"
+
+
+## The notice's button: OK hides it; on the first fog turn's hint it is Got it, and the hint never shows again.
+func _on_notice_ok() -> void:
+	notice_panel.visible = false
+	if _fog_hint_up:
+		_fog_hint_up = false
+		GameSettings.mark_hint_seen("fog")
 
 
 func _go_to_title() -> void:
@@ -728,7 +876,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## The battle report viewer on top of the turn report, coloured by seat.
 func _show_battle_report(event: Dictionary) -> void:
 	_bind()
-	var state: GameState = session.state() if session else null
+	var state: GameState = map.state if session else null  # M5-2: the viewer's own view
 	var seats: Array = session.players() if session else []
 	battle_viewer.show_event(event, state, seats)
 	_raise(battle_viewer)
@@ -746,6 +894,49 @@ func _set_battle_audio(on: bool) -> void:
 func _on_battle_viewer_visibility() -> void:
 	if not battle_viewer.visible:
 		_set_battle_audio(false)
+
+
+## M5-2 (§2.1): the victory screen's "the fog lifts", from the observer once the game is over: what every faction
+## really had, and every "what you didn't see" of the game. A loaded game replays its record for the turns before it
+## was loaded. {} while the game runs, or without fog.
+func _fog_lift_data() -> Dictionary:
+	if session == null or not session.is_over():
+		return {}
+	var truth := session.state_for(FogRules.OBSERVER)
+	if truth == null or not truth.fog:
+		return {}
+	if _fog_missed_from > 1:
+		var earlier := replay_missed(session.record(), _fog_missed_from - 1)
+		fog_missed = earlier + fog_missed
+		_fog_missed_from = 1
+	return FogView.lift(truth, session.players(), fog_missed)
+
+
+## Every "what you didn't see" of the first `up_to` turns of a saved game (FogView.missed_of_turn), replayed from its
+## record through a session's own order checks, every seat played by hand. Nothing in the game changes.
+static func replay_missed(game_record: Dictionary, up_to: int = 0) -> Array:
+	var out := []
+	var errors := []
+	var start := GameState.from_dict(game_record.get("start_state", {}), errors)
+	if start == null:
+		return out
+	var players: Array = game_record.get("players", [])
+	var s := GameSession.new(start, players, Serial.to_int(game_record.get("game_seed", 0)), AutoBattleResolver.new())
+	var history: Array = game_record.get("history", [])
+	for i in history.size():
+		if (up_to > 0 and i >= up_to) or s.is_over() or s.phase() == GameSession.Phase.INVALID:
+			break
+		var orders := OrderBook.orders_from_dict(history[i].get("orders", {}), [])
+		for k in players.size():
+			if s.phase() == GameSession.Phase.HANDOFF:
+				s.acknowledge_handoff()
+			if s.phase() != GameSession.Phase.ORDERS:
+				break
+			for o in orders.get(s.current_player(), []):
+				s.queue_order(o)
+			s.end_turn()
+		out.append_array(FogView.missed_of_turn(s))
+	return out
 
 
 ## The victory screen over the final map.
@@ -778,7 +969,7 @@ func _update_hud() -> void:
 		end_turn_button.tooltip_text = TooltipText.plain("Next turn", "Each computer gives its orders from the map as it stands now, without seeing the other's, and the turn resolves. The turn report then shows what happened and what each computer was thinking.")
 	opponent_box.visible = opponent_box.get_child_count() > 0 and session != null and not session.is_over() \
 		and session.phase() != GameSession.Phase.INVALID
-	var has_report: bool = session != null and session.turn_report().turn > 0
+	var has_report: bool = session != null and _report_turn() > 0
 	report_button.disabled = not has_report
 	var report_help := "Read again what happened last turn. Click a line to see it on the map."
 	if not has_report:
@@ -787,6 +978,9 @@ func _update_hud() -> void:
 	results_button.visible = session != null and session.is_over()
 	ruler_button.visible = session != null and map.state != null and RulerRules.has_rulers(map.state) \
 		and session.phase() != GameSession.Phase.INVALID
+	if ruler_button.visible:  # M5-2: under fog, builds are learned, not public
+		ruler_button.tooltip_text = TooltipText.plain("Ruler", "Your ruler with every number explained, and what you know of the enemy's: under fog of war their mandates and kept power are learned by seeing or fighting them, and they may have more. Your living ruler can sacrifice power for a new mandate here.") \
+			if FogView.active(map.state) else TooltipText.plain("Ruler", RULER_HELP)
 	if session == null or map.state == null or session.phase() == GameSession.Phase.INVALID:
 		return
 	map.turn_label.text = "Turn %d" % session.turn_number()
@@ -818,7 +1012,9 @@ func _orders_help() -> String:
 ## "the computer (Thornmane Clans, Normal)" for every computer seat but the current one, joined.
 func _computer_names() -> String:
 	var names := []
-	var state := map.state if map.state else session.state()
+	var state := map.state
+	if state == null:
+		return ""
 	for fid in session.players():
 		if session.is_computer(fid) and fid != session.current_player():
 			var f := state.find_faction(fid)
@@ -880,6 +1076,7 @@ func _bind() -> void:
 	map = $Map
 	overlays = $Overlays
 	handoff = $HandoffLayer/Handoff
+	handoff.uncovering.connect(_rebuild_under_cover)  # M5-2: rebuilt while the cover is up
 	handoff.acknowledged.connect(_on_handoff_acknowledged)
 	map.intercept_back = true
 	map.back_requested.connect(open_menu)
@@ -896,7 +1093,7 @@ func _build_hud() -> void:
 	results_button.visible = false
 	map.add_top_bar_control(results_button)
 	ruler_button = _hud_button("RulerButton", "Ruler", open_ruler_panel)
-	ruler_button.tooltip_text = TooltipText.plain("Ruler", "Your ruler and the enemy ruler, every number explained, with the mandates each side has and how succession works. Builds are public. Your living ruler can sacrifice power for a new mandate here.")
+	ruler_button.tooltip_text = TooltipText.plain("Ruler", RULER_HELP)
 	ruler_button.visible = false
 	CodexLink.attach(ruler_button, "ruler", open_codex)
 	map.add_top_bar_control(ruler_button)
@@ -932,7 +1129,9 @@ func _build_opponent_tag() -> void:
 	opponent_box.visible = false
 	if session == null or session.phase() == GameSession.Phase.INVALID:
 		return
-	var state := session.state()
+	var state := session.state_for(viewer())  # names only, which are public
+	if state == null:
+		return
 	var players := session.players()
 	for i in players.size():
 		var fid := String(players[i])
@@ -1153,8 +1352,9 @@ func _build_notice() -> void:
 	ok.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	ok.add_theme_font_size_override("font_size", 18)
 	ok.tooltip_text = "Hide this notice."
-	ok.pressed.connect(func(): notice_panel.visible = false)
+	ok.pressed.connect(_on_notice_ok)
 	row.add_child(ok)
+	notice_ok = ok
 
 
 ## The turn report panel in a modal frame with a footer: a hint and a Close button.
@@ -1305,31 +1505,47 @@ func _board_covered() -> bool:
 
 ## If the turn just resolved hasn't been played out for `faction_id` yet, plays it on the 3D board: from
 ## the start-of-turn state, through the report's events, to the state the map now shows. True if it plays.
+## M5-2: the turn as `viewer()` saw it (§2.8, §12.1): from its view at the turn's start (view_before), through its own
+## report, to the map it now shows. In a hotseat fog game the playback is silent but for the ambient bed (§2.9).
 func _play_on_board(faction_id: String) -> bool:
 	_keep_replay()
 	if map.board == null or session == null or not can_watch_again():
 		return false
-	var report := session.turn_report()
-	if int(_played_for.get(faction_id, 0)) == report.turn:
+	var report := _report()
+	if int(_played_for.get(faction_id, 0)) == int(report.turn):
 		return false
-	_played_for[faction_id] = report.turn
-	return map.board.play_turn(_replay["before"], report.events, map.state)
+	_played_for[faction_id] = int(report.turn)
+	return _play_turn(report)
 
 
-## M3a.2: keeps the start-of-turn state of the turn the report describes, the first time it is seen
-## after resolving (before a later End turn moves _turn_before on), for every seat's playback and replays.
+func _play_turn(report: Dictionary) -> bool:
+	var before := session.view_before(viewer())
+	if before == null:
+		return false
+	var hush := _hotseat_fog()
+	GameAudio.hush(hush)
+	var played: bool = map.board.play_turn(before, report.events, map.state)
+	if hush and played:
+		map.board.playback_finished.connect(func(): GameAudio.hush(false), CONNECT_ONE_SHOT)
+	elif hush:
+		GameAudio.hush(false)
+	return played
+
+
+## M3a.2: notes the turn the report describes, the first time it is seen after resolving here (a loaded game's last
+## turn is not played), for every seat's playback and replays.
 func _keep_replay() -> void:
-	if session == null or _turn_before == null:
+	if session == null or _turn_from < 0:
 		return
-	var report := session.turn_report()
-	if report.turn > 0 and int(_replay.get("turn", 0)) != report.turn and _turn_before.current_turn == report.turn - 1:
-		_replay = {"turn": report.turn, "before": _turn_before}
+	var turn := _report_turn()
+	if turn > 0 and int(_replay.get("turn", 0)) != turn and _turn_from == turn - 1:
+		_replay = {"turn": turn}
 
 
-## True when the last resolved turn can be played on the 3D board (its start is kept).
+## True when the last resolved turn can be played on the 3D board (it resolved while this screen was up).
 func can_watch_again() -> bool:
-	return map != null and map.board != null and session != null and session.turn_report().turn > 0 \
-		and int(_replay.get("turn", 0)) == session.turn_report().turn
+	return map != null and map.board != null and session != null and _report_turn() > 0 \
+		and int(_replay.get("turn", 0)) == _report_turn()
 
 
 ## "Watch this turn again" (the turn report's button): closes the report, plays the turn on the board
@@ -1338,11 +1554,11 @@ func watch_turn_again() -> bool:
 	if not can_watch_again():
 		return false
 	close_turn_report()
-	if not map.board.play_turn(_replay["before"], session.turn_report().events, map.state):
+	if not _play_turn(_report()):
 		open_turn_report()
 		return false
 	map.board.playback_finished.connect(func():
-		if session != null and session.turn_report().turn > 0:
+		if session != null and _report_turn() > 0:
 			open_turn_report(), CONNECT_ONE_SHOT)
 	return true
 
@@ -1352,7 +1568,7 @@ func watch_turn_again() -> bool:
 func _open_report_when_played(cue_delay: float) -> void:
 	if map.board != null and map.board.is_playing():
 		map.board.playback_finished.connect(func():
-			if session != null and session.turn_report().turn > 0:
+			if session != null and _report_turn() > 0:
 				open_turn_report()
 				_cue_report(0.2)
 				auto_watch(), CONNECT_ONE_SHOT)
@@ -1372,7 +1588,7 @@ func watch_battles(events: Array, start: int = 0) -> String:
 		return "No game is running."
 	if handoff.visible:
 		return "Battles can't be watched behind the handoff cover."
-	var why := battle_host.open(events, start, session, watch_viewer())
+	var why := battle_host.open(events, start, session, watch_viewer(), map.state)  # M5-2: the viewer's own view
 	if why.is_empty():
 		_raise(battle_host)
 	return why
@@ -1383,7 +1599,7 @@ func watch_battle(event: Dictionary) -> String:
 	_bind()
 	if session == null:
 		return "No game is running."
-	var battles := BattleHost.watchable(session.battle_events(), true)
+	var battles := BattleHost.watchable(BattleHost.battles_of(_report().get("events", []), ""), true)  # M5-2: your report's
 	for i in battles.size():
 		if same_battle(battles[i], event):
 			return watch_battles(battles, i)
@@ -1417,13 +1633,13 @@ func auto_watch() -> bool:
 	if session == null or handoff.visible or session.phase() != GameSession.Phase.ORDERS or is_watching():
 		return false
 	var fid := session.current_player()
-	var turn := int(session.turn_report().turn)
+	var turn := _report_turn()
 	if session.is_computer(fid) or turn <= 0 or int(_auto_watched.get(fid, 0)) >= turn:
 		return false
 	if not GameSettings.load_from().auto_watch_battles:
 		return false
 	_auto_watched[fid] = turn
-	var mine := BattleHost.watchable(BattleHost.battles_of(session.battle_events(), fid), true)
+	var mine := BattleHost.watchable(BattleHost.battles_of(_report().get("events", []), fid), true)
 	if mine.is_empty():
 		return false
 	return watch_battles(mine).is_empty()

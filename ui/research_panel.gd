@@ -13,6 +13,9 @@ extends Control
 ## the side they swore and what it closed, and their research per turn. Never their target, so neither
 ## "researching" nor "available" nor an ETA is shown for them (tests check the screen is the same whatever
 ## their target is). Reads the state and the orders; never changes them. All words come from PathView.
+## M5-2 fog of war (#113, design/M5_MAGIC_FOG.md §2.2, §2.6): in a fog game `state` is the viewer's view, so the enemy
+## tab shows only what the viewer has learned of their path (the Oath and transformation, heralded to everyone, and the
+## nodes seen at work in battle) and says they may have more; their research per turn counts only those nodes.
 
 signal research_requested(node_id: String)
 signal preview_requested(node_id: String)
@@ -119,6 +122,8 @@ func refresh() -> void:
 	var f := state.find_faction(showing_fid)
 	var path := AscensionRules.path_name(showing_fid)
 	title_label.text = "Research: %s" % path.capitalize() if own else "Enemy path: %s, %s (read-only)" % [f.faction_name, path.capitalize()]
+	if not own and FogView.active(state):
+		title_label.text = "Enemy path: %s, %s (what you know)" % [f.faction_name, path.capitalize()]
 	title_label.tooltip_text = TooltipText.plain(title_label.text, RulesCodex.text(String(AscensionRules.path_data(showing_fid).get("codex", "path"))))
 	CodexLink.attach(title_label, String(AscensionRules.path_data(showing_fid).get("codex", "path")), codex_requested.emit)
 	var people := AscensionRules.people_name(state, showing_fid)
@@ -139,6 +144,8 @@ func refresh() -> void:
 		tab.focus_mode = Control.FOCUS_NONE
 		tab.add_theme_font_size_override("font_size", 16)
 		tab.tooltip_text = TooltipText.plain("The %s's path" % other.faction_name, "What they have researched, the Oath they swore and their research per turn are public. What they are researching is not.")
+		if FogView.active(state):
+			tab.tooltip_text = TooltipText.plain("The %s's path" % other.faction_name, "Under fog of war you see only what you have learned of it: the Oath they swore and their transformation, which everyone hears of, and the nodes you saw at work in a battle you fought. What they are researching is never shown.")
 		CodexLink.attach(tab, "path", codex_requested.emit)
 		tab.pressed.connect(show_enemy.bind(other.id))
 		enemy_tabs.add_child(tab)
@@ -149,6 +156,9 @@ func refresh() -> void:
 	_fill_sidebar(own)
 	footer_label.text = "Your research target is yours alone: the enemy sees what you have researched and the Oath you swore, never what you are researching. Hover a number for where it comes from; right-click it, or press F1, for its codex entry." if own \
 		else "Read-only. Everything here is public: what they researched and when, the Oath they swore and their research per turn. What they are researching now is their secret, as yours is to them."
+	if FogView.active(state):  # M5-2
+		footer_label.text = "Under fog of war the enemy learns of your path only what they see: your Oath and transformation, and the nodes at work in battles they fight. Hover a number for where it comes from; right-click it, or press F1, for its codex entry." if own \
+			else "Read-only, and only what you know: the Oath they swore and their transformation, which everyone hears of, and the nodes you saw at work in battles you fought. They may have more. Their research per turn counts only those, from the land they hold."
 	links.queue_redraw()
 
 

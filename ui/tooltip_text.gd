@@ -39,6 +39,13 @@ const CODEX := {
 	# orders (OrdersController via MapScreen)
 	"move_order": "move",
 	"move_odds": "battle_odds",
+	"view_odds": "view_odds",  # M5-2: a fog forecast, odds against what you can see
+	# fog of war (M5-2): the Vision line, a stand-in's numbers, a remembered army, your army's sight
+	"vision": "sight",
+	"glimpse": "estimates",
+	"remembered": "last_seen",
+	"army_sight": "sight",
+	"rival_known": "intel",
 	"recruit": "recruit",
 	"gold_after_recruits": "recruit",
 	"order_check": "orders",
