@@ -375,6 +375,13 @@ func order_text(index: int) -> String:
 	if o is ResearchOrder:  # M4-4: the research target, with its forecast (only its own player sees it)
 		var fc := Forecast.research(state, faction_id, list)
 		return "Research: %s" % String(fc.text) if fc.ok else "Not researched: %s" % String(fc.reason)
+	if o is SpellbookOrder:  # M5-5: the battle spellbook, kept until changed
+		return "Battle spellbook: %s. Your casters try the spells in this order each round, from this turn's battles on; it is kept until you change it." % MagicRules.spellbook_text(o.order, o.off)
+	if o is CastOrder:  # M5-5
+		var army := state.find_army(o.army_id)
+		var paid := "paid in blood" if o.pay == CastOrder.BLOOD else "%d gold" % int(MagicRules.price(view_state(), faction_id, o.ritual, o.size).gold)
+		return "Cast %s%s from your army at %s (%s). That army holds this turn." % [MagicRules.spell_name(o.ritual),
+			" on %s" % _province_name(o.target) if not o.target.is_empty() else "", _province_name(army.location) if army else "nowhere", paid]
 	var r := _recruit_result_at(index)
 	if not r.ok:
 		return "Not recruited: %s" % r.reason
@@ -436,6 +443,14 @@ func order_breakdown(index: int) -> Dictionary:
 		return fortify_breakdown(index)
 	if o is SiegeOrder:  # M3c
 		return siege_order_breakdown(o)
+	if o is SpellbookOrder:  # M5-5: one line per spell switched on, in order
+		var lines := []
+		for sid in o.order:
+			if not o.off.has(sid):
+				lines.append(_line(MagicRules.spell_name(String(sid)), 1, "known" if MagicRules.knows(view_state(), faction_id, String(sid)) else "not researched yet"))
+		return _bd("Battle spellbook", "%s %s" % [MagicRules.spellbook_text(o.order, o.off), RulesCodex.text("spellbook")], lines, "Spells switched on", lines.size())
+	if o is CastOrder:  # M5-5: the ritual's price
+		return Breakdown.ritual_price(view_state(), faction_id, o.ritual, o.size)
 	var r := _recruit_result_at(index)
 	if not r.ok:
 		return _bd("Recruit order", r.reason, [], "Gold spent", 0)
@@ -457,6 +472,10 @@ func order_codex_kind(index: int) -> String:
 		return "sacrifice"
 	if o is ResearchOrder:  # M4-4
 		return "research_order"
+	if o is SpellbookOrder:  # M5-5
+		return "spellbook_order"
+	if o is CastOrder:  # M5-5
+		return "cast_order"
 	if o is FortifyOrder:  # M3c
 		return "fortify_order"
 	if o is SiegeOrder:  # M3c
@@ -493,6 +512,8 @@ func recruit_breakdown(unit_type_id: String, at: String = RecruitOrder.AT_CAPITA
 		rules = String(info.get("text", RulesCodex.text("field_recruit")))
 		title = "Recruit %s with %s" % [_unit_name(unit_type_id), RulerRules.current_name(state, faction_id)]
 	var desc := "%s %s" % [Breakdown.unit_type_description(ut, price_text(unit_type_id)) if ut else "", rules]
+	if MagicRules.is_mage(ut) and not MagicRules.knows_a_spell(view_state(), faction_id):  # M5-5: the mage gate
+		desc = "%s %s" % [MagicRules.mage_gate_reason(view_state(), faction_id, ut), desc]
 	var fc := Forecast.recruit(state, faction_id, unit_type_id, orders())  # M4-2: Blood Levy's wounded arrivals
 	if fc.ok and int(fc.hp) < int(fc.max_hp):
 		desc = "%s %s" % [fc.text, desc]

@@ -23,6 +23,13 @@ class_name OrderBook
 ## move, by remove() as well as cancel(), checks the faction's storms and sallies again, and a storm that lost
 ## its move or a tied sally whose relief move is gone is dropped, each with its reason (last_dropped()). With no
 ## siege orders queued, remove() behaves exactly as before: it drops nothing and leaves last_dropped() alone.
+##
+## Magic (M5-5, design/M5_MAGIC_FOG.md §5.1, §6.1), only in a game with magic: a cast order (CastOrder) pins its army,
+## so queuing one drops any move given to that army, earlier or later ("Move to Thornvale removed: your army at
+## Fangridge is casting Bloodrot this turn, so it holds."), and a move for an army that casts is refused. Gold-paid
+## casts and recruits share one running budget: everything queued must fit the faction's gold, checked in the order
+## given (MagicRules.check_cast; recruits are priced from what the casts leave). A spellbook order
+## (SpellbookOrder) is one per turn: queuing another replaces it, as a research order does.
 
 var _orders := {}  # faction id -> Array of orders, in the order given
 var _last_dropped: Array = []  # what the last submit() or cancel() removed: [{"order", "code", "reason", "text"}]
@@ -42,9 +49,11 @@ func submit(state: GameState, faction_id: String, order) -> String:
 		_orders[faction_id] = []
 	if order is ResearchOrder:
 		_last_dropped = _replace_research(state, faction_id, order)
+	elif order is SpellbookOrder:
+		_last_dropped = _replace_spellbook(state, faction_id)  # M5-5: one per turn, the new one replaces it
 	_orders[faction_id].append(order)
-	if order is SacrificeOrder:
-		_last_dropped = _recheck(state, faction_id)
+	if order is SacrificeOrder or order is CastOrder:
+		_last_dropped = _recheck(state, faction_id)  # M5-5: a cast drops its army's move, given before it
 	elif order is MoveOrder and _has_siege_orders(faction_id):
 		_last_dropped = _recheck_sieges(state, faction_id)  # M3c: a sally by an army that now moves is dropped
 	return ""
@@ -113,20 +122,29 @@ static func check_order(state: GameState, faction_id: String, order, existing: A
 		return RulerRules.sacrifice_check(state, faction_id, order.mandate_id, prior.mandate_id if prior != null else "")
 	var board: GameState = view if view != null else RulerRules.state_after_orders(state, faction_id, existing)
 	if order is MoveOrder:
+		var pins := MagicRules.pinned_armies(board, faction_id, existing)  # M5-5: {} without casts
+		if pins.has(order.army_id):
+			return {"code": "pinned", "reason": "%s It can't move this turn." % MagicRules.pinned_reason(board, order.army_id, String(pins[order.army_id]))}
 		var ordered := {}
 		for o in existing:
 			if o is MoveOrder:
 				ordered[o.army_id] = true
 		return TurnResolver.check_move(board, faction_id, order, ordered)
 	if order is RecruitOrder or order is FortifyOrder:
-		# Recruits and Fortify orders (M3c) share one gold pool, paid in the order given.
+		# Recruits and Fortify orders (M3c) share one gold pool, paid in the order given; gold-paid casts (M5-5)
+		# reserve theirs first (the running budget).
 		var recruits := []
 		for o in existing:
 			if o is RecruitOrder or o is FortifyOrder:
 				recruits.append(o)
 		recruits.append(order)
-		var last: Dictionary = TurnResolver.price_recruits(board, faction_id, recruits).results.back()
+		var last: Dictionary = TurnResolver.price_recruits(board, faction_id, recruits, null,
+			MagicRules.queued_gold(board, faction_id, existing)).results.back()
 		return {} if last.ok else {"code": last.code, "reason": last.reason}
+	if order is CastOrder:
+		return MagicRules.check_cast(board, faction_id, order, existing)  # M5-5
+	if order is SpellbookOrder:
+		return MagicRules.check_spellbook(board, faction_id, order)  # M5-5: one per turn, but a new one replaces it
 	if order is SiegeOrder:
 		# M3c: against every queued move and siege order of the faction, wherever it comes in the list.
 		var moves := []
@@ -161,6 +179,17 @@ static func recheck(state: GameState, faction_id: String, orders: Array) -> Dict
 		else:
 			dropped.append({"order": order, "code": check.code, "reason": check.reason,
 				"text": dropped_text(state, faction_id, order, check)})
+	if kept.any(func(o): return o is CastOrder):
+		# M5-5: a move given before its army's cast was kept above; the cast pins the army, so the move goes now.
+		var pins := MagicRules.pinned_armies(view, faction_id, kept)
+		var unpinned := []
+		for order in kept:
+			if order is MoveOrder and pins.has(order.army_id):
+				var check := {"code": "pinned", "reason": MagicRules.pinned_reason(view, order.army_id, String(pins[order.army_id]), true)}
+				dropped.append({"order": order, "code": check.code, "reason": check.reason, "text": dropped_text(state, faction_id, order, check)})
+			else:
+				unpinned.append(order)
+		kept = unpinned
 	var passed := {}
 	for order in orders:
 		if not (order is SiegeOrder):
@@ -213,6 +242,11 @@ static func short_text(state: GameState, faction_id: String, order) -> String:
 		return "Sacrifice for %s" % RulerRules.mandate_name(order.mandate_id)
 	if order is ResearchOrder:
 		return "Research %s" % AscensionRules.node_name(order.node_id)
+	if order is CastOrder:  # M5-5
+		var where := " on %s" % TurnResolver._province_name(state, order.target) if not order.target.is_empty() else ""
+		return "Cast %s%s" % [MagicRules.spell_name(order.ritual), where]
+	if order is SpellbookOrder:  # M5-5
+		return "Battle spellbook"
 	return "An unknown order"
 
 
@@ -264,6 +298,11 @@ static func order_from_dict(data: Dictionary, errors = null):
 			var action := str(data.get("action", ""))
 			var target := str(data.get("province", "")) if action == SiegeOrder.STORM else str(data.get("army", ""))
 			return SiegeOrder.new(action, target, str(data.get("with", "")))
+		"cast":  # M5-5; "size" only for Call the Pack
+			return CastOrder.new(str(data.get("ritual", "")), str(data.get("army", "")), str(data.get("target", "")),
+				str(data.get("pay", CastOrder.GOLD)), Serial.to_int(data.get("size", 0)))
+		"spellbook":  # M5-5
+			return SpellbookOrder.new(Serial.to_string_array(data.get("order", [])), Serial.to_string_array(data.get("off", [])))
 	var msg := "Unknown order type '%s'. Orders are 'move', 'recruit', 'sacrifice' and 'research'." % str(data.get("type", ""))
 	if errors is Array:
 		errors.append(msg)
@@ -281,6 +320,20 @@ func _replace_research(state: GameState, faction_id: String, order: ResearchOrde
 		if o is ResearchOrder:
 			out.append({"order": o, "code": "replaced", "reason": "you chose %s instead." % AscensionRules.node_name(order.node_id),
 				"text": "%s replaced: you chose %s instead." % [short_text(state, faction_id, o), AscensionRules.node_name(order.node_id)]})
+		else:
+			kept.append(o)
+	_orders[faction_id] = kept
+	return out
+
+
+## M5-5: removes the faction's queued spellbook order, if any, before a new one replaces it (one per turn).
+func _replace_spellbook(state: GameState, faction_id: String) -> Array:
+	var out := []
+	var kept := []
+	for o in _orders.get(faction_id, []):
+		if o is SpellbookOrder:
+			out.append({"order": o, "code": "replaced", "reason": "you set it again.",
+				"text": "%s replaced: you set it again." % short_text(state, faction_id, o)})
 		else:
 			kept.append(o)
 	_orders[faction_id] = kept
