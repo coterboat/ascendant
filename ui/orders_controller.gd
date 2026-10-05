@@ -336,7 +336,9 @@ func move_preview(army_id: String, to: String) -> Dictionary:
 ## Gold after the queued recruits and the income forecast. Your queued moves count for Royal Court,
 ## which pays where the King ends the turn.
 func gold_after_recruits() -> Dictionary:
-	return Forecast.gold_after_recruits(view_state(), faction_id, paid_orders(), orders())
+	# M5-6: gold-paid rituals queued are paid first (the rituals phase), so recruits are priced from what they leave.
+	return Forecast.gold_after_recruits(view_state(), faction_id, paid_orders(), orders(),
+		MagicRules.queued_gold(view_state(), faction_id, orders()))
 
 
 ## The price of one unit, the same the recruitment phase charges (Muster Grounds included).
@@ -583,8 +585,12 @@ func order_codex_kind(index: int) -> String:
 
 func gold_breakdown() -> Dictionary:
 	var g := gold_after_recruits()
-	return _bd("Gold after recruits", g.text, [_line("Gold now", g.gold_now, ""), _line("Queued recruits", -g.spent, "")],
-		"Gold after recruits", g.gold_after)
+	var lines := [_line("Gold now", g.gold_now, "")]
+	if int(g.get("rituals", 0)) > 0:
+		lines.append(_line("Queued rituals", -int(g.rituals), "paid first, in the rituals phase"))  # M5-6
+	lines.append(_line("Queued recruits", -g.spent, ""))
+	var title := "Gold after recruits and rituals" if int(g.get("rituals", 0)) > 0 else "Gold after recruits"
+	return _bd(title, g.text, lines, title, g.gold_after)
 
 
 ## Tooltip numbers for a recruit button: what one more of this unit would leave you with. `at` is

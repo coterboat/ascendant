@@ -1115,7 +1115,8 @@ func _add_orders_section() -> void:
 		cancel.pressed.connect(cancel_order.bind(i))
 		row.add_child(cancel)
 	var g := orders.gold_after_recruits()
-	var gold := _add_text("Gold after recruits: %d" % g.gold_after, TooltipText.from_breakdown(orders.gold_breakdown()), UiPalette.GILT)
+	var gold := _add_text("%s: %d" % ["Gold after recruits and rituals" if int(g.get("rituals", 0)) > 0 else "Gold after recruits", g.gold_after],
+		TooltipText.from_breakdown(orders.gold_breakdown()), UiPalette.GILT)
 	gold.name = "GoldAfterLabel"
 	_link(gold, "gold_after_recruits")
 	if state.sieges:

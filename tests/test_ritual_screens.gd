@@ -140,6 +140,28 @@ func test_a_caster_that_knows_no_ritual_offers_none() -> void:
 	game.free()
 
 
+func test_the_gold_line_counts_queued_rituals_first() -> void:
+	# Rituals are paid in the rituals phase, before recruits: the orders panel's gold and each recruit's "leaving" say so.
+	var s := _state()
+	var ctrl := OrdersController.new(s, CLANS)
+	var gold := s.find_faction(CLANS).gold
+	assert_eq(ctrl.queue_cast("bloodrot", _caster(s), "crownkeep"), "")
+	assert_eq(ctrl.queue_recruit("tuskers"), "")
+	var g := ctrl.gold_after_recruits()
+	var rot := int(MagicRules.price(s, CLANS, "bloodrot").gold)
+	var tusker := TurnResolver.recruit_cost(s, CLANS, "tuskers")
+	assert_eq(int(g.rituals), rot)
+	assert_eq(int(g.gold_after), gold - rot - tusker)
+	var bd := ctrl.gold_breakdown()
+	assert_eq(Breakdown.sum_of_lines(bd), int(bd.total), "the lines add up")
+	assert_true(String(bd.description).contains("your queued rituals take %d first" % rot), bd.description)
+	assert_true(ctrl.order_text(1).contains("leaving %d gold" % (gold - rot - tusker)), ctrl.order_text(1))
+	# And the turn agrees.
+	var r := TurnResolver.resolve(s, {CLANS: ctrl.orders()}, TurnResolver.seed_for_turn(s))
+	var recruited: Dictionary = r.events.filter(func(e): return String(e.type) == "recruited")[0]
+	assert_eq(int(recruited.numbers.gold_after), int(g.gold_after))
+
+
 func test_call_the_pack_offers_its_sizes_and_far_sight_only_under_fog() -> void:
 	var s := AscensionRules.with_nodes(_state(true), CLANS, ["wild_mastery"])
 	var game := _screen(s)
