@@ -1287,6 +1287,8 @@ static func _rebuilt(e: Dictionary, before_sight: Dictionary, after_sight: Dicti
 			numbers[key] = e.numbers[key] if not (e.numbers[key] is Dictionary or e.numbers[key] is Array) else e.numbers[key].duplicate(true)
 	var provinces := []
 	for pid in e.get("provinces", []):
+		if t == "ritual_cast":
+			break  # M5-6: a heralded global ritual never says where it was cast from
 		if t != "ruler_died" or String(before_sight.get(pid, VEILED)) != VEILED or String(after_sight.get(pid, VEILED)) != VEILED:
 			provinces.append(String(pid))
 	var armies := []

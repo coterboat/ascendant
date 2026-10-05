@@ -138,6 +138,8 @@ func cast_options(army_id: String) -> Array:
 				check = in_blood
 		var names := targets.map(func(pid): return _province_name(String(pid)))
 		var line := "Covers every battle." if String(sp.target) == "none" else "Can be cast on %s." % RulerRules._and_list(names)
+		if names.size() > 4:
+			line = "Can be cast on %d provinces in reach." % names.size()
 		var price := "%d gold a wolf" % int(sp.cost) if not sizes.is_empty() else "%d gold" % int(sp.cost)
 		out.append({"ritual": rid, "name": MagicRules.spell_name(rid), "price": price, "ok": check.is_empty(),
 			"reason": String(check.get("reason", "")), "line": line, "targets": targets, "sizes": sizes, "blood": blood})
@@ -458,8 +460,9 @@ func order_text(index: int) -> String:
 	if o is CastOrder:  # M5-5; M5-6: with what it will do (its forecast; the tooltip has the rest)
 		var army := state.find_army(o.army_id)
 		var paid := "paid in blood" if o.pay == CastOrder.BLOOD else "%d gold" % int(MagicRules.price(view_state(), faction_id, o.ritual, o.size).gold)
+		var at := "at" if String(MagicRules.spell_data(o.ritual).get("kind", "")) == "summon" else "on"
 		var text := "Cast %s%s from your army at %s (%s). That army holds this turn." % [MagicRules.spell_name(o.ritual),
-			" on %s" % _province_name(o.target) if not o.target.is_empty() else "", _province_name(army.location) if army else "nowhere", paid]
+			" %s %s" % [at, _province_name(o.target)] if not o.target.is_empty() else "", _province_name(army.location) if army else "nowhere", paid]
 		var fc := MagicRules.forecast_ritual(state, faction_id, o, list)
 		return "%s %s" % [text, String(fc.get("effect_text", ""))] if fc.ok else text
 	var r := _recruit_result_at(index)

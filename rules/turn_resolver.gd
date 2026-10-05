@@ -41,6 +41,15 @@ class_name TurnResolver
 ##                within its limit; siege engines join the first army there with a fighter.
 ##   income       a cut-off province pays its base income to the besiegers and nothing to its owner.
 ##
+## Magic (M5-6, design/M5_MAGIC_FOG.md §6.3, §9; rules in MagicRules; only in a game with magic, so every other game
+## resolves exactly as before; phases(state) gives MAGIC_PHASES):
+##   orders       cast orders are checked first against every order before them (the running budget) and pin their
+##                armies: a move for a casting army is rejected, whenever it was given.
+##   rituals      (new, after orders) every cast that passed is turned aside by a rival's ward (half its price), fails
+##                (nothing paid) or is paid and takes effect, wards first (_rituals_phase).
+##   rulers       healing skips fighters under a rival's curse (and so does the research phase's).
+##   enchantments (new, last) blessings heal, curses bite, then the endings and the fading (_enchantments_phase).
+##
 ## Mandates and abilities on the map (M2-4, design/M2_RULER.md §1.4, §2.3; rules in RulerRules; only
 ## in a game with rulers, so an M1 game resolves exactly as before):
 ##   King's Roads    a move with a `via` is a road move: checked in orders, then it moves straight from

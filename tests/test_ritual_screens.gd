@@ -117,9 +117,26 @@ func test_an_army_with_a_caster_offers_cast_a_ritual_and_the_dialog_forecasts_it
 	var i := map.orders.orders().find(queued[0])
 	var line := map.orders.order_text(i)
 	assert_true(line.begins_with("Cast Bloodrot on Crownkeep from your army at Thornvale (paid in blood)."), line)
-	assert_true(line.contains("can't heal"), line)
+	assert_true(line.contains("No healing at Crownkeep"), "what it will do, in brief: %s" % line)
+	assert_true(line.contains("through turn %d" % int(fc.effect.until_turn)), line)
 	assert_true(String(map.orders.order_breakdown(i).description).contains("Paid in blood"), "the tooltip has the forecast")
 	_assert_no_raw_ids(line, "the order line")
+	game.free()
+
+
+func test_a_caster_that_knows_no_ritual_offers_none() -> void:
+	# The Ever-Regent casts rituals, but the Crown knows none yet and there is no fog (Far Sight is offered only under
+	# fog): no button, so the panel never offers an empty dialog. The Magic tab says what to research.
+	var s := _state()
+	var session := GameSession.new(s, [CROWN, CLANS], 9, AutoBattleResolver.new())
+	var game := load(GAME_SCENE).instantiate() as GameScreen
+	game.autosave_enabled = false
+	assert_eq(game.load_game(SaveGame.make(session, {}, SaveGame.MANUAL, "Crown", 0)), "")
+	if game.handoff.visible:
+		game.handoff.ready_button.pressed.emit()
+	assert_false(MagicRules.casters(game.session.state(), RulerRules.ruler_army(game.session.state(), CROWN)).is_empty(), "the Regent casts")
+	game.map.select_province("crownkeep")
+	assert_eq(game.map.details.find_children("CastRitual", "Button", true, false), [], "nothing to cast yet")
 	game.free()
 
 

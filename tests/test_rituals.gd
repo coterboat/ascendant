@@ -331,6 +331,26 @@ func test_dawn_blessing_heals_its_armies_follows_them_and_their_recruits() -> vo
 	assert_eq(_enchantments(r2.new_state, "dawn_blessing")[0].armies, ids)
 
 
+func test_an_army_blessed_again_elsewhere_carries_one_blessing() -> void:
+	# One blessing per army (§6.4): the same armies blessed again in another province restart their blessing, so a
+	# blessed army never heals twice a turn.
+	var s := _game({CROWN: ["sunlance", "dawn_blessing"]})
+	_own(s, CROWN, ["highcrag"])
+	_ruler(s, CROWN).location = "rivermarch"
+	var lone := _army(s, CROWN, "crownkeep", ["adepts", "spearmen"])
+	_field(s, CROWN).location = "westwatch"
+	_own(s, CROWN, ["westwatch"])
+	var r1 := _resolve(s, {CROWN: [CastOrder.new("dawn_blessing", lone.id, "crownkeep"), MoveOrder.new(_field(s, CROWN).id, "crownkeep")]})
+	var r2 := _resolve(r1.new_state, {CROWN: [MoveOrder.new(lone.id, "highcrag")]})
+	var state: GameState = r2.new_state
+	for u in state.find_army(lone.id).units:
+		u.current_hp = 1
+	var r3 := _resolve(state, {CROWN: [CastOrder.new("dawn_blessing", lone.id, "highcrag")]})
+	var holding: Array = r3.new_state.enchantments.filter(func(e): return String(e.kind) == "blessing" and e.armies.has(lone.id))
+	assert_eq(holding.size(), 1, "one blessing for the army: %s" % [r3.new_state.enchantments])
+	assert_eq(_of(r3, "blessing_healed").filter(func(e): return String(e.armies[0]) == lone.id).size(), 1, "it heals once a turn")
+
+
 func test_a_destroyed_army_loses_its_blessing_and_an_empty_blessing_ends() -> void:
 	var s := _game({CROWN: ["sunlance", "dawn_blessing"]})
 	var lone := _army(s, CROWN, "highcrag", ["adepts"])
@@ -514,6 +534,25 @@ func test_summons_hold_on_their_arrival_turn_fade_on_time_and_empty_armies_are_r
 	assert_eq(OrderBook.check_order(last.new_state, CLANS, CastOrder.new("call_the_pack", shamans.id, "thornvale", CastOrder.GOLD, 3), []), {})
 
 
+func test_siege_engines_riding_with_a_faded_pack_are_lost_and_said_so() -> void:
+	var s := _game({CLANS: ["briar_snare", "call_the_pack"]})
+	assert_true(s.setup_sieges([]))
+	var den := _army(s, CLANS, "fangridge", ["shamans"])
+	var r := _resolve(s, {CLANS: [CastOrder.new("call_the_pack", den.id, "fangridge", CastOrder.GOLD, 3)]})
+	var pack_id := String(_one(r, "summoned").numbers.army)
+	var state: GameState = r.new_state
+	state.find_army(pack_id).engines = 1  # as a recruited engine joins the first army there that can carry it
+	var t := s.current_turn + 1
+	while state.current_turn < t + 4:  # the wolves fade at the end of turn T + 4
+		var next := _resolve(state, {})
+		if next.new_state.find_army(pack_id) == null:
+			var faded := _one(next, "summon_faded")
+			assert_eq(int(faded.numbers.engines_lost), 1)
+			assert_true(String(faded.text).contains("lost with it"), faded.text)
+		state = next.new_state
+	assert_eq(state.find_army(pack_id), null, "the pack is gone")
+
+
 func test_one_greenwrath_at_a_time_in_a_forest_until_it_falls() -> void:
 	var s := _game({CLANS: CLANS_GROVE}, {CLANS: {"ruler": "thornmane_avatar", "mandates": []}})
 	var shamans := _army(s, CLANS, "thornvale", ["shamans"])
@@ -577,6 +616,7 @@ func test_blood_moon_is_one_global_enchantment_heralded_to_everyone() -> void:
 	assert_eq(heard.size(), 1, "the global ritual is heralded")
 	assert_true(String(heard[0].text).contains("Blood Moon"), "named, not an id: %s" % heard[0].text)
 	assert_false(String(heard[0].text).contains("Fangridge"), heard[0].text)
+	assert_eq(heard[0].provinces, [], "the herald never says where it was cast from")
 	# The same ritual again restarts it: one moon, a new end, paid again.
 	var r2 := _resolve(r.new_state, {CLANS: [CastOrder.new("blood_moon", shamans.id, "")]})
 	var again: Array = _enchantments(r2.new_state, "blood_moon")
@@ -701,6 +741,24 @@ func test_every_ritual_forecast_equals_its_result_when_nothing_is_turned_aside()
 	var bad := MagicRules.forecast_ritual(s0, CLANS, CastOrder.new("bloodrot", _field(s0, CLANS).id, "crownkeep"), [])
 	assert_false(bool(bad.ok))
 	assert_true(String(bad.reason).contains("You don't know Bloodrot yet"), bad.reason)
+
+
+func test_a_forecast_names_the_summoned_army_in_the_order_given() -> void:
+	# Two summons of one faction resolve in the order given (§6.3): each forecast names the army the turn will make.
+	var s := _game({CLANS: CLANS_GROVE})
+	var wild := _army(s, CLANS, "thornvale", ["shamans"])
+	var other := _army(s, CLANS, "thornvale", ["shamans"])
+	var wrath := CastOrder.new("wake_the_greenwrath", wild.id, "thornvale")
+	var pack := CastOrder.new("call_the_pack", other.id, "thornvale", CastOrder.GOLD, 3)
+	var orders := [wrath, pack]
+	var fw := MagicRules.forecast_ritual(s, CLANS, wrath, orders)
+	var fp := MagicRules.forecast_ritual(s, CLANS, pack, orders)
+	var r := _resolve(s, {CLANS: orders})
+	var made := {}
+	for e in _of(r, "summoned"):
+		made[String(e.numbers.ritual)] = String(e.numbers.army)
+	assert_eq(String(fw.effect.summon.army), made.wake_the_greenwrath)
+	assert_eq(String(fp.effect.summon.army), made.call_the_pack)
 
 
 func test_a_forecast_warns_of_a_ward_it_can_see() -> void:

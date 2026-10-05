@@ -1597,6 +1597,8 @@ func _add_magic_lines(a: Army, box: Control) -> void:
 		CodexLink.attach(line, "summoned", request_codex)
 	if orders == null or a.owner != viewing_faction_id or MagicRules.casters(state, a).is_empty() or FogView.is_stand_in(a):
 		return
+	if orders.cast_options(a.id).is_empty():
+		return  # its casters know no ritual yet (Far Sight is offered only under fog): the Magic tab says what to research
 	var cast := Button.new()
 	cast.name = "CastRitual"
 	cast.text = "Cast a ritual…"

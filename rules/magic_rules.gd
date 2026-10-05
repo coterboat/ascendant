@@ -930,10 +930,15 @@ static func ritual_effect(state: GameState, faction_id: String, order) -> Dictio
 				if a.owner == faction_id and a.location == order.target:
 					blessed.append(a.id)
 			blessed.sort()
-			# One blessing per army: these armies leave any older blessing of the faction (one left empty ends quietly).
+			# One blessing per army: a blessing on exactly these armies, wherever it was cast, is restarted (_begin); these
+			# armies leave every other blessing of the faction (one left empty ends quietly).
+			var same := ""
+			for e in state.enchantments:
+				if String(e.kind) == "blessing" and String(e.faction) == faction_id and Array(e.armies) == blessed and same.is_empty():
+					same = String(e.id)
 			var kept := []
 			for e in state.enchantments:
-				if String(e.kind) == "blessing" and String(e.faction) == faction_id and e.armies != blessed:
+				if String(e.kind) == "blessing" and String(e.faction) == faction_id and String(e.id) != same:
 					e.armies = e.armies.filter(func(aid): return not blessed.has(String(aid)))
 					if e.armies.is_empty():
 						continue
@@ -966,13 +971,14 @@ static func ritual_effect(state: GameState, faction_id: String, order) -> Dictio
 
 
 ## Starts an enchantment, or restarts the same ritual of the same faction on the same target (one curse per province,
-## one ward, one sight, one global; a blessing on exactly the same armies): {"id", "restarted"}. A new one takes the
+## one ward, one sight, one global; a blessing on exactly the same armies, wherever it was cast): {"id", "restarted"}. A new one takes the
 ## faction's next enchantment number ("beasts-e3"), and the list stays in id order.
 static func _begin(state: GameState, faction_id: String, ritual: String, kind: String, province_id: String, turn: int, until: int,
 		bonus: int, armies: Array) -> Dictionary:
 	for e in state.enchantments:
-		if String(e.faction) == faction_id and String(e.ritual) == ritual and String(e.province) == province_id \
-				and (kind != "blessing" or Array(e.armies) == armies):
+		var same: bool = Array(e.armies) == armies if kind == "blessing" else String(e.province) == province_id
+		if String(e.faction) == faction_id and String(e.ritual) == ritual and same:
+			e.province = province_id if kind != "global" else ""
 			e.cast_turn = turn
 			e.until_turn = until
 			e.bonus = bonus
@@ -1025,14 +1031,14 @@ static func forecast_ritual(state: GameState, faction_id: String, order, orders:
 		return {"ok": false, "code": String(check.code), "reason": String(check.reason), "effect": {}, "lines": [String(check.reason)],
 			"text": String(check.reason)}
 	var copy := board.deep_copy([])
-	var mine := []
+	var mine := []  # the faction's legal casts in the order given, as the rituals phase takes them (the order among them)
 	var given := []
 	for o in orders:
-		if o is CastOrder and o != order and check_cast(board, faction_id, o, given).is_empty():
+		if o is CastOrder and (o == order or check_cast(board, faction_id, o, given).is_empty()):
 			mine.append(o)
 		given.append(o)
 	if not mine.has(order):
-		mine.append(order)
+		mine.append(order)  # a new order is queued last
 	var effect := {}
 	for item in ritual_queue({faction_id: mine}):
 		var fx := ritual_effect(copy, faction_id, item.order)
@@ -1040,7 +1046,7 @@ static func forecast_ritual(state: GameState, faction_id: String, order, orders:
 			effect = fx
 			break
 	var lines := forecast_lines(board, faction_id, effect, copy)
-	var short := String(lines[0]) if String(effect.outcome) != CAST else Serial.cap(_effect_words(board, copy, faction_id, effect, true))
+	var short := String(lines[0]) if String(effect.outcome) != CAST else brief_words(board, copy, faction_id, effect)
 	return {"ok": true, "code": "", "reason": "", "effect": effect, "lines": lines, "text": " ".join(lines), "effect_text": short}
 
 
@@ -1052,7 +1058,7 @@ static func forecast_lines(state: GameState, faction_id: String, fx: Dictionary,
 	var ritual := String(fx.ritual)
 	var name := spell_name(ritual)
 	var where := _province_name(state, String(fx.target))
-	var head := name if String(fx.target).is_empty() else "%s on %s" % [name, where]
+	var head := name + _target_words(state, fx)
 	var army := state.find_army(String(fx.army))
 	var home := _province_name(state, army.location) if army != null else ""
 	if String(fx.outcome) == TURNED:
@@ -1142,6 +1148,36 @@ static func _effect_words(state: GameState, after: GameState, faction_id: String
 	return ""
 
 
+## What a cast ritual will do, in one short sentence for the orders list (the forecast's hover has the rest): "No healing at
+## Crownkeep, and 12 hit points a turn taken there, through turn 3."
+static func brief_words(state: GameState, after: GameState, faction_id: String, fx: Dictionary) -> String:
+	var where := _province_name(state, String(fx.target))
+	var until := int(fx.until_turn)
+	var n := spell_numbers(String(fx.ritual), int(fx.bonus))
+	match String(fx.kind):
+		"ward":
+			return "Rival rituals aimed at %s are turned aside through turn %d." % [where, until]
+		"curse":
+			return "No healing at %s for anyone not yours, and %d hit points a turn taken there, through turn %d." % [where, int(n.value), until]
+		"blessing":
+			return "Blesses %s through turn %d: %d hit points a turn each." % [_count(Array(fx.blessed).size(), "army", "armies"), until, int(n.value)]
+		"summon":
+			var summon: Dictionary = fx.summon
+			var pack := TurnReportText.army_name(after, String(summon.army), faction_id)
+			if summon_fades(String(summon.type)):
+				return "%d %s at %s, %s, until the end of turn %d." % [int(summon.count), String(MagicData.SUMMONS[summon.type].name), where,
+					pack, int(summon.until)]
+			return "The %s wakes at %s, %s, until it falls." % [String(MagicData.SUMMONS[summon.type].name), where, pack]
+		"raising":
+			var f := after.find_faction(faction_id)
+			return "A fort at %s for good (%d of %d Bastion forts)." % [where, f.bastions.size() if f != null else 0, MagicData.BASTION_CAP]
+		"global":
+			return "Your fighters heal back a quarter of the damage they deal, in every battle through turn %d." % until
+		"sight":
+			return "%s in clear sight on your next 2 turns, through turn %d." % [where, until]
+	return ""
+
+
 ## The blood a ritual_effect result took (§7.1): who gave what, and what it means. `own`: the forecast's words.
 static func _blood_words(state: GameState, faction_id: String, fx: Dictionary, own: bool) -> String:
 	var army := state.find_army(String(fx.army))
@@ -1162,8 +1198,9 @@ static func _blood_words(state: GameState, faction_id: String, fx: Dictionary, o
 		if u != null and is_mage(u.type) and int(g.to) < min_hp:
 			low_mage = true
 	var n: int = fx.gives.size()
-	var text := "Paid in blood: %d of the %d soldiers in %s at %s %s %d hit points (%s), one soldier at a time, never below 1." % [
-		n, regulars, "your army" if own else TurnReportText.army_name(state, String(fx.army), faction_id),
+	var text := "Paid in blood%s: %d of the %d soldiers in %s at %s %s %d hit points (%s), one soldier at a time, never below 1." % [
+		"" if own else " for %s" % spell_name(String(fx.ritual)), n, regulars,
+		"your army" if own else TurnReportText.army_name(state, String(fx.army), faction_id),
 		_province_name(state, army.location) if army != null else "", "give" if own else "gave", int(fx.hp), ", ".join(bits)]
 	if traits.has(AutoBattleResolver.BERSERK):
 		text += " %s wounded: Berserk on." % ("They will be" if own else "They are")
@@ -1182,9 +1219,8 @@ static func cast_text(state: GameState, fx: Dictionary) -> String:
 	var name := spell_name(String(fx.ritual))
 	var army := state.find_army(String(fx.army))
 	var from := "%s at %s" % [TurnReportText.army_name(state, String(fx.army), fid), _province_name(state, army.location) if army else ""]
-	var target := "" if String(fx.target).is_empty() else " on %s" % _province_name(state, String(fx.target))
 	var paid := "for %s" % _price_words(fx)
-	return "%s cast %s%s from %s, %s: %s" % [who, name, target, from, paid, _effect_words(state, state, fid, fx, false)]
+	return "%s cast %s%s from %s, %s: %s" % [who, name, _target_words(state, fx), from, paid, _effect_words(state, state, fid, fx, false)]
 
 
 ## The ritual_turned_aside sentence (§6.3): "The Aurel Crown's Sanctum Ward turned aside the Thornmane Clans' Bloodrot
@@ -1195,9 +1231,17 @@ static func turned_aside_text(state: GameState, fx: Dictionary) -> String:
 		_province_name(state, String(fx.target)), _price_words(fx)]
 
 
-## The blood_paid sentence (§7.1).
+## The blood_paid sentence (§7.1): "Paid in blood for Bloodrot: 2 of the 5 soldiers in the Clans' 3rd at Thornvale gave 15
+## hit points (Tuskers 14 to 1, Tuskers 14 to 12), ..."
 static func blood_text(state: GameState, fx: Dictionary) -> String:
-	return "%s for %s." % [_blood_words(state, String(fx.faction), fx, false).trim_suffix("."), spell_name(String(fx.ritual))]
+	return _blood_words(state, String(fx.faction), fx, false)
+
+
+## " on Crownkeep", or " at Fangridge" for a summon (cast where the caster stands), or "" for no target.
+static func _target_words(state: GameState, fx: Dictionary) -> String:
+	if String(fx.target).is_empty():
+		return ""
+	return " %s %s" % ["at" if String(fx.kind) == "summon" else "on", _province_name(state, String(fx.target))]
 
 
 ## The ritual_fell sentence (§2.8, §11.2), for the faction whose land the ritual fell on: the ritual, the caster's
@@ -1348,10 +1392,11 @@ static func enchantment_step(state: GameState, turn: int) -> Dictionary:
 				stay.append(u)
 		a.units = stay
 		var removed: bool = a.units.is_empty() and a.commander == null and a.ruler == null
+		var engines: int = a.engines if removed else 0  # M3c: siege engines ride only with a fighter, so they go with the army
 		if removed:
 			state.armies.erase(a)
 		out.faded.append({"army": a.id, "faction": a.owner, "province": a.location, "type": gone[0].type.id, "count": gone.size(),
-			"until": gone[0].until, "removed": removed})
+			"until": gone[0].until, "removed": removed, "engines_lost": engines})
 	# The endings.
 	var kept := []
 	for e in state.enchantments:
@@ -1490,6 +1535,9 @@ static func faded_text(state: GameState, f: Dictionary) -> String:
 	var army := TurnReportText.army_name(state, String(f.army), String(f.faction))
 	var text := "%d %s of %s faded at %s at the end of turn %d, as Call the Pack said." % [int(f.count),
 		String(MagicData.SUMMONS.get(f.type, {}).get("name", f.type)), army, _province_name(state, String(f.province)), int(f.until)]
+	if bool(f.removed) and int(f.get("engines_lost", 0)) > 0:
+		return text + " %s is gone, and %s it carried %s lost with it: siege engines ride only with fighters." % [Serial.cap(army),
+			SiegeRules.engines_text(String(f.faction), int(f.engines_lost)), "is" if int(f.engines_lost) == 1 else "are"]
 	return text + (" %s is gone." % Serial.cap(army) if bool(f.removed) else " %s goes on without them." % Serial.cap(army))
 
 
