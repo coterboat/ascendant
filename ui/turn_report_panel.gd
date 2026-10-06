@@ -54,6 +54,8 @@ const PHASE_TITLES := {
 	"capture": "Captures",
 	"recruitment": "Recruitment",
 	"income": "Income",
+	"rituals": "Rituals",  # M5-6
+	"enchantments": "Enchantments",  # M5-6
 	"victory": "Victory",
 }
 const GAME_OVER_TYPE := "game_over"

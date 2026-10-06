@@ -44,7 +44,7 @@ const WHAT := {
 	"border": "A border battle: the Crown and the Clans swap Rivermarch and Greenglade and meet on the border.",
 	"one_round": "A one-round battle: a lone Crown Spearmen holding Rivermarch is swept away in the first round (M3-2's turning point has none).",
 	"mutual_rout": "A mutual rout: both sides break in the same round on the Rivermarch-Greenglade border, and the one with more strength left keeps the field.",
-	"biggest": "The biggest battle measured in AI-vs-AI games with rulers (design/M3_BATTLES.md §1.3): game seed 9, turn 34, 277 fighters, 742 attacks, 3 rounds, rebuilt from the game's record.",
+	"biggest": "The biggest battle measured in AI-vs-AI games with rulers (design/M3_BATTLES.md §1.3): game seed 9, turn 34, 277 fighters, 746 attacks, 3 rounds, rebuilt from the game's record.",
 	"magic_shamans": "Two Thornmane Shamans (Briar Snare and Bloodbolt) with a Clans warband attack the Crown at Rivermarch: the M5-7 playtest battle.",
 	"magic_regent": "The Ever-Regent and two Sunstone Adepts (Sunlance, Shield of Law) march blessed out of Crownkeep to attack the Clans at Rivermarch.",
 	"magic_fort": "Two Sunstone Adepts help hold the Crownkeep fort against the Clans: Shield of Law is skipped behind the walls, so they cast Sunlance.",
@@ -129,7 +129,9 @@ static func shows(name: String, battle_log: Dictionary, report: Dictionary) -> b
 			var attacks := events.filter(func(e): return e.t == "attack").size()
 			# #94 renamed the armies of its game (each faction numbers its own), which reorders who strikes when:
 			# the same 277 fighters now fight 742 attacks over 3 rounds (898 over 4 before), with the same winner.
-			return battle_log.fighters.size() == 277 and attacks == 742 and int(report.rounds_fought) == 3
+			# #131: Blood Frenzy +2 instead of +3 (the Clans' Clan Moot has it) changes who falls when: 746 attacks, same
+			# 3 rounds and winner. Turns 1-33 of the game have no battle, so its record still replays to this battle.
+			return battle_log.fighters.size() == 277 and attacks == 746 and int(report.rounds_fought) == 3
 	return false
 
 

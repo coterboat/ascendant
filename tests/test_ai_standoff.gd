@@ -402,9 +402,10 @@ func test_in_a_standoff_the_weaker_side_raids_an_unguarded_province() -> void:
 # --- whole games -------------------------------------------------------------------------------------
 
 func test_a_game_that_used_to_sit_at_its_capitals_now_ends() -> void:
-	# Regent's Court and the Celestial Host against Blood of the Fang and the Blood Pact, seed 1: before #94
-	# both sides stacked every recruit at home and no battle was fought in 60 turns.
-	var r := Simulator.play_game(1, SEATS, ["ai", "ai"], Simulator.TURN_CAP, Callable(),
+	# Regent's Court and the Celestial Host against Blood of the Fang and the Blood Pact: before #94 both sides
+	# stacked every recruit at home and no battle was fought in 60 turns (seed 1). #131's morale-aware guess
+	# settles seed 1 in an early capital attack with no stand-off, so seed 5 keeps a long stand-off that breaks.
+	var r := Simulator.play_game(5, SEATS, ["ai", "ai"], Simulator.TURN_CAP, Callable(),
 		{"paths": true, "builds": ["regents_court", "blood_of_the_fang"], "branches": ["celestial_host", "blood_pact"]})
 	assert_eq(r.violations, [])
 	assert_eq(r.errors, [])

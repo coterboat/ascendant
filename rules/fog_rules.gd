@@ -1046,6 +1046,22 @@ static func learn(intel: Dictionary, viewer: String, shown: Array, after: GameSt
 				for nid in _log_nodes(e.numbers.get("log", {}), sf):
 					_learn_node(out[sf], nid, turn)
 			continue
+		# M5-6 (§2.6): a rival's ritual that fell on your land, or its global ritual heralded, names a spell it knows; a
+		# Far Sight reading of its capital gives its mandates, nodes and kept power, as of that turn.
+		if t == "ritual_fell" and e.factions.size() > 1 and out.has(String(e.factions[1])):
+			if MagicRules.is_arcana(String(e.numbers.get("ritual", ""))):  # Far Sight is no node: every caster knows it
+				_learn_node(out[String(e.factions[1])], String(e.numbers.ritual), turn)
+			continue
+		if t == "far_sight_reading" and out.has(String(e.numbers.get("of", ""))):
+			var r: Dictionary = e.numbers.get("reading", {})
+			var k: Dictionary = out[String(e.numbers.of)]
+			for m in r.get("mandates", []):
+				_learn_mandate(k, String(m))
+			for nid in r.get("nodes", []):
+				_learn_node(k, String(nid), turn)
+			if r.has("kept_power"):
+				_learn_kept(k, int(r.kept_power), turn)
+			continue
 		if not out.has(fid) and t != "vassal_contested":
 			continue
 		match t:
@@ -1059,6 +1075,9 @@ static func learn(intel: Dictionary, viewer: String, shown: Array, after: GameSt
 				_learn_node(out[fid], String(e.numbers.get("node", "")), int(e.numbers.get("turn", turn)))
 			"ruler_died", "ruler_arrived":
 				_learn_kept(out[fid], int(e.numbers.get("kept_power", 0)), turn)
+			"ritual_cast":  # M5-6: a rival's global ritual, heralded
+				if MagicRules.is_arcana(String(e.numbers.get("ritual", ""))):
+					_learn_node(out[fid], String(e.numbers.ritual), turn)
 	if after_sight.is_empty():
 		after_sight = sight(after, viewer)
 	for fid in out:
@@ -1186,6 +1205,9 @@ static func filter_events(events: Array, viewer: String, before: GameState, afte
 			"rebuilt_if_global":
 				if bool(e.get("numbers", {}).get("global", false)):
 					out.append(_rebuilt(e, before_sight, after_sight, before, after, ins))
+			"rebuilt_named":  # M5-6: only for the factions the event names (a curse's caster hears it bit)
+				if e.get("factions", []).has(viewer):
+					out.append(_rebuilt(e, before_sight, after_sight, before, after, ins))
 			"move":
 				if e.get("factions", []).is_empty() or e.get("armies", []).is_empty() or e.get("provinces", []).size() < 2:
 					continue
@@ -1265,6 +1287,8 @@ static func _rebuilt(e: Dictionary, before_sight: Dictionary, after_sight: Dicti
 			numbers[key] = e.numbers[key] if not (e.numbers[key] is Dictionary or e.numbers[key] is Array) else e.numbers[key].duplicate(true)
 	var provinces := []
 	for pid in e.get("provinces", []):
+		if t == "ritual_cast":
+			break  # M5-6: a heralded global ritual never says where it was cast from
 		if t != "ruler_died" or String(before_sight.get(pid, VEILED)) != VEILED or String(after_sight.get(pid, VEILED)) != VEILED:
 			provinces.append(String(pid))
 	var armies := []
@@ -1377,8 +1401,8 @@ static func text_for(t: String, numbers: Dictionary, provinces: Array, factions:
 			p["walls_max"] = SiegeRules.walls_max(int(numbers.get("level", 0)))
 		"ruler_died", "ruler_arrived":
 			p["name"] = RulerRules._cap(String(numbers.get("name", "")))
-		"ritual_cast", "ritual_fell":
-			p["ritual"] = String(numbers.get("ritual", ""))
+		"ritual_cast", "ritual_fell", "curse_bit":
+			p["ritual"] = MagicRules.spell_name(String(numbers.get("ritual", "")))  # M5-6: the spell's name, never its id
 	return text.format(p)
 
 

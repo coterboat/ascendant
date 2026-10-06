@@ -463,11 +463,14 @@ static func crown_successor(state: GameState, faction_id: String, turn: int) -> 
 ## The rulers phase's ruler healing (§1.7): the faction's living ruler heals ruler_heal_amount of its
 ## maximum hp, never above it. Returns {"army", "province", "name", "healed", "hp_before", "hp_after",
 ## "max_hp", "share"}; "healed" is 0 when it was at full hp, and the dictionary is just {"healed": 0}
-## without a living ruler on the map.
+## without a living ruler on the map. M5-6 (design/M5_MAGIC_FOG.md §6.3): a ruler standing in a rival's curse heals
+## from nothing ({"healed": 0, "cursed": true}).
 static func heal_ruler(state: GameState, faction_id: String) -> Dictionary:
 	if not has_living_ruler(state, faction_id):
 		return {"healed": 0}
 	var army := ruler_army(state, faction_id)
+	if not MagicRules.can_heal(state, faction_id, army.location):
+		return {"healed": 0, "cursed": true}
 	var unit := army.ruler
 	var max_hp := unit.type.hp
 	var before := unit.current_hp
@@ -482,12 +485,16 @@ static func heal_ruler(state: GameState, faction_id: String) -> Dictionary:
 ## there) heals the ability's value at the Regent's ability rank, up to its maximum. Rulers are not
 ## healed by it. Armies go in id order, then units in order, then the commander. Returns {"province",
 ## "rank", "amount", "healed": [{"army", "name", "healed", "hp_after", "max_hp"}], "total", "ruler",
-## "name"}; "healed" is empty when nobody needed it, the ruler is dead, or its ability is another one.
+## "name"}; "healed" is empty when nobody needed it, the ruler is dead, or its ability is another one. M5-6
+## (design/M5_MAGIC_FOG.md §6.3): everyone it would heal stands in the Regent's province, so under a rival's curse there
+## it heals nobody ({"healed": [], "total": 0, "cursed": true}).
 static func apply_mending_light(state: GameState, faction_id: String) -> Dictionary:
 	var f := state.find_faction(faction_id)
 	if f == null or not has_living_ruler(state, faction_id) or String(ruler_data(f.ruler_type).get("ability", "")) != MENDING_LIGHT:
 		return {"healed": [], "total": 0}
 	var regent := ruler_army(state, faction_id)
+	if not MagicRules.can_heal(state, faction_id, regent.location):
+		return {"healed": [], "total": 0, "cursed": true}
 	var rank := ability_rank(f.kept_power)
 	var amount := ability_value(f.ruler_type, rank)
 	var armies: Array = state.armies.duplicate()
@@ -1316,7 +1323,7 @@ const SACRIFICE_NOW := {
 	"sworn_vassals": "From this turn on, one neutral province next to the land of the {faction} swears fealty to it each turn.",
 	"royal_armories": "Every regular unit of the {faction} now has {units}.",
 	"kings_roads": "From this turn on, armies of the {faction} can move two provinces in one turn inside its own land.",
-	"blood_frenzy": "From now on every fighter of the {faction} below its full hit points has +3 attack.",
+	"blood_frenzy": "From now on every fighter of the {faction} below its full hit points has +%d attack." % MandateData.BLOOD_FRENZY_ATTACK,
 	"feast_of_victory": "From now on, after every battle the {faction} wins, its fighters still standing heal to full.",
 	"hymn_of_dawn": "From this turn on, Hallowed Land heals the wounded of the {faction} 6 hit points a turn instead of 3.",
 	"forge_tithe": "Every province with a fort the {faction} owns now earns 4 more gold per turn, starting with this turn's income.",

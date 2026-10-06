@@ -21,7 +21,8 @@ extends SceneTree
 ##                    ever_regent+royal_armories+heavy_tithes+veteran_levies spends all 10), or "roll" to
 ##                    keep that seat's roll
 ##   --independents   play with independents (IND-1, #142): Free Holds garrisons in every neutral province
-##                    (GameState.setup_independents), on top of whatever else is chosen
+##                    (GameState.setup_independents), on top of whatever else is chosen. With --matrix, every
+##                    game has them; with --matrix --paths, band P's games do (P7's M2 games never do)
 ##   --paths          play with paths of ascension (M4; implies --rulers): GameState.with_paths. The computer
 ##                    (ai, ai_easy) researches along its build's plan and rolls its side of the fork with
 ##                    AIPlayer.choose_branch for the seed and seat, as an AI seat does; the report adds wins
@@ -49,8 +50,9 @@ extends SceneTree
 ##
 ## Exit code: 0 when every game ran with no invariant violation, no session error and no script
 ## error; 1 otherwise; 2 for bad arguments. With --matrix: 0 only when band H (integrity) holds; the
-## other bands are reported but don't change the exit code. With --matrix --paths: 0 only when bands P7 (M1
-## and M2 not broken) and P8 (integrity) hold.
+## other bands are reported but don't change the exit code. With --matrix --paths --independents (the balance
+## contract since Alex's 10-5 call on #131): 0 only when bands P7 (M1 and M2 not broken) and P8 (integrity) hold.
+## A plain --matrix --paths run gates on integrity only (P8 and P7's M1/M2 digests); P7's F band is report-only.
 
 const Simulator := preload("res://tools/autoplay/simulator.gd")
 const Policies := preload("res://tools/autoplay/policies.gd")
@@ -124,6 +126,8 @@ func _initialize() -> void:
 			extra += " --builds %s" % ",".join(opts.builds.map(func(b): return "roll" if str(b).is_empty() else str(b)))
 		if opts.branches.any(func(b): return not str(b).is_empty()):
 			extra += " --branches %s" % ",".join(opts.branches.map(func(b): return "roll" if str(b).is_empty() else str(b)))
+	if opts.independents:
+		extra += " --independents"
 	md += "\n- **Run:** `--games %d --seed %d --p1 %s --p2 %s --seat1 %s --turn-cap %d%s`, %.1f s." % [opts.games, opts.seed,
 		opts.policies[0], opts.policies[1], opts.seats[0], opts.turn_cap, extra, seconds]
 	if opts.list:
@@ -304,8 +308,8 @@ func _run_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
 		md += "\n- **Worker problem:** %s" % e
 	if not stray.is_empty():
 		md += "\n- **Script errors outside games:** %d. First: %s" % [stray.size(), stray[0]]
-	md += "\n- **Run:** `--matrix --seed %d --turn-cap %d --scale %s --jobs %d%s`, %d games, %.1f s." % [opts.seed, opts.turn_cap,
-		str(opts.scale), opts.jobs, "" if str(opts.only).is_empty() else " --only " + str(opts.only), results.size(), seconds]
+	md += "\n- **Run:** `--matrix%s --seed %d --turn-cap %d --scale %s --jobs %d%s`, %d games, %.1f s." % [" --independents" if opts.independents else "",
+		opts.seed, opts.turn_cap, str(opts.scale), opts.jobs, "" if str(opts.only).is_empty() else " --only " + str(opts.only), results.size(), seconds]
 	print(md)
 	if not opts.out.is_empty():
 		var f := FileAccess.open(opts.out, FileAccess.WRITE)
@@ -376,8 +380,8 @@ func _run_path_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
 		md += "\n- **Worker problem:** %s" % e
 	if not stray.is_empty():
 		md += "\n- **Script errors outside games:** %d. First: %s" % [stray.size(), stray[0]]
-	md += "\n- **Run:** `--matrix --paths --seed %d --turn-cap %d --scale %s --jobs %d%s`, %d games, %.1f s." % [opts.seed, opts.turn_cap,
-		str(opts.scale), opts.jobs, "" if str(opts.only).is_empty() else " --only " + str(opts.only), results.size(), seconds]
+	md += "\n- **Run:** `--matrix --paths%s --seed %d --turn-cap %d --scale %s --jobs %d%s`, %d games, %.1f s." % [" --independents" if opts.independents else "",
+		opts.seed, opts.turn_cap, str(opts.scale), opts.jobs, "" if str(opts.only).is_empty() else " --only " + str(opts.only), results.size(), seconds]
 	print(md)
 	if not opts.out.is_empty():
 		var f := FileAccess.open(opts.out, FileAccess.WRITE)
@@ -386,9 +390,13 @@ func _run_path_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
 		else:
 			f.store_string(md + "\n")
 			f.close()
-	if not j.ok:
+	# Alex 10-5 (#131): the contract is the MVP config, --independents. A plain run gates on integrity only.
+	var gate_ok: bool = j.ok if opts.independents else bool(j.get("integrity_ok", j.ok))
+	if not gate_ok:
 		printerr("autoplay: band P7 (M1 and M2 not broken) or P8 (integrity) does not hold")
-	quit(0 if j.ok else 1)
+	elif not j.ok:
+		print("autoplay: plain run (no --independents): P7's F band is report-only; the balance contract is --independents")
+	quit(0 if gate_ok else 1)
 
 
 ## Plays the work items, in this process (--jobs 1) or in up to --jobs headless worker processes, and
@@ -398,9 +406,9 @@ func _play_items(items: Array, cells: Array, opts: Dictionary, catcher: ErrorCat
 	if opts.jobs <= 1:
 		for item in items:
 			if opts.paths:
-				out.append_array(PathMatrix.play_item(cells, item, opts.turn_cap, catcher.take))
+				out.append_array(PathMatrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.independents))
 			else:
-				out.append_array(Matrix.play_item(cells, item, opts.turn_cap, catcher.take))
+				out.append_array(Matrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.independents))
 		return out
 	var dir := ProjectSettings.globalize_path(opts.work_dir) if str(opts.work_dir).begins_with("user://") or str(opts.work_dir).begins_with("res://") else str(opts.work_dir)
 	DirAccess.make_dir_recursive_absolute(dir)
@@ -419,6 +427,8 @@ func _play_items(items: Array, cells: Array, opts: Dictionary, catcher: ErrorCat
 				"--turn-cap", str(opts.turn_cap), "--out", path]
 			if opts.paths:
 				args.append("--paths")
+			if opts.independents:
+				args.append("--independents")
 			var pid := OS.create_process(exe, args)
 			if pid <= 0:
 				problems.append("could not start a worker for %s, seeds %d-%d" % [item.cell, item.from, item.from + item.count - 1])
@@ -448,9 +458,9 @@ func _run_worker(opts: Dictionary, catcher: ErrorCatcher) -> void:
 	var results := []
 	if opts.paths:
 		var path_cells := PathMatrix.plan(1.0, opts.seed, true, PathMatrix.load_fixture())
-		results = PathMatrix.play_item(path_cells, item, opts.turn_cap, catcher.take)
+		results = PathMatrix.play_item(path_cells, item, opts.turn_cap, catcher.take, opts.independents)
 	else:
-		results = Matrix.play_item(Matrix.plan(1.0, opts.seed), item, opts.turn_cap, catcher.take)
+		results = Matrix.play_item(Matrix.plan(1.0, opts.seed), item, opts.turn_cap, catcher.take, opts.independents)
 	var stray := catcher.take()
 	OS.remove_logger(catcher)
 	var f := FileAccess.open(opts.out, FileAccess.WRITE)

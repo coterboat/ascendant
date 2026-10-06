@@ -313,15 +313,37 @@ func test_a_human_plays_the_computer_with_rulers_through_the_game_screen() -> vo
 # --- ruler play (§6.3) ----------------------------------------------------------------------------
 
 func test_a_home_ruler_never_leaves_the_capital() -> void:
-	var session := _session(SEATS, {"kingdom": "normal"}, {"beasts": "blood_of_the_fang"}, SEED, {"kingdom": "iron_crown"})
+	# A build of its own (no preset) that keeps LOW_KEPT power or less plays its ruler home.
+	var low := {"ruler": "aurel_king", "mandates": ["heavy_tithes", "muster_grounds"]}
+	assert_eq(RulerRules.kept_after(low), AIPlayer.LOW_KEPT, "the build keeps LOW_KEPT power")
+	var session := _session(SEATS, {"kingdom": "normal"}, {"beasts": "blood_of_the_fang"}, SEED, {"kingdom": low})
+	assert_eq(AIPlayer.preset_for(session.state(), "kingdom").ai_role, "home", "its stand-in plays home")
+	var brain := AIPlayer.new()
+	brain.plan_orders(session.state(), "kingdom", SeededRNG.new(1))
+	assert_true(brain.last_plan_notes().any(func(n): return str(n).contains("stays in Crownkeep")), "%s" % [brain.last_plan_notes()])
 	var ruler_id := RulerRules.ruler_army(session.state(), "kingdom").id
 	var computer := _play(session, 20)
 	assert_eq(computer.rejections(), [])
 	for o in _orders_of(session, "kingdom"):
-		assert_false(o.type == "move" and o.army == ruler_id, "the 0-kept King never moves: %s" % o)
+		assert_false(o.type == "move" and o.army == ruler_id, "the low-kept King never moves: %s" % o)
 	var s := session.state()
 	if RulerRules.has_living_ruler(s, "kingdom"):
 		assert_eq(RulerRules.ruler_army(s, "kingdom").location, "crownkeep")
+
+
+## #131: a spend preset's ruler keeps no power, but its mandates outlive it, so it marches with the main army
+## (kept home, Iron Crown's King and Clan Moot's Chieftain never fought).
+func test_a_spend_presets_ruler_marches_to_war() -> void:
+	for fid in ["kingdom", "beasts"]:
+		var spend: Dictionary = RulerRules.presets_for(fid).filter(func(p): return str(p.style) == "spend")[0]
+		assert_eq(RulerRules.kept_after(RulerRules.preset_build(str(spend.id))), 0, "%s keeps no power" % spend.name)
+		assert_eq(str(spend.ai_role), "field", "%s's ruler marches" % spend.name)
+	var session := _session(SEATS, {"kingdom": "normal"}, {"beasts": "blood_of_the_fang"}, SEED, {"kingdom": "iron_crown"})
+	var ruler_id := RulerRules.ruler_army(session.state(), "kingdom").id
+	var computer := _play(session, 20)
+	assert_eq(computer.rejections(), [])
+	assert_true(_orders_of(session, "kingdom").any(func(o): return o.type == "move" and o.army == ruler_id),
+		"Iron Crown's 0-kept King leaves Crownkeep with the army")
 
 
 func test_a_field_ruler_marches_with_the_strongest_army() -> void:
@@ -609,7 +631,8 @@ func test_notes_cover_build_ruler_sacrifice_and_mandates_with_no_raw_ids() -> vo
 				assert_true(brains[fid].last_plan_notes().size() <= AIPlayer.MAX_NOTES)
 				session.end_turn()
 	assert_true(seen > 50, "plans explain themselves (%d notes)" % seen)
-	for words in ["plays Warrior King", "plays Iron Crown", "stays in Crownkeep", "with the main army", "King's Roads", "Recruiting with the Ninth Fang"]:
+	# #131: Iron Crown's King marches now; a home ruler's "stays in Crownkeep" is checked in test_a_home_ruler_never_leaves_the_capital.
+	for words in ["plays Warrior King", "plays Iron Crown", "with the main army", "King's Roads", "Recruiting with the Ninth Fang"]:
 		assert_true(text.contains(words), "a note says '%s'" % words)
 
 

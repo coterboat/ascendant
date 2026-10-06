@@ -87,6 +87,11 @@ const AUDIENCE := {
 	# magic (M5-6 emits these): a Bastion fort is public; a global ritual is heralded (numbers "global": true)
 	"fort_raised": {"whole": "actor", "others": "rebuilt"},
 	"ritual_cast": {"whole": "actor", "others": "rebuilt_if_global"},
+	# M5-6: a curse's bite goes whole to the faction bitten (its first faction); the caster, named second, hears that it
+	# bit, rebuilt with no count of what stands there ("rebuilt_named": only factions the event names). Every other
+	# ritual event (ritual_fell to the land's owner, the caster's own casts, payments, readings, heals) goes to its
+	# first faction alone, the default.
+	"curse_bit": {"whole": "actor", "others": "rebuilt_named"},
 	# the end of the game: the fog lifts (§2.1)
 	"game_over": {"whole": "all", "others": "none"},
 }
@@ -109,6 +114,7 @@ const SAFE_NUMBERS := {
 	"fort_raised": ["province"],
 	"ritual_cast": ["ritual", "until_turn"],
 	"ritual_fell": ["ritual", "faction", "until_turn", "budget"],
+	"curse_bit": ["ritual", "until_turn", "budget", "province"],
 	"move": ["faction", "from", "to", "total", "types"],
 }
 
@@ -135,6 +141,7 @@ const TEXT := {
 	"fort_raised": "{faction} raised a fort at {province} (Bastion).",
 	"ritual_cast": "{faction} cast {ritual}, in effect through turn {until_turn}.",
 	"ritual_fell": "{ritual} fell on {province} ({faction}), through turn {until_turn}.",
+	"curse_bit": "Your {ritual} bit {faction}'s fighters at {province}: it takes up to {budget} hit points a turn from them, through turn {until_turn}.",
 	"move": "An army of {faction} ({total} fighters: {types}) marched from {from} to {to}.",
 	"move_away": "An army of {faction} ({total} fighters: {types}) marched out of {from} toward {to}, out of your sight.",
 	# synthetic events (§2.8): what is left over between the view before the turn and the view after it

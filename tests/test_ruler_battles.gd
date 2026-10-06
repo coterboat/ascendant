@@ -600,7 +600,7 @@ func test_blood_frenzy_works_only_below_full_hp_and_stacks_with_berserk() -> voi
 	var env := {"terrain": "plains", "fort": false}
 	var sides := _built(s, "rivermarch")
 	var bonus: int = RulerRules.mandate_data("blood_frenzy").wounded_attack
-	assert_eq(bonus, 3)
+	assert_eq(bonus, MandateData.BLOOD_FRENZY_ATTACK)
 	for f in sides[0].fighters:
 		assert_false(AutoBattleResolver._attack(f, sides[0], env).parts.has("mandate_blood_frenzy"), "%s at full hp: no frenzy" % f.name)
 	band.units[0].current_hp -= 1
@@ -612,7 +612,8 @@ func test_blood_frenzy_works_only_below_full_hp_and_stacks_with_berserk() -> voi
 		var atk := AutoBattleResolver._attack(f, sides[0], env)
 		assert_eq(atk.parts.get("mandate_blood_frenzy", 0), bonus, "wounded %s is in a frenzy" % f.name)
 	var tusker := AutoBattleResolver._attack(_fighter_named(sides[0], "Tuskers"), sides[0], env)
-	assert_eq(int(tusker.parts.get("Berserk", 0)) + int(tusker.parts.get("mandate_blood_frenzy", 0)), 6, "a wounded Tusker: +6")
+	assert_eq(int(tusker.parts.get("Berserk", 0)) + int(tusker.parts.get("mandate_blood_frenzy", 0)), AutoBattleResolver.BERSERK_ATTACK + bonus,
+		"a wounded Tusker: Berserk and Blood Frenzy")
 	# The enemy's wounds don't count: only the side with the mandate.
 	var crown := _fighter_named(sides[1], "Spearmen")
 	crown.hp -= 1
@@ -696,7 +697,7 @@ func test_a_constructed_battle_names_a_mandate_as_its_top_why() -> void:
 	assert_true(fs > 0, "Blood Frenzy tops the why on some seed")
 	if fs > 0:
 		var r := _fight(frenzy, "rivermarch", fs)
-		assert_true(String(r.report.why).begins_with("Blood Frenzy gave Thornmane Clans' wounded fighters +3 attack, adding about "), r.report.why)
+		assert_true(String(r.report.why).begins_with("Blood Frenzy gave Thornmane Clans' wounded fighters +%d attack, adding about " % MandateData.BLOOD_FRENZY_ATTACK), r.report.why)
 	# Royal Armories: a line of Crossbowmen behind a Spearman against Tuskers.
 	var ra := _game({"kingdom": {"ruler": "aurel_king", "mandates": ["royal_armories"]}})
 	_army(ra, "kingdom-1", "kingdom", "rivermarch", ["crossbowmen", "crossbowmen", "crossbowmen", "crossbowmen", "spearmen", "crossbowmen"])
@@ -941,6 +942,13 @@ func test_the_codex_states_the_battle_rules_with_rulers() -> void:
 	assert_false(rank.contains("only once every front-rank fighter on his side has fallen"), "the old rule is gone")
 	assert_true(RulesCodex.text("ability_dread").contains("while the avatar stands"))
 	assert_true(RulesCodex.text("mandate_blood_frenzy").contains("+%d attack" % RulerRules.mandate_data("blood_frenzy").wounded_attack))
+	# #131: Blood Frenzy's number lives in MandateData.BLOOD_FRENZY_ATTACK; every text a player reads follows it.
+	var frenzy: int = RulerRules.mandate_data("blood_frenzy").wounded_attack
+	var with_berserk := "for +%d." % (frenzy + AutoBattleResolver.BERSERK_ATTACK)
+	assert_true(String(RulerRules.mandate_data("blood_frenzy").effect).contains("+%d attack" % frenzy), "the build screen's line")
+	assert_true(String(RulerRules.mandate_data("blood_frenzy").effect).contains(with_berserk), "the build screen's line")
+	assert_true(RulesCodex.text("mandate_blood_frenzy").contains(with_berserk), "the codex")
+	assert_true(String(RulerRules.SACRIFICE_NOW.blood_frenzy).contains("+%d attack" % frenzy), "the sacrifice report")
 	assert_true(RulesCodex.text("mandate_drilled_ranks").contains("%d%%" % RulerRules.mandate_data("drilled_ranks").base_hit))
 	assert_true(String(RulerRules.mandate_data("drilled_ranks").effect).contains("%d%%" % RulerRules.mandate_data("drilled_ranks").base_hit))
 	for id in ["battle_rounds", "battle_morale", "battle_commanders", "battle_hit_chance", "ruler_rank", "ruler_in_battle", "ability_dread"]:
