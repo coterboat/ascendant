@@ -1323,7 +1323,7 @@ const SACRIFICE_NOW := {
 	"sworn_vassals": "From this turn on, one neutral province next to the land of the {faction} swears fealty to it each turn.",
 	"royal_armories": "Every regular unit of the {faction} now has {units}.",
 	"kings_roads": "From this turn on, armies of the {faction} can move two provinces in one turn inside its own land.",
-	"blood_frenzy": "From now on every fighter of the {faction} below its full hit points has +3 attack.",
+	"blood_frenzy": "From now on every fighter of the {faction} below its full hit points has +%d attack." % MandateData.BLOOD_FRENZY_ATTACK,
 	"feast_of_victory": "From now on, after every battle the {faction} wins, its fighters still standing heal to full.",
 	"hymn_of_dawn": "From this turn on, Hallowed Land heals the wounded of the {faction} 6 hit points a turn instead of 3.",
 	"forge_tithe": "Every province with a fort the {faction} owns now earns 4 more gold per turn, starting with this turn's income.",

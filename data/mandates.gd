@@ -21,6 +21,10 @@ class_name MandateData
 
 ## A mandate bought by a mid-game sacrifice costs its price plus this (§2.4).
 const SACRIFICE_PREMIUM := 1
+## Blood Frenzy's attack for every fighter below its maximum hp (§2.3). #131: 3 -> 2. Once the computer judged
+## battles fairly (the morale-aware guess), the Clans' Blood Frenzy builds won more than their share; +2 keeps a
+## wounded Tusker's damage step (attack 11 + 2 = 13, like 14, deals 7) and only lowers its hit chance.
+const BLOOD_FRENZY_ATTACK := 2
 
 ## In the build screen's order: the six shared mandates, then each faction's two.
 const MANDATES: Array[Dictionary] = [
@@ -70,9 +74,9 @@ const MANDATES: Array[Dictionary] = [
 	},
 	{
 		"id": "blood_frenzy", "name": "Blood Frenzy", "faction": "beasts", "cost": 3, "area": "battle",
-		"effect": "Your fighters below full hit points have +3 attack. A Tusker's Berserk adds to it, for +6.",
+		"effect": "Your fighters below full hit points have +2 attack. A Tusker's Berserk adds to it, for +5.",
 		"codex": "mandate_blood_frenzy",
-		"wounded_attack": 3,
+		"wounded_attack": BLOOD_FRENZY_ATTACK,
 	},
 	{
 		"id": "feast_of_victory", "name": "Feast of Victory", "faction": "beasts", "cost": 3, "area": "battle",

@@ -133,7 +133,9 @@ static func fixture_from(results: Array, base_seed: int, turn_cap: int, note: St
 
 ## Plays one work item ({"cell", "from", "count"}) and returns its results (play_game results without
 ## "final_state", each with "cell", "band", "pairing" and "branches" (the forced sides, in seat order) added).
-static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Callable = Callable()) -> Array:
+## `independents` plays band P's games with Free Holds garrisons (IND-1, #142; --matrix --paths --independents);
+## band P7's games never have them, since they are compared with M2 records made without.
+static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Callable = Callable(), independents := false) -> Array:
 	var cell := find_cell(cells, str(item.cell))
 	var out := []
 	if cell.is_empty():
@@ -141,7 +143,8 @@ static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Call
 	for i in int(item.count):
 		var game_seed: int = int(item.from) + i
 		var options := {"rulers": true, "builds": cell.builds.duplicate(), "paths": bool(cell.paths), "branches": cell.branches.duplicate(),
-			"replay_check": (game_seed - int(cell.seed)) % REPLAY_EVERY == 0, "record_digest": str(cell.band) == "P7"}
+			"replay_check": (game_seed - int(cell.seed)) % REPLAY_EVERY == 0, "record_digest": str(cell.band) == "P7",
+			"independents": independents and str(cell.band) == "P"}
 		var r := Simulator.play_game(game_seed, cell.seats, [POLICY, POLICY], int(cell.get("turn_cap", turn_cap)), probe, options)
 		r.erase("final_state")
 		r["cell"] = str(cell.id)
@@ -431,7 +434,10 @@ static func judge(results: Array, stray_errors: int = 0, fixture: Dictionary = {
 		"result": "%d violations, %d session errors, %d script errors; %d of %d replays identical (%d games); research forecasts: %d mismatches in %d turn checks and %d target checks" % [
 			viol, errs, scr, replays - replay_bad.size(), replays, results.size(), mismatches, checks.turn_checks, checks.target_checks],
 		"status": "pass" if p8_ok else "miss", "detail": p8_detail})
-	return {"bands": bands, "ok": p7_ok and p8_ok, "pairings": pairings, "sides": _sides(p_res), "presets": _presets(p_res),
+	# Alex 10-5 (#131): the MVP plays with independents, so a run with --independents is the balance contract.
+	# A plain run still gates on integrity (P8, and P7's M1/M2 digests) but reports P7's F band only.
+	var integrity_ok := p8_ok and not m2_res.is_empty() and same == m2_res.size()
+	return {"bands": bands, "ok": p7_ok and p8_ok, "integrity_ok": integrity_ok, "pairings": pairings, "sides": _sides(p_res), "presets": _presets(p_res),
 		"p_results": p_res}
 
 

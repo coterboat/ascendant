@@ -53,8 +53,10 @@ extends RefCounted
 ##     defenders' odds are close or a likely loss), or from turn SACRIFICE_TURN when our income is at
 ##     most SACRIFICE_INCOME_SHARE of the strongest enemy's. The rest of the plan is made on the state
 ##     with the sacrifice applied (RulerRules.with_sacrifice), the state OrderBook checks it against.
-##   * Ruler: the ruler's army is planned on its own, never as part of a group. A ruler keeping
-##     LOW_KEPT power or less, or with the "home" role, stays at (or walks back to) the capital. A
+##   * Ruler: the ruler's army is planned on its own, never as part of a group. A ruler with the "home"
+##     role, or on a build of its own keeping LOW_KEPT power or less, stays at (or walks back to) the
+##     capital. A preset's ruler plays its preset's role (#131: every preset's is "field", the spend
+##     presets' 0-kept rulers too, since mandates outlive a ruler). A
 ##     "field" ruler goes with the strongest army (hp x attack), joins its attack only when the
 ##     forecast with the ruler is RULER_JOIN_WIN or better, and never ends a turn alone next to an
 ##     enemy army or where the forecast as defender is below RULER_GUARD_WIN; otherwise it holds or
@@ -69,9 +71,13 @@ extends RefCounted
 ##   * Our own ruler is left out of the rough strength guess and enemy rulers are counted in it, which
 ##     errs on the safe side whether or not battles count rulers yet; every battle that risks our ruler
 ##     is checked with the forecast, which fights the real battle rules.
+##   * The rough strength guess (#131, every game) judges when a side breaks as the battle rules do: its
+##     commander's, Inspire's and its ruler's morale, less the foe's Fury and Dread; Iron Discipline holds
+##     while a commander stands; Drilled Ranks' base hit; unit numbers from RulerRules.unit_stats.
 ##
-## Games with paths (M4, design/M4_ASCENSION.md §8; ticket M4-5, #70). Nothing below runs without paths,
-## so M1 and M2 games (and their records) are unchanged:
+## Games with paths (M4, design/M4_ASCENSION.md §8; ticket M4-5, #70). #131: the unit numbers, the hp a
+## recruit arrives with and the threats by road move below hold in every game (they are the rules' own and
+## so are right without paths too); the rest runs only with paths:
 ##   * Research: the build preset's plan (AIPaths.AI_PATHS): its ordinary nodes, then the chosen side's
 ##     Oath and transformation, then the rest. A ResearchOrder only when our own target is empty or off the
 ##     plan, pre-checked with AscensionRules.check_research. The side of the fork is choose_branch, a seeded
@@ -158,8 +164,10 @@ const EASY_SKIP := 0.3
 const JITTER := {"easy": 4.0, "normal": 3.0}
 const MAX_NOTES := 14
 
-## M2 (design/M2_RULER.md §6.3). A ruler keeping this much power or less is too easy to kill to risk
-## in the field: it stays at or near the capital, whatever its preset's role.
+## M2 (design/M2_RULER.md §6.3). A ruler on a build of its own (no preset) keeping this much power or less
+## is too easy to kill to risk in the field: it stays at or near the capital. #131: a preset's ruler plays the
+## preset's role instead, so the spend presets' 0-kept rulers march: losing one costs nothing, since a
+## faction's mandates outlive its ruler, and kept home they never fought.
 const LOW_KEPT := 2
 ## Our ruler joins an attack only when the forecast, with the ruler fighting, is at least this.
 const RULER_JOIN_WIN := 0.65
@@ -463,7 +471,7 @@ func _begin(state: GameState, faction_id: String, rng: SeededRNG, difficulty: St
 	_arrival = {}
 	if _paths:
 		_branch = _plan_branch()
-		_build_ctx()
+	_build_ctx()  # #131: every game, not only with paths: the battle rules' numbers are the same
 
 
 ## Sorts the state's armies into ours (_mine, without our ruler's army), our ruler's army and the foes'.
@@ -501,8 +509,7 @@ func _rebase(state: GameState) -> void:
 	_busy = {}
 	_collect_armies()
 	_foe_cache = {}
-	if _paths:
-		_build_ctx()  # a sacrifice can change unit numbers (Royal Armories, Veteran Levies)
+	_build_ctx()  # a sacrifice can change unit numbers (Royal Armories, Veteran Levies)
 
 
 func _bfs(from_id: String) -> Dictionary:
@@ -1728,9 +1735,11 @@ func _note_build() -> void:
 
 
 ## "home" (the ruler stays at or near the capital) or "field" (it goes with the strongest army): the
-## preset's role, but a ruler keeping LOW_KEPT power or less always plays home.
+## preset's role. A build of its own (preset_for's stand-in) plays home while it keeps LOW_KEPT power or less.
 func _ruler_role() -> String:
-	if _preset.is_empty() or RulerRules.kept_power(_state, _fid) <= LOW_KEPT:
+	if _preset.is_empty():
+		return "home"
+	if String(_preset.get("id", "")).is_empty() and RulerRules.kept_power(_state, _fid) <= LOW_KEPT:
 		return "home"
 	return String(_preset.get("ai_role", "home"))
 
@@ -2054,15 +2063,21 @@ func _build_ctx() -> void:
 			forest += 1
 	var disciplined := {}
 	var frenzy := {}
+	var base_hit := {}
+	var dread := {}
 	for f in _state.factions:
 		var fx := RulerRules.battle_effects(_state, f.id)
 		disciplined[f.id] = fx.iron_discipline
 		frenzy[f.id] = int(fx.wounded_attack)  # #94: Blood Frenzy, for every fighter below its maximum hp
+		base_hit[f.id] = int(fx.base_hit)  # #131: Drilled Ranks
+		dread[f.id] = RulerRules.dread_value(_state, f.id)  # #131: its ruler's Dread, while it stands
 	_ctx = {"stats": stats, "front": front.size(), "forest": forest, "iron_discipline": disciplined, "frenzy": frenzy,
+		"base_hit": base_hit, "dread": dread,
 		"forest_share": float(forest) / float(front.size()) if not front.is_empty() else 0.0}
 
 
-## A unit's attack, defense and morale for this plan: unit_stats' totals in a game with paths, else its type's.
+## A unit's attack, defense and morale for this plan: unit_stats' totals (mandates and path parts), or its type's
+## for a type unit_stats doesn't know.
 func _eff(u: Unit) -> Dictionary:
 	var st: Dictionary = _ctx.get("stats", {}).get(u.owner + "|" + u.type.id, {})
 	if st.is_empty():
@@ -2070,25 +2085,20 @@ func _eff(u: Unit) -> Dictionary:
 	return st
 
 
-## A recruit of `ut` as a unit, for the recruit plan's guesses: at its type's hp without paths (as before);
-## with paths at the hp the recruitment phase gives it (its maximum with every part, less Blood Levy's share).
+## A recruit of `ut` as a unit, for the recruit plan's guesses, at the hp the recruitment phase gives it (its
+## maximum with every part, Veteran Levies included, less Blood Levy's share).
 func _recruit_unit(ut: UnitType) -> Unit:
 	var u := Unit.new(ut, _fid)
-	if not _paths:
-		return u
 	if not _arrival.has(ut.id):
 		_arrival[ut.id] = AscensionRules.arrival_hp(_state, _fid, ut, RulerRules.unit_max_hp(_state, u))
 	u.current_hp = int(_arrival[ut.id])
 	return u
 
 
-## Enemy armies that could reach `pid` this turn: those next to it, and in a game with paths also those two
-## provinces off with a legal road move into it (King's Roads or Forest Stride, RulerRules.road_vias from
-## their side). Without paths exactly _foes_next_to.
+## Enemy armies that could reach `pid` this turn: those next to it, and those two provinces off with a legal
+## road move into it (King's Roads or Forest Stride, RulerRules.road_vias from their side).
 func _threats_to(pid: String) -> Array:
 	var near := _foes_next_to(pid)
-	if not _paths:
-		return near
 	if _threat_cache.has(pid):
 		return _threat_cache[pid].duplicate()
 	var by_road := {}
@@ -2515,60 +2525,64 @@ func _scratch_with(placed: Array, pid: String) -> GameState:
 ## before it breaks x the damage it deals per round. Only unit stats from the state go in. The damage
 ## per attack follows the shape of the published battle rules (RulesCodex: hit chance rises with
 ## attack over defense, damage is about half the attack minus a quarter of the defense) and the
-## breaking point rises with morale; the exact numbers, terrain, forts and traits are left to
+## breaking point is the battle rules' own (#131): BREAK_BASE_PCT plus MORALE_PCT_PER_POINT for each
+## point of the side's morale with its commander, Inspire and ruler, less the foe's Fury and Dread, and
+## Iron Discipline's no-rout while a commander stands. Terrain, forts and most traits are left to
 ## Forecast.battle_odds, which decides every battle that matters.
 func _power_units(units: Array, foe_units: Array) -> float:
 	if units.is_empty():
 		return 0.0
-	if _paths:
-		return _power_units_paths(units, foe_units)
-	var foe_def := _avg_defense(foe_units)
-	var hp := 0.0
-	var dmg := 0.0
-	var morale := 0.0
-	var regulars := 0
-	var led := false
-	for u in units:
-		hp += u.current_hp
-		dmg += _pressure(u.type.attack, foe_def)
-		if u.type.is_commander:
-			led = true
-		else:
-			morale += u.type.morale
-			regulars += 1
-	var m := morale / regulars if regulars > 0 else 10.0
-	if led:
-		m += 2.0
-	return hp * clampf(0.2 + 0.05 * m, 0.25, 0.95) * dmg
-
-
-## _power_units in a game with paths (M4): the same guess with each type's numbers from RulerRules.unit_stats
-## (mandates and path parts: Iron Knights' +4 defense, Arbalests' +2 attack, Sunspears' +2 morale, ...).
-func _power_units_paths(units: Array, foe_units: Array) -> float:
 	var hp := 0.0
 	var def_total := 0.0
+	var foe_bears := 0
+	var foe_dread := 0
 	for u in foe_units:
 		hp += u.current_hp
 		def_total += u.current_hp * int(_eff(u).defense)
+		if u.type.trait_id == AutoBattleResolver.FURY:
+			foe_bears += 1
+		if u.type.is_ruler:
+			foe_dread = maxi(foe_dread, int(_ctx.get("dread", {}).get(u.owner, 0)))
 	var foe_def := def_total / hp if hp > 0.0 else 0.0
+	var fid: String = units[0].owner
+	var base_hit := int(_ctx.get("base_hit", {}).get(fid, AutoBattleResolver.BASE_HIT))
 	hp = 0.0
 	var dmg := 0.0
 	var morale := 0.0
 	var regulars := 0
+	var best := 0
 	var led := false
+	var inspire := false
+	var ruler := false
 	for u in units:
 		var st := _eff(u)
 		hp += u.current_hp
-		dmg += _pressure(int(st.attack) + _wounded_attack(u), foe_def)
-		if u.type.is_commander:
+		dmg += _pressure(int(st.attack) + _wounded_attack(u), foe_def, base_hit)
+		if u.type.is_ruler:
+			ruler = true
+			best = maxi(best, int(st.morale))
+		elif u.type.is_commander:
 			led = true
+			inspire = inspire or u.type.trait_id == AutoBattleResolver.INSPIRE
+			best = maxi(best, int(st.morale))
 		else:
 			morale += int(st.morale)
 			regulars += 1
-	var m := morale / regulars if regulars > 0 else 10.0
+	# #131: the morale the battle rules give a side (AutoBattleResolver._morale): its commander's, Inspire's and its
+	# ruler's, less the foe's Fury and Dread. They decide when a side breaks, and the rough guess used to leave them out.
+	var m := morale / regulars if regulars > 0 else float(best)
 	if led:
-		m += 2.0
-	return hp * clampf(0.2 + 0.05 * m, 0.25, 0.95) * dmg
+		m += AutoBattleResolver.COMMANDER_MORALE
+	if inspire:
+		m += AutoBattleResolver.INSPIRE_MORALE
+	if ruler:
+		m += RulerData.RULER_MORALE
+	m -= mini(AutoBattleResolver.FURY_MAX, AutoBattleResolver.FURY_MORALE * foe_bears) + foe_dread
+	var hold := clampf(AutoBattleResolver.BREAK_BASE_PCT + AutoBattleResolver.MORALE_PCT_PER_POINT * m,
+		AutoBattleResolver.MIN_BREAK_PCT, AutoBattleResolver.MAX_BREAK_PCT) / 100.0
+	if led and bool(_ctx.get("iron_discipline", {}).get(fid, false)):
+		hold = AutoBattleResolver.MAX_BREAK_PCT / 100.0  # Iron Discipline: no rout while a commander stands
+	return hp * hold * dmg
 
 
 ## The attack a unit gets for being below its maximum hp now (paths, #94): Berserk's BERSERK_ATTACK and its
@@ -2583,10 +2597,10 @@ func _wounded_attack(u: Unit) -> int:
 	return bonus
 
 
-## Rough expected damage of one attack with `attack` against `foe_def` defense.
-static func _pressure(attack: int, foe_def: float) -> float:
+## Rough expected damage of one attack with `attack` against `foe_def` defense, with `base_hit` (Drilled Ranks).
+static func _pressure(attack: int, foe_def: float, base_hit: int = AutoBattleResolver.BASE_HIT) -> float:
 	var atk := float(attack)
-	var hit := clampf(0.6 + 0.04 * (atk - foe_def), 0.3, 0.9)
+	var hit := clampf(base_hit / 100.0 + 0.04 * (atk - foe_def), 0.3, 0.9)
 	return hit * maxf(1.0, ceilf(atk * 0.5) - floorf(foe_def * 0.25))
 
 
