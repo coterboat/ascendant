@@ -93,11 +93,37 @@ func test_every_event_type_follows_the_audience_table() -> void:
 		for v in Kit.SEATS:
 			_expect(e, v, FogRules.filter_events([e], v, s, s), s)
 		types[String(e.type)] = true
+	var border := _border_battle_turn()
+	for e in border.events:
+		for v in Kit.SEATS:
+			_expect(e, v, FogRules.filter_events([e], v, border.before, border.after), border.before)
+		types[String(e.type)] = true
 	for t in FogData.AUDIENCE:
 		if not ["fort_raised", "ritual_cast"].has(t):  # magic's events arrive with M5-6
 			assert_true(types.has(t), "event type %s was checked" % t)
 	for t in ["army_moved", "battle", "captured", "recruited", "income"]:
 		assert_true(types.has(t), "the fog games reached %s" % t)
+
+
+## A real border battle, resolved in a game with fog: two armies swap across the Thornvale-Wildmoor border. The fog
+## games need not reach one (since #131 the computer fights none in them), and its numbers are a real battle's.
+func _border_battle_turn() -> Dictionary:
+	var s := GameState.new(8)
+	s.setup_fog([])
+	s.armies.clear()
+	for spec in [["kingdom-1", CROWN, "thornvale", "spearmen"], ["beasts-1", CLANS, "wildmoor", "war_bear"]]:
+		var a := Army.new()
+		a.id = spec[0]
+		a.owner = spec[1]
+		a.location = spec[2]
+		a.units.append(Unit.new(TurnResolver.recruitable_type(s.find_faction(a.owner), spec[3]), a.owner))
+		s.armies.append(a)
+	s.find_province("thornvale").owner = CROWN
+	s.find_province("wildmoor").owner = CLANS
+	var r := TurnResolver.resolve(s, {CROWN: [MoveOrder.new("kingdom-1", "wildmoor")], CLANS: [MoveOrder.new("beasts-1", "thornvale")]},
+		1, AutoBattleResolver.new())
+	assert_eq(r.events.filter(func(e): return e.type == "border_battle").size(), 1, "the swap fights on the border")
+	return {"before": s, "after": r.new_state, "events": r.events}
 
 
 func test_rebuilt_events_hold_only_safe_numbers_and_template_text() -> void:

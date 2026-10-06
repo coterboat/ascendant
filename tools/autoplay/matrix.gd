@@ -6,7 +6,8 @@ extends RefCounted
 ##   godot --headless --path . -s tools/autoplay/autoplay.gd -- --matrix --jobs 8
 ##
 ## What is played (cells: one build per seat, one seat order, a run of seeds):
-##   B   every Crown preset against every Clans preset, PAIR_GAMES per pairing (half per seat order).
+##   B   every Crown preset against every Clans preset, PAIR_GAMES per pairing (half per seat order). Band B
+##       itself is report only (#131): both seats run the same AI, so its pairings barely vary.
 ##   A2  the explicit same-ruler builds (A2_RULERS: the ruler keeping all 10, and the ruler with its
 ##       faction's spend preset's mandates) against every preset of the other faction, PAIR_GAMES per
 ##       build. A build that is already a preset is not played again: its band B games count.
@@ -142,8 +143,9 @@ static func work_items(cells: Array, offset_by_cell: Dictionary = {}) -> Array:
 
 
 ## Plays one work item and returns its results (play_game results without "final_state", each with
-## "cell" and "band" added). `probe` files logged errors under each game, as in autoplay.gd.
-static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Callable = Callable()) -> Array:
+## "cell" and "band" added). `probe` files logged errors under each game, as in autoplay.gd. `independents` plays
+## every game with Free Holds garrisons in the neutral provinces (IND-1, #142; autoplay.gd --matrix --independents).
+static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Callable = Callable(), independents := false) -> Array:
 	var cell := find_cell(cells, str(item.cell))
 	var out := []
 	if cell.is_empty():
@@ -151,7 +153,8 @@ static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Call
 	for i in int(item.count):
 		var game_seed: int = int(item.from) + i
 		# Every REPLAY_EVERY-th game of a cell, its first included, is replayed from its record (band H).
-		var options := {"rulers": true, "builds": cell.builds.duplicate(), "replay_check": (game_seed - int(cell.seed)) % REPLAY_EVERY == 0}
+		var options := {"rulers": true, "builds": cell.builds.duplicate(), "replay_check": (game_seed - int(cell.seed)) % REPLAY_EVERY == 0,
+			"independents": independents}
 		var r := Simulator.play_game(game_seed, cell.seats, [POLICY, POLICY], turn_cap, probe, options)
 		r.erase("final_state")
 		r["cell"] = str(cell.id)
@@ -300,8 +303,11 @@ static func judge(results: Array, stray_errors: int = 0) -> Dictionary:
 			if share > B_MAX + 0.000001:
 				b_ok = false
 	var b_over := pairings.filter(func(pr): return _ratio(maxi(pr.a_wins, pr.b_wins), pr.decisive) > B_MAX + 0.000001).size()
-	bands.append({"band": "B", "what": "no dominant preset (9 Crown x Clans pairings)", "target": "none above 65%",
-		"result": "worst: %s; %d of %d pairings over" % [worst.text, b_over, pairings.size()], "status": "pass" if b_ok else "miss", "detail": ""})
+	# #131 (Alex, 2026-10-04): report only. Both seats run the same AIPlayer, so a pairing's games differ only in
+	# the dice and its share snaps toward 0% or 100% (see "distinct endings"); it is reported, never failed.
+	bands.append({"band": "B", "what": "no dominant preset (9 Crown x Clans pairings; report only: both seats run the same AI)",
+		"target": "report (none above 65%)", "result": "worst: %s; %d of %d pairings over" % [worst.text, b_over, pairings.size()],
+		"status": "report", "detail": "" if b_ok else "%d of %d pairings above 65%%: reported, not failed (#131)" % [b_over, pairings.size()]})
 
 	# C: factions (report only).
 	var crown_w := 0

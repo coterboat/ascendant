@@ -297,7 +297,8 @@ func test_the_enemy_column_reads_its_mandates_in_the_third_person() -> void:
 	map.open_ruler_panel()
 	var enemy := map.ruler_panel.columns.find_child("Column_beasts", false, false)
 	var expected := {"iron_discipline": "Its side never breaks (routs) while one of its commanders in that battle stands, except at the end of the last round.",
-		"blood_frenzy": "Its fighters below full hit points have +3 attack. A Tusker's Berserk adds to it, for +6.",
+		"blood_frenzy": "Its fighters below full hit points have +%d attack. A Tusker's Berserk adds to it, for +%d." % [
+			MandateData.BLOOD_FRENZY_ATTACK, MandateData.BLOOD_FRENZY_ATTACK + AutoBattleResolver.BERSERK_ATTACK],
 		"sworn_vassals": "Each turn, one neutral province next to its land swears fealty and joins it."}
 	for mid in expected:
 		var l := enemy.find_child("MandateEffect_%s" % mid, true, false) as Label

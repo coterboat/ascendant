@@ -7,7 +7,9 @@ class_name BuildPresetData
 ## Each preset:
 ##   id, name, style    style is "keep" | "spend" | "balanced"
 ##   ruler, mandates    the build itself: a RulerData id and MandateData ids, in the order taken
-##   ai_role            "field" (the ruler marches with the strongest army) | "home" (it stays home)
+##   ai_role            "field" (the ruler marches with the strongest army) | "home" (it stays home).
+##                      #131: the spend presets march too (they were "home"): their 0-kept ruler costs nothing
+##                      to lose, since mandates outlive it, and kept home it never fought
 ##   ai_sacrifices      mandates an AI seat sacrifices for, in this order (§6.3)
 ## The order inside each faction's list matters: an AI seat picks presets[faction][roll 0..2].
 
@@ -18,7 +20,7 @@ const PRESETS := {
 		{"id": "warrior_king", "name": "Warrior King", "style": "keep", "ruler": "aurel_king",
 			"mandates": [], "ai_role": "field", "ai_sacrifices": ["royal_armories", "veteran_levies"]},
 		{"id": "iron_crown", "name": "Iron Crown", "style": "spend", "ruler": "aurel_king",
-			"mandates": ["royal_armories", "heavy_tithes", "veteran_levies"], "ai_role": "home", "ai_sacrifices": []},
+			"mandates": ["royal_armories", "heavy_tithes", "veteran_levies"], "ai_role": "field", "ai_sacrifices": []},
 		{"id": "regents_court", "name": "Regent's Court", "style": "balanced", "ruler": "ever_regent",
 			"mandates": ["royal_armories", "kings_roads"], "ai_role": "field", "ai_sacrifices": ["drilled_ranks", "veteran_levies"]},
 	],
@@ -26,7 +28,7 @@ const PRESETS := {
 		{"id": "beast_god_unbound", "name": "Beast-God Unbound", "style": "keep", "ruler": "thornmane_avatar",
 			"mandates": [], "ai_role": "field", "ai_sacrifices": ["iron_discipline", "blood_frenzy"]},
 		{"id": "clan_moot", "name": "Clan Moot", "style": "spend", "ruler": "fang_chieftain",
-			"mandates": ["iron_discipline", "blood_frenzy", "sworn_vassals"], "ai_role": "home", "ai_sacrifices": []},
+			"mandates": ["iron_discipline", "blood_frenzy", "sworn_vassals"], "ai_role": "field", "ai_sacrifices": []},
 		{"id": "blood_of_the_fang", "name": "Blood of the Fang", "style": "balanced", "ruler": "fang_chieftain",
 			"mandates": ["iron_discipline", "drilled_ranks"], "ai_role": "field", "ai_sacrifices": ["blood_frenzy", "veteran_levies"]},
 	],

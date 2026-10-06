@@ -114,15 +114,20 @@ func test_bands_are_judged_from_the_games() -> void:
 				games.append(_game(a, b, "kingdom" if i < 5 else "beasts", 12, deaths, sacs, "identical" if i == 0 else ""))
 				n += 1
 	var j := Matrix.judge(games)
-	for name in ["A", "B", "D", "E", "F", "H"]:
+	for name in ["A", "D", "E", "F", "H"]:
 		assert_eq(_band(j, name).status, "pass", "%s: %s" % [name, _band(j, name).result])
 	assert_eq(_band(j, "C").status, "report", "C is report only")
-	# One preset winning 7 of 10 against another misses band B; H misses on one replay that differs.
+	assert_eq(_band(j, "B").status, "report", "#131: B is report only")
+	assert_eq(_band(j, "B").detail, "", "no pairing over 65%")
+	# One preset winning 7 of 10 against another is reported in band B's detail, never failed (#131); H misses
+	# on one replay that differs.
 	games[5].winner = "kingdom"
 	games[6].winner = "kingdom"
 	games[1].replay = "differs: the replayed final state is not the one the game reached"
 	var j2 := Matrix.judge(games)
-	assert_eq(_band(j2, "B").status, "miss", _band(j2, "B").result)
+	assert_eq(_band(j2, "B").status, "report", _band(j2, "B").result)
+	assert_true(str(_band(j2, "B").result).contains("1 of 9 pairings over"), _band(j2, "B").result)
+	assert_true(str(_band(j2, "B").detail).contains("reported, not failed"), _band(j2, "B").detail)
 	assert_eq(_band(j2, "H").status, "miss", _band(j2, "H").result)
 	assert_false(j2.h_ok, "the exit code follows band H")
 	# A ruler lost in the turn its capital fell is not a mid-game death (band D), but is reported.
