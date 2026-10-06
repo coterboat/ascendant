@@ -50,8 +50,9 @@ extends SceneTree
 ##
 ## Exit code: 0 when every game ran with no invariant violation, no session error and no script
 ## error; 1 otherwise; 2 for bad arguments. With --matrix: 0 only when band H (integrity) holds; the
-## other bands are reported but don't change the exit code. With --matrix --paths: 0 only when bands P7 (M1
-## and M2 not broken) and P8 (integrity) hold.
+## other bands are reported but don't change the exit code. With --matrix --paths --independents (the balance
+## contract since Alex's 10-5 call on #131): 0 only when bands P7 (M1 and M2 not broken) and P8 (integrity) hold.
+## A plain --matrix --paths run gates on integrity only (P8 and P7's M1/M2 digests); P7's F band is report-only.
 
 const Simulator := preload("res://tools/autoplay/simulator.gd")
 const Policies := preload("res://tools/autoplay/policies.gd")
@@ -389,9 +390,13 @@ func _run_path_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
 		else:
 			f.store_string(md + "\n")
 			f.close()
-	if not j.ok:
+	# Alex 10-5 (#131): the contract is the MVP config, --independents. A plain run gates on integrity only.
+	var gate_ok: bool = j.ok if opts.independents else bool(j.get("integrity_ok", j.ok))
+	if not gate_ok:
 		printerr("autoplay: band P7 (M1 and M2 not broken) or P8 (integrity) does not hold")
-	quit(0 if j.ok else 1)
+	elif not j.ok:
+		print("autoplay: plain run (no --independents): P7's F band is report-only; the balance contract is --independents")
+	quit(0 if gate_ok else 1)
 
 
 ## Plays the work items, in this process (--jobs 1) or in up to --jobs headless worker processes, and

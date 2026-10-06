@@ -434,7 +434,10 @@ static func judge(results: Array, stray_errors: int = 0, fixture: Dictionary = {
 		"result": "%d violations, %d session errors, %d script errors; %d of %d replays identical (%d games); research forecasts: %d mismatches in %d turn checks and %d target checks" % [
 			viol, errs, scr, replays - replay_bad.size(), replays, results.size(), mismatches, checks.turn_checks, checks.target_checks],
 		"status": "pass" if p8_ok else "miss", "detail": p8_detail})
-	return {"bands": bands, "ok": p7_ok and p8_ok, "pairings": pairings, "sides": _sides(p_res), "presets": _presets(p_res),
+	# Alex 10-5 (#131): the MVP plays with independents, so a run with --independents is the balance contract.
+	# A plain run still gates on integrity (P8, and P7's M1/M2 digests) but reports P7's F band only.
+	var integrity_ok := p8_ok and not m2_res.is_empty() and same == m2_res.size()
+	return {"bands": bands, "ok": p7_ok and p8_ok, "integrity_ok": integrity_ok, "pairings": pairings, "sides": _sides(p_res), "presets": _presets(p_res),
 		"p_results": p_res}
 
 
