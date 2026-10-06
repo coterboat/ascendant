@@ -46,6 +46,17 @@ func _samples(s: GameState) -> Array:
 	for t in ["siege_started", "walls_damaged", "walls_breached", "siege_lifted", "siege_ended", "construction_razed"]:
 		with.call(t, ["blackwood"], [CLANS], ["beasts-1"], {})  # the Crown is not in it here
 	with.call("game_over", ["crownkeep"], [CLANS], [], {"winner": CLANS})
+	# M5-6, the rituals: a Bastion fort is public; a global ritual is heralded, any other cast is the caster's; a curse's
+	# bite goes whole to the faction bitten and rebuilt to the caster it names; the rest are their first faction's.
+	with.call("fort_raised", ["ebonpeak"], [CLANS], [], {"province": "ebonpeak", "bastions": 1, "level": 1, "walls": 3})
+	with.call("ritual_cast", ["fangridge"], [CLANS], ["beasts-1"], {"ritual": "blood_moon", "until_turn": 6, "global": true})
+	with.call("ritual_cast", ["fangridge", "ironspike"], [CLANS], ["beasts-1"], {"ritual": "bloodrot", "until_turn": 6, "global": false})
+	with.call("curse_bit", ["fangridge"], [CLANS, CROWN], ["beasts-1"], {"ritual": "bloodrot", "until_turn": 6, "budget": 12,
+		"province": "fangridge", "taken": [{"army": "beasts-1", "from": 14, "to": 12}], "total": 2})
+	with.call("curse_bit", ["bloodfen"], [CLANS], [], {"ritual": "bloodrot", "until_turn": 6, "budget": 12, "province": "bloodfen"})
+	for t in ["ritual_turned_aside", "blood_paid", "enchantment_began", "summoned", "far_sight_reading", "ritual_fell",
+			"blessing_healed", "enchantment_ended", "summon_faded"]:
+		with.call(t, ["fangridge"], [CLANS, CROWN], ["beasts-1"], {"ritual": "bloodrot"})
 	return out
 
 
@@ -75,6 +86,16 @@ func _expect(e: Dictionary, viewer: String, got: Array, before: GameState) -> vo
 		"move":
 			var seen := String(FogRules.sight(before, viewer).get(String(e.provinces[0]), "veiled")) != "veiled"
 			assert_eq(got.size(), 1 if seen else 0, "%s: a move %s" % [what, "seen leaving" if seen else "out of sight"])
+		"rebuilt_if_global":  # M5-6: a global ritual is heralded to everyone
+			var heralded := bool(e.get("numbers", {}).get("global", false))
+			assert_eq(got.size(), 1 if heralded else 0, "%s: %s" % [what, "heralded" if heralded else "nothing"])
+			if heralded and got.size() == 1:
+				assert_true(bool(got[0].get("rebuilt", false)), "%s: a rebuilt event" % what)
+		"rebuilt_named":  # M5-6: rebuilt only for the factions the event names
+			var named := factions.has(viewer)
+			assert_eq(got.size(), 1 if named else 0, "%s: %s" % [what, "rebuilt" if named else "nothing"])
+			if named and got.size() == 1:
+				assert_true(bool(got[0].get("rebuilt", false)), "%s: a rebuilt event" % what)
 		_:
 			assert_eq(got, [], "%s: nothing" % what)
 
@@ -99,8 +120,7 @@ func test_every_event_type_follows_the_audience_table() -> void:
 			_expect(e, v, FogRules.filter_events([e], v, border.before, border.after), border.before)
 		types[String(e.type)] = true
 	for t in FogData.AUDIENCE:
-		if not ["fort_raised", "ritual_cast"].has(t):  # magic's events arrive with M5-6
-			assert_true(types.has(t), "event type %s was checked" % t)
+		assert_true(types.has(t), "event type %s was checked" % t)
 	for t in ["army_moved", "battle", "captured", "recruited", "income"]:
 		assert_true(types.has(t), "the fog games reached %s" % t)
 

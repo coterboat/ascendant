@@ -423,10 +423,12 @@ func test_the_resolver_pins_the_casting_army_as_the_order_book_does() -> void:
 	for orders in [[move, cast], [cast, move]]:
 		var r := TurnResolver.resolve(s, {CLANS: orders}, 1)
 		var rejected: Array = r.events.filter(func(e): return e.type == "order_rejected")
-		assert_eq(rejected.map(func(e): return String(e.cause)).filter(func(c): return c != "rituals_not_ready"), ["pinned"], "the move is refused")
-		assert_eq(rejected.filter(func(e): return String(e.cause) == "rituals_not_ready").size(), 1, "the cast is reported, not cast")
+		assert_eq(rejected.map(func(e): return String(e.cause)), ["pinned"], "the move is refused")
+		# M5-6: the rituals phase casts it, and its price is paid.
+		assert_eq(r.events.filter(func(e): return String(e.type) == "ritual_cast").size(), 1, "the cast is cast")
 		assert_eq(r.new_state.find_army(army.id).location, from, "the casting army held")
-		assert_eq(r.new_state.find_faction(CLANS).gold, TurnResolver.resolve(s, {}, 1).new_state.find_faction(CLANS).gold, "nothing was paid")
+		assert_eq(r.new_state.find_faction(CLANS).gold, TurnResolver.resolve(s, {}, 1).new_state.find_faction(CLANS).gold
+			- int(MagicRules.price(s, CLANS, "bloodrot").gold), "its price was paid")
 		for e in rejected:
 			assert_false(String(e.text).contains("_"), "no raw id: %s" % e.text)
 	# Forecast equals result: OrderBook keeps exactly the orders the resolver accepts.
@@ -525,8 +527,8 @@ func test_casters_healing_under_a_curse_and_far_sight() -> void:
 	assert_true(MagicRules.can_heal(s, CLANS, home), "a curse never hurts its caster's faction")
 	assert_true(MagicRules.can_heal(s, CROWN, "wildmoor"))
 	assert_true(MagicRules.can_heal(s, CROWN, ""), "a border battle is in no province")
-	# Far Sight is cast only once the rituals phase exists (M5-6): until then vision_grants is M5-0's stub.
-	assert_eq(MagicRules.vision_grants(s, CROWN), [], "no sight through magic before Far Sight can be cast")
+	# M5-6: Far Sight's "sight" enchantment is what vision_grants reads, for its caster only.
+	assert_eq(MagicRules.vision_grants(s, CROWN), ["wildmoor"], "the Crown sees Wildmoor through its Far Sight")
 	assert_eq(MagicRules.vision_grants(s, CLANS), [])
 
 

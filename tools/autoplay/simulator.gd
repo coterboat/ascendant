@@ -60,6 +60,10 @@ const PATH_EVENT_TYPES := ["research_gained", "research_done", "oath_sworn", "tr
 const SIEGE_EVENT_TYPES := ["siege_started", "walls_damaged", "walls_breached", "siege_lifted", "siege_ended", "walls_repaired",
 	"construction_started", "construction_halted", "fort_built", "construction_razed", "storm_called_off", "sally_called_off",
 	"sally_found_nothing"]
+## Event types a game with magic adds (M5, design/M5_MAGIC_FOG.md §4, §6.3): research sold (M5-5), the rituals phase's
+## and the enchantments phase's (M5-6).
+const MAGIC_EVENT_TYPES := ["research_sold", "ritual_cast", "ritual_turned_aside", "blood_paid", "enchantment_began", "summoned",
+	"fort_raised", "far_sight_reading", "ritual_fell", "blessing_healed", "curse_bit", "enchantment_ended", "summon_faded"]
 const BATTLE_TYPES := ["battle", "border_battle"]
 ## AutoBattleResolver report "end" values, in display order.
 const BATTLE_ENDS := ["rout", "destroyed", "round_cap", "mutual"]
@@ -500,7 +504,7 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 	for e in events:
 		var type := str(e.get("type", ""))
 		if not EVENT_TYPES.has(type) and not RULER_EVENT_TYPES.has(type) and not (state.paths and PATH_EVENT_TYPES.has(type)) \
-				and not (state.sieges and SIEGE_EVENT_TYPES.has(type)):
+				and not (state.sieges and SIEGE_EVENT_TYPES.has(type)) and not (state.magic and MAGIC_EVENT_TYPES.has(type)):
 			out.append({"check": "event_type_unknown", "detail": "The turn report has an event of unexpected type '%s'." % type})
 		var phases: Array = GameSession.report_phases(state)
 		if not phases.has(str(e.get("phase", ""))):
@@ -521,6 +525,10 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 			income[fids[0]] = int(income.get(fids[0], 0)) + int(numbers.get("income", 0))
 		elif type == "raided" and not fids.is_empty():  # M4-2: Raiding Parties' gold, taken in the capture phase
 			raided[fids[0]] = int(raided.get(fids[0], 0)) + int(numbers.get("gold", 0))
+		elif (type == "ritual_cast" or type == "ritual_turned_aside") and not fids.is_empty():  # M5-6: rituals paid in gold
+			spent[fids[0]] = int(spent.get(fids[0], 0)) + int(numbers.get("gold", 0))
+		elif type == "research_sold" and not fids.is_empty():  # M5-5: research sold for gold
+			raided[fids[0]] = int(raided.get(fids[0], 0)) + int(numbers.get("gold", 0))
 	if prev != null:
 		if state.current_turn != prev.current_turn + 1:
 			out.append({"check": "turn_counter", "detail": "The turn counter went from %d to %d." % [prev.current_turn, state.current_turn]})
@@ -531,11 +539,64 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 			var expected: int = before.gold - int(spent.get(f.id, 0)) + int(income.get(f.id, 0)) + int(raided.get(f.id, 0)) \
 				+ int(harvested.get(f.id, 0))
 			if f.gold != expected:
-				out.append({"check": "gold_accounting", "detail": "%s has %d gold, expected %d (%d - %d recruits + %d income + %d raided + %d harvested)." % [
+				out.append({"check": "gold_accounting", "detail": "%s has %d gold, expected %d (%d - %d recruits and rituals + %d income + %d raided or sold + %d harvested)." % [
 					f.id, f.gold, expected, before.gold, spent.get(f.id, 0), income.get(f.id, 0), raided.get(f.id, 0), harvested.get(f.id, 0)]})
 	out.append_array(_check_rulers(prev, state, events))
 	out.append_array(_check_terrain(prev, state, events))
 	out.append_array(_check_sieges(prev, state, events))
+	out.append_array(_check_magic(prev, state, events))
+	return out
+
+
+## Rituals and enchantments (M5-6, #117; design/M5_MAGIC_FOG.md §6), in a game with magic only. GameState.validate
+## already holds every enchantment, Bastion entry and summoned unit to its rules (ids, kinds, "through turn" over, the
+## cap). On top of that:
+##   caster_moved          an army that cast a ritual (or had it turned aside) ended the turn in another province
+##   summon_moved          a summoned army ended its first turn away from where it was called
+##   summon_overdue        a summoned creature is still on the map after the turn it should have faded
+##   fort_without_bastion  a province gained a fort with no fort_raised (or, with sieges, fort_built) event
+##   ritual_price_wrong    a ritual paid more than its price, or a turned-aside one other than half of it
+##   curse_bit_own         a curse took hit points from its own faction's fighters
+##   blessing_healed_rival a blessing healed an army of another faction
+static func _check_magic(prev: GameState, state: GameState, events: Array) -> Array:
+	var out := []
+	if not state.magic or prev == null:
+		return out
+	var raised := {}
+	for e in events:
+		var type := str(e.get("type", ""))
+		var n: Dictionary = e.get("numbers", {})
+		if type == "ritual_cast" or type == "ritual_turned_aside":
+			var a := state.find_army(str(n.get("army", "")))
+			var was := prev.find_army(str(n.get("army", "")))
+			if a != null and was != null and a.location != was.location:
+				out.append({"check": "caster_moved", "detail": "Army %s cast %s at %s but ended the turn at %s." % [a.id, n.get("ritual", ""), was.location, a.location]})
+			var price := int(n.get("price", 0))
+			var paid := int(n.get("gold", 0)) + int(n.get("hp", 0)) / MagicData.BLOOD_PER_GOLD
+			var due := price if type == "ritual_cast" else floori(float(price) / MagicData.TURNED_ASIDE)
+			if paid != due:
+				out.append({"check": "ritual_price_wrong", "detail": "%s paid %d for %s (%s), not %d." % [e.factions[0], paid, n.get("ritual", ""), type, due]})
+		elif type == "summoned":
+			var pack := state.find_army(str(n.get("army", "")))
+			if pack != null and pack.location != str(n.get("province", "")):
+				out.append({"check": "summon_moved", "detail": "The summoned army %s ended its first turn at %s, not %s." % [pack.id, pack.location, n.get("province", "")]})
+		elif type == "fort_raised" or type == "fort_built":
+			for pid in e.get("provinces", []):
+				raised[str(pid)] = true
+		elif type == "curse_bit" and str(n.get("victim", "")) == str(n.get("faction", "")):
+			out.append({"check": "curse_bit_own", "detail": "%s's curse at %s bit its own fighters." % [n.get("faction", ""), n.get("province", "")]})
+		elif type == "blessing_healed":
+			var blessed := state.find_army(str(n.get("army", "")))
+			if blessed != null and blessed.owner != str(n.get("faction", "")):
+				out.append({"check": "blessing_healed_rival", "detail": "%s's blessing healed army %s of %s." % [n.get("faction", ""), blessed.id, blessed.owner]})
+	for a in state.armies:
+		for u in a.units:
+			if u.until > 0 and u.until <= state.current_turn:
+				out.append({"check": "summon_overdue", "detail": "A %s in army %s should have faded at the end of turn %d." % [u.type.id, a.id, u.until]})
+	for p in state.provinces:
+		var before := prev.find_province(p.id)
+		if before != null and p.has_fort and not before.has_fort and not raised.has(p.id):
+			out.append({"check": "fort_without_bastion", "detail": "%s gained a fort without a fort_raised event." % p.id})
 	return out
 
 
@@ -554,7 +615,7 @@ static func _check_sieges(prev: GameState, state: GameState, events: Array) -> A
 	var per_fort := {}
 	for e in events:
 		var type := str(e.get("type", ""))
-		if type == "fort_built":
+		if type == "fort_built" or type == "fort_raised":  # M5-6: Bastion raises a palisade at once
 			for pid in e.get("provinces", []):
 				built[str(pid)] = true
 		elif type == "recruited" and str(e.get("cause", "")) != "with_ruler":

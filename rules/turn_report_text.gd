@@ -64,15 +64,30 @@ static func rows(events: Array, state: GameState, viewer: String = "", before: G
 	var out := []
 	if state == null:
 		for e in events:
-			out.append({"event": e, "text": own_text(e, viewer)})
+			if not is_beat(e, events):
+				out.append({"event": e, "text": own_text(e, viewer)})
 		return out
 	var ctx := _context(events, state, before, viewer)
 	var texts := {}
 	for i in events.size():
 		texts[i] = _line_at(i, ctx)
 	for i in _order(events, state):
-		out.append({"event": events[i], "text": texts[i]})
+		if not is_beat(events[i], events):
+			out.append({"event": events[i], "text": texts[i]})
 	return out
+
+
+## M5-6: true for a board beat whose sentence another line of the same report already says, so the report shows it
+## once: enchantment_began and summoned (the ritual_cast line says what began and who answered), and fort_raised when
+## the same report holds its ritual_cast (a rival who reads only the public fort_raised still gets its line).
+static func is_beat(e: Dictionary, events: Array) -> bool:
+	match String(e.get("type", "")):
+		"enchantment_began", "summoned":
+			return events.any(func(o): return String(o.get("type", "")) == "ritual_cast")
+		"fort_raised":
+			var pid := String(e.get("numbers", {}).get("province", ""))
+			return events.any(func(o): return String(o.get("type", "")) == "ritual_cast" and String(o.get("numbers", {}).get("fort", "")) == pid)
+	return false
 
 
 ## One event's line. `events` is the whole turn's report it belongs to (it reads the other events: who

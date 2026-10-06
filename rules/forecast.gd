@@ -330,12 +330,17 @@ static func recruit(state: GameState, faction_id: String, unit_type_id: String, 
 ## (Heavy Tithes and Royal Court included). `move_orders` may hold the faction's queued moves: Royal
 ## Court then counts where the ruler ends the turn (in a province you own now).
 ## Returns {"gold_now", "spent", "gold_after", "income", "gold_next_turn", "results", "text"}.
-static func gold_after_recruits(state: GameState, faction_id: String, recruit_orders: Array, move_orders: Array = []) -> Dictionary:
-	var priced := TurnResolver.price_recruits(state, faction_id, recruit_orders)
+static func gold_after_recruits(state: GameState, faction_id: String, recruit_orders: Array, move_orders: Array = [],
+		reserved: int = 0) -> Dictionary:
+	var priced := TurnResolver.price_recruits(state, faction_id, recruit_orders, null, reserved)
 	var inc := TurnResolver.income_of(state, faction_id, ruler_destination(state, faction_id, move_orders))
 	var income: int = inc.total
 	var text := "Gold %d, recruits cost %d, leaving %d. Income +%d if no provinces change hands, so %d next turn." % [
 		priced.gold_before, priced.spent, priced.gold_after, income, priced.gold_after + income]
+	if reserved > 0:
+		# M5-6: queued gold-paid rituals are paid first, in the rituals phase, so recruits are priced from what they leave.
+		text = "Gold %d; your queued rituals take %d first (rituals resolve before recruits), and recruits cost %d, leaving %d. Income +%d if no provinces change hands, so %d next turn." % [
+			priced.gold_before + reserved, reserved, priced.spent, priced.gold_after, income, priced.gold_after + income]
 	if state.sieges:
 		# M3c (§9.2): the gold forecast names cut-off and besieged provinces, on both sides.
 		for part in [TurnResolver.income_modifiers_text(state, faction_id, inc, "ends the turn"), TurnResolver.siege_income_text(state, faction_id, inc)]:
@@ -346,7 +351,7 @@ static func gold_after_recruits(state: GameState, faction_id: String, recruit_or
 	for r in priced.results:
 		if not r.ok:
 			text += " Not recruited: %s" % r.reason
-	return {"gold_now": priced.gold_before, "spent": priced.spent, "gold_after": priced.gold_after,
+	return {"gold_now": priced.gold_before + reserved, "rituals": reserved, "spent": priced.spent, "gold_after": priced.gold_after,
 		"income": income, "gold_next_turn": priced.gold_after + income, "results": priced.results, "text": text}
 
 

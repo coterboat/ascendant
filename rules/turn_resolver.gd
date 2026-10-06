@@ -41,6 +41,15 @@ class_name TurnResolver
 ##                within its limit; siege engines join the first army there with a fighter.
 ##   income       a cut-off province pays its base income to the besiegers and nothing to its owner.
 ##
+## Magic (M5-6, design/M5_MAGIC_FOG.md §6.3, §9; rules in MagicRules; only in a game with magic, so every other game
+## resolves exactly as before; phases(state) gives MAGIC_PHASES):
+##   orders       cast orders are checked first against every order before them (the running budget) and pin their
+##                armies: a move for a casting army is rejected, whenever it was given.
+##   rituals      (new, after orders) every cast that passed is turned aside by a rival's ward (half its price), fails
+##                (nothing paid) or is paid and takes effect, wards first (_rituals_phase).
+##   rulers       healing skips fighters under a rival's curse (and so does the research phase's).
+##   enchantments (new, last) blessings heal, curses bite, then the endings and the fading (_enchantments_phase).
+##
 ## Mandates and abilities on the map (M2-4, design/M2_RULER.md §1.4, §2.3; rules in RulerRules; only
 ## in a game with rulers, so an M1 game resolves exactly as before):
 ##   King's Roads    a move with a `via` is a road move: checked in orders, then it moves straight from
@@ -92,12 +101,18 @@ const PHASES := ["sacrifice", "orders", "movement", "battles", "capture", "recru
 const PATH_PHASES := ["sacrifice", "orders", "movement", "battles", "capture", "recruitment", "income", "research", "rulers"]
 ## The phase a game with sieges adds after "battles" (M3c, §6). PHASES and PATH_PHASES stay as they are.
 const SIEGES_PHASE := "sieges"
+## The phases of a game with magic (M5-6, design/M5_MAGIC_FOG.md §9): PATH_PHASES with "rituals" after orders and
+## "enchantments" last. PHASES and PATH_PHASES stay as they are, so a game without magic resolves exactly as before.
+const MAGIC_PHASES := ["sacrifice", "orders", "rituals", "movement", "battles", "capture", "recruitment", "income", "research",
+	"rulers", "enchantments"]
 
 
-## The phases of `state`'s game, in order: PHASES, or PATH_PHASES with paths, and "sieges" after "battles"
-## when sieges are on (M3c, §6).
+## The phases of `state`'s game, in order: PHASES, PATH_PHASES with paths, MAGIC_PHASES with magic, and "sieges"
+## after "battles" when sieges are on (M3c, §6).
 static func phases(state: GameState) -> Array:
 	var out: Array = (PATH_PHASES if state != null and state.paths else PHASES).duplicate()
+	if state != null and state.magic:
+		out = MAGIC_PHASES.duplicate()
 	if state != null and state.sieges:
 		out.insert(out.find("battles") + 1, SIEGES_PHASE)
 	return out
@@ -117,7 +132,9 @@ static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: 
 	var moves: Array = []  # of {"army_id", "faction", "from", "to"}, one per army
 	var recruits := {}  # faction id -> Array of orders, in given order (recruits and, M3c, Fortify orders)
 	var siege_orders := {"storms": {}, "sallies": {}}  # M3c: the storms and sallies that passed their checks
-	_collect_orders(s, orders_by_faction, moves, recruits, events, siege_orders)
+	var casts := {}  # M5-6: faction id -> its cast orders that passed their checks, in the order given
+	_collect_orders(s, orders_by_faction, moves, recruits, events, siege_orders, casts)
+	_rituals_phase(s, casts, events)  # M5-6: games with magic only, before anyone moves
 
 	var moved := {}  # army ids that left their province this turn (they are not holding)
 	for m in moves:
@@ -134,6 +151,7 @@ static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: 
 	_income(s, events)
 	_research_phase(s, events)  # M4: games with paths only
 	_rulers_phase(s, events)
+	_enchantments_phase(s, events)  # M5-6: games with magic only, last
 
 	s.current_turn += 1
 	return {"new_state": s, "events": events}
@@ -577,7 +595,7 @@ static func _sacrifice_phase(s: GameState, orders_by_faction: Dictionary, events
 ## and the ones that pass are recorded in `siege_orders` ({"storms": {province id: {faction id: true}},
 ## "sallies": {army id: {"faction", "with"}}}) for the battles phase.
 static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: Array, recruits: Dictionary, events: Array,
-		siege_orders: Dictionary = {}) -> void:
+		siege_orders: Dictionary = {}, casts: Dictionary = {}) -> void:
 	var known := _faction_ids(s)
 	var unknown: Array = []
 	for key in orders_by_faction.keys():
@@ -649,13 +667,16 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 				spellbook_given = true
 				MagicRules.set_spellbook(s, fid, order)
 			elif order is CastOrder:
-				# M5-5: a cast is checked here (it pins its army, above), but the rituals phase that casts it comes with
-				# M5-6: until then a legal cast is reported as not cast, at no price.
+				# M5-5: a cast is checked here, against every order before it (the running budget), and pins its army
+				# (above); M5-6: the rituals phase casts it.
 				var check := MagicRules.check_cast(s, fid, order, before)
-				if check.is_empty():
-					before.append(order)
-					check = _reject("rituals_not_ready", "Rituals don't take effect in this build of the magic preview yet: nothing was cast and nothing was paid. The army held this turn, as a casting army does.")
-				events.append(_rejected_event(s, fid, order, check, "orders"))
+				if not check.is_empty():
+					events.append(_rejected_event(s, fid, order, check, "orders"))
+					continue
+				before.append(order)
+				if not casts.has(fid):
+					casts[fid] = []
+				casts[fid].append(order)
 			elif order is ResearchOrder:
 				# M4: sets the research target (silently: the target is private). One per turn.
 				var check := _check_research_order(s, fid, order, research_given)
@@ -1137,6 +1158,122 @@ static func _rulers_phase(s: GameState, events: Array) -> void:
 				"max_hp": stats.hp, "attack": stats.attack, "defense": stats.defense, "ability_rank": stats.ability_rank,
 				"due_turn": info.successor_turn},
 			RulerRules.arrival_text(s, fid, int(info.kept_power), turn + 1), String(info.codex)))
+
+
+# --- the rituals and enchantments phases (M5-6, #117; design/M5_MAGIC_FOG.md §6.3, §9) ---------------------
+# Games with magic only. The rituals phase comes after orders and before movement: every cast order that passed its
+# checks is cast in MagicRules.ritual_queue's order (kinds: wards, curses, blessings, summons, raisings, global, sight;
+# then faction id; then the order given), each through MagicRules.ritual_effect, which re-checks it, pays it and applies
+# it. Spells and rituals never draw from the RNG. Events (codex in brackets; FogData.AUDIENCE says who reads each under
+# fog, by default only its first faction):
+#   ritual_cast          the ritual was paid and took effect: who, from where, the price and what it does [spell_<id>]
+#   ritual_turned_aside  a rival's ward turned it aside: half its price was paid, nothing else [turned_aside]
+#   order_rejected       (phase "rituals") it failed for another reason: nothing paid, the reason [cast_order]
+#   blood_paid           it was paid in blood (Tithe of Blood): who gave what [mandate_tithe_of_blood]
+#   enchantment_began    a ward, curse, blessing, global or sight began (a board beat) [enchantment]
+#   summoned             creatures formed a new army (a board beat) [summoned]
+#   fort_raised          Bastion raised a fort: public, rebuilt for everyone under fog [spell_bastion]
+#   far_sight_reading    Far Sight on a rival's capital read it, or a caster there blocked the reading [spell_far_sight]
+#   ritual_fell          for the owner of the province it fell on (its first faction): the ritual, the caster's
+#                        faction, the effect and how to stop it, never the caster's province [spell_<id>]
+# The enchantments phase comes last (MagicRules.enchantment_step): blessings heal, curses bite, then the endings.
+#   blessing_healed      a blessed army healed [blessing]
+#   curse_bit            a curse took its hit points, one event per faction bitten (first faction: the bitten, unless it
+#                        is a Free Holds garrison, whose wounds are public: then the caster) [curse]
+#   enchantment_ended    an enchantment lasted through this turn, or a ward ended a curse, or a blessing lost its last army
+#                        [enchantment]
+#   summon_faded         summoned creatures faded; an army left empty is removed [summoned]
+
+static func _rituals_phase(s: GameState, casts: Dictionary, events: Array) -> void:
+	if not s.magic or casts.is_empty():
+		return
+	for item in MagicRules.ritual_queue(casts):
+		var fid := String(item.faction)
+		var order: CastOrder = item.order
+		var army := s.find_army(order.army_id)
+		var from := army.location if army != null else ""
+		var fx := MagicRules.ritual_effect(s, fid, order)
+		var codex := MagicRules.spell_codex(order.ritual)
+		var target := [] if order.target.is_empty() else [order.target]
+		var numbers := _ritual_numbers(fx)
+		match String(fx.outcome):
+			MagicRules.FAILED:
+				events.append(_rejected_event(s, fid, order, {"code": fx.code, "reason": fx.reason}, "rituals"))
+				continue
+			MagicRules.TURNED:
+				events.append(_event("ritual_turned_aside", "rituals", target, [fid, String(fx.warder)], [order.army_id], "ward", numbers,
+					MagicRules.turned_aside_text(s, fx), "turned_aside"))
+				if int(fx.hp) > 0:
+					_blood_event(s, fid, fx, from, events)
+				continue
+		var where := [from] if target.is_empty() or target[0] == from else [from, target[0]]
+		events.append(_event("ritual_cast", "rituals", where, [fid], [order.army_id], "cast_order", numbers, MagicRules.cast_text(s, fx), codex))
+		if int(fx.hp) > 0:
+			_blood_event(s, fid, fx, from, events)
+		if not String(fx.enchantment).is_empty():
+			events.append(_event("enchantment_began", "rituals", target, [fid], Array(fx.blessed).duplicate(), String(fx.kind),
+				{"enchantment": fx.enchantment, "ritual": fx.ritual, "kind": fx.kind, "province": fx.target, "until_turn": fx.until_turn,
+					"bonus": fx.bonus, "armies": Array(fx.blessed).duplicate(), "restarted": fx.restarted},
+				MagicRules.began_text(s, fx), "enchantment"))
+		if not fx.summon.is_empty():
+			events.append(_event("summoned", "rituals", [from], [fid], [String(fx.summon.army)], "summon",
+				{"ritual": fx.ritual, "army": fx.summon.army, "type": fx.summon.type, "count": fx.summon.count, "until": fx.summon.until,
+					"province": from}, MagicRules.summoned_text(s, fx), "summoned"))
+		if not String(fx.fort).is_empty():
+			var p := s.find_province(String(fx.fort))
+			var raised := {"province": fx.fort, "bastions": s.find_faction(fid).bastions.size()}
+			if s.sieges:
+				raised["level"] = p.fort_level
+				raised["walls"] = p.walls
+			events.append(_event("fort_raised", "rituals", [fx.fort], [fid], [], "bastion", raised,
+				"%s raised a fort at %s (Bastion)." % [_faction_name(s, fid), p.name], "spell_bastion"))
+		if not String(fx.read).is_empty():
+			events.append(_event("far_sight_reading", "rituals", target, [fid, String(fx.read)], [], "far_sight",
+				{"province": fx.target, "of": fx.read, "blocked": not String(fx.blocked).is_empty(), "blocked_by": fx.blocked,
+					"reading": Dictionary(fx.reading).duplicate(true)}, MagicRules.reading_text(s, fx), "spell_far_sight"))
+		var owner := s.find_province(order.target).owner if s.find_province(order.target) != null else ""
+		if not owner.is_empty() and owner != fid and s.find_faction(owner) != null:
+			events.append(_event("ritual_fell", "rituals", target, [owner, fid], [], String(fx.kind),
+				{"ritual": fx.ritual, "faction": fid, "province": fx.target, "until_turn": fx.until_turn,
+					"budget": int(MagicRules.spell_numbers(order.ritual, int(fx.bonus)).value), "read": fx.read == owner,
+					"blocked": not String(fx.blocked).is_empty()},
+				MagicRules.fell_text(s, fx, owner), codex))
+
+
+## A ritual_effect result as event numbers: every field but the reading (far_sight_reading carries it) and the plain
+## reason (only a failure has one).
+static func _ritual_numbers(fx: Dictionary) -> Dictionary:
+	var out := fx.duplicate(true)
+	for key in ["reading", "code", "reason", "outcome", "caster_name"]:
+		out.erase(key)
+	return out
+
+
+static func _blood_event(s: GameState, fid: String, fx: Dictionary, from: String, events: Array) -> void:
+	events.append(_event("blood_paid", "rituals", [from], [fid], [String(fx.army)], "tithe_of_blood",
+		{"ritual": fx.ritual, "army": fx.army, "hp": fx.hp, "gives": Array(fx.gives).duplicate(true)},
+		MagicRules.blood_text(s, fx), "mandate_tithe_of_blood"))
+
+
+static func _enchantments_phase(s: GameState, events: Array) -> void:
+	if not s.magic:
+		return
+	var step := MagicRules.enchantment_step(s, s.current_turn + 1)
+	for h in step.healed:
+		events.append(_event("blessing_healed", "enchantments", [h.province], [h.faction], [h.army], "blessing", h.duplicate(true),
+			MagicRules.healed_text(s, h), "blessing"))
+	for b in step.bit:
+		var victim := String(b.victim)
+		var factions := [victim, String(b.faction)] if s.find_faction(victim) != null and not IndependentData.is_independent(victim) \
+			else [String(b.faction), victim]
+		events.append(_event("curse_bit", "enchantments", [b.province], factions, Array(b.armies).duplicate(), "curse", b.duplicate(true),
+			MagicRules.bit_text(s, b), "curse"))
+	for e in step.ended:
+		events.append(_event("enchantment_ended", "enchantments", [] if String(e.province).is_empty() else [e.province], [e.faction],
+			Array(e.armies).duplicate(), String(e.cause), e.duplicate(true), MagicRules.ended_text(s, e), "enchantment"))
+	for f in step.faded:
+		events.append(_event("summon_faded", "enchantments", [f.province], [f.faction], [f.army], "faded", f.duplicate(true),
+			MagicRules.faded_text(s, f), "summoned"))
 
 
 # --- the sieges phase (M3c, #98; design/M3C_SIEGES.md §3.3, §3.10, §2.4-§2.6, §6 step 5) -----------------
