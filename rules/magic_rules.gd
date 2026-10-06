@@ -164,10 +164,9 @@ static func mage_type(faction_id: String) -> UnitType:
 	return ut
 
 
-## What the Mage trait does, for the unit card until the battle rules name it (AutoBattleResolver.TRAIT_TEXT, M5-7).
-## Magic is a preview still being built: until battle spells take effect, a mage fights as any soldier does, and the
-## card says so, so it never promises what a battle won't do.
-const MAGE_TEXT := "Mage: casts a spell from your battle spellbook every round instead of attacking, from the second rank (safe while your front rank is at least as big; Fangthrowers and Seraphs can always reach it). Magic is a preview still being built: until battle spells take effect, mages fight as ordinary soldiers in the front rank."
+## What the Mage trait does, should the battle rules ever not name it: since M5-7 AutoBattleResolver.TRAIT_TEXT does,
+## and mage_type reads that first.
+const MAGE_TEXT := "Mage: casts a spell from your battle spellbook every round instead of attacking, from the second rank (safe while your front rank is at least as big; Fangthrowers and Seraphs can always reach it)."
 
 
 ## True for a mage: a regular unit with the trait Mage.

@@ -27,12 +27,14 @@ class_name BattleMoments
 ##                  its last margin, and a side wiped out has lost 100%). None when the winner led from the
 ##                  start, the battle lasted one round, or it ended in a mutual rout or at the round cap.
 ##   rout           each rout or destroyed event
+##   spell          M5-7: the first cast event, then each tier III cast (a greater working). None in a battle without
+##                  magic, without a caster, or whose casters never found a useful spell; missing() says which.
 
-const KINDS := ["first_blood", "charge", "ruler_falls", "turning_point", "rout"]
+const KINDS := ["first_blood", "charge", "ruler_falls", "turning_point", "rout", "spell"]
 const TITLES := {"first_blood": "First to fall", "charge": "Charge", "ruler_falls": "Ruler falls", "turning_point": "Turning point",
-	"rout": "Rout"}
+	"rout": "Rout", "spell": "First spell"}
 const CODEX := {"first_blood": "battle_pending_damage", "charge": "trait_charge", "ruler_falls": "ruler_in_battle",
-	"turning_point": "battle_key_moments", "rout": "battle_morale"}
+	"turning_point": "battle_key_moments", "rout": "battle_morale", "spell": "spellbook"}
 
 
 ## Every key moment of `battle_log`, in event order (a truncated log gives the moments it holds).
@@ -41,9 +43,16 @@ static func key_moments(battle_log: Dictionary) -> Array:
 	var events: Array = battle_log.get("events", [])
 	var first_blood := false
 	var charge := false
+	var spell := false
 	for i in events.size():
 		var e: Dictionary = events[i]
 		match e.t:
+			"cast":
+				# M5-7: the first spell, then every greater working.
+				var greater := String(MagicRules.spell_data(String(e.spell)).get("tier", "")) == "III"
+				if not spell or greater:
+					out.append(_spell(battle_log, i, not spell))
+				spell = true
 			"death":
 				var f: Dictionary = battle_log.fighters[int(e.f)]
 				if not first_blood:
@@ -94,6 +103,15 @@ static func missing(battle_log: Dictionary) -> Dictionary:
 				out[kind] = "No ruler fought in this battle." if rulers.is_empty() else "No ruler fell."
 			"turning_point":
 				out[kind] = String(turning_point(battle_log).reason)
+			"spell":
+				if not battle_log.get("magic", false):
+					out[kind] = "No spells: this battle was fought without magic."
+				elif battle_log.get("sides", []).all(func(sd): return Array(sd.get("casters", [])).is_empty()):
+					out[kind] = "No spells: neither side has a caster."
+				elif cut:
+					out[kind] = "The log was cut short before anyone cast a spell."
+				else:
+					out[kind] = "No spells: the casters never found a useful one, so they attacked."
 			"rout":
 				if cut:
 					out[kind] = "The log was cut short before any side broke."
@@ -266,6 +284,20 @@ static func _rout(battle_log: Dictionary, i: int) -> Dictionary:
 		if not end.is_empty() and end.how == "mutual" and int(end.winner) == si:
 			explain += " Both sides broke in the same round; %s had lost the least, so it keeps the field." % name
 	return _moment("rout", i, int(e.n), -1, si, text, explain.strip_edges(), {"frame": "side", "fighters": fighters, "side": si, "rank": ""})
+
+
+## M5-7: a spell moment at cast event `i`: the battle's first spell (`first`), or a greater working.
+static func _spell(battle_log: Dictionary, i: int, first: bool) -> Dictionary:
+	var e: Dictionary = battle_log.events[i]
+	var c: Dictionary = battle_log.fighters[int(e.by)]
+	var x := BattleExplain.explain_cast(battle_log, i)
+	var name := MagicRules.spell_name(String(e.spell))
+	var text := "%s: %s, round %d." % ["First spell" if first else name, String(x.what), int(e.n)]
+	var m := _moment("spell", i, int(e.n), int(e.by), int(c.side), text, "%s %s" % [String(x.why_text), "Spells always land: they don't roll."],
+		{"frame": "fighters", "fighters": [int(e.by)] + BattleLog._ints(e.targets).slice(0, 11), "side": int(c.side), "rank": BattleExplain.RANK_WORDS[int(c.tier)]})
+	var entry := String(MagicRules.spell_data(String(e.spell)).get("codex", CODEX.spell))
+	m.codex = entry  # the spell's own entry
+	return m
 
 
 static func _turning(battle_log: Dictionary, tp: Dictionary) -> Dictionary:

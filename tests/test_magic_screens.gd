@@ -207,7 +207,9 @@ func test_order_lines_for_casts_and_the_mage_recruit_tooltip() -> void:
 	var mage_id := String(MagicData.MAGES[CROWN].id)
 	var gate := MagicRules.mage_gate_reason(fresh.state, CROWN, MagicRules.mage_type(CROWN))
 	assert_true(String(fresh.recruit_breakdown(mage_id).description).begins_with(gate))
-	assert_true(String(fresh.recruit_breakdown(mage_id).description).contains("Magic is a preview still being built"), "the mage card is honest about this build")
+	# M5-7: mages cast in battle now, and the card says what the Mage trait does (no longer "fights as a soldier").
+	assert_true(String(fresh.recruit_breakdown(mage_id).description).contains(AutoBattleResolver.TRAIT_TEXT[AutoBattleResolver.MAGE]), "the mage card says it casts")
+	assert_false(String(fresh.recruit_breakdown(mage_id).description).contains("ordinary soldiers"), "and no longer that it fights as a soldier")
 	var learned := OrdersController.new(AscensionRules.with_nodes(_magic(), CROWN, ["sunlance"]), CROWN)
 	assert_false(String(learned.recruit_breakdown(mage_id).description).contains(gate))
 

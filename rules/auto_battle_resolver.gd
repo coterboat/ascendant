@@ -116,6 +116,35 @@ extends BattleResolver
 ##                in it (all of a losing side's fighters: fallen, or destroyed with their armies). The
 ##                report gets "red_harvest"; TurnResolver pays it.
 ## Report sides gain "people" ({"id", "name"} of the transformation, or {}) in a game with paths.
+##
+## Battle spells (M5-7, #118; design/M5_MAGIC_FOG.md §5). Only in a game with magic (GameState.with_magic): without
+## it a battle, its report and its log are exactly as above, and a magic battle with no caster draws exactly what it
+## would have drawn without magic. The numbers come from MagicData through MagicRules (spellbook, battle_spells,
+## mastery_bonus, spell_numbers, can_heal), the same functions every tooltip reads:
+##   Mage         (Sunstone Adepts, Thornmane Shamans) fights from the second rank, under Volley's shield rule.
+##                It casts instead of attacking; one with nothing useful to cast attacks, and is never Volley.
+##   the cast step  each round, after the round event and before the first attack, every standing caster (each
+##                mage, and the Ever-Regent) casts: highest mastery bonus first (its best over its schools), the
+##                ruler first among equals, then fighter order. Each casts the first spell of its side's spellbook
+##                (on spells only, that it can cast) that is useful and that nobody on its side has cast yet this
+##                round; once every useful spell has been cast, it starts again from the top. Spells never roll.
+##   bolts        (Sunlance, Bloodbolt) sure damage at the end of the round, to a target picked by the spell's
+##                rule among the enemies the caster could attack, counting damage already aimed at them this round
+##                (never overkill), rulers and commanders only when nothing else is in reach. A ruler's spell
+##                resistance (spell_resistance) takes ability rank / MagicData.RULER_RESIST off, never below 1.
+##                Bloodbolt bleeds its caster (never below 1 hp), which the morale check leaves out and which
+##                closes after a battle its side wins (resolve_battle).
+##   hexes and shields  a part "spell_<id>" on the targets' attack or defense for the round: Briar Snare and Sunburst
+##                -2 attack (credited, in the "why", to the side that cast it), Shield of Law +4 defense on units
+##                without a terrain or fort bonus.
+##   Dawn Blessing  +morale for the whole battle to a side with at least half its fighters in blessed armies.
+##   Blood Moon   the moon's side heals back a quarter of the damage its attacks dealt each round (rounded down;
+##                Lifedrinker's larger share instead), never above its maximum - 1; not in a province a rival warded.
+##   curses       a side standing in a province a rival cursed heals from nothing: no Lifedrinker, moon or Feast.
+## Each is a "why" factor with its codex entry: "spell_<id>" (bolts: the damage dealt; hexes: the expected damage
+## taken off enemy attacks; shields: what the defense blocked; the moon: the hp healed back) and
+## "morale_spell_dawn_blessing". The log gains "magic": true and its additions (BattleLog); report sides gain
+## "casters" and "spells_cast".
 
 const ROUND_CAP := 8
 const BASE_HIT := 60
@@ -155,6 +184,12 @@ const ROOTED_DEFENSE := 4
 const LIFEDRINK_DIVISOR := 2
 ## Red Harvest (§4.10): gold for every enemy fighter lost in a battle its side wins.
 const RED_HARVEST_GOLD := 1
+## M5-7: the Mage trait (MagicData's), the prefix of a spell's part and "why" factor ("spell_sunlance", also its
+## RulesCodex entry), Dawn Blessing's morale part, and the Blood Moon's "why" factor (the hp it healed back).
+const MAGE := MagicData.MAGE_TRAIT
+const SPELL_PREFIX := "spell_"
+const BLESSING := "spell_dawn_blessing"
+const MOON := "spell_blood_moon"
 
 const SHIELD_WALL := "Shield Wall"
 const VOLLEY := "Volley"
@@ -192,6 +227,7 @@ const TRAIT_TEXT := {
 	ROOTED: "Gets +%d defense in a battle in a forest province, whoever holds it. Not in a battle on a border." % ROOTED_DEFENSE,
 	LIFEDRINKER: "At the end of each round, if it still stands, it heals %s of the damage its hits dealt that round (rounded up), up to its maximum." % SHARE_WORDS[LIFEDRINK_DIVISOR],
 	SIEGE_ENGINE: FortData.ENGINE_RULE,
+	MAGE: "Casts a spell from your spellbook every round instead of attacking, and attacks only when no spell is useful. Fights from the second rank: safe while your front rank is at least as big. Fangthrowers and Seraphs can always reach it.",
 }
 ## One-line summaries of TRAIT_TEXT, for odds reasons and compact lists.
 const TRAIT_SHORT := {
@@ -208,6 +244,7 @@ const TRAIT_SHORT := {
 	ROOTED: "+%d defense in a forest" % ROOTED_DEFENSE,
 	LIFEDRINKER: "heals %s of the damage it deals" % SHARE_WORDS[LIFEDRINK_DIVISOR],
 	SIEGE_ENGINE: "+%d siege damage while besieging; never fights" % FortData.SIEGE.engine,
+	MAGE: "casts a spell every round, from the second rank",
 }
 
 ## M2-2: the ruler's morale part and its "why" factor id, Dread's morale part, and the prefix of every
@@ -281,6 +318,19 @@ func resolve_battle(battle: Dictionary, rng: SeededRNG) -> Dictionary:
 	if battle.has("max_events"):
 		ctx["max_events"] = battle.max_events
 	var r := fight(battle.sides, ctx, rng, true)
+	var closed := _close_bleeds(r.sides, r.result.winner)  # M5-7: bleeding closes when the battle ends
+	if not closed.is_empty():
+		var ci := -1
+		var back := 0
+		for i in r.sides.size():
+			if r.sides[i].faction == r.result.winner:
+				ci = i
+		for row in closed:
+			back += int(row[2]) - int(row[1])
+		r.result.report["bleed_closed"] = {"faction": r.result.winner, "name": String(r.sides[ci].name), "fighters": closed.size(), "healed": back}
+		r.result.report.lines.append("Bleeding closed: %s %s got back the %d hp %s bled casting Bloodbolt." % [_poss(String(r.sides[ci].name)),
+			"caster" if closed.size() == 1 else "%d casters" % closed.size(), back, "it" if closed.size() == 1 else "they"])
+		_log_push(r.log, int(ctx.get("max_events", BattleLog.MAX_EVENTS)), {"t": "bleed_closed", "side": ci, "closed": closed})
 	var healed := _feast_healed(r.sides, r.result.winner)  # read before _apply_losses heals them
 	var feast := _apply_losses(r.sides, r.result.winner)
 	if not feast.is_empty():
@@ -324,12 +374,18 @@ static func estimate(sides: Array, ctx: Dictionary, perspective: String) -> Dict
 	var wins := 0
 	var scores := {}  # factor key -> summed impact from the perspective's point of view
 	var briefs := {}
+	var spells := {}  # M5-7: faction -> {spell: true}, every spell its casters cast in the test battles
 	for i in ODDS_SAMPLES:
 		var r := fight(sides, ctx, SeededRNG.new(odds_seed(i)))
 		if r.result.winner == perspective:
 			wins += 1
 		add_odds_factors(r.result.report, perspective, scores, briefs)
-	return odds_summary(wins, scores, briefs, perspective, ctx.get("state"))
+		for sr in r.result.report.sides:
+			for sid in sr.get("spells_cast", {}):
+				if not spells.has(sr.faction):
+					spells[sr.faction] = {}
+				spells[sr.faction][sid] = true
+	return odds_summary(wins, scores, briefs, perspective, ctx.get("state"), spells)
 
 
 ## Adds one test battle's "why" factors to `scores` (factor key -> summed impact from `perspective`'s point of view,
@@ -346,8 +402,9 @@ static func add_odds_factors(report: Dictionary, perspective: String, scores: Di
 
 
 ## The odds of `perspective` from `wins` of ODDS_SAMPLES test battles and the summed factors (add_odds_factors):
-## {"win_rate", "wins", "samples", "label", "reasons", "text"}.
-static func odds_summary(wins: int, scores: Dictionary, briefs: Dictionary, perspective: String, state) -> Dictionary:
+## {"win_rate", "wins", "samples", "label", "reasons", "text"}. M5-7: `spells` ({faction: {spell: true}}, the spells
+## cast in the test battles) adds a sentence naming them and "spells" ({faction: [ids in spellbook order]}).
+static func odds_summary(wins: int, scores: Dictionary, briefs: Dictionary, perspective: String, state, spells: Dictionary = {}) -> Dictionary:
 	var rate := float(wins) / ODDS_SAMPLES
 	var label := "close"
 	if rate >= LIKELY_WIN:
@@ -377,8 +434,24 @@ static func odds_summary(wins: int, scores: Dictionary, briefs: Dictionary, pers
 		_cap(label), name, wins, ODDS_SAMPLES, roundi(rate * 100)]
 	if not reasons.is_empty():
 		text += " Main reasons: %s." % "; ".join(reasons)
+	var cast := {}
+	if not spells.is_empty():
+		var fids: Array = spells.keys()
+		fids.sort()
+		var parts := []
+		for fid in fids:
+			var ids := []
+			for sid in MagicData.SPELLBOOK.get(fid, []):
+				if spells[fid].has(sid):
+					ids.append(String(sid))
+			cast[fid] = ids
+			parts.append("%s: %s" % [_faction_name(String(fid), state), " and ".join(ids.map(func(x): return MagicRules.spell_name(String(x))))])
+		text += " Spells cast in the test battles (they always land): %s." % "; ".join(parts)
 	text += " Each real battle still has its own rolls."
-	return {"win_rate": rate, "wins": wins, "samples": ODDS_SAMPLES, "label": label, "reasons": reasons, "text": text}
+	var out := {"win_rate": rate, "wins": wins, "samples": ODDS_SAMPLES, "label": label, "reasons": reasons, "text": text}
+	if not cast.is_empty():
+		out["spells"] = cast
+	return out
 
 
 ## The fixed seed of odds sample `i` (exposed so tests can check estimate() against resolve()).
@@ -428,6 +501,8 @@ static func fight(sides_in: Array, ctx: Dictionary, rng: SeededRNG, record := fa
 	if ctx.has("siege"):
 		env["siege"] = ctx.siege  # M3c: walls and cover replace the flat fort bonus (_defense)
 		env["place_name"] = province.name if province != null else "the fort"  # for the walls and cover factors
+	if MagicRules.has_magic(state):
+		_setup_magic(sides, ctx, env, state)  # M5-7: casters, spellbooks and the enchantments in play
 	# M3-1: the recorder, {"log", "cap"}, or null when not recording.
 	var rec = null
 	if record:
@@ -569,7 +644,10 @@ static func _build_sides(sides_in: Array, defender_fid: String, state, kind: Str
 			"paths": state is GameState and AscensionRules.has_paths(state), "people": people_of(state, sd.faction),
 			"base_morale_parts": base_morale_parts, "type_names": type_names, "dread_lands": 0,
 			"red_harvest": RED_HARVEST_GOLD if state is GameState and RulerRules.has_mandate(state, sd.faction, RED_HARVEST) else 0,
-			"wings_reach": 0.0, "wings_targets": {}, "wings_kills": [], "iron_hits": 0, "healed": 0})
+			"wings_reach": 0.0, "wings_targets": {}, "wings_kills": [], "iron_hits": 0, "healed": 0,
+			# M5-7: magic. Only _setup_magic, in a game with magic, ever changes these.
+			"magic": false, "casters": [], "spellbook": [], "enchant_log": [], "blessed": 0, "blessed_fighters": 0, "moon": false,
+			"cursed": false, "bled": 0, "moon_healed": 0, "spells_cast": {}, "spell_stats": {}, "cast_battle": {}, "type_rank": {}})
 		for f in fighters:
 			if not f.trait.is_empty():
 				sides[i].trait_units[f.trait] = f.name
@@ -711,8 +789,8 @@ static func _fighter(side_idx: int, army: Army, unit: Unit, is_cmd: bool, is_rul
 		tier = 2
 	elif is_ruler:
 		tier = 1 if RulerRules.battle_rank(unit.type.id) == "second" else 0
-	elif t == VOLLEY:
-		tier = 1
+	elif t == VOLLEY or t == MAGE:
+		tier = 1  # M5-7: mages fight from the second rank too
 	return {"side": side_idx, "army": army.id, "army_ref": army, "unit": unit, "type": unit.type, "name": unit.type.name,
 		"trait": t, "cmd": is_cmd, "tier": tier, "hp": unit.current_hp, "hp0": unit.current_hp,
 		"max": max_hp if max_hp > 0 else unit.type.hp, "alive": unit.current_hp > 0, "pending": 0,
@@ -749,10 +827,17 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 	if rec != null:
 		impact_before = _impacts(sides)
 		reach = _log_round(rec, sides, standing, round_no)
+	# M5-7: the cast step, in a game with magic. Casters that cast don't attack this round.
+	var magic: bool = env.get("magic", false)
+	var spells := {"casting": {}, "lines": []}
+	if magic:
+		spells = _cast_step(sides, standing, round_no, env, rec, hit_by)
 	for si in standing:
 		var side: Dictionary = sides[si]
 		for f in side.fighters:
 			if not f.alive:
+				continue
+			if magic and spells.casting.has(int(f.ord)):
 				continue
 			var pool := _targets(sides, si, standing, f)
 			if pool.is_empty():
@@ -774,7 +859,10 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			for p in atk.parts:
 				var a2: int = atk.value - atk.parts[p]
 				var gain: float = expected - hit_chance(a2, dfn.value, base) / 100.0 * _dealt(t, damage(a2, dfn.value) + bonus)
-				_add_impact(side, p, gain)
+				if magic and String(p).begins_with(SPELL_PREFIX):
+					_add_impact(sides[int(f.hexed_by.get(p, si))], p, -gain)  # M5-7: a hex's worth is its caster's side's
+				else:
+					_add_impact(side, p, gain)
 			for p in dfn.parts:
 				var d2: int = dfn.value - dfn.parts[p]
 				var saved: float = hit_chance(atk.value, d2, base) / 100.0 * _dealt(t, damage(atk.value, d2) + bonus) - expected
@@ -813,7 +901,7 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			if f.cmd:
 				side.cmd_expected += expected
 				_add_impact(side, "commander", expected - _line_baseline(side, f, dfn.value, atk.parts.get("terrain", 0)))
-			if f.tier == 1 and not f.ruler and _screened(side, f):
+			if f.tier == 1 and not f.ruler and f.trait == VOLLEY and _screened(side, f):  # M5-7: a mage that attacks is not Volley
 				side.volley_expected += expected
 				_add_impact(side, VOLLEY, expected * 0.5)
 			if atk.parts.has(BERSERK) and not berserk.has(si):
@@ -849,7 +937,7 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 					side.ruler_dealt += dmg
 				# M4-3: what Lifedrinker drinks back at the end of the round, Iron Hide's hits, and a
 				# commander Wings struck (so the "why" can say it fell to the Seraphs).
-				if f.trait == LIFEDRINKER:
+				if f.trait == LIFEDRINKER or side.moon:  # M5-7: under the Blood Moon every fighter of its side drinks
 					f["drink"] = int(f.get("drink", 0)) + dmg
 				if hide > 0:
 					tside.iron_hits += 1
@@ -857,7 +945,7 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 					t["winged"] = round_no
 					t["winged_by"] = si
 
-	var highlights := []
+	var highlights: Array = spells.lines.duplicate()  # M5-7: what was cast this round comes first
 	for si in standing:
 		if charge.has(si):
 			highlights.append("%s %s charged home for %d extra damage." % [_poss(sides[si].name), sides[si].trait_units[CHARGE], charge[si]])
@@ -865,17 +953,33 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			highlights.append("%s wounded %s went berserk (+%d attack)." % [_poss(sides[si].name), berserk[si], BERSERK_ATTACK])
 	for si in standing:
 		for f in sides[si].fighters:
-			if f.alive and f.pending > 0:
+			var bleed := int(f.get("bleed", 0))  # M5-7: Bloodbolt's bleeding lands with the wounds
+			if f.alive and (f.pending > 0 or bleed > 0):
 				var before: int = f.hp
 				f.hp = maxi(0, f.hp - f.pending)
 				f.taken += before - f.hp
-				if rec != null:
-					_log_push(rec.log, rec.cap, {"t": "wound", "n": round_no, "f": f.id, "from": before, "to": f.hp, "by": hit_by.get(f.id, [])})
+				var bled := 0
+				if bleed > 0 and f.hp > 0:
+					# Never below 1, and not lost to the enemy: the morale check leaves it out (side.bled).
+					bled = mini(bleed, f.hp - 1)
+					f.hp -= bled
+					f["bled"] = int(f.get("bled", 0)) + bled
+					sides[si].bled += bled
+				if rec != null and f.hp < before:
+					var by: Array = hit_by.get(f.id, []).duplicate()
+					var wound := {"t": "wound", "n": round_no, "f": f.id, "from": before, "to": f.hp, "by": by}
+					if bled > 0:
+						by.append(f.id)
+						wound["bled"] = bled
+					_log_push(rec.log, rec.cap, wound)
 					if f.hp == 0:
 						_log_push(rec.log, rec.cap, {"t": "death", "n": round_no, "f": f.id, "by": hit_by.get(f.id, []).duplicate()})
 				if f.hp == 0:
 					f.alive = false
 					sides[si].lost.append(f.name)
+					for sid in f.get("bolted", {}):
+						# M5-7: a bolt helped fell it this round (the spell's "why" names it).
+						sides[int(f.bolted[sid])].spell_stats[sid].kills.append({"name": _target_ref(f), "round": round_no})
 					highlights.append("%s %s fell." % [_poss(sides[si].name), _bare(f.name)])
 					if f.ruler:
 						sides[si].ruler_fell = round_no
@@ -884,6 +988,8 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 						sides[int(f.winged_by)].wings_kills.append({"name": f.name, "trait": f.trait, "round": round_no,
 							"side": sides[si].name})
 			f.pending = 0
+			if bleed > 0:
+				f.bleed = 0
 	_drink(sides, standing, round_no, highlights, rec)
 
 	# Morale is checked for every side before any of them leaves, so the order of sides never matters.
@@ -894,9 +1000,12 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 		if hp_now == 0:
 			continue
 		var m := _morale(sides, si, standing)
-		var lost_pct := roundi(100.0 * (side.hp_start - hp_now) / maxi(1, side.hp_start))
+		# M5-7: hp a side's own casters bled are not lost to the enemy, so the check leaves them out (0 without magic).
+		var lost_pct := roundi(100.0 * (side.hp_start - hp_now - side.bled) / maxi(1, side.hp_start))
 		var entry := {"round": round_no, "morale": m.value, "parts": m.parts, "break_pct": break_pct(m.value),
 			"lost_pct": lost_pct, "hp": hp_now}
+		if side.magic:
+			entry["bled"] = side.bled
 		side.morale_log.append(entry)
 		checks[si] = entry
 	var outcomes := {}  # M3-1 recording: side index -> {"result", "held_by" (fighter id), "iron_last_round"}
@@ -1081,6 +1190,9 @@ static func _attack(f: Dictionary, side: Dictionary, env: Dictionary) -> Diction
 	for p in parts:
 		value += parts[p]
 		side.triggers[p] = side.triggers.get(p, 0) + 1
+	for p in f.get("spell_atk", {}):
+		parts[p] = int(f.spell_atk[p])  # M5-7: a hex on it this round (Briar Snare, Sunburst)
+		value += parts[p]
 	return {"value": value, "parts": parts}
 
 
@@ -1113,6 +1225,9 @@ static func _defense(t: Dictionary, tside: Dictionary, _attacker: Dictionary, en
 	for p in parts:
 		value += parts[p]
 		tside.triggers[p] = tside.triggers.get(p, 0) + 1
+	for p in t.get("spell_def", {}):
+		parts[p] = int(t.spell_def[p])  # M5-7: a shield on it this round (Shield of Law)
+		value += parts[p]
 	return {"value": value, "parts": parts}
 
 
@@ -1152,6 +1267,8 @@ static func _morale(sides: Array, si: int, standing: Array) -> Dictionary:
 	lands = maxi(0, lands - dread)
 	if lands > 0:
 		parts[DREAD_LANDS] = -lands
+	if int(side.get("blessed", 0)) > 0:
+		parts[BLESSING] = int(side.blessed)  # M5-7: Dawn Blessing, counted at the battle's start
 	var value: int = side.base_morale
 	for p in parts:
 		value += parts[p]
@@ -1203,31 +1320,53 @@ static func _dealt(t: Dictionary, raw: int) -> int:
 ## morale is checked: every fighter with it that still stands heals 1/LIFEDRINK_DIVISOR of the damage its
 ## hits dealt this round, rounded up, up to its maximum. One that fell this round heals nothing. Counts the
 ## hp it healed as its "why" worth, writes a heal event to the log and one highlight per side.
+## M5-7: under the Blood Moon (side.moon) every standing fighter of the moon's side heals back a quarter of the damage
+## its attacks dealt that round, rounded down (spell damage never counts), and a Lifedrinker the larger of its two
+## shares, not both; none of them above its maximum - 1. A cursed side (side.cursed) heals back nothing.
 static func _drink(sides: Array, standing: Array, round_no: int, highlights: Array, rec) -> void:
+	var share := int(MagicData.SPELLS.blood_moon.get("share", 4))
 	for si in standing:
 		var side: Dictionary = sides[si]
 		var healed := 0
 		var who := ""
+		var moon: bool = side.moon
+		var moon_healed := 0
 		for f in side.fighters:
-			if f.trait != LIFEDRINKER:
+			var drinker: bool = f.trait == LIFEDRINKER
+			if not drinker and not moon:
 				continue
 			var drunk := int(f.get("drink", 0))
 			f["drink"] = 0
-			if not f.alive or drunk <= 0 or f.hp >= f.max:
+			var top: int = f.max - 1 if moon else f.max
+			if not f.alive or drunk <= 0 or f.hp >= top or side.cursed:
 				continue
-			var heal := mini(ceili(float(drunk) / LIFEDRINK_DIVISOR), f.max - f.hp)
+			var by_trait := ceili(float(drunk) / LIFEDRINK_DIVISOR) if drinker else 0
+			var by_moon := floori(float(drunk) / share) if moon else 0
+			var from_moon := by_moon > by_trait
+			var heal := mini(by_moon if from_moon else by_trait, top - f.hp)
+			if heal <= 0:
+				continue
 			var before: int = f.hp
 			f.hp += heal
-			healed += heal
-			who = f.name
-			side.triggers[LIFEDRINKER] = side.triggers.get(LIFEDRINKER, 0) + 1
+			var ev := {"t": "heal", "n": round_no, "f": f.id if rec != null else -1, "from": before, "to": f.hp, "dealt": drunk}
+			if from_moon:
+				moon_healed += heal
+				ev["spell"] = "blood_moon"
+			else:
+				healed += heal
+				who = f.name
+				side.triggers[LIFEDRINKER] = side.triggers.get(LIFEDRINKER, 0) + 1
+				ev["trait"] = LIFEDRINKER
 			if rec != null:
-				_log_push(rec.log, rec.cap, {"t": "heal", "n": round_no, "f": f.id, "from": before, "to": f.hp, "dealt": drunk,
-					"trait": LIFEDRINKER})
+				_log_push(rec.log, rec.cap, ev)
 		if healed > 0:
 			side.healed += healed
 			_add_impact(side, LIFEDRINKER, float(healed))
 			highlights.append("%s %s drank back %d hp." % [_poss(side.name), who, healed])
+		if moon_healed > 0:
+			side.moon_healed += moon_healed
+			_add_impact(side, MOON, float(moon_healed))
+			highlights.append("Under the Blood Moon, %s healed back %d hp." % [side.name, moon_healed])
 
 
 ## Veteran Levies (§7.4): the damage each regular unit's extra maximum hp absorbed (up to the bonus, for
@@ -1306,7 +1445,7 @@ static func _apply_losses(sides: Array, winner: String) -> Dictionary:
 			var army: Army = f.army_ref
 			if f.alive:
 				var hp: int = f.hp
-				if s.feast:
+				if s.feast and not s.cursed:  # M5-7: a cursed side heals from nothing
 					standing += 1
 					healed += maxi(0, f.max - hp)
 					hp = maxi(hp, f.max)
@@ -1317,9 +1456,501 @@ static func _apply_losses(sides: Array, winner: String) -> Dictionary:
 				army.ruler = null
 			else:
 				army.units.erase(f.unit)
-		if s.feast and healed > 0:
+		if s.feast and not s.cursed and healed > 0:
 			feast = {"faction": s.faction, "name": s.name, "fighters": standing, "healed": healed}
 	return feast
+
+
+# --- battle spells (M5-7, design/M5_MAGIC_FOG.md §5) ------------------------------------------------------
+
+## A battle in a game with magic: each side's casters (each mage, and a ruler that casts in battle), each with the
+## spells it can cast in its side's spellbook order (on spells only) and its mastery per school; the enchantments in
+## play; and the roster order hexes and shields break ties with. Fighters get "ord", their place in fighter order
+## (the log's id), for the cast order.
+static func _setup_magic(sides: Array, ctx: Dictionary, env: Dictionary, state: GameState) -> void:
+	env["magic"] = true
+	var pid := ""
+	var pids: Array = ctx.get("province_ids", [])
+	if env.kind == "province" and not pids.is_empty():
+		pid = String(pids[0])
+	var k := 0
+	for s in sides:
+		for f in s.fighters:
+			f["ord"] = k
+			k += 1
+	for s in sides:
+		var fid: String = s.faction
+		s.magic = true
+		var book := MagicRules.spellbook(state, fid)
+		var on := []
+		for sid in book.order:
+			if not book.off.has(sid):
+				on.append(String(sid))
+		s.spellbook = on
+		var faction := state.find_faction(fid)
+		var rm := MagicRules.ruler_magic(faction.ruler_type) if faction != null else {}
+		var by_kind := {MagicRules.MAGE: MagicRules.battle_spells(state, fid, MagicRules.MAGE),
+			MagicRules.RULER: MagicRules.battle_spells(state, fid, MagicRules.RULER)}
+		for f in s.fighters:
+			var kind := ""
+			if f.ruler and rm.get("battle", false) == true:
+				kind = MagicRules.RULER
+			elif not f.cmd and not f.ruler and MagicRules.is_mage(f.type):
+				kind = MagicRules.MAGE
+			if kind.is_empty():
+				continue
+			var known: Array = by_kind[kind]
+			var schools: Array = rm.get("schools", []) if kind == MagicRules.RULER else MagicRules.schools(fid)
+			var mastery := {}
+			var best := 0
+			for school in schools:
+				var v := int(MagicRules.mastery_bonus(state, fid, String(school), kind).value)
+				mastery[String(school)] = v
+				best = maxi(best, v)
+			f["caster"] = {"kind": kind, "spells": on.filter(func(x): return known.has(x)), "mastery": mastery, "best": best}
+			s.casters.append(f)
+		var rank := 0
+		if faction != null:
+			for ut in faction.unit_types:
+				s.type_rank[ut.id] = rank
+				rank += 1
+		for sid in MagicData.SUMMONS:
+			if not s.type_rank.has(sid):
+				s.type_rank[sid] = rank
+				rank += 1
+		_setup_enchantments(s, state, pid)
+
+
+## The enchantments in play for side `s` in a battle in province `pid` ("" on a border, where nobody is cursed and
+## no ward lies): Dawn Blessing's morale, counted once at the start (at least half the side's fighters blessed), the
+## Blood Moon (outside a province a rival has warded) and a rival's curse (the side heals from nothing). Each goes
+## into the log as {"id", "ritual", "effect"}.
+static func _setup_enchantments(s: Dictionary, state: GameState, pid: String) -> void:
+	var fid: String = s.faction
+	var blessed := {}
+	var blessings := []
+	var moon := {}
+	for e in state.enchantments:
+		var ritual := String(e.ritual)
+		if String(e.faction) != fid:
+			continue
+		if ritual == "dawn_blessing":
+			var hit := false
+			for f in s.fighters:
+				if Array(e.armies).has(f.army):
+					blessed[f.ord] = true
+					hit = true
+			if hit:
+				blessings.append(e)
+		elif ritual == "blood_moon":
+			moon = e
+	if not blessings.is_empty():
+		var morale := int(MagicData.SPELLS.dawn_blessing.get("morale", 1))
+		var count := blessed.size()
+		var enough := count * 2 >= int(s.count_start)
+		s.blessed = morale if enough else 0
+		s.blessed_fighters = count
+		for e in blessings:
+			var effect := "+%d morale: %d of %d fighters blessed" % [morale, count, int(s.count_start)] if enough \
+				else "no morale: only %d of %d fighters blessed, under half" % [count, int(s.count_start)]
+			s.enchant_log.append({"id": String(e.id), "ritual": "dawn_blessing", "effect": effect})
+	if not moon.is_empty():
+		s.moon = _rival_ward(state, fid, pid).is_empty()
+		s.enchant_log.append({"id": String(moon.id), "ritual": "blood_moon",
+			"effect": "heals back a quarter of the damage its attacks deal" if s.moon else "outside the moon: a rival ward lies on this province"})
+	if not MagicRules.can_heal(state, fid, pid):
+		s.cursed = true
+		for e in state.enchantments:
+			if String(e.kind) == "curse" and String(e.province) == pid and String(e.faction) != fid:
+				s.enchant_log.append({"id": String(e.id), "ritual": String(e.ritual), "effect": "cursed: it can't heal here"})
+
+
+## A ward a faction other than `fid` holds on province `pid` (the Blood Moon stays out of it), or {}.
+static func _rival_ward(state: GameState, fid: String, pid: String) -> Dictionary:
+	if pid.is_empty():
+		return {}
+	for e in state.enchantments:
+		if String(e.kind) == "ward" and String(e.province) == pid and String(e.faction) != fid:
+			return e
+	return {}
+
+
+## Spell resistance (§5.2): what a bolt on a ruler of ability rank `rank` loses, rank / MagicData.RULER_RESIST rounded
+## down (rank 1: 0; ranks 2-3: 1; rank 4: 2). The bolt still deals at least MIN_DAMAGE.
+static func spell_resistance(rank: int) -> int:
+	return floori(float(rank) / MagicData.RULER_RESIST)
+
+
+## The cast step of round `round_no` (§5.1), after the round event and before the first attack. Clears last round's
+## spell parts, then every standing caster casts: highest mastery bonus first, the ruler first among equals, then
+## fighter order. Draws nothing. Returns {"casting": {fighter ord: true} (they don't attack this round), "lines": the
+## round line's sentences}.
+static func _cast_step(sides: Array, standing: Array, round_no: int, env: Dictionary, rec, hit_by: Dictionary) -> Dictionary:
+	var out := {"casting": {}, "lines": []}
+	var queue := []
+	for si in standing:
+		for f in sides[si].fighters:
+			f["spell_atk"] = {}
+			f["spell_def"] = {}
+			f["hexed_by"] = {}
+			f["bolted"] = {}
+			f["bleed"] = 0
+		for f in sides[si].casters:
+			if f.alive:
+				queue.append(f)
+	if queue.is_empty():
+		return out
+	queue.sort_custom(func(a, b):
+		if int(a.caster.best) != int(b.caster.best):
+			return int(a.caster.best) > int(b.caster.best)
+		if a.ruler != b.ruler:
+			return a.ruler
+		return int(a.ord) < int(b.ord))
+	var done := {}  # side index -> {spell: true}: cast by someone on that side this round
+	var summary := {}  # side index -> the plans cast, in order
+	for c in queue:
+		var si: int = c.side
+		var cast: Dictionary = done.get(si, {})
+		var skipped := []
+		var pick := {}
+		var again := {}
+		for sid in c.caster.spells:
+			var plan := _spell_plan(String(sid), c, sides, standing, round_no, env)
+			if plan.has("skip"):
+				skipped.append({"spell": String(sid), "reason": String(plan.skip)})
+				continue
+			if not cast.has(sid):
+				pick = plan
+				break
+			if again.is_empty():
+				again = plan
+		if pick.is_empty() and not again.is_empty():
+			pick = again
+			pick["again"] = true  # every useful spell had been cast this round: from the top again
+		if pick.is_empty():
+			continue  # nothing useful: it attacks
+		cast[pick.spell] = true
+		done[si] = cast
+		_apply_cast(pick, c, sides, round_no, rec, hit_by, skipped)
+		out.casting[int(c.ord)] = true
+		if not summary.has(si):
+			summary[si] = []
+		summary[si].append(pick)
+	var keys: Array = summary.keys()
+	keys.sort()
+	for si in keys:
+		out.lines.append(_cast_line(sides[si], summary[si]))
+	return out
+
+
+## What spell `sid` would do if caster `c` cast it now (§5.2), or {"skip": why it isn't useful, in plain words}:
+## {"spell", "kind", "school", "bonus", "targets": [fighters, in fighter order], "value" (a bolt's damage with
+## mastery), "damage" (after spell resistance), "resist", "self" (Bloodbolt's bleed), "part" ({"stat", "value"} for
+## a hex or shield), "why" (the target rule, in plain words)}.
+static func _spell_plan(sid: String, c: Dictionary, sides: Array, standing: Array, round_no: int, env: Dictionary) -> Dictionary:
+	var sp := MagicRules.spell_data(sid)
+	var si: int = c.side
+	var side: Dictionary = sides[si]
+	var school := String(sp.get("school", ""))
+	var bonus := int(c.caster.mastery.get(school, 0))
+	var name := String(sp.get("name", sid))
+	var key := SPELL_PREFIX + sid
+	var plan := {"spell": sid, "kind": String(sp.get("kind", "")), "school": school, "bonus": bonus, "targets": [], "value": 0,
+		"damage": 0, "resist": 0, "self": 0, "part": {}, "why": ""}
+	match String(sp.get("kind", "")):
+		"bolt":
+			var need := int(sp.get("min_caster_hp", 0))
+			if int(c.hp) < need:
+				return {"skip": "the caster has %d hp, and %s needs %d or more" % [int(c.hp), name, need]}
+			var live := []
+			for t in _targets(sides, si, standing, c):
+				if t.hp - t.pending > 0:
+					live.append(t)
+			if live.is_empty():
+				return {"skip": "every enemy in reach is already going to die from the damage aimed at it this round"}
+			var units := live.filter(func(t): return not t.cmd and not t.ruler)
+			var pool: Array = units if not units.is_empty() else live
+			var best: Dictionary = pool[0]
+			for t in pool:
+				if _bolt_better(sid, t, best):
+					best = t
+			var value := int(MagicRules.spell_numbers(sid, bonus).value)
+			var resist := 0
+			if best.ruler:
+				var rank := RulerRules.ability_rank(int(sides[best.side].ruler_info.get("kept_power", 0)))
+				resist = clampi(spell_resistance(rank), 0, value - MIN_DAMAGE)
+			plan.targets = [best]
+			plan.value = value
+			plan.resist = resist
+			plan.damage = value - resist
+			plan.self = int(sp.get("bleed", 0))
+			var who := _target_ref(best)
+			if units.is_empty():
+				plan.why = "nothing but rulers and commanders was in reach, so %s" % who
+			elif sid == "sunlance":
+				plan.why = "%s %s the highest maximum hp in reach (%d)%s" % [_the(who), "have" if _plural(who) else "has", int(best.max),
+					", the most hurt of those" if pool.filter(func(t): return t.max == best.max).size() > 1 else ""]
+			else:
+				plan.why = "%s %s the fewest hp left in reach (%d) and %s not yet going to die this round" % [_the(who),
+					"have" if _plural(who) else "has", int(best.hp - best.pending), "are" if _plural(who) else "is"]
+		"hex":
+			if sp.has("round"):
+				# Sunburst: every enemy fighter in the front rank, rulers included, once per side per battle.
+				if round_no != int(sp.round):
+					return {"skip": "%s works only in round %d" % [name, int(sp.round)]}
+				if side.cast_battle.has(sid):
+					return {"skip": "%s was already called down this battle" % name}
+				for oi in standing:
+					if oi == si:
+						continue
+					for t in sides[oi].fighters:
+						if t.alive and t.tier == 0 and not t.spell_atk.has(key):
+							plan.targets.append(t)
+				if plan.targets.is_empty():
+					return {"skip": "no enemy fighter stands in the front rank"}
+				plan.why = "round %d: every enemy fighter in the front rank (%d)" % [round_no, plan.targets.size()]
+			else:
+				var forest: bool = env.kind == "province" and env.terrain == "forest"
+				var count := int(MagicRules.spell_numbers(sid, bonus, forest).count)
+				var group := _spell_group(sides, standing, si, true, key, env)
+				if group.is_empty():
+					return {"skip": "no enemy front-rank unit is left that it hasn't already hexed this round"}
+				plan.targets = Array(group.free).slice(0, count)
+				plan.why = "the %s were the most numerous enemy front-rank type with units not yet hexed by it this round (%d standing); it covers up to %d%s" % [
+					_bare(String(group.name)), int(group.count), count, " in a forest" if forest else ""]
+			plan.part = {"stat": String(sp.get("stat", "attack")), "value": int(sp.get("value", 0))}
+		"shield":
+			var count := int(MagicRules.spell_numbers(sid, bonus).count)
+			var group := _spell_group(sides, standing, si, false, key, env)
+			if group.is_empty():
+				return {"skip": _shield_skip(side, env, key)}
+			plan.targets = Array(group.free).slice(0, count)
+			plan.why = "the %s were its most numerous front-rank type with units not yet shielded and without a terrain or fort bonus (%d standing); it covers up to %d" % [
+				_bare(String(group.name)), int(group.count), count]
+			plan.part = {"stat": String(sp.get("stat", "defense")), "value": int(sp.get("value", 0))}
+		_:
+			return {"skip": "%s is not a battle spell this build can cast" % name}
+	return plan
+
+
+## Whether fighter `t` is a better target than `best` for bolt `sid` (§5.2): Sunlance, the highest maximum hp and of
+## those the fewest hp left; Bloodbolt (and any other bolt), the fewest hp left. Ties keep the earlier fighter.
+static func _bolt_better(sid: String, t: Dictionary, best: Dictionary) -> bool:
+	if sid == "sunlance" and int(t.max) != int(best.max):
+		return int(t.max) > int(best.max)
+	return int(t.hp - t.pending) < int(best.hp - best.pending)
+
+
+## The unit type a hex (`enemy`) or a shield picks (§5.2): among the front-rank units ("units" are regular units and
+## summoned creatures, never commanders or rulers) of the enemy sides, or of the caster's own side without a terrain or
+## fort bonus, the type with the most standing that still has units without part `key` this round. Ties go in side
+## order, then roster order, then summoned types in data order. {"side", "type", "name", "count", "free": [fighters
+## without the part, in fighter order]}, or {} when no type has one.
+static func _spell_group(sides: Array, standing: Array, si: int, enemy: bool, key: String, env: Dictionary) -> Dictionary:
+	var groups := {}
+	var order := []
+	var stat := "spell_atk" if enemy else "spell_def"
+	for oi in standing:
+		if (oi == si) == enemy:
+			continue
+		for t in sides[oi].fighters:
+			if not t.alive or t.tier != 0 or t.cmd or t.ruler:
+				continue
+			if not enemy and _ground(t, sides[oi], env) > 0:
+				continue
+			var gk := "%d|%s" % [oi, t.type.id]
+			if not groups.has(gk):
+				groups[gk] = {"side": oi, "type": t.type.id, "name": t.name, "count": 0, "free": []}
+				order.append(gk)
+			groups[gk].count += 1
+			if not t[stat].has(key):
+				groups[gk].free.append(t)
+	var best := {}
+	for gk in order:
+		var g: Dictionary = groups[gk]
+		if g.free.is_empty():
+			continue
+		if best.is_empty() or int(g.count) > int(best.count) or (int(g.count) == int(best.count) and int(g.side) == int(best.side)
+				and int(sides[g.side].type_rank.get(g.type, 1 << 20)) < int(sides[best.side].type_rank.get(best.type, 1 << 20))):
+			best = g
+	return best
+
+
+## The defense a fighter of `tside` already has from the ground (§5.2's "terrain or fort bonus"): the defender's
+## terrain and flat fort bonus, and in a battle at a fort with sieges the walls or the cover of a fighter from inside.
+## The same rule as _defense, read only.
+static func _ground(t: Dictionary, tside: Dictionary, env: Dictionary) -> int:
+	var siege: Dictionary = env.get("siege", {})
+	var g := 0
+	if tside.is_defender:
+		g += int(TERRAIN.get(env.terrain, {}).get("defense", 0))
+		if env.fort and siege.is_empty():
+			g += FORT_DEFENSE
+	if not siege.is_empty() and Array(siege.get("from_inside", [])).has(t.army):
+		g += int(siege.get("walls_defense", 0)) if String(siege.get("kind", "")) == SiegeRules.STORM else int(siege.get("cover_defense", 0))
+	return g
+
+
+## Why Shield of Law has nothing to cover on `side`, in plain words: "the Spearmen have the fort's +2 defense, and
+## Shield of Law never covers a unit with a terrain or fort bonus".
+static func _shield_skip(side: Dictionary, env: Dictionary, key: String) -> String:
+	var name := MagicRules.spell_name(key.trim_prefix(SPELL_PREFIX))
+	var front := []
+	for f in side.fighters:
+		if f.alive and f.tier == 0 and not f.cmd and not f.ruler:
+			front.append(f)
+	if front.is_empty():
+		return "none of its units stands in the front rank"
+	for f in front:
+		if _ground(f, side, env) > 0:
+			var bits := []
+			var siege: Dictionary = env.get("siege", {})
+			if side.is_defender and int(TERRAIN.get(env.terrain, {}).get("defense", 0)) > 0:
+				bits.append("the %s's +%d" % [env.terrain if env.terrain != "hills" else "hill", int(TERRAIN[env.terrain].defense)])
+			if side.is_defender and env.fort and siege.is_empty():
+				bits.append("the fort's +%d" % FORT_DEFENSE)
+			if not siege.is_empty() and Array(siege.get("from_inside", [])).has(f.army):
+				bits.append("the walls' +%d" % int(siege.get("walls_defense", 0)) if String(siege.get("kind", "")) == SiegeRules.STORM \
+					else "the cover of the walls (+%d)" % int(siege.get("cover_defense", 0)))
+			return "the %s %s %s defense, and %s never covers a unit with a terrain or fort bonus" % [_bare(String(f.name)),
+				"have" if _plural(String(f.name)) else "has", " and ".join(bits), name]
+	return "every one of its front-rank units is already shielded this round"
+
+
+## Casts `plan` (from _spell_plan) by caster `c`: a bolt's damage waits as pending (it lands with the round's wounds)
+## and counts its worth (the damage it will deal, never past the target's hp left) for its side; a hex or shield puts
+## its part on its targets for the round; Bloodbolt marks its caster's bleed. Writes the log's cast event.
+static func _apply_cast(plan: Dictionary, c: Dictionary, sides: Array, round_no: int, rec, hit_by: Dictionary, skipped: Array) -> void:
+	var si: int = c.side
+	var side: Dictionary = sides[si]
+	var sid: String = plan.spell
+	var key := SPELL_PREFIX + sid
+	var st: Dictionary = side.spell_stats.get(sid, {"casts": 0, "rounds": {}, "casters": [], "targets": {}, "units": 0, "damage": 0, "kills": []})
+	st.casts += 1
+	st.rounds[round_no] = true
+	var cname := _caster_ref(c)
+	if not st.casters.has(cname):
+		st.casters.append(cname)
+	match String(plan.kind):
+		"bolt":
+			var t: Dictionary = plan.targets[0]
+			var worth := mini(int(plan.damage), t.hp - t.pending)
+			t.pending += int(plan.damage)
+			t.bolted[sid] = si
+			_add_impact(side, key, float(worth))
+			st.damage += worth
+			if int(plan.self) > 0:
+				c.bleed = int(plan.self)
+			if rec != null:
+				if not hit_by.has(t.id):
+					hit_by[t.id] = []
+				hit_by[t.id].append(c.id)
+		"hex":
+			for t in plan.targets:
+				t.spell_atk[key] = int(plan.part.value)
+				t.hexed_by[key] = si
+		"shield":
+			for t in plan.targets:
+				t.spell_def[key] = int(plan.part.value)
+	for t in plan.targets:
+		var nm := _target_ref(t)
+		st.targets[nm] = int(st.targets.get(nm, 0)) + 1
+	st.units += plan.targets.size()
+	side.spell_stats[sid] = st
+	side.spells_cast[sid] = int(side.spells_cast.get(sid, 0)) + 1
+	side.cast_battle[sid] = true
+	if rec == null:
+		return
+	var ev := {"t": "cast", "n": round_no, "by": c.id, "spell": sid, "school": String(plan.school), "kind": String(plan.kind),
+		"bonus": int(plan.bonus), "targets": plan.targets.map(func(t): return int(t.id))}
+	if plan.kind == "bolt":
+		ev["value"] = int(plan.value)
+		ev["resist"] = int(plan.resist)
+	else:
+		ev["part"] = plan.part.duplicate()
+	ev["damage"] = int(plan.damage) if plan.kind == "bolt" else 0
+	ev["self"] = int(plan.self)
+	var book := ", ".join(side.spellbook.map(func(x): return MagicRules.spell_name(String(x))))
+	var how := "every useful spell in its side's spellbook (%s) had been cast this round, so it started again from the top with %s" % [book,
+		MagicRules.spell_name(sid)] if plan.get("again", false) \
+		else "%s was the first useful spell in its side's spellbook (%s) that nobody on its side had cast yet this round" % [MagicRules.spell_name(sid), book]
+	ev["why"] = "%s; %s" % [how, String(plan.why)]
+	if not skipped.is_empty():
+		ev["skipped"] = skipped.duplicate(true)
+	_log_push(rec.log, rec.cap, ev)
+
+
+## Whether a unit's name reads as a plural ("Spearmen", "Knights"; not "War Bear"), for "has" or "have".
+static func _plural(name: String) -> bool:
+	return name.ends_with("s") or name.ends_with("men")
+
+
+## A caster in running text: "the Thornmane Shamans", "the Ever-Regent".
+static func _caster_ref(c: Dictionary) -> String:
+	return String(c.name) if c.ruler else _the(String(c.name))
+
+
+## A spell's target in running text, without "the" for units ("Knights", "War Bear"), a ruler or commander by name.
+static func _target_ref(t: Dictionary) -> String:
+	return String(t.name) if t.ruler or t.cmd else _bare(String(t.name))
+
+
+## The round line's sentence for one side's casts: "Thornmane Clans cast Briar Snare (6 Knights, -2 attack this round)
+## and Bloodbolt (5 sure damage to Spearmen)."
+static func _cast_line(side: Dictionary, picks: Array) -> String:
+	var by_spell := {}
+	var order := []
+	for p in picks:
+		if not by_spell.has(p.spell):
+			by_spell[p.spell] = []
+			order.append(p.spell)
+		by_spell[p.spell].append(p)
+	var parts := []
+	for sid in order:
+		var ps: Array = by_spell[sid]
+		var names := {}
+		var name_order := []
+		var units := 0
+		var damage := 0
+		for p in ps:
+			damage += int(p.damage)
+			for t in p.targets:
+				var nm := _target_ref(t)
+				if not names.has(nm):
+					names[nm] = 0
+					name_order.append(nm)
+				names[nm] += 1
+				units += 1
+		var whom := []
+		for nm in name_order:
+			whom.append(nm if int(names[nm]) == 1 else "%d %s" % [int(names[nm]), nm])
+		var times := "" if ps.size() == 1 else " %d times" % ps.size()
+		var p0: Dictionary = ps[0]
+		if p0.kind == "bolt":
+			parts.append("%s%s (%d sure damage to %s)" % [MagicRules.spell_name(sid), times, damage, " and ".join(whom)])
+		else:
+			parts.append("%s%s (%s, %+d %s this round)" % [MagicRules.spell_name(sid), times, " and ".join(whom), int(p0.part.value), String(p0.part.stat)])
+	return "%s cast %s." % [side.name, " and ".join(parts)]
+
+
+## Bleeding closes when the battle ends (§5.2): every standing fighter of the winning side gets back the hp it bled
+## (never above its maximum). Returns [[fighter, hp before, hp after]] for each one healed.
+static func _close_bleeds(sides: Array, winner: String) -> Array:
+	var out := []
+	for s in sides:
+		if s.faction != winner:
+			continue
+		for f in s.fighters:
+			var bled := int(f.get("bled", 0))
+			if not f.alive or bled <= 0:
+				continue
+			var before: int = f.hp
+			f.hp = mini(f.max, f.hp + bled)
+			s.bled -= f.hp - before
+			f.bled = 0
+			if f.hp > before:
+				out.append([int(f.get("id", -1)), before, int(f.hp)])
+	return out
 
 
 # --- the battle event log (M3-1, design/M3_BATTLES.md §2.2-§2.3) ----------------------------------
@@ -1361,6 +1992,11 @@ static func _log_header(sides: Array, sides_in: Array, ctx: Dictionary, env: Dic
 			side_log["base_morale_parts"] = s.base_morale_parts.duplicate()
 			side_log["dread_lands"] = s.dread_lands
 			side_log["red_harvest"] = s.red_harvest
+		if s.magic:
+			# M5-7: its casters, its spellbook (on spells, in order) and the enchantments in play.
+			side_log["casters"] = s.casters.map(func(f): return int(f.id))
+			side_log["spellbook"] = s.spellbook.duplicate()
+			side_log["enchantments"] = s.enchant_log.duplicate(true)
 		side_logs.append(side_log)
 	var out := {"v": BattleLog.VERSION, "id": "", "turn": 0, "index": 0, "kind": env.kind,
 		"provinces": ctx.get("province_ids", []).duplicate(), "terrain": env.terrain, "fort": env.fort,
@@ -1369,6 +2005,8 @@ static func _log_header(sides: Array, sides_in: Array, ctx: Dictionary, env: Dic
 		"sides": side_logs, "fighters": fighters, "events": [], "truncated": false}
 	if paths:
 		out["paths"] = true  # M4-3: the path additions below are in this log (BattleLog: "paths")
+	if env.get("magic", false):
+		out["magic"] = true  # M5-7: the magic additions are in this log (BattleLog: "magic")
 	if env.has("siege"):
 		out["siege"] = env.siege.duplicate(true)  # M3c (§4.4): what kind of battle at a fort, and what the walls did
 	return out
@@ -1394,9 +2032,14 @@ static func _log_fighter(f: Dictionary, s: Dictionary) -> Dictionary:
 	if f.ruler and not s.ruler_info.is_empty():
 		ruler = {"id": s.ruler_info.id, "kept_power": s.ruler_info.kept_power, "rank": s.ruler_info.rank, "dread": s.ruler_info.dread}
 	var ut: UnitType = f.type
-	return {"id": f.id, "side": f.side, "army": f.army, "role": "commander" if f.cmd else ("ruler" if f.ruler else "unit"),
+	var out := {"id": f.id, "side": f.side, "army": f.army, "role": "commander" if f.cmd else ("ruler" if f.ruler else "unit"),
 		"type": ut.id, "name": f.name, "trait": f.trait, "tier": f.tier, "hp": f.hp, "max_hp": f.max, "hp_parts": hp_parts,
 		"attack": ut.attack, "defense": ut.defense, "morale": ut.morale, "cost": ut.cost, "ruler": ruler}
+	if f.has("caster"):
+		out["mastery"] = f.caster.mastery.duplicate()  # M5-7: a caster's bonus in each school it casts
+	if ut.summoned:
+		out["summoned"] = true  # M5-7: a summoned creature
+	return out
 
 
 ## Appends `ev` unless the log has reached `cap` events: then recording stops and the log is marked
@@ -1447,9 +2090,12 @@ static func _log_round_end(rec: Dictionary, sides: Array, standing: Array, round
 			continue
 		var c: Dictionary = checks[si]
 		var o: Dictionary = outcomes[si]
-		_log_push(rec.log, rec.cap, {"t": "morale", "n": round_no, "side": si, "morale": c.morale, "base": sides[si].base_morale,
+		var ev := {"t": "morale", "n": round_no, "side": si, "morale": c.morale, "base": sides[si].base_morale,
 			"parts": c.parts.duplicate(), "break_pct": c.break_pct, "lost_pct": c.lost_pct, "hp": c.hp, "result": o.result,
-			"held_by": o.held_by, "decisive": _decisive(c, o.result), "iron_last_round": o.iron_last_round})
+			"held_by": o.held_by, "decisive": _decisive(c, o.result), "iron_last_round": o.iron_last_round}
+		if c.has("bled"):
+			ev["bled"] = int(c.bled)  # M5-7: hp its own casters bled, left out of lost_pct
+		_log_push(rec.log, rec.cap, ev)
 	for si in standing:
 		var s: Dictionary = sides[si]
 		if s.destroyed:
@@ -1523,7 +2169,7 @@ static func _dec(x: float, per: float) -> float:
 static func _feast_healed(sides: Array, winner: String) -> Array:
 	var out := []
 	for s in sides:
-		if s.faction != winner or not s.feast:
+		if s.faction != winner or not s.feast or s.cursed:
 			continue
 		for f in s.fighters:
 			if f.alive and f.hp < f.max:
@@ -1563,6 +2209,9 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 	var paths_line := _paths_line(sides)
 	if not paths_line.is_empty():
 		lines.append(paths_line)
+	var magic_line := _magic_line(sides)
+	if not magic_line.is_empty():
+		lines.append(magic_line)
 	for r in rounds:
 		lines.append(r.line)
 	var side_reports := []
@@ -1594,6 +2243,14 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 			sr["dread_lands"] = s.dread_lands
 		if s.healed > 0:
 			sr["lifedrinker_healed"] = s.healed
+		if s.magic:
+			# M5-7: only in a game with magic. Its casters (by type, like the roster) and how often it cast each spell.
+			sr["casters"] = _casters_report(s)
+			sr["spells_cast"] = s.spells_cast.duplicate()
+			if s.blessed > 0:
+				sr["blessed"] = s.blessed
+			if s.moon_healed > 0:
+				sr["moon_healed"] = s.moon_healed
 		side_reports.append(sr)
 	lines.append("Casualties: %s." % "; ".join(losses))
 	var hit_parts := []
@@ -1862,6 +2519,9 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 					elif k.begins_with(PATH_PREFIX):
 						words = _path_words(s, k, dmg)  # M4-3: a path part, measured like a mandate's
 						codex = AscensionRules.part_codex(k)
+					elif k.begins_with(SPELL_PREFIX):
+						words = _spell_words(s, k, dmg, sides, si)  # M5-7: a battle spell, or the Blood Moon
+						codex = k
 					if words.is_empty():
 						continue
 					c = String(words.done) + String(words.tail) if won else "even though %s" % words.done
@@ -1974,6 +2634,20 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 			out.append({"id": "morale_" + String(key), "side": si, "faction": s.faction,
 				"impact": float(_hp(s)) if held_by_it else float(part) * 0.5, "clause": c,
 				"brief": "%s (%s)" % [whose, lifted], "codex": AscensionRules.part_codex(String(key))})
+	# M5-7: Dawn Blessing's morale, measured like Inspire.
+	for si in sides.size():
+		var s: Dictionary = sides[si]
+		var part := int(s.blessed)
+		if part <= 0 or s.morale_log.is_empty():
+			continue
+		var held_by_it := false
+		for e in s.morale_log:
+			if e.lost_pct < e.break_pct and e.lost_pct >= break_pct(e.morale - part):
+				held_by_it = true
+		var lifted := "Dawn Blessing raised %s morale by %d (%d of %d fighters blessed)" % [_poss(s.name), part, int(s.blessed_fighters), int(s.count_start)]
+		out.append({"id": "morale_" + BLESSING, "side": si, "faction": s.faction, "impact": float(_hp(s)) if held_by_it else float(part) * 0.5,
+			"clause": ("%s and kept the line from breaking" if held_by_it else "%s") % lifted if si == wi else "even though Dawn Blessing steadied %s line" % _poss(s.name),
+			"brief": "Dawn Blessing (+%d morale to %s)" % [part, s.name], "codex": BLESSING})
 	# M2-2: the ruler's +morale kept the line, measured like the commander's (§7.4), and Iron Discipline
 	# held a side past its breaking point while a commander stood: the hp it kept from a rout.
 	for si in sides.size():
@@ -2339,6 +3013,105 @@ static func _wings_kill_tail(s: Dictionary) -> String:
 	var text := "; %s %s fell in round %d" % [_poss(String(k.side)), _bare(String(k.name)), int(k.round)]
 	if not String(k.trait).is_empty():
 		text += ", and with it %s" % k.trait
+	return text
+
+
+# --- battle spells in the report (M5-7, §5.4) ---------------------------------------------------------------
+
+## A battle spell's (or the Blood Moon's) part of the "why", from what the side's casters did: {"done", "tail",
+## "brief"} like _mandate_words, or {} when the side never cast it. `key` is "spell_<id>", `dmg` its worth:
+##   bolt    "the Ever-Regent's Sunlance felled the War Bear in round 2" + ", 16 sure damage in 4 casts, never missing"
+##   hex     "the Thornmane Shamans' Briar Snare slowed the Knights" + " for about 14 damage over 3 rounds"
+##   shield  "the Sunstone Adepts' Shield of Law gave the Spearmen +4 defense" + ", turning aside about 7 damage over 3 rounds"
+##   moon    "under the Blood Moon, Thornmane Clans healed back 9 hp"
+static func _spell_words(s: Dictionary, key: String, dmg: int, sides: Array, si: int) -> Dictionary:
+	var sid := key.trim_prefix(SPELL_PREFIX)
+	var sp := MagicRules.spell_data(sid)
+	if sp.is_empty():
+		return {}
+	var name := String(sp.name)
+	if sid == "blood_moon":
+		return {"done": "under the Blood Moon, %s healed back %d hp" % [s.name, int(s.moon_healed)], "tail": "",
+			"brief": "the Blood Moon (%s heals back a quarter of the damage its attacks deal)" % s.name}
+	var st: Dictionary = s.spell_stats.get(sid, {})
+	if st.is_empty():
+		return {}
+	var casters: Array = st.casters
+	var whose := "%s %s" % [_poss(String(casters[0])), name] if casters.size() == 1 else "%s (cast by %s)" % [name, " and ".join(casters)]
+	var rounds: int = st.rounds.size()
+	var over := "in round %d" % int(st.rounds.keys()[0]) if rounds == 1 else "over %d rounds" % rounds
+	var target := _the(_most_hit(st.targets)) if not _most_hit(st.targets).begins_with("the ") else _most_hit(st.targets)
+	var n := MagicRules.spell_numbers(sid, 0)
+	match String(sp.kind):
+		"bolt":
+			var casts := "%d sure damage in %d %s, never missing" % [int(st.damage), int(st.casts), "cast" if int(st.casts) == 1 else "casts"]
+			if not st.kills.is_empty():
+				var k: Dictionary = st.kills[0]
+				var fell := _the(String(k.name)) if not String(k.name).begins_with("the ") else String(k.name)
+				return {"done": "%s felled %s in round %d" % [whose, fell, int(k.round)], "tail": ", %s" % casts,
+					"brief": "%s (%d sure damage a cast)" % [whose, int(n.value)]}
+			return {"done": "%s struck %s for %s" % [whose, target, casts], "tail": "",
+				"brief": "%s (%d sure damage a cast)" % [whose, int(n.value)]}
+		"hex":
+			var what := "the front rank of %s" % _other_names(sides, si) if sp.has("round") else target
+			return {"done": "%s slowed %s (%d attack)" % [whose, what, int(sp.value)], "tail": " for about %d damage %s" % [dmg, over],
+				"brief": "%s (%d attack on %s)" % [whose, int(sp.value), "every enemy front-rank fighter in round 1" if sp.has("round")
+					else "up to %d enemy front-rank units a round" % int(n.count)]}
+		"shield":
+			return {"done": "%s gave %s +%d defense" % [whose, target, int(sp.value)], "tail": ", turning aside about %d damage %s" % [dmg, over],
+				"brief": "%s (+%d defense on up to %d front-rank units a round, in the open)" % [whose, int(sp.value), int(n.count)]}
+	return {}
+
+
+## The other sides' names, for "the front rank of Thornmane Clans".
+static func _other_names(sides: Array, si: int) -> String:
+	var out := []
+	for i in sides.size():
+		if i != si:
+			out.append(String(sides[i].name))
+	return " and ".join(out)
+
+
+## A side's casters for the report, by type like the roster: [{"id", "name", "count"}] (the ruler by its own name).
+static func _casters_report(s: Dictionary) -> Array:
+	var out := []
+	var index := {}
+	for f in s.casters:
+		var id: String = f.type.id
+		if not index.has(id):
+			index[id] = out.size()
+			out.append({"id": id, "name": String(f.name), "count": 0})
+		out[index[id]].count += 1
+	return out
+
+
+## The report's line about magic, after the opening line, when a side has a caster or an enchantment is in play
+## (otherwise ""): "Magic: Thornmane Clans cast with 2 Thornmane Shamans (spellbook: Briar Snare, Bloodbolt); Aurel
+## Crown has no caster. Thornmane Clans: the Blood Moon heals back a quarter of the damage its attacks deal."
+static func _magic_line(sides: Array) -> String:
+	var any := false
+	for s in sides:
+		if s.magic and (not s.casters.is_empty() or not s.enchant_log.is_empty()):
+			any = true
+	if not any:
+		return ""
+	var who := []
+	var spells := []
+	for s in sides:
+		if s.casters.is_empty():
+			who.append("%s has no caster" % s.name)
+			continue
+		var names := []
+		for c in _casters_report(s):
+			names.append(String(c.name) if int(c.count) == 1 else "%d %s" % [int(c.count), String(c.name)])
+		var book := ", ".join(s.spellbook.map(func(x): return MagicRules.spell_name(String(x))))
+		who.append("%s casts with %s (spellbook: %s)" % [s.name, " and ".join(names), book if not book.is_empty() else "nothing on"])
+	for s in sides:
+		for e in s.enchant_log:
+			spells.append("%s: %s, %s" % [s.name, MagicRules.spell_name(String(e.ritual)), String(e.effect)])
+	var text := "Magic: %s." % _cap("; ".join(who))
+	if not spells.is_empty():
+		text += " %s." % ". ".join(spells)
 	return text
 
 

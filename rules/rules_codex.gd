@@ -282,6 +282,7 @@ const ENTRIES := {
 		"title": "Battles",
 		"text": "A battle is fought in rounds, at most %d." % AutoBattleResolver.ROUND_CAP
 			+ " Each round every unit, commander and ruler attacks one enemy at the same time, so a fighter that falls still strikes that round. Attacks go at the enemy's front rank. Crossbowmen stand in the second rank, behind their other units, which shield them while at least as many of those stand as crossbowmen (Fangthrowers reach them anyway); commanders stand behind everyone and are only attacked once no unit is left in front of them. In a game with rulers, a ruler fights in its own rank: King Corvane, the Great Thornmane and the Ninth Fang in the front rank, the Ever-Regent in the second rank, where the same shield rule covers him. The battle ends when one side is wiped out or breaks and flees (a rout). If every side left breaks in the same round, the one with more of its strength left keeps the field. The winner keeps its wounded units; units that fell are gone, and a ruler that fell dies. The losing side loses every army it had in the battle, even units still standing: a side that routs is destroyed as it flees, and attackers who have not won after %d rounds are destroyed too. There are no retreats yet." % AutoBattleResolver.ROUND_CAP
+			+ " In a game with magic, each round starts with the cast step: before anyone attacks, every mage and the Ever-Regent casts a spell from its side's spellbook instead of attacking, the highest mastery first. Spells never roll: a bolt's damage lands with the round's wounds, and a hex or shield lasts the round."
 			+ " Watch any battle from the turn report: its Watch button plays the battle back, round by round, exactly as it was fought (see Watching a battle). Siege engines never fight: they are carried by their army, are never hit, and are lost with it.",
 	},
 	"battle_round_cap": {
@@ -318,6 +319,7 @@ const ENTRIES := {
 			+ " A side that breaks flees and loses the battle, even with units still standing, and its armies are destroyed as they flee (there are no retreats yet)."
 			+ " When you watch a battle, the white notch on each side's strength bar marks where it breaks, and it moves when the side's morale changes (see Strength bars)."
 			+ " With the Iron Discipline mandate, a side does not break while one of its commanders stands, except at the end of the last round (round %d)." % AutoBattleResolver.ROUND_CAP
+			+ " In a game with magic, hit points a side's own casters bleed for Bloodbolt don't count as lost, and Dawn Blessing gives +1 morale for the whole battle to a side with at least half its fighters blessed."
 			+ " In a game with paths, a path's morale counts in each unit's morale, so the Celestial Host's Sunspears raise their side's average; and on the Blood Pact's own land (Dread Lands) every enemy side has less morale for the whole battle, in a province battle in a province the Blood Pact owned at the start of the turn. Dread Lands adds to Dread and Fury.",
 	},
 	"battle_commanders": {
@@ -361,7 +363,7 @@ const ENTRIES := {
 	},
 	"battle_key_moments": {
 		"title": "Key moments",
-		"text": "The battle player can jump to five key moments. First to fall: the first fighter whose hit points reach 0 (not the first hit). Charge: the first attack of a Knights' charge in round 1. Ruler falls: each ruler that falls. Turning point: the round after which the winner stayed further from breaking than every other side to the end (how far a side is from breaking is its break percentage minus the share of its hit points it has lost); there is none when the winner was ahead from the start, when the battle lasted one round, or when it ended in a mutual rout or at the round cap. Rout: each side that breaks, or has no one left standing. A moment the battle doesn't have is greyed out, with the reason.",
+		"text": "The battle player can jump to five key moments. First to fall: the first fighter whose hit points reach 0 (not the first hit). Charge: the first attack of a Knights' charge in round 1. Ruler falls: each ruler that falls. Turning point: the round after which the winner stayed further from breaking than every other side to the end (how far a side is from breaking is its break percentage minus the share of its hit points it has lost); there is none when the winner was ahead from the start, when the battle lasted one round, or when it ended in a mutual rout or at the round cap. Rout: each side that breaks, or has no one left standing. In a game with magic there is a sixth, First spell: the first spell cast, then each greater working. A moment the battle doesn't have is greyed out, with the reason.",
 	},
 	"battle_auras": {
 		"title": "Morale auras",
@@ -390,7 +392,7 @@ const ENTRIES := {
 	},
 	"trait_berserk": {
 		"title": "Berserk (Tuskers)",
-		"text": AutoBattleResolver.TRAIT_TEXT["Berserk"] + " Wounds carry over between battles, so a wounded Tusker starts the next battle already berserk.",
+		"text": AutoBattleResolver.TRAIT_TEXT["Berserk"] + " Wounds carry over between battles, so a wounded Tusker starts the next battle already berserk. A bolt that wounds a Tusker turns it on too.",
 	},
 	"trait_skirmish": {
 		"title": "Skirmish (Fangthrowers)",

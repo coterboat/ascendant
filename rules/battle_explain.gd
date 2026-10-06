@@ -15,6 +15,9 @@ class_name BattleExplain
 ##   BattleExplain.morale_change(log, i)          the notch tag when morale changed (§4.7)
 ##   BattleExplain.break_hp(hp_start, break_pct)  the hp at or below which a side breaks (§4.7)
 ##   BattleExplain.side_strength(log, state, si)  a side's strength bar: hp, pending, morale, break line
+##   BattleExplain.explain_cast(log, i)           M5-7: cast event i: who cast what on whom, why that spell (the
+##                                                spellbook and the spreading rule), the spells it skipped and why, a
+##                                                bolt's spell resistance, and that spells never roll
 ##
 ## A Breakdown-style dictionary is {"title", "description", "lines": [{"label", "value", "note"}],
 ## "total_label", "total", "codex"} with total = the sum of the line values (rules/breakdown.gd), ready for
@@ -29,6 +32,7 @@ const MORALE_PART_NAMES := {
 	"ruler": "Its ruler still standing",
 	"Dread": "Dread (the enemy's Great Thornmane)",
 	"Dread Lands": "Dread Lands (the Blood Pact's own land)",
+	"spell_dawn_blessing": "Dawn Blessing (blessed armies)",
 }
 ## The RulesCodex entry behind each report factor id that isn't a trait or a mandate (the battle report
 ## viewer's FACTOR_ENTRIES; tests/test_battle_moments.gd checks the two agree).
@@ -126,6 +130,55 @@ static func explain_attack(battle_log: Dictionary, i: int) -> Dictionary:
 		"target_text": target_text, "reach": reach, "summary": summary, "codex": "battle_hit_chance"}
 
 
+## M5-7 (§5.4): cast event `i` explained from its own numbers: {"caster", "spell", "round", "what" ("the Thornmane
+## Shamans cast Briar Snare on 6 Knights: −2 attack this round"), "doing" (the same, for the hover's "casting ..."),
+## "summary" ("Round 1: The ..."), "why" (the log's), "why_text" ("It cast Briar Snare because ..."), "skipped" (["Shield
+## of Law skipped: ..."]), "resistance" ("Sunlance 6 − the Great Thornmane's spell resistance 1 (ability rank 3) = 5",
+## or ""), "text" (all of it, ending "Spells always land: they don't roll."), "codex"}. {} when event i is not a cast.
+static func explain_cast(battle_log: Dictionary, i: int) -> Dictionary:
+	var events: Array = battle_log.get("events", [])
+	if i < 0 or i >= events.size() or events[i].t != "cast":
+		return {}
+	var e: Dictionary = events[i]
+	var c: Dictionary = battle_log.fighters[int(e.by)]
+	var sid := String(e.spell)
+	var name := MagicRules.spell_name(sid)
+	var who := BattleCaptions._caster_words(c)
+	var effect := ""
+	var on := BattleCaptions._target_words(battle_log, e.targets)
+	if String(e.kind) == "bolt":
+		effect = "%s for %d sure damage" % [on, int(e.damage)]
+		if int(e.get("self", 0)) > 0:
+			effect += ", bleeding %d itself" % int(e.self)
+	else:
+		var v := int(e.part.value)
+		effect = "%s: %s%d %s this round" % [on, "+" if v >= 0 else BattleCaptions.MINUS, absi(v), String(e.part.stat)]
+	var doing := "%s on %s" % [name, effect]
+	var what := "%s cast %s" % [who, doing]
+	var why := String(e.get("why", ""))
+	var why_text := "It cast %s because %s." % [name, why.replace(name + " was the first", "it was the first")] if not why.is_empty() else ""
+	var skipped := []
+	for sk in e.get("skipped", []):
+		skipped.append("%s skipped: %s." % [MagicRules.spell_name(String(sk.spell)), String(sk.reason)])
+	var resistance := ""
+	if String(e.kind) == "bolt" and int(e.get("resist", 0)) > 0:
+		var t: Dictionary = battle_log.fighters[int(e.targets[0])]
+		var kept := int(t.get("ruler", {}).get("kept_power", 0))
+		resistance = "%s %d %s %s spell resistance %d (ability rank %d) = %d" % [name, int(e.value), BattleCaptions.MINUS, poss(String(t.name)),
+			int(e.resist), RulerRules.ability_rank(kept), int(e.damage)]
+	var summary := "Round %d: %s." % [int(e.n), _cap(what)]
+	var parts := [summary]
+	if not why_text.is_empty():
+		parts.append(why_text)
+	parts.append_array(skipped)
+	if not resistance.is_empty():
+		parts.append(resistance + ".")
+	parts.append("Spells always land: they don't roll.")
+	return {"caster": int(e.by), "spell": sid, "round": int(e.n), "what": what, "doing": doing, "summary": summary, "why": why,
+		"why_text": why_text, "skipped": skipped, "resistance": resistance, "text": " ".join(parts), "lines": parts,
+		"codex": String(MagicRules.spell_data(sid).get("codex", "magic"))}
+
+
 ## An attack's attack or defense value as a breakdown: the fighter's own number, then each part.
 static func _stat_breakdown(battle_log: Dictionary, stat: Dictionary, f: Dictionary, label: String, side: Dictionary) -> Dictionary:
 	var lines := [_line(_bare(f.name), int(stat.base), "its own %s" % label.to_lower())]
@@ -185,6 +238,12 @@ static func explain_fighter(tl: BattleTimeline, fid: int, i: int, state: Diction
 				dealt += int(e.damage)
 		if int(e.n) == round_no and state.beat == "attacks":
 			current = k
+	# M5-7: its cast this round, once the cast step has reached it.
+	var cast_now := -1
+	for k in mini(i, events.size()):
+		var e: Dictionary = events[k]
+		if e.t == "cast" and int(e.by) == fid and int(e.n) == round_no:
+			cast_now = k
 	var doing := ""
 	var died_round := _death_round(battle_log, fid, i)
 	if not fs.alive:
@@ -196,6 +255,8 @@ static func explain_fighter(tl: BattleTimeline, fid: int, i: int, state: Diction
 		doing = "lost with its army: its side lost the battle"
 	elif int(state.winner) >= 0:
 		doing = "won, still standing" if int(state.winner) == int(f.side) else "still standing, but its side lost"
+	elif cast_now >= 0:
+		doing = "casting %s" % String(explain_cast(battle_log, cast_now).doing)  # M5-7
 	elif current >= 0:
 		var ce: Dictionary = events[current]
 		doing = "attacking %s, %s" % [_label(battle_log, int(ce.to)), _pool_words(int(ce.pool))]
@@ -210,6 +271,12 @@ static func explain_fighter(tl: BattleTimeline, fid: int, i: int, state: Diction
 	var gives := _gives(battle_log, f)
 	var statuses := _status_words(battle_log, tl.statuses(state, fid))
 	var lines := [who, hp_text, _cap(doing) + "."]
+	if cast_now >= 0 and fs.alive and int(state.winner) < 0:
+		var cx := explain_cast(battle_log, cast_now)
+		lines.append(String(cx.why_text))
+		for sk in cx.skipped:
+			lines.append(String(sk))
+		lines.append("Spells always land: they don't roll.")
 	if not attack.is_empty():
 		var head := "This attack:" if current >= 0 else "Its last attack (round %d):" % int(attack.round)
 		lines.append(head)
@@ -287,6 +354,17 @@ static func _gives(battle_log: Dictionary, f: Dictionary) -> Array:
 	if f.trait == AutoBattleResolver.FURY:
 		out.append("-%d morale to every enemy side while it stands (Fury, at most -%d in all)" % [AutoBattleResolver.FURY_MORALE,
 			AutoBattleResolver.FURY_MAX])
+	if f.has("mastery"):
+		# M5-7: a caster.
+		var book: Array = battle_log.sides[int(f.side)].get("spellbook", [])
+		var mastery := []
+		var keys: Array = f.mastery.keys()
+		keys.sort()
+		for school in keys:
+			mastery.append("%s %+d" % [MagicRules.school_name(String(school)), int(f.mastery[school])])
+		out.append("a spell every round instead of an attack, from its side's spellbook (%s); mastery %s" % [
+			", ".join(book.map(func(x): return MagicRules.spell_name(String(x)))) if not book.is_empty() else "every spell switched off",
+			", ".join(mastery)])
 	return out
 
 
@@ -306,6 +384,11 @@ static func _status_words(battle_log: Dictionary, st: Dictionary) -> Array:
 		out.append("Pack Leader: +%d attack from its commander" % AutoBattleResolver.PACK_LEADER_ATTACK)
 	if st.shielded and st.standing:
 		out.append("shielded: ordinary enemies can't reach it this round")
+	for k in st.get("spell_parts", {}):
+		# M5-7: a hex or shield on it this round.
+		var v := int(st.spell_parts[k])
+		out.append("%s: %s%d %s this round" % [part_name(battle_log, String(k)), "+" if v >= 0 else BattleCaptions.MINUS, absi(v),
+			"defense" if v > 0 else "attack"])
 	return out
 
 
@@ -327,7 +410,7 @@ static func explain_morale(battle_log: Dictionary, i: int) -> Dictionary:
 	var morale_bd := _make("Morale of %s, round %d" % [side.name, int(e.n)], "", lines, "Morale", int(e.morale), "battle_morale")
 	var bp := break_breakdown(int(e.morale), int(e.break_pct))
 	var hp_start := int(side.hp_start)
-	var at := break_hp(hp_start, int(e.break_pct))
+	var at := maxi(0, break_hp(hp_start, int(e.break_pct)) - int(e.get("bled", 0)))  # M5-7: bled hp don't count as lost
 	var result := ""
 	match String(e.result):
 		"holds":
@@ -341,6 +424,8 @@ static func explain_morale(battle_log: Dictionary, i: int) -> Dictionary:
 		"held":
 			result = "%s has lost %d%% of its %d hp (%d left), past the %d%% where it breaks, but Iron Discipline holds it while %s stands." % [
 				side.name, int(e.lost_pct), hp_start, int(e.hp), int(e.break_pct), _the(_fighter_name(battle_log, int(e.held_by)))]
+	if int(e.get("bled", 0)) > 0:
+		result += " The %d hp its own casters bled for Bloodbolt don't count as lost." % int(e.bled)  # M5-7
 	morale_bd.description = result
 	return {"side": si, "round": int(e.n), "morale": morale_bd, "break": bp, "break_hp": at, "result": result,
 		"codex": "mandate_iron_discipline" if e.result == "held" else "battle_morale"}
@@ -391,13 +476,15 @@ static func side_strength(battle_log: Dictionary, state: Dictionary, si: int) ->
 	var ss: Dictionary = state.sides[si]
 	var hp_start := int(side.hp_start)
 	var bp := int(ss.break_pct)
-	var text := "%d / %d hp · morale %d · %s" % [int(ss.hp), hp_start, int(ss.morale), break_text(hp_start, bp)]
+	var bled := int(ss.get("bled", 0))  # M5-7: bled hp don't count as lost, so the side breaks that much lower
+	var text := "%d / %d hp · morale %d · %s" % [int(ss.hp), hp_start, int(ss.morale), break_text(hp_start, bp) if bled == 0
+		else "breaks at %d hp or less (%d bled don't count)" % [maxi(0, break_hp(hp_start, bp) - bled), bled]]
 	if ss.out == "routed":
 		text += " · broke"
 	elif ss.out == "destroyed":
 		text += " · no one left"
 	return {"hp": int(ss.hp), "hp_start": hp_start, "pending": int(ss.pending), "morale": int(ss.morale), "break_pct": bp,
-		"break_hp": break_hp(hp_start, bp), "notch": 1.0 - bp / 100.0, "fill": float(ss.hp) / maxi(1, hp_start), "out": ss.out,
+		"break_hp": maxi(0, break_hp(hp_start, bp) - bled), "notch": 1.0 - bp / 100.0, "fill": float(ss.hp) / maxi(1, hp_start), "out": ss.out,
 		"held": ss.held, "text": text, "codex": "battle_strength"}
 
 
@@ -499,6 +586,8 @@ static func part_name(battle_log: Dictionary, key: String) -> String:
 		return "cover of the ruined walls" if breach else "cover of the walls"
 	if key.begins_with(AutoBattleResolver.PATH_PREFIX):
 		return AscensionRules.part_name(key)  # M4-3: "Living Iron", "Arbalests"
+	if key.begins_with(AutoBattleResolver.SPELL_PREFIX) and not MagicRules.spell_data(key.trim_prefix(AutoBattleResolver.SPELL_PREFIX)).is_empty():
+		return MagicRules.spell_name(key.trim_prefix(AutoBattleResolver.SPELL_PREFIX))  # M5-7: "Briar Snare"
 	return key
 
 
@@ -514,6 +603,8 @@ static func _part_note(battle_log: Dictionary, key: String) -> String:
 		return "mandate"
 	if key.begins_with(AutoBattleResolver.PATH_PREFIX):
 		return "path"
+	if key.begins_with(AutoBattleResolver.SPELL_PREFIX):
+		return "a spell, this round only"
 	return "trait"
 
 
@@ -529,6 +620,9 @@ static func factor_entry(factor_id: String) -> String:
 		return AscensionRules.part_codex(factor_id.trim_prefix("morale_"))
 	if factor_id == AutoBattleResolver.DREAD_LANDS_ID:
 		return AutoBattleResolver.DREAD_LANDS_ID
+	var bare := factor_id.trim_prefix("morale_")
+	if bare.begins_with(AutoBattleResolver.SPELL_PREFIX) and RulesCodex.ENTRIES.has(bare):
+		return bare  # M5-7: a spell's own entry ("spell_briar_snare"), Dawn Blessing's for its morale
 	if factor_id == AutoBattleResolver.WALLS:  # M3c
 		return "battle_walls"
 	if factor_id == AutoBattleResolver.COVER:
