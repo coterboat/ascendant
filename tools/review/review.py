@@ -12,6 +12,8 @@ Commands:
     status [<batch>]                counts per verdict per group
     apply  <batch> [--dry-run]      copy accepted files to their targets, write rejected.json
     new    <batch> --title "..." [--mode concept]   scaffold an empty batch
+    from-folder <dir> <batch> --title "..." [--mode concept] [--group-by prefix]
+                                    build a batch from a folder of images or models (and a prompts.json)
     sample [--force]                build the review/_sample demo batch
     lessons [--write docs/PROMPTING.md]  what every review so far says about the prompts
 
@@ -1632,6 +1634,220 @@ def cmd_new(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- from-folder
+#
+# An art round writes its output into a folder, named like <group>_<what>.png (or .glb), with an optional
+# prompts.json beside it: {"<file>": {"prompt", "seat", "group", "label"}}. `from-folder` turns that folder
+# into a batch: it copies the media into review/<batch>/ and writes batch.json.
+
+SIDECAR_NAME = "prompts.json"
+SIDECAR_KEYS = ("prompt", "seat", "group", "label", "item", "meta", "target")
+SEAT_FOLDERS = ("claude", "codex", "grok")  # a folder with one of these names says who made what is in it
+GROUP_BYS = ("none", "prefix", "folder")
+
+
+def slug(s: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", s).strip("._-") or "item"
+
+
+def gltf_companions(p: Path) -> set[Path]:
+    """The .bin and texture files a .gltf points at: they are copied with it, and are not items of their own."""
+    try:
+        j = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    out = set()
+    for key in ("buffers", "images"):
+        for e in (j.get(key) or []) if isinstance(j, dict) else []:
+            uri = e.get("uri") if isinstance(e, dict) else None
+            if isinstance(uri, str) and not uri.startswith("data:") and "://" not in uri:
+                out.add((p.parent / unquote(uri)).resolve())
+    return out
+
+
+def read_sidecar(src: Path, path: str | None) -> dict:
+    sp = Path(path) if path else src / SIDECAR_NAME
+    if not sp.is_file():
+        if path:
+            raise ReviewError(f"no such sidecar file: {sp}")
+        return {}
+    try:
+        data = json.loads(sp.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise ReviewError(f"{sp} is not valid JSON: {e}")
+    if not isinstance(data, dict):
+        raise ReviewError(f'{sp} must be an object: {{"<file>": {{"prompt", "seat", "group", "label"}}}}')
+    out = {}
+    for k, v in data.items():
+        if isinstance(v, str):
+            v = {"prompt": v}
+        if isinstance(v, dict):
+            out[str(k)] = v
+    return out
+
+
+def humanize(s: str) -> str:
+    return re.sub(r"[_\s]+", " ", s).strip()
+
+
+def folder_items(src: Path, sidecar: dict, group_by: str = "none", recursive: bool = False,
+                 target_dir: str | None = None) -> tuple[list[dict], list[Path], list[str]]:
+    """(items for batch.json, the files to copy next to them, warnings) for a folder of media.
+    An item's own file is relative to the folder, so it lands at the same place in the batch folder."""
+    warnings: list[str] = []
+    cands = sorted(src.rglob("*") if recursive else src.iterdir())
+    media, companions = [], set()
+    for p in cands:
+        rel = p.relative_to(src)
+        if not p.is_file() or any(part.startswith(".") for part in rel.parts) or p.name in (SIDECAR_NAME, "batch.json"):
+            continue
+        if p.suffix.lower() in MEDIA_EXTS:
+            media.append(p)
+            if p.suffix.lower() == ".gltf":
+                companions |= gltf_companions(p)
+    media = [p for p in media if p.resolve() not in companions]
+    copy = list(media) + sorted(c for c in companions if c.is_file() and src.resolve() in c.parents)
+    if not media:
+        raise ReviewError(f"no images, models, audio or video in {src}" + ("" if recursive else " (--recursive looks in its sub-folders)"))
+    known = {p.relative_to(src).as_posix() for p in media}
+    for k in sidecar:
+        if k not in known and not any(Path(r).name == k for r in known):
+            warnings.append(f"{SIDECAR_NAME}: {k!r} names no file in the folder")
+
+    def entry(rel: str) -> dict:
+        return sidecar.get(rel) or sidecar.get(Path(rel).name) or {}
+
+    recs: list[dict] = []
+    for p in media:
+        parts = p.relative_to(src).parts
+        rel = "/".join(parts)
+        e = entry(rel)
+        stem = p.stem
+        group, label = "", humanize(stem)
+        if group_by == "prefix":
+            head, sep, tail = stem.rpartition("_")
+            if sep and head and tail:
+                group, label = head, humanize(tail)
+        elif group_by == "folder" and len(parts) > 1:
+            group = parts[0]
+        holder = parts[-2] if len(parts) > 1 else src.name  # the folder the file is in
+        seat = clean_seat(e.get("seat")) or (clean_seat(holder) if holder.lower() in SEAT_FOLDERS else None)
+        key = e.get("item")
+        key = str(key) if isinstance(key, (str, int)) and str(key).strip() else None
+        recs.append({"rel": rel, "name": p.name, "e": e, "group": group, "label": label, "seat": seat, "key": key})
+
+    ## files that share an `item` are the takes of one item (the first, by path, is its own file)
+    order: list[str] = []
+    members: dict[str, list[dict]] = {}
+    for r in recs:
+        k = r["key"] or "\0" + r["rel"]
+        if k not in members:
+            members[k] = []
+            order.append(k)
+        members[k].append(r)
+    items: list[dict] = []
+    ids: set[str] = set()
+    for k in order:
+        ms = members[k]
+        host = ms[0]
+
+        def first(field):
+            return next((m["e"][field] for m in ms if m["e"].get(field)), None)
+        base = slug(host["key"] or Path(host["rel"]).with_suffix("").as_posix())
+        iid, n = base, 1
+        while iid in ids:
+            n += 1
+            iid = f"{base}_{n}"
+        ids.add(iid)
+        item: dict = {"id": iid, "kind": item_kind({"file": host["rel"]}), "label": str(first("label") or host["label"]),
+                      "file": host["rel"]}
+        group = first("group") or host["group"]
+        if group:
+            item["group"] = str(group)
+        if first("prompt"):
+            item["text"] = str(first("prompt"))
+        if host["seat"]:
+            item["seat"] = host["seat"]
+        if len(ms) > 1:
+            item["takes"] = [{"file": m["rel"], "label": f"take {i + 2}", **({"seat": m["seat"]} if m["seat"] else {})}
+                             for i, m in enumerate(ms[1:])]
+        tgt = first("target") or (f"{target_dir.rstrip('/')}/{host['name']}" if target_dir else None)
+        if tgt:
+            if _repo_target(str(tgt)) is None:
+                raise ReviewError(f"target {tgt!r} for {host['rel']} is outside the repo")
+            item["target"] = str(tgt)
+        if isinstance(first("meta"), dict):
+            item["meta"] = first("meta")
+        items.append(item)
+    return items, copy, warnings
+
+
+def cmd_from_folder(args) -> int:
+    ensure_review_root()
+    src = Path(args.dir).expanduser().resolve()
+    if not src.is_dir():
+        raise ReviewError(f"not a folder: {args.dir}")
+    d = batch_dir(args.batch, must_exist=False)
+    bj = d / "batch.json"
+    existing = None
+    if bj.exists():
+        if not args.add:
+            raise ReviewError(f"{bj.relative_to(REPO)} already exists: pass --add to list only the files it doesn't have yet")
+        existing = load_batch(args.batch)[1]
+    if args.target_dir and _repo_target(args.target_dir) is None:
+        raise ReviewError(f"--target-dir {args.target_dir!r} is outside the repo")
+    sidecar = read_sidecar(src, args.sidecar)
+    items, copy, warnings = folder_items(src, sidecar, args.group_by, args.recursive, args.target_dir)
+    if existing is not None:
+        have_files = {it.get("file") for it in existing["items"]}
+        have_files |= {t.get("file") if isinstance(t, dict) else t for it in existing["items"] for t in it.get("takes") or []}
+        have_ids = {it["id"] for it in existing["items"]}
+        fresh = []
+        for it in items:
+            files = {it["file"]} | {t["file"] for t in it.get("takes", [])}
+            if files & have_files:
+                continue
+            iid, n = it["id"], 1
+            while it["id"] in have_ids:
+                n += 1
+                it["id"] = f"{iid}_{n}"
+            have_ids.add(it["id"])
+            fresh.append(it)
+        items = fresh
+    in_place = src == d.resolve()
+    if not in_place:
+        for p in copy:
+            if existing is not None and p.relative_to(src).as_posix() in have_files:
+                continue
+            dest = d / p.relative_to(src)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if not dest.exists() or not filecmp.cmp(p, dest, shallow=False):
+                shutil.copy2(p, dest)
+    d.mkdir(parents=True, exist_ok=True)
+    if existing is not None:
+        data = {k: v for k, v in existing.items() if k != "mode" or v != "standard"}
+        data["items"] = existing["items"] + items
+        if args.mode != "standard" and data.get("mode") not in (None, args.mode):
+            warnings.append(f"the batch is mode {data.get('mode')!r}; --mode {args.mode} ignored")
+    else:
+        data = {"batch": args.batch, "title": args.title or args.batch}
+        if args.mode != "standard":
+            data["mode"] = args.mode
+        data["items"] = items
+    atomic_write_json(bj, data)
+    for w in warnings:
+        print(f"  ! {w}")
+    takes = sum(len(it.get("takes", [])) for it in items)
+    kinds: dict[str, int] = {}
+    for it in items:
+        kinds[it["kind"]] = kinds.get(it["kind"], 0) + 1
+    what = ", ".join(f"{n} {k}" for k, n in sorted(kinds.items())) or "nothing new"
+    print(f"{'added to' if existing is not None else 'wrote'} {bj.relative_to(REPO)}: {len(items)} item{'s' if len(items) != 1 else ''} "
+          f"({what}{f', {takes} extra take' + ('s' if takes != 1 else '') if takes else ''})"
+          f"{'' if in_place else f' · copied from {src}'}")
+    return 0
+
+
 # ---------------------------------------------------------------- sample batch
 
 def _write_wav(path: Path, seconds: float, base_hz: float, seed: int) -> None:
@@ -1912,7 +2128,19 @@ def main(argv=None) -> int:
     p.add_argument("--title", default="")
     p.add_argument("--mode", choices=MODES, default="standard", help="concept: judged Good / Good with changes / Bad")
     p.set_defaults(fn=cmd_new)
-    p = sub.add_parser("sample", help="build the demo batches (_sample, _sample_concept)")
+    p = sub.add_parser("from-folder", help="build a batch from a folder of images or models (and a prompts.json)")
+    p.add_argument("dir", help="the folder the art round wrote into")
+    p.add_argument("batch", help="the batch to make: review/<batch>/")
+    p.add_argument("--title", default="")
+    p.add_argument("--mode", choices=MODES, default="standard", help="concept: judged Good / Good with changes / Bad")
+    p.add_argument("--group-by", choices=GROUP_BYS, default="none",
+                   help="prefix: the file name up to its last underscore (ember_orchard_ruler1.png -> ember_orchard); folder: its sub-folder")
+    p.add_argument("--recursive", action="store_true", help="look in sub-folders too")
+    p.add_argument("--sidecar", metavar="JSON", help="prompts.json to read (default: <dir>/prompts.json)")
+    p.add_argument("--target-dir", metavar="DIR", help="install target for every item: <DIR>/<file name>, inside the repo")
+    p.add_argument("--add", action="store_true", help="the batch exists: list only the files it doesn't have yet")
+    p.set_defaults(fn=cmd_from_folder)
+    p = sub.add_parser("sample", help="build the demo batches (_sample, _sample_concept, _sample_models)")
     p.add_argument("--force", action="store_true")
     p.set_defaults(fn=cmd_sample)
     args = ap.parse_args(argv)

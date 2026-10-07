@@ -9,11 +9,14 @@ real batch.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import secrets
 import shutil
 import sys
+import tempfile
 import textwrap
 import threading
 import time
@@ -988,6 +991,190 @@ class ModelTests(unittest.TestCase):
         self.assertGreaterEqual(len(mb["items"]), 1)
         self.assertTrue(all(it["kind"] == "model" and it["exists"] and "game_url" in it and not it["game_same"] for it in mb["items"]))
         self.assertTrue(all(it["target"].startswith("review/_sample_models/out/") for it in mb["items"]), "installing it touches nothing real")
+
+
+class FromFolderTests(unittest.TestCase):
+    """`review.py from-folder <dir> <batch>`: a folder an art round wrote into becomes a batch."""
+
+    def setUp(self):
+        self.src = Path(tempfile.mkdtemp(prefix="review_ff_"))
+        self.name = TAG + "_ff"
+        self.png = png_bytes()
+        shutil.rmtree(R.REVIEW / self.name, ignore_errors=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.src, ignore_errors=True)
+        shutil.rmtree(R.REVIEW / self.name, ignore_errors=True)
+
+    def put(self, rel, blob=None):
+        p = self.src / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(blob if blob is not None else self.png + rel.encode())
+        return p
+
+    def run_ff(self, *args, name=None):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            code = R.main(["from-folder", str(self.src), name or self.name, *args])
+        return code, out.getvalue()
+
+    def batch(self):
+        return R.load_batch(self.name)[1]
+
+    def test_a_folder_of_images_becomes_a_batch(self):
+        for f in ("ember_orchard_ruler1.png", "ember_orchard_commander.png", "veiled_table_ruler1.png", "lone.png"):
+            self.put(f)
+        self.put("dossier.md", b"# notes")
+        self.put(".hidden.png")
+        (self.src / "prompts.json").write_text(json.dumps({
+            "ember_orchard_ruler1.png": {"prompt": "a gardener queen", "seat": "Codex", "label": "Queen"},
+            "veiled_table_ruler1.png": "a masked broker",
+            "missing.png": {"prompt": "nothing here"}}))
+        code, out = self.run_ff("--title", "Round 2", "--mode", "concept", "--group-by", "prefix")
+        self.assertEqual(code, 0, out)
+        self.assertIn("4 items (4 image)", out)
+        self.assertIn("'missing.png' names no file", out, "a sidecar entry for no file is a warning")
+        b = self.batch()
+        self.assertEqual((b["title"], b["mode"]), ("Round 2", "concept"))
+        items = {it["id"]: it for it in b["items"]}
+        self.assertEqual(set(items), {"ember_orchard_ruler1", "ember_orchard_commander", "veiled_table_ruler1", "lone"})
+        q = items["ember_orchard_ruler1"]
+        self.assertEqual((q["kind"], q["group"], q["label"], q["text"], q["seat"], q["file"]),
+                         ("image", "ember_orchard", "Queen", "a gardener queen", "codex", "ember_orchard_ruler1.png"))
+        self.assertEqual((items["ember_orchard_commander"]["group"], items["ember_orchard_commander"]["label"]), ("ember_orchard", "commander"))
+        self.assertEqual(items["veiled_table_ruler1"]["text"], "a masked broker", "a plain string is the prompt")
+        self.assertNotIn("group", items["lone"], "no underscore, no prefix group")
+        self.assertEqual(items["lone"]["label"], "lone")
+        d = R.REVIEW / self.name
+        self.assertEqual(sorted(p.name for p in d.glob("*.png")), sorted(f"{i}.png" for i in items))
+        self.assertFalse((d / "dossier.md").exists() or (d / ".hidden.png").exists(), "only media is copied")
+        mb = R.merged_batch(self.name)  # and it is a batch the table can open
+        self.assertEqual(mb["mode"], "concept")
+        self.assertTrue(all(it["exists"] for it in mb["items"]))
+
+    def test_group_by_folder_and_seat_folders(self):
+        self.put("codex/aurel.png")
+        self.put("grok/fang.png")
+        self.put("other/ever.png")
+        code, out = self.run_ff("--group-by", "folder", "--recursive")
+        self.assertEqual(code, 0, out)
+        items = {it["id"]: it for it in self.batch()["items"]}
+        self.assertEqual({k: (v["group"], v.get("seat")) for k, v in items.items()},
+                         {"codex_aurel": ("codex", "codex"), "grok_fang": ("grok", "grok"), "other_ever": ("other", None)},
+                         "a folder named after a seat says who made what is in it")
+        self.assertEqual(items["codex_aurel"]["file"], "codex/aurel.png")
+        self.assertTrue((R.REVIEW / self.name / "grok" / "fang.png").is_file())
+
+    def test_a_folder_named_after_a_seat(self):
+        seat_dir = self.src / "grok"
+        seat_dir.mkdir()
+        (seat_dir / "a_b.png").write_bytes(self.png)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            R.main(["from-folder", str(seat_dir), self.name, "--mode", "concept"])
+        self.assertEqual(self.batch()["items"][0]["seat"], "grok")
+
+    def test_seat_takes_from_one_item(self):
+        self.put("codex/aurel.png")
+        self.put("grok/aurel.png")
+        self.put("claude/aurel.png")
+        self.put("codex/fang.png")
+        (self.src / "prompts.json").write_text(json.dumps({
+            "codex/aurel.png": {"item": "aurel", "prompt": "the Aurel crest", "group": "aurel", "label": "Aurel crest"},
+            "grok/aurel.png": {"item": "aurel"}, "claude/aurel.png": {"item": "aurel"}}))
+        code, out = self.run_ff("--mode", "concept", "--recursive")
+        self.assertEqual(code, 0, out)
+        self.assertIn("2 extra takes", out)
+        items = {it["id"]: it for it in self.batch()["items"]}
+        self.assertEqual(set(items), {"aurel", "codex_fang"})
+        a = items["aurel"]
+        self.assertEqual((a["file"], a["seat"], a["text"], a["group"], a["label"]),
+                         ("claude/aurel.png", "claude", "the Aurel crest", "aurel", "Aurel crest"),
+                         "its own file is the first by path; the sidecar entries of the others fill in what it lacks")
+        self.assertEqual(sorted((a["seat"], *[t["seat"] for t in a["takes"]])), ["claude", "codex", "grok"])
+        self.assertEqual([t["label"] for t in a["takes"]], ["take 2", "take 3"])
+        merged = {it["id"]: it for it in R.merged_batch(self.name)["items"]}["aurel"]
+        self.assertEqual(len(merged["takes"]), 3)
+        self.assertTrue(all(t["exists"] for t in merged["takes"]))
+
+    def test_models_and_install_targets(self):
+        self.put("aurel_king_march.glb", b"glTF\x02\x00\x00\x00" + b"x" * 64)
+        self.put("aurel_king_ready.glb", b"glTF\x02\x00\x00\x00" + b"y" * 64)
+        code, out = self.run_ff("--group-by", "prefix", "--target-dir", "assets/models/rulers")
+        self.assertEqual(code, 0, out)
+        self.assertIn("2 model", out)
+        items = {it["id"]: it for it in self.batch()["items"]}
+        m = items["aurel_king_march"]
+        self.assertEqual((m["kind"], m["group"], m["label"], m["target"]),
+                         ("model", "aurel_king", "march", "assets/models/rulers/aurel_king_march.glb"))
+        self.assertNotIn("mode", json.loads((R.REVIEW / self.name / "batch.json").read_text()), "standard is not written")
+        mb = R.merged_batch(self.name)
+        self.assertTrue(all(it["kind"] == "model" for it in mb["items"]))
+        # a per-file target in the sidecar wins; one outside the repo is refused
+        (self.src / "prompts.json").write_text(json.dumps({"aurel_king_march.glb": {"target": "assets/models/rulers/other.glb"}}))
+        shutil.rmtree(R.REVIEW / self.name)
+        self.assertEqual(self.run_ff("--target-dir", "assets/models/rulers")[0], 0)
+        self.assertEqual({it["id"]: it["target"] for it in self.batch()["items"]}["aurel_king_march"], "assets/models/rulers/other.glb")
+        shutil.rmtree(R.REVIEW / self.name)
+        code, out = self.run_ff("--target-dir", "../outside")
+        self.assertEqual(code, 2, out)
+        self.assertIn("outside the repo", out)
+
+    def test_a_gltf_brings_its_buffers_and_textures_and_they_are_not_items(self):
+        self.put("scene.gltf", json.dumps({"asset": {"version": "2.0"}, "buffers": [{"uri": "scene.bin", "byteLength": 4}],
+                                           "images": [{"uri": "tex/skin.png"}, {"uri": "data:image/png;base64,AAAA"}]}).encode())
+        self.put("scene.bin", b"\x00\x01\x02\x03")
+        self.put("tex/skin.png")
+        self.put("other.png")
+        code, out = self.run_ff("--recursive")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(sorted(it["id"] for it in self.batch()["items"]), ["other", "scene"])
+        d = R.REVIEW / self.name
+        self.assertTrue((d / "scene.bin").is_file() and (d / "tex" / "skin.png").is_file(), "copied next to the .gltf")
+
+    def test_it_will_not_overwrite_a_batch_but_can_add_to_it(self):
+        self.put("a_one.png")
+        self.assertEqual(self.run_ff("--title", "T")[0], 0)
+        R.decide(self.name, "a_one", verdict="accept")
+        code, out = self.run_ff()
+        self.assertEqual(code, 2, out)
+        self.assertIn("--add", out)
+        self.put("a_two.png")
+        self.put("sub/a_one.png")
+        code, out = self.run_ff("--add", "--recursive")
+        self.assertEqual(code, 0, out)
+        b = self.batch()
+        self.assertEqual(b["title"], "T", "the batch keeps its title")
+        self.assertEqual(sorted(it["id"] for it in b["items"]), ["a_one", "a_two", "sub_a_one"])
+        self.assertEqual(self.run_ff("--add")[1].count("nothing new"), 1, "running it again adds nothing")
+        self.assertEqual(R.merged_batch(self.name)["items"][0]["status"], "accept", "verdicts are untouched")
+
+    def test_a_folder_that_is_already_the_batch_is_not_copied(self):
+        d = R.REVIEW / self.name
+        d.mkdir(parents=True)
+        (d / "x_y.png").write_bytes(self.png)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(R.main(["from-folder", str(d), self.name, "--group-by", "prefix"]), 0)
+        self.assertEqual([it["file"] for it in self.batch()["items"]], ["x_y.png"])
+        self.assertNotIn("copied from", out.getvalue())
+
+    def test_bad_input_is_refused_with_a_reason(self):
+        self.assertEqual(self.run_ff()[0], 2, "an empty folder")
+        self.put("notes.txt", b"hi")
+        code, out = self.run_ff()
+        self.assertEqual(code, 2, out)
+        self.assertIn("no images", out)
+        self.put("a.png")
+        self.assertEqual(self.run_ff(name="bad name!")[0], 2)
+        (self.src / "prompts.json").write_text("{not json")
+        self.assertEqual(self.run_ff()[0], 2)
+        code, out = self.run_ff(name=self.name)
+        self.assertIn("not valid JSON", out)
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            code = R.main(["from-folder", str(self.src / "nope"), self.name])
+        self.assertEqual(code, 2)
+        self.assertIn("not a folder", err.getvalue())
 
 
 if __name__ == "__main__":

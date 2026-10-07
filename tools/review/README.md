@@ -26,6 +26,7 @@ After changing `review.py`, restart `serve`: the page is re-read on every load, 
 | `status [<batch>]` | Shows accepted / rejected / pending / missing counts for each group. |
 | `apply <batch> [--dry-run]` | Copies every **accepted** file to its `target`, then writes `review/<batch>/rejected.json`. |
 | `new <batch> --title "..." [--mode concept]` | Creates an empty `batch.json` (a concept batch with `--mode concept`). |
+| `from-folder <dir> <batch> [--title T] [--mode concept] [--group-by prefix\|folder] [--recursive] [--sidecar JSON] [--target-dir DIR] [--add]` | Builds `review/<batch>/` from a folder of images, models, audio or video the art rounds wrote, and an optional `prompts.json`. See [A batch from a folder](#a-batch-from-a-folder). |
 | `sample [--force]` | Builds the demo batches that are missing: `_sample` (voices and pictures), `_sample_concept` (crests from three seats, to judge blind) and `_sample_models` (two ruler models, each with a different one as "in game now"). `--force` wipes them and their verdicts. |
 | `lessons [--write MD] [--json]` | What every batch's verdicts and notes say: first takes kept by kind and by voice, how each art seat did, and the note themes. `--write <file.md>` refreshes the block between `<!-- lessons:begin -->` and `<!-- lessons:end -->`. |
 
@@ -258,6 +259,48 @@ after checking every value. The page also refuses to be shown inside another sit
 allows nothing from outside this server (`default-src 'self'`; no CDN, no external fonts or scripts), with `'wasm-unsafe-eval'`
 only so the vendored viewer can compile its WebAssembly (it does not allow `eval()`). `/vendor/` serves `.js` files that sit
 directly in `tools/review/vendor/`, and nothing else.
+
+## A batch from a folder
+
+An art round does not have to write `batch.json` by hand: drop its output in a folder and run
+
+```sh
+python3 tools/review/review.py from-folder art/round2 art_r2 --title "Round 2 portraits" --mode concept --group-by prefix
+```
+
+It copies the media into `review/<batch>/` (keeping the folder's layout) and writes `batch.json`. Every image, model (`.glb`,
+`.gltf`), audio and video file in the folder becomes an item with its `kind` set; dotfiles and everything else (a dossier `.md`, a
+`ref/` folder) are left alone, and so are sub-folders unless you pass `--recursive`. Nothing is overwritten: if the batch exists it
+refuses, unless you pass `--add`, which lists only the files the batch does not have yet and leaves its verdicts alone. If the
+folder already *is* `review/<batch>/`, nothing is copied.
+
+- `--group-by prefix` makes the group the file name up to its last underscore, and the label the rest: `ember_orchard_ruler1.png`
+  becomes group `ember_orchard`, label `ruler1`. `--group-by folder` uses the sub-folder (with `--recursive`). Default: no group.
+- `--mode concept` writes `"mode": "concept"` (see [Concept mode](#concept-mode-good-good-with-changes-bad)).
+- `--target-dir assets/models/rulers` gives every item the target `<dir>/<file name>`, so **Install accepted** has somewhere to put
+  it. It must be inside the repo. (A concept batch has no targets: it installs with `canon`.)
+- A `.gltf` brings the `.bin` and texture files it points at, and they are not items of their own.
+- **`prompts.json`** (in the folder, or `--sidecar PATH`): what the generator knew about each file, keyed by its path in the folder
+  (or just its file name):
+
+```json
+{"ember_orchard_ruler1.png": {"prompt": "Grandmother Cinderpod, ...", "seat": "codex", "group": "ember_orchard", "label": "Ruler 1"},
+ "ember_orchard_ruler2.png": "a plain string is the prompt"}
+```
+
+  `prompt` becomes the item's `text`, `seat` is who made it, `group` and `label` override the defaults above. Optional too:
+  `meta` (copied into the item's `meta`), `target` (this file's install target), and `item`. A folder whose name is a seat (`claude`,
+  `codex`, `grok`), or a sub-folder of that name, sets the seat of the files in it when `prompts.json` doesn't. A name in the
+  sidecar that matches no file is printed as a warning.
+- **Takes from several seats:** files whose entries share an `item` name are the takes of one item. The first by path is the item's
+  own file, the others are its `takes` (`take 2`, `take 3`, with their seats), and the entries fill in what the first lacks:
+
+```json
+{"codex/aurel.png": {"item": "aurel", "prompt": "the Aurel crest", "group": "aurel", "label": "Aurel crest"},
+ "grok/aurel.png": {"item": "aurel"}, "claude/aurel.png": {"item": "aurel"}}
+```
+
+  (`python3 tools/review/review.py from-folder art/crests crests --mode concept --recursive`)
 
 ## The files
 
