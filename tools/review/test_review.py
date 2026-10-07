@@ -857,6 +857,139 @@ class SeatTests(unittest.TestCase):
         self.assertEqual([t["seat"] for t in rows["c"]["takes"]], ["codex", "grok", "claude"], "a redo knows every seat's take")
 
 
+class ModelTests(unittest.TestCase):
+    """3D models: kind, MIME types, "in game now", and the vendored viewer that works offline."""
+
+    @classmethod
+    def setUpClass(cls):
+        R.ensure_review_root()
+        cls.name = TAG + "_models"
+        cls.glb = b"glTF\x02\x00\x00\x00" + bytes(range(256)) * 20      # not a real model: the server only serves it
+        cls.game = b"glTF\x02\x00\x00\x00" + b"GAME" * 100
+        out = f"review/{cls.name}/out"
+        cls.files = {"king.glb": cls.glb, "scene.gltf": b'{"asset": {"version": "2.0"}}', "scene.bin": b"\x00\x01\x02\x03",
+                     ".takes/king.t2.glb": cls.glb[::-1], "out/king.glb": cls.game, "out/same.glb": cls.glb, "same.glb": cls.glb,
+                     "out/notes.json": b"{}"}
+        make_batch(cls.name, {"title": "models", "items": [
+            {"id": "king", "file": "king.glb", "group": "rulers", "target": f"{out}/king.glb"},
+            {"id": "scene", "file": "scene.gltf", "kind": "model"},
+            {"id": "same", "file": "same.glb", "target": f"{out}/same.glb"},
+            {"id": "typed", "file": "king.glb", "kind": "model", "target": f"{out}/notes.json"},
+            {"id": "nofile", "file": "gone.glb", "kind": "model"},
+        ]}, cls.files)
+        cls.httpd = R.Server(("127.0.0.1", 0), R.Handler)
+        cls.base = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+        shutil.rmtree(R.REVIEW / cls.name, ignore_errors=True)
+
+    def item(self, iid):
+        return {it["id"]: it for it in R.merged_batch(self.name)["items"]}[iid]
+
+    def get(self, path, headers=None, method="GET"):
+        rq = urllib.request.Request(self.base + path, method=method, headers=headers or {})
+        try:
+            with urllib.request.urlopen(rq, timeout=10) as r:
+                return r.status, dict(r.headers), r.read()
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, dict(e.headers), e.read()
+
+    def test_kind_is_guessed_from_the_extension(self):
+        self.assertEqual(R.item_kind({"file": "a/king.glb"}), "model")
+        self.assertEqual(R.item_kind({"file": "a/KING.GLTF"}), "model")
+        self.assertEqual(R.item_kind({"file": "a/king.glb", "kind": "audio"}), "audio", "an explicit kind wins")
+        self.assertEqual(R.item_kind({"file": "a/king.png"}), "image")
+        self.assertEqual(self.item("king")["kind"], "model")
+        self.assertEqual(self.item("scene")["kind"], "model")
+
+    def test_models_are_served_with_their_type_and_ranges(self):
+        for f, ctype in (("king.glb", "model/gltf-binary"), ("scene.gltf", "model/gltf+json"), ("scene.bin", "application/octet-stream")):
+            with self.subTest(f=f):
+                st, h, body = self.get(f"/media/{self.name}/{f}")
+                self.assertEqual((st, h["Content-Type"]), (200, ctype))
+                self.assertEqual(body, self.files[f])
+        st, h, body = self.get(f"/media/{self.name}/king.glb", headers={"Range": "bytes=0-3"})
+        self.assertEqual((st, body), (206, b"glTF"))
+
+    def test_models_can_be_accepted_and_have_takes(self):
+        self.assertEqual([t["file"] for t in self.item("king")["takes"]], ["king.glb", ".takes/king.t2.glb"],
+                         "more rolls of a model sit in .takes/ like any other take")
+        R.decide(self.name, "king", verdict="accept")
+        it = self.item("king")
+        self.assertEqual((it["status"], it["exists"], it["kind"]), ("accept", True, "model"))
+        R.decide(self.name, "king", verdict="pending")
+        self.assertFalse(self.item("nofile")["exists"])
+        with self.assertRaises(R.ReviewError):
+            R.decide(self.name, "nofile", verdict="accept")
+
+    def test_in_game_now_works_for_models(self):
+        it = self.item("king")
+        self.assertTrue(it["game_url"].startswith(f"/game/{self.name}/king?v="))
+        self.assertFalse(it["game_same"], "the game has a different model")
+        st, h, body = self.get(f"/game/{self.name}/king")
+        self.assertEqual((st, h["Content-Type"], body), (200, "model/gltf-binary", self.game))
+        self.assertTrue(self.item("same")["game_same"], "an identical model: no \"in game now\" button")
+        self.assertNotIn("game_url", self.item("typed"), "only media files are served from the game, never a .json")
+        self.assertNotIn("game_url", self.item("scene"))
+        self.assertEqual(self.get(f"/game/{self.name}/typed")[0], 404)
+
+    def test_the_viewer_is_vendored_and_served_locally(self):
+        self.assertTrue((R.VENDOR / "model-viewer.min.js").is_file(), "tools/review/vendor/model-viewer.min.js is committed")
+        readme = (R.VENDOR / "README.md").read_text()
+        self.assertRegex(readme, r"model-viewer@\d+\.\d+\.\d+")
+        self.assertIn("Apache", readme)
+        self.assertTrue((R.VENDOR / "LICENSE-model-viewer").is_file())
+        st, h, body = self.get("/vendor/model-viewer.min.js")
+        self.assertEqual((st, h["Content-Type"]), (200, "text/javascript; charset=utf-8"))
+        self.assertEqual(body, (R.VENDOR / "model-viewer.min.js").read_bytes())
+        for bad in ("/vendor/", "/vendor/nope.js", "/vendor/LICENSE-model-viewer", "/vendor/README.md", "/vendor/..%2Freview.py",
+                    "/vendor/%2e%2e/review.py", "/vendor/sub/x.js", "/vendor/.hidden.js"):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.get(bad)[0], 404)
+
+    def test_the_page_loads_nothing_from_a_cdn(self):
+        st, h, body = self.get("/")
+        html = body.decode()
+        self.assertIn('src="/vendor/model-viewer.min.js"', html)
+        for host in ("cdn.jsdelivr.net", "unpkg.com", "cdnjs.cloudflare.com", "gstatic.com", "googleapis.com"):
+            self.assertNotIn(host, html)
+        csp = h["Content-Security-Policy"]
+        self.assertIn("default-src 'self'", csp)
+        self.assertIn("frame-ancestors 'none'", csp)
+        self.assertNotRegex(csp, r"https?:")
+
+    def test_model_chips_sort_into_themes(self):
+        cases = {
+            "Doesn’t match the concept art": {"concept_match"},
+            "Proportions are off": {"proportions"},
+            "Texture is blurry or muddy": {"texture"},
+            "Holes or broken geometry": {"geometry"},
+            "Wrong pose": {"pose"},
+        }
+        for note, want in cases.items():
+            with self.subTest(note=note):
+                self.assertEqual(set(R.note_themes(note, "model")), want)
+        self.assertEqual(R.note_themes("Wrong pose", "image"), [])
+        R.decide(self.name, "king", verdict="reject", note="Holes or broken geometry")
+        ls = R.lessons([self.name])
+        self.assertEqual(ls["kinds"]["model"]["decided"], 1)
+        self.assertEqual({t["theme"] for t in ls["themes"]}, {"geometry"})
+        R.decide(self.name, "king", verdict="pending", note="")
+
+    def test_the_sample_model_batch(self):
+        d = R.REVIEW / (TAG + "_sample_models")
+        R._build_sample_models(d)
+        mb = R.merged_batch(d.name)
+        self.assertGreaterEqual(len(mb["items"]), 1)
+        self.assertTrue(all(it["kind"] == "model" and it["exists"] and "game_url" in it and not it["game_same"] for it in mb["items"]))
+        self.assertTrue(all(it["target"].startswith("review/_sample_models/out/") for it in mb["items"]), "installing it touches nothing real")
+
+
 if __name__ == "__main__":
     try:
         unittest.main(verbosity=2)

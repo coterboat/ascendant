@@ -15,7 +15,8 @@ Commands:
     sample [--force]                build the review/_sample demo batch
     lessons [--write docs/PROMPTING.md]  what every review so far says about the prompts
 
-Standard library only. See tools/review/README.md.
+Standard library only. See tools/review/README.md. The 3D viewer is Google's <model-viewer>, vendored
+in tools/review/vendor/ and served from there, so the page works offline.
 """
 from __future__ import annotations
 
@@ -49,6 +50,7 @@ TOOL_DIR = Path(__file__).resolve().parent
 REPO = TOOL_DIR.parent.parent
 REVIEW = REPO / "review"
 INDEX_HTML = TOOL_DIR / "index.html"
+VENDOR = TOOL_DIR / "vendor"   # the 3D viewer's script, served at /vendor/<file> (no CDN, works offline)
 TOKEN_SLOT = "__REVIEW_TOKEN__"  # index.html carries this; the server swaps in its token
 
 VERDICTS = ("accept", "revise", "reject", "pending")
@@ -60,6 +62,7 @@ HISTORY_KEEP = 10
 
 IMAGE_EXTS = (".png", ".webp", ".jpg", ".jpeg", ".gif", ".svg")
 VIDEO_EXTS = (".mp4", ".webm", ".mov", ".m4v", ".ogv")
+MODEL_EXTS = (".glb", ".gltf")  # 3D models, shown in an orbit viewer
 ## where a generator may point at the clip behind an image item (a GIF, a poster frame)
 VIDEO_META_KEYS = ("video", "video_mp4", "video_webm", "video_mov")
 
@@ -70,7 +73,17 @@ CONTENT_TYPES = {
     ".gif": "image/gif", ".svg": "image/svg+xml", ".json": "application/json",
     ".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
     ".ogv": "video/ogg",
+    ".glb": "model/gltf-binary", ".gltf": "model/gltf+json",
+    ".bin": "application/octet-stream",  # a .gltf's buffer, fetched by the viewer next to it
 }
+## what /vendor/ serves: the viewer's script, and nothing else
+VENDOR_TYPES = {".js": "text/javascript; charset=utf-8"}
+VENDOR_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+## The page loads nothing from outside this server (the 3D viewer is vendored, no CDN) and may not be framed.
+## 'wasm-unsafe-eval' lets the viewer compile its bundled Meshopt decoder; it does not allow eval() of text.
+PAGE_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob: data:; worker-src 'self' blob:; "
+            "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 
 _LOCK = threading.Lock()  # serialises review.json read-modify-write
 
@@ -174,13 +187,15 @@ def item_path(d: Path, item: dict) -> Path | None:
 
 def item_kind(item: dict) -> str:
     k = item.get("kind")
-    if k in ("audio", "image", "video"):
+    if k in ("audio", "image", "video", "model"):
         return k
     ext = Path(item.get("file") or "").suffix.lower()
     if ext in IMAGE_EXTS:
         return "image"
     if ext in VIDEO_EXTS:
         return "video"
+    if ext in MODEL_EXTS:
+        return "model"
     return "audio"
 
 
@@ -233,7 +248,7 @@ def clean_seat(v) -> str | None:
 ## list them itself as `takes`. Accepting one records it as the item's `pick`, and install,
 ## "in game" and reconcile all use the pick.
 TAKE_TAG_RE = re.compile(r"^(t|r)(\d{1,3})$")
-MEDIA_EXTS = {e for e in CONTENT_TYPES if e != ".json"}
+MEDIA_EXTS = {e for e in CONTENT_TYPES if e not in (".json", ".bin")}
 
 
 def item_takes(d: Path, item: dict) -> list[dict]:
@@ -292,7 +307,7 @@ def picked_path(d: Path, item: dict, entry: dict | None) -> Path | None:
 
 
 ## "what's in the game now": the file an item replaces, when a browser can show it
-GAME_EXTS = {".mp3", ".wav", ".ogg", ".m4a", ".png", ".webp", ".jpg", ".jpeg", ".gif", ".mp4", ".webm"}
+GAME_EXTS = {".mp3", ".wav", ".ogg", ".m4a", ".png", ".webp", ".jpg", ".jpeg", ".gif", ".mp4", ".webm", ".glb", ".gltf"}
 
 
 def game_path(item: dict) -> Path | None:
@@ -446,6 +461,12 @@ NOTE_THEMES = [
     ("text_in_image", "Text in the image", r"text in|lettering|letters|captions?\b|watermark|\blogos?\b|writing in", ("image",)),
     ("lookalike", "Too close to something that exists", r"look-?alike|too close to|resembles|rip-?off|copy of|\bIP\b", ("image",)),
     ("silhouette", "Silhouette is right, the detail is not", r"silhouette|keep the (shape|outline)", ("image",)),
+    # 3D models: the notes the model chips write
+    ("concept_match", "Doesn't match the concept art", r"match the concept|doesn.?t match|not like the concept|off[- ]model", ("model",)),
+    ("proportions", "Proportions are off", r"proportion|too (tall|short|wide|thin|fat|big|small)|\bscale\b", ("model",)),
+    ("texture", "Texture is blurry or muddy", r"textures?|blurry|muddy|tiling|\bseams?\b", ("model",)),
+    ("geometry", "Holes or broken geometry", r"holes?\b|broken|geometry|non-?manifold|floating|intersect|clipping", ("model",)),
+    ("pose", "Wrong pose", r"\bpose|\bstance|\barms?\b|\blegs?\b", ("model",)),
 ]
 ## themes that are nothing to fix: a note that says what worked
 NO_FIX_THEMES = ("praise", "more_like")
@@ -1258,10 +1279,10 @@ class Handler(BaseHTTPRequestHandler):
     def _error(self, status: int, msg: str, head=False):
         self._json(status, {"error": msg}, head=head)
 
-    def _send_file(self, path: Path, head=False):
+    def _send_file(self, path: Path, head=False, ctype: str | None = None):
         st = path.stat()
         size = st.st_size
-        ctype = CONTENT_TYPES.get(path.suffix.lower(), "application/octet-stream")
+        ctype = ctype or CONTENT_TYPES.get(path.suffix.lower(), "application/octet-stream")
         start, end, status = 0, size - 1, 200
         rng = self.headers.get("Range")
         if rng:
@@ -1315,7 +1336,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(500, f"missing {INDEX_HTML}", head)
             body = html.replace(TOKEN_SLOT, self.server.token).encode("utf-8")
             return self._send_bytes(200, body, "text/html; charset=utf-8", head=head, extra={
-                "X-Frame-Options": "DENY", "Content-Security-Policy": "frame-ancestors 'none'",
+                "X-Frame-Options": "DENY", "Content-Security-Policy": PAGE_CSP,
                 "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"})
         if path == "/api/runs":
             name = (parse_qs(url.query).get("batch") or [""])[0]
@@ -1359,6 +1380,14 @@ class Handler(BaseHTTPRequestHandler):
             if d.resolve() not in p.parents or not p.is_file():
                 return self._error(404, "no such file", head)
             return self._send_file(p, head)
+        if path.startswith("/vendor/"):
+            ## the 3D viewer's script: only a .js that sits directly in tools/review/vendor/
+            name = unquote(path[len("/vendor/"):])
+            ctype = VENDOR_TYPES.get(Path(name).suffix.lower())
+            p = (VENDOR / name).resolve() if VENDOR_NAME_RE.match(name) else None
+            if p is None or ctype is None or p.parent != VENDOR.resolve() or not p.is_file():
+                return self._error(404, "no such vendored file", head)
+            return self._send_file(p, head, ctype)
         if path == "/favicon.ico":
             return self._send_bytes(204, b"", "image/x-icon", head=head)
         return self._error(404, "not found", head)
@@ -1688,11 +1717,12 @@ def _write_png(path: Path, size: int = 128) -> None:
 
 
 def cmd_sample(args) -> int:
-    """Build the demo batches that are missing (all of them with --force): the classic one, and a
-    concept batch with takes from three seats."""
+    """Build the demo batches that are missing (all of them with --force): the classic one, a
+    concept batch with takes from three seats, and a model batch."""
     ensure_review_root()
     built = 0
-    for name, build in (("_sample", _build_sample), ("_sample_concept", _build_sample_concept)):
+    for name, build in (("_sample", _build_sample), ("_sample_concept", _build_sample_concept),
+                        ("_sample_models", _build_sample_models)):
         d = REVIEW / name
         if (d / "batch.json").exists() and not args.force:
             print(f"{d.relative_to(REPO)} already exists (use --force to rebuild it; this clears its verdicts)")
@@ -1792,6 +1822,31 @@ def _write_emblem(path: Path, shape: str, base: tuple, accent: tuple, size: int 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
                      + chunk(b"IDAT", raw) + chunk(b"IEND", b""))
+
+
+def _build_sample_models(d: Path) -> None:
+    """Two of the repo's ruler models as candidates, each with a different model as "what the game has
+    now" (a copy under the batch's own out/ folder, so installing the sample touches nothing real)."""
+    src = REPO / "assets" / "models" / "rulers"
+    #       candidate,                   what the game has now,   item id
+    spec = [("aurel_king_march.glb", "aurel_king_ready.glb", "aurel_king"),
+            ("fang_chieftain_strike.glb", "fang_chieftain_march.glb", "fang_chieftain")]
+    items = []
+    for cand, game, iid in spec:
+        if not (src / cand).is_file() or not (src / game).is_file():
+            continue
+        (d / "rulers").mkdir(parents=True, exist_ok=True)
+        (d / "out" / "rulers").mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src / cand, d / "rulers" / f"{iid}.glb")
+        shutil.copy2(src / game, d / "out" / "rulers" / f"{iid}.glb")
+        items.append({"id": f"{iid}.v2", "kind": "model", "group": "rulers", "label": f"{iid.replace('_', ' ')} · new pose",
+                      "text": "a ruler in a new pose, to replace the one in the game",
+                      "file": f"rulers/{iid}.glb", "target": f"review/_sample_models/out/rulers/{iid}.glb",
+                      "meta": {"context": "the ruler model on the 3D board"}})
+    d.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(d / "batch.json", {"batch": "_sample_models", "title": "Sample model batch (demo)", "items": items})
+    print(f"built {d.relative_to(REPO)} with {len(items)} model{'s' if len(items) != 1 else ''} "
+          "(drag to turn, scroll to zoom, 0 shows what the game has now)")
 
 
 def _build_sample_concept(d: Path) -> None:

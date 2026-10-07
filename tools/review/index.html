@@ -6,6 +6,7 @@
 <meta name="review-token" content="__REVIEW_TOKEN__">
 <title>Review Table · ASCENDANT</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f1522'/%3E%3Cpath d='M16 5 27 16 16 27 5 16Z' fill='none' stroke='%23d9b25f' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='3.5' fill='%23b8412f'/%3E%3C/svg%3E">
+<script type="module" src="/vendor/model-viewer.min.js"></script>
 <style>
 :root {
   --bg: #0f1522;
@@ -444,6 +445,28 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
 .vvidwrap[hidden], .vimgwrap[hidden] { display: none; }
 .vvidwrap video { display: block; max-width: min(90vw, 1400px); max-height: 74vh; min-width: 320px; }
 
+/* ---------- 3D models (the vendored <model-viewer>) */
+.cube svg { width: 28px; height: 28px; }
+.mwrap { margin-top: 10px; }
+.mstage {
+  position: relative; width: min(100%, 460px); height: 220px; border: 1px solid var(--line-hi); border-radius: 8px; overflow: hidden;
+  background: radial-gradient(120% 100% at 50% 0%, #26324d, #0a0f19 75%); transition: height .15s ease;
+}
+.row.cur .mstage { height: min(360px, 44vh); }
+.mstage:hover { border-color: var(--brass-2); }
+.mstage model-viewer { position: absolute; inset: 0; width: 100%; height: 100%; background: transparent; --poster-color: transparent; outline: none; }
+.mstage model-viewer:focus-visible { box-shadow: inset 0 0 0 2px var(--brass-2); }
+.mstage .mmsg { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--amber); font-size: 13px; line-height: 1.45; }
+.mstage .mmsg code { font: 12px var(--mono); color: var(--ink-2); }
+.mbadge { position: absolute; left: 8px; top: 8px; z-index: 2; pointer-events: none; padding: 3px 9px 2px; border-radius: 999px; background: rgba(10, 15, 25, .78);
+  border: 1px solid var(--brass-2); color: var(--brass); font: 700 10px/1.4 var(--sans); letter-spacing: .14em; text-transform: uppercase; }
+.mhint { position: absolute; right: 8px; bottom: 6px; z-index: 2; pointer-events: none; font-size: 11px; color: var(--ink-3); opacity: .85; }
+.mctl { display: flex; align-items: center; gap: 10px; margin-top: 7px; min-height: 22px; flex-wrap: wrap; }
+.vmodelwrap { border: 1px solid var(--line-hi); border-radius: 10px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
+  background: radial-gradient(120% 100% at 50% 0%, #26324d, #0a0f19 75%); }
+.vmodelwrap[hidden] { display: none; }
+.vmodelwrap model-viewer { display: block; width: min(88vw, 1100px); height: 68vh; min-width: 320px; background: transparent; --poster-color: transparent; outline: none; }
+
 /* ---------- finish / confirm panels */
 .panel { background: var(--panel); border: 1px solid var(--line-hi); border-radius: 12px; box-shadow: 0 30px 80px rgba(0, 0, 0, .55); }
 .finish-panel { width: min(780px, 94vw); max-height: 92vh; overflow-y: auto; padding: 24px 26px 18px; }
@@ -660,7 +683,7 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
       <span><kbd>J</kbd><kbd>K</kbd>next / prev</span>
       <span><kbd>P</kbd>autoplay</span>
       <span><kbd>&larr;</kbd><kbd>&rarr;</kbd>takes <kbd>0</kbd>in game</span>
-      <span><kbd>V</kbd>video <kbd>L</kbd>loop <kbd>Z</kbd>large</span>
+      <span><kbd>V</kbd>video <kbd>L</kbd>loop <kbd>Z</kbd>large <kbd>T</kbd>turntable</span>
       <span><kbd>F</kbd>finish</span>
       <span><kbd>O</kbd>log</span>
       <span><kbd>?</kbd>help</span>
@@ -672,10 +695,11 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
   <div class="vbox">
     <div class="vimgwrap" id="vimgwrap"><img id="vimg" alt=""></div>
     <div class="vvidwrap" id="vvidwrap" hidden></div>
+    <div class="vmodelwrap" id="vmodelwrap" hidden></div>
     <div class="vcap">
       <div class="vl"><span class="label" id="vlabel"></span><span class="vpill" id="vpill"></span></div>
       <div class="vt" id="vtext"></div>
-      <div class="vh"><kbd>A</kbd><span id="vhAcc">accept</span> &nbsp; <span id="vhChg" hidden><kbd>C</kbd>good with changes &nbsp; </span><kbd>R</kbd><span id="vhRej">reject</span> &nbsp; <kbd>J</kbd><kbd>K</kbd>next / prev &nbsp; <span id="vhVideo" hidden><kbd>Space</kbd>play &nbsp; <kbd>L</kbd>loop &nbsp;</span> <kbd>Esc</kbd>close</div>
+      <div class="vh"><kbd>A</kbd><span id="vhAcc">accept</span> &nbsp; <span id="vhChg" hidden><kbd>C</kbd>good with changes &nbsp; </span><kbd>R</kbd><span id="vhRej">reject</span> &nbsp; <kbd>J</kbd><kbd>K</kbd>next / prev &nbsp; <span id="vhVideo" hidden><kbd>Space</kbd>play &nbsp; <kbd>L</kbd>loop &nbsp;</span><span id="vhModel" hidden>drag turns it, scroll zooms &nbsp; <kbd>T</kbd>turntable &nbsp; <kbd>0</kbd>in game now &nbsp;</span> <kbd>Esc</kbd>close</div>
     </div>
   </div>
 </div>
@@ -730,7 +754,8 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
       <dt><kbd>P</kbd></dt><dd>Toggle autoplay next (audio and video)</dd>
       <dt><kbd>V</kbd></dt><dd>Show / hide the video behind an item (a GIF or poster frame with an mp4); on a video item, view it large</dd>
       <dt><kbd>L</kbd></dt><dd>Loop videos on / off (check that a loop has no visible jump)</dd>
-      <dt><kbd>Z</kbd></dt><dd>View large: the image, or the video (Esc closes)</dd>
+      <dt><kbd>Z</kbd></dt><dd>View large: the image, the video, or the 3D model (Esc closes)</dd>
+      <dt><kbd>T</kbd></dt><dd>3D models: turntable on / off. Drag a model to turn it, scroll to zoom</dd>
       <dt><kbd>F</kbd></dt><dd>Finish review: counts, then Install accepted / Redo rejected (<b>1</b>–<b>9</b> runs one)</dd>
       <dt><kbd>O</kbd></dt><dd>Open / close the run log</dd>
       <dt><kbd>Home</kbd><kbd>End</kbd></dt><dd>First / last item</dd>
@@ -768,6 +793,7 @@ const modeWords = () => isConcept()
   : { acc: 'accepted', rev: 'good with changes', rej: 'rejected', inst: 'in game', Acc: 'Accepted', Rej: 'Rejected' };
 const ICON = {
   play: '<svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>',
+  cube: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg>',
   pause: '<svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z" fill="currentColor"/></svg>',
 };
 const LS_KEY = 'ascendant.review.v1';
@@ -788,6 +814,9 @@ const S = {
   run: null, runs: [], drawerOpen: false,
   // v1.11: the take you're on per item (index into it.takes), and the item whose game copy is playing
   take: new Map(), gameId: null,
+  // 3D models: one <model-viewer> kept per item (so a turned model stays turned), the items showing what the
+  // game has now instead of the candidate, the turntable, and the one in the large view
+  mviews: new Map(), gameModel: new Set(), turntable: true, vmodel: null,
 };
 
 /* ---------------------------------------------------------------- memory */
@@ -893,6 +922,7 @@ const NOTE_CHIPS = {
   concept: ['More like this', 'Wrong palette', 'Reads like another faction', 'Text in the image',
     'Not a lookalike of …', 'Keep the silhouette, change the detail'],
   video: ['Keep it all in frame', 'Show how it ends', 'Wrong expression', 'Motion snaps', 'Artifacts', 'Redo'],
+  model: ['Doesn’t match the concept art', 'Proportions are off', 'Texture is blurry or muddy', 'Holes or broken geometry', 'Wrong pose'],
 };
 
 /* ---------------------------------------------------------------- helpers */
@@ -948,7 +978,7 @@ function flagOf(it) {
   if (!it.exists) return it.status === 'reject' ? null : 'file missing — still generating, or it failed';
   const p = S.probes.get(pkey(it));
   if (!p) return null;
-  if (p.err) return ({ image: 'image failed to load', video: 'video failed to load' })[it.kind] || 'audio failed to load';
+  if (p.err) return ({ image: 'image failed to load', video: 'video failed to load', model: 'model failed to load (a broken file, or one that needs a decoder this page does not carry)' })[it.kind] || 'audio failed to load';
   if (!isVoice(it) || p.dur == null) return null;
   const w = wordCount(displayText(it));  // a re-rolled take is spoken from the edited text
   if (!w) return null;
@@ -1044,6 +1074,12 @@ function trackHTML(it) {
     const dims = it.exists ? videoDims(it) : '';
     return `<div class="track"><span class="dims">${esc(dims)}</span>${seamHTML(vp)}</div>${flagEl}`;
   }
+  if (it.kind === 'model') {
+    const p = S.probes.get(pkey(it));
+    const ext = (it.file || '').split('.').pop().toUpperCase();
+    const dims = it.exists ? [p && p.dims ? `${p.dims.map(n => +n.toFixed(2)).join(' × ')} units` : '', ext, fmtBytes(it.size)].filter(Boolean).join(' · ') : '';
+    return `<div class="track"><span class="dims" title="The model's bounding box, as the file says it (Godot reads a GLB's units as metres)">${esc(dims)}</span></div>${flagEl}`;
+  }
   const p = S.probes.get(pkey(it));
   const dur = p && p.dur;
   let time = it.exists ? (p ? fmtSec(dur) : '…') : '–';
@@ -1087,6 +1123,20 @@ function stageHTML(it) {
     </div></div>`;
 }
 
+// the orbit viewer area of a model row: an empty stage, into which mountModel() puts the item's own <model-viewer>
+function mstageHTML(it) {
+  if (!it.exists) return '';
+  const p = S.probes.get(pkey(it));
+  const game = S.gameModel.has(it.id) && it.game_url;
+  const inner = !mvReady() ? `<div class="mmsg"><span>The 3D viewer script is missing: <code>tools/review/vendor/model-viewer.min.js</code>. See <code>vendor/README.md</code>.</span></div>`
+    : (p && p.err ? `<div class="mmsg"><span>This model didn’t load. It may be a broken file, or compressed in a way this page can’t read offline (Draco, KTX2 or Meshopt).</span></div>` : '');
+  return `<div class="mwrap"><div class="mstage${game ? ' game' : ''}" data-mid="${esc(it.id)}">${game ? '<span class="mbadge">in game now</span>' : ''}${inner}</div>
+    <div class="mctl"><button class="mini${S.turntable ? ' on' : ''}" data-act="turn" title="Turntable: the model turns by itself (T)">&#x27F2; Turntable<kbd>T</kbd></button>
+      <button class="mini" data-act="mreset" title="Back to the front view">Reset view</button>
+      <button class="mini" data-act="zoom3d" title="View large (Z)">&#x2922; Large<kbd>Z</kbd></button>
+      <span class="dims">drag to turn · scroll to zoom</span></div></div>`;
+}
+
 function rowHTML(it) {
   const ed = S.edit && S.edit.id === it.id ? S.edit.kind : null;
   let lead;
@@ -1094,11 +1144,13 @@ function rowHTML(it) {
     lead = it.exists
       ? `<button class="thumb" data-act="view" title="View large${stageShown(it) ? '' : ' (Space)'}"><img src="${esc(it.url)}" alt="" loading="lazy" decoding="async"></button>`
       : `<div class="thumb none">no image yet</div>`;
+  } else if (it.kind === 'model') {
+    lead = `<button class="play cube" data-act="zoom3d" ${it.exists ? '' : 'disabled'} title="View the model large (Z)">${ICON.cube}</button>`;
   } else {
     const ok = it.exists && (it.kind !== 'video' || vidPlayable(it));
     lead = `<button class="play" data-act="play" ${ok ? '' : 'disabled'} title="Play / pause (Space)">${ICON.play}${ICON.pause}</button>`;
   }
-  const stage = stageShown(it) ? stageHTML(it) : '';
+  const stage = it.kind === 'model' ? mstageHTML(it) : (stageShown(it) ? stageHTML(it) : '');
 
   const txt = displayText(it);
   let quote;
@@ -1173,7 +1225,7 @@ function takesHTML(it) {
     return `<button class="${cls}" data-act="take" data-i="${ti}" ${t.exists ? '' : 'disabled'} title="${esc(lbl)}${mine ? ' · the one you kept' : ''}">${pos < 9 ? `<kbd>${pos + 1}</kbd>` : ''}${esc(lbl)}</button>`;
   }).join('');
   if (game) {
-    const playing = S.gameId === it.id && !gplayer.paused;
+    const playing = it.kind === 'model' ? S.gameModel.has(it.id) : (S.gameId === it.id && !gplayer.paused);
     h += `<button class="tk game${playing ? ' playing' : ''}" data-act="game" title="What the game has now: the file this one would replace (0)"><kbd>0</kbd>in game now</button>`;
   }
   return `<div class="takes">${h}</div>`;
@@ -1201,6 +1253,7 @@ function playGame(id) {
   const it = S.byId.get(id);
   if (!it || !it.game_url) { toast('Nothing in the game for this one yet'); return; }
   if (it.kind === 'image') { openViewer(id, 'game'); return; }
+  if (it.kind === 'model') { toggleGameModel(id); return; }
   if (/\.(mp4|webm)(\?|$)/i.test(it.game_url.split('?')[0])) { window.open(it.game_url, '_blank', 'noopener'); return; }
   if (S.gameId === id && !gplayer.paused) { gplayer.pause(); return; }
   player.pause();
@@ -1222,6 +1275,90 @@ function addChip(id, text) {
   else if (dots >= 0 && text.endsWith('…')) f.setSelectionRange(dots, dots + 1);  // …and the name over the dots
   else f.setSelectionRange(f.value.length, f.value.length);
 }
+
+/* ---------------------------------------------------------------- 3D models */
+// Google's <model-viewer> (vendored in tools/review/vendor/, served at /vendor/: no CDN, works offline).
+// Each model item keeps its own element, moved into the row's stage on every render, so a model you have
+// turned stays turned. Only the current row turns by itself (the turntable); the others are still.
+const mvReady = () => !!customElements.get('model-viewer');
+const modelSrc = it => (S.gameModel.has(it.id) && it.game_url) ? it.game_url : it.url;
+function makeViewer(id, large) {
+  const v = document.createElement('model-viewer');
+  for (const [k, val] of Object.entries({
+    'camera-controls': '', 'touch-action': 'pan-y', 'shadow-intensity': '1', 'environment-image': 'neutral', exposure: '1.1',
+    'auto-rotate-delay': '0', 'rotation-per-second': '24deg', 'interaction-prompt': 'none', tabindex: '0', ...(large ? {} : { loading: 'lazy' }),
+  })) v.setAttribute(k, val);
+  v.setAttribute('alt', '3D model');
+  v.addEventListener('load', () => {
+    const it = S.byId.get(id);
+    if (!it || large || v.getAttribute('src') !== it.url) return;  // measure the candidate, not the game's copy
+    const d = v.getDimensions();
+    if (d && isFinite(d.x)) setProbe(it, { dims: [d.x, d.y, d.z] });
+  });
+  v.addEventListener('error', () => {
+    const it = S.byId.get(id);
+    if (!it || large || v.getAttribute('src') !== it.url) return;
+    setProbe(it, { err: true });
+    renderRow(id, true);
+  });
+  return v;
+}
+function mountModel(id) {
+  const it = S.byId.get(id), el = S.rows.get(id);
+  const slot = el && el.querySelector('.mstage');
+  if (!it || !slot || !it.exists || !mvReady() || slot.querySelector('.mmsg')) return;
+  let v = S.mviews.get(id);
+  if (!v) { v = makeViewer(id, false); S.mviews.set(id, v); }
+  const src = modelSrc(it);
+  if (v.getAttribute('src') !== src) v.setAttribute('src', src);
+  v.toggleAttribute('auto-rotate', S.turntable && id === S.curId);
+  if (v.parentNode !== slot) slot.prepend(v);
+}
+function turnOnly(id) {  // the turntable runs on the current row only
+  for (const [mid, v] of S.mviews) v.toggleAttribute('auto-rotate', S.turntable && mid === id);
+  if (S.vmodel) S.vmodel.toggleAttribute('auto-rotate', S.turntable);
+}
+function toggleTurntable() {
+  S.turntable = !S.turntable;
+  S.mem.turntable = S.turntable;
+  saveMem();
+  turnOnly(S.curId);
+  for (const b of document.querySelectorAll('.mini[data-act="turn"]')) b.classList.toggle('on', S.turntable);
+  toast(`Turntable: ${S.turntable ? 'on' : 'off'}`, 'ok');
+}
+function resetModel(id) {
+  const v = S.mviews.get(id);
+  if (!v) return;
+  v.cameraOrbit = '0deg 75deg 105%';
+  v.cameraTarget = 'auto auto auto';
+  v.fieldOfView = 'auto';
+  v.jumpCameraToGoal();
+}
+// 0: what the game has now, in the same viewer, then back to the candidate
+function toggleGameModel(id) {
+  const it = S.byId.get(id);
+  if (!it || !it.game_url) { toast('Nothing in the game for this one yet'); return; }
+  if (S.gameModel.has(id)) S.gameModel.delete(id); else S.gameModel.add(id);
+  renderRow(id, true);
+  if (S.viewerOpen && S.curId === id) renderViewer();
+  toast(S.gameModel.has(id) ? 'Showing what the game has now (0 goes back)' : 'Showing the new model', 'ok');
+}
+function mountLargeModel(it) {
+  const wrap = $('#vmodelwrap');
+  if (!mvReady()) { wrap.innerHTML = '<div class="mmsg" style="padding:40px;color:var(--amber)">The 3D viewer script is missing: tools/review/vendor/model-viewer.min.js</div>'; return; }
+  if (!S.vmodel) { S.vmodel = makeViewer(it.id, true); wrap.replaceChildren(S.vmodel); }
+  const src = modelSrc(it);
+  if (S.vmodel.getAttribute('src') !== src) S.vmodel.setAttribute('src', src);
+  S.vmodel.toggleAttribute('auto-rotate', S.turntable);
+}
+function unmountLargeModel() {
+  if (!S.vmodel) return;
+  S.vmodel.remove();
+  S.vmodel = null;
+  $('#vmodelwrap').replaceChildren();
+}
+// a script that loads after the first render (it is a module): draw the model rows again
+if (!mvReady()) customElements.whenDefined('model-viewer').then(() => { for (const [id, it] of S.byId) if (it.kind === 'model') renderRow(id, true); });
 
 /* ---------------------------------------------------------------- lessons */
 async function openLessons() {
@@ -1262,6 +1399,7 @@ function renderRow(id, force = false) {
   if (!force && S.edit && S.edit.id === id) return;  // don't clobber a draft
   el.innerHTML = rowHTML(it);
   if (id === S.vidId) mountVideo();  // same task: the shared <video> keeps playing
+  if (it.kind === 'model') mountModel(id);
 }
 function renderTrack(id) {
   const el = S.rows.get(id), it = S.byId.get(id);
@@ -1447,10 +1585,12 @@ function setCurrent(id, { scroll = true } = {}) {
     el.className = rowClass(it);
     if (scroll) el.scrollIntoView({ block: 'nearest' });
   }
+  if (prev !== id) turnOnly(id);
   if (S.viewerOpen) {
-    // the large viewer follows the current item: its video, else its image, else it closes
+    // the large viewer follows the current item: its model, its video, else its image, else it closes
     const canVid = it && stageShown(it) && vidPlayable(it), canImg = it && it.kind === 'image' && it.exists;
-    if (S.viewerMode === 'video' && canVid) renderViewer();
+    if (it && it.kind === 'model' && it.exists) { S.viewerMode = 'model'; renderViewer(); }
+    else if (S.viewerMode === 'video' && canVid) renderViewer();
     else if (canImg) { S.viewerMode = 'image'; renderViewer(); }
     else if (canVid) { S.viewerMode = 'video'; renderViewer(); }
     else closeViewer();
@@ -1540,6 +1680,7 @@ function togglePlay(id) {
   if (stageShown(it)) { toggleVideo(it); return; }  // the row shows a video: Space is for it
   if (it.kind === 'video') { toast('No video yet — the file is missing'); return; }
   if (it.kind === 'image') { S.viewerOpen ? closeViewer() : openViewer(id, 'image'); return; }
+  if (it.kind === 'model') { S.viewerOpen ? closeViewer() : openViewer(id, 'model'); return; }
   if (!it.exists) { toast('No audio yet — the file is missing'); return; }
   if (S.playingId === id && player.getAttribute('src') === it.url) {
     if (player.paused) { if (player.ended) player.currentTime = 0; doPlay(); }
@@ -1800,7 +1941,7 @@ function reprioritiseProbes() {
   // each item's own file, then (for a shown stage) the clip behind it, nearest the cursor first
   const q = [], vseen = new Set();
   for (const it of order) {
-    if (it.exists && !S.probes.has(pkey(it))) q.push({ it, t: 'main' });
+    if (it.exists && it.kind !== 'model' && !S.probes.has(pkey(it))) q.push({ it, t: 'main' });  // a model's own viewer reports its load
     const u = it.kind === 'video' ? null : vidUrl(it);
     if (u && stageShown(it) && vidPlayable(it) && !vseen.has(u) && !vprobeDone(u)) { vseen.add(u); q.push({ it, t: 'vid', url: u }); }
   }
@@ -2016,6 +2157,7 @@ function openViewer(id, mode) {
   const it = S.byId.get(id);
   if (!it) return;
   const canVid = stageShown(it) && vidPlayable(it), canImg = it.kind === 'image' && it.exists;
+  if (it.kind === 'model') { if (!it.exists) return; mode = 'model'; }
   if (mode === 'game' && !(it.kind === 'image' && it.game_url)) return;
   if (!mode) mode = canVid ? 'video' : 'image';
   if (mode === 'video' && !canVid) mode = 'image';
@@ -2029,11 +2171,16 @@ function openViewer(id, mode) {
 function renderViewer() {
   const it = S.byId.get(S.curId);
   if (!it) return;
-  const vid = S.viewerMode === 'video';
-  $('#vimgwrap').hidden = vid;
+  const vid = S.viewerMode === 'video', mdl = S.viewerMode === 'model';
+  $('#vimgwrap').hidden = vid || mdl;
   $('#vvidwrap').hidden = !vid;
+  $('#vmodelwrap').hidden = !mdl;
   $('#vhVideo').hidden = !vid;
-  if (vid) {
+  $('#vhModel').hidden = !mdl;
+  if (!mdl) unmountLargeModel();
+  if (mdl) {
+    mountLargeModel(it);
+  } else if (vid) {
     loadVideo(it);  // mounts the shared player up here
   } else {
     const img = $('#vimg'), src = S.viewerMode === 'game' ? it.game_url : it.url;
@@ -2042,14 +2189,16 @@ function renderViewer() {
   }
   $('#vlabel').textContent = it.label || it.id;
   const pill = $('#vpill');
-  pill.className = 'vpill s-' + (S.viewerMode === 'game' ? 'installed' : it.status);
-  pill.textContent = S.viewerMode === 'game' ? 'In the game now' : pillText(it);
+  const game = S.viewerMode === 'game' || (mdl && S.gameModel.has(it.id));
+  pill.className = 'vpill s-' + (game ? 'installed' : it.status);
+  pill.textContent = game ? 'In the game now' : pillText(it);
   $('#vtext').textContent = displayText(it);
 }
 function closeViewer() {
   const wasVid = S.viewerOpen && S.viewerMode === 'video';
   S.viewerOpen = false;
   $('#viewer').hidden = true;
+  unmountLargeModel();
   if (wasVid) { vplayer.blur(); mountVideo(); }
 }
 function toggleHelp(force) {
@@ -2074,6 +2223,9 @@ async function openBatch(name) {
     closeViewer();
     stopVideo();
     S.vidShow.clear();
+    for (const v of S.mviews.values()) v.remove();
+    S.mviews.clear();
+    S.gameModel.clear();
     closeFinish();
     for (const el of S.rows.values()) el.remove();
     S.rows.clear();
@@ -2503,6 +2655,9 @@ $('#list').addEventListener('click', e => {
     case 'vtoggle': toggleStage(id); break;
     case 'loop': toggleLoop(); break;
     case 'zoom': openViewer(id, 'video'); break;
+    case 'zoom3d': openViewer(id, 'model'); break;
+    case 'turn': toggleTurntable(); break;
+    case 'mreset': resetModel(id); break;
     case 'accept': accept(id); break;
     case 'reject': reject(id); break;
     case 'undo': unmark(id); break;
@@ -2607,7 +2762,7 @@ $('#helpBtn').addEventListener('click', e => { e.currentTarget.blur(); toggleHel
 $('#rescan').addEventListener('click', e => { e.currentTarget.blur(); rescan(); });
 $('#lessonsBtn').addEventListener('click', e => { e.currentTarget.blur(); openLessons(); });
 $('#lessons').addEventListener('click', e => { if (!e.target.closest('.lessons-panel')) closeLessons(); });
-$('#viewer').addEventListener('click', e => { if (!e.target.closest('img, video')) closeViewer(); });
+$('#viewer').addEventListener('click', e => { if (!e.target.closest('img, video, model-viewer')) closeViewer(); });
 $('#help').addEventListener('click', e => { if (!e.target.closest('.help')) toggleHelp(false); });
 
 $('#finishBtn').addEventListener('click', e => { e.currentTarget.blur(); openFinish(); });
@@ -2693,7 +2848,7 @@ document.addEventListener('keydown', e => {
     vplayer.blur();
   }
   if (t && t.tagName === 'SELECT') {
-    if (/^[ajkrucenpfolvzwb0-9?]$/i.test(k) || k === 'Escape') t.blur(); else return;
+    if (/^[ajkrucenpfolvzwbt0-9?]$/i.test(k) || k === 'Escape') t.blur(); else return;
   } else if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT')) {
     return;
   }
@@ -2726,6 +2881,8 @@ document.addEventListener('keydown', e => {
       e.preventDefault(); if (id && once) revise(id); break;
     case 'b': case 'B':
       if (once) toggleBlind(); break;
+    case 't': case 'T':
+      if (once) toggleTurntable(); break;
     case 'e': case 'E':
       e.preventDefault(); if (id && once) { closeViewer(); startEdit(id, 'text'); } break;
     case 'n': case 'N':
@@ -2780,6 +2937,7 @@ document.addEventListener('keydown', e => {
 (async function boot() {
   S.mem = loadMem();
   S.autoplay = S.mem.autoplay !== false;
+  S.turntable = S.mem.turntable !== false;
   S.loop = S.mem.loop === true;
   vplayer.loop = S.loop;
   renderAutoplay();

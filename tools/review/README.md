@@ -1,13 +1,14 @@
 # Review Table: accept or reject generated assets
 
-A small local tool for going through AI-generated assets: concept art, voice lines, music, images and video.
+A small local tool for going through AI-generated assets: concept art, 3D models, voice lines, music, images and video.
 You listen or look, mark each one **accept** or **reject** (concept art: **Good**, **Good with changes** or **Bad**),
 optionally fix the line text or add a note.
 Then **Finish review** (`F`) installs the keepers where they belong and has the generator redo the rejects,
 from buttons in the page, with the output streaming into a log drawer.
 
 It uses only the Python 3 standard library: one script (`review.py`) and one HTML page (`index.html`).
-It serves on `127.0.0.1` only.
+It serves on `127.0.0.1` only. The one thing it carries that is not ours is the 3D viewer, Google's `<model-viewer>`, committed in
+`vendor/` (see `vendor/README.md` for the version, the license and how to update it), so the page works offline.
 
 ```sh
 python3 tools/review/review.py serve --open        # UI at http://127.0.0.1:8766
@@ -25,7 +26,7 @@ After changing `review.py`, restart `serve`: the page is re-read on every load, 
 | `status [<batch>]` | Shows accepted / rejected / pending / missing counts for each group. |
 | `apply <batch> [--dry-run]` | Copies every **accepted** file to its `target`, then writes `review/<batch>/rejected.json`. |
 | `new <batch> --title "..." [--mode concept]` | Creates an empty `batch.json` (a concept batch with `--mode concept`). |
-| `sample [--force]` | Builds the demo batches that are missing: `_sample` (voices and pictures) and `_sample_concept` (crests from three seats, to judge blind). `--force` wipes them and their verdicts. |
+| `sample [--force]` | Builds the demo batches that are missing: `_sample` (voices and pictures), `_sample_concept` (crests from three seats, to judge blind) and `_sample_models` (two ruler models, each with a different one as "in game now"). `--force` wipes them and their verdicts. |
 | `lessons [--write MD] [--json]` | What every batch's verdicts and notes say: first takes kept by kind and by voice, how each art seat did, and the note themes. `--write <file.md>` refreshes the block between `<!-- lessons:begin -->` and `<!-- lessons:end -->`. |
 
 `apply` creates the target folders it needs and skips files that are already identical, so it is safe to run again.
@@ -37,7 +38,7 @@ Items that were regenerated after their verdict are not copied until you have li
 
 | key | action |
 |---|---|
-| `Space` | Play or pause the current line or video (on an image without a video, opens it large) |
+| `Space` | Play or pause the current line or video (on an image without a video, or on a model, opens it large) |
 | `↓` / `J`, `↑` / `K` | Move to the next or previous item (`Home` / `End` jump to the first or last) |
 | `A` | Accept, then move on (concept batch: **Good**) |
 | `C` | Concept batches only: **Good with changes**. Opens the note; a note is required. |
@@ -45,7 +46,7 @@ Items that were regenerated after their verdict are not copied until you have li
 | `U` | Set the item back to pending |
 | `←` / `→` | Previous / next take, when an item was rolled more than once. With autoplay on, each one plays. |
 | `1`–`9` | Go to take N and play it. `A` keeps the take you are on. |
-| `0` | Play (or show) what the game has now: the file this item would replace. |
+| `0` | Play (or show) what the game has now: the file this item would replace (a model: shown in its own viewer, `0` again goes back). |
 | `B` | **Blind** on or off: hide which seat made each take until the item has a verdict (see [Seats](#seats-takes-from-several-artists-judged-blind)) |
 | `W` | Lessons: what every review so far says about the prompts |
 | `E` | Edit the line text for the re-roll. `Enter` saves the edit and marks the item **rejected**; `Esc` cancels. |
@@ -53,7 +54,8 @@ Items that were regenerated after their verdict are not copied until you have li
 | `P` | Toggle **autoplay next** (on by default): after `A` or `R`, the next line or video starts playing |
 | `V` | Show or hide the video behind an item (a GIF or poster frame with an mp4). On a video item, view it large. |
 | `L` | Loop videos on or off |
-| `Z` | View large: the image, or the video (with the browser's own controls and fullscreen). `Esc` closes. |
+| `Z` | View large: the image, the 3D model, or the video (with the browser's own controls and fullscreen). `Esc` closes. |
+| `T` | 3D models: turntable on or off |
 | `F` | **Finish review**: the counts, then the batch's actions. In there, `1`–`9` runs that action, `Esc` closes. |
 | `O` | Open or close the run log (`Esc` closes it too) |
 | `?` | Show the key help |
@@ -144,7 +146,8 @@ what it measured on the take, and may put the best-measured take first.
 
 When an item's `target` (or its first `meta.install` destination) already exists in the game and differs from the
 take kept, the strip ends with **in game now** (`0`): it plays the game's copy, or shows it in the viewer for a
-picture. Only media files are served that way, never a dotfile or anything outside the repo.
+picture, or in the row's own 3D viewer for a model. Only media files (and `.glb` / `.gltf`) are served that way, never a
+dotfile or anything outside the repo.
 
 When a note changed what a voice was asked to say, `meta.speak` shows as **spoken as** under the line.
 
@@ -175,6 +178,29 @@ Under 3% loops without a visible jump; over 8% jumps. That is the thing to check
 
 Chrome and Safari no longer decode Theora, so an `.ogv` (or Ogg video) item says so instead of showing a dead player:
 open it in VLC or Godot, or review an mp4 of it.
+
+## 3D models
+
+Items with `"kind": "model"` (`.glb`, `.gltf`; guessed from the extension when `kind` is left out) get an orbit viewer in the
+row, under the text, bigger on the current row:
+
+- **drag** to turn the model, **scroll** over it to zoom (scrolling anywhere else scrolls the list), and it **turns by itself**
+  (the turntable, `T`) on the current row only; touch it and it waits a moment, then carries on.
+- **Reset view** goes back to the front; **Large** (`Z`, or `Space`) opens it big. `Esc` closes.
+- The line under the text gives the model's bounding box as the file says it, the type and the size.
+- **In game now** (`0`): when the item's `target` (or its first `meta.install` destination) already exists in the game and
+  differs from the model you are looking at, `0` swaps the same viewer to the game's copy (badge "in game now") and back, so
+  the new model and the old one can be compared from the same angle. Models rolled more than once have takes like anything else.
+- Accepting, rejecting, notes, takes and `apply` work as for any item. The note chips for a model are "Doesn't match the concept
+  art", "Proportions are off", "Texture is blurry or muddy", "Holes or broken geometry" and "Wrong pose"; `lessons` sorts them
+  into the `concept_match`, `proportions`, `texture`, `geometry` and `pose` themes.
+- A model that fails to load shows why and is listed under **Flagged**.
+
+The viewer is Google's `<model-viewer>` 4.3.1, served from `tools/review/vendor/` at `/vendor/model-viewer.min.js` (nothing
+else is served from there), with its neutral built-in lighting: no CDN, no HDR file to fetch, works with no network.
+`.glb` is served as `model/gltf-binary` and `.gltf` as `model/gltf+json`, with HTTP Range support like all media. A `.gltf` with
+external buffers or textures works when they sit next to it in the batch folder. Draco and KTX2 compressed files need decoders
+that are not vendored; they show as a failed load (see `vendor/README.md`).
 
 ## Finish review: actions
 
@@ -228,7 +254,10 @@ browser could still try to POST to it, so every request that changes something (
 must carry the `X-Review-Token` header: a random token made when the server starts and written into the page it serves.
 Requests with an `Origin` header other than the server's own are refused, and bodies must be `application/json`.
 The page cannot send a command: it names an action and option values, and the server builds the command from `batch.json`
-after checking every value. The page also refuses to be shown inside another site's frame.
+after checking every value. The page also refuses to be shown inside another site's frame, and its Content-Security-Policy
+allows nothing from outside this server (`default-src 'self'`; no CDN, no external fonts or scripts), with `'wasm-unsafe-eval'`
+only so the vendored viewer can compile its WebAssembly (it does not allow `eval()`). `/vendor/` serves `.js` files that sit
+directly in `tools/review/vendor/`, and nothing else.
 
 ## The files
 
@@ -250,8 +279,8 @@ Everything lives in `review/<batch>/` at the repo root. `review/*/` is gitignore
 ```
 
 - `id`: unique within the batch. Verdicts are keyed on it.
-- `kind`: `"audio"` (mp3, wav, ogg, m4a), `"image"` (png, webp, jpg, gif) or `"video"` (mp4, webm, mov, m4v, ogv).
-  Left out, it is guessed from the extension.
+- `kind`: `"audio"` (mp3, wav, ogg, m4a), `"image"` (png, webp, jpg, gif), `"video"` (mp4, webm, mov, m4v, ogv) or
+  `"model"` (glb, gltf; see [3D models](#3d-models)). Left out, it is guessed from the extension.
 - `file`: path relative to the batch folder. The file may be missing while it is still generating. It then shows as *missing* and cannot be accepted.
 - `target`: path relative to the repo, where `apply` copies the file once it is accepted.
 - `group`: used by the group filter, for example a character name.
@@ -319,4 +348,5 @@ API, for scripts that want it:
 | `GET /api/runs?batch=<batch>` | the batch's last few runs, newest first |
 
 Every POST needs `Content-Type: application/json` and the `X-Review-Token` header (see [Security](#security)).
-Media is served from `/media/<batch>/<file>` with its type (audio, image and video) and supports HTTP Range requests.
+Media is served from `/media/<batch>/<file>` with its type (audio, image, video and model) and supports HTTP Range requests.
+`GET /game/<batch>/<item>` is the copy of an item in the game, and `GET /vendor/model-viewer.min.js` is the 3D viewer.
