@@ -1014,7 +1014,7 @@ class ModelTests(unittest.TestCase):
         mb = R.merged_batch(d.name)
         self.assertGreaterEqual(len(mb["items"]), 1)
         self.assertTrue(all(it["kind"] == "model" and it["exists"] and "game_url" in it and not it["game_same"] for it in mb["items"]))
-        self.assertTrue(all(it["target"].startswith("review/_sample_models/out/") for it in mb["items"]), "installing it touches nothing real")
+        self.assertTrue(all(it["target"].startswith(f"review/{d.name}/out/") for it in mb["items"]), "installing it touches nothing real")
 
 
 class FromFolderTests(unittest.TestCase):

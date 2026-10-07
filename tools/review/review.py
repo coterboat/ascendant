@@ -2248,7 +2248,7 @@ def _build_sample_models(d: Path) -> None:
         shutil.copy2(src / game, d / "out" / "rulers" / f"{iid}.glb")
         items.append({"id": f"{iid}.v2", "kind": "model", "group": "rulers", "label": f"{iid.replace('_', ' ')} · new pose",
                       "text": "a ruler in a new pose, to replace the one in the game",
-                      "file": f"rulers/{iid}.glb", "target": f"review/_sample_models/out/rulers/{iid}.glb",
+                      "file": f"rulers/{iid}.glb", "target": f"review/{d.name}/out/rulers/{iid}.glb",
                       "meta": {"context": "the ruler model on the 3D board"}})
     d.mkdir(parents=True, exist_ok=True)
     atomic_write_json(d / "batch.json", {"batch": "_sample_models", "title": "Sample model batch (demo)", "items": items})
