@@ -1,6 +1,6 @@
 #!/bin/sh
-# The review table: accept or reject what Ludo generated (voices, pictures, films), and install or
-# redo from its buttons. Opens in your browser at http://127.0.0.1:8766/
+# The Review Table: accept or reject what was generated (concept art, 3D models, voices, pictures, films),
+# and install or redo from its buttons. Opens in your browser at http://127.0.0.1:8766/ (Concurrent's is 8765).
 #   ./scripts/review.sh          start it and open it (if it's already running, just open it)
 #   ./scripts/review.sh 8770     on another port
 # Or double-click "Review Table.command" in the repo folder. Ctrl+C, or closing that window, stops it.
