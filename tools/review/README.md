@@ -25,6 +25,7 @@ After changing `review.py`, restart `serve`: the page is re-read on every load, 
 | `serve [--port 8766] [--open] [--verbose]` | Serves the UI plus a JSON API, and lists every batch under `review/`. Stopping it cancels any action still running. |
 | `status [<batch>]` | Shows accepted / rejected / pending / missing counts for each group. |
 | `apply <batch> [--dry-run]` | Copies every **accepted** file to its `target`, then writes `review/<batch>/rejected.json`. |
+| `canon <batch> [--dry-run]` | Concept batches: copies every **Good** and **Good with changes** take into `assets/_concept/lore/<group>/` and writes that folder's `CANON.md`, then `rejected.json`. See [Canon](#canon-where-concept-art-ends-up). |
 | `new <batch> --title "..." [--mode concept]` | Creates an empty `batch.json` (a concept batch with `--mode concept`). |
 | `from-folder <dir> <batch> [--title T] [--mode concept] [--group-by prefix\|folder] [--recursive] [--sidecar JSON] [--target-dir DIR] [--add]` | Builds `review/<batch>/` from a folder of images, models, audio or video the art rounds wrote, and an optional `prompts.json`. See [A batch from a folder](#a-batch-from-a-folder). |
 | `sample [--force]` | Builds the demo batches that are missing: `_sample` (voices and pictures), `_sample_concept` (crests from three seats, to judge blind) and `_sample_models` (two ruler models, each with a different one as "in game now"). `--force` wipes them and their verdicts. |
@@ -93,10 +94,33 @@ A batch with `"mode": "concept"` in its `batch.json` (or `review.py new <batch> 
   "Not a lookalike of …" (the dots are selected so you can type the name over them), "Keep the silhouette, change the detail".
   They are written the same way every time so `lessons` can sort them into themes (`palette`, `faction`, `text_in_image`,
   `lookalike`, `silhouette`, `more_like`).
+- The built-in install action of a concept batch is **Add to canon** (`review.py canon <batch>`, below).
 - `rejected.json` of a concept batch carries the `revise` items too, so the next art round redoes both; each entry says
   which with `verdict`: `reject` = start again, `revise` = keep what works and apply the note.
 - `lessons` counts `revise` in its own column (kept, with changes asked for), and a `revise` note stays "open" until the
   item is redone.
+
+## Canon: where concept art ends up
+
+`review.py canon <batch>` (the **Add to canon** button in Finish review, `F`) is the built-in install action of a concept batch.
+It makes the approved art the reference that later 3D work starts from:
+
+- every **Good** and **Good with changes** item (the take you kept, when it has several) is copied to
+  `assets/_concept/lore/<group>/<item id>.<ext>`. `<group>` is the item's `group` (made safe for a folder name; `ungrouped` when
+  it has none). Godot already ignores `assets/_concept/`, so nothing is imported.
+- `assets/_concept/lore/<group>/CANON.md` gets one entry per image: **image** (shown, and its file name), **verdict**, **note**,
+  **prompt**, **seat**, **batch** and **date** (of the verdict). Each entry sits between `<!-- canon:item ... -->` and
+  `<!-- /canon:item -->` markers, so the next run updates it in place; anything you write in the file outside the markers is kept.
+- it is safe to run again: identical images are left alone (`=`), an entry is rewritten only when something changed, and a
+  redone image (a newer file for an item you accepted again) replaces its copy. An item that is no longer Good or Good with
+  changes loses its entry (the run says so), but **an image is never deleted**.
+- it never overwrites what it did not write: when `<item id>.<ext>` is already another batch's canon image, or a file nobody wrote
+  through `canon`, the entry's image is named `<item id>__<batch>.<ext>` instead.
+- `--dry-run` lists what it would do and writes nothing. It also writes `review/<batch>/rejected.json` (the Bad items, and the
+  Good with changes ones with their notes) for the next round.
+- from the page, the run marks the kept takes **In canon** (their tab), and **in canon now** (`0`) shows what canon has for an
+  item next to the take you are on. The demo batch's groups start with `sample_`, so what it writes
+  (`assets/_concept/lore/sample_*/`) is gitignored and easy to delete.
 
 ## Seats: takes from several artists, judged blind
 
@@ -243,7 +267,8 @@ A batch declares its actions in `batch.json`:
 - `spends: true`: running it asks first, saying it spends Ludo credits and how many items are rejected.
 
 A batch without `actions` gets one built-in action, **Install accepted**, which runs this tool's own
-`python3 tools/review/review.py apply <batch>` (with a **Dry run** option). There is no **Redo rejected** then:
+`python3 tools/review/review.py apply <batch>` (with a **Dry run** option); a concept batch gets **Add to canon**, which runs
+`python3 tools/review/review.py canon <batch>` instead. There is no **Redo rejected** then:
 the button is there but disabled, because only the generator knows how to re-roll.
 
 An action that doesn't pass these checks still shows, disabled, with the reason.

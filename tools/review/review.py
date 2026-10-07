@@ -11,6 +11,8 @@ Commands:
     serve  [--port 8766] [--open]   local web UI + JSON API on 127.0.0.1
     status [<batch>]                counts per verdict per group
     apply  <batch> [--dry-run]      copy accepted files to their targets, write rejected.json
+    canon  <batch> [--dry-run]      concept batches: copy every Good and Good-with-changes take into
+                                    assets/_concept/lore/<group>/ and write that folder's CANON.md
     new    <batch> --title "..." [--mode concept]   scaffold an empty batch
     from-folder <dir> <batch> --title "..." [--mode concept] [--group-by prefix]
                                     build a batch from a folder of images or models (and a prompts.json)
@@ -312,9 +314,15 @@ def picked_path(d: Path, item: dict, entry: dict | None) -> Path | None:
 GAME_EXTS = {".mp3", ".wav", ".ogg", ".m4a", ".png", ".webp", ".jpg", ".jpeg", ".gif", ".mp4", ".webm", ".glb", ".gltf"}
 
 
-def game_path(item: dict) -> Path | None:
+def game_path(item: dict, batch: str | None = None, mode: str = "standard") -> Path | None:
+    """What the game has now for an item: its target, or what meta.install lists. In a concept batch,
+    the copy `canon` put in assets/_concept/lore/ for it."""
     meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
     cands = [item.get("target")]
+    if mode == "concept" and batch:
+        cp = canon_file(batch, item)
+        if cp is not None:
+            cands.append(cp.relative_to(REPO.resolve()).as_posix())
     for pr in meta.get("install") or []:
         if isinstance(pr, (list, tuple)) and len(pr) == 2:
             cands.append(pr[1])
@@ -397,7 +405,7 @@ def merge_item(name: str, d: Path, item: dict, entry: dict | None, mode: str = "
                          "picked": t["path"] is not None and t["path"] == p})
         out["takes"] = rows
         out["seat"] = next((r["seat"] for r in rows if r["picked"]), takes[0]["seat"])
-    gp = game_path(item)
+    gp = game_path(item, name, mode)
     if gp is not None:
         out["game_url"] = f"/game/{quote(name)}/{quote(item['id'])}?v={gp.stat().st_mtime:.3f}"
         out["game_same"] = same_file(p if exists else None, gp)
@@ -754,8 +762,16 @@ ACTION_ID_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$")
 STRING_MAX = 500
 
 
-def builtin_actions(name: str) -> list[dict]:
-    """What a batch that declares no actions gets: this tool's own `apply`."""
+def builtin_actions(name: str, mode: str = "standard") -> list[dict]:
+    """What a batch that declares no actions gets: this tool's own `apply`, or for a concept batch
+    `canon` (the Good and Good-with-changes takes go to assets/_concept/lore/, with a CANON.md)."""
+    if mode == "concept":
+        return [{"id": "install", "kind": "install", "label": "Add to canon",
+                 "help": "Copy every Good and Good with changes take into assets/_concept/lore/<group>/ and write its "
+                         "CANON.md, and rejected.json for the next round (review.py canon)",
+                 "cmd": ["python3", "tools/review/review.py", "canon", name], "builtin": True,
+                 "options": [{"flag": "--dry-run", "label": "Dry run", "type": "bool", "default": False,
+                              "help": "Only list what would be copied"}]}]
     return [{"id": "install", "kind": "install", "label": "Install accepted",
              "help": "Copy every accepted file to its target and write rejected.json (review.py apply)",
              "cmd": ["python3", "tools/review/review.py", "apply", name], "builtin": True,
@@ -860,7 +876,7 @@ def batch_actions(name: str, data: dict) -> list[dict]:
     a batch that declares none gets the built-in install (this tool's `apply`)."""
     raw = data.get("actions")
     if raw is None or raw == []:
-        raw = builtin_actions(name)
+        raw = builtin_actions(name, data.get("mode") or "standard")
     if not isinstance(raw, list):
         return [{"id": "actions", "kind": "custom", "label": "actions", "help": "", "cmd": [], "options": [],
                  "spends": False, "builtin": False, "error": "batch.json: \"actions\" must be a list"}]
@@ -1119,13 +1135,16 @@ def mark_installed(name: str, snapshot: dict) -> int:
     return n
 
 
-def _install_pairs(d: Path, item: dict, src: str | None = None) -> list[tuple[Path, Path]]:
+def _install_pairs(d: Path, item: dict, src: str | None = None, mode: str = "standard") -> list[tuple[Path, Path]]:
     """(batch file, game file) pairs an accepted item installs: meta.install when the generator
     lists them (a sheet and its json, a converted video), else the picked take (`src`, batch
-    relative; the item's own file when none) → target."""
+    relative; the item's own file when none) → target. A concept item's is its copy in canon."""
     meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
     pairs = meta.get("install")
     out = []
+    if mode == "concept" and not pairs and not item.get("target"):
+        cp = canon_file(d.name, item)
+        return [(d / str(src or item["file"]), cp)] if cp is not None else []
     if isinstance(pairs, list) and pairs:
         for pr in pairs:
             if isinstance(pr, (list, tuple)) and len(pr) == 2:
@@ -1150,7 +1169,7 @@ def reconcile(name: str) -> int:
             m = merge_item(name, d, item, e, data["mode"])
             if m["status"] not in KEPT or m["installed"] or m["mtime"] is None:
                 continue
-            pairs = _install_pairs(d, item, m.get("src"))
+            pairs = _install_pairs(d, item, m.get("src"), data["mode"])
             if pairs and all(a.is_file() and b.is_file() and filecmp.cmp(a, b, shallow=False) for a, b in pairs):
                 e["installed"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "file_mtime": m["mtime"], "found": True}
                 n += 1
@@ -1370,7 +1389,7 @@ class Handler(BaseHTTPRequestHandler):
             name, _, iid = path[len("/game/"):].partition("/")
             _, data = load_batch(unquote(name))
             item = next((it for it in data["items"] if it.get("id") == unquote(iid)), None)
-            gp = game_path(item) if item else None
+            gp = game_path(item, unquote(name), data["mode"]) if item else None
             if gp is None:
                 return self._error(404, "nothing in the game for that item", head)
             return self._send_file(gp, head)
@@ -1618,6 +1637,178 @@ def cmd_apply(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- canon
+#
+# `canon` is how concept art becomes the reference later 3D work starts from: every Good and Good-with-changes
+# take is copied to assets/_concept/lore/<group>/ (Godot already ignores assets/_concept/), and that folder's
+# CANON.md gets one entry per image: image, verdict, note, prompt, seat, batch and date. An entry sits between
+# <!-- canon:item ... --> markers, so the next run can update it in place and leave anything written by hand
+# around it alone.
+
+CANON_ROOT = "assets/_concept/lore"
+CANON_VERDICT = {"accept": "Good", "revise": "Good with changes"}
+CANON_ITEM_RE = re.compile(r"<!-- canon:item (\S+) file=(\S+) -->\n.*?<!-- /canon:item -->\n?", re.S)
+CANON_HEAD = (
+    "# Canon: {group}\n\n"
+    "Concept art the owner accepted in the Review Table (`python3 tools/review/review.py canon <batch>`). Each entry gives the\n"
+    "image, the verdict, the note, the prompt, the seat that made it, the batch and the date. Start 3D work from these.\n"
+    "Entries between the `canon:item` markers are rewritten by the next run; write anything else outside them.\n\n")
+_CANON_CACHE: dict = {}
+
+
+def canon_group(item: dict) -> str:
+    return slug(str(item.get("group") or ""), "ungrouped")
+
+
+def canon_key(batch: str, item_id: str) -> str:
+    return quote(f"{batch}/{item_id}", safe="/._")
+
+
+def canon_index(group_dir: Path) -> dict[str, str]:
+    """{entry key: image file name} from a group folder's CANON.md ({} when there is none)."""
+    md = group_dir / "CANON.md"
+    try:
+        st = md.stat()
+    except OSError:
+        return {}
+    hit = _CANON_CACHE.get(md)
+    if hit and hit[0] == (st.st_mtime_ns, st.st_size):
+        return hit[1]
+    idx = {m.group(1): unquote(m.group(2)) for m in CANON_ITEM_RE.finditer(md.read_text(encoding="utf-8"))}
+    _CANON_CACHE[md] = ((st.st_mtime_ns, st.st_size), idx)
+    return idx
+
+
+def canon_file(batch: str, item: dict) -> Path | None:
+    """The image `canon` put in assets/_concept/lore/ for this item, when there is one."""
+    gdir = REPO.resolve() / CANON_ROOT / canon_group(item)
+    name = canon_index(gdir).get(canon_key(batch, str(item.get("id"))))
+    p = (gdir / name) if name else None
+    return p if p is not None and p.parent == gdir and p.is_file() else None
+
+
+def canon_block(it: dict, batch: str, fname: str) -> str:
+    one = lambda v, none="—": (str(v).strip().replace("<!--", "&lt;!--").replace("\n", "\n  ") if v and str(v).strip() else none)
+    when = str(it.get("decided_at") or "")[:10] or datetime.now().strftime("%Y-%m-%d")
+    return (f"<!-- canon:item {canon_key(batch, it['id'])} file={quote(fname)} -->\n"
+            f"## {one(it.get('label') or it['id'])}\n\n"
+            f"![{one(it.get('label') or it['id'])}]({quote(fname)})\n\n"
+            f"- **image:** `{fname}`\n"
+            f"- **verdict:** {CANON_VERDICT[it['status']]}\n"
+            f"- **note:** {one(it.get('note'), 'none')}\n"
+            f"- **prompt:** {one(it.get('edited_text') or it.get('text'))}\n"
+            f"- **seat:** {one(it.get('seat'))}\n"
+            f"- **batch:** {batch}\n"
+            f"- **date:** {when}\n"
+            f"<!-- /canon:item -->\n")
+
+
+def cmd_canon(args) -> int:
+    name = args.batch
+    d, data = load_batch(name)
+    if data["mode"] != "concept":
+        raise ReviewError(f'{name} is not a concept batch ("mode": "concept"): canon is for concept art; use apply')
+    mb = merged_batch(name)
+    dry = args.dry_run
+    tag = "[dry-run] " if dry else ""
+    root = REPO.resolve() / CANON_ROOT
+    warnings: list[str] = []
+    copied = unchanged = skipped = 0
+    entries: dict[str, dict[str, tuple[str, str]]] = {}   # group dir name -> {key: (file name, block)}
+    claimed: dict[Path, str] = {}                          # image -> the entry key that owns it in this run
+    for it in mb["items"]:
+        if it["verdict"] in KEPT and it["status"] == "missing":
+            warnings.append(f"{it['id']}: kept but its file is missing — skipped")
+            skipped += 1
+            continue
+        if it["status"] not in KEPT:
+            continue
+        src = (d / it["src"]).resolve() if it.get("src") else item_path(d, it)
+        group = canon_group(it)
+        gdir = root / group
+        key = canon_key(name, it["id"])
+        ext = src.suffix.lower()
+        fname = slug(str(it["id"])) + ext
+        ## a name that is taken by another entry (another batch's), or by a file nobody wrote through canon,
+        ## is not overwritten: this entry gets the batch's name in its file name
+        owner = {v: k for k, v in canon_index(gdir).items()}.get(fname)
+        dest = gdir / fname
+        taken = (dest.exists() and not same_file(src, dest) and owner != key) or claimed.get(dest, key) != key
+        if taken:
+            fname = f"{slug(str(it['id']))}__{slug(name)}{ext}"
+            dest = gdir / fname
+            warnings.append(f"{it['id']}: {slug(str(it['id'])) + ext} is taken in {CANON_ROOT}/{group}/, so this one is {fname}")
+        claimed[dest] = key
+        rel = dest.relative_to(REPO.resolve())
+        if dest.exists() and same_file(src, dest):
+            unchanged += 1
+            print(f"  {tag}=  {rel}  (unchanged)")
+        else:
+            print(f"  {tag}+  {rel}  ({'overwrite' if dest.exists() else 'new'})")
+            if not dry:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                tmp = dest.with_name(f".{dest.name}.tmp")
+                shutil.copy2(src, tmp)
+                os.replace(tmp, dest)
+            copied += 1
+        entries.setdefault(group, {})[key] = (fname, canon_block(it, name, fname))
+
+    ## CANON.md per group: our entries replaced in place or added; our entries that are no longer kept dropped
+    prefix = canon_key(name, "")
+    groups = set(entries)
+    if root.is_dir():
+        groups |= {p.name for p in root.iterdir() if (p / "CANON.md").is_file()}
+    new_entries = changed = dropped = 0
+    for group in sorted(groups):
+        md = root / group / "CANON.md"
+        text = md.read_text(encoding="utf-8") if md.is_file() else CANON_HEAD.format(group=group)
+        mine = entries.get(group, {})
+        seen: set[str] = set()
+
+        def swap(m: re.Match) -> str:
+            nonlocal changed, dropped
+            key = m.group(1)
+            if key in mine:
+                seen.add(key)
+                if mine[key][1] != m.group(0):
+                    changed += 1
+                return mine[key][1]
+            if key.startswith(prefix):  # this batch's entry for an item that is not kept any more
+                dropped += 1
+                warnings.append(f"{unquote(key)} is no longer Good: its entry is dropped from {CANON_ROOT}/{group}/CANON.md "
+                                f"(the image {unquote(m.group(2))} is left in place)")
+                return ""
+            return m.group(0)
+        out = CANON_ITEM_RE.sub(swap, text)
+        added = [blk for key, (_, blk) in mine.items() if key not in seen]
+        new_entries += len(added)
+        if added:
+            out = out.rstrip("\n") + "\n\n" + "\n".join(added)
+        if out != text:
+            print(f"  {tag}~  {md.relative_to(REPO.resolve())}  ({len(added)} new, {sum(1 for k in mine if k in seen)} kept)")
+            if not dry:
+                md.parent.mkdir(parents=True, exist_ok=True)
+                tmp = md.with_name(".CANON.md.tmp")
+                tmp.write_text(out, encoding="utf-8")
+                os.replace(tmp, md)
+
+    rejected = rejected_entries(mb["items"], mb["mode"])
+    rj = d / "rejected.json"
+    if not dry:
+        atomic_write_json(rj, rejected)
+    c = summarize(mb["items"])
+    for w in warnings:
+        print(f"  ! {w}")
+    print(f"{tag}{name}: {'would copy' if dry else 'copied'} {copied}, unchanged {unchanged}, skipped {skipped}  ·  "
+          f"{c['accept']} Good, {c['revise']} Good with changes, {c['reject']} Bad, {c['pending']} pending, {c['missing']} missing")
+    print(f"{tag}{'would update' if dry else 'updated'} CANON.md: {new_entries} new entr{'y' if new_entries == 1 else 'ies'}, "
+          f"{changed} changed, {dropped} dropped")
+    print(f"{tag}{'would write' if dry else 'wrote'} {rj.relative_to(REPO)} ({len(rejected)} to redo: Bad, and Good with changes with their notes)")
+    if c["regenerated"]:
+        print(f"  {c['regenerated']} item(s) were regenerated after their verdict and were not added: take another look first")
+    return 0
+
+
 def cmd_new(args) -> int:
     ensure_review_root()
     d = batch_dir(args.batch, must_exist=False)
@@ -1646,8 +1837,8 @@ SEAT_FOLDERS = ("claude", "codex", "grok")  # a folder with one of these names s
 GROUP_BYS = ("none", "prefix", "folder")
 
 
-def slug(s: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.-]+", "_", s).strip("._-") or "item"
+def slug(s: str, default: str = "item") -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", s).strip("._-") or default
 
 
 def gltf_companions(p: Path) -> set[Path]:
@@ -2116,6 +2307,10 @@ def main(argv=None) -> int:
     p.add_argument("batch")
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(fn=cmd_apply)
+    p = sub.add_parser("canon", help="concept batches: copy the Good and Good-with-changes takes into assets/_concept/lore/ and write CANON.md")
+    p.add_argument("batch")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(fn=cmd_canon)
     p = sub.add_parser("reconcile", help="mark accepted takes whose installed copies already match as in the game")
     p.add_argument("batch", nargs="?")
     p.set_defaults(fn=lambda a: (print("\n".join(f"{nm}: {reconcile(nm)} marked in game" for nm in ([a.batch] if a.batch else list_batch_names()))) or 0))

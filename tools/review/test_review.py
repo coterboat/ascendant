@@ -13,8 +13,10 @@ import contextlib
 import io
 import json
 import os
+import re
 import secrets
 import shutil
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -597,6 +599,28 @@ def png_bytes(size: int = 16) -> bytes:
     return blob
 
 
+class PageTests(unittest.TestCase):
+    def test_the_page_script_parses(self):
+        """A syntax error in index.html's script leaves a blank page and no test would notice: parse it with
+        node when node is installed (it is not needed to use the tool)."""
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not installed")
+        html = R.INDEX_HTML.read_text(encoding="utf-8")
+        scripts = re.findall(r"<script>(.*?)</script>", html, re.S)
+        self.assertEqual(len(scripts), 1, "one inline script")
+        tmp = R.REVIEW / TAG / "page.js"
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(scripts[0], encoding="utf-8")
+        r = subprocess.run([node, "--check", str(tmp)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_the_page_has_the_things_the_tests_rely_on(self):
+        html = R.INDEX_HTML.read_text(encoding="utf-8")
+        self.assertIn(R.TOKEN_SLOT, html)
+        self.assertIn('<script type="module" src="/vendor/model-viewer.min.js"></script>', html)
+
+
 class ConceptTests(unittest.TestCase):
     """Concept mode: Good / Good with changes / Bad, stored as accept / revise / reject."""
 
@@ -1175,6 +1199,235 @@ class FromFolderTests(unittest.TestCase):
             code = R.main(["from-folder", str(self.src / "nope"), self.name])
         self.assertEqual(code, 2)
         self.assertIn("not a folder", err.getvalue())
+
+
+class CanonTests(unittest.TestCase):
+    """`review.py canon <batch>`: Good and Good-with-changes takes become canon, with a CANON.md."""
+
+    LORE = R.REPO / "assets" / "_concept" / "lore"
+    G1, G2 = "zz" + TAG + "_ember", "zz" + TAG + "_veil"     # groups no real batch uses, removed afterwards
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lore_existed = cls.LORE.exists()
+        R.ensure_review_root()
+        cls.png = png_bytes()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.clean()
+        if not cls.lore_existed:
+            try:
+                cls.LORE.rmdir()
+            except OSError:
+                pass
+
+    @classmethod
+    def clean(cls):
+        for g in (cls.G1, cls.G2):
+            shutil.rmtree(cls.LORE / R.slug(g), ignore_errors=True)
+
+    def setUp(self):
+        self.clean()
+        self.name = TAG + "_canon"
+        shutil.rmtree(R.REVIEW / self.name, ignore_errors=True)
+        blob = lambda s: self.png + s.encode()
+        self.files = {"codex/a.png": blob("a"), "grok/b.png": blob("b-grok"), "codex/b.png": blob("b-codex"), "c.png": blob("c"),
+                      "d.png": blob("d"), "e.png": blob("e"), "g.png": blob("g")}
+        make_batch(self.name, {"title": "canon", "mode": "concept", "items": [
+            {"id": "a", "file": "codex/a.png", "group": self.G1, "label": "Ruler A", "text": "prompt a", "seat": "codex"},
+            {"id": "b", "file": "codex/b.png", "group": self.G1, "label": "Ruler B", "text": "prompt b", "seat": "codex",
+             "takes": [{"file": "grok/b.png", "seat": "grok"}]},
+            {"id": "c", "file": "c.png", "group": self.G1, "text": "prompt c"},
+            {"id": "d", "file": "d.png", "group": self.G2, "text": "prompt d"},
+            {"id": "e", "file": "e.png", "group": self.G2, "text": "an eleventh hour sketch"},
+            {"id": "f", "file": "missing.png", "group": self.G2},
+            {"id": "g", "file": "g.png", "group": self.G2, "label": "Two lines", "text": "line one\nline two --> <!-- x"},
+        ]}, self.files)
+        R.decide(self.name, "a", verdict="accept", note="More like this")
+        R.decide(self.name, "b", verdict="revise", note="Keep the silhouette, change the detail", take="grok/b.png")
+        R.decide(self.name, "c", verdict="reject", note="Text in the image")
+        R.decide(self.name, "g", verdict="accept")
+        R.decide(self.name, "e", verdict="accept")
+
+    def tearDown(self):
+        shutil.rmtree(R.REVIEW / self.name, ignore_errors=True)
+        shutil.rmtree(R.REVIEW / (self.name + "_two"), ignore_errors=True)
+        self.clean()
+
+    def canon(self, *extra, name=None):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            code = R.main(["canon", name or self.name, *extra])
+        return code, out.getvalue()
+
+    def md(self, group):
+        return (self.LORE / R.slug(group) / "CANON.md").read_text(encoding="utf-8")
+
+    def test_the_kept_takes_are_copied_and_the_rest_is_not(self):
+        code, out = self.canon()
+        self.assertEqual(code, 0, out)
+        g1, g2 = self.LORE / R.slug(self.G1), self.LORE / R.slug(self.G2)
+        self.assertEqual(sorted(p.name for p in g1.iterdir()), ["CANON.md", "a.png", "b.png"], "Bad (c) is not canon")
+        self.assertEqual(sorted(p.name for p in g2.iterdir()), ["CANON.md", "e.png", "g.png"], "pending (d) and missing (f) are not")
+        self.assertEqual((g1 / "a.png").read_bytes(), self.files["codex/a.png"])
+        self.assertEqual((g1 / "b.png").read_bytes(), self.files["grok/b.png"], "the take that was kept, not the item's own file")
+        self.assertIn("3 Good, 1 Good with changes, 1 Bad, 1 pending, 1 missing", out)
+        self.assertIn("4 new entries", out)
+
+    def test_group_names_are_made_safe(self):
+        self.assertEqual(R.canon_group({}), "ungrouped", "no group: ungrouped/")
+        self.assertEqual(R.canon_group({"group": "Ember Orchard"}), "Ember_Orchard")
+        self.assertEqual(R.canon_group({"group": "../../etc"}), "etc")
+        self.assertEqual(R.canon_group({"group": ".."}), "ungrouped")
+
+    def test_canon_md_has_image_verdict_note_prompt_seat_batch_and_date(self):
+        self.canon()
+        md = self.md(self.G1)
+        self.assertTrue(md.startswith(f"# Canon: {self.G1}"))
+        a = md[md.index("<!-- canon:item " + self.name + "/a "):]
+        a = a[:a.index("<!-- /canon:item -->")]
+        for line in ("## Ruler A", "![Ruler A](a.png)", "- **image:** `a.png`", "- **verdict:** Good", "- **note:** More like this",
+                     "- **prompt:** prompt a", "- **seat:** codex", f"- **batch:** {self.name}"):
+            self.assertIn(line, a)
+        self.assertRegex(a, r"- \*\*date:\*\* \d{4}-\d{2}-\d{2}\n")
+        b = md[md.index("canon:item " + self.name + "/b "):]
+        for line in ("- **verdict:** Good with changes", "- **note:** Keep the silhouette, change the detail", "- **seat:** grok",
+                     "- **prompt:** prompt b"):
+            self.assertIn(line, b)
+        self.assertNotIn("prompt c", md, "a Bad item has no entry")
+        md2 = self.md(self.G2)
+        self.assertIn("- **note:** none", md2, "an empty note says so")
+        self.assertIn("- **prompt:** line one\n  line two --> &lt;!-- x", md2, "a multi-line prompt stays one bullet")
+        self.assertEqual(md2.count("<!-- canon:item "), 2, "e and g: markers in a prompt do not make another entry")
+        self.assertEqual(md2.count("<!-- /canon:item -->"), 2)
+
+    def test_running_it_again_changes_nothing(self):
+        self.canon()
+        before = {p: p.read_bytes() for p in self.LORE.rglob("*") if p.is_file() and (self.G1 in str(p) or self.G2 in str(p))}
+        code, out = self.canon()
+        self.assertEqual(code, 0, out)
+        self.assertIn("copied 0", out)
+        self.assertIn("unchanged", out)
+        self.assertIn("0 new entries, 0 changed, 0 dropped", out)
+        self.assertEqual(before, {p: p.read_bytes() for p in before})
+
+    def test_a_new_verdict_updates_the_entry_in_place(self):
+        self.canon()
+        R.decide(self.name, "a", verdict="revise", note="Wrong palette")
+        code, out = self.canon()
+        self.assertIn("0 new entries, 1 changed, 0 dropped", out)
+        new = self.md(self.G1)
+        self.assertIn("- **verdict:** Good with changes", new)
+        self.assertIn("- **note:** Wrong palette", new)
+        self.assertEqual(new.count("canon:item " + self.name + "/a "), 1, "replaced, not added")
+        self.assertLess(new.index("/a "), new.index("/b "), "it keeps its place")
+        # a redone image (a newer file) replaces the copy, and the entry still points at it
+        f = R.REVIEW / self.name / "codex" / "a.png"
+        f.write_bytes(self.png + b"a-redone")
+        t = time.time() + 5
+        os.utime(f, (t, t))
+        R.decide(self.name, "a", verdict="accept")
+        code, out = self.canon()
+        self.assertEqual((self.LORE / R.slug(self.G1) / "a.png").read_bytes(), self.png + b"a-redone")
+        self.assertIn("(overwrite)", out)
+
+    def test_an_entry_that_is_not_kept_any_more_is_dropped_and_its_image_left(self):
+        self.canon()
+        R.decide(self.name, "a", verdict="reject")
+        code, out = self.canon()
+        self.assertIn("1 dropped", out)
+        self.assertIn("no longer Good", out)
+        self.assertNotIn("/a ", self.md(self.G1))
+        self.assertIn("/b ", self.md(self.G1))
+        self.assertTrue((self.LORE / R.slug(self.G1) / "a.png").is_file(), "an image is never deleted")
+
+    def test_hand_written_text_and_other_batches_entries_are_left_alone(self):
+        self.canon()
+        p = self.LORE / R.slug(self.G1) / "CANON.md"
+        p.write_text(p.read_text() + "\n## Notes by hand\n\nThe orchard queen reads as a gardener, not a witch.\n")
+        # another batch with the same item id and group: its own entry, and a file name that does not take the first one's
+        two = self.name + "_two"
+        make_batch(two, {"title": "round 3", "mode": "concept", "items": [
+            {"id": "a", "file": "a.png", "group": self.G1, "text": "round 3 prompt"}]}, {"a.png": self.png + b"a-round-3"})
+        R.decide(two, "a", verdict="accept")
+        code, out = self.canon(name=two)
+        self.assertEqual(code, 0, out)
+        md = self.md(self.G1)
+        self.assertIn("The orchard queen reads as a gardener", md)
+        self.assertIn("prompt a", md, "round 2's entry is untouched")
+        self.assertIn("round 3 prompt", md)
+        self.assertIn("a__" + R.slug(two) + ".png", out, "the name was taken, so it carries the batch's")
+        self.assertEqual((self.LORE / R.slug(self.G1) / "a.png").read_bytes(), self.files["codex/a.png"], "round 2's image is not overwritten")
+        self.assertEqual((self.LORE / R.slug(self.G1) / ("a__" + R.slug(two) + ".png")).read_bytes(), self.png + b"a-round-3")
+        # running round 2 again still leaves round 3 and the hand-written text
+        self.canon()
+        md = self.md(self.G1)
+        self.assertIn("round 3 prompt", md)
+        self.assertIn("The orchard queen reads as a gardener", md)
+
+    def test_a_file_nobody_wrote_through_canon_is_not_overwritten(self):
+        (self.LORE / R.slug(self.G1)).mkdir(parents=True)
+        (self.LORE / R.slug(self.G1) / "a.png").write_bytes(b"hand made")
+        code, out = self.canon()
+        self.assertEqual((self.LORE / R.slug(self.G1) / "a.png").read_bytes(), b"hand made")
+        self.assertTrue((self.LORE / R.slug(self.G1) / ("a__" + R.slug(self.name) + ".png")).is_file())
+
+    def test_dry_run_writes_nothing(self):
+        code, out = self.canon("--dry-run")
+        self.assertEqual(code, 0, out)
+        self.assertIn("[dry-run]", out)
+        self.assertFalse((self.LORE / R.slug(self.G1)).exists() or (self.LORE / R.slug(self.G2)).exists())
+        self.assertFalse((R.REVIEW / self.name / "rejected.json").exists())
+
+    def test_rejected_json_lists_bad_and_good_with_changes(self):
+        self.canon()
+        rows = {e["id"]: e for e in json.loads((R.REVIEW / self.name / "rejected.json").read_text())}
+        self.assertEqual({k: v["verdict"] for k, v in rows.items()}, {"b": "revise", "c": "reject"})
+        self.assertEqual(rows["b"]["note"], "Keep the silhouette, change the detail")
+
+    def test_canon_is_for_concept_batches(self):
+        std = self.name + "_two"
+        make_batch(std, {"title": "std", "items": [{"id": "x", "file": "x.png"}]}, {"x.png": self.png})
+        R.decide(std, "x", verdict="accept")
+        code, out = self.canon(name=std)
+        self.assertEqual(code, 2)
+        self.assertIn("not a concept batch", out)
+
+    def test_the_built_in_install_action_of_a_concept_batch_is_canon(self):
+        acts = R.batch_actions(self.name, R.load_batch(self.name)[1])
+        self.assertEqual([a["id"] for a in acts], ["install"])
+        self.assertEqual((acts[0]["kind"], acts[0]["label"], acts[0]["cmd"]),
+                         ("install", "Add to canon", ["python3", "tools/review/review.py", "canon", self.name]))
+        self.assertNotIn("error", acts[0])
+        self.assertEqual(R.build_argv(acts[0], {"--dry-run": True})[1], ["--dry-run"])
+        std = R.batch_actions("demo", {"items": []})
+        self.assertEqual(std[0]["cmd"][2], "apply", "a standard batch still gets apply")
+        self.assertEqual(R.batch_actions("demo", {"mode": "concept"})[0]["cmd"][2], "canon")
+
+    def test_running_the_action_marks_the_takes_in_canon_and_shows_what_canon_has(self):
+        run = R.start_run(self.name, "install")
+        self.assertTrue(run.done.wait(60), "the canon run did not finish")
+        out = "".join(run._chunks)
+        self.assertEqual(run.status, "ok", out)
+        self.assertIn("marked in game", out)
+        items = {it["id"]: it for it in R.merged_batch(self.name)["items"]}
+        for iid in ("a", "b", "g", "e"):
+            self.assertTrue(items[iid]["installed"], iid)
+            self.assertTrue(items[iid]["game_same"], f"{iid}: what canon has is what was kept")
+        self.assertEqual(R.summarize(list(items.values()))["installed"], 4)
+        # choosing the other take shows what canon has now, for comparing ("in game now", 0)
+        R.decide(self.name, "b", verdict="revise", note="Keep the silhouette, change the detail", take="codex/b.png")
+        b = {it["id"]: it for it in R.merged_batch(self.name)["items"]}["b"]
+        self.assertFalse(b["game_same"])
+        self.assertTrue(b["game_url"].startswith(f"/game/{self.name}/b?v="))
+        # an installed marker that was lost is found again from what canon holds
+        review = R.load_review(R.REVIEW / self.name)
+        for e in review["items"].values():
+            e.pop("installed", None)
+        R.atomic_write_json(R.REVIEW / self.name / "review.json", review)
+        R.decide(self.name, "b", verdict="revise", note="Keep the silhouette, change the detail", take="grok/b.png")
+        self.assertEqual(R.reconcile(self.name), 4)
 
 
 if __name__ == "__main__":

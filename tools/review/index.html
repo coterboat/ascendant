@@ -746,7 +746,7 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
       <dt><kbd>U</kbd></dt><dd>Back to pending</dd>
       <dt><kbd>&larr;</kbd><kbd>&rarr;</kbd></dt><dd>Previous / next take, when a line was rolled more than once (Accept keeps the one you are on)</dd>
       <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>Go to take N and play it</dd>
-      <dt><kbd>0</kbd></dt><dd>Play what the game has now (the file this one would replace)</dd>
+      <dt><kbd>0</kbd></dt><dd>Play, or show, what the game has now (the file this one would replace). In a concept batch: what canon has</dd>
       <dt><kbd>B</kbd></dt><dd>Blind: hide which seat (claude, codex, grok) made each take until the item has a verdict. On by default in concept batches</dd>
       <dt><kbd>W</kbd></dt><dd>Lessons: what every review so far says about the prompts</dd>
       <dt><kbd>E</kbd></dt><dd>Edit the line text for the re-roll (Enter saves and marks rejected, Esc cancels)</dd>
@@ -756,7 +756,7 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
       <dt><kbd>L</kbd></dt><dd>Loop videos on / off (check that a loop has no visible jump)</dd>
       <dt><kbd>Z</kbd></dt><dd>View large: the image, the video, or the 3D model (Esc closes)</dd>
       <dt><kbd>T</kbd></dt><dd>3D models: turntable on / off. Drag a model to turn it, scroll to zoom</dd>
-      <dt><kbd>F</kbd></dt><dd>Finish review: counts, then Install accepted / Redo rejected (<b>1</b>–<b>9</b> runs one)</dd>
+      <dt><kbd>F</kbd></dt><dd>Finish review: counts, then Install accepted / Redo rejected, or Add to canon in a concept batch (<b>1</b>–<b>9</b> runs one)</dd>
       <dt><kbd>O</kbd></dt><dd>Open / close the run log</dd>
       <dt><kbd>Home</kbd><kbd>End</kbd></dt><dd>First / last item</dd>
       <dt><kbd>?</kbd></dt><dd>This help</dd>
@@ -788,6 +788,7 @@ const isConcept = () => S.mode === 'concept';
 const tabsHere = () => TABS.filter(t => !t.only || t.only === S.mode);
 const tabName = id => { const t = TABS.find(x => x.id === id); return t ? (isConcept() && t.concept) || t.name : ''; };
 const kept = it => it.status === 'accept' || it.status === 'revise';  // Good with changes counts as kept
+const gameWord = () => isConcept() ? 'canon' : 'the game';  // "in game now" (0) shows what the game, or canon, has
 const modeWords = () => isConcept()
   ? { acc: 'good', rev: 'good with changes', rej: 'bad', inst: 'in canon', Acc: 'Good', Rej: 'Bad' }
   : { acc: 'accepted', rev: 'good with changes', rej: 'rejected', inst: 'in game', Acc: 'Accepted', Rej: 'Rejected' };
@@ -1130,7 +1131,7 @@ function mstageHTML(it) {
   const game = S.gameModel.has(it.id) && it.game_url;
   const inner = !mvReady() ? `<div class="mmsg"><span>The 3D viewer script is missing: <code>tools/review/vendor/model-viewer.min.js</code>. See <code>vendor/README.md</code>.</span></div>`
     : (p && p.err ? `<div class="mmsg"><span>This model didn’t load. It may be a broken file, or compressed in a way this page can’t read offline (Draco, KTX2 or Meshopt).</span></div>` : '');
-  return `<div class="mwrap"><div class="mstage${game ? ' game' : ''}" data-mid="${esc(it.id)}">${game ? '<span class="mbadge">in game now</span>' : ''}${inner}</div>
+  return `<div class="mwrap"><div class="mstage${game ? ' game' : ''}" data-mid="${esc(it.id)}">${game ? `<span class="mbadge">in ${isConcept() ? 'canon' : 'game'} now</span>` : ''}${inner}</div>
     <div class="mctl"><button class="mini${S.turntable ? ' on' : ''}" data-act="turn" title="Turntable: the model turns by itself (T)">&#x27F2; Turntable<kbd>T</kbd></button>
       <button class="mini" data-act="mreset" title="Back to the front view">Reset view</button>
       <button class="mini" data-act="zoom3d" title="View large (Z)">&#x2922; Large<kbd>Z</kbd></button>
@@ -1226,7 +1227,7 @@ function takesHTML(it) {
   }).join('');
   if (game) {
     const playing = it.kind === 'model' ? S.gameModel.has(it.id) : (S.gameId === it.id && !gplayer.paused);
-    h += `<button class="tk game${playing ? ' playing' : ''}" data-act="game" title="What the game has now: the file this one would replace (0)"><kbd>0</kbd>in game now</button>`;
+    h += `<button class="tk game${playing ? ' playing' : ''}" data-act="game" title="What ${gameWord()} has now: the file this one would replace (0)"><kbd>0</kbd>in ${isConcept() ? 'canon' : 'game'} now</button>`;
   }
   return `<div class="takes">${h}</div>`;
 }
@@ -1251,7 +1252,7 @@ function syncGame() {
 ['play', 'pause', 'ended'].forEach(ev => gplayer.addEventListener(ev, syncGame));
 function playGame(id) {
   const it = S.byId.get(id);
-  if (!it || !it.game_url) { toast('Nothing in the game for this one yet'); return; }
+  if (!it || !it.game_url) { toast(`Nothing in ${gameWord()} for this one yet`); return; }
   if (it.kind === 'image') { openViewer(id, 'game'); return; }
   if (it.kind === 'model') { toggleGameModel(id); return; }
   if (/\.(mp4|webm)(\?|$)/i.test(it.game_url.split('?')[0])) { window.open(it.game_url, '_blank', 'noopener'); return; }
@@ -1337,11 +1338,11 @@ function resetModel(id) {
 // 0: what the game has now, in the same viewer, then back to the candidate
 function toggleGameModel(id) {
   const it = S.byId.get(id);
-  if (!it || !it.game_url) { toast('Nothing in the game for this one yet'); return; }
+  if (!it || !it.game_url) { toast(`Nothing in ${gameWord()} for this one yet`); return; }
   if (S.gameModel.has(id)) S.gameModel.delete(id); else S.gameModel.add(id);
   renderRow(id, true);
   if (S.viewerOpen && S.curId === id) renderViewer();
-  toast(S.gameModel.has(id) ? 'Showing what the game has now (0 goes back)' : 'Showing the new model', 'ok');
+  toast(S.gameModel.has(id) ? `Showing what ${gameWord()} has now (0 goes back)` : 'Showing the new model', 'ok');
 }
 function mountLargeModel(it) {
   const wrap = $('#vmodelwrap');
@@ -2191,7 +2192,7 @@ function renderViewer() {
   const pill = $('#vpill');
   const game = S.viewerMode === 'game' || (mdl && S.gameModel.has(it.id));
   pill.className = 'vpill s-' + (game ? 'installed' : it.status);
-  pill.textContent = game ? 'In the game now' : pillText(it);
+  pill.textContent = game ? (isConcept() ? 'In canon now' : 'In the game now') : pillText(it);
   $('#vtext').textContent = displayText(it);
 }
 function closeViewer() {
@@ -2352,8 +2353,8 @@ function renderActbar() {
     html = S.actions.slice(0, 4).map(a => `<button class="abtn" data-aid="${esc(a.id)}" ${a.error ? 'disabled' : ''}
       title="${esc(a.error ? 'Can’t run: ' + a.error : (a.help || a.cmd))}">${esc(a.label)}${a.spends ? '<span class="cr">credits</span>' : ''}</button>`).join('');
     if (!hasRegen()) {
-      html += `<span title="The generator declares no regen action for this batch: re-roll the rejects by hand from review/${esc(S.batch)}/rejected.json">` +
-        `<button class="abtn" disabled>Redo rejected</button></span>`;
+      html += `<span title="The generator declares no regen action for this batch: ${isConcept() ? 'redo the Bad items, and the Good with changes ones with their notes,' : 're-roll the rejects'} by hand from review/${esc(S.batch)}/rejected.json">` +
+        `<button class="abtn" disabled>${isConcept() ? 'Redo Bad + changes' : 'Redo rejected'}</button></span>`;
     }
   }
   box.innerHTML = html;
@@ -2419,9 +2420,10 @@ function renderFinish() {
   } else {
     acts = S.actions.map((a, i) => actCardHTML(a, i, c)).join('');
     if (!hasRegen()) {
-      acts += `<div class="act-card off" title="The generator declares no regen action for this batch"><button class="act-run" disabled>Redo rejected</button><div>
-        <div class="act-help">The generator declares no regen action for this batch. Re-roll the ${plural(c.reject, 'rejected item', 'rejected items')} with the generator by hand:
-        it reads <code>review/${esc(S.batch)}/rejected.json</code>, which Install accepted writes.</div></div></div>`;
+      acts += `<div class="act-card off" title="The generator declares no regen action for this batch"><button class="act-run" disabled>${isConcept() ? 'Redo Bad + changes' : 'Redo rejected'}</button><div>
+        <div class="act-help">${isConcept()
+          ? `The generator declares no regen action for this batch. The next art round redoes the ${plural(c.reject, 'Bad item', 'Bad items')} and the ${plural(c.revise, 'Good with changes item', 'Good with changes items')} (with their notes): it reads <code>review/${esc(S.batch)}/rejected.json</code>, which Add to canon writes.`
+          : `The generator declares no regen action for this batch. Re-roll the ${plural(c.reject, 'rejected item', 'rejected items')} with the generator by hand: it reads <code>review/${esc(S.batch)}/rejected.json</code>, which Install accepted writes.`}</div></div></div>`;
     }
   }
   $('#finActions').innerHTML = acts;
