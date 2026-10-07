@@ -259,6 +259,13 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
 .rev-hint { margin-top: 8px; font-size: 12.5px; color: #f3d49b; }
 .rev-hint b { font: 700 10.5px var(--sans); letter-spacing: .14em; text-transform: uppercase; margin-right: 6px; }
 .edit-bar button.go.rev-go { border-color: var(--amber); color: #f3d49b; }
+/* seats: who made a take (hidden while the Blind toggle is on and the item has no verdict) */
+.seat { font: 700 10px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; padding: 3px 8px 2px; border-radius: 999px;
+  border: 1px solid currentColor; color: var(--ink-3); white-space: nowrap; }
+.seat.s-claude { color: #e5a074; } .seat.s-codex { color: #6fc2ad; } .seat.s-grok { color: #aa9df0; }
+.tk.seat-claude { border-left: 3px solid #e5a074; } .tk.seat-codex { border-left: 3px solid #6fc2ad; } .tk.seat-grok { border-left: 3px solid #aa9df0; }
+.tk.seat-other { border-left: 3px solid var(--ink-3); }
+.tk.blind { letter-spacing: .02em; }
 .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0 2px; }
 .chip-n { border: 1px solid var(--line-hi); background: var(--panel); color: var(--ink-2); border-radius: 999px; padding: 2px 10px; font-size: 11.5px; }
 .chip-n:hover { border-color: var(--brass-2); color: var(--ink); }
@@ -598,6 +605,9 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
       <button class="toggle" id="autoBtn" title="After Accept / Reject, the next line starts playing (P)">
         <span class="switch"></span><span class="lbl">Autoplay next</span><span class="st" id="autoSt">ON</span><kbd>P</kbd>
       </button>
+      <button class="toggle" id="blindBtn" hidden title="Blind: hide which seat (claude, codex, grok) made each take until the item has a verdict (B)">
+        <span class="switch"></span><span class="lbl">Blind seats</span><span class="st" id="blindSt">ON</span><kbd>B</kbd>
+      </button>
       <button class="ghost" id="helpBtn"><span class="lbl">Keyboard</span><kbd>?</kbd></button>
     </section>
   </aside>
@@ -646,6 +656,7 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
       <span><kbd>E</kbd><span id="kEdit">edit line</span></span>
       <span><kbd>N</kbd>note</span>
       <span><kbd>U</kbd>back to pending</span>
+      <span id="kBlindWrap" hidden><kbd>B</kbd>blind seats</span>
       <span><kbd>J</kbd><kbd>K</kbd>next / prev</span>
       <span><kbd>P</kbd>autoplay</span>
       <span><kbd>&larr;</kbd><kbd>&rarr;</kbd>takes <kbd>0</kbd>in game</span>
@@ -712,6 +723,7 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
       <dt><kbd>&larr;</kbd><kbd>&rarr;</kbd></dt><dd>Previous / next take, when a line was rolled more than once (Accept keeps the one you are on)</dd>
       <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>Go to take N and play it</dd>
       <dt><kbd>0</kbd></dt><dd>Play what the game has now (the file this one would replace)</dd>
+      <dt><kbd>B</kbd></dt><dd>Blind: hide which seat (claude, codex, grok) made each take until the item has a verdict. On by default in concept batches</dd>
       <dt><kbd>W</kbd></dt><dd>Lessons: what every review so far says about the prompts</dd>
       <dt><kbd>E</kbd></dt><dd>Edit the line text for the re-roll (Enter saves and marks rejected, Esc cancels)</dd>
       <dt><kbd>N</kbd></dt><dd>Add or edit a note (Enter saves, Esc cancels)</dd>
@@ -824,8 +836,47 @@ function post(path, body) {
 function takeIdx(it) {
   if (!it.takes || !it.takes.length) return 0;
   let i = S.take.get(it.id);
-  if (i == null || i >= it.takes.length) i = Math.max(0, it.takes.findIndex(t => t.picked));
+  if (i == null || i >= it.takes.length) {
+    const pk = Math.max(0, it.takes.findIndex(t => t.picked));  // the take that was kept, else the item's own file
+    i = kept(it) ? pk : takeOrder(it)[0];
+  }
   return i;
+}
+// Seats (claude, codex, grok): who made a take. With Blind on, their names stay hidden until the item has a
+// verdict, and the takes of an item that has seats are shown in a fixed shuffled order (the same every visit,
+// different per item), so "the first one" is not always the same seat.
+const blind = () => S.mem.blind ?? isConcept();
+const hasSeats = it => !!(it.seat || (it.takes || []).some(t => t.seat));
+const seatHidden = it => blind() && (it.status === 'pending' || it.status === 'missing');
+function takeOrder(it) {
+  const n = it.takes ? it.takes.length : 0;
+  const order = Array.from({ length: n }, (_, i) => i);
+  if (n < 2 || !it.takes.some(t => t.seat)) return order;
+  let h = 2166136261;
+  for (const ch of it.id + '|' + it.takes.map(t => t.file).join('|')) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  for (let i = n - 1; i > 0; i--) {
+    h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
+    const j = (h >>> 8) % (i + 1);
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return order;
+}
+// the chip text for a take: with seats, "take A", "take B"... while hidden, the seat's name once revealed
+function takeLabel(it, t, pos) {
+  if (!it.takes.some(x => x.seat)) return t.label;
+  if (seatHidden(it)) return `take ${String.fromCharCode(65 + pos)}`;
+  return t.seat ? (/^take \d+$/i.test(t.label) ? t.seat : `${t.seat} · ${t.label}`) : t.label;
+}
+function seatClass(name) { return ['claude', 'codex', 'grok'].includes(name) ? name : 'other'; }
+// the toast that names the seat behind a verdict that was given blind
+function revealText(it, patch) {
+  const list = it.takes && it.takes.length ? it.takes : [it];
+  if (patch.verdict === 'reject') {
+    const seats = [...new Set(list.map(x => x.seat).filter(Boolean))];
+    return seats.length ? `That was ${seats.join(' and ')}` : '';
+  }
+  const t = it.takes && it.takes.length ? it.takes[takeIdx(it)] : it;
+  return t && t.seat ? `That was ${t.seat}` : '';
 }
 function standIn(it) {
   if (!it || !it.takes || !it.takes.length) return it;
@@ -1087,7 +1138,7 @@ function rowHTML(it) {
 
   return `<div class="lead">${lead}</div>
   <div class="body">
-    <div class="head"><span class="label">${esc(it.label || it.id)}</span>${it.group ? `<span class="grp">${esc(it.group)}</span>` : ''}<span class="iid" title="${esc(it.id)}">${esc(it.id)}</span></div>
+    <div class="head"><span class="label">${esc(it.label || it.id)}</span>${it.group ? `<span class="grp">${esc(it.group)}</span>` : ''}${it.seat && !it.takes && !seatHidden(it) ? `<span class="seat s-${seatClass(it.seat)}" title="Made by the ${esc(it.seat)} seat">${esc(it.seat)}</span>` : ''}<span class="iid" title="${esc(it.id)}">${esc(it.id)}</span></div>
     ${quote}${speak}${ctx}${trackHTML(it)}${takesHTML(it)}${stage}${note}${hist}
   </div>
   <div class="ctrl">
@@ -1112,11 +1163,14 @@ function takesHTML(it) {
   const many = it.takes && it.takes.length > 1;
   const game = it.game_url && !it.game_same;  // the game's copy, when it differs from the take kept
   if (!many && !game) return '';
-  const cur = takeIdx(it);
+  const cur = takeIdx(it), hide = seatHidden(it);
   let h = many ? '<span class="tl">takes</span>' : '';
-  if (many) h += it.takes.map((t, i) => {
-    const cls = ['tk', i === cur ? 'on' : '', t.picked && kept(it) ? 'pk' : '', /^rejected/.test(t.label) ? 'old' : ''].filter(Boolean).join(' ');
-    return `<button class="${cls}" data-act="take" data-i="${i}" ${t.exists ? '' : 'disabled'} title="${esc(t.label)}${t.picked && kept(it) ? ' · the one you kept' : ''}">${i < 9 ? `<kbd>${i + 1}</kbd>` : ''}${esc(t.label)}</button>`;
+  if (many) h += takeOrder(it).map((ti, pos) => {
+    const t = it.takes[ti], mine = kept(it) && t.picked;
+    const cls = ['tk', ti === cur ? 'on' : '', mine ? 'pk' : '', /^rejected/.test(t.label) ? 'old' : '',
+      hide && t.seat ? 'blind' : '', !hide && t.seat ? 'seat-' + seatClass(t.seat) : ''].filter(Boolean).join(' ');
+    const lbl = takeLabel(it, t, pos);
+    return `<button class="${cls}" data-act="take" data-i="${ti}" ${t.exists ? '' : 'disabled'} title="${esc(lbl)}${mine ? ' · the one you kept' : ''}">${pos < 9 ? `<kbd>${pos + 1}</kbd>` : ''}${esc(lbl)}</button>`;
   }).join('');
   if (game) {
     const playing = S.gameId === it.id && !gplayer.paused;
@@ -1190,6 +1244,10 @@ function lessonsHTML(d) {
     .sort((a, b) => (a[1].first_take_rate ?? 0) - (b[1].first_take_rate ?? 0));
   if (voices.length) h += `<h3>Sound, by voice or group</h3><table class="ls-t"><tr><th>voice</th><th>decided</th><th>kept first time</th><th>redone</th></tr>` +
     voices.map(([g, b]) => `<tr><td>${esc(g.slice(6))}</td><td class="n">${b.decided}</td><td class="n">${bar(b.first_take_rate)}${pct(b.first_take_rate)}</td><td class="n">${b.redone}</td></tr>`).join('') + '</table>';
+  const seats = Object.entries(d.seats || {}).sort((a, b) => b[1].items - a[1].items);
+  if (seats.length) h += `<h3>By seat</h3><table class="ls-t"><tr><th>seat</th><th>items</th><th>good</th><th>good with changes</th><th>bad</th><th>passed over</th></tr>` +
+    seats.map(([s, b]) => `<tr><td><span class="seat s-${seatClass(s)}">${esc(s)}</span></td><td class="n">${b.items}</td><td class="n">${b.good}</td><td class="n">${b.revise}</td><td class="n">${b.bad}</td><td class="n">${b.passed}</td></tr>`).join('') +
+    `</table><p class="fin-sub">Good and Good with changes go to the seat whose take was kept; the other seats' takes of that item were passed over. Bad counts against every seat that made a take.</p>`;
   const th = d.themes || [];
   h += `<h3>What the notes ask for</h3>` + (th.length ? `<table class="ls-t"><tr><th>theme</th><th>notes</th><th>fixed by a redo</th><th>open</th><th>for example</th></tr>` +
     th.map(t => `<tr><td>${esc(t.label)}</td><td class="n">${t.notes}</td><td class="n">${t.theme === 'praise' ? '' : t.fixed}</td><td class="n">${t.theme === 'praise' ? '' : t.open}</td><td class="ls-ex">${t.examples.slice(0, 3).map(x => `<span>“${esc(x.note)}” <small>${esc(x.batch)} · ${esc(x.id)}</small></span>`).join('')}</td></tr>`).join('') + '</table>'
@@ -1842,7 +1900,13 @@ function decide(id, patch, { advance = false } = {}) {
   if ((patch.verdict === 'accept' || patch.verdict === 'revise') && !it.exists) { toast('Can’t accept — the file is missing', 'err'); return; }
   const batch = S.batch;
   const snapshot = JSON.parse(JSON.stringify(it));
+  const reveal = seatHidden(it) && patch.verdict && patch.verdict !== 'pending' ? revealText(it, patch) : '';
+  if (patch.take && it.takes) {  // pin the take that is on screen, so it doesn't jump while the server answers
+    const ti = it.takes.findIndex(x => x.file === patch.take);
+    if (ti >= 0) S.take.set(id, ti);
+  }
   applyLocal(it, patch);
+  if (reveal) toast(reveal, 'ok');
   const n = ++S.seqN;
   S.seq.set(id, n);
   S.inflight.set(id, (S.inflight.get(id) || 0) + 1);
@@ -2072,6 +2136,7 @@ function renderModeUI() {
   $('#vhAcc').textContent = c ? 'good' : 'accept';
   $('#vhRej').textContent = c ? 'bad' : 'reject';
   $('#vhChg').hidden = !c;
+  renderBlind();
 }
 async function rescan(quiet = false) {
   if (!S.batch) { try { await loadBatches(); if (S.batches[0]) await openBatch(S.batches[0].batch); } catch { } return; }
@@ -2512,6 +2577,23 @@ $('#batchSel').addEventListener('change', async e => {
   e.target.blur();
   try { await openBatch(e.target.value); } catch (err) { toast('Couldn’t open batch: ' + err.message, 'err'); }
 });
+function toggleBlind() {
+  if (!S.batch || $('#blindBtn').hidden) { toast('No seats in this batch: nothing to hide'); return; }
+  S.mem.blind = !blind();
+  saveMem();
+  renderBlind();
+  for (const id of S.rows.keys()) renderRow(id);  // a row being edited keeps its draft
+  if (S.viewerOpen) renderViewer();
+  toast(`Blind seats: ${blind() ? 'on: names are hidden until you judge' : 'off: names are showing'}`, 'ok');
+}
+function renderBlind() {
+  const has = isConcept() || S.items.some(hasSeats);
+  $('#blindBtn').hidden = !has;
+  $('#kBlindWrap').hidden = !has;
+  $('#blindBtn').classList.toggle('on', blind());
+  $('#blindSt').textContent = blind() ? 'ON' : 'OFF';
+}
+$('#blindBtn').addEventListener('click', e => { e.currentTarget.blur(); toggleBlind(); });
 function toggleAutoplay() {
   S.autoplay = !S.autoplay;
   renderAutoplay();
@@ -2611,7 +2693,7 @@ document.addEventListener('keydown', e => {
     vplayer.blur();
   }
   if (t && t.tagName === 'SELECT') {
-    if (/^[ajkrucenpfolvzw0-9?]$/i.test(k) || k === 'Escape') t.blur(); else return;
+    if (/^[ajkrucenpfolvzwb0-9?]$/i.test(k) || k === 'Escape') t.blur(); else return;
   } else if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT')) {
     return;
   }
@@ -2642,6 +2724,8 @@ document.addEventListener('keydown', e => {
       if (id && once) unmark(id); break;
     case 'c': case 'C':
       e.preventDefault(); if (id && once) revise(id); break;
+    case 'b': case 'B':
+      if (once) toggleBlind(); break;
     case 'e': case 'E':
       e.preventDefault(); if (id && once) { closeViewer(); startEdit(id, 'text'); } break;
     case 'n': case 'N':
@@ -2670,13 +2754,13 @@ document.addEventListener('keydown', e => {
       const it = id && S.byId.get(id);
       if (it && it.takes && it.takes.length > 1) {
         e.preventDefault();
-        const n = it.takes.length;
-        let i = takeIdx(it);
+        const order = takeOrder(it), n = order.length;
+        let pos = order.indexOf(takeIdx(it));
         for (let step = 0; step < n; step++) {  // skip a missing take
-          i = (i + (k === 'ArrowRight' ? 1 : -1) + n) % n;
-          if (it.takes[i].exists) break;
+          pos = (pos + (k === 'ArrowRight' ? 1 : -1) + n) % n;
+          if (it.takes[order[pos]].exists) break;
         }
-        selectTake(id, i, S.autoplay);
+        selectTake(id, order[pos], S.autoplay);
       }
       break;
     }
@@ -2685,7 +2769,9 @@ document.addEventListener('keydown', e => {
     default:
       if (/^[0-9]$/.test(k) && id && once) {
         e.preventDefault();
-        if (k === '0') playGame(id); else selectTake(id, +k - 1, true);
+        const it = S.byId.get(id);
+        if (k === '0') playGame(id); else if (it && it.takes) selectTake(id, takeOrder(it)[+k - 1], true);
+        else selectTake(id, +k - 1, true);
       }
   }
 });

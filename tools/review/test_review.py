@@ -763,6 +763,100 @@ class ConceptTests(unittest.TestCase):
             shutil.rmtree(R.REVIEW / name, ignore_errors=True)
 
 
+class SeatTests(unittest.TestCase):
+    """Takes from several art seats (claude, codex, grok), and the per-seat tally in lessons."""
+
+    @classmethod
+    def setUpClass(cls):
+        R.ensure_review_root()
+        cls.name = TAG + "_seats"
+        png = png_bytes()
+        names = ["a_codex", "a_grok", "b_codex", "b_grok", "c_codex", "c_grok", "c_claude", "d_claude", "e_none"]
+        cls.files = {f"{n.split('_')[1]}/{n}.png": png + n.encode() for n in names}
+        f = lambda n: f"{n.split('_')[1]}/{n}.png"
+        make_batch(cls.name, {"title": "seats", "mode": "concept", "items": [
+            {"id": "a", "file": f("a_codex"), "seat": "codex", "takes": [{"file": f("a_grok"), "label": "take 2", "seat": "grok"}]},
+            {"id": "b", "file": f("b_codex"), "seat": "Codex ", "text": "prompt b",
+             "takes": [{"file": f("b_grok"), "seat": "grok"}]},
+            {"id": "c", "file": f("c_codex"), "seat": "codex",
+             "takes": [{"file": f("c_grok"), "seat": "grok"}, {"file": f("c_claude"), "seat": "claude"}]},
+            {"id": "d", "file": f("d_claude"), "seat": "claude"},
+            {"id": "e", "file": f("e_none")},
+            {"id": "odd", "file": f("e_none"), "seat": "not a seat!", "takes": [{"file": f("a_grok"), "seat": 7}]},
+        ]}, cls.files)
+        cls.f = staticmethod(f)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(R.REVIEW / cls.name, ignore_errors=True)
+
+    def setUp(self):
+        (R.REVIEW / self.name / "review.json").unlink(missing_ok=True)
+
+    def item(self, iid):
+        return {it["id"]: it for it in R.merged_batch(self.name)["items"]}[iid]
+
+    def test_seats_are_cleaned(self):
+        self.assertEqual([R.clean_seat(x) for x in ("codex", " Grok ", "claude", "x" * 40, "not a seat!", "", None, 7)],
+                         ["codex", "grok", "claude", None, None, None, None, None])
+        self.assertEqual(self.item("b")["takes"][0]["seat"], "codex", "case and spaces are tidied")
+        odd = self.item("odd")
+        self.assertEqual([t["seat"] for t in odd["takes"]], [None, None], "a seat that is not a plain name is dropped")
+
+    def test_takes_carry_their_seat(self):
+        it = self.item("c")
+        self.assertEqual([(t["file"], t["seat"]) for t in it["takes"]],
+                         [(self.f("c_codex"), "codex"), (self.f("c_grok"), "grok"), (self.f("c_claude"), "claude")])
+        self.assertEqual(it["seat"], "codex", "nothing picked: the item's own take")
+        R.decide(self.name, "c", verdict="accept", take=self.f("c_claude"))
+        it = self.item("c")
+        self.assertEqual((it["seat"], it["pick"]), ("claude", self.f("c_claude")), "the seat follows the take that was kept")
+        self.assertEqual([t["picked"] for t in it["takes"]], [False, False, True])
+        self.assertEqual(self.item("d")["seat"], "claude", "a single take carries the item's seat")
+        self.assertNotIn("takes", self.item("d"))
+        self.assertIsNone(self.item("e")["seat"])
+
+    def test_the_tally_by_seat(self):
+        R.decide(self.name, "a", verdict="accept", take=self.f("a_grok"))                 # grok wins, codex passed over
+        R.decide(self.name, "b", verdict="revise", note="Wrong palette")                  # codex (own take) wins with changes
+        R.decide(self.name, "c", verdict="reject", note="Text in the image")              # all three seats: bad
+        R.decide(self.name, "d", verdict="accept")                                        # claude, single take
+        R.decide(self.name, "e", verdict="accept")                                        # no seat: not counted
+        seats = R.lessons([self.name])["seats"]
+        self.assertEqual(seats["codex"], {"good": 0, "revise": 1, "bad": 1, "passed": 1, "items": 3})
+        self.assertEqual(seats["grok"], {"good": 1, "revise": 0, "bad": 1, "passed": 1, "items": 3})
+        self.assertEqual(seats["claude"], {"good": 1, "revise": 0, "bad": 1, "passed": 0, "items": 2})
+        self.assertEqual(set(seats), {"codex", "grok", "claude"})
+        md = R.lessons_markdown(R.lessons([self.name]))
+        self.assertIn("| seat | good | good with changes | bad | passed over |", md)
+        self.assertIn("| grok | 1 | 0 | 1 | 1 |", md)
+
+    def test_no_seats_no_tally(self):
+        R.decide(self.name, "e", verdict="accept")
+        self.assertEqual(R.lessons([self.name])["seats"], {})
+        self.assertNotIn("| seat |", R.lessons_markdown(R.lessons([self.name])))
+
+    def test_the_sample_concept_batch_has_takes_from_three_seats(self):
+        d = R.REVIEW / (TAG + "_sample")
+        R._build_sample_concept(d)
+        mb = R.merged_batch(d.name)
+        self.assertEqual(mb["mode"], "concept")
+        seats = {t["seat"] for it in mb["items"] for t in (it.get("takes") or [it])}
+        self.assertEqual(seats, {"claude", "codex", "grok"})
+        self.assertTrue(all(it["exists"] for it in mb["items"]))
+        self.assertTrue(all(it["group"].startswith("sample_") for it in mb["items"]), "canon groups that are easy to tell")
+
+    def test_rejected_json_names_the_take_and_its_seat(self):
+        R.decide(self.name, "a", verdict="revise", note="Keep the silhouette, change the detail", take=self.f("a_grok"))
+        R.decide(self.name, "c", verdict="reject")
+        path, n = R.write_rejected(self.name)
+        rows = {e["id"]: e for e in json.loads(path.read_text())}
+        self.assertEqual((rows["a"]["verdict"], rows["a"]["file"], rows["a"]["seat"]), ("revise", self.f("a_grok"), "grok"))
+        self.assertEqual([t["seat"] for t in rows["a"]["takes"]], ["codex", "grok"])
+        self.assertEqual(rows["c"]["verdict"], "reject")
+        self.assertEqual([t["seat"] for t in rows["c"]["takes"]], ["codex", "grok", "claude"], "a redo knows every seat's take")
+
+
 if __name__ == "__main__":
     try:
         unittest.main(verbosity=2)

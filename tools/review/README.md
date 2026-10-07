@@ -11,7 +11,7 @@ It serves on `127.0.0.1` only.
 
 ```sh
 python3 tools/review/review.py serve --open        # UI at http://127.0.0.1:8766
-python3 tools/review/review.py sample              # optional: build a demo batch in review/_sample
+python3 tools/review/review.py sample              # optional: build the demo batches (review/_sample, review/_sample_concept)
 python3 tools/review/test_review.py                # the tool's own tests (throwaway batches, no Ludo calls)
 ```
 
@@ -25,8 +25,8 @@ After changing `review.py`, restart `serve`: the page is re-read on every load, 
 | `status [<batch>]` | Shows accepted / rejected / pending / missing counts for each group. |
 | `apply <batch> [--dry-run]` | Copies every **accepted** file to its `target`, then writes `review/<batch>/rejected.json`. |
 | `new <batch> --title "..." [--mode concept]` | Creates an empty `batch.json` (a concept batch with `--mode concept`). |
-| `sample [--force]` | Rebuilds the `_sample` demo batch. `--force` wipes it and its verdicts. |
-| `lessons [--write MD] [--json]` | What every batch's verdicts and notes say: first takes kept by kind and by voice, and the note themes. `--write <file.md>` refreshes the block between `<!-- lessons:begin -->` and `<!-- lessons:end -->`. |
+| `sample [--force]` | Builds the demo batches that are missing: `_sample` (voices and pictures) and `_sample_concept` (crests from three seats, to judge blind). `--force` wipes them and their verdicts. |
+| `lessons [--write MD] [--json]` | What every batch's verdicts and notes say: first takes kept by kind and by voice, how each art seat did, and the note themes. `--write <file.md>` refreshes the block between `<!-- lessons:begin -->` and `<!-- lessons:end -->`. |
 
 `apply` creates the target folders it needs and skips files that are already identical, so it is safe to run again.
 If the target has a different extension from the source (for example, the target says `.mp3` but the file is `.wav`),
@@ -46,6 +46,7 @@ Items that were regenerated after their verdict are not copied until you have li
 | `←` / `→` | Previous / next take, when an item was rolled more than once. With autoplay on, each one plays. |
 | `1`–`9` | Go to take N and play it. `A` keeps the take you are on. |
 | `0` | Play (or show) what the game has now: the file this item would replace. |
+| `B` | **Blind** on or off: hide which seat made each take until the item has a verdict (see [Seats](#seats-takes-from-several-artists-judged-blind)) |
 | `W` | Lessons: what every review so far says about the prompts |
 | `E` | Edit the line text for the re-roll. `Enter` saves the edit and marks the item **rejected**; `Esc` cancels. |
 | `N` | Add or edit a note. `Enter` saves, `Esc` cancels. |
@@ -94,6 +95,35 @@ A batch with `"mode": "concept"` in its `batch.json` (or `review.py new <batch> 
 - `lessons` counts `revise` in its own column (kept, with changes asked for), and a `revise` note stays "open" until the
   item is redone.
 
+## Seats: takes from several artists, judged blind
+
+Concept art is often made by more than one seat (`claude`, `codex`, `grok`) from the same brief. Say who made what, and
+the table lets you judge the pictures without knowing:
+
+```json
+{"id": "aurel_crest", "kind": "image", "group": "aurel", "label": "Aurel crest", "text": "<the prompt>",
+ "file": "codex/aurel_crest.png", "seat": "codex",
+ "takes": [{"file": "grok/aurel_crest.png", "label": "take 2", "seat": "grok"},
+           {"file": "claude/aurel_crest.png", "label": "take 3", "seat": "claude"}]}
+```
+
+- `seat` on the item is the seat of its own `file`; each entry of `takes` may carry its own `seat`. A seat is a short
+  lowercase name (`claude`, `codex` and `grok` get their own colour; anything matching `[a-z0-9][a-z0-9_-]*`, up to 24
+  characters, works; anything else is dropped).
+- **Blind** (the sidebar toggle, or `B`) is on by default in a concept batch and remembered once you change it. While it is on
+  and an item has no verdict, the takes read "take A", "take B" and no seat name is shown. The takes of an item that has seats
+  are shown in a fixed shuffled order (the same on every visit, different for each item), so the first one is not always the
+  same seat; the one on screen when you open the item is the first of that order. `←`/`→` and `1`–`9` follow the order shown.
+- The verdict reveals them: the chips read the seat names (colour-coded, the kept one ticked), and a toast says "That was codex".
+  Blind hides names on the page, not in the page's network traffic: it is for fair judging, not a secret.
+- **Good** or **Good with changes** keep the take you are on and record it as the item's `pick`, as for any item with takes.
+  **Bad** rejects every take of the item.
+- **Lessons** (`W`, `review.py lessons`) adds a tally by seat: **good** and **good with changes** count for the seat whose take
+  was kept, **passed over** counts for the other seats that had a take on that item, and **bad** counts against every seat that
+  made a take on an item that was rejected. Items with no seats are not counted.
+- `rejected.json` of a concept batch names the take each verdict is about (`file`, `seat`) and lists every candidate in `takes`
+  (`[{"file", "seat"}]`), so the next round can have each seat redo its own.
+
 ## Takes, and what the game has now (v1.11)
 
 An item may have been rolled more than once. Its **takes** show as a strip under it: the item's own file first,
@@ -107,7 +137,8 @@ The takes are found beside the item's file, in a `.takes/` folder:
 - `<stem>.r1.mp3`, `r2`, …: takes rejected in earlier rounds, higher is newer (a voice redo moves the rejected
   file here). They show dashed, as "rejected in round N", so a new take can be heard against the old one.
 
-A batch can also list them itself: `"takes": [{"file": "...", "label": "..."}]` on the item. A generator can put
+A batch can also list them itself: `"takes": [{"file": "...", "label": "...", "seat": "..."}]` on the item (`seat` is optional,
+see [Seats](#seats-takes-from-several-artists-judged-blind)). A generator can put
 a few words on each take's chip with `meta.take_info` (`{"<file>": "falls 3.1 st, pause 0.49 s"}`), for example
 what it measured on the take, and may put the best-measured take first.
 
@@ -250,10 +281,12 @@ Everything lives in `review/<batch>/` at the repo root. `review/*/` is gitignore
 ```
 
 `text` is the edited text when there is one, otherwise the original. In a concept batch each entry also has
-`"verdict": "reject"` or `"revise"` and the item's `group`, and the `revise` items are listed with their notes:
+`"verdict": "reject"` or `"revise"`, the item's `group`, the `file` the verdict is about (the take that was kept, for a `revise`),
+its `seat` when it has one, and all the candidates as `takes` when there are several. The `revise` items are listed with their notes:
 
 ```json
-[{"id": "ruler1", "text": "<prompt>", "note": "Wrong palette", "meta": {}, "verdict": "revise", "group": "ember_orchard"}]
+[{"id": "ruler1", "text": "<prompt>", "note": "Wrong palette", "meta": {}, "verdict": "revise", "group": "ember_orchard",
+  "file": "grok/ruler1.png", "seat": "grok", "takes": [{"file": "codex/ruler1.png", "seat": "codex"}, {"file": "grok/ruler1.png", "seat": "grok"}]}]
 ```
 
 ## How a generator should use this

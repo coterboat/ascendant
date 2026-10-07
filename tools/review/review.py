@@ -216,6 +216,17 @@ def companion_video(d: Path, item: dict) -> Path | None:
     return None
 
 
+## An art "seat" made a take: `claude`, `codex`, `grok` (any short name works; these three get their own colour).
+## Items carry `seat` for their own file, and each entry of `takes` may carry one. The page can hide the
+## names (Blind) until the item has a verdict, so a take is judged on its looks.
+SEAT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,23}$")
+
+
+def clean_seat(v) -> str | None:
+    s = v.strip().lower() if isinstance(v, str) else ""
+    return s if SEAT_RE.match(s) else None
+
+
 ## v1.11: takes. A generator may roll an item more than once. The extra takes sit beside its
 ## file in a .takes/ folder: <stem>.t2.mp3, <stem>.t3.mp3 (more rolls of the same take) and
 ## <stem>.r1.mp3, r2... (takes rejected in earlier rounds, higher is newer). A batch may also
@@ -241,7 +252,7 @@ def _item_takes(d: Path, item: dict) -> list[dict]:
     main = item_path(d, item)
     root = d.resolve()
     out = [{"file": item.get("file"), "label": str(item.get("take_label") or "take 1"),
-            "path": main if main is not None and main.is_file() else None}]
+            "path": main if main is not None and main.is_file() else None, "seat": clean_seat(item.get("seat"))}]
     listed = item.get("takes")
     if isinstance(listed, list):
         for i, t in enumerate(listed):
@@ -250,7 +261,8 @@ def _item_takes(d: Path, item: dict) -> list[dict]:
             if tp is None:
                 continue
             label = (t.get("label") if isinstance(t, dict) else None) or f"take {i + 2}"
-            out.append({"file": tp.relative_to(root).as_posix(), "label": str(label), "path": tp})
+            out.append({"file": tp.relative_to(root).as_posix(), "label": str(label), "path": tp,
+                        "seat": clean_seat(t.get("seat")) if isinstance(t, dict) else None})
         return out
     if main is None or not (main.parent / ".takes").is_dir():
         return out
@@ -265,7 +277,7 @@ def _item_takes(d: Path, item: dict) -> list[dict]:
     found.sort(key=lambda x: (x[0] != "t", x[1] if x[0] == "t" else -x[1]))
     for kind, n, tp in found:
         out.append({"file": tp.relative_to(root).as_posix(),
-                    "label": f"take {n}" if kind == "t" else f"rejected in round {n}", "path": tp})
+                    "label": f"take {n}" if kind == "t" else f"rejected in round {n}", "path": tp, "seat": None})
     return out
 
 
@@ -357,15 +369,17 @@ def merge_item(name: str, d: Path, item: dict, entry: dict | None, mode: str = "
         pick=(entry.get("pick") if p is not None and p != item_path(d, item) else None),
     )
     takes = item_takes(d, item)
+    out["seat"] = takes[0]["seat"]  # the seat of the take the verdict is about (set below when it is another)
     if len(takes) > 1:
         rows = []
         for t in takes:
             tst = t["path"].stat() if t["path"] is not None else None
-            rows.append({"file": t["file"], "label": t["label"], "exists": tst is not None,
+            rows.append({"file": t["file"], "label": t["label"], "exists": tst is not None, "seat": t["seat"],
                          "url": media_url(name, d, t["path"], tst) if tst else None,
                          "mtime": tst.st_mtime if tst else None, "size": tst.st_size if tst else None,
                          "picked": t["path"] is not None and t["path"] == p})
         out["takes"] = rows
+        out["seat"] = next((r["seat"] for r in rows if r["picked"]), takes[0]["seat"])
     gp = game_path(item)
     if gp is not None:
         out["game_url"] = f"/game/{quote(name)}/{quote(item['id'])}?v={gp.stat().st_mtime:.3f}"
@@ -468,6 +482,35 @@ def _item_notes(entry: dict) -> list[str]:
     return out
 
 
+def tally_seats(seats: dict, d: Path, item: dict, entry: dict, verdict: str) -> None:
+    """Count one decided item against the seats that made its takes. Good and Good with changes go to the
+    seat whose take was kept (the others were passed over); Bad goes to every seat that made a take, since
+    every take of the item was rejected."""
+    takes = item_takes(d, item)
+    present = [tk["seat"] for tk in takes if tk["seat"]]
+    if not present:
+        return
+    pick = entry.get("pick") if isinstance(entry.get("pick"), str) else None
+    kept_take = next((tk for tk in takes if pick and tk["file"] == pick), takes[0])
+
+    def bump(seat: str, key: str) -> None:
+        row = seats.setdefault(seat, {"good": 0, "revise": 0, "bad": 0, "passed": 0, "items": 0})
+        row[key] += 1
+
+    for seat in dict.fromkeys(present):  # each seat once per item
+        seats.setdefault(seat, {"good": 0, "revise": 0, "bad": 0, "passed": 0, "items": 0})["items"] += 1
+    if verdict == "reject":
+        for seat in dict.fromkeys(present):
+            bump(seat, "bad")
+        return
+    winner = kept_take["seat"]
+    if winner:
+        bump(winner, "good" if verdict == "accept" else "revise")
+    for seat in dict.fromkeys(present):
+        if seat != winner:
+            bump(seat, "passed")
+
+
 def lessons(names: list[str] | None = None) -> dict:
     """Every batch's verdicts and notes, summed up: how often a first take is kept, by kind and by
     group (a voice), and what the notes ask for, by theme, with examples. `names` limits it to
@@ -476,6 +519,7 @@ def lessons(names: list[str] | None = None) -> dict:
     groups: dict = {}
     themes = {t: {"theme": t, "label": lbl, "notes": 0, "fixed": 0, "open": 0, "kinds": {}, "examples": []}
               for t, lbl, _, _ in NOTE_THEMES}
+    seats: dict = {}
     batches = 0
     for name in names if names is not None else list_batch_names():
         try:
@@ -494,6 +538,7 @@ def lessons(names: list[str] | None = None) -> dict:
             v = e.get("verdict", "pending")
             if v not in ("accept", "revise", "reject"):
                 continue
+            tally_seats(seats, d, item, e, v)
             was_rejected = any(isinstance(h, dict) and h.get("verdict") == "reject" for h in e.get("history") or [])
             rounds = 1 + sum(1 for h in e.get("history") or [] if isinstance(h, dict) and h.get("verdict") == "reject")
             for bucket, key in ((kinds, kind), (groups, f"{kind}:{item.get('group') or '-'}")):
@@ -526,7 +571,7 @@ def lessons(names: list[str] | None = None) -> dict:
             b["first_take_rate"] = round(b["first_take"] / b["decided"], 3) if b["decided"] else None
             b["mean_rounds"] = round(b["rounds"] / acc, 2) if acc else None
     ranked = sorted((t for t in themes.values() if t["notes"]), key=lambda t: -t["notes"])
-    return {"batches": batches, "kinds": kinds, "groups": groups, "themes": ranked,
+    return {"batches": batches, "kinds": kinds, "groups": groups, "themes": ranked, "seats": seats,
             "generated": datetime.now().isoformat(timespec="seconds")}
 
 
@@ -546,10 +591,15 @@ def lessons_markdown(ls: dict) -> str:
         ex = t["examples"][0]["note"] if t["examples"] else ""
         ex = (ex[:90] + "…") if len(ex) > 90 else ex
         th.append(f"| {t['label']} | {t['notes']} | {t['fixed']} | {t['open']} | “{ex.replace('|', '/')}” |")
+    st = []
+    if ls.get("seats"):
+        st = ["", "| seat | good | good with changes | bad | passed over |", "|---|---|---|---|---|"]
+        for seat, b in sorted(ls["seats"].items()):
+            st.append(f"| {seat} | {b['good']} | {b['revise']} | {b['bad']} | {b['passed']} |")
     return "\n".join([LESSONS_BEGIN,
-                      f"_Generated by `python3 tools/review/review.py lessons --write docs/PROMPTING.md` from "
+                      f"_Generated by `python3 tools/review/review.py lessons --write <file.md>` from "
                       f"{ls['batches']} review batches ({ls['generated'][:10]}). Don't edit by hand._", "",
-                      *rows, "", f"First takes kept, by voice (8+ decided): {vrow or '–'}.", "", *th, LESSONS_END])
+                      *rows, "", f"First takes kept, by voice (8+ decided): {vrow or '–'}.", *st, "", *th, LESSONS_END])
 
 
 def cmd_lessons(args) -> int:
@@ -649,6 +699,12 @@ def rejected_entries(items: list[dict], mode: str = "standard") -> list[dict]:
         if concept:
             e["verdict"] = it["status"]
             e["group"] = it.get("group") or ""
+            e["file"] = it.get("src") or it.get("file")  # the take the verdict is about
+            if it.get("seat"):
+                e["seat"] = it["seat"]
+            if it.get("takes"):  # every candidate, so each seat can redo its own
+                e["takes"] = [{"file": tk["file"], **({"seat": tk["seat"]} if tk.get("seat") else {})}
+                              for tk in it["takes"]]
         out.append(e)
     return out
 
@@ -1632,13 +1688,23 @@ def _write_png(path: Path, size: int = 128) -> None:
 
 
 def cmd_sample(args) -> int:
+    """Build the demo batches that are missing (all of them with --force): the classic one, and a
+    concept batch with takes from three seats."""
     ensure_review_root()
-    d = REVIEW / "_sample"
-    if (d / "batch.json").exists() and not args.force:
-        print(f"{d.relative_to(REPO)} already exists (use --force to rebuild it; this clears its verdicts)")
-        return 1
-    if d.exists():
-        shutil.rmtree(d)
+    built = 0
+    for name, build in (("_sample", _build_sample), ("_sample_concept", _build_sample_concept)):
+        d = REVIEW / name
+        if (d / "batch.json").exists() and not args.force:
+            print(f"{d.relative_to(REPO)} already exists (use --force to rebuild it; this clears its verdicts)")
+            continue
+        if d.exists():
+            shutil.rmtree(d)
+        build(d)
+        built += 1
+    return 0 if built else 1
+
+
+def _build_sample(d: Path) -> None:
     out = "review/_sample/out"
     items = [
         ("herald.capture.v1", "audio", "herald", "capture · variant 1", "Another land for the crown!",
@@ -1689,7 +1755,77 @@ def cmd_sample(args) -> int:
     atomic_write_json(d / "batch.json", {"batch": "_sample", "title": "Sample batch (demo)", "items": batch_items})
     print(f"built {d.relative_to(REPO)} with {len(batch_items)} items "
           "(one file deliberately missing, one line far too long, one too short)")
-    return 0
+
+
+def _write_emblem(path: Path, shape: str, base: tuple, accent: tuple, size: int = 192) -> None:
+    """A little painted crest for the concept demo: a shape on a gradient, in the colours of a seat's take."""
+    rows = []
+    c = (size - 1) / 2
+    for y in range(size):
+        row = bytearray([0])
+        for x in range(size):
+            dx, dy = (x - c) / c, (y - c) / c
+            k = y / size
+            col = tuple(int(b * (0.55 + 0.45 * k)) for b in base)
+            if shape == "disc":
+                inside, ring = math.hypot(dx, dy) < 0.62, 0.52 < math.hypot(dx, dy) < 0.62
+            elif shape == "diamond":
+                inside, ring = abs(dx) + abs(dy) < 0.72, 0.60 < abs(dx) + abs(dy) < 0.72
+            elif shape == "shield":
+                def shield(w):  # a flat top, straight sides, a pointed foot
+                    return abs(dx) < w and -w - 0.07 < dy < w + 0.05 and (dy < 0.05 or abs(dx) < w - (dy - 0.05))
+                inside = shield(0.58)
+                ring = inside and not shield(0.46)
+            else:  # tower
+                inside = (abs(dx) < 0.28 and -0.6 < dy < 0.6) or (abs(dx) < 0.5 and 0.35 < dy < 0.6) \
+                    or (abs(dx) < 0.4 and -0.78 < dy < -0.6 and int((dx + 0.4) * 10) % 2 == 0)
+                ring = False
+            if inside:
+                col = tuple(int(a * 0.55) for a in accent) if ring else accent
+            row += bytes(col) + b"\xff"
+        rows.append(bytes(row))
+    raw = zlib.compress(b"".join(rows), 9)
+
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
+                     + chunk(b"IDAT", raw) + chunk(b"IEND", b""))
+
+
+def _build_sample_concept(d: Path) -> None:
+    """Crests from three art seats, to be judged blind. Their groups start with `sample_`, so what
+    `canon` writes for them (assets/_concept/lore/sample_*/) is easy to tell and to delete."""
+    prompt = "a heraldic crest for {who}, flat bright cel shading on a plain ground, no text"
+    #       item id,   label,           group,         seat takes: (seat, shape, base colour, accent colour)
+    spec = [
+        ("aurel_crest", "Aurel crest", "sample_aurel", "the Aurel kingdom, gold and royal blue",
+         [("codex", "shield", (28, 44, 96), (226, 184, 82)), ("grok", "disc", (36, 52, 110), (240, 208, 120)),
+          ("claude", "diamond", (22, 38, 84), (212, 168, 70))]),
+        ("fang_banner", "Fang banner", "sample_fang", "the Fang clans, ember red and bone white",
+         [("grok", "diamond", (96, 28, 24), (236, 224, 200)), ("codex", "shield", (110, 36, 28), (244, 232, 210))]),
+        ("ever_sigil", "Ever sigil", "sample_ever", "the Ever Court, moss green and silver",
+         [("claude", "disc", (30, 74, 58), (214, 224, 220))]),
+        ("thornmane_mark", "Thornmane mark", "sample_ever", "Thornmane, thorn brown and amber",
+         [("codex", "tower", (70, 46, 28), (232, 170, 70))]),
+    ]
+    items = []
+    for iid, label, group, who, takes in spec:
+        files = []
+        for seat, shape, base, accent in takes:
+            f = f"{seat}/{iid}.png"
+            _write_emblem(d / f, shape, base, accent)
+            files.append((seat, f))
+        item = {"id": iid, "kind": "image", "group": group, "label": label, "text": prompt.format(who=who),
+                "file": files[0][1], "seat": files[0][0], "meta": {"context": "round 1 crest sketches"}}
+        if len(files) > 1:
+            item["takes"] = [{"file": f, "label": f"take {i + 2}", "seat": seat} for i, (seat, f) in enumerate(files[1:])]
+        items.append(item)
+    atomic_write_json(d / "batch.json", {"batch": "_sample_concept", "title": "Sample concept batch (demo)",
+                                         "mode": "concept", "items": items})
+    print(f"built {d.relative_to(REPO)} with {len(items)} items: crests from three seats, to judge blind "
+          "(A good, C good with changes, R bad)")
 
 
 # ---------------------------------------------------------------- main
@@ -1721,7 +1857,7 @@ def main(argv=None) -> int:
     p.add_argument("--title", default="")
     p.add_argument("--mode", choices=MODES, default="standard", help="concept: judged Good / Good with changes / Bad")
     p.set_defaults(fn=cmd_new)
-    p = sub.add_parser("sample", help="build the review/_sample demo batch")
+    p = sub.add_parser("sample", help="build the demo batches (_sample, _sample_concept)")
     p.add_argument("--force", action="store_true")
     p.set_defaults(fn=cmd_sample)
     args = ap.parse_args(argv)
