@@ -405,6 +405,13 @@ def merge_item(name: str, d: Path, item: dict, entry: dict | None, mode: str = "
                          "picked": t["path"] is not None and t["path"] == p})
         out["takes"] = rows
         out["seat"] = next((r["seat"] for r in rows if r["picked"]), takes[0]["seat"])
+        ## a take listed with its own prompt (seats write their own) shows that prompt once it is the pick, and canon records it
+        picked = next((r["file"] for r in rows if r["picked"]), None)
+        if picked and picked != takes[0]["file"]:
+            tp = next((t.get("prompt") for t in item.get("takes") or []
+                       if isinstance(t, dict) and t.get("file") == picked and t.get("prompt")), None)
+            if tp:
+                out["text"] = str(tp)
     gp = game_path(item, name, mode)
     if gp is not None:
         out["game_url"] = f"/game/{quote(name)}/{quote(item['id'])}?v={gp.stat().st_mtime:.3f}"
@@ -1960,7 +1967,8 @@ def folder_items(src: Path, sidecar: dict, group_by: str = "none", recursive: bo
         if host["seat"]:
             item["seat"] = host["seat"]
         if len(ms) > 1:
-            item["takes"] = [{"file": m["rel"], "label": f"take {i + 2}", **({"seat": m["seat"]} if m["seat"] else {})}
+            item["takes"] = [{"file": m["rel"], "label": f"take {i + 2}", **({"seat": m["seat"]} if m["seat"] else {}),
+                              **({"prompt": str(m["e"]["prompt"])} if m["e"].get("prompt") else {})}
                              for i, m in enumerate(ms[1:])]
         tgt = first("target") or (f"{target_dir.rstrip('/')}/{host['name']}" if target_dir else None)
         if tgt:
