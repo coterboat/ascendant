@@ -17,7 +17,7 @@ Commands:
     from-folder <dir> <batch> --title "..." [--mode concept] [--group-by prefix]
                                     build a batch from a folder of images or models (and a prompts.json)
     sample [--force]                build the review/_sample demo batch
-    lessons [--write docs/PROMPTING.md]  what every review so far says about the prompts
+    lessons [--write MD]            what every review so far says about the prompts
 
 Standard library only. See tools/review/README.md. The 3D viewer is Google's <model-viewer>, vendored
 in tools/review/vendor/ and served from there, so the page works offline.
@@ -2315,7 +2315,7 @@ def main(argv=None) -> int:
     p.add_argument("batch", nargs="?")
     p.set_defaults(fn=lambda a: (print("\n".join(f"{nm}: {reconcile(nm)} marked in game" for nm in ([a.batch] if a.batch else list_batch_names()))) or 0))
     p = sub.add_parser("lessons", help="what every review so far says about the prompts")
-    p.add_argument("--write", metavar="MD", help="replace the lessons block in this markdown file (docs/PROMPTING.md)")
+    p.add_argument("--write", metavar="MD", help="replace the lessons block in this markdown file (for example docs/PROMPTING.md)")
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_lessons)
     p = sub.add_parser("new", help="scaffold an empty batch")

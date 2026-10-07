@@ -12,7 +12,7 @@ It serves on `127.0.0.1` only. The one thing it carries that is not ours is the 
 
 ```sh
 python3 tools/review/review.py serve --open        # UI at http://127.0.0.1:8766
-python3 tools/review/review.py sample              # optional: build the demo batches (review/_sample, review/_sample_concept)
+python3 tools/review/review.py sample              # optional: build the demo batches (_sample, _sample_concept, _sample_models)
 python3 tools/review/test_review.py                # the tool's own tests (throwaway batches, no Ludo calls)
 ```
 
@@ -335,7 +335,7 @@ Everything lives in `review/<batch>/` at the repo root. `review/*/` is gitignore
 
 ```json
 {
-  "batch": "v18_voices",
+  "batch": "voices_r1",
   "title": "Voice lines, round 1",
   "items": [
     {"id": "advisor.capture.v2", "kind": "audio", "group": "advisor", "label": "capture · variant 2",
