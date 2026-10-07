@@ -1927,7 +1927,7 @@ const vprobeDone = url => { const v = S.vprobes.get(url); return !!(v && v.done)
 /* ---------------------------------------------------------------- duration / image probes */
 const PQ = { q: [], active: 0, max: 3 };
 function probeState() {
-  const probeable = S.items.filter(it => it.exists);
+  const probeable = S.items.filter(it => it.exists && it.kind !== 'model');  // a model's own viewer reports its load
   const done = probeable.filter(it => S.probes.has(pkey(it))).length;
   return { total: probeable.length, done, left: probeable.length - done };
 }
@@ -2422,7 +2422,7 @@ function renderFinish() {
     if (!hasRegen()) {
       acts += `<div class="act-card off" title="The generator declares no regen action for this batch"><button class="act-run" disabled>${isConcept() ? 'Redo Bad + changes' : 'Redo rejected'}</button><div>
         <div class="act-help">${isConcept()
-          ? `The generator declares no regen action for this batch. The next art round redoes the ${plural(c.reject, 'Bad item', 'Bad items')} and the ${plural(c.revise, 'Good with changes item', 'Good with changes items')} (with their notes): it reads <code>review/${esc(S.batch)}/rejected.json</code>, which Add to canon writes.`
+          ? `The generator declares no regen action for this batch. The next art round redoes the Bad items (${c.reject}) and the Good with changes items (${c.revise}), with their notes: it reads <code>review/${esc(S.batch)}/rejected.json</code>, which Add to canon writes.`
           : `The generator declares no regen action for this batch. Re-roll the ${plural(c.reject, 'rejected item', 'rejected items')} with the generator by hand: it reads <code>review/${esc(S.batch)}/rejected.json</code>, which Install accepted writes.`}</div></div></div>`;
     }
   }
