@@ -1121,6 +1121,22 @@ class FromFolderTests(unittest.TestCase):
         self.assertEqual(len(merged["takes"]), 3)
         self.assertTrue(all(t["exists"] for t in merged["takes"]))
 
+    def test_each_seat_keeps_its_own_prompt(self):
+        self.put("codex/aurel.png")
+        self.put("grok/aurel.png")
+        (self.src / "prompts.json").write_text(json.dumps({
+            "codex/aurel.png": {"item": "aurel", "prompt": "codex's crest", "group": "aurel"},
+            "grok/aurel.png": {"item": "aurel", "prompt": "grok's crest"}}))
+        code, out = self.run_ff("--mode", "concept", "--recursive")
+        self.assertEqual(code, 0, out)
+        a = self.batch()["items"][0]
+        self.assertEqual((a["text"], a["takes"][0]["prompt"]), ("codex's crest", "grok's crest"))
+        merged = lambda: {it["id"]: it for it in R.merged_batch(self.name)["items"]}["aurel"]
+        self.assertEqual(merged()["text"], "codex's crest", "before a pick, the item's own prompt")
+        R.decide(self.name, "aurel", verdict="accept", take="grok/aurel.png")
+        m = merged()
+        self.assertEqual((m["seat"], m["text"]), ("grok", "grok's crest"), "the kept take's own prompt, which canon records")
+
     def test_models_and_install_targets(self):
         self.put("aurel_king_march.glb", b"glTF\x02\x00\x00\x00" + b"x" * 64)
         self.put("aurel_king_ready.glb", b"glTF\x02\x00\x00\x00" + b"y" * 64)
