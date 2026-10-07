@@ -219,6 +219,8 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
 .k-image .quote { font-style: normal; font-size: 15.5px; color: var(--ink-2); }
 .k-image .quote::before { content: "prompt"; font: 700 10.5px var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); margin-right: 9px; vertical-align: 1px; }
 .k-image .quote::after { content: none; }
+.k-image .quote.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; cursor: pointer; }
+.k-image .quote.clamp.open { display: block; -webkit-line-clamp: unset; overflow: visible; }
 .edited-tag { display: inline-block; font: 700 9.5px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--red-ink);
   border: 1px solid rgba(240, 167, 151, .45); border-radius: 4px; padding: 3px 5px 2px; margin-right: 8px; vertical-align: 1px; }
 .was { font: 13px/1.35 var(--serif); color: var(--ink-3); margin-bottom: 2px; }
@@ -1159,8 +1161,13 @@ function rowHTML(it) {
     quote = `<textarea class="edit-in" rows="1" spellcheck="true">${esc(txt)}</textarea>
       <div class="edit-bar"><span>Enter saves and marks <b>rejected</b> · Esc cancels</span><span class="sp"></span>
       <button data-act="edit-cancel">Cancel</button><button class="go" data-act="edit-save">Save &amp; reject</button></div>`;
+  } else if (txt && it.kind === 'image' && it.seat && seatHidden(it)) {
+    // a seat's prompt style names the seat, so a blind item keeps it back until it has a verdict
+    quote = `<div class="quote none">hidden while blind</div>`;
   } else if (txt) {
-    quote = `<div class="quote">${esc(txt)}</div>` +
+    // a picture's prompt can run to a paragraph: two lines, the rest on a click, so the picture leads
+    const clamp = it.kind === 'image' && txt.length > 140;
+    quote = `<div class="quote${clamp ? ' clamp' : ''}"${clamp ? ' data-act="quote" title="Show the whole prompt"' : ''}>${esc(txt)}</div>` +
       (it.edited_text ? `<div class="was"><span class="edited-tag">edited</span>${it.text ? `<s>${esc(it.text)}</s>` : ''}</div>` : '');
   } else {
     quote = `<div class="quote none">(no text)</div>`;
@@ -2650,6 +2657,7 @@ $('#list').addEventListener('click', e => {
   if (!act) return;
   switch (act.dataset.act) {
     case 'play': togglePlay(id); break;
+    case 'quote': act.classList.toggle('open'); break;
     case 'seek': seek(id, e, act); break;
     case 'view': openViewer(id, 'image'); break;
     case 'vplay': { const it = S.byId.get(id); if (it) toggleVideo(it); break; }
