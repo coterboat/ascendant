@@ -7,3 +7,4 @@
 - Approachability is a requirement: every new mechanic needs in-game explanation (tooltip, preview, or forecast) in the same PR.
 - Never print or commit secrets. Never edit `design/`, `playtest/`, or `studio/` unless the issue says to.
 - In the PR description, add a line starting `playtest:` describing what to poke at.
+- Don't make review verdicts for the owner. Generate into a review batch (`review/<batch>/`); the owner accepts or rejects in the Review Table (`tools/review/README.md`).

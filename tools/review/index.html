@@ -1,0 +1,2966 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="review-token" content="__REVIEW_TOKEN__">
+<title>Review Table · ASCENDANT</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f1522'/%3E%3Cpath d='M16 5 27 16 16 27 5 16Z' fill='none' stroke='%23d9b25f' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='3.5' fill='%23b8412f'/%3E%3C/svg%3E">
+<script type="module" src="/vendor/model-viewer.min.js"></script>
+<style>
+:root {
+  --bg: #0f1522;
+  --bg-deep: #0a0f19;
+  --panel: #151d2d;
+  --panel-hi: #1c263a;
+  --line: #27324a;
+  --line-hi: #3a4867;
+  --ink: #efe6cf;
+  --ink-2: #cabfa3;
+  --ink-3: #8f8670;
+  --brass: #d9b25f;
+  --brass-2: #a88539;
+  --brass-glow: rgba(217, 178, 95, .15);
+  --red: #b8412f;
+  --red-ink: #f0a797;
+  --red-bg: rgba(184, 65, 47, .17);
+  --green: #5d9b5a;
+  --green-ink: #b5dcb0;
+  --green-bg: rgba(93, 155, 90, .17);
+  --amber: #e6a445;
+  --pending: #44526f;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background:
+    radial-gradient(1100px 520px at 75% -12%, rgba(217, 178, 95, .07), transparent 62%),
+    radial-gradient(900px 700px at -10% 110%, rgba(184, 65, 47, .05), transparent 60%),
+    var(--bg);
+  color: var(--ink);
+  font: 14px/1.45 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+button:disabled { cursor: default; }
+kbd {
+  display: inline-block; font: 600 10.5px/1 var(--mono); padding: 3px 5px 2px;
+  border: 1px solid currentColor; border-radius: 4px; opacity: .55; margin-left: 8px;
+  min-width: 18px; text-align: center;
+}
+
+.app { display: grid; grid-template-columns: 300px minmax(0, 1fr); height: 100vh; }
+
+/* ---------- sidebar */
+aside {
+  background: linear-gradient(180deg, rgba(10, 15, 25, .72), rgba(10, 15, 25, .9));
+  border-right: 1px solid var(--line);
+  padding: 22px 18px 16px;
+  display: flex; flex-direction: column; gap: 22px;
+  overflow-y: auto;
+}
+.brand .kicker { font: 700 11px/1 var(--sans); letter-spacing: .32em; color: var(--brass); }
+.brand .name { font: 26px/1.15 var(--serif); color: var(--ink); margin-top: 8px; }
+.rule { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--brass-2); }
+.rule::before, .rule::after { content: ""; height: 1px; flex: 1; background: linear-gradient(90deg, transparent, var(--brass-2), transparent); }
+.rule span { width: 7px; height: 7px; transform: rotate(45deg); border: 1px solid var(--brass); }
+.sec { display: block; font: 700 10.5px/1 var(--sans); letter-spacing: .22em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 10px; }
+
+.select-wrap { position: relative; }
+.select-wrap::after {
+  content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px; margin-top: -6px;
+  border-right: 1.5px solid var(--brass); border-bottom: 1.5px solid var(--brass); transform: rotate(45deg); pointer-events: none;
+}
+select {
+  width: 100%; appearance: none; -webkit-appearance: none;
+  background: var(--panel); color: var(--ink); border: 1px solid var(--line-hi); border-radius: 8px;
+  padding: 11px 34px 11px 12px; font: 15px/1.2 var(--serif); cursor: pointer;
+}
+select:focus-visible { outline: 2px solid var(--brass-2); outline-offset: 1px; }
+
+.pbar { display: flex; height: 8px; margin-top: 12px; background: var(--bg-deep); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.pbar div { height: 100%; transition: width .35s ease; }
+.pbar .pa { background: var(--green); }
+.pbar .pv { background: var(--amber); }
+.pbar .pr { background: var(--red); }
+.plabel { display: flex; justify-content: space-between; margin-top: 7px; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.plabel b { color: var(--ink-2); font-weight: 600; }
+
+.tabs { display: flex; flex-direction: column; gap: 3px; }
+.tab {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 10px 12px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--ink-2); font: 16px/1.2 var(--serif); text-align: left;
+  transition: background .12s, color .12s;
+}
+.tab:hover { background: rgba(255, 255, 255, .035); color: var(--ink); }
+.tab.on { background: var(--panel-hi); color: var(--ink); box-shadow: inset 3px 0 0 var(--brass); }
+.tab .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); flex: none; }
+.tab[data-tab=pending] .dot { background: var(--pending); box-shadow: 0 0 0 1px #6b7a99; }
+.tab[data-tab=accept] .dot { background: var(--green); }
+.tab[data-tab=reject] .dot { background: var(--red); }
+.tab[data-tab=revise] .dot { background: var(--amber); }
+.tab[data-tab=flagged] .dot { background: var(--amber); }
+.tab .n { margin-left: auto; font: 600 12.5px/1 var(--sans); color: var(--ink-3); font-variant-numeric: tabular-nums;
+  background: rgba(255, 255, 255, .04); border-radius: 999px; padding: 4px 9px; min-width: 30px; text-align: center; }
+.tab.on .n { color: var(--ink); background: rgba(217, 178, 95, .14); }
+.probe-note { font-size: 12px; color: var(--ink-3); margin: 8px 12px 0; min-height: 17px; font-style: italic; font-family: var(--serif); }
+
+.groups { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; border-radius: 999px;
+  border: 1px solid var(--line-hi); background: transparent; color: var(--ink-2); font-size: 13px;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.chip:hover { border-color: var(--brass-2); color: var(--ink); }
+.chip.on { background: var(--brass); border-color: var(--brass); color: #1a1405; }
+.chip .c { font-size: 11px; opacity: .7; font-variant-numeric: tabular-nums; }
+
+.grow { flex: 1; }
+.sidefoot { display: flex; flex-direction: column; gap: 8px; }
+.toggle, .ghost {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 12px;
+  border: 1px solid var(--line-hi); border-radius: 8px; background: var(--panel); color: var(--ink-2); font-size: 13.5px;
+}
+.toggle:hover, .ghost:hover { border-color: var(--brass-2); color: var(--ink); }
+.switch { width: 36px; height: 20px; border-radius: 10px; background: #2b3650; position: relative; flex: none; transition: background .15s; }
+.switch::after { content: ""; position: absolute; left: 3px; top: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--ink-3); transition: transform .15s, background .15s; }
+.toggle.on .switch { background: var(--brass-2); }
+.toggle.on .switch::after { transform: translateX(16px); background: var(--ink); }
+.toggle .lbl { flex: 1; text-align: left; }
+.toggle .st { font: 700 11px/1 var(--sans); letter-spacing: .12em; color: var(--ink-3); }
+.toggle.on .st { color: var(--brass); }
+.ghost .lbl { flex: 1; text-align: left; }
+
+/* ---------- main */
+main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
+.top { display: flex; align-items: flex-end; gap: 16px; padding: 22px 30px 14px; border-bottom: 1px solid var(--line); }
+.top h1 { margin: 0; font: 400 30px/1.1 var(--serif); color: var(--ink); letter-spacing: .01em; }
+.top .sub { margin-top: 6px; color: var(--ink-3); font-size: 13px; }
+.top .sub code { font: 12px var(--mono); color: var(--ink-2); }
+.top .spacer { flex: 1; }
+.top .btn {
+  white-space: nowrap; padding: 9px 14px; border-radius: 8px; border: 1px solid var(--line-hi); background: var(--panel); color: var(--ink-2); font-size: 13px;
+}
+.top .btn:hover { border-color: var(--brass-2); color: var(--ink); }
+.auto-chip { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-3); padding: 9px 12px; white-space: nowrap;
+  border: 1px solid var(--line); border-radius: 8px; background: transparent; }
+.auto-chip b { font: 700 11px/1 var(--sans); letter-spacing: .12em; }
+.auto-chip.on b { color: var(--brass); }
+.auto-chip:hover { border-color: var(--brass-2); color: var(--ink-2); }
+
+.list { flex: 1; overflow-y: auto; padding: 16px 30px 40px; scroll-behavior: auto; }
+.list::-webkit-scrollbar { width: 12px; }
+.list::-webkit-scrollbar-thumb { background: #243049; border-radius: 6px; border: 3px solid var(--bg); }
+
+/* ---------- rows */
+.row {
+  --st: var(--pending);
+  display: grid; grid-template-columns: 76px minmax(0, 1fr) 244px; gap: 18px; align-items: center;
+  background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--st);
+  border-radius: 10px; padding: 14px 16px 14px 14px; margin: 0 0 10px;
+  scroll-margin: 110px 0 90px;
+  transition: background .12s, border-color .12s, box-shadow .12s, opacity .2s;
+}
+.row.s-accept { --st: var(--green); }
+.row.s-reject { --st: var(--red); }
+.row.s-revise { --st: var(--amber); }
+.row.s-missing { --st: #4b4f58; border-left-style: dashed; }
+.row.regen { --st: var(--brass); }
+.row:hover { border-color: var(--line-hi); border-left-color: var(--st); }
+.row.cur {
+  background: var(--panel-hi); border-color: var(--brass-2); border-left-color: var(--st);
+  box-shadow: 0 0 0 1px var(--brass-2), 0 10px 30px rgba(0, 0, 0, .35), 0 0 34px var(--brass-glow);
+}
+.row.out { opacity: .5; }
+.row.out.cur { opacity: .85; }
+/* concept batches: the picture is the point, so it gets room */
+.row.concept { grid-template-columns: 176px minmax(0, 1fr) 244px; }
+.row.concept .thumb { width: 176px; height: 176px; }
+
+.lead { display: flex; justify-content: center; }
+.play {
+  width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center;
+  border: 1.5px solid var(--brass-2); color: var(--brass);
+  background: radial-gradient(circle at 35% 30%, #2a3651, #151d2d 70%);
+  transition: background .12s, border-color .12s, color .12s, transform .08s;
+}
+.play:hover:not(:disabled) { border-color: var(--brass); }
+.play:active:not(:disabled) { transform: scale(.96); }
+.play svg { width: 22px; height: 22px; }
+.play .i-pause { display: none; }
+.row.playing .play { background: var(--brass); color: #16110a; border-color: var(--brass); }
+.row.playing .play .i-play { display: none; }
+.row.playing .play .i-pause { display: block; }
+.play:disabled { opacity: .3; border-style: dashed; }
+.thumb {
+  width: 76px; height: 76px; padding: 0; border-radius: 8px; overflow: hidden; border: 1px solid var(--line-hi);
+  background: repeating-conic-gradient(#1b2335 0 25%, #121927 0 50%) 0 0 / 14px 14px;
+  display: grid; place-items: center;
+}
+.thumb:hover { border-color: var(--brass); }
+.thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.thumb.none { color: var(--ink-3); font-size: 11px; text-align: center; border-style: dashed; cursor: default; }
+
+.body { min-width: 0; }
+.head { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.label { font: 700 11.5px/1.35 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--brass); min-width: 0; overflow-wrap: anywhere; }
+.grp { font-size: 11.5px; color: var(--ink-3); border: 1px solid var(--line-hi); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.iid { font: 11px var(--mono); color: #5f6678; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: auto; }
+.quote { margin: 6px 0 2px; font: italic 19px/1.4 var(--serif); color: var(--ink); overflow-wrap: anywhere; }
+.quote::before { content: "\201C"; color: var(--brass); margin-right: 2px; }
+.quote::after { content: "\201D"; color: var(--brass); margin-left: 1px; }
+.quote.none { color: var(--ink-3); font-size: 15px; }
+.quote.none::before, .quote.none::after { content: none; }
+.k-image .quote { font-style: normal; font-size: 15.5px; color: var(--ink-2); }
+.k-image .quote::before { content: "prompt"; font: 700 10.5px var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); margin-right: 9px; vertical-align: 1px; }
+.k-image .quote::after { content: none; }
+.edited-tag { display: inline-block; font: 700 9.5px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--red-ink);
+  border: 1px solid rgba(240, 167, 151, .45); border-radius: 4px; padding: 3px 5px 2px; margin-right: 8px; vertical-align: 1px; }
+.was { font: 13px/1.35 var(--serif); color: var(--ink-3); margin-bottom: 2px; }
+.was s { text-decoration-color: rgba(184, 65, 47, .75); }
+.when { font: italic 13.5px/1.35 var(--serif); color: var(--ink-3); }
+.when b { font-style: normal; font: 700 10.5px var(--sans); letter-spacing: .14em; text-transform: uppercase; margin-right: 6px; color: #6f6857; }
+
+.track { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; min-height: 20px; min-width: 0; }
+.bar { flex: 0 1 240px; min-width: 90px; padding: 7px 0; cursor: pointer; }
+.bar.off { cursor: default; opacity: .4; }
+.rail { height: 6px; border-radius: 4px; background: var(--bg-deep); border: 1px solid var(--line); overflow: hidden; }
+.fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--brass-2), var(--brass)); }
+.bar:hover .rail { border-color: var(--line-hi); }
+.time { font: 12px/1 var(--mono); color: var(--ink-3); width: 92px; flex: none; font-variant-numeric: tabular-nums; }
+.dims { font: 12px/1 var(--mono); color: var(--ink-3); flex: none; }
+.flag { margin-top: 5px; color: var(--amber); font-size: 12.5px; line-height: 1.35; padding-left: 16px; text-indent: -16px; }
+.flag::before { content: "\2691"; display: inline-block; width: 16px; text-indent: 0; }
+.flag.miss { color: #9aa0ad; }
+
+.note { margin-top: 7px; font-size: 13px; color: var(--ink-2); display: flex; gap: 8px; }
+.note b, .hist b { font: 700 10.5px/1.6 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--brass-2); flex: none; }
+.hist { margin-top: 6px; font: italic 12.5px/1.35 var(--serif); color: var(--ink-3); display: flex; gap: 8px; }
+.hist b { font-style: normal; color: var(--brass); }
+
+/* v1.11: takes, what the game has now, what the voice was asked to say, note chips, lessons */
+.speak { font: 12.5px/1.4 var(--mono); color: var(--ink-3); margin: 2px 0 0; overflow-wrap: anywhere; }
+.speak b { font: 700 10.5px var(--sans); letter-spacing: .14em; text-transform: uppercase; margin-right: 8px; color: #6f6857; }
+.takes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.takes .tl { font: 700 10.5px var(--sans); letter-spacing: .14em; text-transform: uppercase; color: #6f6857; margin-right: 2px; }
+.tk { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 7px;
+  border: 1px solid var(--line-hi); background: var(--panel); color: var(--ink-2); font-size: 12px; }
+.tk kbd { margin-left: 0; opacity: .7; }
+.tk:disabled { opacity: .4; }
+.tk.on { border-color: var(--brass); color: var(--ink); box-shadow: 0 0 0 2px var(--brass-glow); }
+.tk.pk::after { content: "\2713"; color: var(--green-ink); font-weight: 700; }
+.tk.old { color: var(--red-ink); border-style: dashed; }
+.tk.game { border-color: var(--brass-2); color: var(--brass); }
+.tk.playing { background: rgba(217, 178, 95, .22); }
+.rev-hint { margin-top: 8px; font-size: 12.5px; color: #f3d49b; }
+.rev-hint b { font: 700 10.5px var(--sans); letter-spacing: .14em; text-transform: uppercase; margin-right: 6px; }
+.edit-bar button.go.rev-go { border-color: var(--amber); color: #f3d49b; }
+/* seats: who made a take (hidden while the Blind toggle is on and the item has no verdict) */
+.seat { font: 700 10px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; padding: 3px 8px 2px; border-radius: 999px;
+  border: 1px solid currentColor; color: var(--ink-3); white-space: nowrap; }
+.seat.s-claude { color: #e5a074; } .seat.s-codex { color: #6fc2ad; } .seat.s-grok { color: #aa9df0; }
+.tk.seat-claude { border-left: 3px solid #e5a074; } .tk.seat-codex { border-left: 3px solid #6fc2ad; } .tk.seat-grok { border-left: 3px solid #aa9df0; }
+.tk.seat-other { border-left: 3px solid var(--ink-3); }
+.tk.blind { letter-spacing: .02em; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0 2px; }
+.chip-n { border: 1px solid var(--line-hi); background: var(--panel); color: var(--ink-2); border-radius: 999px; padding: 2px 10px; font-size: 11.5px; }
+.chip-n:hover { border-color: var(--brass-2); color: var(--ink); }
+.lessons-panel { width: min(900px, 94vw); max-height: 90vh; overflow-y: auto; padding: 24px 26px 18px; }
+.lessons-panel h2 { margin: 0; font: 400 26px/1.15 var(--serif); }
+.lessons-panel h3 { margin: 18px 0 6px; font: 700 11px var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--brass); }
+.ls-t { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ls-t th { text-align: left; font: 700 10.5px var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); padding: 4px 8px; border-bottom: 1px solid var(--line-hi); }
+.ls-t td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.ls-t td.n { font: 12.5px var(--mono); color: var(--ink-2); white-space: nowrap; }
+.ls-bar { display: inline-block; width: 90px; height: 7px; border-radius: 4px; background: var(--bg-deep); border: 1px solid var(--line); vertical-align: middle; margin-right: 8px; overflow: hidden; }
+.ls-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--brass-2), var(--brass)); }
+.ls-ex { color: var(--ink-3); font: italic 12.5px/1.4 var(--serif); }
+.ls-ex span { display: block; }
+
+.edit-in, .note-in {
+  width: 100%; margin: 6px 0 2px; background: var(--bg-deep); color: var(--ink);
+  border: 1px solid var(--brass-2); border-radius: 8px; padding: 9px 11px; outline: none;
+  box-shadow: 0 0 0 3px rgba(217, 178, 95, .12);
+}
+.edit-in { font: italic 18px/1.4 var(--serif); resize: none; overflow: hidden; display: block; }
+.note-in { font: 14px/1.3 var(--sans); }
+.edit-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); margin: 4px 0 2px; }
+.edit-bar .sp { flex: 1; }
+.edit-bar button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--line-hi); background: var(--panel); font-size: 12px; }
+.edit-bar button.go { border-color: var(--red); color: var(--red-ink); }
+.edit-bar button.go.note-go { border-color: var(--brass-2); color: var(--brass); }
+
+.ctrl { display: flex; flex-direction: column; gap: 9px; align-items: stretch; }
+.pill {
+  align-self: center; display: inline-flex; justify-content: center; align-items: center; min-width: 132px; height: 24px;
+  padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-hi); color: var(--ink-3);
+  font: 700 10.5px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase;
+}
+.s-accept .pill { color: var(--green-ink); background: var(--green-bg); border-color: rgba(93, 155, 90, .6); }
+.row.inst { --st: var(--brass); }
+.row.inst .pill { color: #1a1406; background: var(--brass); border-color: var(--brass); }
+.s-reject .pill { color: var(--red-ink); background: var(--red-bg); border-color: rgba(184, 65, 47, .65); }
+.s-revise .pill { color: #f3d49b; background: rgba(230, 164, 69, .14); border-color: rgba(230, 164, 69, .6); }
+.s-missing .pill { border-style: dashed; color: #9aa0ad; }
+.regen .pill { color: var(--brass); background: rgba(217, 178, 95, .1); border-color: var(--brass-2); }
+.big { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.big button {
+  height: 44px; border-radius: 8px; background: transparent; font: 600 14px/1 var(--sans);
+  display: flex; align-items: center; justify-content: center; transition: background .12s, color .12s, border-color .12s;
+}
+.acc { border: 1.5px solid rgba(93, 155, 90, .55); color: var(--green-ink); }
+.acc:hover:not(:disabled) { background: var(--green-bg); border-color: var(--green); }
+.s-accept .acc { background: var(--green); border-color: var(--green); color: #0d140c; }
+.rej { border: 1.5px solid rgba(184, 65, 47, .6); color: var(--red-ink); }
+.rej:hover { background: var(--red-bg); border-color: var(--red); }
+.s-reject .rej { background: var(--red); border-color: var(--red); color: #fff4ef; }
+.chg { border: 1.5px solid rgba(230, 164, 69, .55); color: #f3d49b; }
+.chg:hover:not(:disabled) { background: rgba(230, 164, 69, .14); border-color: var(--amber); }
+.s-revise .chg { background: var(--amber); border-color: var(--amber); color: #1d1405; }
+.big.concept .chg { grid-column: 1 / -1; height: 38px; font-size: 13.5px; }
+.big button:disabled { opacity: .28; }
+.big kbd { margin-left: 7px; }
+.small { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.small button {
+  height: 30px; border-radius: 7px; border: 1px solid var(--line); background: transparent; color: var(--ink-3);
+  font-size: 12px; display: flex; align-items: center; justify-content: center;
+}
+.small button:hover { border-color: var(--line-hi); color: var(--ink-2); background: rgba(255, 255, 255, .03); }
+.small kbd { margin-left: 5px; font-size: 9.5px; padding: 2px 4px 1px; min-width: 0; }
+
+.endcard {
+  margin: 18px 0 0; padding: 22px; border: 1px dashed var(--line-hi); border-radius: 10px;
+  text-align: center; color: var(--ink-3); font: italic 15px/1.5 var(--serif);
+}
+.endcard b { color: var(--ink-2); font-style: normal; }
+.endcard code { font: 12.5px var(--mono); font-style: normal; color: var(--brass); background: var(--bg-deep); padding: 3px 7px; border-radius: 5px; border: 1px solid var(--line); user-select: all; }
+.endcard.big-empty { padding: 60px 22px; font-size: 17px; }
+
+.endcard .fin-go { margin-top: 14px; padding: 10px 18px; border-radius: 8px; border: 1px solid var(--brass); font: 600 14px/1 var(--sans);
+  background: linear-gradient(180deg, #e2bf6d, var(--brass)); color: #1a1405; font-style: normal; }
+.endcard .fin-go kbd { opacity: .6; }
+.endcard .fin-go:hover { filter: brightness(1.06); }
+
+.keys {
+  display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 30px 12px; border-top: 1px solid var(--line);
+  color: var(--ink-3); font-size: 12px; background: rgba(10, 15, 25, .6);
+}
+.keys kbd { margin: 0 5px 0 0; opacity: .8; color: var(--ink-2); }
+
+/* ---------- action bar */
+.actbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 30px; border-bottom: 1px solid var(--line); background: rgba(10, 15, 25, .35); }
+.actbar .sp { flex: 1; }
+.abtn {
+  display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px; border-radius: 8px;
+  border: 1px solid var(--line-hi); background: var(--panel); color: var(--ink-2); font-size: 13px; white-space: nowrap;
+}
+.abtn:hover:not(:disabled) { border-color: var(--brass-2); color: var(--ink); }
+.abtn:disabled { opacity: .38; }
+.abtn kbd { margin-left: 1px; }
+.abtn.finish { background: linear-gradient(180deg, #e2bf6d, var(--brass)); border-color: var(--brass); color: #1a1405; font-weight: 600; }
+.abtn.finish:hover:not(:disabled) { color: #1a1405; filter: brightness(1.06); }
+.abtn.finish kbd { opacity: .6; }
+.abtn .cr { font: 700 9.5px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--red-ink);
+  border: 1px solid rgba(240, 167, 151, .45); border-radius: 4px; padding: 3px 5px 2px; }
+.abar-sep { width: 1px; height: 22px; background: var(--line-hi); margin: 0 4px; }
+.abar-note { font-size: 12px; color: var(--ink-3); font-style: italic; font-family: var(--serif); }
+.ldot { width: 8px; height: 8px; border-radius: 50%; background: #3a4867; flex: none; }
+.logbtn.running .ldot { background: var(--brass); animation: pulse 1s ease-in-out infinite; }
+.logbtn.ok .ldot { background: var(--green); }
+.logbtn.failed .ldot { background: var(--red); }
+.logbtn.cancelled .ldot { background: #9aa0ad; }
+.logbtn .lt { font: 12px var(--mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+@keyframes pulse { 50% { opacity: .3; } }
+
+/* ---------- run log drawer */
+.drawer { flex: none; height: 38vh; min-height: 190px; display: flex; flex-direction: column; background: var(--bg-deep);
+  border-top: 1px solid var(--brass-2); box-shadow: 0 -14px 34px rgba(0, 0, 0, .38); }
+.drawer[hidden] { display: none; }
+.dr-head { display: flex; align-items: center; gap: 10px; padding: 9px 16px 9px 30px; border-bottom: 1px solid var(--line); min-width: 0; }
+.dr-label { font: 17px/1.2 var(--serif); color: var(--ink); white-space: nowrap; }
+.dr-cmd { flex: 1; min-width: 0; font: 12px var(--mono); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dr-time { font: 12px var(--mono); color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dbtn { padding: 6px 11px; border-radius: 7px; border: 1px solid var(--line-hi); background: var(--panel); color: var(--ink-2); font-size: 12.5px; white-space: nowrap; }
+.dbtn:hover { border-color: var(--brass-2); color: var(--ink); }
+.dbtn.danger { border-color: rgba(184, 65, 47, .6); color: var(--red-ink); }
+.dbtn.danger:hover { background: var(--red-bg); border-color: var(--red); }
+.dbtn[hidden] { display: none; }
+.rchip { display: inline-flex; align-items: center; height: 22px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line-hi);
+  font: 700 10px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+.rchip.running { color: var(--brass); border-color: var(--brass-2); background: rgba(217, 178, 95, .1); }
+.rchip.ok { color: var(--green-ink); border-color: rgba(93, 155, 90, .6); background: var(--green-bg); }
+.rchip.failed { color: var(--red-ink); border-color: rgba(184, 65, 47, .65); background: var(--red-bg); }
+.rchip.cancelled { color: #b9bec8; border-style: dashed; }
+.dr-log { flex: 1; margin: 0; overflow: auto; padding: 12px 30px 16px; font: 12.5px/1.5 var(--mono); color: #d8d0bb;
+  white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; }
+.dr-log::-webkit-scrollbar { width: 12px; }
+.dr-log::-webkit-scrollbar-thumb { background: #243049; border-radius: 6px; border: 3px solid var(--bg-deep); }
+.dr-log .cmdl { color: var(--brass); }
+.dr-log .endl { color: var(--ink-3); }
+.dr-foot { display: flex; align-items: center; gap: 12px; padding: 7px 16px 7px 30px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--ink-3); }
+.dr-foot code { font: 11.5px var(--mono); color: var(--ink-2); }
+.dr-foot select { width: auto; font: 12px var(--sans); padding: 4px 26px 4px 8px; border-radius: 6px; background: var(--panel); }
+.dr-foot .select-wrap::after { right: 10px; width: 5px; height: 5px; margin-top: -4px; }
+
+/* ---------- video */
+.vwrap { margin-top: 10px; }
+.stage {
+  position: relative; display: grid; place-items: center; height: 150px; aspect-ratio: var(--ar, 16 / 9); max-width: 100%;
+  border: 1px solid var(--line-hi); border-radius: 8px; overflow: hidden; background: #05080e; cursor: pointer; transition: height .15s ease;
+}
+.row.cur .stage { height: min(330px, 40vh); }
+.stage:hover { border-color: var(--brass-2); }
+.stage .vposter, .stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+.stage.live .vposter { display: none; }
+.stage .vbig {
+  position: relative; z-index: 2; width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; pointer-events: none;
+  background: rgba(10, 15, 25, .62); border: 1.5px solid var(--brass); color: var(--brass); transition: opacity .15s;
+}
+.stage .vbig svg { width: 22px; height: 22px; }
+.stage .vbig .i-pause { display: none; }
+.row.playing .stage .vbig { opacity: 0; }
+.stage.bad { cursor: default; height: auto; aspect-ratio: auto; width: 100%; padding: 14px 16px; place-items: start; border-style: dashed; }
+.row.cur .stage.bad { height: auto; }
+.vmsg { color: var(--amber); font-size: 13px; line-height: 1.45; }
+.vmsg code { font: 12px var(--mono); color: var(--ink-2); }
+.vctl { display: flex; align-items: center; gap: 10px; margin-top: 7px; min-height: 22px; flex-wrap: wrap; }
+.vctl .bar { flex: 0 1 260px; }
+.mini { padding: 3px 9px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
+.mini:hover { border-color: var(--line-hi); color: var(--ink-2); }
+.mini.on { border-color: var(--brass-2); color: var(--brass); background: rgba(217, 178, 95, .1); }
+.mini kbd { margin-left: 5px; font-size: 9px; padding: 2px 4px 1px; min-width: 0; }
+.vtog { padding: 3px 9px; border-radius: 6px; border: 1px solid var(--brass-2); background: rgba(217, 178, 95, .08); color: var(--brass); font-size: 11.5px; white-space: nowrap; }
+.vtog:hover { background: rgba(217, 178, 95, .16); }
+.vtog kbd { margin-left: 5px; font-size: 9px; padding: 2px 4px 1px; min-width: 0; }
+.seam { font: 12px/1 var(--mono); white-space: nowrap; }
+.seam.good { color: var(--green-ink); }
+.seam.meh { color: var(--amber); }
+.seam.bad { color: var(--red-ink); }
+.vvidwrap { border: 1px solid var(--line-hi); border-radius: 10px; overflow: hidden; background: #000; box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
+.vvidwrap[hidden], .vimgwrap[hidden] { display: none; }
+.vvidwrap video { display: block; max-width: min(90vw, 1400px); max-height: 74vh; min-width: 320px; }
+
+/* ---------- 3D models (the vendored <model-viewer>) */
+.cube svg { width: 28px; height: 28px; }
+.mwrap { margin-top: 10px; }
+.mstage {
+  position: relative; width: min(100%, 460px); height: 220px; border: 1px solid var(--line-hi); border-radius: 8px; overflow: hidden;
+  background: radial-gradient(120% 100% at 50% 0%, #26324d, #0a0f19 75%); transition: height .15s ease;
+}
+.row.cur .mstage { height: min(360px, 44vh); }
+.mstage:hover { border-color: var(--brass-2); }
+.mstage model-viewer { position: absolute; inset: 0; width: 100%; height: 100%; background: transparent; --poster-color: transparent; outline: none; }
+.mstage model-viewer:focus-visible { box-shadow: inset 0 0 0 2px var(--brass-2); }
+.mstage .mmsg { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--amber); font-size: 13px; line-height: 1.45; }
+.mstage .mmsg code { font: 12px var(--mono); color: var(--ink-2); }
+.mbadge { position: absolute; left: 8px; top: 8px; z-index: 2; pointer-events: none; padding: 3px 9px 2px; border-radius: 999px; background: rgba(10, 15, 25, .78);
+  border: 1px solid var(--brass-2); color: var(--brass); font: 700 10px/1.4 var(--sans); letter-spacing: .14em; text-transform: uppercase; }
+.mhint { position: absolute; right: 8px; bottom: 6px; z-index: 2; pointer-events: none; font-size: 11px; color: var(--ink-3); opacity: .85; }
+.mctl { display: flex; align-items: center; gap: 10px; margin-top: 7px; min-height: 22px; flex-wrap: wrap; }
+.vmodelwrap { border: 1px solid var(--line-hi); border-radius: 10px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
+  background: radial-gradient(120% 100% at 50% 0%, #26324d, #0a0f19 75%); }
+.vmodelwrap[hidden] { display: none; }
+.vmodelwrap model-viewer { display: block; width: min(88vw, 1100px); height: 68vh; min-width: 320px; background: transparent; --poster-color: transparent; outline: none; }
+
+/* ---------- finish / confirm panels */
+.panel { background: var(--panel); border: 1px solid var(--line-hi); border-radius: 12px; box-shadow: 0 30px 80px rgba(0, 0, 0, .55); }
+.finish-panel { width: min(780px, 94vw); max-height: 92vh; overflow-y: auto; padding: 24px 26px 18px; }
+.finish-panel h2, .confirm-panel h2 { margin: 0; font: 400 26px/1.15 var(--serif); }
+.fin-sub { margin-top: 5px; color: var(--ink-3); font-size: 13px; }
+.fin-sub code { font: 12px var(--mono); color: var(--ink-2); }
+.fin-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin: 18px 0 12px; }
+.fc { --c: var(--pending); background: var(--bg-deep); border: 1px solid var(--line); border-top: 3px solid var(--c); border-radius: 9px; padding: 12px 14px 11px; }
+.fc b { display: block; font: 400 30px/1 var(--serif); color: var(--ink); font-variant-numeric: tabular-nums; }
+.fc span { display: block; margin-top: 8px; font: 700 10px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); }
+.fc.acc { --c: var(--green); } .fc.rev { --c: var(--amber); } .fc.rej { --c: var(--red); } .fc.lis { --c: var(--brass); } .fc.mis { --c: #4b4f58; }
+.fc.zero b { color: var(--ink-3); }
+.fin-warn { display: flex; align-items: center; gap: 12px; margin: 8px 0 0; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid rgba(230, 164, 69, .5); background: rgba(230, 164, 69, .08); color: #f1cf98; font-size: 13.5px; }
+.fin-warn::before { content: "\26A0"; color: var(--amber); }
+.fin-warn .sp { flex: 1; }
+.fin-warn button { padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(230, 164, 69, .55); background: transparent; color: #f1cf98; font-size: 12px; white-space: nowrap; }
+.fin-warn button:hover { background: rgba(230, 164, 69, .12); }
+.fin-ok { margin: 8px 0 0; color: var(--green-ink); font: italic 14px/1.4 var(--serif); }
+.act-card { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; align-items: start; margin-top: 12px; padding: 14px;
+  border: 1px solid var(--line-hi); border-radius: 10px; background: rgba(255, 255, 255, .015); transition: border-color .15s, box-shadow .15s; }
+.act-card.focus { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass-2), 0 0 26px var(--brass-glow); }
+.act-card.off { opacity: .55; }
+.act-run { width: 100%; min-height: 52px; padding: 8px 12px; border-radius: 9px; display: flex; align-items: center; justify-content: center; gap: 9px;
+  font: 600 15px/1.2 var(--sans); border: 1.5px solid var(--brass-2); background: rgba(217, 178, 95, .08); color: var(--brass);
+  transition: background .12s, color .12s, border-color .12s; }
+.act-run:hover:not(:disabled) { background: var(--brass); border-color: var(--brass); color: #1a1405; }
+.act-run kbd { margin: 0; opacity: .6; }
+.act-card.k-install .act-run { border-color: rgba(93, 155, 90, .65); background: var(--green-bg); color: var(--green-ink); }
+.act-card.k-install .act-run:hover:not(:disabled) { background: var(--green); border-color: var(--green); color: #0d140c; }
+.act-card.spends .act-run { border-color: rgba(184, 65, 47, .7); background: var(--red-bg); color: var(--red-ink); }
+.act-card.spends .act-run:hover:not(:disabled) { background: var(--red); border-color: var(--red); color: #fff4ef; }
+.act-run:disabled { opacity: .4; cursor: not-allowed; }
+.act-help { color: var(--ink-2); font-size: 14px; line-height: 1.45; }
+.act-tag { display: inline-block; margin-left: 8px; font: 700 9.5px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--red-ink);
+  border: 1px solid rgba(240, 167, 151, .45); border-radius: 4px; padding: 3px 5px 2px; vertical-align: 2px; }
+.act-tag.b { color: var(--ink-3); border-color: var(--line-hi); }
+.act-err { margin-top: 6px; color: var(--red-ink); font-size: 13px; }
+.act-why { margin-top: 6px; color: var(--ink-3); font: italic 13px/1.45 var(--serif); }
+.act-opts { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; }
+.opt { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.opt input[type=checkbox] { width: 16px; height: 16px; margin: 0; accent-color: var(--brass); cursor: pointer; }
+.opt input[type=number], .opt input[type=text], .opt select {
+  width: 84px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line-hi); background: var(--bg-deep); color: var(--ink); font: 13px var(--sans);
+}
+.opt input[type=text] { width: 180px; }
+.opt select { width: auto; padding-right: 10px; appearance: auto; -webkit-appearance: menulist; }
+.opt input:focus-visible, .opt select:focus-visible { outline: 2px solid var(--brass-2); outline-offset: 1px; }
+.act-cmd { display: block; margin-top: 10px; padding: 6px 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-deep);
+  font: 12px/1.4 var(--mono); color: var(--ink-3); overflow-wrap: anywhere; }
+.act-cmd::before { content: "$ "; color: var(--brass-2); }
+.fin-foot { margin-top: 16px; display: flex; gap: 14px; justify-content: space-between; font-size: 12px; color: var(--ink-3); }
+.fin-foot kbd { margin: 0 3px 0 0; }
+.confirm-panel { width: min(540px, 92vw); padding: 24px 26px 20px; border-top: 3px solid var(--red); }
+.confirm-panel p { margin: 10px 0 0; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
+.confirm-panel p b { color: var(--ink); }
+.confirm-panel .act-cmd { margin-top: 14px; }
+.cf-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.cf-btns button { padding: 10px 16px; border-radius: 8px; border: 1px solid var(--line-hi); background: var(--panel-hi); color: var(--ink-2); font-size: 14px; }
+.cf-btns button:hover { border-color: var(--brass-2); color: var(--ink); }
+.cf-btns .danger { background: var(--red); border-color: var(--red); color: #fff4ef; font-weight: 600; }
+.cf-btns .danger:hover { filter: brightness(1.1); color: #fff; border-color: var(--red); }
+#finish { z-index: 22; }
+#confirm { z-index: 24; }
+
+/* ---------- overlays */
+.overlay {
+  position: fixed; inset: 0; background: rgba(5, 8, 14, .84); backdrop-filter: blur(3px);
+  display: grid; place-items: center; z-index: 20; padding: 24px;
+}
+.overlay[hidden] { display: none; }
+.vbox { display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 94vw; }
+.vimgwrap { border: 1px solid var(--line-hi); border-radius: 10px; overflow: hidden;
+  background: repeating-conic-gradient(#1b2335 0 25%, #121927 0 50%) 0 0 / 22px 22px; box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
+.vimgwrap img { display: block; max-width: min(88vw, 1200px); max-height: 72vh; min-width: 240px; min-height: 240px; object-fit: contain; image-rendering: auto; }
+.vcap { text-align: center; max-width: 720px; }
+.vcap .vl { display: flex; gap: 12px; align-items: center; justify-content: center; }
+.vcap .vt { margin-top: 8px; font: 16px/1.4 var(--serif); color: var(--ink-2); }
+.vcap .vh { margin-top: 10px; font-size: 12px; color: var(--ink-3); }
+.vcap .vh kbd { margin: 0 4px 0 0; }
+.vpill { display: inline-flex; align-items: center; height: 22px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line-hi);
+  font: 700 10px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); }
+.vpill.s-accept { color: var(--green-ink); background: var(--green-bg); border-color: var(--green); }
+.vpill.s-reject { color: var(--red-ink); background: var(--red-bg); border-color: var(--red); }
+.vpill.s-revise { color: #f3d49b; background: rgba(230, 164, 69, .14); border-color: var(--amber); }
+
+.help {
+  width: min(560px, 92vw); background: var(--panel); border: 1px solid var(--line-hi); border-radius: 12px;
+  padding: 24px 26px 20px; box-shadow: 0 30px 80px rgba(0, 0, 0, .55);
+}
+.help h2 { margin: 0 0 4px; font: 400 24px var(--serif); }
+.help p { margin: 0 0 16px; color: var(--ink-3); font-size: 13px; }
+.help dl { display: grid; grid-template-columns: 110px 1fr; gap: 9px 14px; margin: 0; }
+.help dt { text-align: right; }
+.help dt kbd { margin: 0 0 0 4px; opacity: .9; color: var(--brass); font-size: 11.5px; padding: 4px 6px 3px; }
+.help dd { margin: 0; color: var(--ink-2); font-size: 14px; }
+.help .close { margin-top: 18px; text-align: right; font-size: 12px; color: var(--ink-3); }
+
+#toasts { position: fixed; left: 50%; bottom: 58px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; align-items: center; z-index: 30; pointer-events: none; }
+.toast {
+  background: #1d273b; border: 1px solid var(--line-hi); color: var(--ink); padding: 10px 16px; border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45); font-size: 13.5px; max-width: 70vw;
+  animation: tin .18s ease-out;
+}
+.toast.err { border-left: 3px solid var(--red); }
+.toast.ok { border-left: 3px solid var(--brass); }
+@keyframes tin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 980px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; }
+  body { overflow: auto; }
+  aside { border-right: 0; border-bottom: 1px solid var(--line); }
+  .grow { display: none; }
+  main { height: auto; }
+  .list { overflow: visible; padding: 12px 16px 30px; }
+  .top, .keys, .actbar, .dr-head, .dr-log, .dr-foot { padding-left: 16px; padding-right: 16px; }
+  .act-card { grid-template-columns: 1fr; }
+  .drawer { position: sticky; bottom: 0; }
+  .row { grid-template-columns: 64px minmax(0, 1fr); }
+  .row.concept { grid-template-columns: 96px minmax(0, 1fr); }
+  .row.concept .thumb { width: 96px; height: 96px; }
+  .ctrl { grid-column: 1 / -1; }
+  .bar { width: 140px; }
+  .play { width: 52px; height: 52px; }
+  .thumb { width: 64px; height: 64px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand">
+      <div class="kicker">ASCENDANT</div>
+      <div class="name">The Review Table</div>
+      <div class="rule"><span></span></div>
+    </div>
+
+    <section>
+      <label class="sec" for="batchSel">Batch</label>
+      <div class="select-wrap"><select id="batchSel"></select></div>
+      <div class="pbar" title="accepted · good with changes · rejected"><div class="pa" id="pa"></div><div class="pv" id="pv"></div><div class="pr" id="pr"></div></div>
+      <div class="plabel"><span id="plabel">—</span><span id="ppct"></span></div>
+    </section>
+
+    <section>
+      <span class="sec">Status</span>
+      <nav class="tabs" id="tabs"></nav>
+      <div class="probe-note" id="probeNote"></div>
+    </section>
+
+    <section>
+      <span class="sec">Group</span>
+      <div class="groups" id="groups"></div>
+    </section>
+
+    <div class="grow"></div>
+
+    <section class="sidefoot">
+      <button class="toggle" id="autoBtn" title="After Accept / Reject, the next line starts playing (P)">
+        <span class="switch"></span><span class="lbl">Autoplay next</span><span class="st" id="autoSt">ON</span><kbd>P</kbd>
+      </button>
+      <button class="toggle" id="blindBtn" hidden title="Blind: hide which seat (claude, codex, grok) made each take until the item has a verdict (B)">
+        <span class="switch"></span><span class="lbl">Blind seats</span><span class="st" id="blindSt">ON</span><kbd>B</kbd>
+      </button>
+      <button class="ghost" id="helpBtn"><span class="lbl">Keyboard</span><kbd>?</kbd></button>
+    </section>
+  </aside>
+
+  <main>
+    <header class="top">
+      <div>
+        <h1 id="title">Review</h1>
+        <div class="sub" id="sub">Loading…</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="auto-chip" id="autoChip" title="Autoplay next (P)"><span>Autoplay</span><b id="autoChipSt">ON</b></button>
+      <button class="auto-chip" id="loopChip" title="Loop videos (L)"><span>Loop video</span><b id="loopChipSt">OFF</b></button>
+      <button class="btn" id="lessonsBtn" title="What every review so far says about the prompts (W)">&#x270E; Lessons</button>
+      <button class="btn" id="rescan" title="Re-read batch.json and pick up regenerated files">&#x21bb; Rescan</button>
+    </header>
+    <div class="actbar" id="actbar">
+      <button class="abtn finish" id="finishBtn" title="Counts, then install the keepers and redo the rejects (F)">&#x2691; Finish review<kbd>F</kbd></button>
+      <span class="abar-sep"></span>
+      <span id="actBtns" style="display:contents"></span>
+      <span class="sp"></span>
+      <button class="abtn logbtn" id="logBtn" title="The last run’s output (O)"><span class="ldot"></span><span id="logLbl">Log</span><span class="lt" id="logTime"></span><kbd>O</kbd></button>
+    </div>
+    <div class="list" id="list"></div>
+    <section class="drawer" id="drawer" hidden aria-label="Run output">
+      <div class="dr-head">
+        <span class="rchip" id="drStatus">idle</span>
+        <span class="dr-label" id="drLabel">No runs yet</span>
+        <code class="dr-cmd" id="drCmd"></code>
+        <span class="dr-time" id="drTime"></span>
+        <button class="dbtn danger" id="drCancel" hidden title="Stop the run (its whole process group)">&#x25A0; Cancel run</button>
+        <button class="dbtn" id="drClose" title="Close (O or Esc)">&#x2715;</button>
+      </div>
+      <pre class="dr-log" id="drLog"></pre>
+      <div class="dr-foot">
+        <span id="drRuns"></span>
+        <span class="sp" style="flex:1"></span>
+        <span>Full output is appended to <code id="drPath">review/…/runs.log</code></span>
+      </div>
+    </section>
+    <footer class="keys">
+      <span><kbd>Space</kbd>play / pause</span>
+      <span><kbd>A</kbd><span id="kAcc">accept</span></span>
+      <span id="kChgWrap" hidden><kbd>C</kbd>good with changes</span>
+      <span><kbd>R</kbd><span id="kRej">reject</span></span>
+      <span><kbd>E</kbd><span id="kEdit">edit line</span></span>
+      <span><kbd>N</kbd>note</span>
+      <span><kbd>U</kbd>back to pending</span>
+      <span id="kBlindWrap" hidden><kbd>B</kbd>blind seats</span>
+      <span><kbd>J</kbd><kbd>K</kbd>next / prev</span>
+      <span><kbd>P</kbd>autoplay</span>
+      <span><kbd>&larr;</kbd><kbd>&rarr;</kbd>takes <kbd>0</kbd>in game</span>
+      <span><kbd>V</kbd>video <kbd>L</kbd>loop <kbd>Z</kbd>large <kbd>T</kbd>turntable</span>
+      <span><kbd>F</kbd>finish</span>
+      <span><kbd>O</kbd>log</span>
+      <span><kbd>?</kbd>help</span>
+    </footer>
+  </main>
+</div>
+
+<div class="overlay" id="viewer" hidden>
+  <div class="vbox">
+    <div class="vimgwrap" id="vimgwrap"><img id="vimg" alt=""></div>
+    <div class="vvidwrap" id="vvidwrap" hidden></div>
+    <div class="vmodelwrap" id="vmodelwrap" hidden></div>
+    <div class="vcap">
+      <div class="vl"><span class="label" id="vlabel"></span><span class="vpill" id="vpill"></span></div>
+      <div class="vt" id="vtext"></div>
+      <div class="vh"><kbd>A</kbd><span id="vhAcc">accept</span> &nbsp; <span id="vhChg" hidden><kbd>C</kbd>good with changes &nbsp; </span><kbd>R</kbd><span id="vhRej">reject</span> &nbsp; <kbd>J</kbd><kbd>K</kbd>next / prev &nbsp; <span id="vhVideo" hidden><kbd>Space</kbd>play &nbsp; <kbd>L</kbd>loop &nbsp;</span><span id="vhModel" hidden>drag turns it, scroll zooms &nbsp; <kbd>T</kbd>turntable &nbsp; <kbd>0</kbd>in game now &nbsp;</span> <kbd>Esc</kbd>close</div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="finish" hidden>
+  <div class="panel finish-panel" role="dialog" aria-modal="true" aria-labelledby="finTitle">
+    <h2 id="finTitle">Finish review</h2>
+    <div class="fin-sub" id="finSub"></div>
+    <div class="fin-counts" id="finCounts"></div>
+    <div id="finWarn"></div>
+    <div id="finActions"></div>
+    <div class="fin-foot"><span><kbd>1</kbd>…<kbd>9</kbd>run that action</span><span><kbd>Esc</kbd>close</span></div>
+  </div>
+</div>
+
+<div class="overlay" id="confirm" hidden>
+  <div class="panel confirm-panel" role="alertdialog" aria-modal="true" aria-labelledby="cfTitle">
+    <h2 id="cfTitle">Spend Ludo credits?</h2>
+    <div id="cfBody"></div>
+    <div class="cf-btns"><button id="cfNo">Cancel</button><button class="danger" id="cfYes">Spend credits and run</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="lessons" hidden>
+  <div class="panel lessons-panel" role="dialog" aria-modal="true" aria-labelledby="lsTitle">
+    <h2 id="lsTitle">What the reviews have taught us</h2>
+    <div class="fin-sub">Every verdict and note across all batches. A generator's redo can read the same themes to steer the next take.</div>
+    <div id="lsBody">Loading…</div>
+    <div class="fin-foot"><span><kbd>W</kbd>or <kbd>Esc</kbd>close</span></div>
+  </div>
+</div>
+
+<div class="overlay" id="help" hidden>
+  <div class="help">
+    <h2>Keys</h2>
+    <p>The fast loop: listen, then <b>A</b> or <b>R</b>. With autoplay on, the next line starts by itself.</p>
+    <dl>
+      <dt><kbd>Space</kbd></dt><dd>Play / pause the current line (images: open large)</dd>
+      <dt><kbd>&darr;</kbd><kbd>J</kbd></dt><dd>Next item</dd>
+      <dt><kbd>&uarr;</kbd><kbd>K</kbd></dt><dd>Previous item</dd>
+      <dt><kbd>A</kbd></dt><dd>Accept, then advance (concept batch: <b>Good</b>)</dd>
+      <dt><kbd>C</kbd></dt><dd>Concept batches: <b>Good with changes</b>. Opens the note; a note is required, and it travels with the take</dd>
+      <dt><kbd>R</kbd></dt><dd>Reject, then advance (concept batch: <b>Bad</b>, a note is optional)</dd>
+      <dt><kbd>U</kbd></dt><dd>Back to pending</dd>
+      <dt><kbd>&larr;</kbd><kbd>&rarr;</kbd></dt><dd>Previous / next take, when a line was rolled more than once (Accept keeps the one you are on)</dd>
+      <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>Go to take N and play it</dd>
+      <dt><kbd>0</kbd></dt><dd>Play, or show, what the game has now (the file this one would replace). In a concept batch: what canon has</dd>
+      <dt><kbd>B</kbd></dt><dd>Blind: hide which seat (claude, codex, grok) made each take until the item has a verdict. On by default in concept batches</dd>
+      <dt><kbd>W</kbd></dt><dd>Lessons: what every review so far says about the prompts</dd>
+      <dt><kbd>E</kbd></dt><dd>Edit the line text for the re-roll (Enter saves and marks rejected, Esc cancels)</dd>
+      <dt><kbd>N</kbd></dt><dd>Add or edit a note (Enter saves, Esc cancels)</dd>
+      <dt><kbd>P</kbd></dt><dd>Toggle autoplay next (audio and video)</dd>
+      <dt><kbd>V</kbd></dt><dd>Show / hide the video behind an item (a GIF or poster frame with an mp4); on a video item, view it large</dd>
+      <dt><kbd>L</kbd></dt><dd>Loop videos on / off (check that a loop has no visible jump)</dd>
+      <dt><kbd>Z</kbd></dt><dd>View large: the image, the video, or the 3D model (Esc closes)</dd>
+      <dt><kbd>T</kbd></dt><dd>3D models: turntable on / off. Drag a model to turn it, scroll to zoom</dd>
+      <dt><kbd>F</kbd></dt><dd>Finish review: counts, then Install accepted / Redo rejected, or Add to canon in a concept batch (<b>1</b>–<b>9</b> runs one)</dd>
+      <dt><kbd>O</kbd></dt><dd>Open / close the run log</dd>
+      <dt><kbd>Home</kbd><kbd>End</kbd></dt><dd>First / last item</dd>
+      <dt><kbd>?</kbd></dt><dd>This help</dd>
+    </dl>
+    <div class="close"><kbd>Esc</kbd> to close</div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+'use strict';
+
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// `concept` is the tab's name in a concept batch, `only` hides it from the other kind of batch
+const TABS = [
+  { id: 'all', name: 'All' },
+  { id: 'pending', name: 'Pending' },
+  { id: 'accept', name: 'Accepted', concept: 'Good' },
+  { id: 'revise', name: 'Good with changes', only: 'concept' },
+  { id: 'installed', name: 'In game', concept: 'In canon' },
+  { id: 'reject', name: 'Rejected', concept: 'Bad' },
+  { id: 'flagged', name: 'Flagged' },
+];
+// concept mode (batch.json "mode": "concept"): Good / Good with changes / Bad, stored as accept / revise / reject
+const isConcept = () => S.mode === 'concept';
+const tabsHere = () => TABS.filter(t => !t.only || t.only === S.mode);
+const tabName = id => { const t = TABS.find(x => x.id === id); return t ? (isConcept() && t.concept) || t.name : ''; };
+const kept = it => it.status === 'accept' || it.status === 'revise';  // Good with changes counts as kept
+const gameWord = () => isConcept() ? 'canon' : 'the game';  // "in game now" (0) shows what the game, or canon, has
+const modeWords = () => isConcept()
+  ? { acc: 'good', rev: 'good with changes', rej: 'bad', inst: 'in canon', Acc: 'Good', Rej: 'Bad' }
+  : { acc: 'accepted', rev: 'good with changes', rej: 'rejected', inst: 'in game', Acc: 'Accepted', Rej: 'Rejected' };
+const ICON = {
+  play: '<svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>',
+  cube: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg>',
+  pause: '<svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z" fill="currentColor"/></svg>',
+};
+const LS_KEY = 'ascendant.review.v1';
+// the server swaps its per-start token in; every POST echoes it (a page on another site can't read it)
+const TOKEN = ($('meta[name="review-token"]') || {}).content || '';
+
+const S = {
+  batches: [], batch: null, title: '', mode: 'standard',
+  items: [], byId: new Map(), rows: new Map(),
+  group: 'all', tab: 'all', view: [], curId: null,
+  autoplay: true, probes: new Map(), playingId: null,
+  edit: null, seq: new Map(), seqN: 0, inflight: new Map(), saving: new Set(),
+  mem: {}, viewerOpen: false, viewerMode: 'image',
+  // video: one shared <video> that moves between a row's stage and the large viewer
+  loop: false, vidId: null, vidShow: new Map(), vprobes: new Map(),
+  // actions + runs (null actions = this server predates them)
+  actions: [], optVals: new Map(), finishFocus: null, confirmFor: null,
+  run: null, runs: [], drawerOpen: false,
+  // v1.11: the take you're on per item (index into it.takes), and the item whose game copy is playing
+  take: new Map(), gameId: null,
+  // 3D models: one <model-viewer> kept per item (so a turned model stays turned), the items showing what the
+  // game has now instead of the candidate, the turntable, and the one in the large view
+  mviews: new Map(), gameModel: new Set(), turntable: true, vmodel: null,
+};
+
+/* ---------------------------------------------------------------- memory */
+function loadMem() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; }
+}
+function saveMem() {
+  try {
+    S.mem.batch = S.batch;
+    S.mem.autoplay = S.autoplay;
+    S.mem.loop = S.loop;
+    S.mem.pos = S.mem.pos || {};
+    S.mem.filt = S.mem.filt || {};
+    if (S.batch) {
+      S.mem.pos[S.batch] = S.curId;
+      S.mem.filt[S.batch] = { group: S.group, tab: S.tab };
+    }
+    localStorage.setItem(LS_KEY, JSON.stringify(S.mem));
+  } catch { /* private window etc: fine */ }
+}
+
+/* ---------------------------------------------------------------- api */
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  let body = null;
+  try { body = await r.json(); } catch { }
+  if (!r.ok) {
+    const e = new Error((body && body.error) || `${r.status} ${r.statusText}`);
+    e.status = r.status;
+    throw e;
+  }
+  return body;
+}
+function post(path, body) {
+  return api(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Review-Token': TOKEN },
+    body: JSON.stringify(body || {}),
+  });
+}
+
+/* ---------------------------------------------------------------- takes (v1.11) */
+// it.takes (from the server) lists every candidate, the item's own file first. The take you're on
+// stands in for the item (url, mtime, size, exists), so play, the length flag and the thumbnail follow
+// it, and Accept sends it as the pick.
+function takeIdx(it) {
+  if (!it.takes || !it.takes.length) return 0;
+  let i = S.take.get(it.id);
+  if (i == null || i >= it.takes.length) {
+    const pk = Math.max(0, it.takes.findIndex(t => t.picked));  // the take that was kept, else the item's own file
+    i = kept(it) ? pk : takeOrder(it)[0];
+  }
+  return i;
+}
+// Seats (claude, codex, grok): who made a take. With Blind on, their names stay hidden until the item has a
+// verdict, and the takes of an item that has seats are shown in a fixed shuffled order (the same every visit,
+// different per item), so "the first one" is not always the same seat.
+const blind = () => S.mem.blind ?? isConcept();
+const hasSeats = it => !!(it.seat || (it.takes || []).some(t => t.seat));
+const seatHidden = it => blind() && (it.status === 'pending' || it.status === 'missing');
+function takeOrder(it) {
+  const n = it.takes ? it.takes.length : 0;
+  const order = Array.from({ length: n }, (_, i) => i);
+  if (n < 2 || !it.takes.some(t => t.seat)) return order;
+  let h = 2166136261;
+  for (const ch of it.id + '|' + it.takes.map(t => t.file).join('|')) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  for (let i = n - 1; i > 0; i--) {
+    h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
+    const j = (h >>> 8) % (i + 1);
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return order;
+}
+// the chip text for a take: with seats, "take A", "take B"... while hidden, the seat's name once revealed
+function takeLabel(it, t, pos) {
+  if (!it.takes.some(x => x.seat)) return t.label;
+  if (seatHidden(it)) return `take ${String.fromCharCode(65 + pos)}`;
+  return t.seat ? (/^take \d+$/i.test(t.label) ? t.seat : `${t.seat} · ${t.label}`) : t.label;
+}
+function seatClass(name) { return ['claude', 'codex', 'grok'].includes(name) ? name : 'other'; }
+// the toast that names the seat behind a verdict that was given blind
+function revealText(it, patch) {
+  const list = it.takes && it.takes.length ? it.takes : [it];
+  if (patch.verdict === 'reject') {
+    const seats = [...new Set(list.map(x => x.seat).filter(Boolean))];
+    return seats.length ? `That was ${seats.join(' and ')}` : '';
+  }
+  const t = it.takes && it.takes.length ? it.takes[takeIdx(it)] : it;
+  return t && t.seat ? `That was ${t.seat}` : '';
+}
+function standIn(it) {
+  if (!it || !it.takes || !it.takes.length) return it;
+  const t = it.takes[takeIdx(it)];
+  if (t) { it.url = t.url; it.mtime = t.mtime; it.size = t.size; it.exists = !!t.exists; }
+  return it;
+}
+const NOTE_CHIPS = {
+  audio: ['More pause between sentences', 'Falling inflection at the end', 'Too high-pitched', 'More menace', 'Smug',
+    'More anger', 'More conviction', 'Stress *word*', 'Faster', 'Slower', 'Cut off at the end', 'Not their voice', 'Redo'],
+  image: ['Keep it all in frame', 'Clean up the noise', 'Invented objects', 'Motion snaps in one frame',
+    'Wrong expression', 'Hard to read the details', 'Redo'],
+  // concept art: the owner's usual notes, in the same words every time so `lessons` can sort them
+  concept: ['More like this', 'Wrong palette', 'Reads like another faction', 'Text in the image',
+    'Not a lookalike of …', 'Keep the silhouette, change the detail'],
+  video: ['Keep it all in frame', 'Show how it ends', 'Wrong expression', 'Motion snaps', 'Artifacts', 'Redo'],
+  model: ['Doesn’t match the concept art', 'Proportions are off', 'Texture is blurry or muddy', 'Holes or broken geometry', 'Wrong pose'],
+};
+
+/* ---------------------------------------------------------------- helpers */
+const groupOf = it => String(it.group || '—');
+const noteChips = it => (isConcept() && it.kind === 'image') ? NOTE_CHIPS.concept : (NOTE_CHIPS[it.kind] || NOTE_CHIPS.image);
+const pkey = it => `${it.id}@${it.mtime}`;
+const displayText = it => it.edited_text || it.text || '';
+function wordCount(t) {
+  return String(t || '').replace(/\[[^\]]*\]/g, ' ').split(/\s+/).filter(w => /[\p{L}\p{N}]/u.test(w)).length;
+}
+function fmtSec(t) {
+  if (t == null || !isFinite(t)) return '–';
+  if (t < 60) return t.toFixed(1) + 's';
+  const m = Math.floor(t / 60), s = Math.floor(t % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+function fmtBytes(n) {
+  if (n == null) return '';
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(0) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+function fmtAt(at) {
+  if (!at) return '';
+  const d = new Date(at);
+  if (isNaN(d)) return at;
+  return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+const VWORD = { accept: 'accepted', revise: 'good with changes', reject: 'rejected', pending: 'pending' };
+const extOf = f => String(f || '').split('?')[0].split('.').pop().toLowerCase();
+
+/* video: an item is a video (kind "video"), or carries one behind its image or soundtrack
+   (video_url, from `video` / meta.video_mp4 / a poster frame next to its clip) */
+const vidUrl = it => it.kind === 'video' ? (it.exists ? it.url : null) : (it.video_url || null);
+const vidFile = it => it.kind === 'video' ? it.file : it.video_file;
+const hasVideo = it => !!vidUrl(it);
+function vidPlayable(it) {
+  // Chrome and Safari no longer decode Theora (.ogv / .ogg video): say so instead of a dead player
+  const ext = extOf(vidFile(it));
+  if (ext === 'ogv' || ext === 'ogg') return !!vplayer.canPlayType('video/ogg; codecs="theora"');
+  return true;
+}
+function stageShown(it) {
+  if (!hasVideo(it)) return false;
+  if (it.kind === 'video') return true;
+  const v = S.vidShow.get(it.id);
+  return v === undefined ? it.kind === 'image' : v;  // under a GIF / poster: open; under a soundtrack: on request
+}
+// only spoken lines have a length that should match their words (music, sfx and video don't)
+const isVoice = it => it.kind === 'audio' && !!(it.meta && it.meta.voice);
+
+function flagOf(it) {
+  if (!it.exists) return it.status === 'reject' ? null : 'file missing — still generating, or it failed';
+  const p = S.probes.get(pkey(it));
+  if (!p) return null;
+  if (p.err) return ({ image: 'image failed to load', video: 'video failed to load', model: 'model failed to load (a broken file, or one that needs a decoder this page does not carry)' })[it.kind] || 'audio failed to load';
+  if (!isVoice(it) || p.dur == null) return null;
+  const w = wordCount(displayText(it));  // a re-rolled take is spoken from the edited text
+  if (!w) return null;
+  if (p.dur > w / 1.6 + 1.5) return `long for its text — may have a glitch or repeated words (${p.dur.toFixed(1)}s for ${w} word${w > 1 ? 's' : ''})`;
+  if (p.dur < w / 4.5) return `short — may be cut off (${p.dur.toFixed(1)}s for ${w} words)`;
+  return null;
+}
+function matchesGroup(it) { return S.group === 'all' || groupOf(it) === S.group; }
+function matches(it) {
+  if (!matchesGroup(it)) return false;
+  switch (S.tab) {
+    case 'pending': return it.status === 'pending';
+    case 'accept': return it.status === 'accept' && !it.installed;
+    case 'revise': return it.status === 'revise' && !it.installed;
+    case 'installed': return kept(it) && !!it.installed;
+    case 'reject': return it.status === 'reject';
+    case 'flagged': return !!flagOf(it);
+    default: return true;
+  }
+}
+
+/* ---------------------------------------------------------------- toasts */
+function toast(msg, kind = '') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + kind;
+  el.textContent = msg;
+  const box = $('#toasts');
+  box.appendChild(el);
+  while (box.children.length > 3) box.firstChild.remove();
+  setTimeout(() => el.remove(), kind === 'err' ? 5500 : 2600);
+}
+
+/* ---------------------------------------------------------------- view */
+function computeView() {
+  S.view = S.items.filter(matches).map(it => it.id);
+  if (!S.view.includes(S.curId)) {
+    const firstPending = S.view.find(id => S.byId.get(id).status === 'pending');
+    S.curId = firstPending ?? S.view[0] ?? null;
+  }
+}
+
+function rowClass(it) {
+  const c = ['row', 'k-' + it.kind, 's-' + it.status];
+  if (isConcept()) c.push('concept');
+  if (it.installed && kept(it)) c.push('inst');
+  if (it.regenerated) c.push('regen');
+  if (it.id === S.curId) c.push('cur');
+  if (!matches(it)) c.push('out');
+  if (isPlaying(it.id)) c.push('playing');
+  return c.join(' ');
+}
+const isPlaying = id => (S.playingId === id && !player.paused) || (S.vidId === id && !vplayer.paused);
+
+function pillText(it) {
+  if (it.status === 'missing') return 'Missing';
+  if (it.regenerated) return it.kind === 'audio' ? 'Needs a listen' : 'Needs a look';
+  if (it.installed && kept(it)) return isConcept() ? 'In canon' : 'In game';
+  const names = isConcept() ? { accept: 'Good', revise: 'Good with changes', reject: 'Bad', pending: 'Pending' }
+    : { accept: 'Accepted', revise: 'Good with changes', reject: 'Rejected', pending: 'Pending' };
+  return names[it.status] || it.status;
+}
+
+function seamHTML(vp) {
+  if (!vp || vp.seam == null) return '';
+  const pct = vp.seam * 100;
+  const [cls, word] = pct < 3 ? ['good', 'loops cleanly'] : pct < 8 ? ['meh', 'slight jump'] : ['bad', 'visible jump'];
+  return `<span class="seam ${cls}" title="How different the last frame is from the first. Low: it can loop without a visible jump.">loop seam ${pct < 10 ? pct.toFixed(1) : Math.round(pct)}% · ${word}</span>`;
+}
+function videoDims(it) {
+  const vp = S.vprobes.get(vidUrl(it)) || {};
+  const size = it.kind === 'video' ? it.size : it.video_size;
+  return [vp.w ? `${vp.w}×${vp.h}` : '', vp.dur != null ? fmtSec(vp.dur) : (vp.err || !vidPlayable(it) ? '' : '…'),
+    extOf(vidFile(it)).toUpperCase(), fmtBytes(size)].filter(Boolean).join(' · ');
+}
+// the "▶ video" toggle on an item that carries a clip behind its image or soundtrack
+function vtogHTML(it) {
+  if (it.kind === 'video' || !hasVideo(it)) return '';
+  const open = stageShown(it);
+  return `<button class="vtog" data-act="vtoggle" title="${open ? 'Hide' : 'Show'} its video: ${esc(vidFile(it))} (V)">${open ? '&#x25BE; hide video' : '&#x25B6; video'}<kbd>V</kbd></button>`;
+}
+
+function trackHTML(it) {
+  const flag = flagOf(it);
+  const flagEl = flag ? `<div class="flag${it.exists ? '' : ' miss'}">${esc(flag)}</div>` : '';
+  if (it.kind === 'image') {
+    const p = S.probes.get(pkey(it));
+    const ext = (it.file || '').split('.').pop().toUpperCase();
+    const dims = it.exists ? [p && p.w ? `${p.w}×${p.h}` : '', ext, fmtBytes(it.size)].filter(Boolean).join(' · ') : '';
+    return `<div class="track"><span class="dims">${esc(dims)}</span>${vtogHTML(it)}</div>${flagEl}`;
+  }
+  if (it.kind === 'video') {
+    const vp = S.vprobes.get(vidUrl(it));
+    const dims = it.exists ? videoDims(it) : '';
+    return `<div class="track"><span class="dims">${esc(dims)}</span>${seamHTML(vp)}</div>${flagEl}`;
+  }
+  if (it.kind === 'model') {
+    const p = S.probes.get(pkey(it));
+    const ext = (it.file || '').split('.').pop().toUpperCase();
+    const dims = it.exists ? [p && p.dims ? `${p.dims.map(n => +n.toFixed(2)).join(' × ')} units` : '', ext, fmtBytes(it.size)].filter(Boolean).join(' · ') : '';
+    return `<div class="track"><span class="dims" title="The model's bounding box, as the file says it (Godot reads a GLB's units as metres)">${esc(dims)}</span></div>${flagEl}`;
+  }
+  const p = S.probes.get(pkey(it));
+  const dur = p && p.dur;
+  let time = it.exists ? (p ? fmtSec(dur) : '…') : '–';
+  let pct = 0;
+  if (S.playingId === it.id && player.src) {
+    const d = isFinite(player.duration) ? player.duration : dur;
+    if (d) { pct = Math.min(100, player.currentTime / d * 100); time = `${fmtSec(player.currentTime).replace('s', '')} / ${fmtSec(d)}`; }
+  }
+  return `<div class="track"><div class="bar${it.exists ? '' : ' off'}" data-act="seek" title="Click to seek"><div class="rail"><div class="fill" style="width:${pct}%"></div></div></div>` +
+    `<span class="time">${esc(time)}</span>${vtogHTML(it)}</div>${flagEl}`;
+}
+
+function vtimeText(it) {
+  const vp = S.vprobes.get(vidUrl(it)) || {};
+  const live = S.vidId === it.id && vplayer.getAttribute('src');
+  const d = live && isFinite(vplayer.duration) ? vplayer.duration : vp.dur;
+  if (live && d) return `${fmtSec(vplayer.currentTime).replace('s', '')} / ${fmtSec(d)}`;
+  return d != null ? fmtSec(d) : (vp.err ? '–' : '…');
+}
+// the video player area in a row: the shared <video> lives here while this row has it
+function stageHTML(it) {
+  const url = vidUrl(it), file = vidFile(it);
+  if (!vidPlayable(it)) {
+    return `<div class="vwrap"><div class="stage bad"><div class="vmsg">Can’t play .${esc(extOf(file))} in this browser: Chrome and Safari no longer decode Theora video.
+      Open <code>${esc(file)}</code> in VLC or Godot, or review an mp4 / webm of it.</div></div></div>`;
+  }
+  const vp = S.vprobes.get(url) || {};
+  const live = S.vidId === it.id;
+  const poster = it.poster_url || vp.frame || (it.kind === 'image' && it.exists ? it.url : '');
+  const ar = vp.w && vp.h ? `${vp.w} / ${vp.h}` : '16 / 9';
+  let pct = 0;
+  if (live && isFinite(vplayer.duration) && vplayer.duration) pct = Math.min(100, vplayer.currentTime / vplayer.duration * 100);
+  return `<div class="vwrap"><div class="stage${live ? ' live' : ''}" style="--ar:${ar}" data-act="vplay" title="Play / pause (Space) · double-click for large (Z)">` +
+    (poster ? `<img class="vposter" src="${esc(poster)}" alt="" loading="lazy" decoding="async">` : '') +
+    `<span class="vbig">${ICON.play}${ICON.pause}</span></div>
+    <div class="vctl"><div class="bar" data-act="vseek" title="Click to seek"><div class="rail"><div class="fill" style="width:${pct}%"></div></div></div>
+      <span class="time">${esc(vtimeText(it))}</span>
+      <button class="mini${S.loop ? ' on' : ''}" data-act="loop" title="Loop videos (L)">&#x27F2; Loop<kbd>L</kbd></button>
+      <button class="mini" data-act="zoom" title="View large (Z)">&#x2922; Large<kbd>Z</kbd></button>
+      ${it.kind === 'video' ? '' : `<span class="dims" title="${esc(file)}">${esc(videoDims(it))}</span>${seamHTML(vp)}`}
+    </div></div>`;
+}
+
+// the orbit viewer area of a model row: an empty stage, into which mountModel() puts the item's own <model-viewer>
+function mstageHTML(it) {
+  if (!it.exists) return '';
+  const p = S.probes.get(pkey(it));
+  const game = S.gameModel.has(it.id) && it.game_url;
+  const inner = !mvReady() ? `<div class="mmsg"><span>The 3D viewer script is missing: <code>tools/review/vendor/model-viewer.min.js</code>. See <code>vendor/README.md</code>.</span></div>`
+    : (p && p.err ? `<div class="mmsg"><span>This model didn’t load. It may be a broken file, or compressed in a way this page can’t read offline (Draco, KTX2 or Meshopt).</span></div>` : '');
+  return `<div class="mwrap"><div class="mstage${game ? ' game' : ''}" data-mid="${esc(it.id)}">${game ? `<span class="mbadge">in ${isConcept() ? 'canon' : 'game'} now</span>` : ''}${inner}</div>
+    <div class="mctl"><button class="mini${S.turntable ? ' on' : ''}" data-act="turn" title="Turntable: the model turns by itself (T)">&#x27F2; Turntable<kbd>T</kbd></button>
+      <button class="mini" data-act="mreset" title="Back to the front view">Reset view</button>
+      <button class="mini" data-act="zoom3d" title="View large (Z)">&#x2922; Large<kbd>Z</kbd></button>
+      <span class="dims">drag to turn · scroll to zoom</span></div></div>`;
+}
+
+function rowHTML(it) {
+  const ed = S.edit && S.edit.id === it.id ? S.edit.kind : null;
+  let lead;
+  if (it.kind === 'image') {
+    lead = it.exists
+      ? `<button class="thumb" data-act="view" title="View large${stageShown(it) ? '' : ' (Space)'}"><img src="${esc(it.url)}" alt="" loading="lazy" decoding="async"></button>`
+      : `<div class="thumb none">no image yet</div>`;
+  } else if (it.kind === 'model') {
+    lead = `<button class="play cube" data-act="zoom3d" ${it.exists ? '' : 'disabled'} title="View the model large (Z)">${ICON.cube}</button>`;
+  } else {
+    const ok = it.exists && (it.kind !== 'video' || vidPlayable(it));
+    lead = `<button class="play" data-act="play" ${ok ? '' : 'disabled'} title="Play / pause (Space)">${ICON.play}${ICON.pause}</button>`;
+  }
+  const stage = it.kind === 'model' ? mstageHTML(it) : (stageShown(it) ? stageHTML(it) : '');
+
+  const txt = displayText(it);
+  let quote;
+  if (ed === 'text') {
+    quote = `<textarea class="edit-in" rows="1" spellcheck="true">${esc(txt)}</textarea>
+      <div class="edit-bar"><span>Enter saves and marks <b>rejected</b> · Esc cancels</span><span class="sp"></span>
+      <button data-act="edit-cancel">Cancel</button><button class="go" data-act="edit-save">Save &amp; reject</button></div>`;
+  } else if (txt) {
+    quote = `<div class="quote">${esc(txt)}</div>` +
+      (it.edited_text ? `<div class="was"><span class="edited-tag">edited</span>${it.text ? `<s>${esc(it.text)}</s>` : ''}</div>` : '');
+  } else {
+    quote = `<div class="quote none">(no text)</div>`;
+  }
+  const ctx = it.meta && it.meta.context ? `<div class="when"><b>when</b>${esc(it.meta.context)}</div>` : '';
+  const sp = it.meta && it.meta.speak;
+  const speak = sp && sp !== displayText(it) ? `<div class="speak" title="What the voice was asked to say: the words plus the direction a note asked for"><b>spoken as</b>${esc(sp)}</div>` : '';
+
+  let note = '';
+  if (ed === 'note') {
+    const chips = noteChips(it), rev = !!(S.edit && S.edit.revise);
+    note = (rev ? `<div class="rev-hint"><b>Good with changes</b>say what to change: the note is required, and it goes to the next round</div>` : '') +
+      `<input class="note-in" type="text" value="${esc(it.note)}" placeholder="${rev ? 'What should change, keeping what works…' : 'What’s wrong, or what to change next time…'}" spellcheck="true">
+      <div class="chips">${chips.map(c => `<button class="chip-n" data-act="chip" data-t="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+      <div class="edit-bar"><span>${rev ? 'Enter saves it as Good with changes' : 'Enter saves'} · Esc cancels</span><span class="sp"></span>
+      <button data-act="edit-cancel">Cancel</button>${rev ? '<button class="go rev-go" data-act="edit-save">Save as Good with changes</button>' : '<button class="go note-go" data-act="edit-save">Save note</button>'}</div>`;
+  } else if (it.note && !it.regenerated) {
+    note = `<div class="note"><b>note</b><span>${esc(it.note)}</span></div>`;
+  }
+
+  let hist = '';
+  if (it.regenerated) {
+    hist = `<div class="hist"><b>regenerated</b><span>previously ${VWORD[it.verdict]}${it.note ? ` — “${esc(it.note)}”` : ''}${it.decided_at ? ' · ' + esc(fmtAt(it.decided_at)) : ''}. The file changed since: give it a listen.</span></div>`;
+  } else if (it.history && it.history.length) {
+    const h = it.history[it.history.length - 1];
+    hist = `<div class="hist"><b>earlier take</b><span>${VWORD[h.verdict] || h.verdict}${h.note ? ` — “${esc(h.note)}”` : ''}${h.at ? ' · ' + esc(fmtAt(h.at)) : ''}</span></div>`;
+  }
+
+  return `<div class="lead">${lead}</div>
+  <div class="body">
+    <div class="head"><span class="label">${esc(it.label || it.id)}</span>${it.group ? `<span class="grp">${esc(it.group)}</span>` : ''}${it.seat && !it.takes && !seatHidden(it) ? `<span class="seat s-${seatClass(it.seat)}" title="Made by the ${esc(it.seat)} seat">${esc(it.seat)}</span>` : ''}<span class="iid" title="${esc(it.id)}">${esc(it.id)}</span></div>
+    ${quote}${speak}${ctx}${trackHTML(it)}${takesHTML(it)}${stage}${note}${hist}
+  </div>
+  <div class="ctrl">
+    <span class="pill">${esc(pillText(it))}</span>
+    ${isConcept() ? `<div class="big concept">
+      <button class="acc" data-act="accept" ${it.exists ? '' : 'disabled'} title="Good (A): keep this one as it is">&#x2713;&nbsp;Good<kbd>A</kbd></button>
+      <button class="rej" data-act="reject" title="Bad (R): do it again. A note is optional">&#x2717;&nbsp;Bad<kbd>R</kbd></button>
+      <button class="chg" data-act="revise" ${it.exists ? '' : 'disabled'} title="Good with changes (C): keep what works, say what to change. Opens the note, and a note is required">&#x270E;&nbsp;Good with changes<kbd>C</kbd></button>
+    </div>` : `<div class="big">
+      <button class="acc" data-act="accept" ${it.exists ? '' : 'disabled'} title="Accept (A)">&#x2713;&nbsp;Accept<kbd>A</kbd></button>
+      <button class="rej" data-act="reject" title="Reject (R)">&#x2717;&nbsp;Reject<kbd>R</kbd></button>
+    </div>`}
+    <div class="small">
+      <button data-act="edit" title="Edit the line (E)">Edit<kbd>E</kbd></button>
+      <button data-act="note" title="Note (N)">Note<kbd>N</kbd></button>
+      <button data-act="undo" title="Back to pending (U)">Undo<kbd>U</kbd></button>
+    </div>
+  </div>`;
+}
+
+function takesHTML(it) {
+  const many = it.takes && it.takes.length > 1;
+  const game = it.game_url && !it.game_same;  // the game's copy, when it differs from the take kept
+  if (!many && !game) return '';
+  const cur = takeIdx(it), hide = seatHidden(it);
+  let h = many ? '<span class="tl">takes</span>' : '';
+  if (many) h += takeOrder(it).map((ti, pos) => {
+    const t = it.takes[ti], mine = kept(it) && t.picked;
+    const cls = ['tk', ti === cur ? 'on' : '', mine ? 'pk' : '', /^rejected/.test(t.label) ? 'old' : '',
+      hide && t.seat ? 'blind' : '', !hide && t.seat ? 'seat-' + seatClass(t.seat) : ''].filter(Boolean).join(' ');
+    const lbl = takeLabel(it, t, pos);
+    return `<button class="${cls}" data-act="take" data-i="${ti}" ${t.exists ? '' : 'disabled'} title="${esc(lbl)}${mine ? ' · the one you kept' : ''}">${pos < 9 ? `<kbd>${pos + 1}</kbd>` : ''}${esc(lbl)}</button>`;
+  }).join('');
+  if (game) {
+    const playing = it.kind === 'model' ? S.gameModel.has(it.id) : (S.gameId === it.id && !gplayer.paused);
+    h += `<button class="tk game${playing ? ' playing' : ''}" data-act="game" title="What ${gameWord()} has now: the file this one would replace (0)"><kbd>0</kbd>in ${isConcept() ? 'canon' : 'game'} now</button>`;
+  }
+  return `<div class="takes">${h}</div>`;
+}
+function selectTake(id, i, play = true) {
+  const it = S.byId.get(id);
+  if (!it || !it.takes || i < 0 || i >= it.takes.length || !it.takes[i].exists) return;
+  S.take.set(id, i);
+  standIn(it);
+  renderRow(id, true);
+  if (S.viewerOpen && S.curId === id) renderViewer();
+  if (play && it.kind === 'audio') playFresh(it);
+}
+// the game's copy: played on its own player (audio), shown in the viewer (image), or opened (video)
+const gplayer = new Audio();
+gplayer.preload = 'none';
+function syncGame() {
+  for (const [id, el] of S.rows) {
+    const b = el.querySelector('.tk.game');
+    if (b) b.classList.toggle('playing', S.gameId === id && !gplayer.paused);
+  }
+}
+['play', 'pause', 'ended'].forEach(ev => gplayer.addEventListener(ev, syncGame));
+function playGame(id) {
+  const it = S.byId.get(id);
+  if (!it || !it.game_url) { toast(`Nothing in ${gameWord()} for this one yet`); return; }
+  if (it.kind === 'image') { openViewer(id, 'game'); return; }
+  if (it.kind === 'model') { toggleGameModel(id); return; }
+  if (/\.(mp4|webm)(\?|$)/i.test(it.game_url.split('?')[0])) { window.open(it.game_url, '_blank', 'noopener'); return; }
+  if (S.gameId === id && !gplayer.paused) { gplayer.pause(); return; }
+  player.pause();
+  vplayer.pause();
+  S.gameId = id;
+  if (gplayer.getAttribute('src') !== it.game_url) gplayer.src = it.game_url;
+  else gplayer.currentTime = 0;
+  const pr = gplayer.play();
+  if (pr) pr.catch(err => { if (err.name !== 'AbortError') toast('Couldn’t play the game’s copy: ' + err.message, 'err'); });
+}
+function addChip(id, text) {
+  const el = S.rows.get(id), f = el && el.querySelector('input.note-in');
+  if (!f) return;
+  const v = f.value.trim();
+  f.value = v ? v + (/[.,;:!?]$/.test(v) ? ' ' : ', ') + text : text;
+  f.focus();
+  const w = f.value.lastIndexOf('*word*'), dots = f.value.lastIndexOf('…');
+  if (w >= 0) f.setSelectionRange(w + 1, w + 5);  // type the word over it
+  else if (dots >= 0 && text.endsWith('…')) f.setSelectionRange(dots, dots + 1);  // …and the name over the dots
+  else f.setSelectionRange(f.value.length, f.value.length);
+}
+
+/* ---------------------------------------------------------------- 3D models */
+// Google's <model-viewer> (vendored in tools/review/vendor/, served at /vendor/: no CDN, works offline).
+// Each model item keeps its own element, moved into the row's stage on every render, so a model you have
+// turned stays turned. Only the current row turns by itself (the turntable); the others are still.
+const mvReady = () => !!customElements.get('model-viewer');
+const modelSrc = it => (S.gameModel.has(it.id) && it.game_url) ? it.game_url : it.url;
+function makeViewer(id, large) {
+  const v = document.createElement('model-viewer');
+  for (const [k, val] of Object.entries({
+    'camera-controls': '', 'touch-action': 'pan-y', 'shadow-intensity': '1', 'environment-image': 'neutral', exposure: '1.1',
+    'auto-rotate-delay': '0', 'rotation-per-second': '24deg', 'interaction-prompt': 'none', tabindex: '0', ...(large ? {} : { loading: 'lazy' }),
+  })) v.setAttribute(k, val);
+  v.setAttribute('alt', '3D model');
+  v.addEventListener('load', () => {
+    const it = S.byId.get(id);
+    if (!it || large || v.getAttribute('src') !== it.url) return;  // measure the candidate, not the game's copy
+    const d = v.getDimensions();
+    if (d && isFinite(d.x)) setProbe(it, { dims: [d.x, d.y, d.z] });
+  });
+  v.addEventListener('error', () => {
+    const it = S.byId.get(id);
+    if (!it || large || v.getAttribute('src') !== it.url) return;
+    setProbe(it, { err: true });
+    renderRow(id, true);
+  });
+  return v;
+}
+function mountModel(id) {
+  const it = S.byId.get(id), el = S.rows.get(id);
+  const slot = el && el.querySelector('.mstage');
+  if (!it || !slot || !it.exists || !mvReady() || slot.querySelector('.mmsg')) return;
+  let v = S.mviews.get(id);
+  if (!v) { v = makeViewer(id, false); S.mviews.set(id, v); }
+  const src = modelSrc(it);
+  if (v.getAttribute('src') !== src) v.setAttribute('src', src);
+  v.toggleAttribute('auto-rotate', S.turntable && id === S.curId);
+  if (v.parentNode !== slot) slot.prepend(v);
+}
+function turnOnly(id) {  // the turntable runs on the current row only
+  for (const [mid, v] of S.mviews) v.toggleAttribute('auto-rotate', S.turntable && mid === id);
+  if (S.vmodel) S.vmodel.toggleAttribute('auto-rotate', S.turntable);
+}
+function toggleTurntable() {
+  S.turntable = !S.turntable;
+  S.mem.turntable = S.turntable;
+  saveMem();
+  turnOnly(S.curId);
+  for (const b of document.querySelectorAll('.mini[data-act="turn"]')) b.classList.toggle('on', S.turntable);
+  toast(`Turntable: ${S.turntable ? 'on' : 'off'}`, 'ok');
+}
+function resetModel(id) {
+  const v = S.mviews.get(id);
+  if (!v) return;
+  v.cameraOrbit = '0deg 75deg 105%';
+  v.cameraTarget = 'auto auto auto';
+  v.fieldOfView = 'auto';
+  v.jumpCameraToGoal();
+}
+// 0: what the game has now, in the same viewer, then back to the candidate
+function toggleGameModel(id) {
+  const it = S.byId.get(id);
+  if (!it || !it.game_url) { toast(`Nothing in ${gameWord()} for this one yet`); return; }
+  if (S.gameModel.has(id)) S.gameModel.delete(id); else S.gameModel.add(id);
+  renderRow(id, true);
+  if (S.viewerOpen && S.curId === id) renderViewer();
+  toast(S.gameModel.has(id) ? `Showing what ${gameWord()} has now (0 goes back)` : 'Showing the new model', 'ok');
+}
+function mountLargeModel(it) {
+  const wrap = $('#vmodelwrap');
+  if (!mvReady()) { wrap.innerHTML = '<div class="mmsg" style="padding:40px;color:var(--amber)">The 3D viewer script is missing: tools/review/vendor/model-viewer.min.js</div>'; return; }
+  if (!S.vmodel) { S.vmodel = makeViewer(it.id, true); wrap.replaceChildren(S.vmodel); }
+  const src = modelSrc(it);
+  if (S.vmodel.getAttribute('src') !== src) S.vmodel.setAttribute('src', src);
+  S.vmodel.toggleAttribute('auto-rotate', S.turntable);
+}
+function unmountLargeModel() {
+  if (!S.vmodel) return;
+  S.vmodel.remove();
+  S.vmodel = null;
+  $('#vmodelwrap').replaceChildren();
+}
+// a script that loads after the first render (it is a module): draw the model rows again
+if (!mvReady()) customElements.whenDefined('model-viewer').then(() => { for (const [id, it] of S.byId) if (it.kind === 'model') renderRow(id, true); });
+
+/* ---------------------------------------------------------------- lessons */
+async function openLessons() {
+  $('#lessons').hidden = false;
+  $('#lsBody').textContent = 'Reading every review…';
+  try {
+    $('#lsBody').innerHTML = lessonsHTML(await api('/api/lessons'));
+  } catch (e) {
+    $('#lsBody').textContent = 'Couldn’t read them: ' + e.message + ' (restart review.py serve after updating it)';
+  }
+}
+function closeLessons() { $('#lessons').hidden = true; }
+function lessonsHTML(d) {
+  const pct = x => x == null ? '–' : Math.round(x * 100) + '%';
+  const bar = x => `<span class="ls-bar"><i style="width:${Math.round((x || 0) * 100)}%"></i></span>`;
+  const kinds = Object.entries(d.kinds || {}).sort((a, b) => b[1].decided - a[1].decided);
+  let h = `<h3>First takes kept</h3><table class="ls-t"><tr><th>kind</th><th>decided</th><th>kept first time</th><th>good with changes</th><th>redone, then kept</th><th>still rejected</th><th>rounds</th></tr>` +
+    kinds.map(([k, b]) => `<tr><td>${esc(k)}</td><td class="n">${b.decided}</td><td class="n">${bar(b.first_take_rate)}${b.first_take} (${pct(b.first_take_rate)})</td><td class="n">${b.revise || 0}</td><td class="n">${b.redone}</td><td class="n">${b.open}</td><td class="n">${b.mean_rounds ?? '–'}</td></tr>`).join('') + '</table>';
+  const voices = Object.entries(d.groups || {}).filter(([g, b]) => g.startsWith('audio:') && b.decided >= 4)
+    .sort((a, b) => (a[1].first_take_rate ?? 0) - (b[1].first_take_rate ?? 0));
+  if (voices.length) h += `<h3>Sound, by voice or group</h3><table class="ls-t"><tr><th>voice</th><th>decided</th><th>kept first time</th><th>redone</th></tr>` +
+    voices.map(([g, b]) => `<tr><td>${esc(g.slice(6))}</td><td class="n">${b.decided}</td><td class="n">${bar(b.first_take_rate)}${pct(b.first_take_rate)}</td><td class="n">${b.redone}</td></tr>`).join('') + '</table>';
+  const seats = Object.entries(d.seats || {}).sort((a, b) => b[1].items - a[1].items);
+  if (seats.length) h += `<h3>By seat</h3><table class="ls-t"><tr><th>seat</th><th>items</th><th>good</th><th>good with changes</th><th>bad</th><th>passed over</th></tr>` +
+    seats.map(([s, b]) => `<tr><td><span class="seat s-${seatClass(s)}">${esc(s)}</span></td><td class="n">${b.items}</td><td class="n">${b.good}</td><td class="n">${b.revise}</td><td class="n">${b.bad}</td><td class="n">${b.passed}</td></tr>`).join('') +
+    `</table><p class="fin-sub">Good and Good with changes go to the seat whose take was kept; the other seats' takes of that item were passed over. Bad counts against every seat that made a take.</p>`;
+  const th = d.themes || [];
+  h += `<h3>What the notes ask for</h3>` + (th.length ? `<table class="ls-t"><tr><th>theme</th><th>notes</th><th>fixed by a redo</th><th>open</th><th>for example</th></tr>` +
+    th.map(t => `<tr><td>${esc(t.label)}</td><td class="n">${t.notes}</td><td class="n">${t.theme === 'praise' ? '' : t.fixed}</td><td class="n">${t.theme === 'praise' ? '' : t.open}</td><td class="ls-ex">${t.examples.slice(0, 3).map(x => `<span>“${esc(x.note)}” <small>${esc(x.batch)} · ${esc(x.id)}</small></span>`).join('')}</td></tr>`).join('') + '</table>'
+    : '<p>No notes yet.</p>');
+  return h + `<p class="fin-sub">From ${d.batches} batches · ${esc((d.generated || '').replace('T', ' '))}</p>`;
+}
+
+function renderRow(id, force = false) {
+  const el = S.rows.get(id), it = S.byId.get(id);
+  if (!el || !it) return;
+  el.className = rowClass(it);
+  if (!force && S.edit && S.edit.id === id) return;  // don't clobber a draft
+  el.innerHTML = rowHTML(it);
+  if (id === S.vidId) mountVideo();  // same task: the shared <video> keeps playing
+  if (it.kind === 'model') mountModel(id);
+}
+function renderTrack(id) {
+  const el = S.rows.get(id), it = S.byId.get(id);
+  if (!el || !it) return;
+  const t = el.querySelector('.track');
+  if (t) {
+    const f = t.nextElementSibling;
+    if (f && f.classList.contains('flag')) f.remove();
+    t.outerHTML = trackHTML(it);
+  }
+  el.className = rowClass(it);
+}
+// a row's video area after its clip was measured (poster frame, shape, loop seam)
+function renderStage(id) {
+  const el = S.rows.get(id), it = S.byId.get(id);
+  if (!el || !it) return;
+  const w = el.querySelector('.vwrap');
+  if (!w || !stageShown(it)) return;
+  if (id === S.vidId) {  // it holds the live <video>: only reshape it, and refresh the info
+    const vp = S.vprobes.get(vidUrl(it));
+    const st = w.querySelector('.stage');
+    if (st && vp && vp.w) st.style.setProperty('--ar', `${vp.w} / ${vp.h}`);
+    const ctl = w.querySelector('.vctl'), tmp = document.createElement('div');
+    tmp.innerHTML = stageHTML(it);
+    const fresh = tmp.querySelector('.vctl');
+    if (ctl && fresh) ctl.replaceWith(fresh);
+    return;
+  }
+  w.outerHTML = stageHTML(it);
+}
+
+function syncList() {
+  const list = $('#list');
+  const want = new Set(S.view);
+  for (const [id, el] of S.rows) if (!want.has(id)) { el.remove(); S.rows.delete(id); }
+  let prev = null;
+  for (const id of S.view) {
+    let el = S.rows.get(id);
+    if (!el) {
+      el = document.createElement('div');
+      el.dataset.id = id;
+      S.rows.set(id, el);
+      renderRow(id, true);
+    } else {
+      renderRow(id);
+    }
+    const expected = prev ? prev.nextSibling : list.firstChild;
+    if (expected !== el) list.insertBefore(el, expected);
+    prev = el;
+  }
+  let end = $('#endcard');
+  if (!end) { end = document.createElement('div'); end.id = 'endcard'; }
+  list.appendChild(end);
+  renderEnd();
+}
+
+const nextStep = () => isConcept() ? 'add the keepers to canon and redo the rest.' : 'install the keepers and redo the rejects.';
+function renderEnd() {
+  const end = $('#endcard');
+  if (!end) return;
+  if (!S.batch) {
+    end.className = 'endcard big-empty';
+    end.innerHTML = S.batches.length === 0
+      ? `No batches yet. A generator writes <code>review/&lt;batch&gt;/batch.json</code> — or try the demo:<br><br><code>python3 tools/review/review.py sample</code>`
+      : 'Pick a batch.';
+    return;
+  }
+  const c = counts(S.items);
+  const go = `<br><button class="fin-go" data-act="finish">&#x2691; Finish review<kbd>F</kbd></button>`;
+  if (!S.view.length) {
+    end.className = 'endcard big-empty';
+    const what = S.tab === 'flagged'
+      ? (probeState().left ? 'No flags so far — still measuring durations.' : 'Nothing flagged. Every length looks plausible for its line.')
+      : S.tab === 'pending' ? 'Nothing pending here.' : `Nothing ${tabName(S.tab).toLowerCase()} here yet.`;
+    end.innerHTML = `${what}<br><br>${c.pending === 0 && c.total ? `All ${c.total - c.missing} reviewed. Next: ${nextStep()}${go}` : `<b>${c.pending}</b> pending in this batch.`}`;
+    return;
+  }
+  end.className = 'endcard';
+  if (c.pending === 0) {
+    const W = modeWords();
+    end.innerHTML = `All ${c.total - c.missing} reviewed${c.missing ? ` (${c.missing} still missing)` : ''}. <b>${c.accept}</b> ${W.acc}${c.revise ? `, <b>${c.revise}</b> ${W.rev}` : ''}${c.installed ? `, <b>${c.installed}</b> ${W.inst}` : ''}, <b>${c.reject}</b> ${W.rej}.<br>${c.accept || c.revise || c.reject ? 'Next: ' + nextStep() : `Everything ${W.acc} is ${W.inst}.`}${go}`;
+  } else {
+    end.innerHTML = `End of list · <b>${c.pending}</b> still pending in this batch${c.missing ? ` · ${c.missing} missing` : ''}.`;
+  }
+}
+
+function counts(items) {
+  const c = { total: items.length, pending: 0, accept: 0, revise: 0, reject: 0, missing: 0, flagged: 0, installed: 0 };
+  for (const it of items) {
+    if (it.installed && kept(it)) c.installed++;  // in the game already: not waiting to be installed
+    else if (c[it.status] !== undefined) c[it.status]++;
+    if (flagOf(it)) c.flagged++;
+  }
+  return c;
+}
+
+let countsQueued = false;
+function renderCountsSoon() {
+  if (countsQueued) return;
+  countsQueued = true;
+  requestAnimationFrame(() => { countsQueued = false; renderCounts(); });
+}
+function renderCounts() {
+  const pool = S.items.filter(matchesGroup);
+  const c = counts(pool);
+  // tabs
+  const nums = { all: c.total, pending: c.pending, accept: c.accept, revise: c.revise, installed: c.installed, reject: c.reject, flagged: c.flagged };
+  const tabs = $('#tabs');
+  if (tabs.dataset.mode !== S.mode || !tabs.children.length) {
+    tabs.dataset.mode = S.mode;
+    tabs.innerHTML = tabsHere().map(t => `<button class="tab" data-tab="${t.id}"><span class="dot"></span>${esc(tabName(t.id))}<span class="n"></span></button>`).join('');
+  }
+  for (const b of tabs.children) {
+    b.classList.toggle('on', b.dataset.tab === S.tab);
+    b.querySelector('.n').textContent = nums[b.dataset.tab];
+  }
+  // progress
+  const reviewed = c.accept + c.revise + c.installed + c.reject;
+  const denom = Math.max(1, c.total);
+  $('#pa').style.width = ((c.accept + c.installed) / denom * 100) + '%';
+  $('#pv').style.width = (c.revise / denom * 100) + '%';
+  $('#pr').style.width = (c.reject / denom * 100) + '%';
+  $('#plabel').innerHTML = S.batch ? `<b>${reviewed}</b> / ${c.total} reviewed${c.missing ? ` · ${c.missing} missing` : ''}` : '—';
+  $('#ppct').textContent = S.batch && c.total ? Math.round(reviewed / c.total * 100) + '%' : '';
+  // groups
+  const groups = [];
+  const seen = new Map();
+  for (const it of S.items) {
+    const g = groupOf(it);
+    if (!seen.has(g)) { seen.set(g, { n: 0, r: 0 }); groups.push(g); }
+    const s = seen.get(g); s.n++; if (kept(it) || it.status === 'reject') s.r++;
+  }
+  const gEl = $('#groups');
+  const chips = [`<button class="chip${S.group === 'all' ? ' on' : ''}" data-group="all">All<span class="c">${S.items.length}</span></button>`]
+    .concat(groups.map(g => `<button class="chip${S.group === g ? ' on' : ''}" data-group="${esc(g)}">${esc(g)}<span class="c">${seen.get(g).r}/${seen.get(g).n}</span></button>`));
+  const html = chips.join('');
+  if (gEl.innerHTML !== html) gEl.innerHTML = html;
+  // header
+  $('#title').textContent = S.title || 'Review';
+  if (S.batch) {
+    $('#sub').innerHTML = `<code>review/${esc(S.batch)}</code> · ${S.items.length} item${S.items.length === 1 ? '' : 's'} · showing ${S.view.length} · ${esc(tabName(S.tab))}${S.group !== 'all' ? ' · ' + esc(S.group) : ''}`;
+  }
+  // batch picker label for the open batch
+  const opt = [...$('#batchSel').options].find(o => o.value === S.batch);
+  const all = counts(S.items);
+  if (opt) opt.textContent = `${S.title} — ${all.accept + all.revise + all.installed + all.reject}/${all.total}`;
+  // probe progress
+  const ps = probeState();
+  $('#probeNote').textContent = ps.left ? `measuring lengths… ${ps.done}/${ps.total}` : '';
+  renderEnd();
+}
+
+function renderBatchSel() {
+  const sel = $('#batchSel');
+  sel.innerHTML = S.batches.map(b => {
+    const c = b.counts;
+    const lbl = b.error ? `${b.batch} — error` : `${b.title} — ${c.reviewed}/${c.total}`;
+    return `<option value="${esc(b.batch)}">${esc(lbl)}</option>`;
+  }).join('') || '<option value="">(no batches)</option>';
+  if (S.batch) sel.value = S.batch;
+}
+
+function renderAutoplay() {
+  $('#autoBtn').classList.toggle('on', S.autoplay);
+  $('#autoSt').textContent = S.autoplay ? 'ON' : 'OFF';
+  $('#autoChip').classList.toggle('on', S.autoplay);
+  $('#autoChipSt').textContent = S.autoplay ? 'ON' : 'OFF';
+  $('#loopChip').classList.toggle('on', S.loop);
+  $('#loopChipSt').textContent = S.loop ? 'ON' : 'OFF';
+  for (const b of document.querySelectorAll('.mini[data-act="loop"]')) b.classList.toggle('on', S.loop);
+}
+
+/* ---------------------------------------------------------------- current row */
+function setCurrent(id, { scroll = true } = {}) {
+  if (!id) return;
+  const prev = S.curId;
+  if (prev !== id && S.playingId && S.playingId !== id && !player.paused) player.pause();
+  if (prev !== id && S.vidId && S.vidId !== id && !vplayer.paused) vplayer.pause();
+  S.curId = id;
+  if (prev && prev !== id) { const it = S.byId.get(prev); const el = S.rows.get(prev); if (it && el) el.className = rowClass(it); }
+  const el = S.rows.get(id), it = S.byId.get(id);
+  if (el && it) {
+    el.className = rowClass(it);
+    if (scroll) el.scrollIntoView({ block: 'nearest' });
+  }
+  if (prev !== id) turnOnly(id);
+  if (S.viewerOpen) {
+    // the large viewer follows the current item: its model, its video, else its image, else it closes
+    const canVid = it && stageShown(it) && vidPlayable(it), canImg = it && it.kind === 'image' && it.exists;
+    if (it && it.kind === 'model' && it.exists) { S.viewerMode = 'model'; renderViewer(); }
+    else if (S.viewerMode === 'video' && canVid) renderViewer();
+    else if (canImg) { S.viewerMode = 'image'; renderViewer(); }
+    else if (canVid) { S.viewerMode = 'video'; renderViewer(); }
+    else closeViewer();
+  }
+  saveMem();
+  reprioritiseProbes();
+}
+function move(d) {
+  if (!S.view.length) return;
+  let i = S.view.indexOf(S.curId);
+  i = i < 0 ? 0 : Math.max(0, Math.min(S.view.length - 1, i + d));
+  setCurrent(S.view[i]);
+}
+function advanceFrom(id) {
+  const i = S.view.indexOf(id);
+  for (let j = i + 1; j < S.view.length; j++) {
+    const it = S.byId.get(S.view[j]);
+    if (!it || !it.exists) continue;
+    setCurrent(it.id);
+    if (S.autoplay) {
+      if (stageShown(it)) { if (vidPlayable(it)) playVideo(it); }
+      else if (it.kind === 'audio') playFresh(it);
+    }
+    return;
+  }
+  if (!player.paused) player.pause();
+  if (!vplayer.paused) vplayer.pause();
+  const c = counts(S.items);
+  toast(c.pending ? `End of list — ${c.pending} still pending in this batch` : 'End of list — everything here is reviewed', 'ok');
+}
+
+/* ---------------------------------------------------------------- audio */
+const player = new Audio();
+player.preload = 'auto';
+let seekOnLoad = null;
+let raf = 0;
+
+function syncPlayState() {
+  for (const [id, el] of S.rows) {
+    const playing = isPlaying(id);
+    if (el.classList.contains('playing') !== playing) el.classList.toggle('playing', playing);
+  }
+  cancelAnimationFrame(raf);
+  if (!player.paused || !vplayer.paused) raf = requestAnimationFrame(tick);
+  else { paintProgress(); paintVProgress(); }
+}
+function tick() {
+  paintProgress();
+  paintVProgress();
+  if (!player.paused || !vplayer.paused) raf = requestAnimationFrame(tick);
+}
+function paintProgress() {
+  const id = S.playingId;
+  if (!id) return;
+  const el = S.rows.get(id), it = S.byId.get(id);
+  if (!el || !it) return;
+  const fill = el.querySelector('.track .fill'), time = el.querySelector('.track .time');
+  const p = S.probes.get(pkey(it));
+  const d = isFinite(player.duration) ? player.duration : (p && p.dur);
+  if (fill) fill.style.width = d ? Math.min(100, player.currentTime / d * 100) + '%' : '0%';
+  if (time) time.textContent = d ? `${fmtSec(player.currentTime).replace('s', '')} / ${fmtSec(d)}` : '…';
+}
+function doPlay() {
+  const pr = player.play();
+  if (pr) pr.catch(err => {
+    if (err.name === 'NotAllowedError') toast('The browser blocked playback — press Space to start it', 'err');
+    else if (err.name !== 'AbortError') toast('Couldn’t play: ' + err.message, 'err');
+    syncPlayState();
+  });
+}
+function playFresh(it, frac = null) {
+  if (!it || it.kind !== 'audio' || !it.exists) return;
+  const prevId = S.playingId;
+  player.pause();
+  vplayer.pause();  // one sound at a time
+  gplayer.pause();
+  S.playingId = it.id;
+  seekOnLoad = frac;
+  player.src = it.url;
+  if (prevId && prevId !== it.id) { const el = S.rows.get(prevId); if (el) { const f = el.querySelector('.fill'); if (f) f.style.width = '0%'; renderTrack(prevId); } }
+  doPlay();
+  syncPlayState();
+}
+function togglePlay(id) {
+  const it = S.byId.get(id);
+  if (!it) return;
+  if (stageShown(it)) { toggleVideo(it); return; }  // the row shows a video: Space is for it
+  if (it.kind === 'video') { toast('No video yet — the file is missing'); return; }
+  if (it.kind === 'image') { S.viewerOpen ? closeViewer() : openViewer(id, 'image'); return; }
+  if (it.kind === 'model') { S.viewerOpen ? closeViewer() : openViewer(id, 'model'); return; }
+  if (!it.exists) { toast('No audio yet — the file is missing'); return; }
+  if (S.playingId === id && player.getAttribute('src') === it.url) {
+    if (player.paused) { if (player.ended) player.currentTime = 0; doPlay(); }
+    else player.pause();
+    return;
+  }
+  playFresh(it);
+}
+function seek(id, e, barEl) {
+  const it = S.byId.get(id);
+  if (!it || !it.exists || it.kind !== 'audio') return;
+  const r = barEl.getBoundingClientRect();
+  const frac = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+  if (S.playingId === id && player.getAttribute('src') === it.url && isFinite(player.duration)) {
+    player.currentTime = frac * player.duration;
+    if (player.paused) doPlay();
+    paintProgress();
+  } else {
+    playFresh(it, frac);
+  }
+}
+player.addEventListener('play', syncPlayState);
+player.addEventListener('pause', syncPlayState);
+player.addEventListener('ended', syncPlayState);
+player.addEventListener('loadedmetadata', () => {
+  const it = S.byId.get(S.playingId);
+  if (!it) return;
+  if (isFinite(player.duration)) setProbe(it, { dur: player.duration });
+  if (seekOnLoad != null && isFinite(player.duration)) { player.currentTime = seekOnLoad * player.duration; seekOnLoad = null; }
+});
+player.addEventListener('error', () => {
+  const it = S.byId.get(S.playingId);
+  if (!it || !player.getAttribute('src')) return;
+  setProbe(it, { err: true });
+  toast(`Couldn’t load the audio for “${it.label || it.id}”`, 'err');
+  syncPlayState();
+});
+
+/* ---------------------------------------------------------------- video */
+// One shared <video>. It lives in the stage of the row that has it (S.vidId), or in the large
+// viewer; re-rendering a row puts it straight back, so playback survives rescans and decisions.
+const vplayer = document.createElement('video');
+vplayer.preload = 'auto';
+vplayer.playsInline = true;
+vplayer.setAttribute('playsinline', '');
+let vseekOnLoad = null;
+
+function mountVideo() {
+  let slot = null;
+  if (S.viewerOpen && S.viewerMode === 'video') slot = $('#vvidwrap');
+  else if (S.vidId) { const el = S.rows.get(S.vidId); slot = el && el.querySelector('.stage'); }
+  vplayer.controls = !!slot && slot.id === 'vvidwrap';  // native controls (fullscreen, scrub) when large
+  if (slot) {
+    if (vplayer.parentNode !== slot) slot.insertBefore(vplayer, slot.firstChild);
+    if (slot.classList.contains('stage')) slot.classList.add('live');
+  } else if (vplayer.parentNode) {
+    vplayer.remove();
+  }
+}
+function loadVideo(it) {
+  const url = vidUrl(it), prev = S.vidId;
+  if (prev === it.id && vplayer.getAttribute('src') === url) { mountVideo(); return; }
+  player.pause();
+  vplayer.pause();
+  S.vidId = it.id;
+  vseekOnLoad = null;
+  vplayer.loop = S.loop;
+  vplayer.src = url;
+  if (prev && prev !== it.id) {  // give the previous row its poster back
+    renderStage(prev);
+    const pe = S.rows.get(prev), pi = S.byId.get(prev);
+    if (pe && pi) pe.className = rowClass(pi);
+  }
+  mountVideo();
+}
+function doPlayV() {
+  player.pause();
+  const pr = vplayer.play();
+  if (pr) pr.catch(err => {
+    if (err.name === 'NotAllowedError') toast('The browser blocked playback — press Space to start it', 'err');
+    else if (err.name !== 'AbortError' && err.name !== 'NotSupportedError') toast('Couldn’t play the video: ' + err.message, 'err');
+    syncPlayState();
+  });
+}
+function playVideo(it, frac = null) {
+  if (!it || !hasVideo(it) || !vidPlayable(it)) return;
+  if (!stageShown(it)) { S.vidShow.set(it.id, true); renderRow(it.id); }
+  loadVideo(it);
+  if (frac != null) {
+    if (isFinite(vplayer.duration) && vplayer.getAttribute('src') === vidUrl(it)) vplayer.currentTime = frac * vplayer.duration;
+    else vseekOnLoad = frac;
+  }
+  doPlayV();
+  syncPlayState();
+}
+function toggleVideo(it) {
+  if (!vidPlayable(it)) { toast(`Can’t play .${extOf(vidFile(it))} in this browser — open it in VLC or Godot`, 'err'); return; }
+  if (S.vidId === it.id && vplayer.getAttribute('src') === vidUrl(it)) {
+    if (vplayer.paused) { if (vplayer.ended) vplayer.currentTime = 0; doPlayV(); }
+    else vplayer.pause();
+    return;
+  }
+  playVideo(it);
+}
+function seekVideo(id, e, barEl) {
+  const it = S.byId.get(id);
+  if (!it || !hasVideo(it) || !vidPlayable(it)) return;
+  const r = barEl.getBoundingClientRect();
+  const frac = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+  if (S.vidId === id && vplayer.getAttribute('src') === vidUrl(it) && isFinite(vplayer.duration)) {
+    vplayer.currentTime = frac * vplayer.duration;
+    if (vplayer.paused) doPlayV();
+    paintVProgress();
+  } else {
+    playVideo(it, frac);
+  }
+}
+function paintVProgress() {
+  const id = S.vidId;
+  if (!id) return;
+  const el = S.rows.get(id), it = S.byId.get(id);
+  if (!el || !it) return;
+  const fill = el.querySelector('.vctl .fill'), time = el.querySelector('.vctl .time');
+  const d = isFinite(vplayer.duration) ? vplayer.duration : null;
+  if (fill) fill.style.width = d ? Math.min(100, vplayer.currentTime / d * 100) + '%' : '0%';
+  if (time) time.textContent = vtimeText(it);
+}
+function stopVideo() {
+  const id = S.vidId;
+  vplayer.pause();
+  S.vidId = null;
+  vseekOnLoad = null;
+  vplayer.removeAttribute('src');
+  try { vplayer.load(); } catch { }
+  if (vplayer.parentNode) vplayer.remove();
+  if (id) renderRow(id);
+}
+// V: fold a companion video open or shut (a video item: open it large instead)
+function toggleStage(id) {
+  const it = S.byId.get(id);
+  if (!it || !hasVideo(it)) { if (it) toast('This item has no video'); return; }
+  if (it.kind === 'video') { S.viewerOpen ? closeViewer() : openViewer(id, 'video'); return; }
+  const open = !stageShown(it);
+  S.vidShow.set(id, open);
+  if (!open) {
+    if (S.viewerOpen && S.viewerMode === 'video' && S.curId === id) closeViewer();
+    if (S.vidId === id) stopVideo();
+  }
+  renderRow(id);
+  reprioritiseProbes();
+}
+function toggleLoop() {
+  S.loop = !S.loop;
+  vplayer.loop = S.loop;
+  renderAutoplay();
+  saveMem();
+  toast(`Loop video: ${S.loop ? 'on' : 'off'}`, 'ok');
+}
+vplayer.addEventListener('play', syncPlayState);
+vplayer.addEventListener('pause', syncPlayState);
+vplayer.addEventListener('ended', syncPlayState);
+vplayer.addEventListener('loadedmetadata', () => {
+  const it = S.byId.get(S.vidId);
+  if (!it) return;
+  const url = vidUrl(it), vp = S.vprobes.get(url) || {};
+  if (isFinite(vplayer.duration) && (vp.dur == null || !vp.w))
+    setVProbe(url, { dur: vplayer.duration, w: vplayer.videoWidth, h: vplayer.videoHeight }, true);
+  if (vseekOnLoad != null && isFinite(vplayer.duration)) { vplayer.currentTime = vseekOnLoad * vplayer.duration; vseekOnLoad = null; }
+  paintVProgress();
+});
+vplayer.addEventListener('error', () => {
+  const it = S.byId.get(S.vidId);
+  if (!it || !vplayer.getAttribute('src')) return;
+  const code = vplayer.error ? vplayer.error.code : 0;
+  toast(code === 4 ? `This browser can’t decode ${vidFile(it)} — open it in QuickTime or VLC`
+    : `Couldn’t load the video for “${it.label || it.id}”`, 'err');
+  syncPlayState();
+});
+
+// A clip's length and shape, a poster frame, and how far its last frame is from its first.
+function probeVideo(url, finish) {
+  const v = document.createElement('video');
+  v.muted = true;
+  v.preload = 'auto';
+  v.playsInline = true;
+  const res = {};
+  let first = null, step = 0;
+  const grab = maxW => {
+    const s = Math.min(1, maxW / v.videoWidth), c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(v.videoWidth * s));
+    c.height = Math.max(1, Math.round(v.videoHeight * s));
+    c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+    return c;
+  };
+  const tiny = () => {
+    const c = document.createElement('canvas');
+    c.width = 48; c.height = 27;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(v, 0, 0, 48, 27);
+    return g.getImageData(0, 0, 48, 27).data;
+  };
+  const end = () => finish({ ...res });
+  const onFrame = () => {
+    try {
+      if (step === 0) {
+        step = 1;
+        res.frame = grab(720).toDataURL('image/jpeg', 0.82);
+        first = tiny();
+        if (res.dur && res.dur > 0.3) { v.currentTime = Math.max(0, res.dur - 0.02); return; }
+      } else {
+        const last = tiny();
+        let s = 0;
+        for (let i = 0; i < last.length; i += 4)
+          s += Math.abs(last[i] - first[i]) + Math.abs(last[i + 1] - first[i + 1]) + Math.abs(last[i + 2] - first[i + 2]);
+        res.seam = s / (last.length / 4 * 3 * 255);
+      }
+    } catch { /* keep what we have */ }
+    end();
+  };
+  v.onloadedmetadata = () => {
+    res.dur = isFinite(v.duration) ? v.duration : null;
+    res.w = v.videoWidth;
+    res.h = v.videoHeight;
+    if (!res.w) { end(); return; }
+    v.currentTime = Math.min(0.05, (res.dur || 0) / 2);
+  };
+  v.onseeked = () => { if (v.readyState >= 2) onFrame(); else v.addEventListener('canplay', onFrame, { once: true }); };
+  v.onerror = () => finish({ err: true });
+  v.src = url;
+  return {
+    res,
+    cleanup() { v.onloadedmetadata = v.onseeked = v.onerror = null; v.removeAttribute('src'); try { v.load(); } catch { } },
+  };
+}
+function setVProbe(url, res, partial = false) {
+  const old = S.vprobes.get(url) || {};
+  S.vprobes.set(url, partial ? { ...old, ...res } : { ...old, ...res, done: true });
+  for (const it of S.items) if (vidUrl(it) === url) { renderTrack(it.id); renderStage(it.id); }
+  renderCountsSoon();
+}
+const vprobeDone = url => { const v = S.vprobes.get(url); return !!(v && v.done); };
+
+/* ---------------------------------------------------------------- duration / image probes */
+const PQ = { q: [], active: 0, max: 3 };
+function probeState() {
+  const probeable = S.items.filter(it => it.exists && it.kind !== 'model');  // a model's own viewer reports its load
+  const done = probeable.filter(it => S.probes.has(pkey(it))).length;
+  return { total: probeable.length, done, left: probeable.length - done };
+}
+function reprioritiseProbes() {
+  const order = [];
+  const seen = new Set();
+  const i = Math.max(0, S.view.indexOf(S.curId));
+  const push = it => { if (it && !seen.has(it.id)) { seen.add(it.id); order.push(it); } };
+  for (let j = i; j < S.view.length; j++) push(S.byId.get(S.view[j]));
+  for (let j = 0; j < i; j++) push(S.byId.get(S.view[j]));
+  for (const it of S.items) push(it);
+  // each item's own file, then (for a shown stage) the clip behind it, nearest the cursor first
+  const q = [], vseen = new Set();
+  for (const it of order) {
+    if (it.exists && it.kind !== 'model' && !S.probes.has(pkey(it))) q.push({ it, t: 'main' });  // a model's own viewer reports its load
+    const u = it.kind === 'video' ? null : vidUrl(it);
+    if (u && stageShown(it) && vidPlayable(it) && !vseen.has(u) && !vprobeDone(u)) { vseen.add(u); q.push({ it, t: 'vid', url: u }); }
+  }
+  PQ.q = q;
+  pump();
+}
+function pump() {
+  while (PQ.active < PQ.max && PQ.q.length) {
+    const task = PQ.q.shift(), it = task.it;
+    if (task.t === 'main' ? S.probes.has(pkey(it)) : vprobeDone(task.url)) continue;
+    const batch = S.batch;
+    const isVid = task.t === 'vid' || it.kind === 'video';
+    if (isVid && !vidPlayable(it)) {  // e.g. .ogv in Chrome: nothing to measure, and not an error
+      if (task.t === 'main') setProbe(it, { unplayable: true });
+      continue;
+    }
+    PQ.active++;
+    let done = false, timer = 0, el = null, vp = null;
+    const finish = res => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (vp) vp.cleanup();
+      else if (el) {
+        if (it.kind === 'image') { el.onload = el.onerror = null; }
+        else { el.onloadedmetadata = el.onerror = null; el.removeAttribute('src'); try { el.load(); } catch { } }
+      }
+      PQ.active--;
+      if (batch === S.batch && S.byId.get(it.id) === it) {
+        if (task.t === 'vid') setVProbe(task.url, res);
+        else if (it.kind === 'video') {
+          setVProbe(it.url, res);
+          setProbe(it, res.err ? { err: true } : { dur: res.dur ?? null, w: res.w, h: res.h, timeout: res.timeout });
+        } else setProbe(it, res);
+      }
+      pump();
+    };
+    if (isVid) {
+      vp = probeVideo(task.url || it.url, finish);
+      timer = setTimeout(() => finish({ ...vp.res, timeout: true }), 25000);
+      continue;
+    }
+    if (it.kind === 'image') {
+      el = new Image();
+      el.onload = () => finish({ w: el.naturalWidth, h: el.naturalHeight });
+      el.onerror = () => finish({ err: true });
+      el.src = it.url;
+    } else {
+      el = new Audio();
+      el.preload = 'metadata';
+      el.onloadedmetadata = () => finish({ dur: isFinite(el.duration) ? el.duration : null });
+      el.onerror = () => finish({ err: true });
+      el.src = it.url;
+    }
+    timer = setTimeout(() => finish({ timeout: true }), 20000);
+  }
+  renderCountsSoon();
+}
+function setProbe(it, res) {
+  const k = pkey(it);
+  const old = S.probes.get(k);
+  if (old && !old.timeout && JSON.stringify(old) === JSON.stringify(res)) return;
+  S.probes.set(k, res);
+  if (S.tab === 'flagged' && matches(it) && !S.view.includes(it.id)) {
+    const keep = new Set(S.view);
+    S.view = S.items.filter(x => keep.has(x.id) || x.id === it.id).map(x => x.id);
+    syncList();
+    if (!S.curId) setCurrent(it.id, { scroll: false });
+  } else {
+    renderTrack(it.id);
+  }
+  if (S.playingId === it.id) paintProgress();
+  renderCountsSoon();
+}
+
+/* ---------------------------------------------------------------- decisions */
+function applyLocal(it, patch) {
+  if ('verdict' in patch) {
+    if (it.regenerated) {
+      it.history = [...(it.history || []), { verdict: it.verdict, note: it.note, at: it.decided_at }];
+      it.note = '';
+      it.regenerated = false;
+    }
+    it.verdict = patch.verdict;
+    it.status = (!it.exists && patch.verdict !== 'reject') ? 'missing' : patch.verdict;
+    it.decided_at = new Date().toISOString();
+  }
+  if ('note' in patch) it.note = patch.note.trim();
+  if ('text' in patch) {
+    const t = patch.text.trim();
+    it.edited_text = t && t !== (it.text || '').trim() ? t : null;
+  }
+}
+function decide(id, patch, { advance = false } = {}) {
+  const it = S.byId.get(id);
+  if (!it) return;
+  if ((patch.verdict === 'accept' || patch.verdict === 'revise') && !it.exists) { toast('Can’t accept — the file is missing', 'err'); return; }
+  const batch = S.batch;
+  const snapshot = JSON.parse(JSON.stringify(it));
+  const reveal = seatHidden(it) && patch.verdict && patch.verdict !== 'pending' ? revealText(it, patch) : '';
+  if (patch.take && it.takes) {  // pin the take that is on screen, so it doesn't jump while the server answers
+    const ti = it.takes.findIndex(x => x.file === patch.take);
+    if (ti >= 0) S.take.set(id, ti);
+  }
+  applyLocal(it, patch);
+  if (reveal) toast(reveal, 'ok');
+  const n = ++S.seqN;
+  S.seq.set(id, n);
+  S.inflight.set(id, (S.inflight.get(id) || 0) + 1);
+  renderRow(id);
+  renderCountsSoon();
+  if (S.viewerOpen && S.curId === id) renderViewer();
+  if (advance) advanceFrom(id);
+  const req = post('/api/decide', { batch, id, ...patch });
+  S.saving.add(req);  // a run waits for these, so it sees the latest verdicts
+  req.finally(() => S.saving.delete(req)).catch(() => { });
+  req.then(d => {
+    if (batch !== S.batch || S.seq.get(id) !== n) return;
+    Object.assign(it, d.item);
+    standIn(it);
+    renderRow(id);
+    renderCountsSoon();
+  }).catch(err => {
+    if (batch === S.batch && S.seq.get(id) === n) {
+      for (const k of Object.keys(it)) if (!(k in snapshot)) delete it[k];
+      Object.assign(it, snapshot);
+      renderRow(id);
+      renderCountsSoon();
+      if (S.viewerOpen && S.curId === id) renderViewer();
+    }
+    toast(`Couldn’t save “${it.label || id}”: ${err.message} — reverted`, 'err');
+  }).finally(() => {
+    S.inflight.set(id, (S.inflight.get(id) || 1) - 1);
+  });
+}
+const accept = id => {
+  const it = S.byId.get(id), t = it && it.takes && it.takes.length > 1 ? it.takes[takeIdx(it)] : null;
+  decide(id, t ? { verdict: 'accept', take: t.file } : { verdict: 'accept' }, { advance: true });
+};
+const reject = id => decide(id, { verdict: 'reject' }, { advance: true });
+// C (concept batches): Good with changes. Opens the note, which is required; it saves with the verdict.
+function revise(id) {
+  if (!isConcept()) { toast('Good with changes is for concept batches (mode: concept)'); return; }
+  const it = S.byId.get(id);
+  if (!it) return;
+  if (!it.exists) { toast('Can’t accept — the file is missing', 'err'); return; }
+  closeViewer();
+  startEdit(id, 'note', { revise: true });
+}
+const unmark = id => decide(id, { verdict: 'pending' });
+
+/* ---------------------------------------------------------------- editing */
+function autosize(ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
+function startEdit(id, kind, opts) {
+  const it = S.byId.get(id);
+  if (!it) return;
+  if (S.edit) cancelEdit();
+  if (S.curId !== id) setCurrent(id);
+  S.edit = { id, kind, revise: !!(opts && opts.revise) };
+  renderRow(id, true);
+  const el = S.rows.get(id);
+  const f = el && el.querySelector(kind === 'text' ? 'textarea.edit-in' : 'input.note-in');
+  if (f) {
+    f.focus();
+    const v = f.value;
+    f.setSelectionRange(v.length, v.length);
+    if (kind === 'text') autosize(f);
+  }
+  el && el.scrollIntoView({ block: 'nearest' });
+}
+function cancelEdit() {
+  const e = S.edit;
+  if (!e) return;
+  S.edit = null;
+  renderRow(e.id, true);
+}
+function commitEdit({ advance = true, blur = false } = {}) {
+  const e = S.edit;
+  if (!e) return;
+  const it = S.byId.get(e.id), el = S.rows.get(e.id);
+  const f = el && el.querySelector(e.kind === 'text' ? 'textarea.edit-in' : 'input.note-in');
+  const v = (f ? f.value : '').replace(/\s*\n\s*/g, ' ').trim();
+  if (e.revise && !v) {
+    // Good with changes with no note: stay in the editor on a click, drop it quietly when focus left
+    if (!blur) { toast('Good with changes needs a note: say what to change (Esc cancels)', 'err'); if (f) f.focus(); }
+    else cancelEdit();
+    return;
+  }
+  S.edit = null;
+  if (!it) return;
+  if (e.revise) {
+    const t = it.takes && it.takes.length > 1 ? it.takes[takeIdx(it)] : null;
+    decide(e.id, t ? { verdict: 'revise', note: v, take: t.file } : { verdict: 'revise', note: v }, { advance });
+    return;
+  }
+  if (it.status === 'revise' && !v) {
+    toast('A Good with changes needs its note: say what to change, or press U to clear the verdict', 'err');
+    renderRow(e.id, true);
+    return;
+  }
+  if (e.kind === 'text') {
+    if (!v || v === displayText(it).trim()) { renderRow(e.id, true); return; }
+    decide(e.id, { verdict: 'reject', text: v }, { advance });
+  } else {
+    if (v === (it.note || '')) { renderRow(e.id, true); return; }
+    decide(e.id, { note: v });
+  }
+}
+
+/* ---------------------------------------------------------------- viewer / help */
+// mode 'image' (the item's picture) or 'video' (its clip, on the shared player, with native controls)
+function openViewer(id, mode) {
+  const it = S.byId.get(id);
+  if (!it) return;
+  const canVid = stageShown(it) && vidPlayable(it), canImg = it.kind === 'image' && it.exists;
+  if (it.kind === 'model') { if (!it.exists) return; mode = 'model'; }
+  if (mode === 'game' && !(it.kind === 'image' && it.game_url)) return;
+  if (!mode) mode = canVid ? 'video' : 'image';
+  if (mode === 'video' && !canVid) mode = 'image';
+  if (mode === 'image' && !canImg) { if (canVid) mode = 'video'; else return; }
+  if (S.curId !== id) setCurrent(id);
+  S.viewerOpen = true;
+  S.viewerMode = mode;
+  renderViewer();
+  $('#viewer').hidden = false;
+}
+function renderViewer() {
+  const it = S.byId.get(S.curId);
+  if (!it) return;
+  const vid = S.viewerMode === 'video', mdl = S.viewerMode === 'model';
+  $('#vimgwrap').hidden = vid || mdl;
+  $('#vvidwrap').hidden = !vid;
+  $('#vmodelwrap').hidden = !mdl;
+  $('#vhVideo').hidden = !vid;
+  $('#vhModel').hidden = !mdl;
+  if (!mdl) unmountLargeModel();
+  if (mdl) {
+    mountLargeModel(it);
+  } else if (vid) {
+    loadVideo(it);  // mounts the shared player up here
+  } else {
+    const img = $('#vimg'), src = S.viewerMode === 'game' ? it.game_url : it.url;
+    if (img.getAttribute('src') !== src) img.src = src;
+    mountVideo();   // and back down to its row
+  }
+  $('#vlabel').textContent = it.label || it.id;
+  const pill = $('#vpill');
+  const game = S.viewerMode === 'game' || (mdl && S.gameModel.has(it.id));
+  pill.className = 'vpill s-' + (game ? 'installed' : it.status);
+  pill.textContent = game ? (isConcept() ? 'In canon now' : 'In the game now') : pillText(it);
+  $('#vtext').textContent = displayText(it);
+}
+function closeViewer() {
+  const wasVid = S.viewerOpen && S.viewerMode === 'video';
+  S.viewerOpen = false;
+  $('#viewer').hidden = true;
+  unmountLargeModel();
+  if (wasVid) { vplayer.blur(); mountVideo(); }
+}
+function toggleHelp(force) {
+  const h = $('#help');
+  h.hidden = force === undefined ? !h.hidden : !force;
+}
+
+/* ---------------------------------------------------------------- loading */
+async function loadBatches() {
+  const d = await api('/api/batches');
+  S.batches = d.batches || [];
+  renderBatchSel();
+}
+async function openBatch(name) {
+  const fresh = S.batch !== name;
+  const d = await api('/api/batch/' + encodeURIComponent(name));
+  if (fresh) {
+    if (S.edit) S.edit = null;
+    player.pause();
+    player.removeAttribute('src');
+    S.playingId = null;
+    closeViewer();
+    stopVideo();
+    S.vidShow.clear();
+    for (const v of S.mviews.values()) v.remove();
+    S.mviews.clear();
+    S.gameModel.clear();
+    closeFinish();
+    for (const el of S.rows.values()) el.remove();
+    S.rows.clear();
+    S.batch = name;
+    S.title = d.title;
+    S.mode = d.mode || 'standard';
+    if ([...$('#batchSel').options].some(o => o.value === name)) $('#batchSel').value = name;
+    S.actions = Array.isArray(d.actions) ? d.actions : null;
+    detachRun();
+    loadRuns(name);
+    S.items = d.items;
+    S.take.clear();
+    S.items.forEach(standIn);
+    S.byId = new Map(S.items.map(it => [it.id, it]));
+    const f = (S.mem.filt || {})[name] || {};
+    S.tab = tabsHere().some(x => x.id === f.tab) ? f.tab : 'all';
+    const groups = new Set(S.items.map(groupOf));
+    S.group = f.group && (f.group === 'all' || groups.has(f.group)) ? f.group : 'all';
+    S.curId = (S.mem.pos || {})[name] || null;
+    computeView();
+    syncList();
+    renderCounts();
+    $('#list').scrollTop = 0;
+    const el = S.rows.get(S.curId);
+    if (el) el.scrollIntoView({ block: 'center' });
+    saveMem();
+  } else {
+    // rescan: keep what's on screen, update in place, append anything new
+    S.title = d.title;
+    S.mode = d.mode || 'standard';
+    S.actions = Array.isArray(d.actions) ? d.actions : null;
+    const known = new Set(S.items.map(it => it.id));
+    const next = d.items.map(n => {
+      const old = S.byId.get(n.id);
+      if (old && (S.inflight.get(n.id) || 0) > 0) return old;
+      if (old) { for (const k of Object.keys(old)) if (!(k in n)) delete old[k]; Object.assign(old, n); return standIn(old); }
+      return standIn(n);
+    });
+    S.items = next;
+    S.byId = new Map(next.map(it => [it.id, it]));
+    const keep = new Set(S.view.filter(id => S.byId.has(id)));
+    S.view = S.items.filter(it => keep.has(it.id) || (!known.has(it.id) && matches(it))).map(it => it.id);
+    if (!S.view.includes(S.curId)) S.curId = S.view[0] ?? null;
+    syncList();
+    renderCounts();
+    if (S.vidId && !S.byId.has(S.vidId)) stopVideo();
+  }
+  renderModeUI();
+  renderActbar();
+  if (!$('#finish').hidden) renderFinish();
+  reprioritiseProbes();
+}
+// the words and keys that change with the batch's mode
+function renderModeUI() {
+  const c = isConcept();
+  $('#kAcc').textContent = c ? 'good' : 'accept';
+  $('#kRej').textContent = c ? 'bad' : 'reject';
+  $('#kEdit').textContent = c ? 'edit prompt' : 'edit line';
+  $('#kChgWrap').hidden = !c;
+  $('#vhAcc').textContent = c ? 'good' : 'accept';
+  $('#vhRej').textContent = c ? 'bad' : 'reject';
+  $('#vhChg').hidden = !c;
+  renderBlind();
+}
+async function rescan(quiet = false) {
+  if (!S.batch) { try { await loadBatches(); if (S.batches[0]) await openBatch(S.batches[0].batch); } catch { } return; }
+  try {
+    await openBatch(S.batch);
+    loadBatches().catch(() => { });
+    if (!quiet) toast('Rescanned', 'ok');
+  } catch (e) {
+    if (!quiet) toast('Rescan failed: ' + e.message, 'err');
+  }
+}
+
+/* ---------------------------------------------------------------- finish review: actions and runs */
+// The batch's actions come from batch.json (or the server's built-in install). The page only ever
+// sends {batch, action, options}; the server builds the command from the declaration.
+const runBusy = () => !!(S.run && S.run.info.status === 'running');
+const hasRegen = () => (S.actions || []).some(a => a.kind === 'regen');
+const fmtClock = s => { s = Math.max(0, Math.floor(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+const shq = s => /^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`;
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+function finishCounts() {
+  const c = counts(S.items);
+  c.listen = S.items.filter(it => it.regenerated && it.status === 'pending').length;
+  c.fresh = c.pending - c.listen;
+  return c;
+}
+function optVal(a, o) {
+  const m = S.optVals.get(`${S.batch}/${a.id}`) || {};
+  return o.flag in m ? m[o.flag] : o.default;
+}
+function setOptVal(aid, flag, v) {
+  const k = `${S.batch}/${aid}`;
+  S.optVals.set(k, { ...(S.optVals.get(k) || {}), [flag]: v });
+}
+function optionValues(a) {
+  const out = {};
+  for (const o of a.options || []) {
+    const v = optVal(a, o);
+    if (v === undefined || v === null || v === '') continue;
+    out[o.flag] = v;
+  }
+  return out;
+}
+function cmdPreview(a) {
+  const parts = [a.cmd];
+  for (const o of a.options || []) {
+    const v = optVal(a, o);
+    if (o.type === 'bool') { if (v) parts.push(o.flag); }
+    else if (v !== undefined && v !== null && v !== '') parts.push(o.flag, shq(String(v)));
+  }
+  return parts.join(' ');
+}
+
+function renderActbar() {
+  const box = $('#actBtns');
+  let html = '';
+  if (S.batch && S.actions === null) {
+    html = `<span class="abar-note">This review server is older than the page: restart <code>review.py serve</code> for the action buttons.</span>`;
+  } else if (S.batch) {
+    html = S.actions.slice(0, 4).map(a => `<button class="abtn" data-aid="${esc(a.id)}" ${a.error ? 'disabled' : ''}
+      title="${esc(a.error ? 'Can’t run: ' + a.error : (a.help || a.cmd))}">${esc(a.label)}${a.spends ? '<span class="cr">credits</span>' : ''}</button>`).join('');
+    if (!hasRegen()) {
+      html += `<span title="The generator declares no regen action for this batch: ${isConcept() ? 'redo the Bad items, and the Good with changes ones with their notes,' : 're-roll the rejects'} by hand from review/${esc(S.batch)}/rejected.json">` +
+        `<button class="abtn" disabled>${isConcept() ? 'Redo Bad + changes' : 'Redo rejected'}</button></span>`;
+    }
+  }
+  box.innerHTML = html;
+  $('#finishBtn').disabled = !S.batch;
+  renderLogBtn();
+}
+function renderLogBtn() {
+  const b = $('#logBtn'), r = S.run && S.run.info;
+  b.className = 'abtn logbtn' + (r ? ' ' + r.status : '');
+  $('#logLbl').textContent = r && r.status === 'running' ? `${r.label}…` : 'Log';
+  $('#logTime').textContent = r && r.status === 'running' ? fmtClock(r.elapsed) : '';
+  b.title = r ? `${r.label}: ${r.status === 'ok' ? 'done' : r.status} (O)` : 'No runs yet for this batch (O)';
+}
+
+function optHTML(a, o) {
+  const v = optVal(a, o);
+  const t = o.help ? ` title="${esc(o.help)}"` : '';
+  const d = `data-aid="${esc(a.id)}" data-flag="${esc(o.flag)}" data-type="${esc(o.type)}"`;
+  if (o.type === 'bool') return `<label class="opt"${t}><input type="checkbox" ${d} ${v ? 'checked' : ''}>${esc(o.label)}</label>`;
+  if (o.type === 'int') return `<label class="opt"${t}>${esc(o.label)}<input type="number" step="1" ${d}${o.min != null ? ` min="${o.min}"` : ''}${o.max != null ? ` max="${o.max}"` : ''} value="${esc(v ?? '')}"></label>`;
+  if (o.type === 'choice') return `<label class="opt"${t}>${esc(o.label)}<select ${d}>${o.choices.map(c => `<option value="${esc(c)}"${String(c) === String(v) ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`;
+  return `<label class="opt"${t}>${esc(o.label)}<input type="text" ${d} value="${esc(v ?? '')}" spellcheck="false"></label>`;
+}
+function actCardHTML(a, i, c) {
+  const busy = runBusy();
+  const cls = ['act-card', 'k-' + a.kind];
+  if (a.spends) cls.push('spends');
+  if (S.finishFocus === a.id) cls.push('focus');
+  let why = '';
+  if (a.error) why = `<div class="act-err">Can’t run: ${esc(a.error)}</div>`;
+  else if (busy) why = `<div class="act-why">“${esc(S.run.info.label)}” is running: see the log (O).</div>`;
+  else if (a.kind === 'regen' && !c.reject) why = `<div class="act-why">Nothing is rejected right now.</div>`;
+  else if (a.kind === 'install' && !(c.accept + c.revise)) why = `<div class="act-why">${c.installed ? `Nothing new to install: ${c.installed} already ${isConcept() ? 'in canon' : 'in the game'}.` : `Nothing is ${isConcept() ? 'good' : 'accepted'} yet.`}</div>`;
+  const tags = (a.spends ? '<span class="act-tag">spends Ludo credits</span>' : '') + (a.builtin ? '<span class="act-tag b">built in</span>' : '');
+  return `<div class="${cls.join(' ')}" data-aid="${esc(a.id)}">
+    <button class="act-run" data-run="${esc(a.id)}" ${a.error || busy ? 'disabled' : ''}>${i < 9 ? `<kbd>${i + 1}</kbd>` : ''}${esc(a.label)}</button>
+    <div>
+      <div class="act-help">${esc(a.help || '')}${tags}</div>
+      ${(a.options || []).length ? `<div class="act-opts">${a.options.map(o => optHTML(a, o)).join('')}</div>` : ''}
+      ${a.cmd ? `<code class="act-cmd">${esc(cmdPreview(a))}</code>` : ''}
+      ${why}
+    </div>
+  </div>`;
+}
+function renderFinish() {
+  const c = finishCounts();
+  S.finishBusy = runBusy();
+  $('#finSub').innerHTML = `${esc(S.title)} · <code>review/${esc(S.batch)}</code> · ${plural(c.total, 'item', 'items')}`;
+  const tile = (cls, n, lbl) => `<div class="fc ${cls}${n ? '' : ' zero'}"><b>${n}</b><span>${lbl}</span></div>`;
+  const W = modeWords();
+  $('#finCounts').innerHTML = tile('acc', c.accept, W.Acc) + (isConcept() || c.revise ? tile('rev', c.revise, 'Good with changes') : '') +
+    (c.installed ? tile('acc', c.installed, isConcept() ? 'In canon' : 'In game') : '') + tile('rej', c.reject, W.Rej) + tile('pen', c.fresh, 'Pending') +
+    tile('lis', c.listen, 'Needs a listen') + (c.missing ? tile('mis', c.missing, 'Missing') : '');
+  let warn = '';
+  if (c.fresh) warn += `<div class="fin-warn"><span><b>${plural(c.fresh, 'item is', 'items are')} still pending.</b> Pending items are neither installed nor redone.</span><span class="sp"></span><button data-fin="pending">Show pending</button></div>`;
+  if (c.listen) warn += `<div class="fin-warn"><span>${plural(c.listen, 'regenerated take needs', 'regenerated takes need')} a listen first; until then ${c.listen === 1 ? 'it counts' : 'they count'} as pending.</span><span class="sp"></span><button data-fin="pending">Show ${c.listen === 1 ? 'it' : 'them'}</button></div>`;
+  if (c.missing) warn += `<div class="fin-warn"><span>${plural(c.missing, 'file is', 'files are')} missing (still generating, or failed).</span></div>`;
+  if (!warn && c.total) warn = `<div class="fin-ok">Every item has a verdict.</div>`;
+  $('#finWarn').innerHTML = warn;
+  let acts;
+  if (S.actions === null) {
+    acts = `<div class="act-card off"><button class="act-run" disabled>Install accepted</button><div><div class="act-help">This review server is older than the page. Restart it (<code>python3 tools/review/review.py serve</code>) to run actions from here.</div></div></div>`;
+  } else {
+    acts = S.actions.map((a, i) => actCardHTML(a, i, c)).join('');
+    if (!hasRegen()) {
+      acts += `<div class="act-card off" title="The generator declares no regen action for this batch"><button class="act-run" disabled>${isConcept() ? 'Redo Bad + changes' : 'Redo rejected'}</button><div>
+        <div class="act-help">${isConcept()
+          ? `The generator declares no regen action for this batch. The next art round redoes the Bad items (${c.reject}) and the Good with changes items (${c.revise}), with their notes: it reads <code>review/${esc(S.batch)}/rejected.json</code>, which Add to canon writes.`
+          : `The generator declares no regen action for this batch. Re-roll the ${plural(c.reject, 'rejected item', 'rejected items')} with the generator by hand: it reads <code>review/${esc(S.batch)}/rejected.json</code>, which Install accepted writes.`}</div></div></div>`;
+    }
+  }
+  $('#finActions').innerHTML = acts;
+}
+function openFinish(focusId = null) {
+  if (!S.batch) return;
+  if (S.edit) commitEdit({ advance: false });
+  closeViewer();
+  toggleHelp(false);
+  S.finishFocus = focusId;
+  renderFinish();
+  $('#finish').hidden = false;
+  // highlight, don't focus: a stray Space must not press Run
+  const card = focusId && [...document.querySelectorAll('#finActions .act-card')].find(c => c.dataset.aid === focusId);
+  if (card) card.scrollIntoView({ block: 'nearest' });
+}
+function closeFinish() {
+  const f = $('#finish');
+  if (f && !f.hidden) { f.hidden = true; if (document.activeElement && f.contains(document.activeElement)) document.activeElement.blur(); }
+  S.finishFocus = null;
+}
+
+function openConfirm(a) {
+  const c = finishCounts();
+  S.confirmFor = a.id;
+  const what = a.kind === 'regen'
+    ? `regenerates the <b>${plural(c.reject, 'rejected item', 'rejected items')}</b> with Ludo`
+    : `runs a generator that calls Ludo (${plural(c.reject, 'item is', 'items are')} rejected)`;
+  $('#cfBody').innerHTML = `<p><b>${esc(a.label)}</b> ${what}. <b>That spends Ludo credits.</b></p>` +
+    (a.kind === 'regen' && !c.reject ? '<p>Nothing is rejected right now, so there may be nothing to redo.</p>' : '') +
+    (c.pending ? `<p>${plural(c.pending, 'pending item', 'pending items')} won’t be touched.</p>` : '') +
+    takesNote(a, c) +
+    `<p>The new takes come back here as <b>needs a listen</b>.</p>` +
+    `<code class="act-cmd">${esc(cmdPreview(a))}</code>`;
+  $('#cfYes').textContent = a.kind === 'regen' && c.reject ? `Spend credits on ${c.reject}` : 'Spend credits and run';
+  $('#confirm').hidden = false;
+  $('#cfNo').focus();
+}
+// v1.11: a voice redo rolls several takes per line, and reads the notes
+function takesNote(a, c) {
+  const o = (a.options || []).find(x => x.flag === '--takes');
+  const noNotes = (a.options || []).find(x => x.flag === '--no-notes');
+  let h = '';
+  if (o && c.reject) {
+    const t = Number(optVal(a, o)) || 1;
+    h += `<p>${plural(t, 'take', 'takes')} of each: about <b>${c.reject * t} credits</b> for voice lines. You pick the best with <kbd>&larr;</kbd><kbd>&rarr;</kbd> and <kbd>A</kbd>.</p>`;
+  }
+  if (noNotes && !optVal(a, noNotes)) {
+    const noted = S.items.filter(it => it.status === 'reject' && it.note && !/^\s*(re-?do|try again|again)[.!]?\s*$/i.test(it.note)).length;
+    if (noted) h += `<p>${plural(noted, 'note', 'notes')} will steer the redo (Claude writes the direction when it is installed).</p>`;
+  }
+  return h;
+}
+function closeConfirm() {
+  $('#confirm').hidden = true;
+  S.confirmFor = null;
+}
+
+async function runAction(aid, confirmed = false) {
+  const a = (S.actions || []).find(x => x.id === aid);
+  if (!a || a.error) return;
+  if (runBusy()) { toast(`“${S.run.info.label}” is still running`, 'err'); openDrawer(); return; }
+  if (a.spends && !confirmed) { openConfirm(a); return; }
+  if (S.edit) commitEdit({ advance: false });
+  const batch = S.batch;
+  try {
+    await Promise.allSettled([...S.saving]);  // the command must see every verdict just given
+    const d = await post('/api/run', { batch, action: aid, options: optionValues(a) });
+    if (batch !== S.batch) return;
+    closeFinish();
+    attachRun(d.run, true);
+    openDrawer();
+  } catch (e) {
+    toast(`Couldn’t start “${a.label}”: ${e.message}`, 'err');
+    if (e.status === 409) loadRuns(batch);
+  }
+}
+
+/* the run log drawer */
+function detachRun() {
+  if (S.run) clearTimeout(S.run.timer);
+  S.run = null;
+  S.runs = [];
+  S.runsSig = '';
+  $('#drLog').textContent = '';
+  S.logLen = 0;
+  renderRunUI();
+}
+async function loadRuns(name) {
+  if (!name || S.actions === null) return;
+  try {
+    const d = await api('/api/runs?batch=' + encodeURIComponent(name));
+    if (name !== S.batch) return;
+    S.runs = d.runs || [];
+    const last = S.runs[0];
+    if (last && (!S.run || S.run.id !== last.id)) attachRun(last, last.status === 'running');
+    if (last && last.status === 'running') openDrawer();
+    renderRunUI();
+  } catch { /* an older server: no runs */ }
+}
+function attachRun(info, live) {
+  if (S.run) clearTimeout(S.run.timer);
+  S.run = { id: info.id, info, next: 0, live, timer: 0 };
+  if (!S.runs.some(r => r.id === info.id)) S.runs.unshift(info);
+  $('#drLog').textContent = '';
+  S.logLen = 0;
+  renderRunUI();
+  pollRun();
+}
+async function pollRun() {
+  const r = S.run;
+  if (!r) return;
+  clearTimeout(r.timer);
+  let d;
+  try {
+    d = await api(`/api/run/${encodeURIComponent(r.id)}?from=${r.next}`);
+  } catch (e) {
+    if (S.run !== r) return;
+    if (e.status === 404) {  // the server restarted: that run is gone
+      if (r.info.status === 'running') { r.info = { ...r.info, status: 'failed' }; appendLog('\n[the review server restarted; this run’s end is in runs.log]\n'); }
+      renderRunUI();
+      return;
+    }
+    r.timer = setTimeout(pollRun, 1500);
+    return;
+  }
+  if (S.run !== r) return;
+  if (d.truncated && r.next === 0) appendLog('[… the start was dropped from memory; runs.log has it all]\n');
+  if (d.output) appendLog(d.output);
+  r.next = d.next;
+  const was = r.info.status;
+  delete d.output;
+  r.info = d;
+  const i = S.runs.findIndex(x => x.id === d.id);
+  if (i >= 0) S.runs[i] = d;
+  renderRunUI();
+  if (d.status === 'running') r.timer = setTimeout(pollRun, 400);
+  else if (was === 'running' && r.live) runFinished(d);
+}
+function runFinished(d) {
+  const how = { ok: 'done', failed: `failed (exit ${d.code})`, cancelled: 'cancelled' }[d.status] || d.status;
+  toast(`${d.label}: ${how}`, d.status === 'ok' ? 'ok' : 'err');
+  if (d.batch === S.batch) rescan(true);  // new files come back as "needs a listen"
+  else loadBatches().catch(() => { });
+}
+const ANSI = /\x1b\[[0-9;?]*[ -\/]*[@-~]/g;
+function appendLog(text) {
+  const pre = $('#drLog');
+  const stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30;
+  text = text.replace(ANSI, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  pre.appendChild(document.createTextNode(text));
+  S.logLen = (S.logLen || 0) + text.length;
+  if (S.logLen > 1500000) {
+    pre.textContent = '[… trimmed here; runs.log has it all]\n' + pre.textContent.slice(-1000000);
+    S.logLen = pre.textContent.length;
+  }
+  if (stick) pre.scrollTop = pre.scrollHeight;
+}
+function renderRunUI() {
+  const r = S.run && S.run.info;
+  const st = $('#drStatus');
+  st.className = 'rchip' + (r ? ' ' + r.status : '');
+  st.textContent = r ? ({ ok: 'done' })[r.status] || r.status : 'idle';
+  $('#drLabel').textContent = r ? r.label : 'No runs yet';
+  $('#drCmd').textContent = r ? '$ ' + r.cmd : '';
+  $('#drCmd').title = r ? r.cmd : '';
+  $('#drTime').textContent = r ? [fmtAt(r.started_at), fmtClock(r.elapsed), r.code != null ? 'exit ' + r.code : ''].filter(Boolean).join(' · ') : '';
+  $('#drCancel').hidden = !(r && r.status === 'running');
+  $('#drPath').textContent = S.batch ? `review/${S.batch}/runs.log` : 'runs.log';
+  const sig = (S.runs || []).map(x => x.id + x.status).join() + '|' + (S.run ? S.run.id : '');
+  if (sig !== S.runsSig) {  // don't rebuild the picker on every poll: it would snap shut
+    S.runsSig = sig;
+    const runs = S.runs || [];
+    $('#drRuns').innerHTML = runs.length > 1
+      ? `Earlier: <span class="select-wrap" style="display:inline-block"><select id="drRunSel">${runs.map(x =>
+        `<option value="${esc(x.id)}"${S.run && x.id === S.run.id ? ' selected' : ''}>${esc(x.label)} · ${esc(fmtAt(x.started_at))} · ${esc(x.status === 'ok' ? 'done' : x.status)}</option>`).join('')}</select></span>`
+      : (r ? '' : 'Run an action from Finish review (F): its output streams in here.');
+  }
+  renderLogBtn();
+  if (!$('#finish').hidden && S.finishBusy !== runBusy()) renderFinish();
+}
+function openDrawer() {
+  S.drawerOpen = true;
+  $('#drawer').hidden = false;
+  const pre = $('#drLog');
+  pre.scrollTop = pre.scrollHeight;
+  renderRunUI();
+  const el = S.rows.get(S.curId);
+  if (el) el.scrollIntoView({ block: 'nearest' });
+}
+function closeDrawer() {
+  S.drawerOpen = false;
+  $('#drawer').hidden = true;
+}
+function toggleDrawer() {
+  if (S.drawerOpen) { closeDrawer(); return; }
+  openDrawer();
+  if (!S.run) loadRuns(S.batch);
+}
+async function cancelRun() {
+  const r = S.run;
+  if (!r || r.info.status !== 'running') return;
+  try {
+    await post(`/api/run/${encodeURIComponent(r.id)}/cancel`, {});
+    toast('Cancelling…');
+    pollRun();
+  } catch (e) {
+    toast('Couldn’t cancel: ' + e.message, 'err');
+  }
+}
+
+/* ---------------------------------------------------------------- events */
+$('#list').addEventListener('click', e => {
+  if (e.target.closest('.endcard [data-act="finish"]')) { e.target.closest('button').blur(); openFinish(); return; }
+  const row = e.target.closest('.row');
+  if (!row) return;
+  const id = row.dataset.id;
+  const act = e.target.closest('[data-act]');
+  const inEditor = e.target.closest('textarea, input');
+  if (inEditor) return;
+  const btn = e.target.closest('button');
+  if (btn) btn.blur();
+  if (S.curId !== id && !(act && (act.dataset.act === 'edit-save' || act.dataset.act === 'edit-cancel'))) setCurrent(id, { scroll: false });
+  if (!act) return;
+  switch (act.dataset.act) {
+    case 'play': togglePlay(id); break;
+    case 'seek': seek(id, e, act); break;
+    case 'view': openViewer(id, 'image'); break;
+    case 'vplay': { const it = S.byId.get(id); if (it) toggleVideo(it); break; }
+    case 'vseek': seekVideo(id, e, act); break;
+    case 'vtoggle': toggleStage(id); break;
+    case 'loop': toggleLoop(); break;
+    case 'zoom': openViewer(id, 'video'); break;
+    case 'zoom3d': openViewer(id, 'model'); break;
+    case 'turn': toggleTurntable(); break;
+    case 'mreset': resetModel(id); break;
+    case 'accept': accept(id); break;
+    case 'reject': reject(id); break;
+    case 'undo': unmark(id); break;
+    case 'revise': revise(id); break;
+    case 'edit': startEdit(id, 'text'); break;
+    case 'note': startEdit(id, 'note'); break;
+    case 'edit-save': commitEdit({ advance: false }); break;
+    case 'edit-cancel': cancelEdit(); break;
+    case 'take': selectTake(id, +act.dataset.i, true); break;
+    case 'game': playGame(id); break;
+    case 'chip': addChip(id, act.dataset.t); break;
+  }
+});
+$('#list').addEventListener('dblclick', e => {
+  const st = e.target.closest('.stage:not(.bad)'), row = e.target.closest('.row');
+  if (!st || !row) return;
+  openViewer(row.dataset.id, 'video');
+  if (vplayer.paused) doPlayV();
+});
+// keep focus in the editor when its own Save / Cancel buttons are pressed
+$('#list').addEventListener('mousedown', e => {
+  if (e.target.closest('.edit-bar button, .chips button')) e.preventDefault();
+});
+$('#list').addEventListener('input', e => {
+  if (e.target.matches('textarea.edit-in')) autosize(e.target);
+});
+$('#list').addEventListener('keydown', e => {
+  if (!e.target.matches('textarea.edit-in, input.note-in')) return;
+  e.stopPropagation();
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); commitEdit({ advance: true }); }
+  else if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+});
+$('#list').addEventListener('focusout', e => {
+  if (!S.edit || !e.target.matches('textarea.edit-in, input.note-in')) return;
+  if (!document.hasFocus()) return;  // switching windows: keep the draft
+  const target = e.target;
+  setTimeout(() => {
+    if (!S.edit || document.activeElement === target || !document.hasFocus()) return;
+    commitEdit({ advance: false, blur: true });
+  }, 0);
+});
+
+$('#tabs').addEventListener('click', e => {
+  const b = e.target.closest('.tab');
+  if (!b) return;
+  b.blur();
+  setFilter({ tab: b.dataset.tab });
+});
+$('#groups').addEventListener('click', e => {
+  const b = e.target.closest('.chip');
+  if (!b) return;
+  b.blur();
+  setFilter({ group: b.dataset.group });
+});
+function setFilter({ tab, group }) {
+  if (S.edit) cancelEdit();
+  if (tab) S.tab = tab;
+  if (group) S.group = group;
+  const keepCur = S.curId;
+  computeView();
+  syncList();
+  renderCounts();
+  if (S.curId !== keepCur || S.curId) {
+    const el = S.rows.get(S.curId);
+    if (el) el.scrollIntoView({ block: 'nearest' });
+    else $('#list').scrollTop = 0;
+  }
+  saveMem();
+  reprioritiseProbes();
+}
+$('#batchSel').addEventListener('change', async e => {
+  e.target.blur();
+  try { await openBatch(e.target.value); } catch (err) { toast('Couldn’t open batch: ' + err.message, 'err'); }
+});
+function toggleBlind() {
+  if (!S.batch || $('#blindBtn').hidden) { toast('No seats in this batch: nothing to hide'); return; }
+  S.mem.blind = !blind();
+  saveMem();
+  renderBlind();
+  for (const id of S.rows.keys()) renderRow(id);  // a row being edited keeps its draft
+  if (S.viewerOpen) renderViewer();
+  toast(`Blind seats: ${blind() ? 'on: names are hidden until you judge' : 'off: names are showing'}`, 'ok');
+}
+function renderBlind() {
+  const has = isConcept() || S.items.some(hasSeats);
+  $('#blindBtn').hidden = !has;
+  $('#kBlindWrap').hidden = !has;
+  $('#blindBtn').classList.toggle('on', blind());
+  $('#blindSt').textContent = blind() ? 'ON' : 'OFF';
+}
+$('#blindBtn').addEventListener('click', e => { e.currentTarget.blur(); toggleBlind(); });
+function toggleAutoplay() {
+  S.autoplay = !S.autoplay;
+  renderAutoplay();
+  saveMem();
+  toast(`Autoplay next: ${S.autoplay ? 'on' : 'off'}`, 'ok');
+}
+$('#autoBtn').addEventListener('click', e => { e.currentTarget.blur(); toggleAutoplay(); });
+$('#autoChip').addEventListener('click', e => { e.currentTarget.blur(); toggleAutoplay(); });
+$('#loopChip').addEventListener('click', e => { e.currentTarget.blur(); toggleLoop(); });
+$('#helpBtn').addEventListener('click', e => { e.currentTarget.blur(); toggleHelp(); });
+$('#rescan').addEventListener('click', e => { e.currentTarget.blur(); rescan(); });
+$('#lessonsBtn').addEventListener('click', e => { e.currentTarget.blur(); openLessons(); });
+$('#lessons').addEventListener('click', e => { if (!e.target.closest('.lessons-panel')) closeLessons(); });
+$('#viewer').addEventListener('click', e => { if (!e.target.closest('img, video, model-viewer')) closeViewer(); });
+$('#help').addEventListener('click', e => { if (!e.target.closest('.help')) toggleHelp(false); });
+
+$('#finishBtn').addEventListener('click', e => { e.currentTarget.blur(); openFinish(); });
+$('#actBtns').addEventListener('click', e => {
+  const b = e.target.closest('[data-aid]');
+  if (!b || b.disabled) return;
+  b.blur();
+  openFinish(b.dataset.aid);
+});
+$('#logBtn').addEventListener('click', e => { e.currentTarget.blur(); toggleDrawer(); });
+$('#drClose').addEventListener('click', e => { e.currentTarget.blur(); closeDrawer(); });
+$('#drCancel').addEventListener('click', e => { e.currentTarget.blur(); cancelRun(); });
+$('#drRuns').addEventListener('change', e => {
+  if (e.target.id !== 'drRunSel') return;
+  const info = S.runs.find(x => x.id === e.target.value);
+  e.target.blur();
+  if (info) attachRun(info, info.status === 'running');
+});
+$('#finish').addEventListener('click', e => {
+  if (!e.target.closest('.finish-panel')) { closeFinish(); return; }
+  const fin = e.target.closest('[data-fin]');
+  if (fin) { closeFinish(); setFilter({ tab: 'pending', group: 'all' }); return; }
+  const run = e.target.closest('[data-run]');
+  if (run && !run.disabled) { run.blur(); runAction(run.dataset.run); }
+});
+function onOptChange(e) {
+  const el = e.target.closest('[data-flag]');
+  if (!el) return;
+  let v;
+  if (el.dataset.type === 'bool') v = el.checked;
+  else if (el.dataset.type === 'int') v = el.value.trim() === '' ? null : Number(el.value);
+  else v = el.value;
+  setOptVal(el.dataset.aid, el.dataset.flag, v);
+  const card = el.closest('.act-card'), a = (S.actions || []).find(x => x.id === el.dataset.aid);
+  const cmd = card && card.querySelector('.act-cmd');
+  if (cmd && a) cmd.textContent = cmdPreview(a);
+  if (el.dataset.type === 'bool') el.blur();  // so 1–9 still run an action
+}
+$('#finActions').addEventListener('input', onOptChange);
+$('#finActions').addEventListener('change', onOptChange);
+$('#confirm').addEventListener('click', e => { if (!e.target.closest('.confirm-panel')) closeConfirm(); });
+$('#cfNo').addEventListener('click', closeConfirm);
+$('#cfYes').addEventListener('click', () => { const id = S.confirmFor; closeConfirm(); if (id) runAction(id, true); });
+
+let lastFocusScan = 0;
+window.addEventListener('focus', () => {
+  if (S.edit || Date.now() - lastFocusScan < 2000) return;
+  lastFocusScan = Date.now();
+  rescan(true);
+});
+
+const isField = t => t && (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || (t.tagName === 'INPUT' && t.type !== 'checkbox'));
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target;
+  const k = (e.key === '/' && e.shiftKey) ? '?' : e.key;
+  const once = !e.repeat;
+  // dialogs first: they own the keyboard while open
+  if (!$('#confirm').hidden) {
+    if (k === 'Escape') { e.preventDefault(); closeConfirm(); }
+    return;  // Enter / Space act on the focused button (Cancel first)
+  }
+  if (!$('#lessons').hidden) {
+    if (k === 'Escape' || k === 'w' || k === 'W') { e.preventDefault(); closeLessons(); }
+    return;
+  }
+  if (!$('#finish').hidden) {
+    if (k === 'Escape') { e.preventDefault(); closeFinish(); return; }
+    if (isField(t)) return;
+    if ((k === 'f' || k === 'F') && once) { e.preventDefault(); closeFinish(); return; }
+    if (/^[1-9]$/.test(k)) {
+      e.preventDefault();
+      const a = (S.actions || [])[+k - 1];
+      if (a && once) {
+        const b = [...document.querySelectorAll('#finActions .act-run')].find(x => x.dataset.run === a.id);
+        if (b && !b.disabled) runAction(a.id);
+      }
+    }
+    return;
+  }
+  if (t === vplayer) {
+    if (k === ' ' || k === 'ArrowLeft' || k === 'ArrowRight') return;  // its own controls (large view)
+    vplayer.blur();
+  }
+  if (t && t.tagName === 'SELECT') {
+    if (/^[ajkrucenpfolvzwbt0-9?]$/i.test(k) || k === 'Escape') t.blur(); else return;
+  } else if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT')) {
+    return;
+  }
+  if (!$('#help').hidden) {
+    if (k === 'Escape' || k === '?' || k === 'Enter' || k === ' ') { e.preventDefault(); toggleHelp(false); }
+    return;
+  }
+  const id = S.curId;
+  switch (k) {
+    case ' ':
+    case 'Spacebar':
+      e.preventDefault();
+      if (id && once) togglePlay(id);
+      break;
+    case 'ArrowDown': case 'j': case 'J':
+      e.preventDefault(); move(1); break;
+    case 'ArrowUp': case 'k': case 'K':
+      e.preventDefault(); move(-1); break;
+    case 'Home':
+      e.preventDefault(); if (S.view.length) setCurrent(S.view[0]); break;
+    case 'End':
+      e.preventDefault(); if (S.view.length) setCurrent(S.view[S.view.length - 1]); break;
+    case 'a': case 'A':
+      if (id && once) accept(id); break;
+    case 'r': case 'R':
+      if (id && once) reject(id); break;
+    case 'u': case 'U':
+      if (id && once) unmark(id); break;
+    case 'c': case 'C':
+      e.preventDefault(); if (id && once) revise(id); break;
+    case 'b': case 'B':
+      if (once) toggleBlind(); break;
+    case 't': case 'T':
+      if (once) toggleTurntable(); break;
+    case 'e': case 'E':
+      e.preventDefault(); if (id && once) { closeViewer(); startEdit(id, 'text'); } break;
+    case 'n': case 'N':
+      e.preventDefault(); if (id && once) { closeViewer(); startEdit(id, 'note'); } break;
+    case 'p': case 'P':
+      if (once) toggleAutoplay(); break;
+    case 'v': case 'V':
+      if (id && once) toggleStage(id); break;
+    case 'l': case 'L':
+      if (once) toggleLoop(); break;
+    case 'z': case 'Z':
+      if (id && once) { if (S.viewerOpen) closeViewer(); else openViewer(id); } break;
+    case 'f': case 'F':
+      e.preventDefault(); if (once) openFinish(); break;
+    case 'o': case 'O':
+      if (once && S.batch) toggleDrawer(); break;
+    case '?':
+      e.preventDefault(); toggleHelp(true); break;
+    case 'Escape':
+      if (S.viewerOpen) closeViewer();
+      else if (S.drawerOpen) closeDrawer();
+      break;
+    case 'Enter':
+      e.preventDefault(); break;
+    case 'ArrowLeft': case 'ArrowRight': {
+      const it = id && S.byId.get(id);
+      if (it && it.takes && it.takes.length > 1) {
+        e.preventDefault();
+        const order = takeOrder(it), n = order.length;
+        let pos = order.indexOf(takeIdx(it));
+        for (let step = 0; step < n; step++) {  // skip a missing take
+          pos = (pos + (k === 'ArrowRight' ? 1 : -1) + n) % n;
+          if (it.takes[order[pos]].exists) break;
+        }
+        selectTake(id, order[pos], S.autoplay);
+      }
+      break;
+    }
+    case 'w': case 'W':
+      if (once) openLessons(); break;
+    default:
+      if (/^[0-9]$/.test(k) && id && once) {
+        e.preventDefault();
+        const it = S.byId.get(id);
+        if (k === '0') playGame(id); else if (it && it.takes) selectTake(id, takeOrder(it)[+k - 1], true);
+        else selectTake(id, +k - 1, true);
+      }
+  }
+});
+
+/* ---------------------------------------------------------------- boot */
+(async function boot() {
+  S.mem = loadMem();
+  S.autoplay = S.mem.autoplay !== false;
+  S.turntable = S.mem.turntable !== false;
+  S.loop = S.mem.loop === true;
+  vplayer.loop = S.loop;
+  renderAutoplay();
+  renderActbar();
+  renderRunUI();
+  renderCounts();
+  try {
+    await loadBatches();
+  } catch (e) {
+    $('#sub').textContent = 'Can’t reach the review server — is `review.py serve` running?';
+    return;
+  }
+  const pick = S.batches.some(b => b.batch === S.mem.batch) ? S.mem.batch : (S.batches[0] && S.batches[0].batch);
+  if (pick) {
+    try { await openBatch(pick); } catch (e) { toast('Couldn’t open batch: ' + e.message, 'err'); }
+  } else {
+    $('#title').textContent = 'No batches';
+    $('#sub').innerHTML = 'Nothing in <code>review/</code> yet.';
+    syncList();
+  }
+})();
+</script>
+</body>
+</html>
