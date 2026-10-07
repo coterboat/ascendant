@@ -1,7 +1,8 @@
 # Review Table: accept or reject generated assets
 
-A small local tool for going through AI-generated assets: voice lines, music, images and video.
-You listen or look, mark each one **accept** or **reject**, optionally fix the line text or add a note.
+A small local tool for going through AI-generated assets: concept art, voice lines, music, images and video.
+You listen or look, mark each one **accept** or **reject** (concept art: **Good**, **Good with changes** or **Bad**),
+optionally fix the line text or add a note.
 Then **Finish review** (`F`) installs the keepers where they belong and has the generator redo the rejects,
 from buttons in the page, with the output streaming into a log drawer.
 
@@ -23,7 +24,7 @@ After changing `review.py`, restart `serve`: the page is re-read on every load, 
 | `serve [--port 8766] [--open] [--verbose]` | Serves the UI plus a JSON API, and lists every batch under `review/`. Stopping it cancels any action still running. |
 | `status [<batch>]` | Shows accepted / rejected / pending / missing counts for each group. |
 | `apply <batch> [--dry-run]` | Copies every **accepted** file to its `target`, then writes `review/<batch>/rejected.json`. |
-| `new <batch> --title "..."` | Creates an empty `batch.json`. |
+| `new <batch> --title "..." [--mode concept]` | Creates an empty `batch.json` (a concept batch with `--mode concept`). |
 | `sample [--force]` | Rebuilds the `_sample` demo batch. `--force` wipes it and its verdicts. |
 | `lessons [--write MD] [--json]` | What every batch's verdicts and notes say: first takes kept by kind and by voice, and the note themes. `--write <file.md>` refreshes the block between `<!-- lessons:begin -->` and `<!-- lessons:end -->`. |
 
@@ -38,8 +39,9 @@ Items that were regenerated after their verdict are not copied until you have li
 |---|---|
 | `Space` | Play or pause the current line or video (on an image without a video, opens it large) |
 | `↓` / `J`, `↑` / `K` | Move to the next or previous item (`Home` / `End` jump to the first or last) |
-| `A` | Accept, then move on |
-| `R` | Reject, then move on |
+| `A` | Accept, then move on (concept batch: **Good**) |
+| `C` | Concept batches only: **Good with changes**. Opens the note; a note is required. |
+| `R` | Reject, then move on (concept batch: **Bad**; a note is optional) |
 | `U` | Set the item back to pending |
 | `←` / `→` | Previous / next take, when an item was rolled more than once. With autoplay on, each one plays. |
 | `1`–`9` | Go to take N and play it. `A` keeps the take you are on. |
@@ -66,6 +68,31 @@ Music, sound effects and video are never length-checked. Lengths are measured in
 - A clip is flagged as too short when it runs shorter than `words / 4.5` seconds. That usually means it was cut off.
 - Files that are missing or fail to load are flagged too.
 - Words inside `[brackets]` (audio tags) are not counted.
+
+## Concept mode: Good, Good with changes, Bad
+
+Concept art is judged differently from a voice line: it is rarely "right" or "wrong", it is *this one, but...*.
+A batch with `"mode": "concept"` in its `batch.json` (or `review.py new <batch> --mode concept`) gets three verdicts:
+
+| key | button | stored as | what it means |
+|---|---|---|---|
+| `A` | **Good** | `accept` | keep this as it is |
+| `C` | **Good with changes** | `revise` | keep what works; the note says what to change. **The note is required**: `C` opens it, and `Enter` saves the verdict with the note. |
+| `R` | **Bad** | `reject` | do it again; a note is optional |
+
+- `revise` counts as **kept**: it is counted with the accepted ones in the progress bar and in Finish review, and `apply`
+  copies it to its `target` like an accept. Its note travels with it. The server refuses a `revise` without a note, and
+  refuses to empty the note of a `revise` item. `revise` only exists in concept batches (`decide` answers 400 otherwise).
+- The sidebar tabs read **Good**, **Good with changes**, **In canon** and **Bad**, and the rows show the picture larger,
+  because the picture is the point. `E` edits the prompt (it marks the item Bad, like editing a line).
+- `N` opens the note with art chips: "More like this", "Wrong palette", "Reads like another faction", "Text in the image",
+  "Not a lookalike of …" (the dots are selected so you can type the name over them), "Keep the silhouette, change the detail".
+  They are written the same way every time so `lessons` can sort them into themes (`palette`, `faction`, `text_in_image`,
+  `lookalike`, `silhouette`, `more_like`).
+- `rejected.json` of a concept batch carries the `revise` items too, so the next art round redoes both; each entry says
+  which with `verdict`: `reject` = start again, `revise` = keep what works and apply the note.
+- `lessons` counts `revise` in its own column (kept, with changes asked for), and a `revise` note stays "open" until the
+  item is redone.
 
 ## Takes, and what the game has now (v1.11)
 
@@ -200,6 +227,7 @@ Everything lives in `review/<batch>/` at the repo root. `review/*/` is gitignore
 - `label`: the row title.
 - `text`: optional. The spoken line, or the image prompt.
 - `meta`: free-form. If `meta.context` is present, it is shown as a small *when: …* hint. `meta.voice` marks a spoken line (length-checked).
+- `mode` (top level, next to `items`): `"concept"` for concept art (see [Concept mode](#concept-mode-good-good-with-changes-bad)); left out, it is a standard batch.
 - `poster` (video items) and `video` (image items): see [Video](#video).
 - `actions` (top level, next to `items`): see [Finish review](#finish-review-actions).
 
@@ -210,7 +238,7 @@ Everything lives in `review/<batch>/` at the repo root. `review/*/` is gitignore
                                   "at": "2026-09-27T12:00:00", "file_mtime": 1727400000.0}}}
 ```
 
-- `verdict` is `accept`, `reject` or `pending`. An item with no entry is pending.
+- `verdict` is `accept`, `reject` or `pending`, and in a concept batch also `revise`. An item with no entry is pending.
 - `pick` (v1.11): the take that was accepted, relative to the batch folder, when it isn't the item's own file.
 - `file_mtime` is the file's mtime when the verdict was given. If the file on disk is newer, the item was regenerated: it counts as pending again ("needs a listen"), and the old verdict and note stay visible.
 - When you re-decide a regenerated item, the old verdict moves into a `history` list.
@@ -221,7 +249,12 @@ Everything lives in `review/<batch>/` at the repo root. `review/*/` is gitignore
 [{"id": "advisor.loss.v1", "text": "We have lost the river crossing, Commander.", "note": "too flat", "meta": {"voice": "voice_advisor"}}]
 ```
 
-`text` is the edited text when there is one, otherwise the original.
+`text` is the edited text when there is one, otherwise the original. In a concept batch each entry also has
+`"verdict": "reject"` or `"revise"` and the item's `group`, and the `revise` items are listed with their notes:
+
+```json
+[{"id": "ruler1", "text": "<prompt>", "note": "Wrong palette", "meta": {}, "verdict": "revise", "group": "ember_orchard"}]
+```
 
 ## How a generator should use this
 

@@ -11,7 +11,7 @@ Commands:
     serve  [--port 8766] [--open]   local web UI + JSON API on 127.0.0.1
     status [<batch>]                counts per verdict per group
     apply  <batch> [--dry-run]      copy accepted files to their targets, write rejected.json
-    new    <batch> --title "..."    scaffold an empty batch
+    new    <batch> --title "..." [--mode concept]   scaffold an empty batch
     sample [--force]                build the review/_sample demo batch
     lessons [--write docs/PROMPTING.md]  what every review so far says about the prompts
 
@@ -51,7 +51,9 @@ REVIEW = REPO / "review"
 INDEX_HTML = TOOL_DIR / "index.html"
 TOKEN_SLOT = "__REVIEW_TOKEN__"  # index.html carries this; the server swaps in its token
 
-VERDICTS = ("accept", "reject", "pending")
+VERDICTS = ("accept", "revise", "reject", "pending")
+KEPT = ("accept", "revise")  # revise (Good with changes, concept mode) counts as kept, and its note travels with it
+MODES = ("standard", "concept")  # batch.json "mode": concept batches are judged Good / Good with changes / Bad
 BATCH_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
 MTIME_EPS = 0.001  # slack for float round-trips through JSON
 HISTORY_KEEP = 10
@@ -140,6 +142,10 @@ def load_batch(name: str) -> tuple[Path, dict]:
         raise ReviewError(f"{name}/batch.json must be an object with an 'items' list", 500)
     items = [it for it in data.get("items", []) if isinstance(it, dict) and it.get("id")]
     data["items"] = items
+    mode = data.get("mode")
+    if mode is not None and mode not in MODES:
+        raise ReviewError(f"{name}/batch.json: \"mode\" must be one of {', '.join(MODES)} (got {mode!r})", 500)
+    data["mode"] = mode or "standard"
     return d, data
 
 
@@ -306,7 +312,7 @@ def media_url(name: str, d: Path, p: Path, st=None) -> str:
     return f"/media/{quote(name)}/{quote(rel)}?v={st.st_mtime:.3f}"
 
 
-def merge_item(name: str, d: Path, item: dict, entry: dict | None) -> dict:
+def merge_item(name: str, d: Path, item: dict, entry: dict | None, mode: str = "standard") -> dict:
     """batch item + its verdict entry + computed status."""
     p = picked_path(d, item, entry)
     exists = p is not None and p.is_file()
@@ -317,7 +323,7 @@ def merge_item(name: str, d: Path, item: dict, entry: dict | None) -> dict:
         verdict = "pending"
     regenerated = False
     fm = entry.get("file_mtime")
-    if exists and verdict in ("accept", "reject") and "file_mtime" in entry:
+    if exists and verdict in ("accept", "revise", "reject") and "file_mtime" in entry:
         # file_mtime null = the verdict was given while the file was missing (a reject);
         # a file showing up since then is a new take.
         regenerated = fm is None or (isinstance(fm, (int, float)) and st.st_mtime > fm + MTIME_EPS)
@@ -329,7 +335,7 @@ def merge_item(name: str, d: Path, item: dict, entry: dict | None) -> dict:
         status = verdict
     ## "in game": accepted, installed by a successful Install run, and the file is the one installed
     inst = entry.get("installed") if isinstance(entry.get("installed"), dict) else None
-    installed = bool(inst) and status == "accept" and exists and isinstance(inst.get("file_mtime"), (int, float)) \
+    installed = bool(inst) and status in KEPT and exists and isinstance(inst.get("file_mtime"), (int, float)) \
         and abs(st.st_mtime - inst["file_mtime"]) <= MTIME_EPS
     out = dict(item)
     out["kind"] = item_kind(item)
@@ -378,20 +384,21 @@ def merge_item(name: str, d: Path, item: dict, entry: dict | None) -> dict:
 def merged_batch(name: str) -> dict:
     d, data = load_batch(name)
     rv = load_review(d)["items"]
-    items = [merge_item(name, d, it, rv.get(it["id"])) for it in data["items"]]
-    return {"batch": name, "title": data.get("title") or name, "items": items,
+    items = [merge_item(name, d, it, rv.get(it["id"]), data["mode"]) for it in data["items"]]
+    return {"batch": name, "title": data.get("title") or name, "mode": data["mode"], "items": items,
             "actions": [public_action(a) for a in batch_actions(name, data)]}
 
 
 def summarize(items: list[dict]) -> dict:
-    c = {"total": len(items), "accept": 0, "reject": 0, "pending": 0, "missing": 0, "regenerated": 0, "installed": 0}
+    c = {"total": len(items), "accept": 0, "revise": 0, "reject": 0, "pending": 0, "missing": 0, "regenerated": 0,
+         "installed": 0}
     for it in items:
         c[it["status"]] += 1
         if it.get("installed"):
             c["installed"] += 1
         if it["regenerated"]:
             c["regenerated"] += 1
-    c["reviewed"] = c["accept"] + c["reject"]
+    c["reviewed"] = c["accept"] + c["revise"] + c["reject"]
     return c
 
 
@@ -418,7 +425,16 @@ NOTE_THEMES = [
     ("period", "Period or melody (music)", r"melod|fife|lyrics|instrument|tune|period|era\b", None),
     ("redo", "Just roll again", r"^\s*(redo|re-?do|try again|again)[.!]?\s*$", None),
     ("praise", "Praise", r"perfect|\bgreat\b|\blove\b|excellent|holy shit|nailed", None),
+    # concept art (v2): the notes the art chips write
+    ("more_like", "More like this", r"more like this", ("image",)),
+    ("palette", "Wrong palette", r"palette|colou?r scheme|wrong colou?rs?|too (dark|bright|saturated|desaturated|muted)", ("image",)),
+    ("faction", "Reads like another faction", r"another faction|other faction|reads (like|as) (a |the |an )?\w+|looks like (a |the |an )?\w+ faction", ("image",)),
+    ("text_in_image", "Text in the image", r"text in|lettering|letters|captions?\b|watermark|\blogos?\b|writing in", ("image",)),
+    ("lookalike", "Too close to something that exists", r"look-?alike|too close to|resembles|rip-?off|copy of|\bIP\b", ("image",)),
+    ("silhouette", "Silhouette is right, the detail is not", r"silhouette|keep the (shape|outline)", ("image",)),
 ]
+## themes that are nothing to fix: a note that says what worked
+NO_FIX_THEMES = ("praise", "more_like")
 _THEME_RE = [(t, lbl, re.compile(pat, re.I if t != "stress" else 0), kinds) for t, lbl, pat, kinds in NOTE_THEMES]
 
 
@@ -435,6 +451,8 @@ def note_themes(note: str, kind: str = "audio") -> list[str]:
             continue
         if rx.search(note):
             out.append(t)
+    if "silhouette" in out and "detail" in out:
+        out.remove("detail")  # "keep the silhouette, change the detail" is one note, not two
     return out
 
 
@@ -474,16 +492,18 @@ def lessons(names: list[str] | None = None) -> dict:
                 continue
             kind = item_kind(item)
             v = e.get("verdict", "pending")
-            if v not in ("accept", "reject"):
+            if v not in ("accept", "revise", "reject"):
                 continue
             was_rejected = any(isinstance(h, dict) and h.get("verdict") == "reject" for h in e.get("history") or [])
             rounds = 1 + sum(1 for h in e.get("history") or [] if isinstance(h, dict) and h.get("verdict") == "reject")
             for bucket, key in ((kinds, kind), (groups, f"{kind}:{item.get('group') or '-'}")):
-                b = bucket.setdefault(key, {"decided": 0, "first_take": 0, "redone": 0, "open": 0, "rounds": 0})
+                b = bucket.setdefault(key, {"decided": 0, "first_take": 0, "redone": 0, "open": 0, "revise": 0, "rounds": 0})
                 b["decided"] += 1
                 if v == "accept":
                     b["redone" if was_rejected else "first_take"] += 1
                     b["rounds"] += rounds
+                elif v == "revise":
+                    b["revise"] += 1  # kept, with changes asked for: neither a clean first take nor a reject
                 else:
                     b["open"] += 1
             for note in _item_notes(e):
@@ -491,11 +511,11 @@ def lessons(names: list[str] | None = None) -> dict:
                     th = themes[t]
                     th["notes"] += 1
                     th["kinds"][kind] = th["kinds"].get(kind, 0) + 1
-                    if t == "praise":
+                    if t in NO_FIX_THEMES:
                         pass  # nothing to fix
                     elif v == "accept" and (was_rejected or e.get("note") != note):
                         th["fixed"] += 1
-                    elif v == "reject":
+                    elif v in ("reject", "revise"):
                         th["open"] += 1
                     if len(th["examples"]) < 5:
                         th["examples"].append({"batch": name, "id": item.get("id"), "group": item.get("group") or "",
@@ -515,10 +535,10 @@ LESSONS_BEGIN, LESSONS_END = "<!-- lessons:begin -->", "<!-- lessons:end -->"
 
 def lessons_markdown(ls: dict) -> str:
     pct = lambda x: "–" if x is None else f"{round(x * 100)}%"
-    rows = ["| kind | decided | kept first take | redone, then kept | still rejected | rounds to keep |",
-            "|---|---|---|---|---|---|"]
+    rows = ["| kind | decided | kept first take | good with changes | redone, then kept | still rejected | rounds to keep |",
+            "|---|---|---|---|---|---|---|"]
     for k, b in sorted(ls["kinds"].items(), key=lambda kv: -kv[1]["decided"]):
-        rows.append(f"| {k} | {b['decided']} | {b['first_take']} ({pct(b['first_take_rate'])}) | {b['redone']} | {b['open']} | {b['mean_rounds'] or '–'} |")
+        rows.append(f"| {k} | {b['decided']} | {b['first_take']} ({pct(b['first_take_rate'])}) | {b['revise']} | {b['redone']} | {b['open']} | {b['mean_rounds'] or '–'} |")
     voices = [(g.split(":", 1)[1], b) for g, b in ls["groups"].items() if g.startswith("audio:") and b["decided"] >= 8]
     vrow = ", ".join(f"{g} {pct(b['first_take_rate'])}" for g, b in sorted(voices, key=lambda x: x[1]["first_take_rate"] or 0))
     th = ["| theme | notes | fixed by a redo | still open | e.g. |", "|---|---|---|---|---|"]
@@ -569,18 +589,20 @@ def decide(name: str, item_id: str, verdict=None, note=None, text=None, take=Non
         item = next((it for it in data["items"] if it["id"] == item_id), None)
         if item is None:
             raise ReviewError(f"no item {item_id!r} in {name}", 404)
+        if verdict == "revise" and data["mode"] != "concept":
+            raise ReviewError('"revise" (Good with changes) only exists in batches with "mode": "concept"')
         review = load_review(d)
         entries = review["items"]
         old = entries.get(item_id) if isinstance(entries.get(item_id), dict) else {}
         entry = dict(old)
-        before = merge_item(name, d, item, old)
+        before = merge_item(name, d, item, old, data["mode"])
         p = item_path(d, item)
-        if verdict == "accept" and take and take != item.get("file"):
+        if verdict in KEPT and take and take != item.get("file"):
             p = next((t["path"] for t in item_takes(d, item)[1:] if t["file"] == take), None)
             if p is None:
                 raise ReviewError(f"{item_id} has no take {take!r}", 404)
         if verdict is not None:
-            if verdict == "accept" and not (p is not None and p.is_file()):
+            if verdict in KEPT and not (p is not None and p.is_file()):
                 raise ReviewError("the file is missing; can't accept it", 409)
             if before["regenerated"]:
                 # the file changed since this verdict: keep the old call as history
@@ -590,7 +612,7 @@ def decide(name: str, item_id: str, verdict=None, note=None, text=None, take=Non
             entry["verdict"] = verdict
             entry["at"] = datetime.now().isoformat(timespec="seconds")
             entry["file_mtime"] = p.stat().st_mtime if p is not None and p.is_file() else None
-            if verdict == "accept" and p is not None and p != item_path(d, item):
+            if verdict in KEPT and p is not None and p != item_path(d, item):
                 entry["pick"] = p.relative_to(d.resolve()).as_posix()
             else:
                 entry.pop("pick", None)  # the item's own file, or no take chosen at all
@@ -604,23 +626,38 @@ def decide(name: str, item_id: str, verdict=None, note=None, text=None, take=Non
                 entry["text"] = t
         entry.setdefault("verdict", "pending")
         entry.setdefault("note", "")
+        if entry["verdict"] == "revise" and not entry["note"]:
+            raise ReviewError("Good with changes needs a note saying what to change")
         entries[item_id] = entry
         atomic_write_json(d / "review.json", review)
-        return merge_item(name, d, item, entry)
+        return merge_item(name, d, item, entry, data["mode"])
 
 
-def rejected_entries(items: list[dict]) -> list[dict]:
-    return [{"id": it["id"],
+def rejected_entries(items: list[dict], mode: str = "standard") -> list[dict]:
+    """What a generator redoes. A concept batch also lists its `revise` items (Good with changes):
+    the next round redoes both, and each entry says which with `verdict` (`reject` = start again,
+    `revise` = keep what works and apply the note)."""
+    concept = mode == "concept"
+    out = []
+    for it in items:
+        if it["status"] != "reject" and not (concept and it["status"] == "revise"):
+            continue
+        e = {"id": it["id"],
              "text": it.get("edited_text") or it.get("text") or "",
              "note": it.get("note") or "",
              "meta": it.get("meta") or {}}
-            for it in items if it["status"] == "reject"]
+        if concept:
+            e["verdict"] = it["status"]
+            e["group"] = it.get("group") or ""
+        out.append(e)
+    return out
 
 
 def write_rejected(name: str) -> tuple[Path, int]:
     """review/<batch>/rejected.json from the current verdicts (what a generator re-rolls)."""
     d, _ = load_batch(name)
-    rejected = rejected_entries(merged_batch(name)["items"])
+    mb = merged_batch(name)
+    rejected = rejected_entries(mb["items"], mb["mode"])
     atomic_write_json(d / "rejected.json", rejected)
     return d / "rejected.json", len(rejected)
 
@@ -996,7 +1033,7 @@ def mark_installed(name: str, snapshot: dict) -> int:
         entries = review["items"]
         for item_id, mt in snapshot.items():
             e = entries.get(item_id)
-            if isinstance(e, dict) and e.get("verdict") == "accept":
+            if isinstance(e, dict) and e.get("verdict") in KEPT:
                 e["installed"] = {"at": at, "file_mtime": mt}
                 n += 1
         atomic_write_json(d / "review.json", review)
@@ -1029,10 +1066,10 @@ def reconcile(name: str) -> int:
         entries = review["items"]
         for item in data["items"]:
             e = entries.get(item["id"])
-            if not isinstance(e, dict) or e.get("verdict") != "accept":
+            if not isinstance(e, dict) or e.get("verdict") not in KEPT:
                 continue
-            m = merge_item(name, d, item, e)
-            if m["status"] != "accept" or m["installed"] or m["mtime"] is None:
+            m = merge_item(name, d, item, e, data["mode"])
+            if m["status"] not in KEPT or m["installed"] or m["mtime"] is None:
                 continue
             pairs = _install_pairs(d, item, m.get("src"))
             if pairs and all(a.is_file() and b.is_file() and filecmp.cmp(a, b, shallow=False) for a, b in pairs):
@@ -1056,9 +1093,9 @@ def start_run(name: str, action_id: str, options=None) -> Run:
             raise ReviewError(f"“{busy.label}” is still running for {name}: wait for it or cancel it", 409)
         run = Run(name, action, argv, shown)
         if action["kind"] == "install" and "--dry-run" not in extra:
-            ## what this run installs: the accepted takes as they are now (marked "in game" if it succeeds)
+            ## what this run installs: the kept takes as they are now (marked "in game" if it succeeds)
             run.install_snapshot = {it["id"]: it["mtime"] for it in merged_batch(name)["items"]
-                                    if it["status"] == "accept" and it["mtime"] is not None}
+                                    if it["status"] in KEPT and it["mtime"] is not None}
         ids = _BATCH_RUNS.setdefault(name, [])
         ids.append(run.id)
         _RUNS[run.id] = run
@@ -1240,7 +1277,8 @@ class Handler(BaseHTTPRequestHandler):
             for name in list_batch_names():
                 try:
                     mb = merged_batch(name)
-                    out.append({"batch": name, "title": mb["title"], "counts": summarize(mb["items"])})
+                    out.append({"batch": name, "title": mb["title"], "mode": mb["mode"],
+                                "counts": summarize(mb["items"])})
                 except ReviewError as e:
                     out.append({"batch": name, "title": name, "error": str(e)})
             return self._json(200, {"batches": out, "root": str(REVIEW)}, head)
@@ -1404,14 +1442,18 @@ def cmd_status(args) -> int:
         groups: dict[str, list] = {}
         for it in items:
             groups.setdefault(str(it.get("group") or "-"), []).append(it)
-        header = ["group", "accepted", "rejected", "pending", "missing", "total"]
-        rows = []
-        for g in sorted(groups):
-            c = summarize(groups[g])
-            rows.append([g, c["accept"], c["reject"], c["pending"], c["missing"], c["total"]])
+        concept = mb["mode"] == "concept"
+        header = (["group", "good", "changes", "bad", "pending", "missing", "total"] if concept
+                  else ["group", "accepted", "rejected", "pending", "missing", "total"])
+
+        def row(g, c):
+            if concept:
+                return [g, c["accept"], c["revise"], c["reject"], c["pending"], c["missing"], c["total"]]
+            return [g, c["accept"], c["reject"], c["pending"], c["missing"], c["total"]]
+        rows = [row(g, summarize(groups[g])) for g in sorted(groups)]
         c = summarize(items)
         if len(groups) > 1:
-            rows.append(["(all)", c["accept"], c["reject"], c["pending"], c["missing"], c["total"]])
+            rows.append(row("(all)", c))
         print(f"{name} — {mb['title']}   {c['reviewed']}/{c['total']} reviewed")
         print(_table(rows, header))
         if c["regenerated"]:
@@ -1436,11 +1478,11 @@ def cmd_apply(args) -> int:
     copied = unchanged = skipped = 0
     warnings: list[str] = []
     for it in mb["items"]:
-        if it["verdict"] == "accept" and it["status"] == "missing":
+        if it["verdict"] in KEPT and it["status"] == "missing":
             warnings.append(f"{it['id']}: accepted but its file is missing — skipped")
             skipped += 1
             continue
-        if it["status"] != "accept":
+        if it["status"] not in KEPT:
             continue
         src = (d / it["src"]).resolve() if it.get("src") else item_path(d, it)
         dest = _repo_target(it.get("target"))
@@ -1470,7 +1512,7 @@ def cmd_apply(args) -> int:
             os.replace(tmp, dest)
         copied += 1
 
-    rejected = rejected_entries(mb["items"])
+    rejected = rejected_entries(mb["items"], mb["mode"])
     rj = d / "rejected.json"
     if not dry:
         atomic_write_json(rj, rejected)
@@ -1478,8 +1520,9 @@ def cmd_apply(args) -> int:
     c = summarize(mb["items"])
     for w in warnings:
         print(f"  ! {w}")
+    revised = f", {c['revise']} good with changes" if mb["mode"] == "concept" else ""
     print(f"{tag}{name}: {'would copy' if dry else 'copied'} {copied}, unchanged {unchanged}, "
-          f"skipped {skipped}  ·  {c['accept']} accepted, {c['reject']} rejected, "
+          f"skipped {skipped}  ·  {c['accept']} accepted{revised}, {c['reject']} rejected, "
           f"{c['pending']} pending, {c['missing']} missing")
     print(f"{tag}{'would write' if dry else 'wrote'} {rj.relative_to(REPO)} ({len(rejected)} to re-roll)")
     if c["regenerated"]:
@@ -1496,7 +1539,10 @@ def cmd_new(args) -> int:
         print(f"{bj.relative_to(REPO)} already exists", file=sys.stderr)
         return 1
     d.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(bj, {"batch": args.batch, "title": args.title or args.batch, "items": []})
+    data = {"batch": args.batch, "title": args.title or args.batch}
+    if args.mode != "standard":
+        data["mode"] = args.mode
+    atomic_write_json(bj, {**data, "items": []})
     print(f"created {bj.relative_to(REPO)} — put media next to it and list them under \"items\"")
     return 0
 
@@ -1673,6 +1719,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("new", help="scaffold an empty batch")
     p.add_argument("batch")
     p.add_argument("--title", default="")
+    p.add_argument("--mode", choices=MODES, default="standard", help="concept: judged Good / Good with changes / Bad")
     p.set_defaults(fn=cmd_new)
     p = sub.add_parser("sample", help="build the review/_sample demo batch")
     p.add_argument("--force", action="store_true")

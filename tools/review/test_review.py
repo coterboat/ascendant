@@ -585,9 +585,187 @@ class TakesTests(unittest.TestCase):
         R.decide(self.name, "solo", verdict="pending", note="")
 
 
+def png_bytes(size: int = 16) -> bytes:
+    """A tiny valid PNG, made by the tool's own sample-image writer."""
+    tmp = R.REVIEW / TAG / "_png.png"
+    R._write_png(tmp, size)
+    blob = tmp.read_bytes()
+    tmp.unlink()
+    return blob
+
+
+class ConceptTests(unittest.TestCase):
+    """Concept mode: Good / Good with changes / Bad, stored as accept / revise / reject."""
+
+    @classmethod
+    def setUpClass(cls):
+        R.ensure_review_root()
+        cls.name = TAG + "_concept"
+        cls.png = png_bytes()
+        cls.files = {"a.png": cls.png + b"a", "b.png": cls.png + b"b", "c.png": cls.png + b"c", "d.png": cls.png + b"d"}
+        make_batch(cls.name, {"title": "concept", "mode": "concept", "items": [
+            {"id": "a", "file": "a.png", "group": "ember", "text": "prompt a", "target": f"review/{cls.name}/out/a.png"},
+            {"id": "b", "file": "b.png", "group": "ember", "text": "prompt b", "target": f"review/{cls.name}/out/b.png"},
+            {"id": "c", "file": "c.png", "group": "veil", "text": "prompt c", "target": f"review/{cls.name}/out/c.png"},
+            {"id": "d", "file": "d.png", "group": "veil", "text": "prompt d"},
+            {"id": "gone", "file": "gone.png", "group": "veil"},
+        ]}, cls.files)
+        cls.std = TAG + "_std"
+        make_batch(cls.std, {"title": "standard", "items": [{"id": "s", "file": "s.png"}]}, {"s.png": cls.png})
+        cls.httpd = R.Server(("127.0.0.1", 0), R.Handler)
+        cls.base = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+        for n in (cls.name, cls.std):
+            shutil.rmtree(R.REVIEW / n, ignore_errors=True)
+
+    def setUp(self):
+        # every test starts from a clean slate: no verdicts, the original files
+        for n, fs in ((self.name, self.files), (self.std, {"s.png": self.png})):
+            d = R.REVIEW / n
+            (d / "review.json").unlink(missing_ok=True)
+            for rel, blob in fs.items():
+                (d / rel).write_bytes(blob)
+                os.utime(d / rel, (1_700_000_000, 1_700_000_000))
+
+    def item(self, iid):
+        return {it["id"]: it for it in R.merged_batch(self.name)["items"]}[iid]
+
+    def post(self, body):
+        rq = urllib.request.Request(self.base + "/api/decide", data=json.dumps(body).encode(), method="POST",
+                                    headers={"Content-Type": "application/json", "X-Review-Token": self.httpd.token})
+        try:
+            with urllib.request.urlopen(rq, timeout=10) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, json.loads(e.read())
+
+    def test_mode_is_reported_and_validated(self):
+        self.assertEqual(R.merged_batch(self.name)["mode"], "concept")
+        self.assertEqual(R.merged_batch(self.std)["mode"], "standard")
+        bad = make_batch(TAG + "_badmode", {"mode": "concepts", "items": []})
+        try:
+            with self.assertRaises(R.ReviewError):
+                R.merged_batch(TAG + "_badmode")
+        finally:
+            shutil.rmtree(bad, ignore_errors=True)
+
+    def test_revise_needs_a_note(self):
+        with self.assertRaises(R.ReviewError) as cm:
+            R.decide(self.name, "a", verdict="revise")
+        self.assertEqual(cm.exception.status, 400)
+        with self.assertRaises(R.ReviewError):
+            R.decide(self.name, "a", verdict="revise", note="   ")
+        self.assertEqual(self.item("a")["status"], "pending", "a refused verdict changes nothing")
+        # over HTTP: 400 without the note, 200 with it
+        st, d = self.post({"batch": self.name, "id": "a", "verdict": "revise"})
+        self.assertEqual(st, 400)
+        self.assertIn("note", d["error"])
+        st, d = self.post({"batch": self.name, "id": "a", "verdict": "revise", "note": "Wrong palette"})
+        self.assertEqual(st, 200)
+        self.assertEqual((d["item"]["status"], d["item"]["note"]), ("revise", "Wrong palette"))
+        # the note can't be emptied while the verdict stands; clearing the verdict frees it
+        with self.assertRaises(R.ReviewError):
+            R.decide(self.name, "a", note="")
+        self.assertEqual(self.item("a")["note"], "Wrong palette")
+        R.decide(self.name, "a", verdict="pending")
+        self.assertEqual(self.item("a")["note"], "Wrong palette", "the note stays when the verdict is cleared")
+        R.decide(self.name, "a", note="")
+
+    def test_revise_only_in_concept_batches(self):
+        with self.assertRaises(R.ReviewError):
+            R.decide(self.std, "s", verdict="revise", note="change it")
+        R.decide(self.std, "s", verdict="accept")  # accept and reject are unchanged
+        R.decide(self.std, "s", verdict="pending")
+
+    def test_revise_counts_as_kept(self):
+        R.decide(self.name, "a", verdict="accept")
+        R.decide(self.name, "b", verdict="revise", note="Keep the silhouette, change the detail")
+        R.decide(self.name, "c", verdict="reject", note="Text in the image")
+        c = R.summarize(R.merged_batch(self.name)["items"])
+        self.assertEqual((c["accept"], c["revise"], c["reject"], c["pending"], c["missing"]), (1, 1, 1, 1, 1))
+        self.assertEqual(c["reviewed"], 3)
+        self.assertEqual(self.item("b")["verdict"], "revise")
+        self.assertEqual(self.item("b")["note"], "Keep the silhouette, change the detail")
+        # a regenerated file puts it back in the queue; the old call and note stay visible
+        f = R.REVIEW / self.name / "b.png"
+        t = time.time() + 5
+        os.utime(f, (t, t))
+        it = self.item("b")
+        self.assertEqual((it["status"], it["regenerated"], it["note"]), ("pending", True, "Keep the silhouette, change the detail"))
+        R.decide(self.name, "b", verdict="revise", note="Better, now the colours")
+        it = self.item("b")
+        self.assertEqual((it["status"], it["note"]), ("revise", "Better, now the colours"))
+        self.assertEqual(it["history"][-1]["verdict"], "revise")
+
+    def test_rejected_json_carries_the_revise_items(self):
+        R.decide(self.name, "a", verdict="accept")
+        R.decide(self.name, "b", verdict="revise", note="More like this, but warmer")
+        R.decide(self.name, "c", verdict="reject", note="Text in the image")
+        path, n = R.write_rejected(self.name)
+        rows = {e["id"]: e for e in json.loads(path.read_text())}
+        self.assertEqual(n, 2)
+        self.assertEqual(set(rows), {"b", "c"})
+        self.assertEqual((rows["b"]["verdict"], rows["b"]["note"], rows["b"]["text"]), ("revise", "More like this, but warmer", "prompt b"))
+        self.assertEqual((rows["c"]["verdict"], rows["c"]["group"]), ("reject", "veil"))
+        # a standard batch's list is what it always was: rejects only, no verdict key
+        R.decide(self.std, "s", verdict="reject", note="no")
+        path, n = R.write_rejected(self.std)
+        self.assertEqual([set(e) for e in json.loads(path.read_text())], [{"id", "text", "note", "meta"}])
+
+    def test_apply_copies_the_kept_items_to_their_targets(self):
+        R.decide(self.name, "a", verdict="accept")
+        R.decide(self.name, "b", verdict="revise", note="Warmer")
+        R.decide(self.name, "c", verdict="reject")
+        out = R.REVIEW / self.name / "out"
+        shutil.rmtree(out, ignore_errors=True)
+        R.cmd_apply(type("A", (), {"batch": self.name, "dry_run": False})())
+        self.assertEqual(sorted(p.name for p in out.iterdir()), ["a.png", "b.png"], "Good and Good with changes are kept")
+
+    def test_art_chips_sort_into_themes(self):
+        cases = {
+            "More like this": {"more_like"},
+            "Wrong palette": {"palette"},
+            "Reads like another faction": {"faction"},
+            "Text in the image": {"text_in_image"},
+            "Not a lookalike of Atlas Gaming's knight": {"lookalike"},
+            "Keep the silhouette, change the detail": {"silhouette"},
+            "Wrong palette, Text in the image": {"palette", "text_in_image"},
+        }
+        for note, want in cases.items():
+            with self.subTest(note=note):
+                self.assertEqual(set(R.note_themes(note, "image")), want)
+        self.assertEqual(R.note_themes("Wrong palette", "audio"), [], "the art themes are for pictures")
+
+    def test_lessons_count_revise(self):
+        R.decide(self.name, "a", verdict="accept")
+        R.decide(self.name, "b", verdict="revise", note="Wrong palette")
+        R.decide(self.name, "c", verdict="reject", note="Text in the image")
+        ls = R.lessons([self.name])
+        img = ls["kinds"]["image"]
+        self.assertEqual((img["decided"], img["first_take"], img["revise"], img["open"]), (3, 1, 1, 1))
+        th = {t["theme"]: t for t in ls["themes"]}
+        self.assertEqual((th["palette"]["notes"], th["palette"]["open"]), (1, 1), "a revise note is still open")
+        self.assertEqual((th["text_in_image"]["notes"], th["text_in_image"]["open"]), (1, 1))
+        self.assertIn("good with changes", R.lessons_markdown(ls))
+
+    def test_new_scaffolds_a_concept_batch(self):
+        name = TAG + "_new"
+        try:
+            R.cmd_new(type("A", (), {"batch": name, "title": "New concepts", "mode": "concept"})())
+            self.assertEqual(R.load_batch(name)[1]["mode"], "concept")
+        finally:
+            shutil.rmtree(R.REVIEW / name, ignore_errors=True)
+
+
 if __name__ == "__main__":
     try:
         unittest.main(verbosity=2)
     finally:
-        shutil.rmtree(R.REVIEW / TAG, ignore_errors=True)
-        shutil.rmtree(R.REVIEW / (TAG + "_takes"), ignore_errors=True)
+        for stray in R.REVIEW.glob(TAG + "*"):  # the throwaway batches, whatever a failed test left behind
+            shutil.rmtree(stray, ignore_errors=True)

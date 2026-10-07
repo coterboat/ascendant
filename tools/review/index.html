@@ -84,6 +84,7 @@ select:focus-visible { outline: 2px solid var(--brass-2); outline-offset: 1px; }
 .pbar { display: flex; height: 8px; margin-top: 12px; background: var(--bg-deep); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .pbar div { height: 100%; transition: width .35s ease; }
 .pbar .pa { background: var(--green); }
+.pbar .pv { background: var(--amber); }
 .pbar .pr { background: var(--red); }
 .plabel { display: flex; justify-content: space-between; margin-top: 7px; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .plabel b { color: var(--ink-2); font-weight: 600; }
@@ -101,6 +102,7 @@ select:focus-visible { outline: 2px solid var(--brass-2); outline-offset: 1px; }
 .tab[data-tab=pending] .dot { background: var(--pending); box-shadow: 0 0 0 1px #6b7a99; }
 .tab[data-tab=accept] .dot { background: var(--green); }
 .tab[data-tab=reject] .dot { background: var(--red); }
+.tab[data-tab=revise] .dot { background: var(--amber); }
 .tab[data-tab=flagged] .dot { background: var(--amber); }
 .tab .n { margin-left: auto; font: 600 12.5px/1 var(--sans); color: var(--ink-3); font-variant-numeric: tabular-nums;
   background: rgba(255, 255, 255, .04); border-radius: 999px; padding: 4px 9px; min-width: 30px; text-align: center; }
@@ -165,6 +167,7 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
 }
 .row.s-accept { --st: var(--green); }
 .row.s-reject { --st: var(--red); }
+.row.s-revise { --st: var(--amber); }
 .row.s-missing { --st: #4b4f58; border-left-style: dashed; }
 .row.regen { --st: var(--brass); }
 .row:hover { border-color: var(--line-hi); border-left-color: var(--st); }
@@ -174,6 +177,9 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
 }
 .row.out { opacity: .5; }
 .row.out.cur { opacity: .85; }
+/* concept batches: the picture is the point, so it gets room */
+.row.concept { grid-template-columns: 176px minmax(0, 1fr) 244px; }
+.row.concept .thumb { width: 176px; height: 176px; }
 
 .lead { display: flex; justify-content: center; }
 .play {
@@ -250,6 +256,9 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
 .tk.old { color: var(--red-ink); border-style: dashed; }
 .tk.game { border-color: var(--brass-2); color: var(--brass); }
 .tk.playing { background: rgba(217, 178, 95, .22); }
+.rev-hint { margin-top: 8px; font-size: 12.5px; color: #f3d49b; }
+.rev-hint b { font: 700 10.5px var(--sans); letter-spacing: .14em; text-transform: uppercase; margin-right: 6px; }
+.edit-bar button.go.rev-go { border-color: var(--amber); color: #f3d49b; }
 .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0 2px; }
 .chip-n { border: 1px solid var(--line-hi); background: var(--panel); color: var(--ink-2); border-radius: 999px; padding: 2px 10px; font-size: 11.5px; }
 .chip-n:hover { border-color: var(--brass-2); color: var(--ink); }
@@ -288,6 +297,7 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
 .row.inst { --st: var(--brass); }
 .row.inst .pill { color: #1a1406; background: var(--brass); border-color: var(--brass); }
 .s-reject .pill { color: var(--red-ink); background: var(--red-bg); border-color: rgba(184, 65, 47, .65); }
+.s-revise .pill { color: #f3d49b; background: rgba(230, 164, 69, .14); border-color: rgba(230, 164, 69, .6); }
 .s-missing .pill { border-style: dashed; color: #9aa0ad; }
 .regen .pill { color: var(--brass); background: rgba(217, 178, 95, .1); border-color: var(--brass-2); }
 .big { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -301,6 +311,10 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
 .rej { border: 1.5px solid rgba(184, 65, 47, .6); color: var(--red-ink); }
 .rej:hover { background: var(--red-bg); border-color: var(--red); }
 .s-reject .rej { background: var(--red); border-color: var(--red); color: #fff4ef; }
+.chg { border: 1.5px solid rgba(230, 164, 69, .55); color: #f3d49b; }
+.chg:hover:not(:disabled) { background: rgba(230, 164, 69, .14); border-color: var(--amber); }
+.s-revise .chg { background: var(--amber); border-color: var(--amber); color: #1d1405; }
+.big.concept .chg { grid-column: 1 / -1; height: 38px; font-size: 13.5px; }
 .big button:disabled { opacity: .28; }
 .big kbd { margin-left: 7px; }
 .small { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
@@ -433,7 +447,7 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
 .fc { --c: var(--pending); background: var(--bg-deep); border: 1px solid var(--line); border-top: 3px solid var(--c); border-radius: 9px; padding: 12px 14px 11px; }
 .fc b { display: block; font: 400 30px/1 var(--serif); color: var(--ink); font-variant-numeric: tabular-nums; }
 .fc span { display: block; margin-top: 8px; font: 700 10px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); }
-.fc.acc { --c: var(--green); } .fc.rej { --c: var(--red); } .fc.lis { --c: var(--brass); } .fc.mis { --c: #4b4f58; }
+.fc.acc { --c: var(--green); } .fc.rev { --c: var(--amber); } .fc.rej { --c: var(--red); } .fc.lis { --c: var(--brass); } .fc.mis { --c: #4b4f58; }
 .fc.zero b { color: var(--ink-3); }
 .fin-warn { display: flex; align-items: center; gap: 12px; margin: 8px 0 0; padding: 10px 12px; border-radius: 8px;
   border: 1px solid rgba(230, 164, 69, .5); background: rgba(230, 164, 69, .08); color: #f1cf98; font-size: 13.5px; }
@@ -507,6 +521,7 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
   font: 700 10px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); }
 .vpill.s-accept { color: var(--green-ink); background: var(--green-bg); border-color: var(--green); }
 .vpill.s-reject { color: var(--red-ink); background: var(--red-bg); border-color: var(--red); }
+.vpill.s-revise { color: #f3d49b; background: rgba(230, 164, 69, .14); border-color: var(--amber); }
 
 .help {
   width: min(560px, 92vw); background: var(--panel); border: 1px solid var(--line-hi); border-radius: 12px;
@@ -541,6 +556,8 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
   .act-card { grid-template-columns: 1fr; }
   .drawer { position: sticky; bottom: 0; }
   .row { grid-template-columns: 64px minmax(0, 1fr); }
+  .row.concept { grid-template-columns: 96px minmax(0, 1fr); }
+  .row.concept .thumb { width: 96px; height: 96px; }
   .ctrl { grid-column: 1 / -1; }
   .bar { width: 140px; }
   .play { width: 52px; height: 52px; }
@@ -560,7 +577,7 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
     <section>
       <label class="sec" for="batchSel">Batch</label>
       <div class="select-wrap"><select id="batchSel"></select></div>
-      <div class="pbar" title="accepted · rejected"><div class="pa" id="pa"></div><div class="pr" id="pr"></div></div>
+      <div class="pbar" title="accepted · good with changes · rejected"><div class="pa" id="pa"></div><div class="pv" id="pv"></div><div class="pr" id="pr"></div></div>
       <div class="plabel"><span id="plabel">—</span><span id="ppct"></span></div>
     </section>
 
@@ -623,9 +640,10 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
     </section>
     <footer class="keys">
       <span><kbd>Space</kbd>play / pause</span>
-      <span><kbd>A</kbd>accept</span>
-      <span><kbd>R</kbd>reject</span>
-      <span><kbd>E</kbd>edit line</span>
+      <span><kbd>A</kbd><span id="kAcc">accept</span></span>
+      <span id="kChgWrap" hidden><kbd>C</kbd>good with changes</span>
+      <span><kbd>R</kbd><span id="kRej">reject</span></span>
+      <span><kbd>E</kbd><span id="kEdit">edit line</span></span>
       <span><kbd>N</kbd>note</span>
       <span><kbd>U</kbd>back to pending</span>
       <span><kbd>J</kbd><kbd>K</kbd>next / prev</span>
@@ -646,7 +664,7 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
     <div class="vcap">
       <div class="vl"><span class="label" id="vlabel"></span><span class="vpill" id="vpill"></span></div>
       <div class="vt" id="vtext"></div>
-      <div class="vh"><kbd>A</kbd>accept &nbsp; <kbd>R</kbd>reject &nbsp; <kbd>J</kbd><kbd>K</kbd>next / prev &nbsp; <span id="vhVideo" hidden><kbd>Space</kbd>play &nbsp; <kbd>L</kbd>loop &nbsp;</span> <kbd>Esc</kbd>close</div>
+      <div class="vh"><kbd>A</kbd><span id="vhAcc">accept</span> &nbsp; <span id="vhChg" hidden><kbd>C</kbd>good with changes &nbsp; </span><kbd>R</kbd><span id="vhRej">reject</span> &nbsp; <kbd>J</kbd><kbd>K</kbd>next / prev &nbsp; <span id="vhVideo" hidden><kbd>Space</kbd>play &nbsp; <kbd>L</kbd>loop &nbsp;</span> <kbd>Esc</kbd>close</div>
     </div>
   </div>
 </div>
@@ -687,8 +705,9 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
       <dt><kbd>Space</kbd></dt><dd>Play / pause the current line (images: open large)</dd>
       <dt><kbd>&darr;</kbd><kbd>J</kbd></dt><dd>Next item</dd>
       <dt><kbd>&uarr;</kbd><kbd>K</kbd></dt><dd>Previous item</dd>
-      <dt><kbd>A</kbd></dt><dd>Accept, then advance</dd>
-      <dt><kbd>R</kbd></dt><dd>Reject, then advance</dd>
+      <dt><kbd>A</kbd></dt><dd>Accept, then advance (concept batch: <b>Good</b>)</dd>
+      <dt><kbd>C</kbd></dt><dd>Concept batches: <b>Good with changes</b>. Opens the note; a note is required, and it travels with the take</dd>
+      <dt><kbd>R</kbd></dt><dd>Reject, then advance (concept batch: <b>Bad</b>, a note is optional)</dd>
       <dt><kbd>U</kbd></dt><dd>Back to pending</dd>
       <dt><kbd>&larr;</kbd><kbd>&rarr;</kbd></dt><dd>Previous / next take, when a line was rolled more than once (Accept keeps the one you are on)</dd>
       <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>Go to take N and play it</dd>
@@ -717,15 +736,24 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+// `concept` is the tab's name in a concept batch, `only` hides it from the other kind of batch
 const TABS = [
   { id: 'all', name: 'All' },
   { id: 'pending', name: 'Pending' },
-  { id: 'accept', name: 'Accepted' },
-  { id: 'installed', name: 'In game' },
-  { id: 'reject', name: 'Rejected' },
+  { id: 'accept', name: 'Accepted', concept: 'Good' },
+  { id: 'revise', name: 'Good with changes', only: 'concept' },
+  { id: 'installed', name: 'In game', concept: 'In canon' },
+  { id: 'reject', name: 'Rejected', concept: 'Bad' },
   { id: 'flagged', name: 'Flagged' },
 ];
-const TAB_NAME = Object.fromEntries(TABS.map(t => [t.id, t.name]));
+// concept mode (batch.json "mode": "concept"): Good / Good with changes / Bad, stored as accept / revise / reject
+const isConcept = () => S.mode === 'concept';
+const tabsHere = () => TABS.filter(t => !t.only || t.only === S.mode);
+const tabName = id => { const t = TABS.find(x => x.id === id); return t ? (isConcept() && t.concept) || t.name : ''; };
+const kept = it => it.status === 'accept' || it.status === 'revise';  // Good with changes counts as kept
+const modeWords = () => isConcept()
+  ? { acc: 'good', rev: 'good with changes', rej: 'bad', inst: 'in canon', Acc: 'Good', Rej: 'Bad' }
+  : { acc: 'accepted', rev: 'good with changes', rej: 'rejected', inst: 'in game', Acc: 'Accepted', Rej: 'Rejected' };
 const ICON = {
   play: '<svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>',
   pause: '<svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z" fill="currentColor"/></svg>',
@@ -735,7 +763,7 @@ const LS_KEY = 'ascendant.review.v1';
 const TOKEN = ($('meta[name="review-token"]') || {}).content || '';
 
 const S = {
-  batches: [], batch: null, title: '',
+  batches: [], batch: null, title: '', mode: 'standard',
   items: [], byId: new Map(), rows: new Map(),
   group: 'all', tab: 'all', view: [], curId: null,
   autoplay: true, probes: new Map(), playingId: null,
@@ -810,11 +838,15 @@ const NOTE_CHIPS = {
     'More anger', 'More conviction', 'Stress *word*', 'Faster', 'Slower', 'Cut off at the end', 'Not their voice', 'Redo'],
   image: ['Keep it all in frame', 'Clean up the noise', 'Invented objects', 'Motion snaps in one frame',
     'Wrong expression', 'Hard to read the details', 'Redo'],
+  // concept art: the owner's usual notes, in the same words every time so `lessons` can sort them
+  concept: ['More like this', 'Wrong palette', 'Reads like another faction', 'Text in the image',
+    'Not a lookalike of …', 'Keep the silhouette, change the detail'],
   video: ['Keep it all in frame', 'Show how it ends', 'Wrong expression', 'Motion snaps', 'Artifacts', 'Redo'],
 };
 
 /* ---------------------------------------------------------------- helpers */
 const groupOf = it => String(it.group || '—');
+const noteChips = it => (isConcept() && it.kind === 'image') ? NOTE_CHIPS.concept : (NOTE_CHIPS[it.kind] || NOTE_CHIPS.image);
 const pkey = it => `${it.id}@${it.mtime}`;
 const displayText = it => it.edited_text || it.text || '';
 function wordCount(t) {
@@ -838,7 +870,7 @@ function fmtAt(at) {
   if (isNaN(d)) return at;
   return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
-const VWORD = { accept: 'accepted', reject: 'rejected', pending: 'pending' };
+const VWORD = { accept: 'accepted', revise: 'good with changes', reject: 'rejected', pending: 'pending' };
 const extOf = f => String(f || '').split('?')[0].split('.').pop().toLowerCase();
 
 /* video: an item is a video (kind "video"), or carries one behind its image or soundtrack
@@ -879,7 +911,8 @@ function matches(it) {
   switch (S.tab) {
     case 'pending': return it.status === 'pending';
     case 'accept': return it.status === 'accept' && !it.installed;
-    case 'installed': return it.status === 'accept' && !!it.installed;
+    case 'revise': return it.status === 'revise' && !it.installed;
+    case 'installed': return kept(it) && !!it.installed;
     case 'reject': return it.status === 'reject';
     case 'flagged': return !!flagOf(it);
     default: return true;
@@ -908,7 +941,8 @@ function computeView() {
 
 function rowClass(it) {
   const c = ['row', 'k-' + it.kind, 's-' + it.status];
-  if (it.installed && it.status === 'accept') c.push('inst');
+  if (isConcept()) c.push('concept');
+  if (it.installed && kept(it)) c.push('inst');
   if (it.regenerated) c.push('regen');
   if (it.id === S.curId) c.push('cur');
   if (!matches(it)) c.push('out');
@@ -919,9 +953,11 @@ const isPlaying = id => (S.playingId === id && !player.paused) || (S.vidId === i
 
 function pillText(it) {
   if (it.status === 'missing') return 'Missing';
-  if (it.regenerated) return 'Needs a listen';
-  if (it.installed && it.status === 'accept') return 'In game';
-  return { accept: 'Accepted', reject: 'Rejected', pending: 'Pending' }[it.status] || it.status;
+  if (it.regenerated) return it.kind === 'audio' ? 'Needs a listen' : 'Needs a look';
+  if (it.installed && kept(it)) return isConcept() ? 'In canon' : 'In game';
+  const names = isConcept() ? { accept: 'Good', revise: 'Good with changes', reject: 'Bad', pending: 'Pending' }
+    : { accept: 'Accepted', revise: 'Good with changes', reject: 'Rejected', pending: 'Pending' };
+  return names[it.status] || it.status;
 }
 
 function seamHTML(vp) {
@@ -1031,11 +1067,12 @@ function rowHTML(it) {
 
   let note = '';
   if (ed === 'note') {
-    const chips = NOTE_CHIPS[it.kind] || NOTE_CHIPS.image;
-    note = `<input class="note-in" type="text" value="${esc(it.note)}" placeholder="What’s wrong, or what to change next time…" spellcheck="true">
+    const chips = noteChips(it), rev = !!(S.edit && S.edit.revise);
+    note = (rev ? `<div class="rev-hint"><b>Good with changes</b>say what to change: the note is required, and it goes to the next round</div>` : '') +
+      `<input class="note-in" type="text" value="${esc(it.note)}" placeholder="${rev ? 'What should change, keeping what works…' : 'What’s wrong, or what to change next time…'}" spellcheck="true">
       <div class="chips">${chips.map(c => `<button class="chip-n" data-act="chip" data-t="${esc(c)}">${esc(c)}</button>`).join('')}</div>
-      <div class="edit-bar"><span>Enter saves · Esc cancels</span><span class="sp"></span>
-      <button data-act="edit-cancel">Cancel</button><button class="go note-go" data-act="edit-save">Save note</button></div>`;
+      <div class="edit-bar"><span>${rev ? 'Enter saves it as Good with changes' : 'Enter saves'} · Esc cancels</span><span class="sp"></span>
+      <button data-act="edit-cancel">Cancel</button>${rev ? '<button class="go rev-go" data-act="edit-save">Save as Good with changes</button>' : '<button class="go note-go" data-act="edit-save">Save note</button>'}</div>`;
   } else if (it.note && !it.regenerated) {
     note = `<div class="note"><b>note</b><span>${esc(it.note)}</span></div>`;
   }
@@ -1055,10 +1092,14 @@ function rowHTML(it) {
   </div>
   <div class="ctrl">
     <span class="pill">${esc(pillText(it))}</span>
-    <div class="big">
+    ${isConcept() ? `<div class="big concept">
+      <button class="acc" data-act="accept" ${it.exists ? '' : 'disabled'} title="Good (A): keep this one as it is">&#x2713;&nbsp;Good<kbd>A</kbd></button>
+      <button class="rej" data-act="reject" title="Bad (R): do it again. A note is optional">&#x2717;&nbsp;Bad<kbd>R</kbd></button>
+      <button class="chg" data-act="revise" ${it.exists ? '' : 'disabled'} title="Good with changes (C): keep what works, say what to change. Opens the note, and a note is required">&#x270E;&nbsp;Good with changes<kbd>C</kbd></button>
+    </div>` : `<div class="big">
       <button class="acc" data-act="accept" ${it.exists ? '' : 'disabled'} title="Accept (A)">&#x2713;&nbsp;Accept<kbd>A</kbd></button>
       <button class="rej" data-act="reject" title="Reject (R)">&#x2717;&nbsp;Reject<kbd>R</kbd></button>
-    </div>
+    </div>`}
     <div class="small">
       <button data-act="edit" title="Edit the line (E)">Edit<kbd>E</kbd></button>
       <button data-act="note" title="Note (N)">Note<kbd>N</kbd></button>
@@ -1074,8 +1115,8 @@ function takesHTML(it) {
   const cur = takeIdx(it);
   let h = many ? '<span class="tl">takes</span>' : '';
   if (many) h += it.takes.map((t, i) => {
-    const cls = ['tk', i === cur ? 'on' : '', t.picked && it.status === 'accept' ? 'pk' : '', /^rejected/.test(t.label) ? 'old' : ''].filter(Boolean).join(' ');
-    return `<button class="${cls}" data-act="take" data-i="${i}" ${t.exists ? '' : 'disabled'} title="${esc(t.label)}${t.picked && it.status === 'accept' ? ' · the one you kept' : ''}">${i < 9 ? `<kbd>${i + 1}</kbd>` : ''}${esc(t.label)}</button>`;
+    const cls = ['tk', i === cur ? 'on' : '', t.picked && kept(it) ? 'pk' : '', /^rejected/.test(t.label) ? 'old' : ''].filter(Boolean).join(' ');
+    return `<button class="${cls}" data-act="take" data-i="${i}" ${t.exists ? '' : 'disabled'} title="${esc(t.label)}${t.picked && kept(it) ? ' · the one you kept' : ''}">${i < 9 ? `<kbd>${i + 1}</kbd>` : ''}${esc(t.label)}</button>`;
   }).join('');
   if (game) {
     const playing = S.gameId === it.id && !gplayer.paused;
@@ -1122,8 +1163,9 @@ function addChip(id, text) {
   const v = f.value.trim();
   f.value = v ? v + (/[.,;:!?]$/.test(v) ? ' ' : ', ') + text : text;
   f.focus();
-  const w = f.value.lastIndexOf('*word*');
+  const w = f.value.lastIndexOf('*word*'), dots = f.value.lastIndexOf('…');
   if (w >= 0) f.setSelectionRange(w + 1, w + 5);  // type the word over it
+  else if (dots >= 0 && text.endsWith('…')) f.setSelectionRange(dots, dots + 1);  // …and the name over the dots
   else f.setSelectionRange(f.value.length, f.value.length);
 }
 
@@ -1142,8 +1184,8 @@ function lessonsHTML(d) {
   const pct = x => x == null ? '–' : Math.round(x * 100) + '%';
   const bar = x => `<span class="ls-bar"><i style="width:${Math.round((x || 0) * 100)}%"></i></span>`;
   const kinds = Object.entries(d.kinds || {}).sort((a, b) => b[1].decided - a[1].decided);
-  let h = `<h3>First takes kept</h3><table class="ls-t"><tr><th>kind</th><th>decided</th><th>kept first time</th><th>redone, then kept</th><th>still rejected</th><th>rounds</th></tr>` +
-    kinds.map(([k, b]) => `<tr><td>${esc(k)}</td><td class="n">${b.decided}</td><td class="n">${bar(b.first_take_rate)}${b.first_take} (${pct(b.first_take_rate)})</td><td class="n">${b.redone}</td><td class="n">${b.open}</td><td class="n">${b.mean_rounds ?? '–'}</td></tr>`).join('') + '</table>';
+  let h = `<h3>First takes kept</h3><table class="ls-t"><tr><th>kind</th><th>decided</th><th>kept first time</th><th>good with changes</th><th>redone, then kept</th><th>still rejected</th><th>rounds</th></tr>` +
+    kinds.map(([k, b]) => `<tr><td>${esc(k)}</td><td class="n">${b.decided}</td><td class="n">${bar(b.first_take_rate)}${b.first_take} (${pct(b.first_take_rate)})</td><td class="n">${b.revise || 0}</td><td class="n">${b.redone}</td><td class="n">${b.open}</td><td class="n">${b.mean_rounds ?? '–'}</td></tr>`).join('') + '</table>';
   const voices = Object.entries(d.groups || {}).filter(([g, b]) => g.startsWith('audio:') && b.decided >= 4)
     .sort((a, b) => (a[1].first_take_rate ?? 0) - (b[1].first_take_rate ?? 0));
   if (voices.length) h += `<h3>Sound, by voice or group</h3><table class="ls-t"><tr><th>voice</th><th>decided</th><th>kept first time</th><th>redone</th></tr>` +
@@ -1218,6 +1260,7 @@ function syncList() {
   renderEnd();
 }
 
+const nextStep = () => isConcept() ? 'add the keepers to canon and redo the rest.' : 'install the keepers and redo the rejects.';
 function renderEnd() {
   const end = $('#endcard');
   if (!end) return;
@@ -1234,22 +1277,23 @@ function renderEnd() {
     end.className = 'endcard big-empty';
     const what = S.tab === 'flagged'
       ? (probeState().left ? 'No flags so far — still measuring durations.' : 'Nothing flagged. Every length looks plausible for its line.')
-      : S.tab === 'pending' ? 'Nothing pending here.' : `Nothing ${TAB_NAME[S.tab].toLowerCase()} here yet.`;
-    end.innerHTML = `${what}<br><br>${c.pending === 0 && c.total ? `All ${c.total - c.missing} reviewed. Next: install the keepers and redo the rejects.${go}` : `<b>${c.pending}</b> pending in this batch.`}`;
+      : S.tab === 'pending' ? 'Nothing pending here.' : `Nothing ${tabName(S.tab).toLowerCase()} here yet.`;
+    end.innerHTML = `${what}<br><br>${c.pending === 0 && c.total ? `All ${c.total - c.missing} reviewed. Next: ${nextStep()}${go}` : `<b>${c.pending}</b> pending in this batch.`}`;
     return;
   }
   end.className = 'endcard';
   if (c.pending === 0) {
-    end.innerHTML = `All ${c.total - c.missing} reviewed${c.missing ? ` (${c.missing} still missing)` : ''}. <b>${c.accept}</b> accepted${c.installed ? `, <b>${c.installed}</b> in game` : ''}, <b>${c.reject}</b> rejected.<br>${c.accept || c.reject ? 'Next: install the keepers and redo the rejects.' : 'Everything accepted is in the game.'}${go}`;
+    const W = modeWords();
+    end.innerHTML = `All ${c.total - c.missing} reviewed${c.missing ? ` (${c.missing} still missing)` : ''}. <b>${c.accept}</b> ${W.acc}${c.revise ? `, <b>${c.revise}</b> ${W.rev}` : ''}${c.installed ? `, <b>${c.installed}</b> ${W.inst}` : ''}, <b>${c.reject}</b> ${W.rej}.<br>${c.accept || c.revise || c.reject ? 'Next: ' + nextStep() : `Everything ${W.acc} is ${W.inst}.`}${go}`;
   } else {
     end.innerHTML = `End of list · <b>${c.pending}</b> still pending in this batch${c.missing ? ` · ${c.missing} missing` : ''}.`;
   }
 }
 
 function counts(items) {
-  const c = { total: items.length, pending: 0, accept: 0, reject: 0, missing: 0, flagged: 0, installed: 0 };
+  const c = { total: items.length, pending: 0, accept: 0, revise: 0, reject: 0, missing: 0, flagged: 0, installed: 0 };
   for (const it of items) {
-    if (it.installed && it.status === 'accept') c.installed++;  // in the game already: not waiting to be installed
+    if (it.installed && kept(it)) c.installed++;  // in the game already: not waiting to be installed
     else if (c[it.status] !== undefined) c[it.status]++;
     if (flagOf(it)) c.flagged++;
   }
@@ -1266,19 +1310,21 @@ function renderCounts() {
   const pool = S.items.filter(matchesGroup);
   const c = counts(pool);
   // tabs
-  const nums = { all: c.total, pending: c.pending, accept: c.accept, installed: c.installed, reject: c.reject, flagged: c.flagged };
+  const nums = { all: c.total, pending: c.pending, accept: c.accept, revise: c.revise, installed: c.installed, reject: c.reject, flagged: c.flagged };
   const tabs = $('#tabs');
-  if (!tabs.children.length) {
-    tabs.innerHTML = TABS.map(t => `<button class="tab" data-tab="${t.id}"><span class="dot"></span>${t.name}<span class="n"></span></button>`).join('');
+  if (tabs.dataset.mode !== S.mode || !tabs.children.length) {
+    tabs.dataset.mode = S.mode;
+    tabs.innerHTML = tabsHere().map(t => `<button class="tab" data-tab="${t.id}"><span class="dot"></span>${esc(tabName(t.id))}<span class="n"></span></button>`).join('');
   }
   for (const b of tabs.children) {
     b.classList.toggle('on', b.dataset.tab === S.tab);
     b.querySelector('.n').textContent = nums[b.dataset.tab];
   }
   // progress
-  const reviewed = c.accept + c.installed + c.reject;
+  const reviewed = c.accept + c.revise + c.installed + c.reject;
   const denom = Math.max(1, c.total);
   $('#pa').style.width = ((c.accept + c.installed) / denom * 100) + '%';
+  $('#pv').style.width = (c.revise / denom * 100) + '%';
   $('#pr').style.width = (c.reject / denom * 100) + '%';
   $('#plabel').innerHTML = S.batch ? `<b>${reviewed}</b> / ${c.total} reviewed${c.missing ? ` · ${c.missing} missing` : ''}` : '—';
   $('#ppct').textContent = S.batch && c.total ? Math.round(reviewed / c.total * 100) + '%' : '';
@@ -1288,7 +1334,7 @@ function renderCounts() {
   for (const it of S.items) {
     const g = groupOf(it);
     if (!seen.has(g)) { seen.set(g, { n: 0, r: 0 }); groups.push(g); }
-    const s = seen.get(g); s.n++; if (it.status === 'accept' || it.status === 'reject') s.r++;
+    const s = seen.get(g); s.n++; if (kept(it) || it.status === 'reject') s.r++;
   }
   const gEl = $('#groups');
   const chips = [`<button class="chip${S.group === 'all' ? ' on' : ''}" data-group="all">All<span class="c">${S.items.length}</span></button>`]
@@ -1298,12 +1344,12 @@ function renderCounts() {
   // header
   $('#title').textContent = S.title || 'Review';
   if (S.batch) {
-    $('#sub').innerHTML = `<code>review/${esc(S.batch)}</code> · ${S.items.length} item${S.items.length === 1 ? '' : 's'} · showing ${S.view.length} · ${esc(TAB_NAME[S.tab])}${S.group !== 'all' ? ' · ' + esc(S.group) : ''}`;
+    $('#sub').innerHTML = `<code>review/${esc(S.batch)}</code> · ${S.items.length} item${S.items.length === 1 ? '' : 's'} · showing ${S.view.length} · ${esc(tabName(S.tab))}${S.group !== 'all' ? ' · ' + esc(S.group) : ''}`;
   }
   // batch picker label for the open batch
   const opt = [...$('#batchSel').options].find(o => o.value === S.batch);
   const all = counts(S.items);
-  if (opt) opt.textContent = `${S.title} — ${all.accept + all.reject}/${all.total}`;
+  if (opt) opt.textContent = `${S.title} — ${all.accept + all.revise + all.installed + all.reject}/${all.total}`;
   // probe progress
   const ps = probeState();
   $('#probeNote').textContent = ps.left ? `measuring lengths… ${ps.done}/${ps.total}` : '';
@@ -1793,7 +1839,7 @@ function applyLocal(it, patch) {
 function decide(id, patch, { advance = false } = {}) {
   const it = S.byId.get(id);
   if (!it) return;
-  if (patch.verdict === 'accept' && !it.exists) { toast('Can’t accept — the file is missing', 'err'); return; }
+  if ((patch.verdict === 'accept' || patch.verdict === 'revise') && !it.exists) { toast('Can’t accept — the file is missing', 'err'); return; }
   const batch = S.batch;
   const snapshot = JSON.parse(JSON.stringify(it));
   applyLocal(it, patch);
@@ -1831,16 +1877,25 @@ const accept = id => {
   decide(id, t ? { verdict: 'accept', take: t.file } : { verdict: 'accept' }, { advance: true });
 };
 const reject = id => decide(id, { verdict: 'reject' }, { advance: true });
+// C (concept batches): Good with changes. Opens the note, which is required; it saves with the verdict.
+function revise(id) {
+  if (!isConcept()) { toast('Good with changes is for concept batches (mode: concept)'); return; }
+  const it = S.byId.get(id);
+  if (!it) return;
+  if (!it.exists) { toast('Can’t accept — the file is missing', 'err'); return; }
+  closeViewer();
+  startEdit(id, 'note', { revise: true });
+}
 const unmark = id => decide(id, { verdict: 'pending' });
 
 /* ---------------------------------------------------------------- editing */
 function autosize(ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
-function startEdit(id, kind) {
+function startEdit(id, kind, opts) {
   const it = S.byId.get(id);
   if (!it) return;
   if (S.edit) cancelEdit();
   if (S.curId !== id) setCurrent(id);
-  S.edit = { id, kind };
+  S.edit = { id, kind, revise: !!(opts && opts.revise) };
   renderRow(id, true);
   const el = S.rows.get(id);
   const f = el && el.querySelector(kind === 'text' ? 'textarea.edit-in' : 'input.note-in');
@@ -1858,14 +1913,30 @@ function cancelEdit() {
   S.edit = null;
   renderRow(e.id, true);
 }
-function commitEdit({ advance = true } = {}) {
+function commitEdit({ advance = true, blur = false } = {}) {
   const e = S.edit;
   if (!e) return;
   const it = S.byId.get(e.id), el = S.rows.get(e.id);
   const f = el && el.querySelector(e.kind === 'text' ? 'textarea.edit-in' : 'input.note-in');
   const v = (f ? f.value : '').replace(/\s*\n\s*/g, ' ').trim();
+  if (e.revise && !v) {
+    // Good with changes with no note: stay in the editor on a click, drop it quietly when focus left
+    if (!blur) { toast('Good with changes needs a note: say what to change (Esc cancels)', 'err'); if (f) f.focus(); }
+    else cancelEdit();
+    return;
+  }
   S.edit = null;
   if (!it) return;
+  if (e.revise) {
+    const t = it.takes && it.takes.length > 1 ? it.takes[takeIdx(it)] : null;
+    decide(e.id, t ? { verdict: 'revise', note: v, take: t.file } : { verdict: 'revise', note: v }, { advance });
+    return;
+  }
+  if (it.status === 'revise' && !v) {
+    toast('A Good with changes needs its note: say what to change, or press U to clear the verdict', 'err');
+    renderRow(e.id, true);
+    return;
+  }
   if (e.kind === 'text') {
     if (!v || v === displayText(it).trim()) { renderRow(e.id, true); return; }
     decide(e.id, { verdict: 'reject', text: v }, { advance });
@@ -1944,6 +2015,7 @@ async function openBatch(name) {
     S.rows.clear();
     S.batch = name;
     S.title = d.title;
+    S.mode = d.mode || 'standard';
     if ([...$('#batchSel').options].some(o => o.value === name)) $('#batchSel').value = name;
     S.actions = Array.isArray(d.actions) ? d.actions : null;
     detachRun();
@@ -1953,7 +2025,7 @@ async function openBatch(name) {
     S.items.forEach(standIn);
     S.byId = new Map(S.items.map(it => [it.id, it]));
     const f = (S.mem.filt || {})[name] || {};
-    S.tab = TAB_NAME[f.tab] ? f.tab : 'all';
+    S.tab = tabsHere().some(x => x.id === f.tab) ? f.tab : 'all';
     const groups = new Set(S.items.map(groupOf));
     S.group = f.group && (f.group === 'all' || groups.has(f.group)) ? f.group : 'all';
     S.curId = (S.mem.pos || {})[name] || null;
@@ -1967,6 +2039,7 @@ async function openBatch(name) {
   } else {
     // rescan: keep what's on screen, update in place, append anything new
     S.title = d.title;
+    S.mode = d.mode || 'standard';
     S.actions = Array.isArray(d.actions) ? d.actions : null;
     const known = new Set(S.items.map(it => it.id));
     const next = d.items.map(n => {
@@ -1984,9 +2057,21 @@ async function openBatch(name) {
     renderCounts();
     if (S.vidId && !S.byId.has(S.vidId)) stopVideo();
   }
+  renderModeUI();
   renderActbar();
   if (!$('#finish').hidden) renderFinish();
   reprioritiseProbes();
+}
+// the words and keys that change with the batch's mode
+function renderModeUI() {
+  const c = isConcept();
+  $('#kAcc').textContent = c ? 'good' : 'accept';
+  $('#kRej').textContent = c ? 'bad' : 'reject';
+  $('#kEdit').textContent = c ? 'edit prompt' : 'edit line';
+  $('#kChgWrap').hidden = !c;
+  $('#vhAcc').textContent = c ? 'good' : 'accept';
+  $('#vhRej').textContent = c ? 'bad' : 'reject';
+  $('#vhChg').hidden = !c;
 }
 async function rescan(quiet = false) {
   if (!S.batch) { try { await loadBatches(); if (S.batches[0]) await openBatch(S.batches[0].batch); } catch { } return; }
@@ -2084,7 +2169,7 @@ function actCardHTML(a, i, c) {
   if (a.error) why = `<div class="act-err">Can’t run: ${esc(a.error)}</div>`;
   else if (busy) why = `<div class="act-why">“${esc(S.run.info.label)}” is running: see the log (O).</div>`;
   else if (a.kind === 'regen' && !c.reject) why = `<div class="act-why">Nothing is rejected right now.</div>`;
-  else if (a.kind === 'install' && !c.accept) why = `<div class="act-why">${c.installed ? `Nothing new to install: ${c.installed} already in the game.` : 'Nothing is accepted yet.'}</div>`;
+  else if (a.kind === 'install' && !(c.accept + c.revise)) why = `<div class="act-why">${c.installed ? `Nothing new to install: ${c.installed} already ${isConcept() ? 'in canon' : 'in the game'}.` : `Nothing is ${isConcept() ? 'good' : 'accepted'} yet.`}</div>`;
   const tags = (a.spends ? '<span class="act-tag">spends Ludo credits</span>' : '') + (a.builtin ? '<span class="act-tag b">built in</span>' : '');
   return `<div class="${cls.join(' ')}" data-aid="${esc(a.id)}">
     <button class="act-run" data-run="${esc(a.id)}" ${a.error || busy ? 'disabled' : ''}>${i < 9 ? `<kbd>${i + 1}</kbd>` : ''}${esc(a.label)}</button>
@@ -2101,7 +2186,9 @@ function renderFinish() {
   S.finishBusy = runBusy();
   $('#finSub').innerHTML = `${esc(S.title)} · <code>review/${esc(S.batch)}</code> · ${plural(c.total, 'item', 'items')}`;
   const tile = (cls, n, lbl) => `<div class="fc ${cls}${n ? '' : ' zero'}"><b>${n}</b><span>${lbl}</span></div>`;
-  $('#finCounts').innerHTML = tile('acc', c.accept, 'Accepted') + (c.installed ? tile('acc', c.installed, 'In game') : '') + tile('rej', c.reject, 'Rejected') + tile('pen', c.fresh, 'Pending') +
+  const W = modeWords();
+  $('#finCounts').innerHTML = tile('acc', c.accept, W.Acc) + (isConcept() || c.revise ? tile('rev', c.revise, 'Good with changes') : '') +
+    (c.installed ? tile('acc', c.installed, isConcept() ? 'In canon' : 'In game') : '') + tile('rej', c.reject, W.Rej) + tile('pen', c.fresh, 'Pending') +
     tile('lis', c.listen, 'Needs a listen') + (c.missing ? tile('mis', c.missing, 'Missing') : '');
   let warn = '';
   if (c.fresh) warn += `<div class="fin-warn"><span><b>${plural(c.fresh, 'item is', 'items are')} still pending.</b> Pending items are neither installed nor redone.</span><span class="sp"></span><button data-fin="pending">Show pending</button></div>`;
@@ -2354,6 +2441,7 @@ $('#list').addEventListener('click', e => {
     case 'accept': accept(id); break;
     case 'reject': reject(id); break;
     case 'undo': unmark(id); break;
+    case 'revise': revise(id); break;
     case 'edit': startEdit(id, 'text'); break;
     case 'note': startEdit(id, 'note'); break;
     case 'edit-save': commitEdit({ advance: false }); break;
@@ -2388,7 +2476,7 @@ $('#list').addEventListener('focusout', e => {
   const target = e.target;
   setTimeout(() => {
     if (!S.edit || document.activeElement === target || !document.hasFocus()) return;
-    commitEdit({ advance: false });
+    commitEdit({ advance: false, blur: true });
   }, 0);
 });
 
@@ -2523,7 +2611,7 @@ document.addEventListener('keydown', e => {
     vplayer.blur();
   }
   if (t && t.tagName === 'SELECT') {
-    if (/^[ajkruenpfolvzw0-9?]$/i.test(k) || k === 'Escape') t.blur(); else return;
+    if (/^[ajkrucenpfolvzw0-9?]$/i.test(k) || k === 'Escape') t.blur(); else return;
   } else if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT')) {
     return;
   }
@@ -2552,6 +2640,8 @@ document.addEventListener('keydown', e => {
       if (id && once) reject(id); break;
     case 'u': case 'U':
       if (id && once) unmark(id); break;
+    case 'c': case 'C':
+      e.preventDefault(); if (id && once) revise(id); break;
     case 'e': case 'E':
       e.preventDefault(); if (id && once) { closeViewer(); startEdit(id, 'text'); } break;
     case 'n': case 'N':
