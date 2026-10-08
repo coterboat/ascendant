@@ -284,6 +284,11 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn(R.TOKEN_SLOT, html)
         self.assertEqual(h.get("X-Frame-Options"), "DENY")
 
+    def test_batches_carry_the_boot_id(self):
+        st, d = self.jreq("GET", "/api/batches")
+        self.assertEqual(st, 200)
+        self.assertEqual(d["boot"], self.httpd.boot, "a page that sees it change knows the server restarted")
+
     def test_post_needs_token_origin_and_json(self):
         body = {"batch": self.name, "id": "gif", "note": "hi"}
         st, d = self.jreq("POST", "/api/decide", body, token=False)
@@ -882,6 +887,27 @@ class SeatTests(unittest.TestCase):
         self.assertEqual([t["seat"] for t in rows["a"]["takes"]], ["codex", "grok"])
         self.assertEqual(rows["c"]["verdict"], "reject")
         self.assertEqual([t["seat"] for t in rows["c"]["takes"]], ["codex", "grok", "claude"], "a redo knows every seat's take")
+
+
+class SelfRestartTests(unittest.TestCase):
+    """serve restarts itself as the new code when review.py changes (10-8: an old server dropped "keep both")."""
+
+    def test_the_restart_command_drops_open(self):
+        self.assertEqual(R._restart_argv(["serve", "--port", "8766", "--open"]), ["serve", "--port", "8766"])
+        self.assertEqual(R._restart_argv(["serve"]), ["serve"])
+
+    def test_the_tool_compiles_and_has_a_stamp(self):
+        self.assertTrue(R._code_compiles())
+        self.assertGreater(R._code_stamp(), 0)
+
+    def test_each_server_has_its_own_boot_id(self):
+        a = R.Server(("127.0.0.1", 0), R.Handler)
+        b = R.Server(("127.0.0.1", 0), R.Handler)
+        try:
+            self.assertNotEqual(a.boot, b.boot)
+        finally:
+            a.server_close()
+            b.server_close()
 
 
 class KeepBothTests(unittest.TestCase):
