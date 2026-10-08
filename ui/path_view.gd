@@ -250,34 +250,12 @@ static func sidebar(state: GameState, fid: String, orders: Array = [], own: bool
 ## One side's path ETA (§9.1): "Celestial Host: 50 to go (Oath 20 + 30), about 5 turns at 9 a turn", with a
 ## breakdown of what is still to research, minus what is saved. {} when the side is closed or transformed.
 static func route(state: GameState, fid: String, side: String) -> Dictionary:
-	var oath := String(AscensionRules.branch_data(side).get("oath", ""))
-	var trans := String(AscensionRules.branch_data(side).get("transformation", ""))
-	if AscensionRules.has_node(state, fid, trans) or AscensionRules.node_state(state, fid, trans).state == AscensionRules.CLOSED:
+	var road := AscensionRules.road_need(state, fid, side)  # M5-8: one function, shared with the Magic tab's delay
+	if road.is_empty():
 		return {}
-	var lines := []
-	var parts := []
-	var need := 0
-	if not AscensionRules.has_node(state, fid, oath):
-		var missing := maxi(0, int(AscensionRules.node_data(oath).get("requires_any", 0)) - ordinary_done(state, fid))
-		if missing > 0:
-			var costs := []
-			for nid in AscensionRules.node_ids(fid):
-				if AscensionRules.is_ordinary(nid) and not AscensionRules.has_node(state, fid, nid):
-					costs.append(AscensionRules.node_cost(nid))
-			costs.sort()
-			var sum := 0
-			for i in mini(missing, costs.size()):
-				sum += int(costs[i])
-			lines.append({"label": "Ordinary nodes still needed (%d, the cheapest)" % missing, "value": sum,
-				"note": "the Oath needs any two ordinary nodes first"})
-			parts.append("ordinary %d" % sum)
-			need += sum
-		lines.append({"label": AscensionRules.node_name(oath), "value": AscensionRules.node_cost(oath), "note": "the lock-in"})
-		parts.append("Oath %d" % AscensionRules.node_cost(oath))
-		need += AscensionRules.node_cost(oath)
-	lines.append({"label": AscensionRules.node_name(trans), "value": AscensionRules.node_cost(trans), "note": "the transformation"})
-	parts.append("%d" % AscensionRules.node_cost(trans))
-	need += AscensionRules.node_cost(trans)
+	var lines: Array = road.lines
+	var parts: Array = road.parts
+	var need := int(road.need)
 	var pool := AscensionRules.research_points(state, fid)
 	var saved := mini(pool, need)
 	lines.append({"label": "Research saved now", "value": -saved, "note": "spare points are never lost"})

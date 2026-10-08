@@ -8,6 +8,10 @@
 extends RefCounted
 
 const FIG := 6.0 ## a man's height, base included (world units)
+## The banner emblem of nobody's army (a Free Holds garrison): the independents' heater shield (STYLE_BIBLE 1.1), after the
+## six seat emblems (world3d/shaders/banner.gdshader).
+const EMBLEM_SHIELD := 6
+const SpellFigures := preload("res://world3d/spell_figures.gd") ## M5-9: the mages and the summoned creatures
 
 ## faction palettes (style bible 1.3: worn in art, independent of the player's colour)
 const STEEL := Color("#B9C3CE")
@@ -30,20 +34,35 @@ const STONE_LT := Color("#D2C8B4")
 const ROOF := Color("#3E5FB5")
 const DOOR := Color("#3A2A1E")
 const TEAM := Color(1, 1, 1) ## placeholder: a team part (alpha 0) is painted in the player's colour
+## The Free Holds' palette (IND-2, #161; STYLE_BIBLE 1.1: slate is the independents' colour): plain local militia in undyed
+## wool and weathered grey, apart from the Crown's blue and gold and the Clans' tawny and moss. Never blue, gold, tawny, moss
+## or crimson.
+const WOOL := Color("#8E8570") ## undyed bone-cream wool (any lighter and the board's light blows it out to white)
+const WOOL_DK := Color("#6E6758") ## the same, in shadow or worn
+const SLATE := Color("#5B5750") ## UiPalette.NEUTRAL: the independents' own colour
+const GREY := Color("#66625B") ## weathered grey cloth and leather
+const GREY_LT := Color("#85817A")
+const IRON := Color("#565A62") ## plain grey iron: caps, spear heads, axe blades
+const BADGER := Color("#7C7E82") ## a Wildkin's silver-grey fur
+const BADGER_DK := Color("#2B2C2F")
+const NO_COLOUR := Color(0, 0, 0, 0) ## "leave this part out" for the helpers that take an optional colour
 
 ## how many figures stand for one unit of each type (the army is readable at a glance: one
 ## company block per unit), and the block's columns
 const FIGS := {
 	"spearmen": [6, 3], "crossbowmen": [6, 3], "knights": [3, 3],
 	"tuskers": [4, 2], "fangthrowers": [6, 3], "war_bear": [1, 1],
+	"free_spears": [6, 3], "hill_slingers": [6, 3], "wildkin": [4, 2],
 }
 const SPACING := {
 	"spearmen": Vector2(4.2, 4.4), "crossbowmen": Vector2(4.2, 4.4), "knights": Vector2(5.2, 7.0),
 	"tuskers": Vector2(5.0, 5.2), "fangthrowers": Vector2(4.2, 4.4), "war_bear": Vector2(9.0, 11.0),
 	"knight_captain": Vector2(6.0, 8.0), "warchief": Vector2(6.0, 6.0), "bearer": Vector2(4.0, 4.0),
+	"free_spears": Vector2(4.2, 4.4), "hill_slingers": Vector2(4.2, 4.4), "wildkin": Vector2(5.0, 5.2),
+	"hold_captain": Vector2(6.0, 6.0), "free_bearer": Vector2(4.0, 4.0),
 }
 ## the order blocks stand in from the front: melee, then ranged, then the big and the mounted
-const RANK_ORDER := ["spearmen", "tuskers", "crossbowmen", "fangthrowers", "knights", "war_bear"]
+const RANK_ORDER := ["spearmen", "free_spears", "tuskers", "wildkin", "crossbowmen", "hill_slingers", "fangthrowers", "knights", "war_bear"]
 
 
 class Builder:
@@ -113,12 +132,18 @@ class Builder:
 
 # ------------------------------------------------------------------ figures
 
-const FIGURES := ["spearmen", "crossbowmen", "knights", "knight_captain", "tuskers", "fangthrowers", "war_bear", "warchief", "bearer"]
+const FIGURES := ["spearmen", "crossbowmen", "knights", "knight_captain", "tuskers", "fangthrowers", "war_bear", "warchief", "bearer",
+	"free_spears", "hill_slingers", "wildkin", "hold_captain", "free_bearer"]
+## The Free Holds' figures (IND-2, #161), by unit id (data/independents.gd): the independents "style" of the kit. The
+## board and the stage stand these in a garrison until its Ludo models are installed (world3d/models.json rows).
+const INDEPENDENTS := ["free_spears", "hill_slingers", "wildkin", "hold_captain"]
+## The figure that stands for each of an army's colour party (the bearer, the musician) in the independents' style.
+const INDEPENDENTS_PARTY := "free_bearer"
 
 
 ## True for a figure id figure() draws (anything else gets the generic figure).
 static func has_figure(type_id: String) -> bool:
-	return FIGURES.has(type_id)
+	return FIGURES.has(type_id) or SpellFigures.has(type_id) ## M5-9: the mages and the summoned (world3d/spell_figures.gd)
 
 
 ## A primitive figure. `s` scales the whole figure (a ruler or a monster stands bigger); `ruler` adds
@@ -171,6 +196,34 @@ static func figure(type_id: String, s: float = 1.0, ruler: bool = false) -> Arra
 			b.box(Vector3(0.08, 1.6, 1.4), Vector3(1.7, 8.3, -0.75), TEAM, Basis(), true)
 		"bearer":
 			_human(b, LINEN, STEEL)
+		## the independents' style (IND-2, #161): undyed wool, slate and weathered grey, no plume and no gold
+		"free_spears":
+			_human(b, WOOL, IRON, SLATE, NO_COLOUR, GREY)
+			b.cyl(0.11, 0.11, 7.0, Vector3(0.95, 3.5, -0.15), WOOD, 6)
+			b.cyl(0.0, 0.24, 0.8, Vector3(0.95, 7.4, -0.15), IRON, 6)
+			_shield_kite(b, Vector3(-0.95, 2.8, -0.5))
+		"hill_slingers":
+			_human(b, WOOL_DK, WOOL, GREY, NO_COLOUR, GREY)
+			b.cyl(0.62, 0.95, 0.7, Vector3(0, 3.95, 0), WOOL, 10) ## the hood's cowl
+			b.cyl(0.04, 0.04, 2.3, Vector3(0.95, 1.7, -0.1), LEATHER, 4) ## the sling's cord, hanging from the right hand
+			b.ball(0.2, Vector3(0.95, 0.5, -0.1), GREY, Vector3.ONE, 6) ## and its stone
+			b.box(Vector3(0.7, 0.8, 0.5), Vector3(-0.75, 1.9, 0.55), LEATHER) ## the pouch of stones at the hip
+		"wildkin":
+			_beastman(b, 1.2, BADGER, WOOL, BADGER_DK, GREY, NO_COLOUR)
+			_badger_head(b, Vector3(0.0, 6.0, -0.35), 1.2)
+			b.cyl(0.13, 0.13, 6.2, Vector3(1.6, 3.6, -0.4), WOOD, 6, Basis(Vector3.RIGHT, 0.35)) ## a woodcutter's axe
+			b.box(Vector3(1.3, 0.95, 0.2), Vector3(1.6, 6.9, -1.4), IRON, Basis(Vector3.RIGHT, 0.35))
+		"hold_captain":
+			_human(b, SLATE, IRON, WOOL, NO_COLOUR, GREY)
+			b.box(Vector3(1.7, 2.7, 0.22), Vector3(0, 3.0, 0.7), WOOL) ## the bone-white cloak, hanging at the back
+			b.box(Vector3(0.22, 0.7, 0.9), Vector3(0, 5.3, 0.1), WOOL) ## a short white horsehair crest
+			b.cyl(0.12, 0.12, 9.0, Vector3(1.1, 4.5, -0.1), WOOD, 6) ## the war axe's long haft
+			b.box(Vector3(1.2, 0.9, 0.18), Vector3(1.55, 8.4, -0.1), IRON)
+			b.cyl(0.0, 0.34, 1.0, Vector3(-0.95, 1.8, 0.1), WOOL, 7, Basis(Vector3.FORWARD, 0.9)) ## the war horn at his belt
+		"free_bearer":
+			_human(b, WOOL, GREY, SLATE, NO_COLOUR, GREY)
+		"adepts", "shamans", "thornwolves", "greenwrath": ## M5-9 (#120): the mages and the summoned (world3d/spell_figures.gd)
+			SpellFigures.build(b, type_id)
 		_:
 			_human(b, Color("#8D88A0"), STEEL)
 	if not is_equal_approx(s, 1.0):
@@ -190,9 +243,18 @@ static func _base(b: Builder, type_id: String, ruler: bool = false, s: float = 1
 			sc = Vector3(1.0, 1.0, 1.9)
 		"tuskers", "warchief":
 			r = 1.75
+		"wildkin":
+			r = 1.6
+		"hold_captain":
+			r = 1.5
 		"war_bear":
 			r = 2.6
 			sc = Vector3(1.0, 1.0, 1.7)
+		"thornwolves": ## M5-9
+			r = 2.1
+			sc = Vector3(1.0, 1.0, 1.9)
+		"greenwrath":
+			r = 3.6
 	r *= s
 	var m := CylinderMesh.new()
 	m.top_radius = r
@@ -219,22 +281,33 @@ static func _base(b: Builder, type_id: String, ruler: bool = false, s: float = 1
 		b.add(gilt, Transform3D(Basis().scaled(sc), Vector3(0, 0.15, 0)), GOLD)
 
 
-static func _human(b: Builder, coat: Color, helm: Color, trim := GOLD) -> void:
-	b.box(Vector3(0.45, 1.55, 0.5), Vector3(-0.3, 1.15, 0.0), LEATHER)
-	b.box(Vector3(0.45, 1.55, 0.5), Vector3(0.3, 1.15, 0.0), LEATHER)
+static func _human(b: Builder, coat: Color, helm: Color, trim := GOLD, plume := ROYAL, legs := LEATHER) -> void:
+	b.box(Vector3(0.45, 1.55, 0.5), Vector3(-0.3, 1.15, 0.0), legs)
+	b.box(Vector3(0.45, 1.55, 0.5), Vector3(0.3, 1.15, 0.0), legs)
 	b.cyl(0.72, 0.98, 2.1, Vector3(0, 2.85, 0), coat, 10)
 	b.cyl(0.99, 0.99, 0.2, Vector3(0, 1.9, 0), trim, 10)
 	b.cyl(0.25, 0.25, 1.6, Vector3(-0.9, 3.0, 0.0), coat, 6, Basis(Vector3.FORWARD, -0.15))
 	b.cyl(0.25, 0.25, 1.6, Vector3(0.9, 3.0, 0.0), coat, 6, Basis(Vector3.FORWARD, 0.15))
 	b.ball(0.55, Vector3(0, 4.45, 0), SKIN, Vector3.ONE, 10)
 	b.ball(0.62, Vector3(0, 4.68, 0.03), helm, Vector3(1.0, 0.78, 1.0), 10)
-	b.box(Vector3(0.18, 0.6, 0.8), Vector3(0, 5.25, 0.15), ROYAL)
+	if plume.a > 0.0:
+		b.box(Vector3(0.18, 0.6, 0.8), Vector3(0, 5.25, 0.15), plume)
 
 
 static func _shield_round(b: Builder, at: Vector3) -> void:
 	var rot := Basis(Vector3.RIGHT, PI * 0.5)
 	b.cyl(1.0, 1.0, 0.16, at, GOLD, 14, rot)
 	b.cyl(0.84, 0.84, 0.18, at + Vector3(0, 0, -0.03), ROYAL, 14, rot)
+
+
+## The Free Holds' kite-shaped shield: a bone-white face in a slate rim with one stitched grey sign, its point down.
+static func _shield_kite(b: Builder, at: Vector3) -> void:
+	b.box(Vector3(1.5, 1.5, 0.16), at + Vector3(0, 0.55, 0), SLATE)
+	b.box(Vector3(1.26, 1.26, 0.2), at + Vector3(0, 0.55, -0.02), WOOL)
+	var down := Basis(Vector3.BACK, PI)
+	b.prism(Vector3(1.5, 1.2, 0.16), at + Vector3(0, -0.8, 0), SLATE, down)
+	b.prism(Vector3(1.26, 1.0, 0.2), at + Vector3(0, -0.75, -0.02), WOOL, down)
+	b.box(Vector3(0.34, 0.34, 0.24), at + Vector3(0, 0.5, -0.05), GREY)
 
 
 static func _horse(b: Builder, coat: Color, trim: Color, s := 1.0) -> void:
@@ -259,16 +332,17 @@ static func _rider(b: Builder, coat: Color, helm: Color, s := 1.0) -> void:
 	b.cyl(0.25 * s, 0.25 * s, 1.4 * s, Vector3(0.8 * s, y + 1.3 * s, -0.2 * s), coat, 6)
 
 
-static func _beastman(b: Builder, s: float, fur: Color, harness: Color) -> void:
-	b.box(Vector3(0.6, 1.8, 0.7) * s, Vector3(-0.42 * s, 1.1 * s, 0.0), FUR_DK)
-	b.box(Vector3(0.6, 1.8, 0.7) * s, Vector3(0.42 * s, 1.1 * s, 0.0), FUR_DK)
+static func _beastman(b: Builder, s: float, fur: Color, harness: Color, legs := FUR_DK, plate := BONE, paint := CRIMSON) -> void:
+	b.box(Vector3(0.6, 1.8, 0.7) * s, Vector3(-0.42 * s, 1.1 * s, 0.0), legs)
+	b.box(Vector3(0.6, 1.8, 0.7) * s, Vector3(0.42 * s, 1.1 * s, 0.0), legs)
 	b.cyl(0.95 * s, 1.0 * s, 0.9 * s, Vector3(0, 2.2 * s, 0), harness, 10) ## kilt
 	b.ball(1.2 * s, Vector3(0, 3.6 * s, 0), fur, Vector3(1.0, 1.05, 0.85), 10)
 	b.box(Vector3(2.0, 0.35, 0.3) * s, Vector3(0, 3.9 * s, -0.75 * s), harness, Basis(Vector3.FORWARD, 0.5))
-	b.box(Vector3(0.9, 0.6, 0.25) * s, Vector3(0, 3.5 * s, -1.02 * s), BONE)
+	b.box(Vector3(0.9, 0.6, 0.25) * s, Vector3(0, 3.5 * s, -1.02 * s), plate)
 	b.cyl(0.32 * s, 0.38 * s, 2.3 * s, Vector3(-1.3 * s, 3.1 * s, 0.0), fur, 7, Basis(Vector3.FORWARD, -0.25))
 	b.cyl(0.32 * s, 0.38 * s, 2.3 * s, Vector3(1.3 * s, 3.1 * s, 0.0), fur, 7, Basis(Vector3.FORWARD, 0.25))
-	b.box(Vector3(0.18, 0.9, 0.12) * s, Vector3(-0.55 * s, 3.9 * s, -1.0 * s), CRIMSON) ## war paint
+	if paint.a > 0.0:
+		b.box(Vector3(0.18, 0.9, 0.12) * s, Vector3(-0.55 * s, 3.9 * s, -1.0 * s), paint) ## war paint
 
 
 static func _boar_head(b: Builder, at: Vector3, s: float) -> void:
@@ -286,6 +360,17 @@ static func _wolf_head(b: Builder, at: Vector3) -> void:
 	for sx in [-1.0, 1.0]:
 		b.cyl(0.0, 0.2, 0.6, at + Vector3(sx * 0.32, 0.65, 0.05), FUR_DK, 4)
 	b.box(Vector3(1.0, 0.12, 0.1), at + Vector3(0, 0.2, -0.6), CRIMSON)
+
+
+## A Wildkin's badger head: silver-grey, a pale stripe down the face between two dark eye bands, a dark snout.
+static func _badger_head(b: Builder, at: Vector3, s: float) -> void:
+	b.ball(0.85 * s, at, BADGER, Vector3(1.0, 0.95, 1.05), 10)
+	b.cyl(0.16 * s, 0.42 * s, 0.95 * s, at + Vector3(0, -0.15, -0.8) * s, BADGER_DK, 7, Basis(Vector3.RIGHT, PI * 0.5))
+	b.box(Vector3(0.3, 0.14, 1.2) * s, at + Vector3(0, 0.78, -0.18) * s, WOOL) ## the stripe, from the crown to the snout
+	b.box(Vector3(0.26, 0.1, 0.8) * s, at + Vector3(0, 0.18, -0.95) * s, WOOL)
+	for sx in [-1.0, 1.0]:
+		b.box(Vector3(0.28, 0.3, 0.7) * s, at + Vector3(sx * 0.42, 0.3, -0.5) * s, BADGER_DK) ## the eye bands
+		b.ball(0.26 * s, at + Vector3(sx * 0.6, 0.78, 0.1) * s, BADGER_DK, Vector3.ONE, 6) ## the ears
 
 
 static func _bear(b: Builder) -> void:
@@ -587,6 +672,14 @@ static func tent(style: String = "kingdom") -> ArrayMesh:
 		b.box(Vector3(1.4, 2.2, 0.3), Vector3(0, 1.1, -2.6), DOOR, Basis(Vector3.RIGHT, -0.5))
 		b.box(Vector3(0.12, 0.9, 1.3), Vector3(0, 7.4, -0.65), TEAM, Basis(), true)
 		b.box(Vector3(0.2, 0.25, 2.6), Vector3(0, 3.0, -2.7), CRIMSON, Basis(Vector3.RIGHT, 0.55))
+	elif style == "independents":
+		## the Free Holds' (IND-2, #161): a plain ridge tent of undyed wool with a slate hem, under a team pennant
+		b.box(Vector3(6.6, 0.2, 7.4), Vector3(0, 0.1, 0), Color("#B9A27A"))
+		b.prism(Vector3(5.8, 3.6, 6.6), Vector3(0, 2.0, 0), WOOL)
+		b.prism(Vector3(5.9, 0.5, 6.7), Vector3(0, 0.45, 0), SLATE)
+		b.box(Vector3(1.4, 2.0, 0.12), Vector3(0, 1.0, -3.32), DOOR)
+		b.cyl(0.08, 0.08, 2.2, Vector3(0, 5.0, -3.0), WOOD, 5)
+		b.box(Vector3(0.08, 0.7, 1.2), Vector3(0, 5.7, -2.4), TEAM, Basis(), true)
 	else:
 		b.box(Vector3(6.6, 0.2, 7.4), Vector3(0, 0.1, 0), Color("#B9A27A"))
 		b.prism(Vector3(5.8, 3.8, 6.6), Vector3(0, 2.1, 0), LINEN)

@@ -204,13 +204,19 @@ static func figure_mesh(type_id: String, prefer_model: bool = true, pose: String
 			var erow := row.duplicate()
 			erow["height"] = float((row.get("model_height", {}) as Dictionary).get(faction, row.get("height", 1.0)))
 			erow.erase("pose_size")
+			erow["tint"] = float((row.get("model_tint", {}) as Dictionary).get(faction, 1.0))
 			var got := _glb_figure(extra, type_id, erow, "ready")
 			if got.is_empty():
 				got = figure_mesh(type_id, false, "ready")
 			got["pose"] = "ready"
 			_meshes[ekey] = got
 		return _meshes[ekey]
+	## IND-2 (#161): a row may name another primitive for a faction ("fallbacks": {"independents": "free_bearer"}), so
+	## the colour party of the Free Holds' armies stands in their own kit while the Crown's and the Clans' keep theirs
+	var faction_fb := String((row.get("fallbacks", {}) as Dictionary).get(faction, "")) if not faction.is_empty() else ""
 	var key := "fig:%s:%s:%s:%s" % [type_id, prefer_model, pose, variant]
+	if not faction_fb.is_empty():
+		key += ":" + faction
 	if _meshes.has(key):
 		return _meshes[key]
 	var out := {}
@@ -219,7 +225,7 @@ static func figure_mesh(type_id: String, prefer_model: bool = true, pose: String
 		if not pp.is_empty() and pp != pose_model_path(type_id, "ready", variant):
 			out = _glb_figure(pp, type_id, row, pose)
 		if out.is_empty():
-			out = figure_mesh(type_id, prefer_model, "ready", "", variant)
+			out = figure_mesh(type_id, prefer_model, "ready", faction if not faction_fb.is_empty() else "", variant)
 		else:
 			out["pose"] = pose
 		_meshes[key] = out
@@ -228,7 +234,7 @@ static func figure_mesh(type_id: String, prefer_model: bool = true, pose: String
 	if not path.is_empty():
 		out = _glb_figure(path, type_id, row, "ready")
 	if out.is_empty():
-		var fb := String(row.get("fallback", type_id))
+		var fb := faction_fb if not faction_fb.is_empty() else String(row.get("fallback", type_id))
 		var s := float(row.get("scale", 1.0))
 		var m: ArrayMesh = Kit.figure(fb, s, bool(row.get("ruler", false)))
 		out = {"mesh": m, "tex": null, "source": "primitive"}
@@ -322,6 +328,9 @@ static func problems() -> Array:
 		var p := String(row.get("model", ""))
 		if not p.is_empty() and not ResourceLoader.exists(p):
 			out.append("figure %s: its model %s is missing" % [id, p])
+		for fac in (row.get("fallbacks", {}) as Dictionary).keys():
+			if not Kit.has_figure(String(row["fallbacks"][fac])):
+				out.append("figure %s: its %s fallback '%s' is not a Kit figure" % [id, fac, row["fallbacks"][fac]])
 		for fac in (row.get("models", {}) as Dictionary).keys():
 			var mp := String(row["models"][fac])
 			if not mp.is_empty() and not ResourceLoader.exists(mp):
@@ -388,6 +397,9 @@ static func _glb_figure(path: String, type_id: String, row: Dictionary, pose: St
 	if along <= 0.0001:
 		return {}
 	var s: float = float(size["men"]) * Kit.FIG / along
+	## a row's "tint" (0..1, default 1) darkens the whole figure: the vertex colour multiplies the texture, so pale undyed
+	## wool (the Free Holds', IND-2) doesn't blow out to white under the board's sun
+	var tint := clampf(float(row.get("tint", 1.0)), 0.0, 1.0)
 	var c: Vector3 = aabb.get_center()
 	var yaw := deg_to_rad(float(row.get("yaw", 180.0)))
 	var xf := Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * s), Vector3.ZERO) * Transform3D(Basis(), Vector3(-c.x, -aabb.position.y, -c.z))
@@ -401,7 +413,7 @@ static func _glb_figure(path: String, type_id: String, row: Dictionary, pose: St
 	for k in pv.size():
 		b.v.append(xf * pv[k])
 		b.n.append((xf.basis * pn[k]).normalized() if k < pn.size() else Vector3.UP)
-		b.c.append(Color(1, 1, 1, 1))
+		b.c.append(Color(tint, tint, tint, 1))
 		b.uv.append(puv[k] if puv != null and k < (puv as PackedVector2Array).size() else Vector2.ZERO)
 	if pi != null and (pi as PackedInt32Array).size() > 0:
 		for k in pi:

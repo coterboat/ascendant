@@ -133,9 +133,10 @@ static func doubles(cell: Dictionary) -> bool:
 
 
 ## Plays one work item ({"cell", "from", "count"}) and returns its results (play_game results without "final_state",
-## each with "cell", "band", "pairing", "paths" and "sieges" added). `setup` are autoplay.gd's setup flags (--independents):
-## they apply to every game but band S8's, which are compared with M2 records made without them; the cell decides `sieges`.
-static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Callable = Callable(), setup: Dictionary = {}) -> Array:
+## each with "cell", "band", "pairing", "paths" and "sieges" added). `independents` (--independents, the balance contract) plays
+## every game with Free Holds garrisons but band S8's, which are compared with M2 records made without them; the cell decides
+## whether sieges are on.
+static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Callable = Callable(), independents := false) -> Array:
 	var cell := find_cell(cells, str(item.cell))
 	var out := []
 	if cell.is_empty():
@@ -144,8 +145,7 @@ static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Call
 		var game_seed: int = int(item.from) + i
 		var options := {"rulers": true, "builds": cell.builds.duplicate(), "paths": bool(cell.paths), "branches": [],
 			"replay_check": str(cell.band) == "S" and (game_seed - int(cell.seed)) % REPLAY_EVERY == 0, "record_digest": str(cell.band) == "S8"}
-		if str(cell.band) != "S8":
-			options.merge(setup)
+		options["independents"] = independents and str(cell.band) != "S8"
 		options["sieges"] = bool(cell.sieges)
 		var r := Simulator.play_game(game_seed, cell.seats, cell.policies, int(cell.get("turn_cap", turn_cap)), probe, options)
 		r.erase("final_state")

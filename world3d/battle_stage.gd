@@ -14,6 +14,12 @@ extends BattleSimpleView
 ## fort behind it; the attacker toward the road it came by; a border battle on the crossing), with the
 ## woods, rocks and houses where it stands lifted off the table and put back afterwards (clear_for).
 ##
+## At a fort (M3c S-5, world3d/battle_walls.gd): a battle whose log has a `siege` block stands at the walls of the fort the log
+## describes (drawn by the board's own show_forts rows, in the look its walls have): a storm puts the garrison on the wall walk
+## and the stormers at the foot with ladders or the trunk, a breach puts the garrison in the gap, an open battle forms before the
+## gate with those from inside marching out of it; the besiegers' camp (world3d/battle_scenery.gd) stands beside their lines. A
+## plate over the walls and a line under the first caption say what the walls give before the first hit lands.
+##
 ## The fighters (world3d/battle_figures.gd): every fighter its own figure, the real models in their pose
 ## families, front rank, second rank and back line, rulers and commanders in their places, a standard
 ## bearer and a musician per side. Beats drive them: attack_started / attack_landed (a lunge and the strike
@@ -50,6 +56,11 @@ const Kit := preload("res://world3d/kit.gd")
 const Formation := preload("res://world3d/battle_formation.gd")
 const Cam := preload("res://world3d/battle_camera.gd")
 const Figures := preload("res://world3d/battle_figures.gd")
+const Walls := preload("res://world3d/battle_walls.gd")
+const Scenery := preload("res://world3d/battle_scenery.gd")
+const SiegeBoard := preload("res://world3d/siege_board.gd")
+const SpellFx := preload("res://world3d/spell_fx.gd")
+const SpellPlan := preload("res://world3d/spell_plan.gd")
 
 ## The field's band the camera frames the battle in (field pixels kept clear at the top for the round banner,
 ## the moment toast and the morale tags, and at the sides and bottom).
@@ -93,6 +104,8 @@ var view3d: Control
 var overlay: Control
 var proj_root: Node3D
 var stage_fort: Node3D
+var scenery: Node3D ## M3c S-5: a battle at walls' ladders, trunk, camp and engines (world3d/battle_scenery.gd)
+var _walls_plate := Rect2() ## where the walls' plate is drawn now (field coordinates), or an empty rect
 var plan := {}
 var groups := {} ## M3 3.4's files (BattleFormation.groups_of): {} while every fighter is its own figure
 var game_state: GameState = null ## the state play() was given (the factions' transformations), or null
@@ -117,6 +130,8 @@ var _drag_from := Vector2.ZERO
 var _user_rig := false
 var _proj: Array = [] ## projectiles: {"kind", "from", "to", "t0", "life", "arc", "hit", "mi_slot"}
 var _proj_mm := {} ## kind -> MultiMeshInstance3D
+var sfx: SpellFx ## M5-9: the spell effects (world3d/spell_fx.gd; rungs, pool and flash limiter as SpellPlan and BattleFx say)
+var _round_ends := {} ## M5-9: round -> the playback time its round_end beat fires (a hex or shield lasts to there)
 var _fx: Array = [] ## projected effects: {"kind", "at": Vector3, "age", "life", "r", "big", "bright", "frames", ...}
 var _numbers: Array = [] ## {"at": Vector3, "text", "color", "size", "age", "life"}
 var _glyph_cache := {} ## fighter id -> glyph kinds
@@ -232,6 +247,10 @@ func build_now() -> void:
 	figures.wv = wv
 	figures.land = terrain
 	wv.add_child(figures)
+	scenery = Scenery.new()
+	scenery.name = "SiegeScenery"
+	scenery.wv = wv
+	wv.add_child(scenery)
 	proj_root = Node3D.new()
 	proj_root.name = "Projectiles"
 	wv.add_child(proj_root)
@@ -248,6 +267,11 @@ func build_now() -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		proj_root.add_child(mi)
 		_proj_mm[kind] = mi
+	sfx = SpellFx.new() ## M5-9: three more draw calls for every spell of the battle (rings, sprites, beams)
+	sfx.flash = _flash
+	sfx.bind_ground((wv.gmat as ShaderMaterial).get_shader_parameter("height_tex"), Terrain3D.ORIGIN, Terrain3D.EXTENT) ## M5-9: decals lie on the land
+	sfx.rung = SpellPlan.rung_of(quality, RenderingServer.get_current_rendering_method() == "gl_compatibility")
+	wv.add_child(sfx)
 	_fit_viewport()
 
 
@@ -431,7 +455,97 @@ func _world_info() -> Dictionary:
 	for i in terrain.ids.size():
 		if terrain.has_fort[i] and not terrain.is_capital[i]:
 			forts[terrain.ids[i]] = WorldView.fort_spot(terrain, i)
-	return {"fortresses": fz, "forts": forts}
+	return {"fortresses": fz, "forts": forts, "walls": _walls_info(), "engines": _besieging_engines()}
+
+
+# --- battles at walls (M3c S-5, #103; world3d/battle_walls.gd) --------------------------------------------------
+
+## Puts the fort the log's `siege` block describes on the land, in the kit of its level and builder and the damage look
+## of its walls, over the map's own (the world's WorldView draws it as the board does: SiegeBoard rows, show_forts); with
+## no siege block, puts the map's forts back.
+func _dress_forts() -> void:
+	var siege: Dictionary = _log.get("siege", {})
+	var pids: Array = _log.get("provinces", [])
+	var level := Walls.level_of(siege)
+	if siege.is_empty() or pids.is_empty() or level <= 0 or terrain.index_of(String(pids[0])) < 0:
+		if not wv.fort_table().is_empty():
+			wv.show_forts({})
+		return
+	var pid := String(pids[0])
+	var table := _fort_rows()
+	for k in table.keys():
+		table[k]["besieger"] = "" ## the besiegers' chevrons are the board's marker: here the besiegers themselves stand at the walls
+	table[pid] = {"kind": SiegeBoard.kind_of(level), "kit": _fort_kit(pid), "look": SiegeRules.damage_look(level, int(siege.get("walls", 0))),
+		"level": level, "walls": int(siege.get("walls", 0)), "scaffold": {}, "besieger": ""}
+	wv.show_forts(table, {})
+	## the roofs and banners wear the colour of the fort's owner, when it fights here
+	var gi := int(siege.get("garrison", -1))
+	if gi >= 0 and gi < _side_colours.size():
+		if wv.fortresses.has(pid):
+			wv.set_fortress_colour(pid, _side_colours[gi])
+		else:
+			wv.set_fort_colour(pid, _side_colours[gi])
+
+
+## Every fort the land has, as the board would draw it now (the state's, when the stage was given one in a game with
+## sieges; else the map's own forts at their starting levels): SiegeBoard rows by province.
+func _fort_rows() -> Dictionary:
+	if game_state != null and game_state.sieges:
+		return wv.table_of(game_state)
+	var forts := {}
+	for i in terrain.ids.size():
+		var level := 3 if terrain.is_capital[i] else (2 if terrain.has_fort[i] else 0)
+		if level > 0:
+			forts[terrain.ids[i]] = {"level": level, "walls": int(SiegeRules.walls_max(level)), "look": "intact", "kit": ""}
+	return SiegeBoard.board_table({"forts": forts, "works": {}, "sieges": {}}, wv.map_kits())
+
+
+## The kit the fort of `pid` wears: its builder's (the state's fort_by), else the map's (a capital its own faction's,
+## any other fort the nearest capital's).
+func _fort_kit(pid: String) -> String:
+	if game_state != null and game_state.sieges:
+		var p: Province = game_state.find_province(pid)
+		if p != null and not p.fort_by.is_empty():
+			return p.fort_by
+	return String(wv.map_kits().get(pid, ""))
+
+
+## The fort of a battle with a siege block as BattleWalls.plan wants it (BattleWalls.info_of), or {} when there is none.
+func _walls_info() -> Dictionary:
+	var siege: Dictionary = _log.get("siege", {}) if not _log.is_empty() else {}
+	var pids: Array = _log.get("provinces", []) if not _log.is_empty() else []
+	var level := Walls.level_of(siege)
+	if siege.is_empty() or pids.is_empty() or level <= 0 or wv == null or terrain.index_of(String(pids[0])) < 0:
+		return {}
+	var pid := String(pids[0])
+	var kind := SiegeBoard.kind_of(level)
+	var capital: bool = wv.fortresses.has(pid)
+	var g: Dictionary = wv._fort_frame(pid, capital, wv.fort_draw.get(pid, {}))
+	if g.is_empty():
+		return {}
+	var look := SiegeRules.damage_look(level, int(siege.get("walls", 0)))
+	var drawn_look := look if String(wv.fort_piece(pid)) == kind else "" ## a look with a model of its own needs no cut
+	var cut: Array = WorldView._damage_cut(g["frame"], float(g["hs"]), float(g["h"]), drawn_look)
+	return Walls.info_of(g["frame"], kind, _fort_kit(pid), look, float(g["hs"]), cut)
+
+
+## How many siege engines the besiegers of a battle with a siege block carry: those of their armies still in the game
+## the stage was given (an army lost in the battle took its engines with it, and the log does not keep them), 0 without a
+## game.
+func _besieging_engines() -> int:
+	var siege: Dictionary = _log.get("siege", {}) if not _log.is_empty() else {}
+	if siege.is_empty() or game_state == null:
+		return 0
+	var gi := int(siege.get("garrison", -1))
+	var n := 0
+	for si in _log.sides.size():
+		if si == gi:
+			continue
+		for a in _log.sides[si].armies:
+			var army: Army = game_state.find_army(String(a.id))
+			if army != null:
+				n += army.engines
+	return n
 
 
 # --- showing a battle (the Simple view's flow, with the land for a field) ----------------------------
@@ -526,7 +640,6 @@ func _build_field() -> void:
 	_field_pending = false
 	build_now()
 	groups = Formation.groups_of(_log, FILES_ABOVE)
-	plan = Formation.plan(_log, terrain, _world_info(), _band().size.x / maxf(_band().size.y, 1.0), groups)
 	_side_colours = []
 	_side_lin = []
 	var emblems := []
@@ -534,8 +647,16 @@ func _build_field() -> void:
 	for si in _log.sides.size():
 		_side_colours.append(UiPalette.seat_color(_side_seat[si]))
 		_side_lin.append(figure_colour(_side_seat[si]))
-		emblems.append(maxi(_side_seat[si], 0))
+		emblems.append(_side_seat[si] if _side_seat[si] >= 0 else Kit.EMBLEM_SHIELD)  # IND-2: nobody's banner is the independents' heater shield
 		factions.append(String(_log.sides[si].faction))
+	## M3c S-5: a battle at a fort stands at the walls of the fort the log describes (BattleWalls), else on the ground
+	_dress_forts()
+	var world := _world_info()
+	var aspect := _band().size.x / maxf(_band().size.y, 1.0)
+	if (world["walls"] as Dictionary).is_empty():
+		plan = Formation.plan(_log, terrain, world, aspect, groups)
+	else:
+		plan = Walls.plan(_log, terrain, world, aspect, groups)
 	_hp_of = []
 	for f in _log.fighters:
 		_hp_of.append(int(f.max_hp))
@@ -547,10 +668,18 @@ func _build_field() -> void:
 	for si in _log.sides.size():
 		transformations.append(transformation_of(si))
 	figures.build(_log, plan, _side_colours, _side_lin, emblems, factions, groups, transformations)
+	var wl: Dictionary = plan.get("walls", {})
+	if wl.is_empty():
+		scenery.clear()
+	else:
+		var bs := int(wl["besieger"])
+		scenery.build(wl["scenery"], _side_colours[bs] if bs >= 0 and bs < _side_colours.size() else Color.WHITE)
 	view3d.queue_redraw()
 	_proj.clear()
 	_fx.clear()
 	_numbers.clear()
+	sfx.clear() ## M5-9
+	_round_ends = BattleSpells.round_ends(player.beats())
 	_glyph_cache = {}
 	_user_rig = false
 	_focus_left = -1.0
@@ -711,6 +840,9 @@ func _points(ids: Array = [], los: bool = false) -> Array:
 		else:
 			pts.append(Vector3(p.x, float(s["y"]), p.y))
 			pts.append(Vector3(p.x, float(s["y"]) + h, p.y))
+	## M3c S-5: the whole battle also keeps the walls it stands at (their gate-side corners and tops) and the besiegers' camp in view
+	if ids.is_empty() and not los:
+		pts.append_array(plan.get("walls", {}).get("frame_extra", []))
 	return pts
 
 
@@ -723,6 +855,11 @@ func _obstacles() -> Array:
 	if not fd.is_empty() and fd.has("pos"):
 		var fp: Vector2 = fd["pos"]
 		out.append({"pos": fp, "r": Formation.fort_radius(String(fd.get("faction", ""))) * 0.8, "top": terrain.height_at(fp) + 9.0})
+	## M3c S-5: a fort the battle stands at (a capital's is above): its walls hide the yard from a low camera
+	var info: Dictionary = plan.get("walls", {}).get("info", {})
+	if not info.is_empty() and not wv.fortresses.has(String(_log.get("provinces", [""])[0])):
+		var sp: Dictionary = info["spec"]
+		out.append({"pos": info["centre"], "r": float(sp["face"]), "top": Walls.world_y(info, float(sp["floor"]) + float(sp["wall_h"]))})
 	return out
 
 
@@ -898,6 +1035,8 @@ func tick(delta: float) -> void:
 			figures.prune(now)
 	_clock_last = now
 	_step_projectiles(now)
+	if sfx != null:
+		sfx.step(dt) ## M5-9: the spell effects age with the playback (paused: they hold)
 	_tick_camera(delta)
 	## glyphs and auras follow the state at most every GLYPH_INTERVAL of real time while playing (the why
 	## panel's rule), at once when paused
@@ -969,6 +1108,8 @@ func set_quality(q: int) -> void:
 	quality = clampi(q, 0, MAX_RUNG)
 	if wv == null:
 		return
+	if sfx != null:
+		sfx.rung = SpellPlan.rung_of(quality, RenderingServer.get_current_rendering_method() == "gl_compatibility") ## M5-9: the effects thin with the ladder
 	wv.set_quality(mini(quality, 3) if quality < 4 else 3)
 	wv.sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	figures.set_shadows(quality < 3)
@@ -1000,6 +1141,27 @@ func reset_perf() -> void:
 
 # --- beats -----------------------------------------------------------------------------------------------
 
+## M3c S-5: before round 1's caption, a battle at walls says in a line what the walls (or their lack) mean for the fight
+## about to be played (the +6 is on screen before the first hit lands); it links to the codex entry of the walls.
+func _set_caption(lines: Array) -> void:
+	super._set_caption(lines)
+	var siege := _siege_block()
+	if not lines.is_empty() or siege.is_empty() or _log.is_empty():
+		return
+	var pids: Array = _log.get("provinces", [])
+	var text := Walls.caption_text(siege, BattleBackdrop.province_name(String(pids[0])) if not pids.is_empty() else "the fort")
+	if text.is_empty():
+		return
+	var l: Label = caption_labels[1]
+	CodexLink.detach(l)
+	l.text = text
+	var chip := FortView.siege_chip(siege)
+	l.tooltip_text = String(chip.get("tip", ""))
+	if not chip.is_empty():
+		var key := String(chip["codex"])
+		CodexLink.attach(l, key, codex_requested.emit)
+
+
 func _on_beat(b: Dictionary, st: Dictionary) -> void:
 	if plan.is_empty():
 		return
@@ -1008,8 +1170,23 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 	match String(b.kind):
 		"deploy":
 			if not reduced_motion:
+				var wl: Dictionary = plan.get("walls", {})
+				var march: Dictionary = wl.get("march", {})
 				for i in figures.figs.size():
-					if int(figures.figs[i]["tier"]) == 0 and int(figures.figs[i]["fid"]) >= 0:
+					var fid_i := int(figures.figs[i]["fid"])
+					if march.has(fid_i):
+						## M3c S-5 (§10.2): a sally spills out of the gate in a column and forms up facing the camps; a relief
+						## army arrives on the road
+						var mp: Dictionary = march[fid_i]
+						var path: Array = mp["path"]
+						var y0 := Walls.world_y(wl["info"], float((wl["info"]["spec"] as Dictionary)["floor"]))
+						if bool(mp["arrives"]):
+							y0 = maxf(terrain.height_at(path[0]), 0.0)
+						figures.add_motion(i, {"kind": "march_out", "t0": now, "dur": float(mp["dur"]), "delay": float(mp["delay"]), "path": path,
+							"s_in": float(mp["s_in"]), "s_out": float(mp["s_out"]), "y0": y0})
+					elif String(figures.figs[i]["station"]) in ["deck", "gate_top"]:
+						continue ## a fighter on a wall stays on it
+					elif int(figures.figs[i]["tier"]) == 0 and fid_i >= 0:
 						figures.add_motion(i, {"kind": "deploy", "t0": now, "dur": BattlePlayer.DEPLOY * 0.8})
 		"round_start":
 			banner_label.text = String(b.data.banner)
@@ -1023,6 +1200,8 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 			_attack_started(b)
 		"attack_landed":
 			_attack_landed(b, st)
+		"cast":
+			_cast_beat(b)
 		"wound":
 			_bars_dirty = true
 			_glyphs_dirty_3d = true
@@ -1048,7 +1227,7 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 			_bars_dirty = true
 		"heal":
 			var ends2: Array = _ends_home(int(b.fighter))
-			if not ends2.is_empty():
+			if not ends2.is_empty() and not _moon_heal(b): ## M5-9: the Blood Moon's heal has its own motes and number
 				_add_fx({"kind": "heal", "at": ends2[0], "life": HEAL_LIFE, "r": 1.0})
 				_add_number((ends2[1] as Vector3), "+%d hp" % int(b.data.healed), UiPalette.POSITIVE, _number_size(false))
 			_bars_dirty = true
@@ -1165,7 +1344,7 @@ func _rout_figure(i: int, now: float, dur: float) -> void:
 	if String(f["hold"]) != "stand":
 		return
 	figures.set_hold(i, "gone")
-	if reduced_motion:
+	if reduced_motion or String(f["station"]) in ["deck", "gate_top"]: ## (a fighter on a wall cannot run through it: it fades)
 		figures.add_motion(i, {"kind": "fade", "t0": now, "dur": Figures.FADE})
 	else:
 		var home: Vector2 = f["home"]
@@ -1267,6 +1446,7 @@ func _on_seeked(st: Dictionary) -> void:
 	_step_projectiles(player.time())
 	_glyphs_dirty_3d = true
 	_refresh_glyph_cache()
+	_spells_seeked(st) ## M5-9: the hexes and shields still on their fighters
 	## a key-moment jump (the playhead now sits just before a moment's beat): frame its camera hint
 	var nb := player.next_beat()
 	var beats := player.beats()
@@ -1406,6 +1586,92 @@ func _projectile_material() -> StandardMaterial3D:
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	m.no_depth_test = false
 	return m
+
+
+# --- spells (M5-9) --------------------------------------------------------------------------------------
+# The cast step's effects (world3d/spell_plan.gd plans them, world3d/spell_fx.gd draws them, world3d/battle_spells.gd turns a
+# cast beat into a plan). They only draw what the log already says: nothing here changes a fighter, a number or the game.
+
+## Where a fighter stands for an effect: {"foot", "head", "r"} (its place and footprint), {} when it isn't on the stage.
+func _spell_ends(fid: int) -> Dictionary:
+	var e: Array = _ends_home(fid)
+	if e.is_empty():
+		return {}
+	var f: Dictionary = figures.figs[figures.index_of(fid)]
+	return {"foot": e[0], "head": e[1], "r": clampf(minf(float(f["w"]), float(f["len"])) * 0.6, 2.4, 6.0)}
+
+
+func _spell_ctx(side: int, life: float) -> Dictionary:
+	return {"ends": _spell_ends, "col": _side_colours[side] if side >= 0 and side < _side_colours.size() else Color.WHITE, "life": life,
+		"rung": sfx.rung, "reduced": reduced_motion, "log": _log, "col_of": func(fid): return _side_colours[int(_log.fighters[int(fid)].side)]}
+
+
+## A cast beat plays: the spell's effect, its name and numbers over the caster, a shake for a greater working (within M3's limits),
+## and a bolt's sound. A full pool skips the effect (the bars and the caption carry the facts).
+func _cast_beat(b: Dictionary) -> void:
+	_bars_dirty = true ## a bolt's damage is pending on its target now
+	_glyphs_dirty_3d = true
+	if sfx == null or plan.is_empty():
+		return
+	sfx.reduced_motion = reduced_motion
+	var life := maxf(0.8, float(_round_ends.get(int(b.round), float(b.t) + 2.0)) - float(b.t))
+	var p := BattleSpells.plan_for_beat(b, _spell_ctx(int(b.side), life))
+	if p.is_empty():
+		return
+	var played := sfx.play(p, _real)
+	if bool(played.get("skipped", false)):
+		return
+	_spell_words(played)
+	if float(played["shake"]) > 0.0:
+		_try_shake({"amp": float(played["shake"]), "dur": 0.2}, int(b.event))
+	if String(b.data.kind) == "bolt" and _sound.allow("battle_arcane", _real):
+		GameAudio.sfx("battle_arcane")
+
+
+## The words an effect puts over the field (the spell's name and number over its caster): floating text like a damage number.
+func _spell_words(p: Dictionary) -> void:
+	for lb in p["labels"]:
+		var stacked := 0 ## words said a moment ago right here: this line goes above them
+		for n in _numbers:
+			if bool(n.get("tag", false)) and float(n["age"]) < 0.7 and ((n["at"] as Vector3) - (lb["at"] as Vector3)).length() < 14.0:
+				stacked += 1
+		var before := _numbers.size()
+		_add_number(lb["at"], String(lb["text"]), lb["col"], _number_size(false), Vector2(0, -17.0 * stacked))
+		if _numbers.size() > before:
+			var tag: Dictionary = _numbers[_numbers.size() - 1]
+			tag["life"] = float(lb["life"])
+			tag["tag"] = true
+
+
+## The Blood Moon's heal beat: green motes rising and its +hp; false for any other heal (the generic rise draws it) or when the
+## pool is full.
+func _moon_heal(b: Dictionary) -> bool:
+	if sfx == null or not BattleSpells.is_moon_heal(b, _log):
+		return false
+	sfx.reduced_motion = reduced_motion
+	var p := BattleSpells.heal_plan(b, _spell_ctx(int(b.side), 1.0))
+	if p.is_empty():
+		return false
+	var played := sfx.play(p, _real)
+	if bool(played.get("skipped", false)):
+		return false
+	_spell_words(played)
+	return true
+
+
+## A seek: the effects stand as the state says (a hex or shield still on its fighters keeps its marks, the rest are gone).
+func _spells_seeked(st: Dictionary) -> void:
+	if sfx == null:
+		return
+	sfx.clear()
+	sfx.reduced_motion = reduced_motion
+	var now := player.time()
+	var life := maxf(0.8, float(_round_ends.get(int(st.round), now + 2.0)) - now)
+	var any := false
+	for p in BattleSpells.standing(st, _spell_ctx(0, life)):
+		any = not bool(sfx.play(p, _real).get("skipped", false)) or any
+	if any:
+		sfx.step(minf(0.7, life * 0.5)) ## their intro is over: they stand
 
 
 # --- the 2D effects and numbers -------------------------------------------------------------------------
@@ -1627,6 +1893,9 @@ func _set_hover(fid: int) -> void:
 
 
 func _get_tooltip(at_position: Vector2) -> String:
+	## M3c S-5: the walls' plate explains itself (the chip's words: what the walls give, and why)
+	if _walls_plate.size.x > 0.0 and _walls_plate.has_point(at_position - frame.position - Vector2(0, TOP_H)):
+		return String(FortView.siege_chip(_siege_block()).get("tip", ""))
 	var fid := pick(at_position)
 	if fid < 0 or player == null:
 		return ""
@@ -1825,6 +2094,7 @@ func _draw_overlay(ci: CanvasItem) -> void:
 		var gl: Array = _glyph_cache.get(fid4, [])
 		for gk in gl.size():
 			BattleCard.draw_glyph(ci, String(gl[gk]), bar.end + Vector2(9 + gk * 15, -2), 13.0)
+	_draw_walls_plate(ci, font)
 	## impacts, sparks, bursts (over the plates)
 	for fx2 in _fx:
 		var kind2 := String(fx2["kind"])
@@ -1873,6 +2143,51 @@ func _draw_overlay(ci: CanvasItem) -> void:
 			"size": n["size"], "age": n["age"], "life": n["life"]})
 	## the camera's keys, bottom right of the field
 	draw_camera_hint(ci, font, Vector2((ci as Control).size.x - 12.0, FIELD_H - 10.0), CAMERA_HINT)
+
+
+## M3c S-5: the walls' plate, hung over the gate-side wall for the whole battle: what the walls give the garrison in a storm
+## (with the wall-strength cells, grouped in the steps a storm counts), or why nobody holds the ground. Hovering it gives the
+## chip's tooltip. Sets _walls_plate (field coordinates; empty when none is drawn).
+func _draw_walls_plate(ci: CanvasItem, font: Font) -> void:
+	_walls_plate = Rect2()
+	var wl: Dictionary = plan.get("walls", {})
+	var siege := _siege_block()
+	if wl.is_empty() or siege.is_empty():
+		return
+	var text := Walls.plate_text(siege)
+	var at := _proj_overlay(wl["plate"])
+	if text.is_empty() or at.x < -90000.0:
+		return
+	var storm := String(siege.get("kind", "")) == "storm"
+	_walls_plate = draw_walls_plate(ci, font, at, text, int(siege.get("walls", 0)), int(siege.get("walls_max", 0)) if storm else 0,
+		Rect2(Vector2.ZERO, Vector2(field_width(), FIELD_H)))
+
+
+## Draws a walls plate hung from `at` (its stalk's foot, field pixels): `text` over `cells` cells, `walls` of them standing
+## (none when `cells` is 0), kept inside `bounds`, in a font of `fs`; one cell to a point of wall strength with a gap between
+## the steps a storm counts (the fort chip's WallsBar, drawn here). Returns the plate's rect. The legend draws it too.
+static func draw_walls_plate(ci: CanvasItem, font: Font, at: Vector2, text: String, walls: int, cells: int, bounds: Rect2, fs: int = 14) -> Rect2:
+	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 16.0
+	var h := float(fs) + 10.0 + (10.0 if cells > 0 else 0.0)
+	var box := Rect2(Vector2(clampf(at.x - w * 0.5, bounds.position.x + 6.0, maxf(bounds.position.x + 6.0, bounds.end.x - w - 6.0)),
+		clampf(at.y - h - 6.0, bounds.position.y + 6.0, maxf(bounds.position.y + 6.0, bounds.end.y - h - 6.0))), Vector2(w, h))
+	ci.draw_line(Vector2(box.get_center().x, box.end.y), at, Color(UiPalette.GILT, 0.8), 1.5, true)
+	ci.draw_rect(box, Color(UiPalette.KEYLINE_INK, LABEL_BACKING))
+	ci.draw_rect(box, UiPalette.GILT, false, 1.0)
+	ci.draw_string(font, box.position + Vector2(8, fs + 2), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, UiPalette.TEXT_PRIMARY)
+	if cells > 0:
+		var step := FortData.WALL_STEP
+		var steps := ceili(float(cells) / step)
+		var cw := (w - 16.0 - float(steps - 1) * 3.0) / float(cells)
+		var x := box.position.x + 8.0
+		for k in cells:
+			if k > 0 and k % step == 0:
+				x += 3.0
+			var cell := Rect2(Vector2(x, box.end.y - 11.0), Vector2(maxf(cw - 1.0, 2.0), 6.0))
+			ci.draw_rect(cell, WallsBar.STONE if k < walls else WallsBar.LOST)
+			ci.draw_rect(cell, WallsBar.STONE_EDGE if k < walls else WallsBar.LOST_EDGE, false, 1.0)
+			x += cw
+	return box
 
 
 func _dive_point(i: int, t: float) -> Dictionary:
@@ -2108,13 +2423,19 @@ static func stage_rows(seat: int = 0) -> Array:
 				ci.draw_line(r.get_center() + Vector2(-26, -8), r.get_center() + Vector2(-26, 8), UiPalette.TEXT_SECONDARY, 2.0)
 				ci.draw_line(r.get_center() + Vector2(26, -8), r.get_center() + Vector2(26, 8), UiPalette.TEXT_SECONDARY, 2.0),
 			"The camera never shakes with reduced motion (or with screen shake off)."),
-		BattleLegend._row("fort3d", "Fort", "A defended fort stands behind its defenders: only a defender gets its +2 defense. An undefended fort stands empty.", "fort",
+		BattleLegend._row("fort3d", "Fort", "A defended fort stands behind its defenders: only a defender gets its +2 defense. An undefended fort stands empty. In a game with sieges the battle stands at the fort's own walls instead (see the walls plate).", "fort",
 			"BattleStage3D.place_fort", func(ci: CanvasItem, r: Rect2):
 				var w := Rect2(r.position + Vector2(18, 10), Vector2(r.size.x - 36, r.size.y - 14))
 				ci.draw_rect(w, Color(0.62, 0.58, 0.52))
 				for k in 5:
 					ci.draw_rect(Rect2(w.position + Vector2(k * w.size.x / 5.0 + 2, -6), Vector2(w.size.x / 10.0, 6)), Color(0.62, 0.58, 0.52))
 				ci.draw_rect(w, UiPalette.KEYLINE_INK, false, 1.0)),
+		BattleLegend._row("walls3d", "Walls plate", ("Hung over the gate-side wall of a battle at a fort. In a storm it says the defense the walls give the garrison and how many of their strength points still stand (one cell each, in the steps a storm counts: +%d defense for every %d). At a breach or outside the walls it says there are none, and what cover the garrison keeps. Hover it for the details." % [
+				FortData.WALLS_DEFENSE_PER_STEP, FortData.WALL_STEP]),
+			"battle_walls", "BattleStage3D.draw_walls_plate", func(ci: CanvasItem, r: Rect2):
+				var top := SiegeRules.walls_max(2)
+				var sample := FortView.siege_chip({"kind": "storm", "walls": top, "walls_max": top, "walls_defense": SiegeRules.walls_defense(top)})
+				draw_walls_plate(ci, BattleLegend._font(ci), r.get_center() + Vector2(0, 14), String(sample.text).get_slice(" (", 0).replace("Walls: ", ""), top, top, r, 11)),
 		BattleLegend._row("file3d", "\"×3\" beside a plate", "In a battle of more than 280 fighters one figure stands for a file of a few fighters of the same army and type (M3's files). Once a file loses someone, the badge counts those still standing; hover it to see each one.",
 			"battle_formation", "BattleStage3D.draw_file_badge", func(ci: CanvasItem, r: Rect2):
 				BattleCard.draw_hp_bar(ci, Rect2(r.get_center() + Vector2(-8, -3), Vector2(30, 6)), 14, 24, 0)
@@ -2122,7 +2443,7 @@ static func stage_rows(seat: int = 0) -> Array:
 		BattleLegend._row("camera3d", "Camera", "The camera frames the whole battle. F frames it again; drag with the right button to turn it, the wheel zooms. A key-moment jump frames that moment.",
 			"battle_playback", "BattleStage3D.draw_camera_hint", func(ci: CanvasItem, r: Rect2):
 				draw_camera_hint(ci, BattleLegend._font(ci), r.end - Vector2(2, 10), "F")),
-	]
+	] + BattleSpells.legend_rows(seat) ## M5-9: how to name each spell from what it draws
 
 
 static func _ellipse_pts(c: Vector2, rad: Vector2) -> PackedVector2Array:

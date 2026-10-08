@@ -245,7 +245,10 @@ const ENTRIES := {
 		"title": "Playing against the computer",
 		"text": "Any seat can be played by the computer instead of a person. The computer plays by exactly the same rules as you: it sees the same map, it gets the same gold and units, and its orders are checked the same way. It gives its orders at the same time as you, from the map as it stood at the start of the turn, so it never sees the orders you give. After the turn resolves, the turn report shows what it was thinking. Easy makes more mistakes than Normal: it passes up about one in three of its good attacks and captures, recruits at random instead of picking the best mix, works out the odds of fewer battles before it fights, and settles for a thinner guard on its capital. Neither level cheats."
 			# M5-4 (#115, design/M5_MAGIC_FOG.md §10.1): with fog of war the map it sees is its own view, and only that.
-			+ " In a game with fog of war it plays from its own view of the map, the one you would have in its place: it never sees an army you could not see, it plans its attacks against the numbers it has glimpsed, it counts the top of each estimate when it guards its capital, it forgets an army it saw more than %d turns ago, and it sends a scout to look at a target it cannot see. Its notes in the turn report say so, once the game is over." % AIFog.MEMORY_TRUST,
+			+ " In a game with fog of war it plays from its own view of the map, the one you would have in its place: it never sees an army you could not see, it plans its attacks against the numbers it has glimpsed, it counts the top of each estimate when it guards its capital, it forgets an army it saw more than %d turns ago, and it sends a scout to look at a target it cannot see. Its notes in the turn report say so, once the game is over." % AIFog.MEMORY_TRUST
+			# M5-10 (#121, design/M5_MAGIC_FOG.md §10.2): what the computer does with magic.
+			+ " In a game with magic it researches its faction's spells along a plan of its own, starting with the first spell of the school its Oath will open, recruits mages (never more than one for every %d regular units, so their second rank is not exposed) and casts rituals from armies that were going to hold anyway, never from an army it has sent to attack." % AIMagic.MAGE_PER
+			+ " Its rituals take at most %d%% of the gold left after the troops it cannot do without; it wards its capital ahead of a rival that can curse it, and the Thornmane Clans' computer pays a ritual in blood when its Shamans' army can spare the hit points. Its notes in the turn report say what it cast and why." % AIMagic.RITUAL_SHARE_PCT,
 	},
 	# --- the pre-game build screen (M2-5, #33): BuildScreen. The rules it shows are in the ruler block below. ---
 	"build_screen": {
@@ -847,7 +850,7 @@ const ENTRIES := {
 	},
 	"arcana": {
 		"title": "Arcana",
-		"text": "Your faction's magic research, the Magic tab of the research panel: two schools of four nodes each, paid from the same research pool as your path, one target at a time. In each school the battle spell (tier I, 10 research) comes first, then the ritual (tier II, 15), then the mastery node (20) and the greater working (tier III, 25), which also needs the school's own Oath, so swearing the other Oath closes it. A whole school is 70 research; everything a faction can learn is 115. Nothing in the arcana closes anything else.",
+		"text": "Your faction's magic research, the Magic tab of the research panel: two schools of four nodes each, paid from the same research pool as your path, one target at a time. In each school the battle spell (tier I, 10 research) comes first, then the ritual (tier II, 15), then the mastery node (20) and the greater working (tier III, 25), which also needs the school's own Oath, so swearing the other Oath closes it. A whole school is 70 research; everything a faction can learn is 115. Nothing in the arcana closes anything else. Researching a spell before your Oath and transformation delays them: each card says by about how many turns (its ETA now and with the spell first), from the same research forecast the path uses.",
 	},
 	"caster": {
 		"title": "Caster",
@@ -855,7 +858,7 @@ const ENTRIES := {
 	},
 	"mage": {
 		"title": "Mages",
-		"text": "Each faction has one mage: the Crown's Sunstone Adepts (8 hit points, attack 7, defense 5, morale 9, 18 gold) and the Clans' Thornmane Shamans (10 hit points, attack 7, defense 4, morale 8, 16 gold). In a game with magic they are on your roster from turn 1, but you can recruit them only once your faction knows a spell; the Ever-Regent's own Sunlance doesn't count. They are regular units, so mandates apply to them, and they have the trait Mage.",
+		"text": "Each faction has one mage: the Crown's Sunstone Adepts (10 hit points, attack 7, defense 5, morale 9, 15 gold) and the Clans' Thornmane Shamans (10 hit points, attack 7, defense 4, morale 8, 14 gold). In a game with magic they are on your roster from turn 1, but you can recruit them only once your faction knows a spell; the Ever-Regent's own Sunlance doesn't count. They are regular units, so mandates apply to them, and they have the trait Mage.",
 	},
 	"trait_mage": {
 		"title": "Mage (trait)",
@@ -907,7 +910,7 @@ const ENTRIES := {
 	},
 	"enchantment": {
 		"title": "Enchantments",
-		"text": "A ritual that lasts leaves an enchantment: a blessing on armies, a ward or a curse on a province, the Blood Moon over every battle, or Far Sight on a province. Each lasts through the turn its card names and ends in that turn's enchantments phase. The same ritual on the same target restarts it, paid again; it never stacks.",
+		"text": "A ritual that lasts leaves an enchantment: a blessing on armies, a ward or a curse on a province, the Blood Moon over every battle, or Far Sight on a province. Each lasts through the turn its card names and ends in that turn's enchantments phase. The same ritual on the same target restarts it, paid again; it never stacks. On the map a badge on the province, like \"Bloodrot · through turn 9\", shows each ward, curse and Far Sight with the last turn it lasts; hover it for the effect, whose it is and when it ends. A blessing is shown on its armies' panel, and the Blood Moon on the Magic chip in the top bar.",
 	},
 	"blessing": {
 		"title": "Blessings",
@@ -991,7 +994,7 @@ const ENTRIES := {
 	},
 	"spell_blood_moon": {
 		"title": "Blood Moon",
-		"text": "Blood's greater working, tier III, 25 research, 30 gold, opened only by the Oath of Blood. Through turn T + 2, in every battle, each of your standing fighters heals back a quarter of the damage its attacks dealt that round, rounded down, never above its maximum - 1. Spell damage isn't healed back, and battles in a rival's warded province are outside the moon. Only one global ritual can be up at a time.",
+		"text": "Blood's greater working, tier III, 25 research, 26 gold, opened only by the Oath of Blood. Through turn T + 2, in every battle, each of your standing fighters heals back a fifth of the damage its attacks dealt that round, rounded down, never above its maximum - 1. Spell damage isn't healed back, and battles in a rival's warded province are outside the moon. Only one global ritual can be up at a time.",
 	},
 	"spell_far_sight": {
 		"title": "Far Sight",
@@ -1024,6 +1027,15 @@ const ENTRIES := {
 	"mandate_tithe_of_blood": {
 		"title": "Tithe of Blood",
 		"text": "Thornmane Clans mandate of magic, 3 power (4 by sacrifice), only in a game with magic. Rituals your Shamans cast can be paid in hit points instead of gold: 1 hit point a gold, from the regular units in the Shamans' own army, one soldier at a time: the one with the most hit points gives until it is at 1, then the next. Rituals your ruler casts always cost gold, because a ruler stands alone. If the army can't give it all, the ritual can't be paid in blood. Can't be held with Feast of Victory: blood given is not taken back.",
+	},
+	# --- M5-8 (#119): magic on screen. The terms the Magic tab, the cast dialog, the army panel and the chip use.
+	"field_spell": {
+		"title": "Field spells",
+		"text": "Shield of Law is a field spell: it never covers a unit that already has a terrain or fort bonus, so it can't stack with walls, woods or hills. It does nothing for defenders in a fort, forest or hills, and never helps a stack hold its capital; it helps the army that attacks, and armies on open plains. Its +4 defense makes every hit on a covered unit both less likely and a step weaker for that round; the card says what that is worth against the rival's hardest hitter.",
+	},
+	"spellbook_preview": {
+		"title": "What your casters will cast",
+		"text": "Under the battle spellbook the Magic tab lists each of your armies that holds a caster and what its casters will cast in round 1, read from the real cast step: the same spreading rule, spellbook and mastery the battle uses, against a typical force (8 each of the first three unit types of your rival) so every spell has something to target. It shows the army fighting in the open and, where the ground gives a defender a bonus (a fort, a forest or hills), defending. A spell the cast step skips says why: Shield of Law skips units that already have the ground's bonus. Spells never roll, so the real battle casts the same spells at the enemy it meets; the move forecast does this against the armies you can see.",
 	},
 	# --- fog of war (M5-1, #112; design/M5_MAGIC_FOG.md §2, §11.4): only a game with fog of war uses these rules. The
 	# ranges and the rounding come from FogData, so a retuned number shows up here by itself. Plain text: tooltips quote them.
@@ -1077,7 +1089,7 @@ const ENTRIES := {
 	},
 	"view_odds": {
 		"title": "Odds against what you can see",
-		"text": "Under fog of war, a battle forecast is worked out against what you can see: the shown numbers of a glimpsed army at full health, the mandates and spells you know, and the kept power you know or assume. It gives two odds, at the shown numbers and at the top of the range, and lists its guesses on hover. They may have more you haven't seen. Against a province out of sight it gives no odds. After a battle, the report says what you didn't see.",
+		"text": "Under fog of war, a battle forecast is worked out against what you can see: the shown numbers of a glimpsed army at full health, the mandates and spells you know, and the kept power you know or assume. It gives two odds, at the shown numbers and at the top of the range, and lists its guesses on hover. They may have more you haven't seen. A rival's mages with no spell you know of are assumed to cast the first spell of their first school (Sunlance for the Crown, Briar Snare for the Clans), and the forecast says so. Against a province out of sight it gives no odds. After a battle, the report says what you didn't see.",
 	},
 }
 

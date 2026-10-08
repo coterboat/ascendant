@@ -502,9 +502,9 @@ func test_matrix_play_item_runs_a_cell_with_the_cell_deciding_sieges() -> void:
 	var on := SiegeMatrix.find_cell(cells, "S:plain:warrior_king+clan_moot:kb")
 	var off := SiegeMatrix.find_cell(cells, "S0:plain:warrior_king+clan_moot:kb")
 	assert_false(on.is_empty() or off.is_empty())
-	# --sieges is in autoplay's setup flags, but the cell decides: a baseline cell stays off.
-	var r_on := SiegeMatrix.play_item(cells, {"cell": on.id, "from": 1, "count": 1}, 3, Callable(), {"sieges": true, "independents": true})
-	var r_off := SiegeMatrix.play_item(cells, {"cell": off.id, "from": 1, "count": 1}, 3, Callable(), {"sieges": true, "independents": true})
+	# --sieges is a flag of the run, but the cell decides: a baseline cell stays off.
+	var r_on := SiegeMatrix.play_item(cells, {"cell": on.id, "from": 1, "count": 1}, 3, Callable(), true)
+	var r_off := SiegeMatrix.play_item(cells, {"cell": off.id, "from": 1, "count": 1}, 3, Callable(), true)
 	assert_eq(r_on.size(), 1)
 	assert_true(bool(r_on[0].with_sieges) and not r_on[0].sieges.is_empty())
 	assert_false(bool(r_off[0].with_sieges))

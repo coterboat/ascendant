@@ -20,10 +20,12 @@ const SH_GHOST := preload("res://world3d/shaders/ghost.gdshader")
 const SH_SMOKE := preload("res://world3d/shaders/smoke.gdshader")
 const SH_DUST := preload("res://world3d/shaders/dust.gdshader")
 const SiegeBoard := preload("res://world3d/siege_board.gd")
+const Vision := preload("res://world3d/vision.gd")
 const FORTRESS_SIDE := 76.0
 const SWEEP_TIME := 1.2 ## a capture's colour sweep, seconds at 1x
 const SWEEP_REACH := 170.0 ## how far the sweep's front runs from the arriving column
 const BUILDING_GRADE := 1.0 ## pale stone pulled to a warm grey on every building (a row's "grade" overrides)
+const FOG_STILL_RUNG := 3 ## M5-3: from this quality rung the clouds over a never-seen province stand still
 
 var terrain: RefCounted
 var look := "cel"
@@ -40,6 +42,9 @@ var owner_img: Image
 var owner_tex: ImageTexture
 var mark_img: Image ## 16 x 1: r a King's Roads destination, g a legal move target, b a focus flash
 var mark_tex: ImageTexture
+var vision_img: Image ## M5-3, 16 x 1 R8 beside the owner wash: 0 never seen, 85 remembered, 170 glimpsed, 255 in clear sight (Vision)
+var vision_tex: ImageTexture
+var fog_on := false ## M5-3: the ground shader veils what the vision texture says (a fog game only; otherwise the ground is untouched)
 var capital_of := {} ## province id -> the faction whose capital it is in the map data (picks the fortress kit)
 var _banner_n := 0
 var props: Node3D
@@ -63,6 +68,7 @@ var _prop_chunks: Array = [] ## the model woods' and rocks' MultiMeshes, in chun
 const PROP_CHUNK := 200.0 ## world units a side of a model-props chunk
 ## M3c S-4 (#102): forts and sieges drawn from the state (show_forts; design/M3C_SIEGES.md §10.1)
 var fort_rows := {} ## province id -> the SiegeBoard.board_table row drawn now (a game with sieges)
+var _raised := {} ## M5-9: province id -> true for a fort Bastion raised in a game without sieges (set_raised_forts)
 var fort_draw := {} ## province id -> {"root" (a fort's own frame node, null at a capital), "dress", "mats", "h", "hs", "frame", "colour"}
 var _sieges_drawn := false ## the map's forts were taken over by show_forts (a game with sieges)
 var _ghost_scaffolds := {} ## province id -> Node3D: the viewer's own queued Fortify orders (set_fortify_ghosts)
@@ -119,6 +125,11 @@ func _build_ground() -> void:
 	mark_img = Image.create(16, 1, false, Image.FORMAT_RGBA8)
 	mark_tex = ImageTexture.create_from_image(mark_img)
 	gmat.set_shader_parameter("mark_tex", mark_tex)
+	vision_img = Image.create_from_data(Vision.WIDTH, 1, false, Image.FORMAT_R8, Vision.texels({}, []))
+	vision_tex = ImageTexture.create_from_image(vision_img)
+	gmat.set_shader_parameter("vision_tex", vision_tex)
+	gmat.set_shader_parameter("fog_on", 0.0)
+	gmat.set_shader_parameter("fog_drift", 1.0 if quality < FOG_STILL_RUNG else 0.0)
 	for t in ["plains", "forest", "hills"]:
 		var tex: Texture2D = load("res://assets/terrain/%s.webp" % t)
 		gmat.set_shader_parameter("tile_" + t, tex)
@@ -244,6 +255,8 @@ func set_look(p_look: String) -> void:
 ## cast none); 3 the 3D drawn at 0.75 scale. A slow machine steps down on its own (world_preview.gd).
 func set_quality(q: int) -> void:
 	quality = clampi(q, 0, 3)
+	if gmat != null:
+		gmat.set_shader_parameter("fog_drift", 1.0 if quality < FOG_STILL_RUNG else 0.0) ## M5-3: the clouds stand still from rung 3
 	env.ssao_enabled = quality < 1 and look == "painted"
 	env.ssao_radius = 4.0
 	env.ssao_intensity = 1.4
@@ -361,6 +374,31 @@ func paint_owner(province_id: String, colour: Color, owned: bool = true) -> void
 	c.a = 1.0 if owned else 0.0
 	owner_img.set_pixel(i, 0, c if owned else Color(0, 0, 0, 0))
 	owner_tex.update(owner_img)
+
+
+## M5-3: the viewer's sight into the ground's vision texture (Vision.texels: 0 never seen, 85 remembered, 170 glimpsed,
+## 255 in clear sight), and the veil on. One 16-byte texture update; the shader looks it up with the province index it
+## already reads, one fetch and one mix. `levels` is Vision.levels' {province id: level}.
+func set_vision(levels: Dictionary) -> void:
+	vision_img = Image.create_from_data(Vision.WIDTH, 1, false, Image.FORMAT_R8, Vision.texels(levels, terrain.ids))
+	vision_tex.update(vision_img)
+	fog_on = true
+	gmat.set_shader_parameter("fog_on", 1.0)
+
+
+## M5-3: no fog (a game without it, the observer, the 2D map's standing in): the ground is untouched.
+func clear_vision() -> void:
+	if not fog_on and vision_img != null and vision_img.get_data() == Vision.texels({}, []):
+		return
+	vision_img = Image.create_from_data(Vision.WIDTH, 1, false, Image.FORMAT_R8, Vision.texels({}, []))
+	vision_tex.update(vision_img)
+	fog_on = false
+	gmat.set_shader_parameter("fog_on", 0.0)
+
+
+## The vision texture's bytes as the ground reads them (tests, and comparing two boards).
+func vision_bytes() -> PackedByteArray:
+	return vision_img.get_data()
 
 
 ## The owner wash as {province id: Color (alpha 0: nobody)}, for comparing two boards.
@@ -711,6 +749,25 @@ func _place_fort(id: String, i: int, gate: Vector2) -> void:
 func set_fort_colour(province_id: String, team: Color) -> void:
 	if forts.has(province_id):
 		(forts[province_id]["mat"] as ShaderMaterial).set_shader_parameter("team", team)
+
+
+## M5-9 (#120): the forts Bastion raised in a game without sieges (the baked map has none there; with sieges every fort is a
+## show_forts row): exactly `want` (province ids) stand, placed as the map's forts are, their villages cleared from under them.
+func set_raised_forts(want: Array) -> void:
+	for pid in _raised.keys():
+		if not want.has(pid):
+			if forts.has(pid) and is_instance_valid(forts[pid]["node"]):
+				(forts[pid]["node"] as Node).queue_free()
+			forts.erase(pid)
+			_raised.erase(pid)
+			_show_villages(pid, true)
+	for pid in want:
+		var i: int = terrain.index_of(pid)
+		if _raised.has(pid) or i < 0 or terrain.has_fort[i] or forts.has(pid) or _sieges_drawn:
+			continue
+		_place_fort(pid, i, gate_dir(pid))
+		_show_villages(pid, false)
+		_raised[pid] = true
 
 
 ## The faction whose capital is nearest province index `i` (a fort's builder; captured, it keeps its look).

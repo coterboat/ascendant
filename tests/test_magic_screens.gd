@@ -65,7 +65,8 @@ func test_the_magic_view_reads_the_rules() -> void:
 		for c in col.cards:
 			assert_eq(String(c.state), String(AscensionRules.node_state(s, CROWN, String(c.node)).state), "%s: the rules' state" % c.node)
 			assert_eq(int(c.cost), AscensionRules.node_cost(String(c.node)))
-			assert_true(String(c.detail).contains(MagicView.PREVIEW_NOTE), "every card says what the preview does not do yet")
+			var delay := Forecast.arcana_delay(s, CROWN, String(c.node))  # M5-8: the hover says what it does to your transformation
+			assert_eq(bool(delay.applies), String(c.detail).contains(String(delay.text)) and not String(delay.text).is_empty(), "%s: the delay line" % c.node)
 		# Mastery: your mages, and the Ever-Regent in his own schools, each with a breakdown that sums.
 		assert_eq(col.mastery.size(), 2, "%s: mages and the Ever-Regent" % col.school)
 		for line in col.mastery:

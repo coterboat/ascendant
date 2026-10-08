@@ -22,6 +22,9 @@ extends RefCounted
 ##   ai      the computer opponent, AIPlayer (ai/ai_player.gd) at "normal": guards its capital against
 ##           anything that can reach it, masses armies, attacks on good odds, expands when it is safe.
 ##   ai_easy AIPlayer at "easy": sometimes lets good moves pass and recruits at random.
+##   ai_bleed (M5-11, #122) AIPlayer at "normal" playing Tithe of Blood the way a person who loves it might: every ritual a
+##           Shaman's army can pay in blood is paid in blood, down to the last hit point each soldier can give
+##           (the computer itself keeps two thirds of its hit points). The scripted build of band G9.
 ## In a game with rulers (autoplay --rulers) every policy plays the build the simulator gave its seat;
 ## only ai and ai_easy know what a ruler, a road move or a sacrifice is (AIPlayer, M2-7). The others
 ## move the ruler's army like any other army. In a game with paths (--paths) only ai and ai_easy research
@@ -30,7 +33,7 @@ extends RefCounted
 ##   var policy = Policies.make("greedy")
 ##   var orders: Array = policy.orders(state, "kingdom", SeededRNG.new(7))
 
-const NAMES := ["greedy", "random", "turtle", "ai", "ai_easy"]
+const NAMES := ["greedy", "random", "turtle", "ai", "ai_easy", "ai_bleed"]
 
 
 ## A new policy by name, or null for an unknown name.
@@ -46,6 +49,8 @@ static func make(policy_name: String) -> Base:
 			return AIPolicy.new("ai", "normal")
 		"ai_easy":
 			return AIPolicy.new("ai_easy", "easy")
+		"ai_bleed":
+			return AIPolicy.new("ai_bleed", "normal", true)
 	return null
 
 
@@ -597,12 +602,15 @@ class AIPolicy extends Base:
 	## The AIPlayer that plans this seat's orders, and the difficulty it plays at.
 	var ai := AIPlayer.new()
 	var difficulty := "normal"
+	## M5-11: pay every ritual that can be paid in blood in blood (the scripted Tithe build, "ai_bleed").
+	var bleed := false
 	## Slowest single plan of the game, in microseconds (reporting only).
 	var slowest_usec := 0
 
-	func _init(p_name: String = "ai", p_difficulty: String = "normal") -> void:
+	func _init(p_name: String = "ai", p_difficulty: String = "normal", p_bleed: bool = false) -> void:
 		policy_name = p_name
 		difficulty = p_difficulty
+		bleed = p_bleed
 
 	## M4: the brain's seed and seat, as AISeat gives them (AIPlayer.configure), so its side of the fork is
 	## the one an AI seat in a real game on this seed rolls; `forced_branch` replaces the roll (--branches).
@@ -617,13 +625,20 @@ class AIPolicy extends Base:
 				"research_orders", "path_recruits", "standoff", "hunts", "sieges", "raids",
 				# M3c S-6 (#104), games with sieges only: what AISieges planned
 				"fort_sieges", "storms", "sallies", "reliefs", "abandons", "sieges_left", "approaches", "garrisons",
-				"engines_bought", "forts_ordered"]:
+				"engines_bought", "forts_ordered",
+				# M5-10 (#121), games with magic and fog only: the rituals cast (and in blood), the scouts sent
+				"rituals", "blood_paid", "scouts"]:
 			if int(st.get(key, 0)) > 0:
 				bump(key, int(st.get(key, 0)))
+		for key in st:
+			if str(key).begins_with("cast_") and int(st[key]) > 0:  # cast_<ritual id>: one counter per ritual (M5-11)
+				bump(str(key), int(st[key]))
 		bump("plans")
 		bump("plan_ms_total", int(st.get("usec", 0)) / 1000)
 		slowest_usec = maxi(slowest_usec, int(st.get("usec", 0)))
 		stats["plan_ms_max"] = slowest_usec / 1000
+		if bleed:
+			planned = _bleed(state, faction_id, planned)
 		# AIPlayer pre-checks every order; check them again, in order, exactly as GameSession's OrderBook
 		# will (a Sacrifice first, then moves, road moves included, and recruits, Warband Muster included,
 		# against the state with the sacrifice applied).
@@ -633,4 +648,21 @@ class AIPolicy extends Base:
 				out.append(o)
 			else:
 				bump("dropped_invalid")
+		return out
+
+	## The scripted Tithe build (M5-11): each gold-paid ritual of a Shaman's army is paid in blood instead, when the army
+	## can give the whole price (MagicRules.check_cast says so), however wounded that leaves it. The gold the computer set
+	## aside for it simply stays in the purse.
+	func _bleed(state: GameState, faction_id: String, planned: Array) -> Array:
+		if not MagicRules.has_magic(state) or not RulerRules.has_mandate(state, faction_id, MagicRules.TITHE_OF_BLOOD):
+			return planned
+		var out := []
+		for o in planned:
+			if o is CastOrder and o.pay == CastOrder.GOLD:
+				var blood := CastOrder.new(o.ritual, o.army_id, o.target, CastOrder.BLOOD, o.size)
+				if MagicRules.check_cast(state, faction_id, blood, out).is_empty():
+					bump("bled")
+					out.append(blood)
+					continue
+			out.append(o)
 		return out

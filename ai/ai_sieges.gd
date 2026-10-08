@@ -799,7 +799,7 @@ func checked_recruits() -> Array:
 	var out := []
 	if not _fortify.is_empty():
 		var f := FortifyOrder.new(_fortify)
-		if bool(TurnResolver.price_recruits(state, fid, [f]).results.back().ok):
+		if bool(TurnResolver.price_recruits(state, fid, [f], null, ai._ritual_gold).results.back().ok):
 			out.append(f)
 			_bump("forts_ordered")
 			var p := state.find_province(_fortify)
@@ -829,7 +829,7 @@ func checked_recruits() -> Array:
 			var order := RecruitOrder.new(ut.id, "" if at == me.capital else at)
 			var trial := out.duplicate()
 			trial.append(order)
-			var r: Dictionary = TurnResolver.price_recruits(state, fid, trial).results.back()
+			var r: Dictionary = TurnResolver.price_recruits(state, fid, trial, null, ai._ritual_gold).results.back()
 			if not r.ok:
 				continue
 			out.append(order)
@@ -860,7 +860,7 @@ func checked_recruits() -> Array:
 			var o := RecruitOrder.new(ut.id, eng_at)
 			var trial := out.duplicate()
 			trial.append(o)
-			if not bool(TurnResolver.price_recruits(state, fid, trial).results.back().ok):
+			if not bool(TurnResolver.price_recruits(state, fid, trial, null, ai._ritual_gold).results.back().ok):
 				break
 			out.append(o)
 			bought += 1
@@ -979,6 +979,15 @@ func defense_rate(pid: String, defenders: Array, threats: Array) -> float:
 		var ours: float = float(r.win_rate) if r.has("win_rate") else _rough_rate(ai._ratio(defenders, attackers, _walls_factor(p.walls), 1.0))
 		worst = minf(worst, ours)
 	return worst
+
+
+## Whether `a` has a siege job this turn (M5-10): a sally, or it stands where we storm or keep a siege. The magic AI casts only
+## from armies that hold anyway, and leaves these alone.
+func engaged(a: Army) -> bool:
+	for s in _sallies:
+		if String(s.army) == a.id or String(s.get("with", "")) == a.id:
+			return true
+	return _storms.has(a.location) or _kept.has(a.location)
 
 
 ## After the moves: the storms and sallies planned this turn, each checked with SiegeRules.check_siege_order

@@ -43,6 +43,24 @@ const AI_PATHS := {
 }
 
 
+## M5-10 (#121, design/M5_MAGIC_FOG.md §10.2): the spec puts `ai_arcana` in data/build_presets.gd, which is outside the AI
+## ticket's lane, so the same table lives here, keyed by preset id, as AI_PATHS does. "first": how many of the preset's
+## ordinary nodes (AI_PATHS "before") it researches before its aligned school's tier I spell. The spec says after its first.
+const AI_ARCANA := {
+	"warrior_king": {"first": 1},
+	"iron_crown": {"first": 1},
+	"regents_court": {"first": 1},
+	"beast_god_unbound": {"first": 1},
+	"clan_moot": {"first": 1},
+	"blood_of_the_fang": {"first": 1},
+}
+
+
+## The arcana plan of `preset_id`: {"first"}. A custom build gets the spec's default, after its first ordinary node.
+static func arcana_plan_for(preset_id: String) -> Dictionary:
+	return AI_ARCANA.get(preset_id, {"first": 1}).duplicate()
+
+
 ## The research plan of `preset_id` for `faction_id`: {"faction", "before", "weights"}. A custom build (no
 ## preset, or a preset of another faction) gets a stand-in: the faction's two tier I nodes in data order, and
 ## even weights over its two sides. {} for a faction without a path.
@@ -94,19 +112,29 @@ static func branch_odds(preset_id: String, faction_id: String) -> Dictionary:
 
 
 ## The whole research order for `preset_id` on side `branch_id` (§8.1): the listed ordinary nodes, the
-## side's Oath and transformation, then the remaining ordinary nodes in data order.
-static func sequence(faction_id: String, preset_id: String, branch_id: String) -> Array:
+## side's Oath and transformation, then the remaining ordinary nodes in data order. M5-10 (`magic`, a game with magic): the
+## arcana join it (design/M5_MAGIC_FOG.md §10.2). The aligned school's tier I comes after the first ordinary node(s)
+## (AI_ARCANA); after the transformation come the aligned tier II, tier III and mastery, then the remaining ordinary
+## nodes, then the other school's tier I, tier II and mastery. Without `magic` the order is exactly the M4 one.
+static func sequence(faction_id: String, preset_id: String, branch_id: String, magic: bool = false) -> Array:
 	var plan := plan_for(preset_id, faction_id)
 	if plan.is_empty():
 		return []
 	var out: Array = plan.before.duplicate()
 	var side := AscensionRules.branch_data(branch_id)
+	var arcana := AIMagic.arcana_order(faction_id, branch_id) if magic else {}
+	var aligned: Array = arcana.get("aligned", [])
+	if not aligned.is_empty():
+		out.insert(mini(int(arcana_plan_for(preset_id).first), out.size()), aligned[0])
 	if not side.is_empty() and String(side.faction) == faction_id:
 		out.append(String(side.oath))
 		out.append(String(side.transformation))
+	if not aligned.is_empty():
+		out.append_array(aligned.slice(1))
 	for nid in AscensionRules.node_ids(faction_id):
 		if AscensionRules.is_ordinary(nid) and not out.has(nid):
 			out.append(nid)
+	out.append_array(arcana.get("other", []))
 	return out
 
 
@@ -125,7 +153,7 @@ static func order_for(state: GameState, faction_id: String, preset_id: String, b
 	if not AscensionRules.has_paths(state):
 		return ""
 	var sworn := AscensionRules.branch(state, faction_id)
-	var want := next_node(state, faction_id, sequence(faction_id, preset_id, sworn if not sworn.is_empty() else branch_id))
+	var want := next_node(state, faction_id, sequence(faction_id, preset_id, sworn if not sworn.is_empty() else branch_id, MagicRules.has_magic(state)))
 	if want.is_empty() or want == AscensionRules.research_target(state, faction_id):
 		return ""
 	return want

@@ -74,9 +74,15 @@ func _fill(state: GameState, fid: String) -> void:
 	_show_line(when_label, String(data.when), data.when_breakdown, "", "lock_in")
 	for line in data.gain:
 		_line(gain_box, line, UiPalette.TEXT_PRIMARY)
+	var magic := MagicView.lock_in_rows(data, fid)  # M5-8 (§8.5): the greater working it opens, the mastery it adds, the one it closes
+	if not magic.gain.is_empty():
+		var ml := _line(gain_box, magic.gain, UiPalette.GILT)
+		ml.name = "MagicGain"
 	lose_heading.text = "You lose access to" if gain_mode else "Already closed"
 	for line in data.lose:
 		_line(lose_box, line, UiPalette.TEXT_DISABLED)
+	if not magic.lose.is_empty():
+		_struck_line(lose_box, magic.lose).name = "MagicLose"
 	_fill_roster(fid)
 	for line in data.map_units:
 		_line(map_box, line, UiPalette.TEXT_SECONDARY)
@@ -210,6 +216,24 @@ func _line(parent: Control, line: Dictionary, colour: Color) -> Label:
 	_show_line(l, String(line.text), line.get("breakdown", {}), String(line.get("tooltip", "")), String(line.get("codex", "")))
 	if line.get("rule", false):
 		l.set_meta("rule_text", true)  # a rule in words (its codex entry explains it), not a number to break down
+	parent.add_child(l)
+	return l
+
+
+## A line struck through (M5-8: the greater working this side closes, §8.5), as a RichTextLabel: [s]...[/s].
+func _struck_line(parent: Control, line: Dictionary) -> RichTextLabel:
+	var l := RichTextLabel.new()
+	l.bbcode_enabled = true
+	l.fit_content = true
+	l.scroll_active = false
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.add_theme_font_size_override("normal_font_size", 15)
+	l.add_theme_color_override("default_color", UiPalette.TEXT_DISABLED)
+	l.text = "[s]%s[/s]" % String(line.text).replace("[", "[lb]")
+	l.set_meta("struck", true)
+	l.mouse_filter = Control.MOUSE_FILTER_PASS
+	l.tooltip_text = String(line.get("tooltip", ""))
+	CodexLink.attach(l, String(line.get("codex", "")), codex_requested.emit)
 	parent.add_child(l)
 	return l
 

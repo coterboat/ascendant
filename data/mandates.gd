@@ -131,8 +131,20 @@ const PATH_MANDATES: Array[Dictionary] = [
 const MAGIC_MANDATES: Array[Dictionary] = [
 	{
 		"id": "tithe_of_blood", "name": "Tithe of Blood", "faction": "beasts", "cost": 3, "area": "economy",
-		"effect": "Rituals your Shamans cast can be paid in hit points instead of gold: 1 hit point a gold, from the regular units in the Shamans' own army, one soldier at a time. Rituals your ruler casts always cost gold. Can't be held with Feast of Victory.",
+		"effect": "Lets rituals your Shamans cast be paid in hit points instead of gold: 1 hit point a gold, from the regular units in the Shamans' own army, one soldier at a time. You choose gold or blood on each cast. Rituals your ruler casts always cost gold, because a ruler stands alone. Can't be taken with Feast of Victory.",
 		"codex": "mandate_tithe_of_blood", "magic": true, "excludes": "feast_of_victory",
 		"excludes_why": "blood given is not taken back",
+	},
+]
+
+## A mandate for the balance check and nothing else (M5-11, #122; design/M5_MAGIC_FOG.md §13.2, band G9): it costs what
+## Tithe of Blood costs and does nothing, so a Tithe pair's control run keeps the same power without the mandate. It is on
+## no list a person or the computer picks from (not in MANDATES, PATH_MANDATES or MAGIC_MANDATES): only RulerRules.mandate_data
+## finds it, so an explicit build ("fang_chieftain+null_mandate") can hold it.
+const TEST_MANDATES: Array[Dictionary] = [
+	{
+		"id": "null_mandate", "name": "Null Mandate (test only)", "faction": "beasts", "cost": 3, "area": "economy",
+		"effect": "Does nothing. It costs the power Tithe of Blood costs, for the balance check's control runs.",
+		"codex": "mandate_tithe_of_blood", "test_only": true,
 	},
 ]

@@ -71,6 +71,9 @@ static func unit_faction(unit_type_id: String) -> String:
 			for u in f.unit_types:
 				_unit_factions[String(u.id)] = String(f.id)
 			_unit_factions[String(f.commander.id)] = String(f.id)
+		for ut in IndependentData.UNIT_TYPES:  # IND-2 (#161): the Free Holds' garrison units and their Hold Captain
+			_unit_factions[String(ut.id)] = IndependentData.FACTION_ID
+		_unit_factions[String(IndependentData.COMMANDER.id)] = IndependentData.FACTION_ID
 		for side in PathData.BRANCHES:
 			var b: Dictionary = PathData.BRANCHES[side]
 			var new_unit := String(AscensionRules.node_effects(String(b.get("transformation", ""))).get("new_unit", ""))

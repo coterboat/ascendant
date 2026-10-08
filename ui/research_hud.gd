@@ -14,6 +14,7 @@ extends RefCounted
 
 var game: GameScreen
 var chip: Button
+var magic_chip: Button  # M5-8: "Magic: 3 spells / 2 mages · 1 cast ordered", in a game with magic; a click opens the Magic tab
 var panel: ResearchPanel = null
 var preview: LockInPreview = null
 
@@ -32,6 +33,16 @@ func _init(p_game: GameScreen) -> void:
 	var row := chip.get_parent()
 	if game.ruler_button != null and game.ruler_button.get_parent() == row:
 		row.move_child(chip, game.ruler_button.get_index())
+	magic_chip = Button.new()  # M5-8
+	magic_chip.name = "MagicChip"
+	magic_chip.focus_mode = Control.FOCUS_NONE
+	magic_chip.visible = false
+	magic_chip.custom_minimum_size = Vector2(0, 0)
+	magic_chip.add_theme_font_size_override("font_size", 13)
+	magic_chip.add_theme_constant_override("line_spacing", -3)
+	magic_chip.pressed.connect(open_magic)
+	game.map.add_top_bar_control(magic_chip)
+	row.move_child(magic_chip, chip.get_index() + 1)
 
 
 ## The viewing player's faction while a person gives orders in a game with paths; "" otherwise.
@@ -49,14 +60,28 @@ func viewer() -> String:
 func refresh() -> void:
 	var fid := viewer()
 	chip.visible = not fid.is_empty()
+	magic_chip.visible = not fid.is_empty() and MagicRules.has_magic(game.map.state)
 	if fid.is_empty():
 		close_all()
 		return
 	var st := game.map.state
+	if magic_chip.visible:  # M5-8
+		var m := MagicView.chip(st, fid, game.session.current_orders())
+		magic_chip.text = String(m.text)
+		magic_chip.add_theme_color_override("font_color", UiPalette.GILT if m.attention else UiPalette.TEXT_PRIMARY)
+		magic_chip.set_meta("breakdown", m.breakdown)
+		magic_chip.tooltip_text = "%s\n\n%s" % [TooltipText.from_breakdown(m.breakdown), TooltipText.wrap_text(String(m.tooltip))]
+		CodexLink.attach(magic_chip, String(m.codex), game.open_codex)
 	var c := PathView.chip(st, fid, game.session.current_orders())
 	chip.text = String(c.text)
 	chip.add_theme_color_override("font_color", UiPalette.GILT if c.attention else UiPalette.TEXT_PRIMARY)
 	chip.tooltip_text = "%s\n\n%s" % [TooltipText.from_breakdown(c.breakdown), TooltipText.wrap_text("Click to open the research panel: your path, what each node does and when it would be done, and the enemy's path.")]
+	if MagicRules.has_magic(st):  # M5-8: a spell researched ahead of the road says what it does to your transformation
+		var target := String(Forecast.research(st, fid, game.session.current_orders()).get("target", ""))
+		var delay := Forecast.arcana_delay(st, fid, target, game.session.current_orders()) if not target.is_empty() else {}
+		if bool(delay.get("applies", false)):
+			chip.tooltip_text = "%s\n\n%s\n\n%s" % [TooltipText.from_breakdown(c.breakdown), TooltipText.wrap_text(String(delay.text)),
+				TooltipText.wrap_text("Click to open the research panel: your path, your arcana, and the enemy's path.")]
 	CodexLink.attach(chip, String(c.codex), game.open_codex)
 	if panel != null and panel.visible:
 		if panel.viewer_fid != fid or panel.state == null or panel.state.current_turn != st.current_turn:
@@ -81,6 +106,13 @@ func open_panel() -> void:
 		game.overlays.add_child(panel)
 	_raise(panel)
 	panel.show_for(game.map.state, fid, game.session.current_orders(), true)
+
+
+## M5-8: the Magic chip opens the research panel on its Magic tab (the arcana, mastery and the battle spellbook).
+func open_magic() -> void:
+	open_panel()
+	if panel != null:
+		panel.show_magic()
 
 
 ## The lock-in preview of the side `node_id` is on, above the panel.

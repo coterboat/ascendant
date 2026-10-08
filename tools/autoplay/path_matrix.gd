@@ -133,9 +133,9 @@ static func fixture_from(results: Array, base_seed: int, turn_cap: int, note: St
 
 ## Plays one work item ({"cell", "from", "count"}) and returns its results (play_game results without
 ## "final_state", each with "cell", "band", "pairing" and "branches" (the forced sides, in seat order) added).
-## `setup` are autoplay.gd's setup flags: {"independents": true} plays band P's games with Free Holds garrisons (IND-1,
-## #142; --matrix --paths --independents). Band P7's games never have any, since they are compared with M2 records made without.
-static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Callable = Callable(), setup: Dictionary = {}) -> Array:
+## `independents` plays band P's games with Free Holds garrisons (IND-1, #142; --matrix --paths --independents);
+## band P7's games never have them, since they are compared with M2 records made without.
+static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Callable = Callable(), independents := false) -> Array:
 	var cell := find_cell(cells, str(item.cell))
 	var out := []
 	if cell.is_empty():
@@ -143,9 +143,8 @@ static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Call
 	for i in int(item.count):
 		var game_seed: int = int(item.from) + i
 		var options := {"rulers": true, "builds": cell.builds.duplicate(), "paths": bool(cell.paths), "branches": cell.branches.duplicate(),
-			"replay_check": (game_seed - int(cell.seed)) % REPLAY_EVERY == 0, "record_digest": str(cell.band) == "P7"}
-		if str(cell.band) == "P":
-			options.merge(setup)
+			"replay_check": (game_seed - int(cell.seed)) % REPLAY_EVERY == 0, "record_digest": str(cell.band) == "P7",
+			"independents": independents and str(cell.band) == "P"}
 		var r := Simulator.play_game(game_seed, cell.seats, [POLICY, POLICY], int(cell.get("turn_cap", turn_cap)), probe, options)
 		r.erase("final_state")
 		r["cell"] = str(cell.id)
