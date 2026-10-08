@@ -40,7 +40,7 @@ The milestone proves three things:
   - A Wake-Line province is a harbour and pays 1 less gold, because the living sit up all night.
   - Lose it, and a **cold wake** lingers 2 turns per stage. While it lasts it is still a harbour for the Candlewake, and retaking it resumes the old stage.
   - Buildings melt in step on the board.
-  - **The dead rise** from Deep Wake: 1 Wickwarden every 4 turns a province, up to 2 a turn. It is a trickle, not their recruitment (Alex 10-8).
+  - **The dead rise** from Deep Wake: 1 Wickwarden every 4 turns a province. The target is 10–20% of their force, a steady part of the host, not their recruitment (Alex 10-8).
 - **The host:**
   - **Wickwardens:** the cheap line, with Pall (harder to hit).
   - **Gleaners:** reapers, with Siphon (heal on a hit).
@@ -270,7 +270,7 @@ As a province becomes more made in their likeness, its dead turn to wax and rise
 
 - **When:** in the wake step, each Deep Wake province you own raises **1 Wickwarden** every 4 turns it has been Deep Wake, at `held` = 10, 14, 18 and so on. The capital counts as Deep Wake from the start, so it raises one at the ends of turns 3, 7, 11 and so on.
 - **Where:** a Risen Wickwarden joins the lowest-id Candlewake regular army in that province, at that army's flame (it doesn't cool it). If there is none, it forms a new army there at flame 1. That army counts as created this turn and skips the idle step.
-- **The cap:** at most **2 Risen a turn** across all provinces, in province-id order.
+- **No hard cap** (Alex 10-8). CW-11 tunes the cadence (every 4 turns) and the Deep Wake threshold toward the target: the Risen are **10–20% of the Candlewake's total force** (band W6). Several provinces rising in the same turn resolve in province-id order.
 - **Paths** change it: the Golden Wake makes it a steady stream (§6.2). The Red Wake leaves it alone and swells Harvest instead (§6.3).
 - **Explained:**
   - the province tooltip: "Deep Wake: the dead rise here. Next Wickwarden in 2 turns.";
@@ -371,7 +371,7 @@ The Kept win. They feed on hives and meadows instead of people, and the wax turn
 - **Transformation:** Wickwardens become **Combwardens**: +2 hp, +1 morale.
 - **New unit:** **Amber Saints**, 24/11/9/11, 22 gold, front, with **Iron Hide** (reused).
 - **Province rule, Meadow Wake:** Wake provinces pay +1 gold instead of −1, and the Wake-Line comes 1 turn sooner. It stacks with Sitting Up Early, to at least 1 turn.
-- **The Long Sleep (the Risen, §3.6):** the dead also rise from Wake-Line provinces, and every 3 turns instead of 4. The cap becomes 3 a turn. It pumps out troops over time.
+- **The Long Sleep (the Risen, §3.6):** the dead also rise from Wake-Line provinces, and every 3 turns instead of 4. It pumps out troops over time: the Golden Wake's target is the top of W6's range.
 - Forswears **Muster Grounds**.
 
 ### 6.3 the Red Wake (Oath of the Snuffed, 20, then 30)
@@ -448,8 +448,8 @@ The existing AI reads only what it already knows: `ai/ai_player.gd:67-76` and `:
 | **C3** | each pair (Crown–Clans, Crown–Candlewake, Clans–Candlewake) 40–60% over pooled presets |
 | **W1** | the median flame at the start of a Candlewake battle is 1.3–2.3 |
 | **W2** | guttering happens in 10–40% of Candlewake games; no army spends more than 60% of its turns at the cap |
-| **W3** | Harvest supplies at most 25% of the Candlewake fighters ever fielded (Red Wake: 35%) |
-| **W6** | the Risen supply at most 15% of Candlewake fighters (Golden Wake: 25%); no Candlewake game is won with fewer than 3 recruit orders |
+| **W3** | Harvest is 10–20% of the Candlewake's total force (Red Wake: 20–30%) |
+| **W6** | the Risen are 10–20% of the Candlewake's total force (Golden Wake toward 20%) |
 | **W4** | the median number of Wake-Line provinces at turn 12 is ≥ 2; the Wake's gold cost is ≤ 10% of income |
 | **W5** | median decisive game 10–16 turns in Candlewake pairs |
 | **P1c** | each Candlewake fork side 40–60% |
@@ -592,7 +592,9 @@ Rates are from `studio/ledgers/asc-3d-factions.jsonl`: 3.0 a model, 1.5 a 3-cand
 4. **Eyes:** eyeless, in his art round 6c verdict: "more warlike, empty shells with hoods of wax to give shape" (§10).
 5. **His new idea (§3.6):** as their land is made in their likeness, the dead turn to wax and rise again. The Golden Wake keeps it pumping, and the Red Wake swells the horde through Harvest instead.
 
-**Design note for every faction:** asymmetric power spikes are welcome when every faction has its own. The bands are guardrails, not a flattening.
+**Design notes for every faction:**
+- Asymmetric power spikes are welcome when every faction has its own. The bands are guardrails, not a flattening.
+- **Targets, not hard caps** (Alex 10-8): when we aim for a number, it's a range to tune toward (e.g. the Risen at 10–20% of the force), not a rule that clips play. Within reason: a cap that defines how a mechanic works (Flare's 6 targets, Harvest once a turn) is fine.
 
 ---
 
