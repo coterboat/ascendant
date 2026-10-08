@@ -116,7 +116,8 @@ func build(battle_log: Dictionary, plan: Dictionary, colours: Array, lin: Array,
 		figs.append({"fid": sp["fid"], "type": sp["type"], "side": int(sp["side"]), "role": sp["role"], "home": s["pos"], "y": float(s["y"]),
 			"yaw": float(s["yaw"]), "keys": keys, "lin": col, "h": aabb.end.y, "w": maxf(aabb.size.x, 1.0),
 			"len": maxf(aabb.size.z, 1.0), "lying": lying, "hold": "stand", "motions": [], "phase": Choreo.hash_phase("fig", figs.size()),
-			"tier": int(s.get("tier", 2)), "back": plan["back"][int(sp["side"])] if int(sp["side"]) < (plan["back"] as Array).size() else s["pos"],
+			"tier": int(s.get("tier", 2)), "lift": float(s.get("lift", 0.0)), "station": String(s.get("station", "")), "rail": bool(s.get("rail", false)),
+			"back": plan["back"][int(sp["side"])] if int(sp["side"]) < (plan["back"] as Array).size() else s["pos"],
 			"members": sp.get("members", []), "variant": vt})
 	banners = []
 	for si in colours.size():
@@ -261,6 +262,30 @@ func extras_of(si: int) -> Array:
 
 # --- where each figure is at a moment ---------------------------------------------------------------
 
+## The point a fraction `u` (0..1) of the way along the polyline `path` (Vector2s): {"pos", "yaw" (facing along it), "s"
+## (the length from its start)}.
+static func along(path: Array, u: float) -> Dictionary:
+	var total := 0.0
+	for k in range(1, path.size()):
+		total += (path[k] as Vector2).distance_to(path[k - 1])
+	var want := clampf(u, 0.0, 1.0) * total
+	var run := 0.0
+	var head := Vector2.UP
+	for k in range(1, path.size()):
+		var a: Vector2 = path[k - 1]
+		var b: Vector2 = path[k]
+		var seg := a.distance_to(b)
+		if seg > 0.0001:
+			head = (b - a) / seg
+		if want <= run + seg or k == path.size() - 1:
+			var w := clampf((want - run) / maxf(seg, 0.0001), 0.0, 1.0)
+			return {"pos": a.lerp(b, w), "yaw": atan2(-head.x, -head.y), "s": run + seg * w}
+		run += seg
+	return {"pos": path[0] if not path.is_empty() else Vector2.ZERO, "yaw": 0.0, "s": 0.0}
+
+
+
+
 ## Figure `i` at clock time `now`: {"pos": Vector2, "y", "yaw", "pose", "fall" (0..1), "scale", "hop", "hurt"
 ## (0..1), "lying" (drawn in the fallen pose), "shown"}.
 func pose_at(i: int, now: float) -> Dictionary:
@@ -290,10 +315,28 @@ func pose_at(i: int, now: float) -> Dictionary:
 					out["pos"] = home - fwd * DEPLOY_STEP * (1.0 - e)
 					out["pose"] = "march"
 					out["hop"] = absf(sin(t * STEP_RATE + float(f["phase"]))) * HOP
+			"march_out":
+				## M3c S-5: a sally spills out of the gate: from the column waiting in the yard, through the gate, to its place
+				if t < dur and hold == "stand":
+					var path: Array = m["path"]
+					var delay: float = float(m.get("delay", 0.0))
+					var u: float = clampf((t - delay) / maxf(dur - delay, 0.001), 0.0, 1.0)
+					var at := along(path, u)
+					out["pos"] = at["pos"]
+					out["yaw"] = float(at["yaw"])
+					out["pose"] = "march"
+					out["hop"] = absf(sin(t * STEP_RATE * 1.6 + float(f["phase"]))) * HOP if u > 0.0 and u < 1.0 else 0.0
+					## the yard's floor to the gate, then the land's height under it
+					var s1 := float(m.get("s_in", 0.0))
+					var s2 := float(m.get("s_out", 1.0))
+					var k := clampf((float(at["s"]) - s1) / maxf(s2 - s1, 0.001), 0.0, 1.0)
+					out["abs_y"] = lerpf(float(m["y0"]), maxf(_ground(at["pos"], float(f["y"])), 0.0), k)
 			"lunge":
 				var to: Vector2 = m["to"]
 				var d: Vector2 = to - home
 				var reach: float = minf(d.length() * LUNGE_SHARE, LUNGE_MAX)
+				if bool(f.get("rail", false)):
+					reach *= 0.25 ## a fighter on a wall, or behind one, strikes where it stands
 				var dir: Vector2 = d.normalized() if d.length() > 0.01 else fwd
 				var push := 0.0
 				if t < LUNGE_OUT:
@@ -491,9 +534,7 @@ func _xform(f: Dictionary, p: Dictionary) -> Transform3D:
 	var sc: float = p["scale"]
 	basis = basis.scaled(Vector3.ONE * sc)
 	var pos: Vector2 = p["pos"]
-	var y: float = float(p["y"]) + float(p["hop"]) + float(p["extra_y"])
-	if pos != (f["home"] as Vector2):
-		y = maxf(_ground(pos, float(f["y"])), 0.0) + float(p["hop"]) + float(p["extra_y"])
+	var y := _feet_y(f, p)
 	var xf := Transform3D(basis, Vector3(pos.x, y, pos.y))
 	if String(f["role"]) == "bearer" and int(f["side"]) < banners.size():
 		var bn: Node3D = banners[int(f["side"])]
@@ -504,6 +545,19 @@ func _xform(f: Dictionary, p: Dictionary) -> Transform3D:
 
 func _ground(p: Vector2, fallback: float) -> float:
 	return land.height_at(p) if land != null else fallback
+
+
+## Where a figure's feet are (world y) in pose `p`: its place's height while it stands there; the land's under it when it
+## moves, plus the height it stands above the land in its place (a fighter on a wall walk keeps the wall: M3c S-5); a
+## march out of a gate carries its own ("abs_y").
+func _feet_y(f: Dictionary, p: Dictionary) -> float:
+	var pos: Vector2 = p["pos"]
+	var bob: float = float(p["hop"]) + float(p["extra_y"])
+	if p.has("abs_y"):
+		return float(p["abs_y"]) + bob
+	if pos != (f["home"] as Vector2):
+		return maxf(_ground(pos, float(f["y"])), 0.0) + float(f["lift"]) * float(p.get("lift_k", 1.0)) + bob
+	return float(p["y"]) + bob
 
 
 # --- reading -------------------------------------------------------------------------------------------
@@ -531,9 +585,7 @@ func ends_at(i: int, now: float) -> Array:
 		return []
 	var f: Dictionary = figs[i]
 	var pos: Vector2 = p["pos"]
-	var y: float = float(p["y"]) + float(p["hop"]) + float(p["extra_y"])
-	if pos != (f["home"] as Vector2):
-		y = maxf(_ground(pos, float(f["y"])), 0.0) + float(p["hop"]) + float(p["extra_y"])
+	var y := _feet_y(f, p)
 	var h: float = float(f["h"]) * float(p["scale"])
 	if float(p["fall"]) > 0.5:
 		h = minf(h, Kit.FIG * 0.35)

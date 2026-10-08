@@ -50,6 +50,9 @@ const Kit := preload("res://world3d/kit.gd")
 const Formation := preload("res://world3d/battle_formation.gd")
 const Cam := preload("res://world3d/battle_camera.gd")
 const Figures := preload("res://world3d/battle_figures.gd")
+const Walls := preload("res://world3d/battle_walls.gd")
+const Scenery := preload("res://world3d/battle_scenery.gd")
+const SiegeBoard := preload("res://world3d/siege_board.gd")
 
 ## The field's band the camera frames the battle in (field pixels kept clear at the top for the round banner,
 ## the moment toast and the morale tags, and at the sides and bottom).
@@ -93,6 +96,8 @@ var view3d: Control
 var overlay: Control
 var proj_root: Node3D
 var stage_fort: Node3D
+var scenery: Node3D ## M3c S-5: a battle at walls' ladders, trunk, camp and engines (world3d/battle_scenery.gd)
+var _walls_plate := Rect2() ## where the walls' plate is drawn now (field coordinates), or an empty rect
 var plan := {}
 var groups := {} ## M3 3.4's files (BattleFormation.groups_of): {} while every fighter is its own figure
 var game_state: GameState = null ## the state play() was given (the factions' transformations), or null
@@ -232,6 +237,10 @@ func build_now() -> void:
 	figures.wv = wv
 	figures.land = terrain
 	wv.add_child(figures)
+	scenery = Scenery.new()
+	scenery.name = "SiegeScenery"
+	scenery.wv = wv
+	wv.add_child(scenery)
 	proj_root = Node3D.new()
 	proj_root.name = "Projectiles"
 	wv.add_child(proj_root)
@@ -431,7 +440,97 @@ func _world_info() -> Dictionary:
 	for i in terrain.ids.size():
 		if terrain.has_fort[i] and not terrain.is_capital[i]:
 			forts[terrain.ids[i]] = WorldView.fort_spot(terrain, i)
-	return {"fortresses": fz, "forts": forts}
+	return {"fortresses": fz, "forts": forts, "walls": _walls_info(), "engines": _besieging_engines()}
+
+
+# --- battles at walls (M3c S-5, #103; world3d/battle_walls.gd) --------------------------------------------------
+
+## Puts the fort the log's `siege` block describes on the land, in the kit of its level and builder and the damage look
+## of its walls, over the map's own (the world's WorldView draws it as the board does: SiegeBoard rows, show_forts); with
+## no siege block, puts the map's forts back.
+func _dress_forts() -> void:
+	var siege: Dictionary = _log.get("siege", {})
+	var pids: Array = _log.get("provinces", [])
+	var level := Walls.level_of(siege)
+	if siege.is_empty() or pids.is_empty() or level <= 0 or terrain.index_of(String(pids[0])) < 0:
+		if not wv.fort_table().is_empty():
+			wv.show_forts({})
+		return
+	var pid := String(pids[0])
+	var table := _fort_rows()
+	for k in table.keys():
+		table[k]["besieger"] = "" ## the besiegers' chevrons are the board's marker: here the besiegers themselves stand at the walls
+	table[pid] = {"kind": SiegeBoard.kind_of(level), "kit": _fort_kit(pid), "look": SiegeRules.damage_look(level, int(siege.get("walls", 0))),
+		"level": level, "walls": int(siege.get("walls", 0)), "scaffold": {}, "besieger": ""}
+	wv.show_forts(table, {})
+	## the roofs and banners wear the colour of the fort's owner, when it fights here
+	var gi := int(siege.get("garrison", -1))
+	if gi >= 0 and gi < _side_colours.size():
+		if wv.fortresses.has(pid):
+			wv.set_fortress_colour(pid, _side_colours[gi])
+		else:
+			wv.set_fort_colour(pid, _side_colours[gi])
+
+
+## Every fort the land has, as the board would draw it now (the state's, when the stage was given one in a game with
+## sieges; else the map's own forts at their starting levels): SiegeBoard rows by province.
+func _fort_rows() -> Dictionary:
+	if game_state != null and game_state.sieges:
+		return wv.table_of(game_state)
+	var forts := {}
+	for i in terrain.ids.size():
+		var level := 3 if terrain.is_capital[i] else (2 if terrain.has_fort[i] else 0)
+		if level > 0:
+			forts[terrain.ids[i]] = {"level": level, "walls": int(SiegeRules.walls_max(level)), "look": "intact", "kit": ""}
+	return SiegeBoard.board_table({"forts": forts, "works": {}, "sieges": {}}, wv.map_kits())
+
+
+## The kit the fort of `pid` wears: its builder's (the state's fort_by), else the map's (a capital its own faction's,
+## any other fort the nearest capital's).
+func _fort_kit(pid: String) -> String:
+	if game_state != null and game_state.sieges:
+		var p: Province = game_state.find_province(pid)
+		if p != null and not p.fort_by.is_empty():
+			return p.fort_by
+	return String(wv.map_kits().get(pid, ""))
+
+
+## The fort of a battle with a siege block as BattleWalls.plan wants it (BattleWalls.info_of), or {} when there is none.
+func _walls_info() -> Dictionary:
+	var siege: Dictionary = _log.get("siege", {}) if not _log.is_empty() else {}
+	var pids: Array = _log.get("provinces", []) if not _log.is_empty() else []
+	var level := Walls.level_of(siege)
+	if siege.is_empty() or pids.is_empty() or level <= 0 or wv == null or terrain.index_of(String(pids[0])) < 0:
+		return {}
+	var pid := String(pids[0])
+	var kind := SiegeBoard.kind_of(level)
+	var capital: bool = wv.fortresses.has(pid)
+	var g: Dictionary = wv._fort_frame(pid, capital, wv.fort_draw.get(pid, {}))
+	if g.is_empty():
+		return {}
+	var look := SiegeRules.damage_look(level, int(siege.get("walls", 0)))
+	var drawn_look := look if String(wv.fort_piece(pid)) == kind else "" ## a look with a model of its own needs no cut
+	var cut: Array = WorldView._damage_cut(g["frame"], float(g["hs"]), float(g["h"]), drawn_look)
+	return Walls.info_of(g["frame"], kind, _fort_kit(pid), look, float(g["hs"]), cut)
+
+
+## How many siege engines the besiegers of a battle with a siege block carry: those of their armies still in the game
+## the stage was given (an army lost in the battle took its engines with it, and the log does not keep them), 0 without a
+## game.
+func _besieging_engines() -> int:
+	var siege: Dictionary = _log.get("siege", {}) if not _log.is_empty() else {}
+	if siege.is_empty() or game_state == null:
+		return 0
+	var gi := int(siege.get("garrison", -1))
+	var n := 0
+	for si in _log.sides.size():
+		if si == gi:
+			continue
+		for a in _log.sides[si].armies:
+			var army: Army = game_state.find_army(String(a.id))
+			if army != null:
+				n += army.engines
+	return n
 
 
 # --- showing a battle (the Simple view's flow, with the land for a field) ----------------------------
@@ -526,7 +625,6 @@ func _build_field() -> void:
 	_field_pending = false
 	build_now()
 	groups = Formation.groups_of(_log, FILES_ABOVE)
-	plan = Formation.plan(_log, terrain, _world_info(), _band().size.x / maxf(_band().size.y, 1.0), groups)
 	_side_colours = []
 	_side_lin = []
 	var emblems := []
@@ -536,6 +634,14 @@ func _build_field() -> void:
 		_side_lin.append(figure_colour(_side_seat[si]))
 		emblems.append(maxi(_side_seat[si], 0))
 		factions.append(String(_log.sides[si].faction))
+	## M3c S-5: a battle at a fort stands at the walls of the fort the log describes (BattleWalls), else on the ground
+	_dress_forts()
+	var world := _world_info()
+	var aspect := _band().size.x / maxf(_band().size.y, 1.0)
+	if (world["walls"] as Dictionary).is_empty():
+		plan = Formation.plan(_log, terrain, world, aspect, groups)
+	else:
+		plan = Walls.plan(_log, terrain, world, aspect, groups)
 	_hp_of = []
 	for f in _log.fighters:
 		_hp_of.append(int(f.max_hp))
@@ -547,6 +653,12 @@ func _build_field() -> void:
 	for si in _log.sides.size():
 		transformations.append(transformation_of(si))
 	figures.build(_log, plan, _side_colours, _side_lin, emblems, factions, groups, transformations)
+	var wl: Dictionary = plan.get("walls", {})
+	if wl.is_empty():
+		scenery.clear()
+	else:
+		var bs := int(wl["besieger"])
+		scenery.build(wl["scenery"], _side_colours[bs] if bs >= 0 and bs < _side_colours.size() else Color.WHITE)
 	view3d.queue_redraw()
 	_proj.clear()
 	_fx.clear()
@@ -711,6 +823,9 @@ func _points(ids: Array = [], los: bool = false) -> Array:
 		else:
 			pts.append(Vector3(p.x, float(s["y"]), p.y))
 			pts.append(Vector3(p.x, float(s["y"]) + h, p.y))
+	## M3c S-5: the whole battle also keeps the walls it stands at (their gate-side corners and tops) and the besiegers' camp in view
+	if ids.is_empty() and not los:
+		pts.append_array(plan.get("walls", {}).get("frame_extra", []))
 	return pts
 
 
@@ -723,6 +838,11 @@ func _obstacles() -> Array:
 	if not fd.is_empty() and fd.has("pos"):
 		var fp: Vector2 = fd["pos"]
 		out.append({"pos": fp, "r": Formation.fort_radius(String(fd.get("faction", ""))) * 0.8, "top": terrain.height_at(fp) + 9.0})
+	## M3c S-5: a fort the battle stands at (a capital's is above): its walls hide the yard from a low camera
+	var info: Dictionary = plan.get("walls", {}).get("info", {})
+	if not info.is_empty() and not wv.fortresses.has(String(_log.get("provinces", [""])[0])):
+		var sp: Dictionary = info["spec"]
+		out.append({"pos": info["centre"], "r": float(sp["face"]), "top": Walls.world_y(info, float(sp["floor"]) + float(sp["wall_h"]))})
 	return out
 
 
@@ -1000,6 +1120,27 @@ func reset_perf() -> void:
 
 # --- beats -----------------------------------------------------------------------------------------------
 
+## M3c S-5: before round 1's caption, a battle at walls says in a line what the walls (or their lack) mean for the fight
+## about to be played (the +6 is on screen before the first hit lands); it links to the codex entry of the walls.
+func _set_caption(lines: Array) -> void:
+	super._set_caption(lines)
+	var siege := _siege_block()
+	if not lines.is_empty() or siege.is_empty() or _log.is_empty():
+		return
+	var pids: Array = _log.get("provinces", [])
+	var text := Walls.caption_text(siege, BattleBackdrop.province_name(String(pids[0])) if not pids.is_empty() else "the fort")
+	if text.is_empty():
+		return
+	var l: Label = caption_labels[1]
+	CodexLink.detach(l)
+	l.text = text
+	var chip := FortView.siege_chip(siege)
+	l.tooltip_text = String(chip.get("tip", ""))
+	if not chip.is_empty():
+		var key := String(chip["codex"])
+		CodexLink.attach(l, key, codex_requested.emit)
+
+
 func _on_beat(b: Dictionary, st: Dictionary) -> void:
 	if plan.is_empty():
 		return
@@ -1008,8 +1149,23 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 	match String(b.kind):
 		"deploy":
 			if not reduced_motion:
+				var wl: Dictionary = plan.get("walls", {})
+				var march: Dictionary = wl.get("march", {})
 				for i in figures.figs.size():
-					if int(figures.figs[i]["tier"]) == 0 and int(figures.figs[i]["fid"]) >= 0:
+					var fid_i := int(figures.figs[i]["fid"])
+					if march.has(fid_i):
+						## M3c S-5 (§10.2): a sally spills out of the gate in a column and forms up facing the camps; a relief
+						## army arrives on the road
+						var mp: Dictionary = march[fid_i]
+						var path: Array = mp["path"]
+						var y0 := Walls.world_y(wl["info"], float((wl["info"]["spec"] as Dictionary)["floor"]))
+						if bool(mp["arrives"]):
+							y0 = maxf(terrain.height_at(path[0]), 0.0)
+						figures.add_motion(i, {"kind": "march_out", "t0": now, "dur": float(mp["dur"]), "delay": float(mp["delay"]), "path": path,
+							"s_in": float(mp["s_in"]), "s_out": float(mp["s_out"]), "y0": y0})
+					elif String(figures.figs[i]["station"]) in ["deck", "gate_top"]:
+						continue ## a fighter on a wall stays on it
+					elif int(figures.figs[i]["tier"]) == 0 and fid_i >= 0:
 						figures.add_motion(i, {"kind": "deploy", "t0": now, "dur": BattlePlayer.DEPLOY * 0.8})
 		"round_start":
 			banner_label.text = String(b.data.banner)
@@ -1165,7 +1321,7 @@ func _rout_figure(i: int, now: float, dur: float) -> void:
 	if String(f["hold"]) != "stand":
 		return
 	figures.set_hold(i, "gone")
-	if reduced_motion:
+	if reduced_motion or String(f["station"]) in ["deck", "gate_top"]: ## (a fighter on a wall cannot run through it: it fades)
 		figures.add_motion(i, {"kind": "fade", "t0": now, "dur": Figures.FADE})
 	else:
 		var home: Vector2 = f["home"]
@@ -1627,6 +1783,9 @@ func _set_hover(fid: int) -> void:
 
 
 func _get_tooltip(at_position: Vector2) -> String:
+	## M3c S-5: the walls' plate explains itself (the chip's words: what the walls give, and why)
+	if _walls_plate.size.x > 0.0 and _walls_plate.has_point(at_position - frame.position - Vector2(0, TOP_H)):
+		return String(FortView.siege_chip(_siege_block()).get("tip", ""))
 	var fid := pick(at_position)
 	if fid < 0 or player == null:
 		return ""
@@ -1825,6 +1984,7 @@ func _draw_overlay(ci: CanvasItem) -> void:
 		var gl: Array = _glyph_cache.get(fid4, [])
 		for gk in gl.size():
 			BattleCard.draw_glyph(ci, String(gl[gk]), bar.end + Vector2(9 + gk * 15, -2), 13.0)
+	_draw_walls_plate(ci, font)
 	## impacts, sparks, bursts (over the plates)
 	for fx2 in _fx:
 		var kind2 := String(fx2["kind"])
@@ -1873,6 +2033,51 @@ func _draw_overlay(ci: CanvasItem) -> void:
 			"size": n["size"], "age": n["age"], "life": n["life"]})
 	## the camera's keys, bottom right of the field
 	draw_camera_hint(ci, font, Vector2((ci as Control).size.x - 12.0, FIELD_H - 10.0), CAMERA_HINT)
+
+
+## M3c S-5: the walls' plate, hung over the gate-side wall for the whole battle: what the walls give the garrison in a storm
+## (with the wall-strength cells, grouped in the steps a storm counts), or why nobody holds the ground. Hovering it gives the
+## chip's tooltip. Sets _walls_plate (field coordinates; empty when none is drawn).
+func _draw_walls_plate(ci: CanvasItem, font: Font) -> void:
+	_walls_plate = Rect2()
+	var wl: Dictionary = plan.get("walls", {})
+	var siege := _siege_block()
+	if wl.is_empty() or siege.is_empty():
+		return
+	var text := Walls.plate_text(siege)
+	var at := _proj_overlay(wl["plate"])
+	if text.is_empty() or at.x < -90000.0:
+		return
+	var storm := String(siege.get("kind", "")) == "storm"
+	_walls_plate = draw_walls_plate(ci, font, at, text, int(siege.get("walls", 0)), int(siege.get("walls_max", 0)) if storm else 0,
+		Rect2(Vector2.ZERO, Vector2(field_width(), FIELD_H)))
+
+
+## Draws a walls plate hung from `at` (its stalk's foot, field pixels): `text` over `cells` cells, `walls` of them standing
+## (none when `cells` is 0), kept inside `bounds`, in a font of `fs`; one cell to a point of wall strength with a gap between
+## the steps a storm counts (the fort chip's WallsBar, drawn here). Returns the plate's rect. The legend draws it too.
+static func draw_walls_plate(ci: CanvasItem, font: Font, at: Vector2, text: String, walls: int, cells: int, bounds: Rect2, fs: int = 14) -> Rect2:
+	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 16.0
+	var h := float(fs) + 10.0 + (10.0 if cells > 0 else 0.0)
+	var box := Rect2(Vector2(clampf(at.x - w * 0.5, bounds.position.x + 6.0, maxf(bounds.position.x + 6.0, bounds.end.x - w - 6.0)),
+		clampf(at.y - h - 6.0, bounds.position.y + 6.0, maxf(bounds.position.y + 6.0, bounds.end.y - h - 6.0))), Vector2(w, h))
+	ci.draw_line(Vector2(box.get_center().x, box.end.y), at, Color(UiPalette.GILT, 0.8), 1.5, true)
+	ci.draw_rect(box, Color(UiPalette.KEYLINE_INK, LABEL_BACKING))
+	ci.draw_rect(box, UiPalette.GILT, false, 1.0)
+	ci.draw_string(font, box.position + Vector2(8, fs + 2), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, UiPalette.TEXT_PRIMARY)
+	if cells > 0:
+		var step := FortData.WALL_STEP
+		var steps := ceili(float(cells) / step)
+		var cw := (w - 16.0 - float(steps - 1) * 3.0) / float(cells)
+		var x := box.position.x + 8.0
+		for k in cells:
+			if k > 0 and k % step == 0:
+				x += 3.0
+			var cell := Rect2(Vector2(x, box.end.y - 11.0), Vector2(maxf(cw - 1.0, 2.0), 6.0))
+			ci.draw_rect(cell, WallsBar.STONE if k < walls else WallsBar.LOST)
+			ci.draw_rect(cell, WallsBar.STONE_EDGE if k < walls else WallsBar.LOST_EDGE, false, 1.0)
+			x += cw
+	return box
 
 
 func _dive_point(i: int, t: float) -> Dictionary:
@@ -2108,13 +2313,19 @@ static func stage_rows(seat: int = 0) -> Array:
 				ci.draw_line(r.get_center() + Vector2(-26, -8), r.get_center() + Vector2(-26, 8), UiPalette.TEXT_SECONDARY, 2.0)
 				ci.draw_line(r.get_center() + Vector2(26, -8), r.get_center() + Vector2(26, 8), UiPalette.TEXT_SECONDARY, 2.0),
 			"The camera never shakes with reduced motion (or with screen shake off)."),
-		BattleLegend._row("fort3d", "Fort", "A defended fort stands behind its defenders: only a defender gets its +2 defense. An undefended fort stands empty.", "fort",
+		BattleLegend._row("fort3d", "Fort", "A defended fort stands behind its defenders: only a defender gets its +2 defense. An undefended fort stands empty. In a game with sieges the battle stands at the fort's own walls instead (see the walls plate).", "fort",
 			"BattleStage3D.place_fort", func(ci: CanvasItem, r: Rect2):
 				var w := Rect2(r.position + Vector2(18, 10), Vector2(r.size.x - 36, r.size.y - 14))
 				ci.draw_rect(w, Color(0.62, 0.58, 0.52))
 				for k in 5:
 					ci.draw_rect(Rect2(w.position + Vector2(k * w.size.x / 5.0 + 2, -6), Vector2(w.size.x / 10.0, 6)), Color(0.62, 0.58, 0.52))
 				ci.draw_rect(w, UiPalette.KEYLINE_INK, false, 1.0)),
+		BattleLegend._row("walls3d", "Walls plate", ("Hung over the gate-side wall of a battle at a fort. In a storm it says the defense the walls give the garrison and how many of their strength points still stand (one cell each, in the steps a storm counts: +%d defense for every %d). At a breach or outside the walls it says there are none, and what cover the garrison keeps. Hover it for the details." % [
+				FortData.WALLS_DEFENSE_PER_STEP, FortData.WALL_STEP]),
+			"battle_walls", "BattleStage3D.draw_walls_plate", func(ci: CanvasItem, r: Rect2):
+				var top := SiegeRules.walls_max(2)
+				var sample := FortView.siege_chip({"kind": "storm", "walls": top, "walls_max": top, "walls_defense": SiegeRules.walls_defense(top)})
+				draw_walls_plate(ci, BattleLegend._font(ci), r.get_center() + Vector2(0, 14), String(sample.text).get_slice(" (", 0).replace("Walls: ", ""), top, top, r, 11)),
 		BattleLegend._row("file3d", "\"×3\" beside a plate", "In a battle of more than 280 fighters one figure stands for a file of a few fighters of the same army and type (M3's files). Once a file loses someone, the badge counts those still standing; hover it to see each one.",
 			"battle_formation", "BattleStage3D.draw_file_badge", func(ci: CanvasItem, r: Rect2):
 				BattleCard.draw_hp_bar(ci, Rect2(r.get_center() + Vector2(-8, -3), Vector2(30, 6)), 14, 24, 0)
