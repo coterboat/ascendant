@@ -44,6 +44,7 @@ Items that were regenerated after their verdict are not copied until you have li
 | `↓` / `J`, `↑` / `K` | Move to the next or previous item (`Home` / `End` jump to the first or last) |
 | `A` | Accept, then move on (concept batch: **Good**) |
 | `C` | Concept batches only: **Good with changes**. Opens the note; a note is required. |
+| `K` | Concept batches, on an item with takes: **keep both**. Keeps every take (or only those marked with `Shift`+click on their chips) and opens the note: with a note it is **Good with changes**, without one **Good**. See [Keep both](#keep-both-a-fusion-of-several-takes). On any other item `K` still moves to the previous item (`↑` always does). |
 | `R` | Reject, then move on (concept batch: **Bad**; a note is optional) |
 | `U` | Set the item back to pending |
 | `←` / `→` | Previous / next take, when an item was rolled more than once. With autoplay on, each one plays. |
@@ -83,6 +84,7 @@ A batch with `"mode": "concept"` in its `batch.json` (or `review.py new <batch> 
 |---|---|---|---|
 | `A` | **Good** | `accept` | keep this as it is |
 | `C` | **Good with changes** | `revise` | keep what works; the note says what to change. **The note is required**: `C` opens it, and `Enter` saves the verdict with the note. |
+| `K` | **Keep both** (an item with takes) | `accept`, or `revise` with a note | keep every take, or only the ones you marked, and say what to fuse. See [Keep both](#keep-both-a-fusion-of-several-takes). |
 | `R` | **Bad** | `reject` | do it again; a note is optional |
 
 - `revise` counts as **kept**: it is counted with the accepted ones in the progress bar and in Finish review, and `apply`
@@ -100,13 +102,35 @@ A batch with `"mode": "concept"` in its `batch.json` (or `review.py new <batch> 
 - `lessons` counts `revise` in its own column (kept, with changes asked for), and a `revise` note stays "open" until the
   item is redone.
 
+### Keep both: a fusion of several takes
+
+When two takes are good for their own reasons, keep both and say how to combine them (two battle arts that each get something
+right). On an item with takes, in a concept batch, press `K` (or the **Keep both takes** button):
+
+- `K` keeps **every take**. To keep only some, `Shift`+click their chips first: a marked chip shows a diamond, and `K` then keeps
+  just the marked ones (`Shift`+click again unmarks; with one mark `K` keeps that single take, like `A`).
+- `K` opens the note. **With a note** the verdict is **Good with changes** (`revise`): the note says what to take from each take,
+  for a fusion. **Without one** it is **Good** (`accept`). `Enter` saves, `Esc` cancels. While Blind is on, the seats stay hidden
+  until you save; the verdict then reveals them.
+- The row then reads **Kept N takes** and each kept chip carries a tick. Seats are never needed: takes without one are kept too.
+- **Canon** copies every kept take, named `<item id>__<seat>.<ext>` (`<item id>__take2.<ext>` for a take with no seat; two kept
+  takes of one seat read `<seat>-take<n>`), into **one** `CANON.md` entry that lists each image with its seat and its own prompt.
+  A take with no prompt of its own shows the item's prompt.
+- `rejected.json` gets `"fuse": true` on a `revise` item with several kept takes, and `"kept": [{"file", "seat", "prompt"}]`
+  listing each one, so the next art round makes a fusion of them (the note says how) instead of redoing one take.
+- **Lessons:** every kept take counts as kept for its seat (once per seat per item); seats that had a take but none kept are
+  passed over, as before.
+- Stored as `picks` on the verdict (see [`review.json`](#reviewjson-written-by-the-tool)). A single pick stays `pick`, and the
+  other verdict keys (`A`, `C`, `R`, `U`) clear `picks`.
+
 ## Canon: where concept art ends up
 
 `review.py canon <batch>` (the **Add to canon** button in Finish review, `F`) is the built-in install action of a concept batch.
 It makes the approved art the reference that later 3D work starts from:
 
-- every **Good** and **Good with changes** item (the take you kept, when it has several) is copied to
-  `assets/_concept/lore/<group>/<item id>.<ext>`. `<group>` is the item's `group` (made safe for a folder name; `ungrouped` when
+- every **Good** and **Good with changes** item (the take you kept, when it has several; every kept take, when you kept both) is copied to
+  `assets/_concept/lore/<group>/<item id>.<ext>` (`<item id>__<seat or take n>.<ext>` for each take of a keep-both item, in one entry,
+  see [Keep both](#keep-both-a-fusion-of-several-takes)). `<group>` is the item's `group` (made safe for a folder name; `ungrouped` when
   it has none). Godot already ignores `assets/_concept/`, so nothing is imported.
 - `assets/_concept/lore/<group>/CANON.md` gets one entry per image: **image** (shown, and its file name), **verdict**, **note**,
   **prompt**, **seat**, **batch** and **date** (of the verdict). Each entry sits between `<!-- canon:item ... -->` and
@@ -368,6 +392,9 @@ Everything lives in `review/<batch>/` at the repo root. `review/*/` is gitignore
 
 - `verdict` is `accept`, `reject` or `pending`, and in a concept batch also `revise`. An item with no entry is pending.
 - `pick` (v1.11): the take that was accepted, relative to the batch folder, when it isn't the item's own file.
+- `picks`: when a concept verdict keeps several takes ([Keep both](#keep-both-a-fusion-of-several-takes)), the list of kept
+  files, relative to the batch folder, the item's own file included when it is kept. A verdict has `pick` or `picks`, never both.
+  Old files with only `pick` load unchanged.
 - `file_mtime` is the file's mtime when the verdict was given. If the file on disk is newer, the item was regenerated: it counts as pending again ("needs a listen"), and the old verdict and note stay visible.
 - When you re-decide a regenerated item, the old verdict moves into a `history` list.
 
@@ -384,6 +411,14 @@ its `seat` when it has one, and all the candidates as `takes` when there are sev
 ```json
 [{"id": "ruler1", "text": "<prompt>", "note": "Wrong palette", "meta": {}, "verdict": "revise", "group": "ember_orchard",
   "file": "grok/ruler1.png", "seat": "grok", "takes": [{"file": "codex/ruler1.png", "seat": "codex"}, {"file": "grok/ruler1.png", "seat": "grok"}]}]
+```
+
+A `revise` item that kept several takes ([Keep both](#keep-both-a-fusion-of-several-takes)) also has `"fuse": true` and `"kept"`,
+each kept take with its `file`, its `seat` (when it has one) and its own `prompt`; its `note` says what to take from each:
+
+```json
+{"id": "ruler1", "verdict": "revise", "note": "Codex's silhouette with Grok's palette", "fuse": true,
+ "kept": [{"file": "codex/ruler1.png", "seat": "codex", "prompt": "<codex prompt>"}, {"file": "grok/ruler1.png", "seat": "grok", "prompt": "<grok prompt>"}]}
 ```
 
 ## How a generator should use this

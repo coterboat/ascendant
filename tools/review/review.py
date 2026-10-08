@@ -300,8 +300,24 @@ def _item_takes(d: Path, item: dict) -> list[dict]:
     return out
 
 
+def kept_takes(d: Path, item: dict, entry: dict | None) -> list[dict]:
+    """TOOL-2, keep both: the takes a verdict keeps when it keeps several (`picks`), in take order, each as
+    item_takes gives it ({file, label, path, seat}). [] for an ordinary verdict, where `pick` (one file) or
+    the item's own file is the kept one. A pick that is gone no longer counts; fewer than two left is a single pick."""
+    picks = entry.get("picks") if isinstance(entry, dict) else None
+    if not isinstance(picks, list):
+        return []
+    want = {x for x in picks if isinstance(x, str)}
+    got = [t for t in item_takes(d, item) if t["file"] in want and t["path"] is not None]
+    return got if len(got) >= 2 else []
+
+
 def picked_path(d: Path, item: dict, entry: dict | None) -> Path | None:
-    """The file the verdict is about: the picked take when one was accepted, else the item's own."""
+    """The file the verdict is about: the picked take when one was accepted, else the item's own.
+    Several kept takes: the first of them stands in for the item."""
+    several = kept_takes(d, item, entry)
+    if several:
+        return several[0]["path"]
     pick = entry.get("pick") if isinstance(entry, dict) else None
     if isinstance(pick, str) and pick and pick != item.get("file"):
         for t in item_takes(d, item)[1:]:
@@ -352,6 +368,7 @@ def media_url(name: str, d: Path, p: Path, st=None) -> str:
 def merge_item(name: str, d: Path, item: dict, entry: dict | None, mode: str = "standard") -> dict:
     """batch item + its verdict entry + computed status."""
     p = picked_path(d, item, entry)
+    several = kept_takes(d, item, entry)  # keep both: more than one kept take (the first stands in for the item)
     exists = p is not None and p.is_file()
     st = p.stat() if exists else None
     entry = entry if isinstance(entry, dict) else {}
@@ -363,7 +380,8 @@ def merge_item(name: str, d: Path, item: dict, entry: dict | None, mode: str = "
     if exists and verdict in ("accept", "revise", "reject") and "file_mtime" in entry:
         # file_mtime null = the verdict was given while the file was missing (a reject);
         # a file showing up since then is a new take.
-        regenerated = fm is None or (isinstance(fm, (int, float)) and st.st_mtime > fm + MTIME_EPS)
+        newest = max(k["path"].stat().st_mtime for k in several) if several else st.st_mtime  # any kept take changing is a new take
+        regenerated = fm is None or (isinstance(fm, (int, float)) and newest > fm + MTIME_EPS)
     if not exists and verdict != "reject":
         status = "missing"  # a rejected missing file stays rejected, so it gets re-rolled
     elif regenerated:
@@ -402,16 +420,25 @@ def merge_item(name: str, d: Path, item: dict, entry: dict | None, mode: str = "
             rows.append({"file": t["file"], "label": t["label"], "exists": tst is not None, "seat": t["seat"],
                          "url": media_url(name, d, t["path"], tst) if tst else None,
                          "mtime": tst.st_mtime if tst else None, "size": tst.st_size if tst else None,
-                         "picked": t["path"] is not None and t["path"] == p})
+                         "picked": t["path"] is not None and (t["path"] in [k["path"] for k in several] if several else t["path"] == p)})
         out["takes"] = rows
         out["seat"] = next((r["seat"] for r in rows if r["picked"]), takes[0]["seat"])
         ## a take listed with its own prompt (seats write their own) shows that prompt once it is the pick, and canon records it
         picked = next((r["file"] for r in rows if r["picked"]), None)
-        if picked and picked != takes[0]["file"]:
+        if picked and picked != takes[0]["file"] and not several:
             tp = next((t.get("prompt") for t in item.get("takes") or []
                        if isinstance(t, dict) and t.get("file") == picked and t.get("prompt")), None)
             if tp:
                 out["text"] = str(tp)
+    if several:
+        ## keep both: every kept take with its seat and its own prompt (a take without one has the item's)
+        shared = str(entry.get("text") or item.get("text") or "")
+        own = {t.get("file"): t.get("prompt") for t in item.get("takes") or [] if isinstance(t, dict) and t.get("prompt")}
+        out["picks"] = [k["file"] for k in several]
+        out["kept"] = [{"file": k["file"], "label": k["label"], "seat": k["seat"],
+                        "src": k["path"].relative_to(d.resolve()).as_posix(),
+                        "prompt": str((shared if k["file"] == item.get("file") else own.get(k["file"])) or shared)}
+                       for k in several]
     gp = game_path(item, name, mode)
     if gp is not None:
         out["game_url"] = f"/game/{quote(name)}/{quote(item['id'])}?v={gp.stat().st_mtime:.3f}"
@@ -523,12 +550,13 @@ def _item_notes(entry: dict) -> list[str]:
 def tally_seats(seats: dict, d: Path, item: dict, entry: dict, verdict: str) -> None:
     """Count one decided item against the seats that made its takes. Good and Good with changes go to the
     seat whose take was kept (the others were passed over); Bad goes to every seat that made a take, since
-    every take of the item was rejected."""
+    every take of the item was rejected. Keep both: every kept take counts for its seat."""
     takes = item_takes(d, item)
     present = [tk["seat"] for tk in takes if tk["seat"]]
     if not present:
         return
     pick = entry.get("pick") if isinstance(entry.get("pick"), str) else None
+    several = kept_takes(d, item, entry)
     kept_take = next((tk for tk in takes if pick and tk["file"] == pick), takes[0])
 
     def bump(seat: str, key: str) -> None:
@@ -541,11 +569,12 @@ def tally_seats(seats: dict, d: Path, item: dict, entry: dict, verdict: str) -> 
         for seat in dict.fromkeys(present):
             bump(seat, "bad")
         return
-    winner = kept_take["seat"]
-    if winner:
-        bump(winner, "good" if verdict == "accept" else "revise")
+    winners = list(dict.fromkeys(tk["seat"] for tk in several if tk["seat"])) if several else [kept_take["seat"]]
+    for winner in winners:
+        if winner:
+            bump(winner, "good" if verdict == "accept" else "revise")
     for seat in dict.fromkeys(present):
-        if seat != winner:
+        if seat not in winners:
             bump(seat, "passed")
 
 
@@ -662,10 +691,13 @@ def cmd_lessons(args) -> int:
     return 0
 
 
-def decide(name: str, item_id: str, verdict=None, note=None, text=None, take=None) -> dict:
-    """A verdict, note or edit on an item. `take` (with accept) picks one of its takes."""
+def decide(name: str, item_id: str, verdict=None, note=None, text=None, take=None, takes=None) -> dict:
+    """A verdict, note or edit on an item. `take` (with accept) picks one of its takes. `takes` (keep both,
+    with accept or revise) keeps several: two or more are stored as `picks`, one is the same as `take`."""
     if take is not None and not isinstance(take, str):
         raise ReviewError("take must be a file name")
+    if takes is not None and not (isinstance(takes, list) and all(isinstance(x, str) for x in takes)):
+        raise ReviewError("takes must be a list of file names")
     if verdict is not None and verdict not in VERDICTS:
         raise ReviewError(f"verdict must be one of {', '.join(VERDICTS)}")
     if note is not None and not isinstance(note, str):
@@ -685,7 +717,20 @@ def decide(name: str, item_id: str, verdict=None, note=None, text=None, take=Non
         entry = dict(old)
         before = merge_item(name, d, item, old, data["mode"])
         p = item_path(d, item)
-        if verdict in KEPT and take and take != item.get("file"):
+        several: list[dict] = []
+        if verdict in KEPT and takes:
+            by_file = {t["file"]: t for t in item_takes(d, item)}
+            for f in dict.fromkeys(takes):
+                if f not in by_file:
+                    raise ReviewError(f"{item_id} has no take {f!r}", 404)
+            several = [t for f, t in by_file.items() if f in takes]  # in take order, each once
+            if any(t["path"] is None for t in several):
+                raise ReviewError("a take you kept is missing; can't accept it", 409)
+            if len(several) == 1:
+                take, several = several[0]["file"], []
+        if several:
+            p = several[0]["path"]
+        elif verdict in KEPT and take and take != item.get("file"):
             p = next((t["path"] for t in item_takes(d, item)[1:] if t["file"] == take), None)
             if p is None:
                 raise ReviewError(f"{item_id} has no take {take!r}", 404)
@@ -699,8 +744,13 @@ def decide(name: str, item_id: str, verdict=None, note=None, text=None, take=Non
                 entry["note"] = ""
             entry["verdict"] = verdict
             entry["at"] = datetime.now().isoformat(timespec="seconds")
-            entry["file_mtime"] = p.stat().st_mtime if p is not None and p.is_file() else None
-            if verdict in KEPT and p is not None and p != item_path(d, item):
+            entry["file_mtime"] = (max(t["path"].stat().st_mtime for t in several) if several
+                                   else p.stat().st_mtime if p is not None and p.is_file() else None)
+            entry.pop("picks", None)
+            if several:
+                entry["picks"] = [t["file"] for t in several]
+                entry.pop("pick", None)
+            elif verdict in KEPT and p is not None and p != item_path(d, item):
                 entry["pick"] = p.relative_to(d.resolve()).as_posix()
             else:
                 entry.pop("pick", None)  # the item's own file, or no take chosen at all
@@ -743,6 +793,12 @@ def rejected_entries(items: list[dict], mode: str = "standard") -> list[dict]:
             if it.get("takes"):  # every candidate, so each seat can redo its own
                 e["takes"] = [{"file": tk["file"], **({"seat": tk["seat"]} if tk.get("seat") else {})}
                               for tk in it["takes"]]
+            if it["status"] == "revise" and it.get("kept"):
+                ## keep both: the owner kept several takes and the note says what to take from each, so the
+                ## next round makes a fusion of these rather than redoing one
+                e["fuse"] = True
+                e["kept"] = [{"file": k["src"], **({"seat": k["seat"]} if k.get("seat") else {}), "prompt": k["prompt"]}
+                             for k in it["kept"]]
         out.append(e)
     return out
 
@@ -1478,10 +1534,10 @@ class Handler(BaseHTTPRequestHandler):
             run = start_run(body["batch"], body["action"], body.get("options"))
             return self._json(200, {"ok": True, "run": run.info()})
         if not body.get("batch") or not body.get("id"):
-            return self._error(400, "need {batch, id, verdict?, note?, text?, take?}")
+            return self._error(400, "need {batch, id, verdict?, note?, text?, take?, takes?}")
         item = decide(str(body["batch"]), str(body["id"]),
                       verdict=body.get("verdict"), note=body.get("note"), text=body.get("text"),
-                      take=body.get("take"))
+                      take=body.get("take"), takes=body.get("takes"))
         return self._json(200, {"ok": True, "item": item})
 
 
@@ -1654,7 +1710,8 @@ def cmd_apply(args) -> int:
 
 CANON_ROOT = "assets/_concept/lore"
 CANON_VERDICT = {"accept": "Good", "revise": "Good with changes"}
-CANON_ITEM_RE = re.compile(r"<!-- canon:item (\S+) file=(\S+) -->\n.*?<!-- /canon:item -->\n?", re.S)
+## keep both: an entry that holds several images says so with `files=` after its first `file=`
+CANON_ITEM_RE = re.compile(r"<!-- canon:item (\S+) file=(\S+)(?: files=(\S+))? -->\n.*?<!-- /canon:item -->\n?", re.S)
 CANON_HEAD = (
     "# Canon: {group}\n\n"
     "Concept art the owner accepted in the Review Table (`python3 tools/review/review.py canon <batch>`). Each entry gives the\n"
@@ -1672,7 +1729,13 @@ def canon_key(batch: str, item_id: str) -> str:
 
 
 def canon_index(group_dir: Path) -> dict[str, str]:
-    """{entry key: image file name} from a group folder's CANON.md ({} when there is none)."""
+    """{entry key: image file name} from a group folder's CANON.md ({} when there is none). An entry that
+    keeps several takes is listed by its first image."""
+    return {k: v[0] for k, v in canon_entries(group_dir).items()}
+
+
+def canon_entries(group_dir: Path) -> dict[str, list[str]]:
+    """{entry key: [image file names]} from a group folder's CANON.md ({} when there is none)."""
     md = group_dir / "CANON.md"
     try:
         st = md.stat()
@@ -1681,7 +1744,8 @@ def canon_index(group_dir: Path) -> dict[str, str]:
     hit = _CANON_CACHE.get(md)
     if hit and hit[0] == (st.st_mtime_ns, st.st_size):
         return hit[1]
-    idx = {m.group(1): unquote(m.group(2)) for m in CANON_ITEM_RE.finditer(md.read_text(encoding="utf-8"))}
+    idx = {m.group(1): [unquote(f) for f in (m.group(3) or m.group(2)).split(",")]
+           for m in CANON_ITEM_RE.finditer(md.read_text(encoding="utf-8"))}
     _CANON_CACHE[md] = ((st.st_mtime_ns, st.st_size), idx)
     return idx
 
@@ -1694,9 +1758,28 @@ def canon_file(batch: str, item: dict) -> Path | None:
     return p if p is not None and p.parent == gdir and p.is_file() else None
 
 
-def canon_block(it: dict, batch: str, fname: str) -> str:
+def canon_block(it: dict, batch: str, fname: str, kept: list[tuple[dict, str]] | None = None) -> str:
+    """One CANON.md entry. Keep both: `kept` is [(kept take, its image file name)], and the entry lists every
+    image with its seat and its own prompt."""
     one = lambda v, none="—": (str(v).strip().replace("<!--", "&lt;!--").replace("\n", "\n  ") if v and str(v).strip() else none)
     when = str(it.get("decided_at") or "")[:10] or datetime.now().strftime("%Y-%m-%d")
+    if kept:
+        names = [f for _, f in kept]
+        out = (f"<!-- canon:item {canon_key(batch, it['id'])} file={quote(names[0])} files={','.join(quote(f) for f in names)} -->\n"
+               f"## {one(it.get('label') or it['id'])}\n\n"
+               f"- **verdict:** {CANON_VERDICT[it['status']]}\n"
+               f"- **kept:** {len(kept)} takes" + (" (a fusion: the note says what to take from each)" if it["status"] == "revise" else "") + "\n"
+               f"- **note:** {one(it.get('note'), 'none')}\n"
+               f"- **batch:** {batch}\n"
+               f"- **date:** {when}\n")
+        for i, (k, f) in enumerate(kept, 1):
+            who = one(k.get("seat") or f"take {i}")
+            out += (f"\n### Take {i}" + (f" ({k['seat']})" if k.get("seat") else "") + "\n\n"
+                    f"![{one(it.get('label') or it['id'])}, {who}]({quote(f)})\n\n"
+                    f"- **image:** `{f}`\n"
+                    f"- **seat:** {one(k.get('seat'))}\n"
+                    f"- **prompt:** {one(k.get('prompt'))}\n")
+        return out + "<!-- /canon:item -->\n"
     return (f"<!-- canon:item {canon_key(batch, it['id'])} file={quote(fname)} -->\n"
             f"## {one(it.get('label') or it['id'])}\n\n"
             f"![{one(it.get('label') or it['id'])}]({quote(fname)})\n\n"
@@ -1730,35 +1813,52 @@ def cmd_canon(args) -> int:
             continue
         if it["status"] not in KEPT:
             continue
-        src = (d / it["src"]).resolve() if it.get("src") else item_path(d, it)
         group = canon_group(it)
         gdir = root / group
         key = canon_key(name, it["id"])
-        ext = src.suffix.lower()
-        fname = slug(str(it["id"])) + ext
-        ## a name that is taken by another entry (another batch's), or by a file nobody wrote through canon,
-        ## is not overwritten: this entry gets the batch's name in its file name
-        owner = {v: k for k, v in canon_index(gdir).items()}.get(fname)
-        dest = gdir / fname
-        taken = (dest.exists() and not same_file(src, dest) and owner != key) or claimed.get(dest, key) != key
-        if taken:
-            fname = f"{slug(str(it['id']))}__{slug(name)}{ext}"
-            dest = gdir / fname
-            warnings.append(f"{it['id']}: {slug(str(it['id'])) + ext} is taken in {CANON_ROOT}/{group}/, so this one is {fname}")
-        claimed[dest] = key
-        rel = dest.relative_to(REPO.resolve())
-        if dest.exists() and same_file(src, dest):
-            unchanged += 1
-            print(f"  {tag}=  {rel}  (unchanged)")
+        ## keep both: every kept take is its own image, <id>__<seat or take n>.<ext>, all in one entry
+        several = it.get("kept") or []
+        if several:
+            seats = [k["seat"] for k in several if k.get("seat")]
+            n_of = {t["file"]: i for i, t in enumerate(it.get("takes") or [], 1)}  # a take's place among the item's takes
+            parts = []
+            for k in several:
+                tag_ = k.get("seat") or f"take{n_of.get(k['file'], len(parts) + 1)}"
+                if k.get("seat") and seats.count(k["seat"]) > 1:  # two kept takes from one seat
+                    tag_ = f"{k['seat']}-take{n_of.get(k['file'], len(parts) + 1)}"
+                parts.append(((d / k["src"]).resolve(), f"{slug(str(it['id']))}__{tag_}", k))
         else:
-            print(f"  {tag}+  {rel}  ({'overwrite' if dest.exists() else 'new'})")
-            if not dry:
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                tmp = dest.with_name(f".{dest.name}.tmp")
-                shutil.copy2(src, tmp)
-                os.replace(tmp, dest)
-            copied += 1
-        entries.setdefault(group, {})[key] = (fname, canon_block(it, name, fname))
+            src = (d / it["src"]).resolve() if it.get("src") else item_path(d, it)
+            parts = [(src, slug(str(it["id"])), None)]
+        placed: list[tuple[dict, str]] = []
+        for src, stem, k in parts:
+            ext = src.suffix.lower()
+            fname = stem + ext
+            ## a name that is taken by another entry (another batch's), or by a file nobody wrote through canon,
+            ## is not overwritten: this entry gets the batch's name in its file name
+            owner = {f: o for o, fs in canon_entries(gdir).items() for f in fs}.get(fname)
+            dest = gdir / fname
+            taken = (dest.exists() and not same_file(src, dest) and owner != key) or claimed.get(dest, key) != key
+            if taken:
+                fname = f"{stem}__{slug(name)}{ext}"
+                dest = gdir / fname
+                warnings.append(f"{it['id']}: {stem + ext} is taken in {CANON_ROOT}/{group}/, so this one is {fname}")
+            claimed[dest] = key
+            rel = dest.relative_to(REPO.resolve())
+            if dest.exists() and same_file(src, dest):
+                unchanged += 1
+                print(f"  {tag}=  {rel}  (unchanged)")
+            else:
+                print(f"  {tag}+  {rel}  ({'overwrite' if dest.exists() else 'new'})")
+                if not dry:
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    tmp = dest.with_name(f".{dest.name}.tmp")
+                    shutil.copy2(src, tmp)
+                    os.replace(tmp, dest)
+                copied += 1
+            placed.append((k, fname))
+        first = placed[0][1]
+        entries.setdefault(group, {})[key] = (first, canon_block(it, name, first, placed if several else None))
 
     ## CANON.md per group: our entries replaced in place or added; our entries that are no longer kept dropped
     prefix = canon_key(name, "")
