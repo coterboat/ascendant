@@ -15,11 +15,13 @@ extends Control
 ##   Codex        opens the CodexPanel over the title; Close (or Esc) returns here.
 ##   Settings     opens the SettingsPanel (window mode, interface size, sound volumes).
 ##   Quit         closes the game.
-##   Map preview  a developer preview of the map screen, kept small and grey at the bottom.
+##   Map preview  a developer preview of the map screen, kept small and grey at the bottom. MVP-1 (#141): it is hidden
+##                unless the game is launched with `-- --dev` (dev_mode()), so a player never sees it.
 ## Builds its overlays lazily, so the whole flow also runs before the screen is in the tree (tests):
 ## then nothing switches, and next_scene holds the screen it would have switched to. `store` (the
 ## saves) can be set before the screen is used; tests give it a temporary folder.
 
+const DEV_FLAG := "--dev"
 const VERSION_TEXT := "MVP build"
 const MAP_SCENE := "res://ui/map_screen.tscn"
 const CODEX_SCENE := "res://ui/codex_panel.tscn"
@@ -43,6 +45,11 @@ var codex: CodexPanel = null  # built on first use
 var next_scene: Node = null  # the screen this one handed over to (SceneFlow.switch)
 var store: SaveStore = null  # the saves; SaveStore.new() (user://saves) unless set first
 var _bound := false
+
+
+## True when the game was launched with `-- --dev`: the developer links (Map preview) show.
+static func dev_mode() -> bool:
+	return OS.get_cmdline_user_args().has(DEV_FLAG)
 
 
 func _ready() -> void:
@@ -88,6 +95,9 @@ func _bind() -> void:
 	settings_button.pressed.connect(open_settings)
 	quit_button.pressed.connect(quit_game)
 	map_preview_button.pressed.connect(_on_map_preview_pressed)
+	var dev := dev_mode()
+	map_preview_button.visible = dev
+	$Center/Box/DevGap.visible = dev
 	refresh_saves()
 
 

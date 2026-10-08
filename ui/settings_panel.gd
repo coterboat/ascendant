@@ -23,6 +23,8 @@ extends Control
 ##   window_picker, scale_picker, watch_picker   the three pickers
 ##   board_picker, speed_picker   M3a.1: the map as the 3D world or the 2D map, and the 3D playback speed
 ##   set_board(value) -> bool, set_playback_speed(value) -> bool
+##   MVP-1 (#141): guide_button "Show the first-game guide again" (show_guide_again()) takes the first-game guide's hint
+##   back (GameSettings.reset_hint), so the card shows on the first turn of the next game; guide_note says so.
 ##   volume_sliders               {volume key: HSlider}, volume_labels {volume key: Label} ("80%")
 ##   mute_toggle                  the "Mute all sound" CheckBox (like the new game screen's toggles)
 ##   close()
@@ -52,6 +54,8 @@ var battle_view_note: Label  # M3-5: shown while 3D is chosen but the 3D stage i
 var battle_speed_picker: OptionButton  # M3-5: 1x / 2x / 4x, the speed battles start at
 var reduced_motion_toggle: CheckBox  # M3-5
 var screen_shake_toggle: CheckBox  # M3-5
+var guide_button: Button  # MVP-1: "Show the first-game guide again"
+var guide_note: Label  # what the button did
 var error_label: Label
 var close_button: Button
 
@@ -83,6 +87,7 @@ func open(game_settings: GameSettings = null) -> void:
 	mute_toggle.set_pressed_no_signal(settings.muted)
 	_show_battle_settings()
 	error_label.visible = false
+	guide_note.visible = false
 	visible = true
 	if is_inside_tree():
 		close_button.grab_focus.call_deferred()
@@ -179,6 +184,13 @@ func _save_battle(changes: Dictionary) -> void:
 	error_label.text = why
 	error_label.visible = not why.is_empty()
 	_show_battle_settings()
+
+
+## MVP-1 (#141): the first-game guide shows on the first turn of the next game again.
+func show_guide_again() -> void:
+	var why := GameSettings.reset_hint(GameSettings.HINT_FIRST_GAME, settings.path if settings != null else "")
+	guide_note.text = why if not why.is_empty() else "The guide will show on the first turn of your next game."
+	guide_note.visible = true
 
 
 func _show_battle_settings() -> void:
@@ -318,6 +330,23 @@ func _build() -> void:
 		"A short shake of the battle screen for a big hit or a fallen ruler. Reduced motion turns it off whatever this says. Applies from the next battle you open."))
 	screen_shake_toggle.toggled.connect(set_screen_shake)
 	battles.add_child(screen_shake_toggle)
+
+	# MVP-1 (#141): the first-game guide card shows once; this brings it back.
+	battles.add_child(_label("HelpLabel", "Help", 26, UiPalette.GILT))
+	guide_button = Button.new()
+	guide_button.name = "GuideButton"
+	guide_button.text = "Show the first-game guide again"
+	guide_button.custom_minimum_size = Vector2(0, 44)
+	guide_button.add_theme_font_size_override("font_size", 20)
+	guide_button.tooltip_text = TooltipText.plain("Show the first-game guide again",
+		"The first turn of your first game shows a small card with the three steps of a turn: move an army, recruit, End turn. It shows once. This brings it back for the first turn of your next game.")
+	guide_button.pressed.connect(show_guide_again)
+	battles.add_child(guide_button)
+	guide_note = _label("GuideNote", "", 16, UiPalette.TEXT_SECONDARY)
+	guide_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	guide_note.custom_minimum_size = Vector2(500, 0)
+	guide_note.visible = false
+	battles.add_child(guide_note)
 
 	error_label = _label("ErrorLabel", "", 18, UiPalette.NEGATIVE)
 	error_label.visible = false

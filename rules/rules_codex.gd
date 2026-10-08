@@ -15,6 +15,19 @@ const ENTRIES := {
 		"title": "Province",
 		"text": "The map is made of provinces. Each has a terrain (plains, forest or hills), an income in gold per turn and an owner: a faction, or nobody if it is neutral. Some have a fort, and each faction has a capital. Provinces joined by a road are neighbors, and armies move from a province to a neighbor. A province becomes yours when your armies are the only ones in it after a turn's battles. It stays yours, paying you its income every turn, until someone else captures it.",
 	},
+	# --- MVP-1 (#141): the one screen the first-game guide (ui/first_game_guide.gd) links to. Plain text, no links: the
+	# codex panel links the other entries' titles by itself.
+	"how_to_play": {
+		"title": "How to play",
+		"text": "A game is a string of turns, and every turn goes the same way.\n"
+			+ "1. Read: the turn report says what happened last turn and why, line by line. Click a line to see it on the map.\n"
+			+ "2. Plan: on the one map screen, select an army and click a neighboring province to move it, or select your capital and press a Recruit button. Every order shows its forecast before you commit, and is listed under Your orders this turn, where you can cancel it.\n"
+			+ "3. Commit: press End turn.\n"
+			+ "4. Resolve: everyone gives orders at the same time, without seeing anyone else's, and then all of them resolve together in one fixed order (see How a turn resolves). Nobody gets to react to what you chose this turn.\n"
+			+ "5. Watch: battles play out on the land and you can watch the ones you care about, or skim the rest from their reports. Then read the next report and plan again.\n"
+			+ "You win by capturing the enemy capital.\n"
+			+ "Nothing is hidden. Hover any number to see where it comes from, and right-click it (or press F1 while hovering) to open its codex entry. The Codex button in the top bar opens this book at any time.",
+	},
 	"neutral": {
 		"title": "Neutral provinces",
 		"text": "A neutral province belongs to nobody, so its income goes to nobody. At the start every province except the capitals is neutral. On the map it has a slate-grey ring and a shield emblem. There are no neutral armies, so an army that moves into a neutral province captures it without a fight, unless an enemy army arrives there in the same turn.",

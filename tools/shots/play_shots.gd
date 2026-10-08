@@ -16,6 +16,8 @@ extends SceneTree
 ##   --rulers / --paths / --sieges / --fog / --magic / --independents   switch those systems on (paths turn rulers on;
 ##                      magic turns paths and rulers on, as the new game screen's box does)
 ##   --no-menus         skip the title, new game and build screen shots
+##   --fresh            the walk's settings are DIR/settings.cfg, deleted first, instead of the player's own: no settings
+##                      file, so the first-game guide shows (MVP-1, #141), and the player's file is never read or written
 ## With --magic the person's seat also walks #116's playtest through the real screens: on turn 1 it opens the
 ## research panel's Magic tab (a shot), researches its first spell and sets the battle spellbook (a shot); once the
 ## spell is known it opens the tab again (a shot) and recruits two mages (an orders shot that turn).
@@ -34,6 +36,7 @@ var max_battles := 3
 var flags := {"rulers": false, "paths": false, "sieges": false, "fog": false, "magic": false, "independents": false}
 var menus := true
 var fast := false
+var fresh := false
 var walk: PackedStringArray = []
 var shot_n := 0
 var mages_queued := 0  # --magic: the mages the person's seat has recruited
@@ -52,6 +55,7 @@ func _initialize() -> void:
 			"battles": max_battles = int(kv[1])
 			"no-menus": menus = false
 			"fast": fast = true
+			"fresh": fresh = true
 			_:
 				if flags.has(kv[0]):
 					flags[kv[0]] = true
@@ -60,7 +64,13 @@ func _initialize() -> void:
 	if flags.paths:
 		flags.rulers = true
 	DirAccess.make_dir_recursive_absolute(out)
-	DisplayServer.window_set_size(Vector2i(W, H))
+	if fresh:
+		GameSettings.default_path = out.path_join("settings.cfg")
+		if FileAccess.file_exists(GameSettings.default_path):
+			DirAccess.remove_absolute(GameSettings.default_path)
+	# The window stays as launched: `--resolution WxH` (see the header) takes a walk at another size, 1280x720 for
+	# instance (MVP-1, #141: every screen fits both), and without it the window is the project's default, W x H.
+	print("window: ", DisplayServer.window_get_size(), " (default ", Vector2i(W, H), ")")
 	# Without vsync the frame loop never waits on the display, so a window covered by other windows (macOS stops
 	# its display link) still renders at full speed and the walk doesn't stall.
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)

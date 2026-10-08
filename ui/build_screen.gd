@@ -13,7 +13,8 @@ extends Control
 ## {faction id: {"ruler", "mandates"}} for every seat (a computer seat's build also names its "preset"),
 ## which GameScreen.start_game turns into the starting state (GameState.with_rulers).
 ##
-## Layout (one screen at 1600x900, no scrolling): the header and the presets on top, then three columns:
+## Layout (one screen at 1600x900, no scrolling; at 1280x720 the columns scroll under the pinned header, presets and
+## Lock in build): the header and the presets on top, then three columns:
 ##   ruler      the two ruler cards (name, rank, body, ability, succession), and the picked ruler at this
 ##              build's kept power next to spending or keeping everything, with a risk line and the
 ##              succession this build leaves
@@ -972,11 +973,19 @@ func _build_body() -> void:
 	CodexLink.attach(clear_button, "kept_power", open_codex)
 	presets.add_child(clear_button)
 
+	# MVP-1 (#141): the columns scroll when the window is shorter than they are (1280x720); the header, the presets and
+	# the footer's Lock in build stay put. At 1600x900 they fit as they stand and nothing scrolls.
+	var scroll := ScrollContainer.new()
+	scroll.name = "ColumnsScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_child(scroll)
 	var columns := HBoxContainer.new()
 	columns.name = "Columns"
+	columns.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	columns.add_theme_constant_override("separation", 14)
-	body.add_child(columns)
+	scroll.add_child(columns)
 	columns.add_child(_ruler_column())
 	columns.add_child(_power_column())
 	columns.add_child(_nation_column())

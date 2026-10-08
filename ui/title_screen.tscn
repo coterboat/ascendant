@@ -18,7 +18,7 @@ fill_from = Vector2(0.5, 0.45)
 fill_to = Vector2(1.05, 1.05)
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
-font_size = 112
+font_size = 96
 font_color = Color(0.901961, 0.721569, 0.305882, 1)
 outline_size = 10
 outline_color = Color(0.101961, 0.0862745, 0.0705882, 1)
@@ -70,12 +70,12 @@ expand_mode = 1
 
 [node name="KingdomBanner" type="TextureRect" parent="."]
 layout_mode = 1
-anchors_preset = 4
+anchors_preset = -1
+anchor_left = 0.06
 anchor_top = 0.5
+anchor_right = 0.2475
 anchor_bottom = 0.5
-offset_left = 96.0
 offset_top = -300.0
-offset_right = 396.0
 offset_bottom = 150.0
 grow_vertical = 2
 mouse_filter = 2
@@ -99,14 +99,12 @@ horizontal_alignment = 1
 
 [node name="BeastsBanner" type="TextureRect" parent="."]
 layout_mode = 1
-anchors_preset = 6
-anchor_left = 1.0
+anchors_preset = -1
+anchor_left = 0.7525
 anchor_top = 0.5
-anchor_right = 1.0
+anchor_right = 0.94
 anchor_bottom = 0.5
-offset_left = -396.0
 offset_top = -300.0
-offset_right = -96.0
 offset_bottom = 150.0
 grow_horizontal = 0
 grow_vertical = 2
@@ -139,7 +137,7 @@ grow_vertical = 2
 
 [node name="Box" type="VBoxContainer" parent="Center"]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 8
 alignment = 1
 
 [node name="Title" type="Label" parent="Center/Box"]
@@ -154,7 +152,7 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.945098, 0.92549, 0.878431, 1)
 theme_override_colors/font_outline_color = Color(0.101961, 0.0862745, 0.0705882, 1)
 theme_override_constants/outline_size = 4
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
 text = "Simultaneous-turn fantasy strategy where every rule is visible."
 horizontal_alignment = 1
 autowrap_mode = 3
@@ -171,7 +169,7 @@ layout_mode = 2
 
 [node name="ContinueButton" type="Button" parent="Center/Box"]
 visible = false
-custom_minimum_size = Vector2(340, 60)
+custom_minimum_size = Vector2(340, 52)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.901961, 0.721569, 0.305882, 1)
@@ -179,7 +177,7 @@ theme_override_font_sizes/font_size = 28
 text = "Continue"
 
 [node name="NewGameButton" type="Button" parent="Center/Box"]
-custom_minimum_size = Vector2(340, 52)
+custom_minimum_size = Vector2(340, 48)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 24
@@ -187,7 +185,7 @@ tooltip_text = "Set up a game: who plays which faction (you against the computer
 text = "New game"
 
 [node name="LoadGameButton" type="Button" parent="Center/Box"]
-custom_minimum_size = Vector2(340, 52)
+custom_minimum_size = Vector2(340, 48)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 24
@@ -195,7 +193,7 @@ tooltip_text = "Pick a saved game to play on. The game saves itself at the start
 text = "Load game"
 
 [node name="QuickStartButton" type="Button" parent="Center/Box"]
-custom_minimum_size = Vector2(340, 52)
+custom_minimum_size = Vector2(340, 48)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 24
@@ -203,7 +201,7 @@ tooltip_text = "Play right away against the computer (Normal), with a random fac
 text = "Quick start"
 
 [node name="CodexButton" type="Button" parent="Center/Box"]
-custom_minimum_size = Vector2(340, 52)
+custom_minimum_size = Vector2(340, 48)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 24
@@ -211,7 +209,7 @@ tooltip_text = "Every rule of the game in plain language, searchable. You can al
 text = "Codex"
 
 [node name="SettingsButton" type="Button" parent="Center/Box"]
-custom_minimum_size = Vector2(340, 52)
+custom_minimum_size = Vector2(340, 48)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 24
@@ -219,7 +217,7 @@ tooltip_text = "Window or fullscreen, and how big the interface is drawn."
 text = "Settings"
 
 [node name="QuitButton" type="Button" parent="Center/Box"]
-custom_minimum_size = Vector2(340, 52)
+custom_minimum_size = Vector2(340, 48)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 24
