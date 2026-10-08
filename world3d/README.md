@@ -166,6 +166,12 @@ fails on a unit type without a row or a row whose model is missing).
                                            // pose's body size); without it: the row's height (fallen: its length)
           "models": {"<faction id>": "res://..."}, "model_height": {"<faction id>": 1.2}
                                            // army extras (bearer, musician): the model per owner's faction
+          "tint": 0.8, "model_tint": {"<faction id>": 0.8}
+                                           // IND-2: darken a model figure (vertex colour x texture, 1 = as made); an
+                                           // extra's own tint per faction. Pale undyed wool blows out to white at 1
+          "fallbacks": {"<faction id>": "<Kit.figure id>"}
+                                           // IND-2: the primitive an extra wears for that faction when it has no model
+                                           // (the Free Holds' "free_bearer")
         }
       },
       "buildings": {
@@ -345,6 +351,33 @@ switch is off, every older board test holds unchanged.
   and +0.32 ms at four times the pixels (the viewport's 3D scale 2.0, six interleaved pairs, every pair the same way): about
   **0.08 ms a frame at rung 0**, under the 0.2 ms budget. CPU: `Vision.levels` 0.06 ms and `set_vision` 0.003 ms a turn; a
   whole fog `stand()` (armies, plates, sight) 6 ms (`tests/test_fog_board.gd` checks the three with `--perf`).
+
+## The Free Holds' look (IND-2, #161)
+
+The independents' garrisons (`data/independents.gd`, IND-1 #142) stand on the 3D board and fight on the 3D stage in their own
+look: plain local militia in undyed bone-cream wool and weathered grey, apart from the Crown's blue and gold and the Clans'
+tawny and moss (STYLE_BIBLE: slate is the independents' colour, `UiPalette.NEUTRAL`).
+
+- **The kit's independents style** (`kit.gd`): a figure for each unit id, `free_spears`, `hill_slingers`, `wildkin` (a silver-grey
+  badger of the deep woods) and `hold_captain` (`Kit.INDEPENDENTS`), plus the colour party's `free_bearer`
+  (`Kit.INDEPENDENTS_PARTY`) and a plain wool war tent (`Kit.tent("independents")`). Palette: `WOOL`, `SLATE`, `GREY`, `IRON`,
+  `BADGER`; never blue, gold, tawny, moss or crimson (`tests/test_free_holds_look.gd` checks it against the Crown's and the
+  Clans' signature colours). Kept a little under white on purpose: the cel light blows anything lighter out to a ghost.
+- **The model table** has a row per unit id with `"model": ""`: the board and the stage draw the kit figure until the Ludo
+  model is installed, and the row then names the GLB, its height and its poses like any unit's. The bearer and the musician rows
+  carry `"fallbacks": {"independents": "free_bearer"}`: the primitive a faction's army wears when it has no model of its
+  own, so a garrison's colour party is not a Crown man with a blue plume.
+- **The banner** of an army that belongs to nobody (a garrison, `seat < 0`) carries the independents' heater shield
+  (`Kit.EMBLEM_SHIELD`, drawn by `banner.gdshader`), where it used to borrow Player 1's circle; the plate keeps the shield
+  glyph the 2D map uses. The bases stand on slate.
+- **Portraits** are found by unit id under `assets/portraits/independents/<id>.webp` (`Art.unit_faction`).
+- **Where the art comes from:** `tools/ludo/asc_3d_free_holds.py` (batch `asc-3d-free-holds`, ledger
+  `studio/ledgers/asc-3d-free-holds.jsonl`): concept pictures, poses and portraits go into the Review Table batch
+  `review/ind_concept/` and the slimmed models into `review/ind_models/` (each model's target is its install path); the owner
+  judges them there and the batch's install action (`install-accepted`) puts the accepted models in
+  `assets/models/units/independents/` with their `models.json` rows and the unit rows of this table, so the placeholders swap
+  out. A Ludo model carries a floor slab (the picture's soft ground shadow fused into a plate under the feet): the script cuts
+  it away before slimming (`trim_floor`).
 
 ## Battles on the land (M3b)
 
