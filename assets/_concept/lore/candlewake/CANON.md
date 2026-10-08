@@ -59,3 +59,17 @@ Entries between the `canon:item` markers are rewritten by the next run; write an
 - **batch:** art_r3
 - **date:** 2026-10-07
 <!-- /canon:item -->
+
+<!-- canon:item art_r3b/candlewake_capital file=candlewake_capital__art_r3b.png -->
+## The Long Vigil, a city of the dead
+
+![The Long Vigil, a city of the dead](candlewake_capital__art_r3b.png)
+
+- **image:** `candlewake_capital__art_r3b.png`
+- **verdict:** Good
+- **note:** none
+- **prompt:** Cinematic wide painting of the Long Vigil as a city of the dead. A once-human walled city of dripping ivory candle-wax: houses, towers and walls half-melted, wax running down the streets, a lilac flame in every window. On the hill, one candle as tall as a keep burns with a tall lilac flame against a huge low golden sun. The streets are full of the Candlewake host, not the living: hunched figures of dripping ivory tallow with sad human wax faces, a black wick and small lilac flame on every head, soot-black scraps, lilac ribbons, brass snuffer-poles. A Lamplighter with a tall pole walks among them. A Hundred-Wick mound of many melted bodies with a crown of lilac flames. Quiet, mournful, colourful in ivory, soot and lilac. Dark but not grim. Painterly high fantasy. No skulls, no text, no living market.
+- **seat:** grok
+- **batch:** art_r3b
+- **date:** 2026-10-08
+<!-- /canon:item -->

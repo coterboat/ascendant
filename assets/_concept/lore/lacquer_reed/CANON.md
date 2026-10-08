@@ -45,3 +45,45 @@ Entries between the `canon:item` markers are rewritten by the next run; write an
 - **batch:** art_r3
 - **date:** 2026-10-07
 <!-- /canon:item -->
+
+<!-- canon:item art_r3b/lacquer_reed_chord file=lacquer_reed_chord__art_r3b.png -->
+## A chord struck in battle, fused
+
+![A chord struck in battle, fused](lacquer_reed_chord__art_r3b.png)
+
+- **image:** `lacquer_reed_chord__art_r3b.png`
+- **verdict:** Good with changes
+- **note:** i love all of the different variations each came up with - this could be a really fun faction
+- **prompt:** A grand battle painting: a Lacquer Reed army of instrument-bodied units sounding a chord together against an Aurel Crown line of blue-and-gold human soldiers. Keep the Grok instrument-bodies: cream bell-heads with teal faces, glossy teal lacquer pipes, gold-jointed arms, gilded feet, panpipe fans, coiled horns, folded bassoons, bagpipe bellows, recorders with shields. Keep Codex's grand army scale and spectacular sound effects: huge concentric gold and white shock rings, visible standing waves, a wall of sound slamming the Crown line so spears snap and soldiers stagger backward. The chord's effect is readable as a shockwave that blunts and throws the enemy. Held Sun golden-hour light, marsh-green ground, cinematic wide view. Cel-shaded lean, colourful, dark but not grim. No text, letters, banners with writing, or labels. Edited from the Codex chord (army scale and rings) and the Grok chord and section (instrument-bodies).
+- **seat:** grok
+- **batch:** art_r3b
+- **date:** 2026-10-08
+<!-- /canon:item -->
+
+<!-- canon:item art_r3b/lacquer_reed_motion file=lacquer_reed_motion.png -->
+## How they move: floating on sound
+
+![How they move: floating on sound](lacquer_reed_motion.png)
+
+- **image:** `lacquer_reed_motion.png`
+- **verdict:** Good with changes
+- **note:** the bodies of codex and the subtler floating effect of grok.
+- **prompt:** A wide motion-study of one Lacquer Reed unit shown three times left to right on a plain warm-grey ground: at rest, gliding, and sounding in attack. The unit is a glossy deep-teal lacquer coiled horn with a cream bell-head, a living teal face in the bell, gold-jointed articulated arms, violet resin at the rim, and a single gilded pedestal foot. At rest the gold foot floats a finger-width off the ground on faint concentric standing-wave rings of gold light. In the middle it glides left to right, trailing ripple rings on the ground like a boat wake. On the right it sounds: the rings flare into bright gold and violet shock discs, a cone of visible sound bursts from the bell, the gold arms thrown wide. Then edited: Keep this three-beat motion of the coiled horn. Make the middle pose clearly a glide: the body leans forward, the gilded foot trails a longer wake of gold ripple-rings across the ground. Keep rest on the left with small standing-wave rings holding the foot just off the ground, and attack on the right with flared gold-and-violet shock discs. Same teal coil body, cream bell, teal face, gold-jointed arms throughout. Plain grey ground. Cel-shaded high fantasy, thick outlines, even studio light. No text, letters, labels or captions.
+- **seat:** grok
+- **batch:** art_r3b
+- **date:** 2026-10-08
+<!-- /canon:item -->
+
+<!-- canon:item art_r3b/lacquer_reed_section file=lacquer_reed_section__art_r3b.png -->
+## The wind section, fused
+
+![The wind section, fused](lacquer_reed_section__art_r3b.png)
+
+- **image:** `lacquer_reed_section__art_r3b.png`
+- **verdict:** Good with changes
+- **note:** Take the bodies and shape, but let's give them that floating effect from the more recent changes
+- **prompt:** Use case: stylized-concept. Asset type: wide 16:9 faction model sheet for a stylized 3D fantasy strategy game. Primary request: Create the Lacquer Reed wind section as a fused character model sheet. Use both supplied section references: preserve the Codex reference's crisp articulation, mechanical gold joints, distinct legs and arms, polished finish, readable class silhouettes, and consistent baseline; fuse in the Grok reference's bold instrument-bodies where the entire torso is unmistakably the wind instrument, including bell-cone faces, coil, bellows, folded bass, and panpipe fan. Subject: exactly eight full-body figures, separated with clean gaps and arranged on one shared baseline at consistent scale: Reedward recorder wall; Shawm with flared double-reed body; Skirl with round bagpipe-bellows torso and three drones; Hole-singer with fan of open panpipes; Crook as a wide doubled-back folded bass bore; Horn as a compact lacquer coil; Chormeister as a cornett with raised thin gold baton; and the Pale Note at the end, a taller bone-white bell flooded with luminous violet, holding a tuning fork. Each ordinary unit has glossy deep-teal lacquer, gold articulated arms and legs, one gilded bell-shaped foot or paired articulated gilded feet, and one living dark-teal face nested inside a bone-white bell with violet resin at the rim. Instrument structure forms the body, never merely held as a prop. Style/medium: bright colorful high fantasy game concept art, cel-shaded lean, flat saturated colors, thick clean dark outlines, one hard-edged shadow and highlight, polished original design, dark but not grim. Composition/framing: panoramic lineup, three-quarter strategy-camera view slightly above, all figures fully visible and uncropped, plain warm light-gray ground and empty neutral background. Lighting/mood: even studio light, confident and strange. Color palette: deep teal lacquer, warm gold joints, bone-white bells, violet resin and glow. Constraints: strong instantly readable silhouettes; mechanically plausible articulation; no living human bodies; no repeated generic tube shapes; no overlap. Avoid: text, letters, numbers, labels, captions, dividers, UI, watermarks, signatures, recognizable IP, real religious symbols.
+- **seat:** codex
+- **batch:** art_r3b
+- **date:** 2026-10-08
+<!-- /canon:item -->
