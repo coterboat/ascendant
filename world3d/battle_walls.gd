@@ -43,6 +43,7 @@ const ARRIVAL_ROAD := 30.0 ## a relief army comes in from this far behind its li
 const TURNS := [0.0, 10.0, -10.0, 20.0, -20.0, 30.0, -30.0, 45.0, -45.0] ## the outside lines swing about the gate
 const LEVEL_OF := {"palisade": 1, "keep": 2, "citadel": 3}
 const MAX_ENGINES := 6
+const WALK_MAX_PITCH := 7.0 ## a fighter room wider than this (knights, the Clans' tuskers) stands in the yard, not on a wall walk
 
 ## What each fort model's walls are (fort frame, world units), measured off the models as the board draws them (the model
 ## table's `side`): "floor" the yard's height; "outer" how far from the centre the gate side's farthest point stands (the
@@ -447,8 +448,9 @@ static func _build(battle_log: Dictionary, t, info: Dictionary, kind: String, ne
 
 ## Where the side holding the fort stands: {"places": {fid: {"pos", "y", "tier", "line", "file", "width", "depth", "station"}},
 ## "last_z": the back-most row of the yard's z}. A storm: the deck (Volley tier and mages, then the front rank), the gatehouse
-## (the ruler, then the commander), the side walls, then the yard in rows from the gate side back, then ground behind the fort. A
-## breach: the yard in rows from the breach back, the side walls, then ground behind the fort.
+## (the ruler, then the commander), the side walls, then the yard in rows from the gate side back, then ground behind the fort
+## (knights and the other mounted or huge fighters never take a wall walk: they stand in the yard). A breach: the yard in rows
+## from the breach back, the side walls, then ground behind the fort.
 static func _garrison(battle_log: Dictionary, info: Dictionary, si: int, kind: String, reps: Dictionary) -> Dictionary:
 	var spec: Dictionary = info["spec"]
 	var places := {}
@@ -456,6 +458,7 @@ static func _garrison(battle_log: Dictionary, info: Dictionary, si: int, kind: S
 	var commanders := []
 	var volley := []
 	var melee := []
+	var heavy := [] ## the mounted and the huge do not fight from a wall walk: they stand in the yard
 	var tiers: Array = Formation.ordered_tiers(battle_log, si)
 	for tier in 3:
 		for fid in tiers[tier]:
@@ -468,6 +471,8 @@ static func _garrison(battle_log: Dictionary, info: Dictionary, si: int, kind: S
 				commanders.append(int(fid))
 			elif tier == 1:
 				volley.append(int(fid))
+			elif _pitch(String(battle_log.fighters[int(fid)].type)) > WALK_MAX_PITCH:
+				heavy.append(int(fid))
 			else:
 				melee.append(int(fid))
 	if kind == "storm":
@@ -475,7 +480,7 @@ static func _garrison(battle_log: Dictionary, info: Dictionary, si: int, kind: S
 		_fill(battle_log, info, places, _top(spec["gate_top"]), [rulers, commanders], "gate_top")
 		_fill(battle_log, info, places, _lanes(spec["sides"]), [melee, volley, rulers, commanders], "deck")
 	## the yard in rows, rank order (the front rank first), a patch of floor after another
-	var pool := _pool([melee, volley, rulers, commanders])
+	var pool := _pool([melee, heavy, volley, rulers, commanders])
 	var line_no := 0
 	var last_z := float((spec["yard"] as Dictionary)["z0"])
 	var zones := zones_of(spec)
