@@ -884,6 +884,11 @@ func test_the_army_panel_names_its_casters_and_each_spell_with_its_number() -> v
 		var lance: Array = model.spells.filter(func(x): return x.spell == "sunlance")
 		if not lance.is_empty():
 			assert_true(String(lance[0].text).begins_with("Sunlance %d damage" % int(MagicRules.spell_numbers("sunlance", best).value)), lance[0].text)
+		for l in map.details.find_children("UnitCount", "Label", true, false):  # a mage's card carries the spellbook, in order
+			if String(l.text).begins_with(String(MagicData.MAGES[CROWN].name)):
+				var tip := String(l.tooltip_text).replace("\n", " ")
+				assert_true(tip.contains("Your battle spellbook, in the order your %s try it:" % String(MagicData.MAGES[CROWN].name)), tip)
+				assert_true(tip.contains(MagicView.mage_card(state, CROWN).split("\n")[1]), "the first spell, one line: %s" % tip)
 		for name in ["CastersLine", "MasteryLine"]:
 			var l := map.details.find_child(name, true, false) as Label
 			if l != null:

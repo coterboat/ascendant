@@ -1623,6 +1623,9 @@ func _add_army(a: Army) -> void:
 		var count_tip := TooltipText.from_breakdown(b)
 		if FogView.active(state) and not FogView.scout_line(u.type).is_empty():
 			count_tip += "\n\n" + TooltipText.wrap_text("%s %s" % [FogView.scout_line(u.type), RulesCodex.text("scouts")])
+		if MagicRules.is_mage(u.type) and a.owner == viewing_faction_id and not FogView.is_stand_in(a):
+			# M5-8: a mage's card lists the battle spellbook in order, one line a spell
+			count_tip += "\n\n" + "\n".join(Array(MagicView.mage_card(state, a.owner).split("\n")).map(func(l): return TooltipText.wrap_text(String(l))))
 		var count_label := _add_text("%s ×%d" % [u.type.name, b.total], count_tip, UiPalette.TEXT_PRIMARY, row)
 		count_label.name = "UnitCount"
 		count_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
