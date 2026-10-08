@@ -28,6 +28,7 @@ const Playback := preload("res://world3d/playback.gd")
 const Models := preload("res://world3d/models.gd")
 const Choreo := preload("res://world3d/choreo.gd")
 const SiegeBoard := preload("res://world3d/siege_board.gd")
+const Vision := preload("res://world3d/vision.gd")
 const ARROW := Color("#FFFFFF")
 const ARROW_HALO := Color(0.102, 0.086, 0.071, 0.85)
 const LEGEND := "The 3D board, what you see:\n- A province's colour wash and inner border: its owner, in their player colour.\n- A white band inside a province: the one you selected. A cream band: the one under the mouse.\n- A soft gilt glow at the edges: where your selected army can march this turn.\n- A dashed gilt band: a King's Roads destination two provinces away.\n- Figures: each army as blocks of its units (a block per unit type, %s), its commander and banner bearer at the back. The plate above gives the exact count.\n- In the woods every block stands on a tray in its owner's colour (a gilt ring for a ruler's army), so woods-green figures never pass for trees.\n- Zoomed far out, each army becomes a stand: a base in its owner's colour (a gilt ring for a ruler's army), its banner, and one figure for each of its three most numerous unit types, under its count plate. Zoom in and the blocks come back.\n- A fortress's muster yard: its armies stand a block to a slot (a capital holds 6 blocks), facing the gate. An army the yard can't hold musters in the war camp outside the walls: tents, a fire and its smoke. A big camp means a big muster: war is coming.\n- Translucent figures in a yard: the recruits you queued, in the slot each will take. Only you see them.\n- An army in a column at its gate (or the edge of its province), facing a road, with a gilt arrow on its plate: one you ordered to march. It leaves when the turn ends. Only you see it gathered.\n- White arrows along the roads: your queued moves.\n- During a turn's playback the captions follow the turn report's phases: Movement, Battles, Captures, Recruits. Crossed swords mark a battle: the lines trade blows and the fallen lie where they fell. A capture's colour sweeps out from the arriving column.\n- View fortress (in the recruit panel) or a double-click on a fortress: a close-up of its yard. Esc or zooming out leaves it.%s\n\nDrag or WASD to pan, the wheel to zoom, double-click to glide to a province, C your capital, F the whole map, L Look A or B. Settings can switch to the 2D map."
@@ -46,6 +47,7 @@ var _play_label: Label
 var _speed_buttons := {}
 var _legend: Label
 var _legend_sieges := false
+var _legend_fog := false ## M5-3: the legend's tooltip carries the fog section (a fog game)
 var _fortify_plates := {} ## M3c S-4: province id -> the plate over a queued Fortify's ghost scaffold
 var _caption: PanelContainer
 var _caption_title: Label
@@ -81,7 +83,7 @@ func refresh() -> void:
 	if _built_for != map.state:
 		_built_for = map.state
 		_build_province_plates()
-		if map.state.sieges != _legend_sieges:
+		if map.state.sieges != _legend_sieges or Vision.active(map.state) != _legend_fog:
 			_legend_tip()
 	_build_fortify_plates()
 	_update_province_marks()
@@ -294,7 +296,47 @@ func _build_province_plates() -> void:
 		var ench := EnchantmentBadges.make(st, p.id, map.viewing_faction_id, map.request_codex)
 		if ench != null:
 			root.add_child(ench)
-		_plates[p.id] = {"root": root, "name": name_label, "income": inc, "glyph": glyph, "pennant": null, "badge": null, "sprout": null, "chip": chip, "cut": cut_mark}
+		_plates[p.id] = {"root": root, "name": name_label, "income": inc, "glyph": glyph, "pennant": null, "badge": null, "sprout": null, "chip": chip, "cut": cut_mark,
+			"sight": null}
+	update_sight()
+
+
+## M5-3: the short lines under each province plate that is not in clear sight ("glimpsed"; "out of sight" over "seen 3 turns ago";
+## "never seen"), with the level's words and the province's fog paragraph on hover. Words as well as the ground's veil, so a level
+## never rests on colour alone. Called when the plates are built and whenever the ground's sight changes (Board3D._sync_vision).
+func update_sight() -> void:
+	if board == null or board.map == null or board.map.state == null:
+		return
+	var st: GameState = board.map.state
+	var memory: Dictionary = board.map.fog_memory
+	for id in _plates.keys():
+		var pl: Dictionary = _plates[id]
+		var level := String(board.vision_levels.get(id, ""))
+		var l: Label = pl.get("sight")
+		if level.is_empty() or level == FogRules.CLEAR:
+			if l != null:
+				l.visible = false
+			continue
+		var seen_turn := int(((memory.get("provinces", {}) as Dictionary).get(id, {}) as Dictionary).get("seen_turn", -1))
+		if l == null:
+			l = Label.new()
+			l.name = "SightLabel"
+			l.add_theme_font_size_override("font_size", 12)
+			l.add_theme_color_override("font_color", Color(0.80, 0.85, 0.95))
+			l.add_theme_color_override("font_outline_color", UiPalette.KEYLINE_INK)
+			l.add_theme_constant_override("outline_size", 5)
+			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			l.mouse_filter = Control.MOUSE_FILTER_PASS
+			l.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+			(pl["root"] as Control).add_child(l)
+			pl["sight"] = l
+		l.visible = true
+		l.text = Vision.tag_for(st, level, seen_turn)
+		l.tooltip_text = TooltipText.plain(String(FogView.LEVEL_TITLES.get(level, level)), "%s %s %s" % [Vision.words(level),
+			FogView.province_text(st, st.view_of, id, memory), RulesCodex.text(String(FogView.LEVEL_CODEX.get(level, "sight")))])
+		CodexLink.attach(l, String(FogView.LEVEL_CODEX.get(level, "sight")), board.map.request_codex)
+		(pl["root"] as Control).reset_size()
+	_dirty = true
 
 
 ## The map's Sworn Vassals pennants and heir countdowns, mirrored onto the plates (their tooltips are
@@ -406,11 +448,13 @@ func _build_army_plates() -> void:
 		em.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		hb.add_child(em)
 		var lb := Label.new()
-		lb.text = RulerPanel.badge_text(a) if a.ruler != null else str(a.units.size())
+		lb.text = plate_text(st, a)
 		lb.add_theme_font_size_override("font_size", 15)
 		lb.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
 		lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		hb.add_child(lb)
+		if Vision.is_memory(a):
+			pc.modulate = Color(0.78, 0.78, 0.82, 0.78) ## M5-3: a grey plate for a grey ghost, as the 2D badge is
 		if board.armies.gathered.has(a.id):
 			## ordered to march: it waits gathered at the gate (only its player sees this)
 			var mk := _MarchMark.new()
@@ -433,6 +477,31 @@ func _build_army_plates() -> void:
 
 
 # ------------------------------------------------------------------ tooltips
+
+## The words on an army's plate: its exact number, or (M5-3, a rival in your view) the estimate ("≈20"), a remembered army's
+## "≈10 · 3 turns ago", or "Ruler" / "Ruler · 3 turns ago" for a rival ruler.
+func plate_text(st: GameState, a: Army) -> String:
+	if a.ruler != null:
+		return RulerPanel.badge_text(a) + (" · %s" % Vision.ago_text(st, int(a.seen.get("turn", 0))) if Vision.is_memory(a) else "")
+	if Vision.is_stand_in(a):
+		if a.units.is_empty() and a.commander != null:
+			return a.commander.type.name ## a further commander's stand-in: the commander alone
+		if String(a.seen.get("level", "")) != FogRules.CLEAR:
+			return FogView.badge_text(st, a)
+	return str(a.units.size())
+
+
+## M5-3: what the board says of a rival army by its figures: a glimpse's blocks come from a rounded number, a memory is a ghost.
+func fog_note(a: Army) -> String:
+	if not Vision.is_stand_in(a):
+		return ""
+	match String(a.seen.get("level", "")):
+		FogRules.GLIMPSE:
+			return "Its figures stand in a block per unit type, drawn from the estimate on the plate: you glimpse it, so the real army is a little bigger or smaller, and there may be more you can't see."
+		FogData.MEMORY:
+			return "A grey ghost of what you saw there %s. It fades a step every %d turns, and the army may have moved on: a yard or a province under the veil shows only ghosts." % [
+				Vision.ago_text(board.map.state, int(a.seen.get("turn", 0))), Vision.GHOST_STEP_TURNS]
+	return "In clear sight: its figures stand in a block per unit type, as many as it has."
 
 ## A province's tooltip on the 3D board: its 2D region's own tooltip (name, terrain and how it grew,
 ## owner, the King's Roads or Forest Stride note when it is a road destination, its codex link), with the
@@ -468,6 +537,9 @@ func province_tooltip(pid: String) -> String:
 	var fort_words := SiegeBoard.describe(st, pid, FortView.besieger_name(st, pid) if SiegeRules.is_besieged(st, pid) else "")
 	if not fort_words.is_empty():
 		text += "\n\n" + TooltipText.wrap_text("On the board: " + fort_words)
+	var sight_words := Vision.words(String(board.vision_levels.get(pid, ""))) ## M5-3: how the ground shows its sight level
+	if not sight_words.is_empty():
+		text += "\n\n" + TooltipText.wrap_text("On the board: " + sight_words)
 	return CodexLink.with_link(text, TooltipText.codex_for("province"))
 
 
@@ -484,7 +556,7 @@ func has_cut_mark(pid: String) -> bool:
 ## The legend's text for the state the board shows (the siege lines only in a game with sieges).
 func legend_text() -> String:
 	var st: GameState = board.map.state if board != null and board.map != null else null
-	return LEGEND % [Models.block_rule_text(), SIEGE_LEGEND if st != null and st.sieges else ""]
+	return LEGEND % [Models.block_rule_text(), (SIEGE_LEGEND if st != null and st.sieges else "") + Vision.legend_lines(st)]
 
 
 ## An army's tooltip: its 2D badge's own (its units' breakdown or the ruler's summary, whose it is, a
@@ -507,7 +579,11 @@ func army_tooltip(aid: String, with_link: bool = true) -> String:
 		text = text.replace(" badge, ", " plate, ").replace("outside the badge", "on the plate")
 	else:
 		text = RulerPanel.summary(st, a) if a.ruler != null else TooltipText.from_breakdown(Breakdown.army_units(st, a.id))
-	if a.ruler == null:
+	if Vision.is_stand_in(a):
+		if a.ruler == null:
+			text += "\n\n" + TooltipText.wrap_text("Blocks: %s." % Models.block_rule_text())
+		text += "\n\n" + TooltipText.wrap_text(fog_note(a))
+	elif a.ruler == null:
 		text += "\n\n" + TooltipText.wrap_text("Its figures stand in a block per unit type (%s); the plate has the exact number." % Models.block_rule_text())
 	var where_note := standing_note(aid)
 	if not where_note.is_empty():
@@ -1045,6 +1121,7 @@ func _legend_tip() -> void:
 		lines.append(TooltipText.wrap_text(line) if line.begins_with("- ") or line.length() > TooltipText.WRAP else line)
 	_legend.tooltip_text = "\n".join(lines)
 	_legend_sieges = board != null and board.map != null and board.map.state != null and board.map.state.sieges
+	_legend_fog = board != null and board.map != null and Vision.active(board.map.state)
 
 
 ## The march mark on a gathered army's plate: a small gilt arrow (ordered to march, waiting at the gate).

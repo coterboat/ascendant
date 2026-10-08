@@ -36,6 +36,15 @@ extends Control
 ## (and a rule-bound shake at a breach, off with reduced motion), and the viewer's own queued Fortify orders stand as
 ## ghost scaffolds, never another seat's and never while the board is hidden behind a handoff.
 ##
+## Fog of war (M5-3, #114; design/M5_MAGIC_FOG.md §12.1): in a fog game the map screen holds the viewer's view, never the
+## truth (M5-2), and the board draws only that: the ground's veil from the 16 x 1 vision texture beside the owner wash
+## (clear, glimpsed, out of sight and never seen: world3d/vision.gd, the ground shader), a rival's armies as the view's
+## stand-ins (blocks from the rounded counts, under a "≈20" plate), remembered armies as grey ghosts in their own material
+## (a step fainter every 2 turns), a rival's yard with only what the view shows in it, the playback from the viewer's own
+## report (a rival column marching out of sight walks to the border and fades; a ritual from a hidden caster starts at its
+## target), and sound only for beats the viewer can see. A hotseat handoff rebuilds the board for the next seat while the
+## cover is up (stand() rewrites the vision texture and the armies at once). With fog off nothing here changes.
+##
 ## The fortress close-up (M3a.2, design/3D_DIRECTION.md 8.3): View fortress in the recruit panel, or a
 ## double-click on a fortress, swoops the camera down into the yard (turned to look in through the gate);
 ## each queued recruit appears there at once as a ghost. Esc, zooming out, F, C or selecting another
@@ -62,6 +71,7 @@ const Choreo := preload("res://world3d/choreo.gd")
 const Stands := preload("res://world3d/stands.gd")
 const Trays := preload("res://world3d/trays.gd")
 const SiegeBoard := preload("res://world3d/siege_board.gd")
+const Vision := preload("res://world3d/vision.gd")
 
 const SPAN_NEAR := 70.0
 const PITCH_FAR := 60.0
@@ -117,6 +127,10 @@ var _playing := false
 var closeup := "" ## the fortress whose yard the close-up shows ("" none)
 var _pre_closeup := {} ## the camera before the close-up: {"goal", "zoom"}
 var sounds: Array = [] ## (tests) the beats' sounds this board asked for, in order
+var rituals_played: Array = [] ## (tests, M5-3) the ritual beats the playback fired: [{"from", "at", "ritual"}]
+var vision_levels := {} ## M5-3: province id -> "clear" | "glimpse" | "veiled" | "never" as the ground shows it now ({} without fog)
+var _play_after: GameState = null ## the state the playing turn ends on (its sight takes the ground at the re-form)
+var _viewer := "" ## M5-3: whose view the board stood last (a fog game): a change is a hotseat handoff (_new_seat)
 var shakes := 0 ## (tests) the breach shakes the board played
 var _shake_t := 0.0 ## M3c S-4: a breach's camera shake, seconds left
 var _shake_limit := BattleFx.ShakeLimiter.new()
@@ -214,6 +228,8 @@ func _build_world() -> void:
 	armies.clash_started.connect(_on_clash_started)
 	armies.playback_finished.connect(_on_playback_finished)
 	armies.fort_beat.connect(_on_fort_beat)
+	armies.reform_started.connect(_on_reform_started)
+	armies.ritual_beat.connect(_on_ritual_beat)
 	stands = Stands.new()
 	stands.wv = wv
 	wv.add_child(stands)
@@ -253,8 +269,47 @@ func sync() -> void:
 func stand(st: GameState) -> void:
 	shown = st
 	seats = map.seat_order() if map != null else UiPalette.seat_order(st)
+	var who: String = st.view_of if Vision.active(st) else ""
+	if not who.is_empty() and not _viewer.is_empty() and who != _viewer:
+		_new_seat(st, who)
+	_viewer = who
 	armies.show_state(st, seats)
 	_paint_owners(st)
+	_sync_vision(st)
+
+
+## M5-3 (§2.9): a hotseat handoff: the next seat's board is the next seat's, from its first frame. The camera leaves where the last
+## seat was looking (it would say what that seat was watching) for the new seat's own capital, with no flash or close-up left over.
+func _new_seat(st: GameState, who: String) -> void:
+	exit_closeup(true)
+	hover_id = ""
+	hover_army = ""
+	_flash.clear()
+	var f := st.find_faction(who)
+	if f != null:
+		focus_on(f.capital, true)
+		_flash.clear()
+
+
+## M5-3: the viewer's sight on the ground. In a fog game (st is a view, FogView.active) the vision texture takes the sight level
+## of every province, from the view alone and the map's memory of the viewer; otherwise the ground is untouched. Written whenever a
+## state is stood, so a hotseat handoff's rebuild under the cover leaves no trace of the last seat's.
+func _sync_vision(st: GameState) -> void:
+	if wv == null:
+		return
+	if st == null or not Vision.active(st) or map == null:
+		vision_levels = {}
+		wv.clear_vision()
+	else:
+		vision_levels = Vision.levels(st, st.view_of, map.fog_memory)
+		wv.set_vision(vision_levels)
+	if overlay != null:
+		overlay.update_sight() ## the plates' sight lines follow the ground's
+
+
+## M5-3: the province's sight level on the ground now ("clear" in a game without fog).
+func vision_of(province_id: String) -> String:
+	return String(vision_levels.get(province_id, FogRules.CLEAR))
 
 
 func _paint_owners(st: GameState) -> void:
@@ -395,6 +450,7 @@ func play_turn(before: GameState, events: Array, after: GameState) -> bool:
 		return false
 	exit_closeup(true)
 	shown = before
+	_play_after = after
 	seats = map.seat_order() if map != null else UiPalette.seat_order(after)
 	armies.speed = float(GameSettings.load_from().playback_speed)
 	armies.seats = seats
@@ -402,6 +458,7 @@ func play_turn(before: GameState, events: Array, after: GameState) -> bool:
 	wv.clear_fx()
 	wv.set_fortify_ghosts({})
 	_paint_owners(before)
+	_sync_vision(before) ## M5-3: the veil of the turn's start; the state after's sight takes the ground at the re-form
 	_playing = true
 	armies.play(plan, before, after)
 	_frame_action(plan)
@@ -476,8 +533,36 @@ func _on_beat(kind: String, index: int) -> void:
 	var ev := Choreo.sound_for(kind, index)
 	if ev.is_empty():
 		return
+	if not sound_seen(armies.beat_province):
+		return ## M5-3: sound only for what the viewer sees (nothing out of sight is heard)
 	sounds.append(ev)
 	GameAudio.sfx(ev)
+
+
+## M5-3 (§2.9, §12.1): whether a beat at `province_id` may be heard: always without fog, and for a beat with no place; in a fog game
+## when the viewer saw the province (in clear sight or glimpsed) at the start of the turn or sees it now.
+func sound_seen(province_id: String) -> bool:
+	if province_id.is_empty() or not Vision.active(shown if shown != null else (map.state if map != null else null)):
+		return true
+	return _seen_level(province_id, shown) or _seen_level(province_id, _play_after)
+
+
+func _seen_level(province_id: String, st: GameState) -> bool:
+	if st == null or not Vision.active(st):
+		return false
+	var level := String(FogRules.sight(st, st.view_of).get(province_id, FogRules.VEILED))
+	return level != FogRules.VEILED
+
+
+## M5-3: a ritual's beat plays (Playback.plan's "rituals"): where it starts and falls. M5-9 draws the effects; the board keeps the beat.
+func _on_ritual_beat(from: String, at: String, ritual: String, _index: int) -> void:
+	rituals_played.append({"from": from, "at": at, "ritual": ritual})
+
+
+## M5-3: the re-form begins: the state after's sight takes the ground (the veil lifts where the viewer now sees, and falls where it no longer does).
+func _on_reform_started() -> void:
+	if _play_after != null:
+		_sync_vision(_play_after)
 
 
 ## A battle's exchange begins: the playback camera leans in on it (it eases there; any pan takes over).
@@ -541,10 +626,12 @@ func _on_captured(province_id: String, owner_id: String) -> void:
 
 func _on_playback_finished() -> void:
 	_playing = false
+	_play_after = null
 	wv.clear_sweeps()
 	shown = armies.state
 	if shown != null:
 		_paint_owners(shown)
+		_sync_vision(shown)
 	if overlay != null:
 		overlay.end_playback()
 	if map != null and map.state != null and map.state != shown:

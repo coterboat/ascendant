@@ -298,6 +298,54 @@ rung. The studio has no such machine, so the method is fixed and the number wait
 
 Alex's Mac (Apple M4, the reference row) runs step 1 at rung 0 for the numbers in M3b's PR (#109).
 
+## Fog of war on the board (M5-3, #114)
+
+design/M5_MAGIC_FOG.md §2, §12.1; 3D_DIRECTION §6.3, §6.6, §10.2. In a fog game the map screen holds the viewer's view
+(`GameSession.state_for`, M5-2), and the board draws only that: it has no way to the truth (`tests/test_fog_board.gd`
+scans every `world3d/` script for a truth accessor and checks that changing anything hidden from the viewer,
+`FogTestKit.perturb_hidden`, changes nothing the board builds or plays). With fog off, none of this exists: the vision
+switch is off, every older board test holds unchanged.
+
+- **The vision texture** (`vision.gd` pure, `world_view.gd set_vision`): a 16 × 1 R8 texture beside `owner_tex`, one
+  texel per province index: 0 never seen, 85 remembered, 170 glimpsed, 255 in clear sight. The board rewrites it
+  whenever a state is stood (a new turn, a handoff): 16 bytes and one `ImageTexture.update`.
+- **The ground** (`ground_common.gdshaderinc`, both looks): out of sight, the terrain is desaturated 70% under a cool
+  veil at 40% with 45° hatching at a constant screen size (kept off the owner's inner band); never seen adds slow clouds
+  (`fog_drift`, standing still from rung 3, `WorldView.FOG_STILL_RUNG`); glimpsed has a faint veil (13%, 12% drained: 10% did
+  not read at the whole-map zoom). The owner's wash goes on after the veil and stays true. One uniform branch
+  (`fog_on`) and one texture fetch; the trees and rocks are geometry and stay as they are (the spec's "terrain still reads
+  from its geometry").
+- **Armies are the view's armies**: a rival's stand-ins draw as blocks from the shown counts under a "≈20" plate (the 2D
+  badge's words, `FogView.badge_text`); a ruler stand-in is its ruler; a rival's yard shows its stand-in or ghost blocks,
+  or stands empty under the veil. **Remembered armies** are grey-blue translucent ghosts in their own material
+  (`shaders/memory_ghost.gdshader`, parented under `armies.memory_root`, no banner, tent, fire, tray or shadow), a step
+  fainter every 2 turns of age (`Vision.ghost_step`, `ghost_alpha`), plate "≈10 · 3 turns ago"; at the far zoom their stand is
+  grey with no banner. `ghost_count()` stays the queued recruits' ghosts only (`memory_list()` is the memories).
+- **The playback** is built from `view_before` and the viewer's own report, synthetic events included
+  (`playback.gd`): a rebuilt rival move (pooled, rounded, no true ids) becomes a seen march of its stand-in's block
+  (alias `~seen~<id>`), walking to the border and fading when the road led out of sight; a stand-in that appears or
+  grows fades in where it stands (it never marches in through a gate, as a recruit does, and plays no recruit sound);
+  `sighting_changed`, `memory_added` and `sighting_lost` fold into the board model exactly as
+  `FogRules.apply_view_events` does. The ground's veil follows: the turn's start until the re-form, then the state after's.
+  A ritual's beat (`plan["rituals"]`, `Armies.ritual_beat`) starts at its caster only for the viewer's own cast; one from
+  a hidden caster starts at the target. M5-9 draws the effects there.
+- **Sound only for what the viewer sees**: a march or battle in the viewer's own report is heard; a capture or fort the
+  viewer was only told of (a rebuilt event) is heard only when the province was in sight at the start or end of the turn
+  (`Board3D.sound_seen`).
+- **Hotseat**: `stand()` rewrites the vision texture and every army at once, so the handoff's rebuild under the cover is
+  the next seat's; a change of viewer also puts the camera on the new seat's capital (`_new_seat`), so the first frame never
+  shows where the last seat was looking.
+- **Explained**: the legend has a fog section; a plate that isn't in clear sight says so under it ("glimpsed", "out of
+  sight / seen 3 turns ago", "never seen") with the level's words and the province's fog paragraph on hover; a province's
+  tooltip says how the ground shows its level; a stand-in's tooltip says its blocks are an estimate, a ghost's how old it is
+  and that it fades a step every 2 turns.
+- **Cost** (Apple M4, Metal, 1600 × 900 window, the whole map with half of it never seen: veil, hatching and clouds all
+  on, a shared machine). Metal gives no GPU timestamps through `viewport_get_measured_render_time_gpu` (it reads 0), so the
+  veil was measured as frame time, switched off and on in turn: within the noise at 1× (rung 0: -0.03 ms, rung 3: +0.06 ms),
+  and +0.32 ms at four times the pixels (the viewport's 3D scale 2.0, six interleaved pairs, every pair the same way): about
+  **0.08 ms a frame at rung 0**, under the 0.2 ms budget. CPU: `Vision.levels` 0.06 ms and `set_vision` 0.003 ms a turn; a
+  whole fog `stand()` (armies, plates, sight) 6 ms (`tests/test_fog_board.gd` checks the three with `--perf`).
+
 ## Battles on the land (M3b)
 
 A battle is played back in 3D on the province where it happened (design/3D_DIRECTION.md 7), driven entirely by

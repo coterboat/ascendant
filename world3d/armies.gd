@@ -51,6 +51,8 @@ const WorldView := preload("res://world3d/world_view.gd")
 const SiegeBoard := preload("res://world3d/siege_board.gd")
 const SH_GHOST := preload("res://world3d/shaders/ghost.gdshader")
 const SH_SMOKE := preload("res://world3d/shaders/smoke.gdshader")
+const SH_MEMORY := preload("res://world3d/shaders/memory_ghost.gdshader")
+const Vision := preload("res://world3d/vision.gd")
 const SPEED := 21.0 ## march speed, world units a second at 1x
 const IN_SPEED := 24.0 ## recruits marching in
 const GAP := 4.4 ## between pairs in a column
@@ -91,6 +93,11 @@ signal beat(kind: String, index: int)
 signal playback_finished
 ## M3c S-4: a fort beat plays (the board's dust and shake): `kind` from Choreo.FORT_BEATS, at the fort's province.
 signal fort_beat(province_id: String, kind: String, index: int)
+## M5-3: the re-form begins: the board shows the state after's sight from here (the veil lifts or falls as everyone re-forms).
+signal reform_started
+## M5-3: a ritual's beat (Playback.plan's "rituals"): where it starts (`from`, "" when the caster is hidden from the viewer:
+## the beat then starts at the target) and where it falls. The spell effects (M5-9) hook here; nothing is drawn yet.
+signal ritual_beat(from: String, at: String, ritual: String, index: int)
 
 var wv: Node3D ## world_view.gd
 var prefer_models := true ## false: every figure as its primitive (the preview's P key)
@@ -98,6 +105,7 @@ var state: GameState
 var seats: Array = []
 var armies := {} ## army id -> entry: {"id", "owner", "colour", "emblem", "figs", "types", "banner", "province", "units", "ruler", "ghost"}
 var ghost_root: Node3D
+var memory_root: Node3D ## M5-3: the remembered armies' ghosts (Vision), apart from the queued recruits' ghosts
 var camp_root: Node3D
 var camps := {} ## province id -> {"tents": [{"pos", "yaw", "y", "style", "colour", "ring"}], "fires": [Vector3], "works": [{"pos", "yaw", "y", "style", "colour", "kind"}]}: the camps standing now
 var rings := {} ## M3c S-4: province id -> {"besieger", "camps": [army ids]}: the besieged forts' camp rings standing now
@@ -109,6 +117,7 @@ var _camp_key := ""
 var _engines: Array = [] ## M3c S-4: the siege engines standing at besieged forts: [{"mm", "i", "xf", "fwd", "pos"}]
 var _mats := {}
 var _play: Dictionary = {}
+var beat_province := "" ## M5-3: the province of the beat that just fired ("" when it has none): the board plays sound only for what the viewer sees
 var clock := 0.0
 var fig_scale := 1.0 ## toy scale: figures stand taller when the camera is far, so the army reads
 var blend := 1.0 ## #125: the figures' share against the far-zoom stands (stands.gd): 0 hides them
@@ -121,6 +130,9 @@ func _init() -> void:
 	ghost_root = Node3D.new()
 	ghost_root.name = "Ghosts"
 	add_child(ghost_root)
+	memory_root = Node3D.new()
+	memory_root.name = "Memories"
+	add_child(memory_root)
 	camp_root = Node3D.new()
 	camp_root.name = "Camps"
 	add_child(camp_root)
@@ -133,6 +145,8 @@ func set_fig_shadows(on: bool) -> void:
 		return
 	fig_shadows = on
 	for e in armies.values():
+		if bool(e.get("memory", false)):
+			continue ## a memory ghost casts no shadow
 		for t in e["types"].keys():
 			for mi in e["types"][t]["mis"]:
 				(mi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -242,7 +256,7 @@ func playing() -> bool:
 
 
 ## The board's description of an army: its blocks and leaders, as the layouts need.
-func _desc_of(a: Army) -> Dictionary:
+func _desc_of(a: Army, st: GameState = null) -> Dictionary:
 	var counts := {}
 	var order: Array = []
 	for u in a.units:
@@ -262,8 +276,15 @@ func _desc_of(a: Army) -> Dictionary:
 	if a.commander != null:
 		var ct: String = a.commander.type.id
 		leaders.append({"type": ct, "role": "commander", "rank": 2, "sp": _spacing(ct)})
-	return {"id": a.id, "owner": a.owner, "location": a.location, "blocks": blocks, "leaders": leaders,
+	var d := {"id": a.id, "owner": a.owner, "location": a.location, "blocks": blocks, "leaders": leaders,
 		"units": a.units.size(), "ruler": a.ruler != null, "extras": extras()}
+	if Vision.is_memory(a):
+		## M5-3: a remembered army (a grey ghost): no banner, no tent and no fire, fading a step for every 2 turns of age
+		d["memory"] = true
+		d["step"] = Vision.ghost_step(Vision.age_of(st if st != null else state, a))
+	if Vision.is_stand_in(a):
+		d["stand_in"] = true
+	return d
 
 
 ## The army's cosmetic extras (design 6.2): the standard bearer, and the musician when the model table
@@ -403,8 +424,11 @@ func _layout_fortress(s: GameState, pid: String, y: Dictionary, list: Array, gho
 	var tents: Array = []
 	var fires: Array = []
 	var owner_of := {}
+	var remembered := {} ## M5-3: a remembered army has no tent and no fire
 	for d in list:
 		owner_of[d["id"]] = d["owner"]
+		if bool(d.get("memory", false)):
+			remembered[d["id"]] = true
 	for aid in m["camp"].keys():
 		var placed2: Array = []
 		for f in m["camp"][aid]:
@@ -412,6 +436,8 @@ func _layout_fortress(s: GameState, pid: String, y: Dictionary, list: Array, gho
 			placed2.append({"type": f["type"], "role": f["role"], "pos": w, "yaw": yaw, "y": maxf(t.height_at(w), 0.0)})
 		out["places"][aid] = placed2
 		var owner := String(owner_of.get(aid, ""))
+		if remembered.has(aid):
+			continue
 		for k in m["camp_slots"][aid]:
 			var tp := _camp_point(cf, Muster.camp_tent_point(k))
 			tents.append({"pos": tp, "yaw": yaw, "y": maxf(t.height_at(tp), 0.0), "style": owner, "colour": _colour_of(owner)})
@@ -561,7 +587,7 @@ func _layout_packed(pid: String, y: Dictionary, mine: Array, ghosts: Array, out:
 				for j in need.size():
 					centres.append(Muster.camp_block_centre(k))
 					var tp := _camp_point(cf, Muster.camp_tent_point(k))
-					if d["id"] != "~ghost":
+					if d["id"] != "~ghost" and not bool(d.get("memory", false)):
 						tents.append({"pos": tp, "yaw": yaw, "y": maxf(t.height_at(tp), 0.0), "style": d["owner"], "colour": _colour_of(d["owner"])})
 					k += 1
 				var placed3: Array = []
@@ -569,7 +595,7 @@ func _layout_packed(pid: String, y: Dictionary, mine: Array, ghosts: Array, out:
 					var w2 := _camp_point(cf, f["pos"])
 					placed3.append({"type": f["type"], "role": f["role"], "pos": w2, "yaw": yaw, "y": maxf(t.height_at(w2), 0.0)})
 				placed_of[d["id"]] = placed3
-				if d["id"] != "~ghost":
+				if d["id"] != "~ghost" and not bool(d.get("memory", false)):
 					var fp := _camp_point(cf, Muster.camp_fire_point(first))
 					fires.append(Vector3(fp.x, maxf(t.height_at(fp), 0.0), fp.y))
 			if not tents.is_empty():
@@ -750,6 +776,11 @@ func _make_entry(d: Dictionary, placed: Array, ghost: bool = false) -> Dictionar
 	var e := {"id": d["id"], "owner": d["owner"], "colour": col, "emblem": maxi(seat, 0), "figs": [], "types": {},
 		"province": d["location"], "units": d.get("units", 0), "ruler": d.get("ruler", false), "ghost": ghost,
 		"transformation": AscensionRules.transformation(state, String(d["owner"])) if state != null else ""}
+	if bool(d.get("memory", false)):
+		e["memory"] = true
+		e["step"] = int(d.get("step", 0))
+	if bool(d.get("stand_in", false)):
+		e["stand_in"] = true
 	_fill_entry(e, placed, ghost)
 	return e
 
@@ -768,11 +799,12 @@ func _fill_entry(e: Dictionary, placed: Array, ghost: bool = false) -> void:
 		count[sl["type"]] = int(count.get(sl["type"], 0)) + 1
 	var col: Color = e["colour"]
 	var lin: Color = col.srgb_to_linear()
-	var parent: Node = ghost_root if ghost else self
+	var memory: bool = bool(e.get("memory", false)) and not ghost ## M5-3: a remembered army, grey and translucent in its own material
+	var parent: Node = ghost_root if ghost else (memory_root if memory else self)
 	for t in order:
 		## #125: a transformed faction's units wear their variant's model family (Models.variant_of)
 		var vt := Models.variant_of(t, String(e.get("transformation", "")))
-		var pm: Dictionary = {"ready": Models.figure_mesh(t, prefer_models, "ready", "", vt)} if ghost else Models.pose_meshes(t, prefer_models, String(e["owner"]), vt)
+		var pm: Dictionary = {"ready": Models.figure_mesh(t, prefer_models, "ready", "", vt)} if (ghost or memory) else Models.pose_meshes(t, prefer_models, String(e["owner"]), vt)
 		var groups := {}
 		var mis: Array = []
 		var by_mesh := {}
@@ -797,6 +829,9 @@ func _fill_entry(e: Dictionary, placed: Array, ghost: bool = false) -> void:
 			if ghost:
 				mi.material_override = _ghost_mat(col)
 				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			elif memory:
+				mi.material_override = _memory_mat(int(e.get("step", 0)))
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			else:
 				mi.material_override = _figure_mat(fm["tex"])
 				if not fig_shadows:
@@ -805,7 +840,7 @@ func _fill_entry(e: Dictionary, placed: Array, ghost: bool = false) -> void:
 			by_mesh[mid] = mis.size()
 			groups[pose] = mis.size()
 			mis.append(mi)
-		e["types"][t] = {"groups": groups, "mis": mis, "lying": (not ghost) and Models.has_pose_model(t, "fallen", prefer_models, vt), "variant": vt}
+		e["types"][t] = {"groups": groups, "mis": mis, "lying": (not ghost) and (not memory) and Models.has_pose_model(t, "fallen", prefer_models, vt), "variant": vt}
 	var k := 0
 	for sl in placed:
 		var f := {"type": sl["type"], "role": sl["role"],
@@ -823,8 +858,11 @@ func _fill_entry(e: Dictionary, placed: Array, ghost: bool = false) -> void:
 				f["keep_scale"] = true
 		e["figs"].append(f)
 		k += 1
+	if memory and e.get("banner") != null:
+		(e["banner"] as Node).queue_free() ## a memory carries no banner
+		e["banner"] = null
 	if not e.has("banner") or e["banner"] == null:
-		if not ghost:
+		if not ghost and not memory:
 			var bn: Node3D = wv.make_banner(col, e["emblem"], 11.0, Vector2(5.2, 3.4))
 			add_child(bn)
 			e["banner"] = bn
@@ -849,6 +887,17 @@ func _ghost_mat(col: Color) -> ShaderMaterial:
 		gm.shader = SH_GHOST
 		gm.set_shader_parameter("team", col)
 		_mats[key] = gm
+	return _mats[key]
+
+
+## M5-3: a remembered army's material for its fade step (Vision.ghost_alpha): grey and translucent, one per step.
+func _memory_mat(step: int) -> ShaderMaterial:
+	var key := "memory:%d" % step
+	if not _mats.has(key):
+		var mm := ShaderMaterial.new()
+		mm.shader = SH_MEMORY
+		mm.set_shader_parameter("alpha", Vision.ghost_alpha(step))
+		_mats[key] = mm
 	return _mats[key]
 
 
@@ -1063,6 +1112,28 @@ func ghost_count() -> int:
 	return n
 
 
+## M5-3: the remembered armies standing now (a fog game): army id -> {"province", "step" (how many fade steps old), "alpha", "figs"},
+## apart from the queued recruits' ghosts (ghost_count stays exact).
+func memory_list() -> Dictionary:
+	var out := {}
+	for id in armies.keys():
+		var e: Dictionary = armies[id]
+		if bool(e.get("memory", false)):
+			var step := int(e.get("step", 0))
+			out[id] = {"province": e["province"], "step": step, "alpha": Vision.ghost_alpha(step), "figs": (e["figs"] as Array).size()}
+	return out
+
+
+## M5-3: the rival stand-ins standing now (a fog game), memories included: army id -> true for a memory, false for a sighting.
+func stand_in_list() -> Dictionary:
+	var out := {}
+	for id in armies.keys():
+		var e: Dictionary = armies[id]
+		if bool(e.get("stand_in", false)):
+			out[id] = bool(e.get("memory", false))
+	return out
+
+
 ## Where every ghost figure stands now: [{"type", "pos", "province"}] (tests).
 func ghost_points() -> Array:
 	var out: Array = []
@@ -1256,10 +1327,16 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 	var departing := {}
 	for m in plan.get("marches", []):
 		var hops: Array = m["hops"]
-		if hops.size() >= 2:
+		if hops.size() >= 2 and not m.has("alias_of"):
 			departing[m["army"]] = {"to": hops[hops.size() - 1], "via": hops[1] if hops.size() > 2 else ""}
 	_set_ghosts([])
 	show_state(before, seats, {"departing": departing})
+	## M5-3: a rival column the viewer saw march (Playback.plan's seen marches) is its stand-in's block, under an alias, so
+	## the view after's stand-ins (new ids, or the same ids at other places) fade in beside it as it walks off and fades
+	for m in plan.get("marches", []):
+		if m.has("alias_of") and armies.has(String(m["alias_of"])):
+			armies[String(m["army"])] = armies[String(m["alias_of"])]
+			armies.erase(String(m["alias_of"]))
 	var t = wv.terrain
 	var lay_after := layout_of(after)
 	var dest: Dictionary = lay_after["places"]
@@ -1276,6 +1353,13 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 			stops[aid].append(bi)
 	var beats: Array = []
 	var T0 := 0.35
+	## M5-3: the rituals phase (before movement): each ritual's beat starts where the viewer may see it start (a cast of the
+	## viewer's own: at its caster; one from a hidden caster: at its target), and falls at its target. Spell effects hook here (M5-9).
+	var ritual_i := 0
+	for r in plan.get("rituals", []):
+		beats.append({"kind": "ritual", "t": 0.05 + 0.04 * ritual_i, "phase": "rituals", "index": ritual_i, "from": String(r.get("from", "")),
+			"at": String(r.get("at", "")), "ritual": String(r.get("ritual", "")), "province": String(r.get("at", ""))})
+		ritual_i += 1
 	## the full way of every march, and where it is cut for its battles
 	var ways := {}
 	for m in marches:
@@ -1438,7 +1522,7 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 		var fkind := String(Choreo.FORT_BEATS.get(fb["kind"], ""))
 		var dur: float = BREACH_BEAT if fb["kind"] == "walls_breached" else SIEGE_BEAT
 		fort_steps.append({"t": ts, "apply": ts + dur * 0.7, "t1": ts + dur, "beat": fb, "kind": fkind, "index": fort_i})
-		beats.append({"kind": fkind, "t": ts, "phase": "sieges", "index": fort_i})
+		beats.append({"kind": fkind, "t": ts, "phase": "sieges", "index": fort_i, "province": _heard_at(fb)})
 		if fb["kind"] in ["siege_started", "walls_damaged"]:
 			_siege_strikes(fb, ts, dur)
 		fort_i += 1
@@ -1459,7 +1543,7 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 				break
 		var tc: float = t_c0 + i * CAPTURE_STEP
 		caps.append({"province": c["province"], "owner": c["owner"], "t": tc, "done": false, "from": origin, "kind": c.get("kind", "captured")})
-		beats.append({"kind": "capture", "t": tc, "phase": "capture", "index": i})
+		beats.append({"kind": "capture", "t": tc, "phase": "capture", "index": i, "province": _heard_at(c)})
 	for aid in pending_walk:
 		var e4: Dictionary = armies[aid]
 		var target3: Array = dest.get(aid, [])
@@ -1493,7 +1577,7 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 				tr = float(cp["t"]) + 0.3
 		var k2 := String(Choreo.FORT_BEATS.get(fb2["kind"], ""))
 		fort_steps.append({"t": tr, "apply": tr + 0.2, "t1": tr + SIEGE_BEAT, "beat": fb2, "kind": k2, "index": fort_i})
-		beats.append({"kind": k2, "t": tr, "phase": "capture", "index": fort_i})
+		beats.append({"kind": k2, "t": tr, "phase": "capture", "index": fort_i, "province": _heard_at(fb2)})
 		fort_i += 1
 		t_c_end = maxf(t_c_end, tr + SIEGE_BEAT)
 	if not pending_walk.is_empty():
@@ -1538,7 +1622,7 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 		var tq: float = t_reform + 0.3 + sites.size() * 0.35
 		var k3 := String(Choreo.FORT_BEATS.get(fb3["kind"], ""))
 		fort_steps.append({"t": tq, "apply": tq + 0.1, "t1": tq + SIEGE_BEAT, "beat": fb3, "kind": k3, "index": fort_i})
-		beats.append({"kind": k3, "t": tq, "phase": "recruitment", "index": fort_i})
+		beats.append({"kind": k3, "t": tq, "phase": "recruitment", "index": fort_i, "province": _heard_at(fb3)})
 		sites.append(fb3)
 		fort_i += 1
 	if not recruits.is_empty() or not arrivals.is_empty() or not sites.is_empty():
@@ -1570,6 +1654,13 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 		## each fort beat; the camps and rings of the state after, which a siege's beats put up or fold
 		"fort_steps": fort_steps, "fm": fm, "worked": SiegeBoard.worked_sites(fm.get("works", {})), "worked_done": false,
 		"camps_after": lay_after["camps"], "rings_after": lay_after["rings"]}
+
+
+## M5-3: the province a beat is heard at, for the board's sound gate (Board3D.sound_seen): the province of a PUBLIC beat (a rival's
+## capture or fort the viewer was only told of: its event is rebuilt), "" for a beat of the viewer's own (a battle fought, a march, a
+## recruit), which it always hears. Without fog nothing is rebuilt, so every beat is heard.
+func _heard_at(beat_plan: Dictionary) -> String:
+	return String(beat_plan.get("province", "")) if bool(beat_plan.get("rebuilt", false)) else ""
 
 
 ## M3c S-4: a siege's strike at the walls (siege_started, walls_damaged): the besieging armies turn to the walls and
@@ -2199,7 +2290,11 @@ func step_playback(delta: float, skipping: bool = false) -> void:
 					var ci: int = int(bt.get("index", 0))
 					if ci < (_play["clashes"] as Array).size():
 						clash_started.emit(String(_play["clashes"][ci]["label"]))
+				beat_province = String(bt.get("province", ""))
+				if bt["kind"] == "ritual":
+					ritual_beat.emit(String(bt.get("from", "")), String(bt.get("at", "")), String(bt.get("ritual", "")), int(bt.get("index", 0)))
 				beat.emit(String(bt["kind"]), int(bt.get("index", 0)))
+				beat_province = ""
 	## M3c S-4: the fort beats: the camps go up or fold as each fires, the forts' looks change at its end
 	for st in _play.get("fort_steps", []):
 		if not st.has("fired") and (now >= float(st["t"]) or skipping):
@@ -2400,6 +2495,7 @@ func _march_in_step(f: Dictionary, now: float, skipping: bool) -> void:
 ## they march in through the gate, elsewhere they appear at the edge of the formation. The figures left
 ## over and the fallen sink away.
 func _begin_reform() -> void:
+	reform_started.emit() ## M5-3: the board shows the state after's sight from here
 	var after: GameState = _play["after"]
 	var dest: Dictionary = _play["dest"]
 	var t = wv.terrain
@@ -2417,6 +2513,7 @@ func _begin_reform() -> void:
 	_work_sites()
 	_push_forts()
 	for a in after.armies:
+		var stand_in := not a.seen.is_empty() ## M5-3: a rival's sighting in a view: it fades in, it never marches in as a recruit would
 		var yard_a: Dictionary = wv.yard_of(a.location, after)
 		var slots: Array = dest.get(a.id, [])
 		var placed: Array = []
@@ -2447,6 +2544,11 @@ func _begin_reform() -> void:
 					item["in_path"] = PackedVector2Array([f0["pos"], gq[1], gq[0], sl["pos"]])
 					item["in_t0"] = t_reform + 0.1
 					item["keep_scale"] = true
+			elif stand_in:
+				item["from_pos"] = sl["pos"]
+				item["from_yaw"] = sl["yaw"]
+				item["from_y"] = sl["y"]
+				item["from_scale"] = 0.0
 			else:
 				## a new figure: through the gate at a fortress (M3c S-4: at any fort, in a game with sieges), else
 				## from the edge of its formation
@@ -2489,9 +2591,13 @@ func _begin_reform() -> void:
 			e = e_old
 			e["units"] = a.units.size()
 			e["province"] = a.location
+			var dd := _desc_of(a, after) ## M5-3: a glimpsed army that became a memory (or the reverse) changes its material here
+			e["memory"] = bool(dd.get("memory", false))
+			e["step"] = int(dd.get("step", 0))
+			e["stand_in"] = stand_in
 			_fill_entry(e, placed)
 		else:
-			e = _make_entry(_desc_of(a), placed)
+			e = _make_entry(_desc_of(a, after), placed)
 		armies[a.id] = e
 		seen[a.id] = true
 	## the fallen armies: whatever still lies there sinks away

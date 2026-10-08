@@ -14,10 +14,24 @@
 ##   apply_events(model, events)    -> the model after those events (only the events are read)
 ##   plan(before, events, after)    -> the beats: marches, battles, captures, recruits and arrivals; with sieges the
 ##                                     fort beats (sieges, walls, construction) and each battle's siege block
+##
+## Under fog (M5-3, #114; design/M5_MAGIC_FOG.md §2.8, §12.1) the same three functions run on one viewer's view: `before`
+## and `after` are its views (FogRules.view_state, GameSession.view_before / state_for) and `events` its own turn report
+## (GameSession.turn_report_for), synthetic events included. Nothing here reads the truth, so nothing it plans can come
+## from state the viewer is not shown:
+##   * a rival column the viewer saw march (a rebuilt `army_moved`: pooled and rounded, no true ids) becomes a "seen"
+##     march of its stand-in's block (the stand-ins of that faction at the place it left), to the border and a fade when
+##     the road led out of sight;
+##   * the synthetic events (sighting_changed, memory_added, sighting_lost, army_changed) set or remove the army they name
+##     in the board model, exactly as FogRules.apply_view_events does, and are listed as "sightings" for the re-form;
+##   * a ritual's beat starts at its caster only when the viewer's own report names it (the viewer's own cast); a ritual
+##     that fell on the viewer's land from a hidden caster starts at the target ("rituals").
 extends RefCounted
 
 const SiegeBoard := preload("res://world3d/siege_board.gd")
 const BATTLES := ["battle", "border_battle"]
+## M5-3: the ritual events the board's beats read (design/M5_MAGIC_FOG.md §12.3): who sees which is FogData.AUDIENCE's.
+const RITUAL_EVENTS := ["ritual_cast", "ritual_turned_aside", "ritual_fell"]
 
 
 ## What the board shows of a state: who owns each province and where every army stands (with sieges, its forts).
@@ -55,6 +69,18 @@ static func apply_events(model: Dictionary, events: Array) -> Dictionary:
 	for e in events:
 		var provs: Array = e.get("provinces", [])
 		var ids: Array = e.get("armies", [])
+		if bool(e.get("synthetic", false)):
+			## M5-3: what is left over between the viewer's view before and after (FogRules.synthetic_events): a sighting
+			## that appeared, changed or became a memory stands where it says; one that went is gone
+			var sn: Dictionary = e.get("numbers", {})
+			var vid := String(sn.get("view_id", ""))
+			if String(e.get("type", "")) == "sighting_lost" or bool(sn.get("gone", false)):
+				armies.erase(vid)
+				army_owner.erase(vid)
+			else:
+				armies[vid] = String(sn.get("location", ""))
+				army_owner[vid] = String(sn.get("owner", ""))
+			continue
 		if model.has("forts") and String(e.get("type", "")) in ["recruited", "ruler_arrived"] and not ids.is_empty():
 			var fids0: Array = e.get("factions", [])
 			if not army_owner.has(ids[0]) and not fids0.is_empty():
@@ -68,6 +94,8 @@ static func apply_events(model: Dictionary, events: Array) -> Dictionary:
 					armies.erase(aid)
 			"ruler_died":
 				var aid := String((e.get("numbers", {}) as Dictionary).get("army", ""))
+				if aid.is_empty() and not ids.is_empty():
+					aid = String(ids[0]) ## M5-3: a ruler's death as a rival's viewer is told it names the stand-in, not true numbers
 				if not aid.is_empty():
 					armies.erase(aid)
 			"captured", "vassal_joined":
@@ -111,6 +139,9 @@ static func plan(before: GameState, events: Array, after: GameState) -> Dictiona
 	var recruits: Array = []
 	var arrivals: Array = []
 	var forts: Array = []
+	var rituals: Array = []
+	var sightings: Array = []
+	var claimed := {}  # M5-3: stand-in ids a seen march has taken
 	var fallen := {}
 	var marching := {}  # army id -> index in marches
 	var battle_at := {}  # province id -> battle index (province battles)
@@ -118,11 +149,19 @@ static func plan(before: GameState, events: Array, after: GameState) -> Dictiona
 		var t := String(e.get("type", ""))
 		var provs: Array = e.get("provinces", [])
 		var ids: Array = e.get("armies", [])
+		if bool(e.get("synthetic", false)):
+			var sn: Dictionary = e.get("numbers", {})
+			sightings.append({"kind": t, "id": String(sn.get("view_id", "")), "province": String(sn.get("location", "")),
+				"owner": String(sn.get("owner", "")), "level": String(sn.get("level", "")), "gone": t == "sighting_lost" or bool(sn.get("gone", false))})
+			continue
+		if t in RITUAL_EVENTS:
+			rituals.append(_ritual_beat(e, before))
+			continue
 		if SiegeBoard.FORT_EVENTS.has(t) and not provs.is_empty():
 			var fb := {"kind": t, "province": provs[0], "phase": String(e.get("phase", "")),
 				"numbers": (e.get("numbers", {}) as Dictionary).duplicate(true), "armies": ids.duplicate(),
 				"factions": (e.get("factions", []) as Array).duplicate(), "text": TurnReportText.line(e, events, after),
-				"event": e}
+				"event": e, "rebuilt": bool(e.get("rebuilt", false))}
 			fb["label"] = SiegeBoard.beat_label(fb, after)
 			forts.append(fb)
 			continue
@@ -146,6 +185,10 @@ static func plan(before: GameState, events: Array, after: GameState) -> Dictiona
 					marching[aid] = marches.size()
 					marches.append({"army": aid, "owner": a.owner, "hops": [a.location, other], "to_border": true, "survived": false})
 		elif t == "army_moved":
+			if bool(e.get("rebuilt", false)):
+				## M5-3: a rival column the viewer saw (pooled and rounded: no true ids): its stand-in's block marches
+				marches.append_array(_seen_marches(before, after, e, claimed))
+				continue
 			if ids.is_empty() or provs.size() < 2:
 				continue
 			var aid2 := String(ids[0])
@@ -157,7 +200,8 @@ static func plan(before: GameState, events: Array, after: GameState) -> Dictiona
 			var fids: Array = e.get("factions", [])
 			if provs.is_empty() or fids.is_empty():
 				continue
-			captures.append({"province": provs[0], "owner": fids[0], "battle": int(battle_at.get(provs[0], -1)), "kind": t})
+			captures.append({"province": provs[0], "owner": fids[0], "battle": int(battle_at.get(provs[0], -1)), "kind": t,
+				"rebuilt": bool(e.get("rebuilt", false))})
 		elif t == "recruited":
 			if ids.is_empty() or provs.is_empty():
 				continue
@@ -167,6 +211,8 @@ static func plan(before: GameState, events: Array, after: GameState) -> Dictiona
 				arrivals.append({"army": ids[0], "province": provs[0]})
 		elif t == "ruler_died":
 			var dead := String((e.get("numbers", {}) as Dictionary).get("army", ""))
+			if dead.is_empty() and not ids.is_empty():
+				dead = String(ids[0]) ## M5-3: told as a rival's viewer, it names the ruler's stand-in
 			if not dead.is_empty() and not fallen.has(dead):
 				fallen[dead] = battles.size() - 1
 	## a march that fell in a battle is marked as fallen (a border battle's winner that lost every fighter)
@@ -174,10 +220,72 @@ static func plan(before: GameState, events: Array, after: GameState) -> Dictiona
 		if fallen.has(m["army"]):
 			m["survived"] = false
 	return {"marches": marches, "battles": battles, "captures": captures, "recruits": recruits, "arrivals": arrivals,
-		"fallen": fallen, "turn": after.current_turn, "forts": forts}
+		"fallen": fallen, "turn": after.current_turn, "forts": forts, "rituals": rituals, "sightings": sightings}
 
 
-## True when a plan has nothing to play (no march, battle, capture, recruit, arrival or fort beat).
+## M5-3: the seen marches of one rebuilt `army_moved` (FogRules._rebuilt_move: the armies of one rival that left a province
+## the viewer could see by the same first step, pooled): the block of each stand-in of that faction at the place it left that
+## no other seen march has taken (the ruler's only when the move names a ruler), under the alias "~seen~<stand-in id>". The
+## march walks to the border and fades when the faction has no sighting at its end in the view after (the road led out
+## of sight), else the whole way to the stage; either way the view after's own stand-ins fade in beside it. Pure: the stand-ins
+## are read from `before`, the viewer's own view.
+static func _seen_marches(before: GameState, after: GameState, e: Dictionary, claimed: Dictionary) -> Array:
+	var n: Dictionary = e.get("numbers", {})
+	var fid := String(n.get("faction", ""))
+	var from := String(e.get("view_from", n.get("from", "")))
+	var to := String(e.get("view_to", n.get("to", "")))
+	var out: Array = []
+	if fid.is_empty() or from.is_empty() or to.is_empty():
+		return out
+	var named: Array = n.get("types", [])
+	var away := true
+	for a in after.armies:
+		if a.owner == fid and a.location == to and String(a.seen.get("level", "")) != FogData.MEMORY:
+			away = false
+			break
+	var ids: Array = []
+	for a in before.armies:
+		if a.owner != fid or a.location != from or (String(a.seen.get("level", "")) != FogRules.GLIMPSE and String(a.seen.get("level", "")) != FogRules.CLEAR):
+			continue
+		if claimed.has(a.id) or (a.ruler != null and not named.has(a.ruler.type.id)):
+			continue
+		ids.append(a.id)
+	ids.sort()
+	for id in ids:
+		claimed[id] = true
+		out.append({"army": "~seen~" + String(id), "alias_of": String(id), "owner": fid, "hops": [from, to], "to_border": away,
+			"survived": false, "seen": true})
+	return out
+
+
+## M5-3: one ritual's beat: {"kind" (the event type), "ritual", "faction" (the caster's), "from", "at", "global"}. `from` is where
+## it starts: the viewer's own cast at its caster (the event names it), a turned-aside ritual of the viewer's at its caster's army;
+## "" for everything else, so a ritual that fell on the viewer's land from a hidden caster starts at the target, and a heralded
+## global ritual (no province) starts nowhere.
+static func _ritual_beat(e: Dictionary, before: GameState) -> Dictionary:
+	var t := String(e.get("type", ""))
+	var provs: Array = e.get("provinces", [])
+	var n: Dictionary = e.get("numbers", {})
+	var facs: Array = e.get("factions", [])
+	var from := ""
+	var at := String(provs.back()) if not provs.is_empty() else ""
+	match t:
+		"ritual_cast":
+			if not bool(e.get("rebuilt", false)) and not provs.is_empty():
+				from = String(provs[0])
+		"ritual_turned_aside":
+			var ids: Array = e.get("armies", [])
+			var caster := before.find_army(String(ids[0])) if not ids.is_empty() and before != null else null
+			if caster != null and caster.seen.is_empty():
+				from = caster.location
+	return {"kind": t, "ritual": String(n.get("ritual", "")), "faction": String(facs[0]) if not facs.is_empty() else "", "from": from, "at": at,
+		"global": bool(n.get("global", false)) or at.is_empty()}
+
+
+## True when a plan has nothing to play (no march, battle, capture, recruit, arrival or fort beat). M5-3: a turn that only changes
+## what the viewer sees (sightings: a block fading into the veil, a ghost appearing) is not played for itself: it would be a few
+## seconds of nothing most turns of a fog game. The board shows the view after at once, and the report says what was seen;
+## in a turn that does play, the sightings animate with the re-form.
 static func is_empty(plan: Dictionary) -> bool:
 	for k in ["marches", "battles", "recruits", "arrivals", "captures", "forts"]:
 		if not (plan.get(k, []) as Array).is_empty():

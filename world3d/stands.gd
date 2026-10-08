@@ -27,6 +27,7 @@ const FIG_PX := 22.0 ## a man-sized stand figure's height on screen; wide or lon
 const FIG_FIT := 0.78 ## the share of the plate's width a stand figure may take
 const MAX_TYPES := 3
 const EXTRAS := ["bearer", "musician"]
+const MEMORY_COLOUR := Color(0.34, 0.38, 0.47) ## M5-3: a remembered army's stand is grey (and has no banner), as its ghosts are
 
 var wv: Node3D ## world_view.gd
 var k := 0.0 ## 0 the figures, 1 the stands
@@ -122,8 +123,10 @@ static func plan_of(armies: Node3D) -> Dictionary:
 			first[order[j]] = j
 		order.sort_custom(func(a, b): return int(counts[a]) > int(counts[b]) or (int(counts[a]) == int(counts[b]) and int(first[a]) < int(first[b])))
 		var facing := dir.normalized() if dir.length() > 0.01 else Vector2(0, -1)
-		out[id] = {"pos": sum / float(n), "yaw": atan2(-facing.x, -facing.y), "types": order.slice(0, MAX_TYPES), "colour": e["colour"],
-			"emblem": int(e["emblem"]), "ruler": bool(e.get("ruler", false)), "count": n,
+		var memory: bool = bool(e.get("memory", false))
+		out[id] = {"pos": sum / float(n), "yaw": atan2(-facing.x, -facing.y), "types": order.slice(0, MAX_TYPES),
+			"colour": MEMORY_COLOUR if memory else e["colour"],
+			"emblem": int(e["emblem"]), "ruler": bool(e.get("ruler", false)), "count": n, "memory": memory,
 			"transformation": String(e.get("transformation", ""))}
 	return out
 
@@ -218,8 +221,9 @@ func _draw_stands() -> void:
 			var off: Vector2 = spots[j] * (r * 0.62)
 			var at: Vector3 = c + basis * Vector3(off.x, 0.0, off.y) + Vector3.UP * (r * 0.35) ## on the plate's top
 			by_type[t].append([Transform3D(basis.scaled(Vector3.ONE * maxf(figure_scale(String(types[j])) * k, 0.0001)), at), lin])
-		## the banner at the plate's edge on the screen's right, where no figure and no plate hides it
-		_banner(String(id), s, c + right * (r * 0.92))
+		## the banner at the plate's edge on the screen's right, where no figure and no plate hides it (a memory has none)
+		if not bool(s.get("memory", false)):
+			_banner(String(id), s, c + right * (r * 0.92))
 	_fill(_plates, plain)
 	_fill(_ruler_plates, rulers)
 	for t in by_type.keys():
@@ -232,7 +236,7 @@ func _draw_stands() -> void:
 		if not by_type.has(t2):
 			_fill(_figs[t2], [])
 	for id2 in _banners.keys().duplicate():
-		if not stands.has(id2):
+		if not stands.has(id2) or bool((stands[id2] as Dictionary).get("memory", false)):
 			(_banners[id2] as Node).queue_free()
 			_banners.erase(id2)
 
