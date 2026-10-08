@@ -458,7 +458,7 @@ static func _line_at(i: int, ctx: Dictionary) -> String:
 ## The event's own text, as `viewer` reads it (M4-4): a faction's own transformation speaks to it.
 static func own_text(e: Dictionary, viewer: String) -> String:
 	var factions: Array = e.get("factions", [])
-	if String(e.get("type", "")) == "transformed" and not viewer.is_empty() and not factions.is_empty() and String(factions[0]) == viewer:
+	if ["transformed", "research_done"].has(String(e.get("type", ""))) and not viewer.is_empty() and not factions.is_empty() and String(factions[0]) == viewer:
 		var own := String(e.get("numbers", {}).get("own_text", ""))
 		if not own.is_empty():
 			return own

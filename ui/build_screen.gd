@@ -118,6 +118,8 @@ var _economy := {}  # "gold" / "income" -> Label
 var _starting_label: Label
 var _changes := {}  # mandate id -> what it alone changes for this faction (tooltip lines), per builder
 var _model: GameState  # data only: faction names, capitals, rosters
+var _first_use_state: GameState = null  # M5-8: a magic start on this land, for Tithe of Blood's "first use" line
+var _first_use_key := ""
 var _ruler_group: ButtonGroup
 var _icons := {}  # the outlined unticked icons, by size and shape
 
@@ -438,6 +440,18 @@ func _state_for(build: Dictionary) -> GameState:
 	return GameState.with_rulers(_seed(), {faction_id: build}, [])
 
 
+## M5-8 (§7.1): when a mandate of magic first gets used ("First use: Far Sight once you have Shamans ..."), from the research
+## rules at the starting land; "" for every other mandate.
+func _first_use(mid: String) -> String:
+	if mid != MagicRules.TITHE_OF_BLOOD or not _magic_on():
+		return ""
+	var key := "%s|%d" % [faction_id, _seed()]
+	if _first_use_state == null or _first_use_key != key:  # the research rate is the land's, so any build will do
+		_first_use_state = _state_for(RulerRules.preset_build(RulerRules.balanced_preset(faction_id)))
+		_first_use_key = key
+	return MagicRules.tithe_first_use(_first_use_state, faction_id, game_config.get("fog", false) == true) if _first_use_state != null else ""
+
+
 ## M5-5: the game being built for has magic (the new game screen's "Magic (M5 preview)" box).
 func _magic_on() -> bool:
 	return game_config.get("magic", false) == true
@@ -673,7 +687,7 @@ func _refresh() -> void:
 				TooltipText.wrap_text("%s %s" % [md.effect, String(vassal.text)]))
 			CodexLink.attach(l, String(md.codex), open_codex)
 		else:
-			_rule(l, "%s: %s" % [md.name, md.effect], _mandate_tooltip(mid, []), String(md.codex))
+			_rule(l, ("%s: %s %s" % [md.name, md.effect, _first_use(mid)]).strip_edges(), _mandate_tooltip(mid, []), String(md.codex))
 	if others == 0:
 		var none := _label("NoOtherEffects", "", SMALL_SIZE, UiPalette.TEXT_SECONDARY, true)
 		none.text = "None: no mandate of this build works outside the numbers above." if not mandates.is_empty() \
@@ -747,6 +761,9 @@ func _mandate_tooltip(mid: String, errors: Array) -> String:
 	var lines := PackedStringArray()
 	lines.append("%s (%s)" % [md.name, TooltipText.count(int(md.cost), "power", "power")])
 	lines.append(TooltipText.wrap_text(String(md.effect)))
+	var first_use := _first_use(mid)  # M5-8: when Tithe of Blood first gets used
+	if not first_use.is_empty():
+		lines.append(TooltipText.wrap_text(first_use))
 	lines.append("")
 	var changes := _change_lines(mid)
 	if changes.is_empty():

@@ -171,7 +171,7 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 			push_error("The map layout has no position for province '%s'." % p.id)
 			continue
 		var region := ProvinceRegion.new()
-		region.setup(state, p, MapLayout.position_of(p.id), seats)
+		region.setup(state, p, MapLayout.position_of(p.id), seats, faction_id)
 		region.pressed.connect(select_province)
 		region.army_pressed.connect(select_army)
 		region.codex_requested.connect(request_codex)
@@ -226,6 +226,10 @@ func _apply_map_mode() -> void:
 
 func select_province(province_id: String) -> void:
 	if state == null or state.find_province(province_id) == null:
+		return
+	if casting():  # M5-8: with the cast dialog open, a lit province is the target; any other click changes nothing
+		if cast_dialog.accepts_province(province_id):
+			cast_dialog.select_target(province_id)
 		return
 	# Two-click move: with one of your armies selected, clicking another province orders it there.
 	var mover := state.find_army(selected_army_id)
@@ -403,6 +407,7 @@ func open_cast_dialog(army_id: String, ritual: String = "") -> void:
 		cast_dialog = CastDialog.new()
 		cast_dialog.codex_requested.connect(request_codex)
 		cast_dialog.confirmed.connect(_on_cast_confirmed)
+		cast_dialog.rings_changed.connect(_on_cast_rings)  # M5-8: the board lights the provinces in range and rings the target
 		add_child(cast_dialog)
 	move_child(cast_dialog, get_child_count() - 1)
 	cast_dialog.show_for(orders, army_id, ritual)
@@ -431,6 +436,39 @@ func queue_cast(ritual: String, army_id: String, target: String, pay: String = C
 
 func _on_cast_confirmed(ritual: String, army_id: String, target: String, pay: String, size: int) -> void:
 	queue_cast(ritual, army_id, target, pay, size)
+
+
+## M5-8 (§11.2): the cast dialog lights every province in the ritual's range (a gilt wash and a dashed ring) and rings the
+## target chosen; an empty list clears them. The 3D board draws the same two sets through its own marks (cast_lit, cast_ringed).
+func _on_cast_rings(lit: Array, chosen: String) -> void:
+	for id in regions:
+		regions[id].set_cast_mark(ProvinceRegion.CAST_RING if id == chosen and not chosen.is_empty() \
+			else (ProvinceRegion.CAST_LIT if lit.has(id) else ProvinceRegion.CAST_NONE))
+	if arrow_layer != null:
+		arrow_layer.queue_redraw()
+	_sync_board()
+
+
+## The provinces the cast dialog lights (in the ritual's range), by id, and the one it rings: for the 3D board's marks.
+func cast_lit() -> Dictionary:
+	var out := {}
+	for id in regions:
+		if regions[id].cast_mark == ProvinceRegion.CAST_LIT:
+			out[id] = true
+	return out
+
+
+func cast_ringed() -> Dictionary:
+	var out := {}
+	for id in regions:
+		if regions[id].cast_mark == ProvinceRegion.CAST_RING:
+			out[id] = true
+	return out
+
+
+## True while the cast dialog is open: a click on the board picks a lit province as the target (select_province asks).
+func casting() -> bool:
+	return cast_dialog != null and cast_dialog.visible
 
 
 ## " Removed, because they no longer pass: ..." for a list of removed-order lines, "" for none.
@@ -1134,7 +1172,21 @@ func _add_orders_section() -> void:
 			_style_unit_button(b, ut.id, f.id)
 			b.pressed.connect(queue_recruit.bind(ut.id))
 			details.add_child(b)
+			_add_rank_warning(ut.id, "")  # M5-8
 	_add_ruler_recruit_section()
+
+
+## M5-8 (§3.2, §11.2): under a recruit button, "This army will have 8 second-rank and 6 front-rank fighters: its second rank is
+## exposed", when recruiting it would leave the army's second rank exposed (MagicView.recruit_warning). Nothing otherwise.
+func _add_rank_warning(unit_type_id: String, at: String) -> void:
+	var rank := MagicView.recruit_warning(orders.view_state(), viewing_faction_id, unit_type_id, at, orders.orders())
+	if rank.is_empty():
+		return
+	var warn := _add_text(rank, TooltipText.plain("Exposed second rank", "%s %s" % [rank, RulesCodex.text("trait_mage")]), UiPalette.GILT)
+	warn.name = "RecruitExposed_%s" % unit_type_id.validate_node_name()
+	warn.add_theme_font_size_override("font_size", 15)
+	warn.set_meta("rule_text", true)
+	CodexLink.attach(warn, "trait_mage", request_codex)
 
 
 ## M3a.2: on the 3D board, "View fortress" swoops the camera into the capital's muster yard, where each
@@ -1312,6 +1364,8 @@ func _add_fort_recruit_section(f: Faction) -> void:
 			var why := _add_text(String(fc.reason), TooltipText.plain("Why not", String(fc.reason)), UiPalette.NEGATIVE.lightened(0.25))
 			why.name = "RecruitReason_%s" % ut.id.validate_node_name()
 			why.add_theme_font_size_override("font_size", 15)
+		else:
+			_add_rank_warning(ut.id, at)
 
 
 ## M3c S-3: "Storm now" on the order line of a move into an enemy fort: the fort's storm (one per fort).
@@ -1596,6 +1650,8 @@ func _add_magic_lines(a: Army, box: Control) -> void:
 			RulesCodex.text("summoned")), UiPalette.TEXT_SECONDARY, box)
 		line.name = "FadesLine"
 		CodexLink.attach(line, "summoned", request_codex)
+	if orders != null and a.owner == viewing_faction_id and not FogView.is_stand_in(a):
+		_add_caster_lines(a, box)  # M5-8: "Casters: 2 Sunstone Adepts", then each spell with its number
 	if orders == null or a.owner != viewing_faction_id or MagicRules.casters(state, a).is_empty() or FogView.is_stand_in(a):
 		return
 	if orders.cast_options(a.id).is_empty():
@@ -1612,6 +1668,42 @@ func _add_magic_lines(a: Army, box: Control) -> void:
 	box.add_child(cast)
 
 
+## M5-8 (§11.2: "Casters: 2 Sunstone Adepts. Sunlance 4 damage, Shield of Law 6 units (mastery +0)."): the casters of one of
+## your armies that cast in battle and each spell they cast in your spellbook's order, with its number now and its breakdown
+## (mastery included). A spell the spellbook switches off says so. Nothing for an army with no such caster.
+func _add_caster_lines(a: Army, box: Control) -> void:
+	var line := MagicView.army_line(state, a)
+	if line.is_empty():
+		return
+	var casters := MagicRules.casters(state, a).filter(func(c): return c.battle == true)
+	var units_bd := Breakdown.army_units(state, a.id)
+	var head := _add_text(String(line.header), "%s\n\n%s" % [TooltipText.from_breakdown(units_bd), TooltipText.wrap_text("%s %s" % [
+		RulesCodex.text("caster"), RulesCodex.text("mage")])], UiPalette.GILT, box)
+	head.name = "CastersLine"
+	head.add_theme_font_size_override("font_size", 16)
+	head.set_meta("breakdown", units_bd)
+	CodexLink.attach(head, "caster", request_codex)
+	for s in line.spells:
+		var l := _add_text(String(s.text), TooltipText.from_breakdown(s.breakdown), UiPalette.TEXT_PRIMARY if s.on else UiPalette.TEXT_DISABLED, box)
+		l.name = "Spell_%s" % String(s.spell)
+		l.add_theme_font_size_override("font_size", 15)
+		l.set_meta("breakdown", s.breakdown)
+		CodexLink.attach(l, String(s.codex), request_codex)
+	if line.spells.is_empty():
+		var none := _add_text("No spell known yet: research one in the Magic tab.", TooltipText.plain("No spell yet", RulesCodex.text("arcana")),
+			UiPalette.TEXT_SECONDARY, box)
+		none.name = "CastersNone"
+		none.add_theme_font_size_override("font_size", 15)
+		CodexLink.attach(none, "arcana", request_codex)
+	elif casters.size() > 0:
+		var mastery_bd := Breakdown.mastery(state, a.owner, String(MagicRules.spell_data(String(line.spells[0].spell)).school), String(casters[0].kind))
+		var mastery := _add_text(String(line.mastery_text), TooltipText.from_breakdown(mastery_bd), UiPalette.TEXT_SECONDARY, box)
+		mastery.name = "MasteryLine"
+		mastery.set_meta("breakdown", mastery_bd)
+		mastery.add_theme_font_size_override("font_size", 14)
+		CodexLink.attach(mastery, "mastery", request_codex)
+
+
 ## M5-6: the enchantments on a province (§6.4, §11.2), each with who cast it, what it does and through which turn,
 ## from the state shown (under fog, the view: only the ones you can see).
 func _add_enchantment_lines(p: Province) -> void:
@@ -1620,18 +1712,8 @@ func _add_enchantment_lines(p: Province) -> void:
 	for e in state.enchantments:
 		if String(e.province) != p.id or String(e.kind) == "blessing":
 			continue
-		var what := ""
-		var n := MagicRules.spell_numbers(String(e.ritual), int(e.bonus))
+		var what := EnchantmentBadges.effect_text(state, e)  # M5-8: the badge's words
 		var who := MagicRules._faction_display(state, String(e.faction))
-		match String(e.kind):
-			"curse":
-				what = "Fighters here not of the %s can't heal, and it takes %d hit points from them at the end of every turn, the healthiest first, never below 1." % [who, int(n.value)]
-				if e.ending == true:
-					what += " A Sanctum Ward ends it at the end of this turn."
-			"ward":
-				what = "Rival rituals aimed here are turned aside while the %s hold it, and battles here are outside the Blood Moon." % who
-			"sight":
-				what = "The %s see it in clear sight through Far Sight." % who
 		var line := _add_text("%s (%s), through turn %d" % [MagicRules.spell_name(String(e.ritual)), who, int(e.until_turn)],
 			TooltipText.plain(MagicRules.spell_name(String(e.ritual)), "%s %s" % [what, RulesCodex.text(String(e.kind))]),
 			UiPalette.GILT, details)

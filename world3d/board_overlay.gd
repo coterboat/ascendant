@@ -290,6 +290,10 @@ func _build_province_plates() -> void:
 		if chip != null:
 			chip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 			root.add_child(chip)
+		## M5-8: the enchantment badges (wards, curses, Far Sight), the same as on the 2D map's plate
+		var ench := EnchantmentBadges.make(st, p.id, map.viewing_faction_id, map.request_codex)
+		if ench != null:
+			root.add_child(ench)
 		_plates[p.id] = {"root": root, "name": name_label, "income": inc, "glyph": glyph, "pennant": null, "badge": null, "sprout": null, "chip": chip, "cut": cut_mark}
 
 

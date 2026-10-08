@@ -301,7 +301,12 @@ func move_odds(army_id: String, to: String) -> Dictionary:
 		var line := "Battle odds: %s (you won %d of %d test battles)." % [odds.label, odds.wins, odds.samples]
 		if not odds.reasons.is_empty():
 			line += " Main reasons: %s." % "; ".join(odds.reasons)
-		out = {"enemy_present": true, "odds": odds, "line": line, "text": odds.text}
+		var text := String(odds.text)
+		var spells := Forecast.spells_forecast(view, faction_id, ids, to)  # M5-8 (§11.2): the spells each side will cast, and what is skipped
+		if bool(spells.ok):
+			line += " " + String(spells.text)
+			text += " " + String(spells.text)
+		out = {"enemy_present": true, "odds": odds, "line": line, "text": text, "spells": spells}
 	_odds_cache[key] = out
 	return out
 
@@ -318,7 +323,11 @@ func _fog_odds(view: GameState, ids: Array, to: String) -> Dictionary:
 	if not vo.reasons.is_empty():
 		line += " Main reasons: %s." % "; ".join(vo.reasons)
 	var text := "%s %s %s: %s %s" % [String(vo.short), String(vo.text), Forecast.INFO, " ".join(vo.assumptions), RulesCodex.text("view_odds")]
-	return {"enemy_present": true, "odds": vo, "line": line, "text": text, "fog": true}
+	var spells := Forecast.spells_forecast(view, faction_id, ids, to)  # M5-8: a rival's unknown spells are assumed, and it says so
+	if bool(spells.ok):
+		line += " " + String(spells.text)
+		text += " " + String(spells.text)
+	return {"enemy_present": true, "odds": vo, "line": line, "text": text, "fog": true, "spells": spells}
 
 
 ## What clicking `to` with `army_id` selected would do, before the click (the map's hover preview):
@@ -609,6 +618,11 @@ func recruit_breakdown(unit_type_id: String, at: String = RecruitOrder.AT_CAPITA
 	var desc := "%s %s" % [Breakdown.unit_type_description(ut, price_text(unit_type_id)) if ut else "", rules]
 	if MagicRules.is_mage(ut) and not MagicRules.knows_a_spell(view_state(), faction_id):  # M5-5: the mage gate
 		desc = "%s %s" % [MagicRules.mage_gate_reason(view_state(), faction_id, ut), desc]
+	if MagicRules.is_mage(ut):  # M5-8 (§11.2): the mage's card lists the spellbook in order, one line each
+		desc = "%s\n\n%s" % [desc, MagicView.mage_card(view_state(), faction_id)]
+	var rank_note := MagicView.recruit_note(view_state(), faction_id, unit_type_id, at, orders())  # M5-8: the second rank, with counts
+	if not rank_note.is_empty():
+		desc = "%s\n\n%s" % [desc, rank_note]
 	var fc := Forecast.recruit(state, faction_id, unit_type_id, orders())  # M4-2: Blood Levy's wounded arrivals
 	if fc.ok and int(fc.hp) < int(fc.max_hp):
 		desc = "%s %s" % [fc.text, desc]

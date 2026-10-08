@@ -847,7 +847,7 @@ const ENTRIES := {
 	},
 	"arcana": {
 		"title": "Arcana",
-		"text": "Your faction's magic research, the Magic tab of the research panel: two schools of four nodes each, paid from the same research pool as your path, one target at a time. In each school the battle spell (tier I, 10 research) comes first, then the ritual (tier II, 15), then the mastery node (20) and the greater working (tier III, 25), which also needs the school's own Oath, so swearing the other Oath closes it. A whole school is 70 research; everything a faction can learn is 115. Nothing in the arcana closes anything else.",
+		"text": "Your faction's magic research, the Magic tab of the research panel: two schools of four nodes each, paid from the same research pool as your path, one target at a time. In each school the battle spell (tier I, 10 research) comes first, then the ritual (tier II, 15), then the mastery node (20) and the greater working (tier III, 25), which also needs the school's own Oath, so swearing the other Oath closes it. A whole school is 70 research; everything a faction can learn is 115. Nothing in the arcana closes anything else. Researching a spell before your Oath and transformation delays them: each card says by about how many turns (its ETA now and with the spell first), from the same research forecast the path uses.",
 	},
 	"caster": {
 		"title": "Caster",
@@ -907,7 +907,7 @@ const ENTRIES := {
 	},
 	"enchantment": {
 		"title": "Enchantments",
-		"text": "A ritual that lasts leaves an enchantment: a blessing on armies, a ward or a curse on a province, the Blood Moon over every battle, or Far Sight on a province. Each lasts through the turn its card names and ends in that turn's enchantments phase. The same ritual on the same target restarts it, paid again; it never stacks.",
+		"text": "A ritual that lasts leaves an enchantment: a blessing on armies, a ward or a curse on a province, the Blood Moon over every battle, or Far Sight on a province. Each lasts through the turn its card names and ends in that turn's enchantments phase. The same ritual on the same target restarts it, paid again; it never stacks. On the map a badge on the province, like \"Bloodrot · through turn 9\", shows each ward, curse and Far Sight with the last turn it lasts; hover it for the effect, whose it is and when it ends. A blessing is shown on its armies' panel, and the Blood Moon on the Magic chip in the top bar.",
 	},
 	"blessing": {
 		"title": "Blessings",
@@ -1025,6 +1025,15 @@ const ENTRIES := {
 		"title": "Tithe of Blood",
 		"text": "Thornmane Clans mandate of magic, 3 power (4 by sacrifice), only in a game with magic. Rituals your Shamans cast can be paid in hit points instead of gold: 1 hit point a gold, from the regular units in the Shamans' own army, one soldier at a time: the one with the most hit points gives until it is at 1, then the next. Rituals your ruler casts always cost gold, because a ruler stands alone. If the army can't give it all, the ritual can't be paid in blood. Can't be held with Feast of Victory: blood given is not taken back.",
 	},
+	# --- M5-8 (#119): magic on screen. The terms the Magic tab, the cast dialog, the army panel and the chip use.
+	"field_spell": {
+		"title": "Field spells",
+		"text": "Shield of Law is a field spell: it never covers a unit that already has a terrain or fort bonus, so it can't stack with walls, woods or hills. It does nothing for defenders in a fort, forest or hills, and never helps a stack hold its capital; it helps the army that attacks, and armies on open plains. Its +4 defense makes every hit on a covered unit both less likely and a step weaker for that round; the card says what that is worth against the rival's hardest hitter.",
+	},
+	"spellbook_preview": {
+		"title": "What your casters will cast",
+		"text": "Under the battle spellbook the Magic tab lists each of your armies that holds a caster and what its casters will cast in round 1, read from the real cast step: the same spreading rule, spellbook and mastery the battle uses, against a typical force (8 each of the first three unit types of your rival) so every spell has something to target. It shows the army fighting in the open and, where the ground gives a defender a bonus (a fort, a forest or hills), defending. A spell the cast step skips says why: Shield of Law skips units that already have the ground's bonus. Spells never roll, so the real battle casts the same spells at the enemy it meets; the move forecast does this against the armies you can see.",
+	},
 	# --- fog of war (M5-1, #112; design/M5_MAGIC_FOG.md §2, §11.4): only a game with fog of war uses these rules. The
 	# ranges and the rounding come from FogData, so a retuned number shows up here by itself. Plain text: tooltips quote them.
 	"fog_of_war": {
@@ -1077,7 +1086,7 @@ const ENTRIES := {
 	},
 	"view_odds": {
 		"title": "Odds against what you can see",
-		"text": "Under fog of war, a battle forecast is worked out against what you can see: the shown numbers of a glimpsed army at full health, the mandates and spells you know, and the kept power you know or assume. It gives two odds, at the shown numbers and at the top of the range, and lists its guesses on hover. They may have more you haven't seen. Against a province out of sight it gives no odds. After a battle, the report says what you didn't see.",
+		"text": "Under fog of war, a battle forecast is worked out against what you can see: the shown numbers of a glimpsed army at full health, the mandates and spells you know, and the kept power you know or assume. It gives two odds, at the shown numbers and at the top of the range, and lists its guesses on hover. They may have more you haven't seen. A rival's mages with no spell you know of are assumed to cast the first spell of their first school (Sunlance for the Crown, Briar Snare for the Clans), and the forecast says so. Against a province out of sight it gives no odds. After a battle, the report says what you didn't see.",
 	},
 }
 

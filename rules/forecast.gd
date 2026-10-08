@@ -1394,23 +1394,26 @@ static func view_odds(state: GameState, faction_id: String, army_ids: Array, pro
 		var line := out_of_sight_text(state, faction_id, province_id, memory)
 		return {"ok": false, "fog": true, "no_odds": true, "code": "out_of_sight", "level": level, "short": line, "text": line,
 			"assumptions": []}
-	var odds := battle_odds(state, faction_id, army_ids, province_id)
+	var asm := assume_spells(state, faction_id, province_id)  # M5-8: a rival's mages with no spell you know cast their first
+	var assumed_view: GameState = asm.state
+	var odds := battle_odds(assumed_view, faction_id, army_ids, province_id)
 	odds["fog"] = true
 	odds["level"] = level
 	odds["no_odds"] = false
 	odds["assumptions"] = []
+	odds["assumed_spells"] = asm.assumed
 	if not bool(odds.get("ok", false)):
 		odds["short"] = String(odds.get("text", ""))
 		return odds
 	var short := "Odds against what you can see: %d%% (%s)" % [roundi(float(odds.win_rate) * 100), String(odds.label)]
-	var top_state := top_of_range(state, faction_id, province_id) if level == FogRules.GLIMPSE else state
-	if top_state != state:  # the top of the range adds fighters: the second odds (a "1-2" is at its top already)
+	var top_state: GameState = top_of_range(assumed_view, faction_id, province_id) if level == FogRules.GLIMPSE else assumed_view
+	if top_state != assumed_view:  # the top of the range adds fighters: the second odds (a "1-2" is at its top already)
 		var top := battle_odds(top_state, faction_id, army_ids, province_id)
 		if bool(top.get("ok", false)):
 			odds["top"] = top
 			short += ", %d%% if they are at the top of the range" % roundi(float(top.win_rate) * 100)
 	odds["short"] = "%s %s" % [short, INFO]
-	odds["assumptions"] = fog_assumptions(state, faction_id, province_id, intel)
+	odds["assumptions"] = fog_assumptions(state, faction_id, province_id, intel, asm.assumed)
 	return odds
 
 
@@ -1452,7 +1455,7 @@ static func top_of_range(state: GameState, faction_id: String, province_id: Stri
 ## The ⓘ lines of a fog forecast at `province_id` (§2.10): for each rival there, what you see of it with its ranges,
 ## the mandates and path nodes you know, its ruler's kept power (known, with the turn, or assumed at the most it could
 ## be), and that they may have more.
-static func fog_assumptions(state: GameState, faction_id: String, province_id: String, intel: Dictionary = {}) -> Array:
+static func fog_assumptions(state: GameState, faction_id: String, province_id: String, intel: Dictionary = {}, assumed: Dictionary = {}) -> Array:
 	var out := []
 	var rivals := []
 	for a in state.armies:
@@ -1474,6 +1477,11 @@ static func fog_assumptions(state: GameState, faction_id: String, province_id: S
 			var nodes := AscensionRules.researched(state, fid).map(func(nid): return AscensionRules.node_name(String(nid)))
 			if not nodes.is_empty():
 				out.append("Path you know of: %s." % RulerRules._and_list(nodes))
+	for fid in assumed:  # M5-8: the spells the odds assume (§11.2)
+		var sid := String(assumed[fid])
+		var who := _faction_name(state, String(fid))
+		out.append("Spells assumed: the %s mages cast %s, the first spell of %s. You haven't seen what they know: a fight, or Far Sight on their capital, shows it." % [
+			who + ("'" if who.ends_with("s") else "'s"), MagicRules.spell_name(sid), MagicRules.school_ref(String(MagicRules.spell_data(sid).school))])
 	var more := "They may have more you haven't seen."
 	if state.magic:
 		more = "They may have more you haven't seen, and they may summon creatures or raise a fort there this turn."
@@ -1661,3 +1669,628 @@ static func _row(key: String, label: String, before: String, after: String, code
 ## "1 unit", "3 units": a count with its noun in the right number.
 static func _count(n: int, singular: String, plural: String = "") -> String:
 	return "%d %s" % [n, singular if n == 1 else (plural if not plural.is_empty() else singular + "s")]
+
+
+# --- magic (M5-8, #119; design/M5_MAGIC_FOG.md §4, §5.1, §11.2) --------------------------------------------------
+# The magic lines of the forecasts. The cast step is previewed by fighting the real resolver (AutoBattleResolver.fight
+# on a fixed seed, recording its log) and reading the cast events of the first rounds, so a preview is what a battle
+# with those armies will do: the same spreading rule, the same skips, the same targets. Nothing here does rules math
+# of its own; the numbers come from AscensionRules, MagicRules and AutoBattleResolver.
+
+## The stand-in force a preview fights when no real one is named (the Magic tab's spellbook, a card's hover): the first
+## STAND_IN_TYPES regular, non-mage unit types of the first rival in roster order, STAND_IN_EACH of each, so every rule
+## that wants a front rank, a biggest creature or a most numerous type has one.
+const STAND_IN_TYPES := 3
+const STAND_IN_EACH := 8
+## The mages a spell's card imagines casting it (§11.2: "1 Shaman snares every round; a second ...").
+const OUTLOOK_MAGES := 2
+
+
+## What researching arcana node `node_id` first does to the road to your transformation (§4, §11.2: "Researching this
+## first delays your transformation by about 1 turn (ETA 9 → 10)"), from the same AscensionRules.eta the research forecast
+## uses. The road is the sworn side's or, before the Oath, the open side with the least research to go; the node counts
+## with the arcana it still needs. Returns {"applies" (false when it isn't a card to research, or no road is left),
+## "delay" (turns, 0 when the slack absorbs it), "before", "after" (the turn it is done at the end of, now and with the
+## node first), "extra" (research added), "side", "chain" ([node ids researched first, the node last]), "text",
+## "breakdown"}. The forecast is private to its own faction.
+static func arcana_delay(state: GameState, faction_id: String, node_id: String, orders: Array = []) -> Dictionary:
+	var out := {"applies": false, "delay": 0, "before": 0, "after": 0, "extra": 0, "side": "", "chain": [], "text": "", "breakdown": {}}
+	var view := RulerRules.state_after_orders(state, faction_id, orders)
+	if not MagicRules.has_magic(view) or not AscensionRules.is_arcana(node_id):
+		return out
+	var st := String(AscensionRules.node_state(view, faction_id, node_id).state)
+	if st == AscensionRules.RESEARCHED or st == AscensionRules.CLOSED:
+		return out
+	var sworn := AscensionRules.branch(view, faction_id)
+	var road := {}
+	var side := ""
+	for key in PathData.BRANCHES:
+		if String(PathData.BRANCHES[key].faction) != faction_id or (not sworn.is_empty() and String(key) != sworn):
+			continue
+		var r := AscensionRules.road_need(view, faction_id, String(key))
+		if not r.is_empty() and (road.is_empty() or int(r.need) < int(road.need)):
+			road = r
+			side = String(key)
+	if road.is_empty():
+		return out  # transformed already, or both sides closed: nothing to delay
+	var chain := MagicRules.reach_chain(view, faction_id, node_id)
+	var extra := 0
+	for nid in chain:
+		extra += AscensionRules.node_cost(String(nid))
+	var pool := AscensionRules.research_points(view, faction_id)
+	var rate := int(AscensionRules.research_rate(view, faction_id).rate)
+	var was := AscensionRules.eta(int(road.need), pool, rate)
+	var now := AscensionRules.eta(int(road.need) + extra, pool, rate)
+	if was < 0 or now < 0:
+		return out
+	var before := view.current_turn + was
+	var after := view.current_turn + now
+	var delay := after - before
+	out.applies = true
+	out.delay = delay
+	out.before = before
+	out.after = after
+	out.extra = extra
+	out.side = side
+	out.chain = chain
+	if delay > 0:
+		out.text = "Researching this first delays your transformation by about %s (ETA turn %d → %d)." % [_count(delay, "turn"), before, after]
+	else:
+		out.text = "Researching this first doesn't move your transformation: it is still due at the end of turn %d." % before
+	var lines := []
+	for nid in chain:
+		lines.append({"label": AscensionRules.node_name(String(nid)), "value": AscensionRules.node_cost(String(nid)),
+			"note": "this card" if String(nid) == node_id else "needed first"})
+	var desc := "The road to %s still needs %d research, which at %d a turn (with %d saved) is done at the end of turn %d. Put this first and it needs %d: turn %d. %s" % [
+		AscensionRules.branch_ref(side), int(road.need), rate, pool, before, int(road.need) + extra, after, RulesCodex.text("arcana")]
+	out.breakdown = {"title": "What %s adds to your road" % AscensionRules.node_name(node_id), "description": desc, "lines": lines,
+		"total_label": "Research added before your transformation", "total": extra, "codex": "arcana"}
+	return out
+
+
+# --- the cast step, previewed from the real resolver ------------------------------------------------------------
+
+## The first rival of `faction_id` that fields an army (the stand-in foe's faction), or "". Independents never count.
+static func rival_of(state: GameState, faction_id: String) -> String:
+	for f in state.factions:
+		if f.id != faction_id and f.id != IndependentData.FACTION_ID and not f.unit_types.is_empty():
+			return String(f.id)
+	return ""
+
+
+## An army of `faction_id` made for a preview and never part of any state: `types` is [[unit type id, count], ...], each
+## unit at its full maximum hit points (mandates and path parts included).
+static func preview_army(state: GameState, faction_id: String, id: String, location: String, types: Array) -> Army:
+	var a := Army.new()
+	a.id = id
+	a.owner = faction_id
+	a.location = location
+	var f := state.find_faction(faction_id)
+	for t in types:
+		var ut: UnitType = TurnResolver.recruitable_type(f, String(t[0])) if f != null else null
+		if ut == null:
+			continue
+		for _i in int(t[1]):
+			var u := Unit.new(ut, faction_id)
+			u.current_hp = RulerRules.unit_max_hp(state, u)
+			a.units.append(u)
+	return a
+
+
+## The regular unit types of `faction_id` a preview force is made of, in roster order: no commanders, rulers, mages or
+## summoned creatures, and the units that fight in the front rank first (a second-rank unit only to fill the count, or
+## not at all with `front_only`).
+static func regular_types(state: GameState, faction_id: String, count: int, front_only: bool = false) -> Array:
+	var f := state.find_faction(faction_id)
+	var front := []
+	var back := []
+	if f == null:
+		return front
+	for ut in f.unit_types:
+		if ut.is_commander or ut.is_ruler or ut.summoned or MagicRules.is_mage(ut):
+			continue
+		if ut.trait_id == AutoBattleResolver.VOLLEY:
+			back.append(String(ut.id))
+		else:
+			front.append(String(ut.id))
+	return (front if front_only else front + back).slice(0, count)
+
+
+## The stand-in foe for `faction_id`'s previews: one army of its first rival (see STAND_IN_TYPES).
+static func stand_in_foe(state: GameState, faction_id: String, where: String) -> Array:
+	var rival := rival_of(state, faction_id)
+	if rival.is_empty():
+		return []
+	var types := regular_types(state, rival, STAND_IN_TYPES).map(func(t): return [t, STAND_IN_EACH])
+	return [preview_army(state, rival, "%s-preview" % rival, where, types)]
+
+
+## The state `faction_id`'s orders are checked against with its queued SpellbookOrder applied (this turn's battles use
+## it, §5.1): the board after a queued sacrifice when none is queued.
+static func with_queued_spellbook(state: GameState, faction_id: String, orders: Array = []) -> GameState:
+	var board := RulerRules.state_after_orders(state, faction_id, orders)
+	for i in range(orders.size() - 1, -1, -1):
+		if orders[i] is SpellbookOrder:
+			var copy := board.deep_copy([])
+			if copy == null:
+				return board
+			MagicRules.set_spellbook(copy, faction_id, orders[i])
+			return copy
+	return board
+
+
+## The cast step of a battle in `where` between `mine` (armies of `faction_id`) and `foes`, read from the real resolver
+## (the odds' first fixed seed, recording the log): `defender` is the faction that holds the province ("" when everyone
+## arrived: nobody gets terrain or a fort). Returns {"ok", "casts" ([{"round", "faction", "side", "caster", "ruler",
+## "spell", "name", "kind", "targets" (how many), "damage", "part", "why", "skipped" ([{"spell", "reason"}])}], in the
+## order they were cast in the first `rounds` rounds), "casters" ({faction: [caster names]}: who can cast on each side),
+## "skips" ([{"faction", "spell", "reason"}], each once)}.
+static func casts(state: GameState, faction_id: String, mine: Array, foes: Array, where: String, defender: String = "",
+		rounds: int = 1) -> Dictionary:
+	var out := {"ok": false, "casts": [], "casters": {}, "skips": []}
+	var province := state.find_province(where)
+	if not MagicRules.has_magic(state) or mine.is_empty() or province == null:
+		return out
+	var by_faction := {}
+	for a in mine:
+		if not by_faction.has(a.owner):
+			by_faction[a.owner] = []
+		by_faction[a.owner].append(a)
+	for a in foes:
+		if not by_faction.has(a.owner):
+			by_faction[a.owner] = []
+		by_faction[a.owner].append(a)
+	var fids: Array = by_faction.keys()
+	fids.sort()
+	var sides := []
+	for fid in fids:
+		sides.append({"faction": fid, "armies": by_faction[fid]})
+	var ctx := {"kind": "province", "defender": defender, "province": province, "province_ids": [where], "state": state,
+		"max_events": 800}
+	var r := AutoBattleResolver.fight(sides, ctx, SeededRNG.new(AutoBattleResolver.odds_seed(0)), true)
+	var battle_log: Dictionary = r.get("log", {})
+	if battle_log.is_empty():
+		return out
+	out.ok = true
+	var fighters := {}
+	for f in battle_log.fighters:
+		fighters[int(f.id)] = f
+	for si in battle_log.sides.size():
+		var side: Dictionary = battle_log.sides[si]
+		var names := []
+		for fid in side.get("casters", []):
+			names.append(String(fighters[int(fid)].name))
+		out.casters[String(side.faction)] = names
+	var skipped := {}
+	for e in battle_log.events:
+		if String(e.t) != "cast":
+			continue
+		if int(e.n) > rounds:
+			break
+		var f: Dictionary = fighters[int(e.by)]
+		var fid := String(battle_log.sides[int(f.side)].faction)
+		out.casts.append({"round": int(e.n), "faction": fid, "side": int(f.side), "caster": String(f.name), "ruler": String(f.role) == "ruler",
+			"spell": String(e.spell), "name": MagicRules.spell_name(String(e.spell)), "kind": String(e.kind), "targets": Array(e.targets).size(),
+			"damage": int(e.get("damage", 0)), "part": e.get("part", {}), "why": String(e.get("why", "")), "skipped": Array(e.get("skipped", []))})
+		for s in e.get("skipped", []):
+			var key := "%s|%s" % [fid, s.spell]
+			if not skipped.has(key):
+				skipped[key] = true
+				out.skips.append({"faction": fid, "spell": String(s.spell), "reason": String(s.reason)})
+	return out
+
+
+## The casts of `faction_id` in a cast result as words (§5.1's example): "Ever-Regent: Sunlance; Sunstone Adept: Shield of
+## Law; Sunstone Adept: Sunlance", in the order they cast. "" when it casts nothing.
+static func casts_words(result: Dictionary, faction_id: String) -> String:
+	var bits := []
+	for c in result.get("casts", []):
+		if String(c.faction) == faction_id:
+			bits.append("%s: %s" % [_one_of(String(c.caster), bool(c.ruler)), String(c.name)])
+	return "; ".join(bits)
+
+
+## "Sunstone Adepts" -> "Adept" (a mage's name is a plural: the last word, in the singular); a ruler's name without its "the".
+static func _one_of(name: String, ruler: bool) -> String:
+	if ruler:
+		return name.trim_prefix("the ")
+	var last := name.get_slice(" ", name.get_slice_count(" ") - 1)
+	return last.trim_suffix("s") if last.ends_with("s") else last
+
+
+## The sentences about `faction_id`'s casts in a result: its casters' casts, what it skipped and why, and that its casters
+## attack when none had a useful spell. `who` is "Your" or "Their". "" for a side without a caster.
+static func casts_sentences(result: Dictionary, faction_id: String, who: String, assumed: String = "") -> String:
+	var casters: Array = result.get("casters", {}).get(faction_id, [])
+	if casters.is_empty():
+		return ""
+	var head := "%s casters in round 1%s" % [who, " (assumed: %s)" % assumed if not assumed.is_empty() else ""]
+	var words := casts_words(result, faction_id)
+	var text := "%s: %s." % [head, words] if not words.is_empty() \
+		else "%s: none has a useful spell, so they attack." % head
+	var skips := _skip_words(result, faction_id)
+	if not skips.is_empty():
+		text += " %s." % skips
+	return text
+
+
+## "Shield of Law is skipped: the Spearmen have the fort's +2 defense, ...", one clause for each spell `faction_id` skipped.
+static func _skip_words(result: Dictionary, faction_id: String) -> String:
+	var skips := []
+	for s in result.get("skips", []):
+		if String(s.faction) == faction_id:
+			skips.append("%s is skipped: %s" % [MagicRules.spell_name(String(s.spell)), String(s.reason)])
+	return "; ".join(skips)
+
+
+## A province's caster armies: [{"province", "armies" (ids), "names" ("the Ever-Regent", "2 Sunstone Adepts")}], one per
+## province where `faction_id` has an army with a caster that casts in battle, in province id order.
+static func caster_provinces(state: GameState, faction_id: String) -> Array:
+	var by_province := {}
+	var order := []
+	for a in state.armies:
+		if a.owner != faction_id:
+			continue
+		var battle := MagicRules.casters(state, a).filter(func(c): return c.battle == true)
+		if battle.is_empty():
+			continue
+		if not by_province.has(a.location):
+			by_province[a.location] = []
+			order.append(a.location)
+		by_province[a.location].append(a)
+	order.sort()
+	var out := []
+	for pid in order:
+		var counts := {}
+		var kinds := []
+		for a in by_province[pid]:
+			for c in MagicRules.casters(state, a):
+				if c.battle != true:
+					continue
+				var nm := String(c.name)
+				if not counts.has(nm):
+					counts[nm] = {"n": 0, "ruler": String(c.kind) == MagicRules.RULER}
+					kinds.append(nm)
+				counts[nm].n += 1
+		var names := []
+		for nm in kinds:
+			if counts[nm].ruler:
+				names.append(nm)
+			else:
+				names.append("%d %s" % [counts[nm].n, nm] if counts[nm].n > 1 else "1 %s" % _singular(nm))
+		out.append({"province": pid, "armies": by_province[pid].map(func(a): return String(a.id)), "names": names})
+	return out
+
+
+## The battle spellbook previewed for each of `faction_id`'s caster armies (§5.1, §11.2), from the real cast step: for each
+## province where it has casters, what they cast in round 1 against a stand-in force, fighting out of the province in the
+## open and defending it (its terrain and fort), with the skips. Your queued SpellbookOrder counts. Returns [{"province",
+## "name", "armies", "names", "title", "open" (a casts() result), "defend" (a casts() result, or {} when the province gives
+## no bonus), "differs" (the two lists of casts are not the same), "lines" (the sentences), "text"}].
+static func spellbook_preview(state: GameState, faction_id: String, orders: Array = []) -> Array:
+	var out := []
+	var board := with_queued_spellbook(state, faction_id, orders)
+	if not MagicRules.has_magic(board):
+		return out
+	for row in caster_provinces(board, faction_id):
+		var p := board.find_province(String(row.province))
+		var mine := board.armies.filter(func(a): return a.owner == faction_id and a.location == p.id)
+		var foes := stand_in_foe(board, faction_id, p.id)
+		var title := "%s: %s" % [p.name, RulerRules._and_list(row.names)]
+		var open := casts(board, faction_id, mine, foes, p.id, "")
+		var lines := ["In the open: %s" % _preview_sentence(open, faction_id)]
+		var defend := {}
+		var differs := false
+		if defender_has_ground(board, p):
+			defend = casts(board, faction_id, mine, foes, p.id, faction_id)
+			differs = casts_words(defend, faction_id) != casts_words(open, faction_id)
+			var same := not differs and _skip_words(defend, faction_id) == _skip_words(open, faction_id)
+			lines.append("Defending %s (%s): %s" % [p.name, defender_ground(p), "the same." if same else _preview_sentence(defend, faction_id)])
+		out.append({"province": p.id, "name": p.name, "armies": row.armies, "names": row.names, "title": title, "open": open,
+			"defend": defend, "differs": differs, "lines": lines, "text": "%s. %s" % [title, " ".join(lines)]})
+	return out
+
+
+## Whether defending `p` gives a terrain or fort bonus (a battle there can differ from one in the open).
+static func defender_has_ground(state: GameState, p: Province) -> bool:
+	return int(AutoBattleResolver.TERRAIN.get(p.terrain, {}).get("defense", 0)) > 0 or p.has_fort
+
+
+## "Ever-Regent: Sunlance; Sunstone Adept: Shield of Law." and the skips, for one side of a preview.
+static func _preview_sentence(result: Dictionary, faction_id: String) -> String:
+	var words := casts_words(result, faction_id)
+	var text := "%s." % words if not words.is_empty() else "your casters attack: none has a useful spell here."
+	var skips := _skip_words(result, faction_id)
+	if not skips.is_empty():
+		text += " %s." % skips
+	return text
+
+
+## What a battle spell does once researched (§11.2: "Once researched, with your spellbook as it is: 1 Shaman snares every
+## round; a second casts Bloodbolt if you know it, otherwise it snares 6 more"): for 1 and OUTLOOK_MAGES of your mages in
+## the open against the stand-in foe, with `spell_id` known, from the real cast step. Returns {"ok", "rows": [{"mages",
+## "casts" (casts() entries), "words"}], "text"}; not ok for a ritual, or when the faction has no rival or mage.
+static func spell_outlook(state: GameState, faction_id: String, spell_id: String, orders: Array = []) -> Dictionary:
+	var out := {"ok": false, "rows": [], "text": ""}
+	if not MagicRules.is_battle_spell(spell_id):
+		return out
+	var board := with_queued_spellbook(state, faction_id, orders)
+	if not MagicRules.knows(board, faction_id, spell_id):
+		board = AscensionRules.with_nodes(board, faction_id, [spell_id])
+	var mage := MagicRules.mage_type(faction_id)
+	if board == null or mage == null or rival_of(board, faction_id).is_empty():
+		return out
+	var where := String(board.find_faction(faction_id).capital)
+	var front := regular_types(board, faction_id, 2).map(func(t): return [t, STAND_IN_EACH])
+	var rows := []
+	var bits := []
+	for n in range(1, OUTLOOK_MAGES + 1):
+		var mine := preview_army(board, faction_id, "%s-preview" % faction_id, where, front + [[String(mage.id), n]])
+		var r := casts(board, faction_id, [mine], stand_in_foe(board, faction_id, where), where, "")
+		var cast_names := []
+		for c in r.casts:
+			if String(c.faction) == faction_id:
+				cast_names.append(String(c.name))
+		rows.append({"mages": n, "casts": r.casts, "words": casts_words(r, faction_id)})
+		bits.append("%s: %s" % [_count(n, "mage"), RulerRules._and_list(cast_names) if not cast_names.is_empty() else "none useful, so they attack"])
+	out.ok = true
+	out.rows = rows
+	out.text = "Once researched, with your spellbook as it is, in the open against a typical force of the %s: %s." % [
+		_faction_name(board, rival_of(board, faction_id)), "; ".join(bits)]
+	return out
+
+
+# --- the spells of a battle you forecast, and what a fog view assumes ----------------------------------------
+
+## The spell a rival's mage is assumed to cast when you know none of its spells (a fog view, §11.2: "Their Shamans:
+## assumed Briar Snare"): the battle spell of the first school of its faction, the cheapest to learn. "" when it has none.
+static func assumed_spell(faction_id: String) -> String:
+	for school in MagicRules.schools(faction_id):
+		var first := String(MagicRules.school_data(String(school)).nodes[0])
+		if MagicRules.is_battle_spell(first):
+			return first
+	return ""
+
+
+## The view with the spells a rival's mages at `province_id` are assumed to cast (§11.2): in a fog view, a rival whose mage
+## stands there and who has no spell you know of is given its assumed spell (a copy of the view; `state` itself when none
+## needs one). Returns {"state", "assumed": {faction id: spell id}}.
+static func assume_spells(state: GameState, faction_id: String, province_id: String) -> Dictionary:
+	var out := {"state": state, "assumed": {}}
+	if not is_fog_view(state) or not state.magic:
+		return out
+	for a in state.armies:
+		if a.location != province_id or a.owner == faction_id or out.assumed.has(a.owner):
+			continue
+		if String(a.seen.get("level", "")) == FogData.MEMORY:
+			continue
+		if not a.units.any(func(u): return MagicRules.is_mage(u.type)):
+			continue
+		if not MagicRules.known_spells(state, a.owner).is_empty():
+			continue
+		var sid := assumed_spell(a.owner)
+		if not sid.is_empty():
+			out.assumed[a.owner] = sid
+	if out.assumed.is_empty():
+		return out
+	var copy := state
+	for fid in out.assumed:
+		var next := AscensionRules.with_nodes(copy, String(fid), [String(out.assumed[fid])])
+		if next == null:
+			return {"state": state, "assumed": {}}
+		copy = next
+	out.state = copy
+	return out
+
+
+## The spells of the battle `army_ids` of `faction_id` would fight at `province_id` (§11.2: "Your 2 Adepts will cast
+## Sunlance and Sunlance (Shield of Law has no effect here: ...). Their Shamans: assumed Briar Snare."), read from the real
+## cast step against the armies that stand there now. In a fog view a rival's unknown spells are assumed (assume_spells).
+## Returns {"ok" (a caster fights on a side), "text", "assumed", "result" (a casts() result)}; not ok without magic, without
+## an enemy there, at a fort in a game with sieges (its battle is the siege's plan), or when nobody on either side casts.
+static func spells_forecast(state: GameState, faction_id: String, army_ids: Array, province_id: String) -> Dictionary:
+	var out := {"ok": false, "text": "", "assumed": {}, "result": {}}
+	var province := state.find_province(province_id)
+	if not MagicRules.has_magic(state) or province == null or (state.sieges and province.fort_level > 0):
+		return out
+	var asm := assume_spells(state, faction_id, province_id)
+	var board: GameState = asm.state
+	var mine := []
+	for id in army_ids:
+		var a := board.find_army(String(id))
+		if a != null and a.owner == faction_id:
+			mine.append(a)
+	var foes := []
+	var holders := []
+	for a in board.armies:
+		if a.location == province_id and a.owner != faction_id and String(a.seen.get("level", "")) != FogData.MEMORY:
+			foes.append(a)
+			if not holders.has(a.owner):
+				holders.append(a.owner)
+	if mine.is_empty() or foes.is_empty():
+		return out
+	holders.sort()
+	var result := casts(board, faction_id, mine, foes, province_id, String(holders[0]) if holders.size() == 1 else "")
+	if not result.ok:
+		return out
+	var parts := []
+	var ours := casts_sentences(result, faction_id, "Your")
+	if not ours.is_empty():
+		parts.append(ours)
+	for fid in holders:
+		var assumed := String(asm.assumed.get(fid, ""))
+		var theirs := casts_sentences(result, String(fid), "Their", MagicRules.spell_name(assumed) if not assumed.is_empty() else "")
+		if not theirs.is_empty():
+			parts.append(theirs)
+	if parts.is_empty():
+		return out
+	out.ok = true
+	out.text = " ".join(parts)
+	out.assumed = asm.assumed
+	out.result = result
+	return out
+
+
+# --- a mage's second rank (§3.2, §11.2) ------------------------------------------------------------------------
+
+## The ranks of the army a recruit of `unit_type_id` at `at` would join, counting the recruits already ordered there
+## (§3.2: "This army will have 8 second-rank and 6 front-rank fighters: its second rank is exposed"). Returns {"ok" (a
+## regular unit joining an army that stands or forms), "army" (the army it joins, or "" for a new one), "front", "second",
+## "exposed" (more second-rank fighters than front-rank: Skirmish and Wings reach them), "text"}.
+static func second_rank(state: GameState, faction_id: String, unit_type_id: String, at: String = "", orders: Array = []) -> Dictionary:
+	var out := {"ok": false, "army": "", "front": 0, "second": 0, "exposed": false, "text": ""}
+	var view := RulerRules.state_after_orders(state, faction_id, orders)
+	var f := view.find_faction(faction_id)
+	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id, view) if f != null else null
+	if ut == null or ut.is_commander or ut.is_ruler or SiegeRules.is_engine(ut):
+		return out
+	var place := f.capital if at.is_empty() else String(at)
+	if at == RecruitOrder.AT_RULER:
+		var ruler := RulerRules.ruler_army(view, faction_id)
+		if ruler == null:
+			return out
+		place = ruler.location
+	var joins: Army = null
+	for a in TurnResolver._sorted_armies(view):
+		if a.owner == faction_id and a.location == place and a.ruler == null:
+			joins = a
+			break
+	var front := 0
+	var second := 0
+	var counted := []
+	if joins != null:
+		for u in joins.units:
+			counted.append(u.type)
+	# What is already ordered there joins the same army (or forms the new one), in the order given.
+	for o in orders:
+		if o is RecruitOrder:
+			var t: UnitType = TurnResolver.recruitable_type(f, o.unit_type_id, view)
+			var where := f.capital if String(o.at).is_empty() else String(o.at)
+			if o.at == RecruitOrder.AT_RULER:
+				var r := RulerRules.ruler_army(view, faction_id)
+				where = r.location if r != null else ""
+			if t != null and where == place and not t.is_commander and not SiegeRules.is_engine(t):
+				counted.append(t)
+	counted.append(ut)
+	for t in counted:
+		if t.trait_id == AutoBattleResolver.VOLLEY or t.trait_id == MagicData.MAGE_TRAIT:
+			second += 1
+		else:
+			front += 1
+	out.ok = true
+	out.army = String(joins.id) if joins != null else ""
+	out.front = front
+	out.second = second
+	out.exposed = second > front
+	var who := TurnReportText.army_title(view, joins, false) if joins != null else "the new army it forms"
+	var counts := "%d second-rank and %d front-rank fighters" % [second, front]
+	if out.exposed:
+		out.text = "This army (%s) will have %s: its second rank is exposed. Fangthrowers, Seraphs and every Skirmish or Wings fighter reach it at once, and the front rank no longer shields it." % [who, counts]
+	else:
+		out.text = "This army (%s) will have %s: the second rank stays safe behind the front rank." % [who, counts]
+	return out
+
+
+# --- the cast dialog's budget (§6.1, §11.2) -------------------------------------------------------------------
+
+## The gold line of the cast dialog (§11.2: "Gold after your queued rituals and recruits: 5"): the gold left once the rituals
+## in `orders` (the one being decided among them, last) and the queued recruits are paid, from the same
+## gold_after_recruits the orders list shows. Returns {"gold_after", "rituals" (gold the rituals take), "text", "breakdown"}.
+static func cast_budget(state: GameState, faction_id: String, orders: Array = []) -> Dictionary:
+	var view := RulerRules.state_after_orders(state, faction_id, orders)
+	var reserved := MagicRules.queued_gold(view, faction_id, orders)
+	var paid := orders.filter(func(o): return o is RecruitOrder or o is FortifyOrder)
+	var g := gold_after_recruits(view, faction_id, paid, orders, reserved)
+	var text := "Gold after your queued rituals and recruits: %d." % int(g.gold_after)
+	var lines := [{"label": "Gold now", "value": int(g.gold_now), "note": "in your treasury"}]
+	if reserved > 0:
+		lines.append({"label": "Queued rituals", "value": -reserved, "note": "paid first, in the rituals phase"})
+	if int(g.spent) > 0:
+		lines.append({"label": "Queued recruits", "value": -int(g.spent), "note": "paid after the rituals"})
+	var b := {"title": "Gold after your queued rituals and recruits", "description": "%s %s" % [String(g.text), RulesCodex.text("cast_order")],
+		"lines": lines, "total_label": "Gold left", "total": int(g.gold_after), "codex": "cast_order"}
+	return {"gold_after": int(g.gold_after), "rituals": reserved, "text": text, "breakdown": b}
+
+
+# --- what a hex or shield is worth (§11.2) --------------------------------------------------------------------
+
+## A hex's or shield's worth in one exchange, from AutoBattleResolver's own hit chance and damage (§11.2: "Against the
+## Crown's Knights, each snared Knight deals about 1.2 less damage that round"): the rival's hardest-hitting front-rank unit
+## type against your first front-rank unit type, with the spell's part on whoever it lands on, and what that is over the
+## `count` units the spell covers. Mastery counts (the count). Returns {"ok" (a hex or shield, and a rival to fight),
+## "text", "less" (expected damage one covered unit's exchange loses per attack), "saved" (rounded, over `count` units),
+## "breakdown"}.
+static func spell_worth(state: GameState, faction_id: String, spell_id: String) -> Dictionary:
+	var out := {"ok": false, "text": "", "less": 0.0, "saved": 0, "breakdown": {}}
+	var sp := MagicRules.spell_data(spell_id)
+	var kind := String(sp.get("kind", ""))
+	if kind != "hex" and kind != "shield":
+		return out
+	var rival := rival_of(state, faction_id)
+	var mine := regular_types(state, faction_id, 1)
+	var theirs := regular_types(state, rival, 6, true) if not rival.is_empty() else []
+	if mine.is_empty() or theirs.is_empty():
+		return out
+	var hitter := String(theirs[0])
+	for t in theirs:
+		if int(RulerRules.unit_stats(state, rival, String(t)).attack) > int(RulerRules.unit_stats(state, rival, hitter).attack):
+			hitter = String(t)
+	var attacker := RulerRules.unit_stats(state, rival, hitter)
+	var target := RulerRules.unit_stats(state, faction_id, String(mine[0]))
+	var part := int(sp.get("value", 0))
+	var attack_now := int(attacker.attack)
+	var defense_now := int(target.defense)
+	var attack_then := attack_now + (part if kind == "hex" else 0)
+	var defense_then := defense_now + (part if kind == "shield" else 0)
+	var school := String(sp.get("school", ""))
+	var bonus := int(MagicRules.mastery_bonus(state, faction_id, school, MagicRules.MAGE).value)
+	var count := int(MagicRules.spell_numbers(spell_id, bonus).count)
+	var chance_now := AutoBattleResolver.hit_chance(attack_now, defense_now)
+	var chance_then := AutoBattleResolver.hit_chance(attack_then, defense_then)
+	var damage_now := AutoBattleResolver.damage(attack_now, defense_now)
+	var damage_then := AutoBattleResolver.damage(attack_then, defense_then)
+	var each_now := chance_now / 100.0 * damage_now
+	var each_then := chance_then / 100.0 * damage_then
+	var less := each_now - each_then
+	var all_now := roundi(count * each_now)
+	var all_then := roundi(count * each_then)
+	var hitter_name := String(attacker.name)
+	var target_name := String(target.name)
+	var text := ""
+	var covered := _singular(hitter_name if kind == "hex" else target_name)
+	if kind == "hex":
+		text = "Against %s %s (attack %d) hitting your %s (defense %d): hit chance %d%% → %d%%, damage %d → %d, so each %s %s deals about %.1f less damage that round." % [
+			_possessive_name(TurnReportText.faction_short(state, rival)), hitter_name, attack_now, target_name, defense_now, chance_now, chance_then, damage_now,
+			damage_then, "snared" if spell_id == "briar_snare" else "weakened", covered, less]
+	else:
+		text = "Your %s (defense %d) attacked by %s %s (attack %d): hit chance %d%% → %d%%, damage %d → %d, so each covered %s takes about %.1f less damage that round." % [
+			target_name, defense_now, _possessive_name(TurnReportText.faction_short(state, rival)), hitter_name, attack_now, chance_now, chance_then, damage_now,
+			damage_then, covered, less]
+	if count > 0:
+		text += " Over the %d units it covers that is about %d damage a round." % [count, all_now - all_then]
+	out.ok = true
+	out.text = text
+	out.less = less
+	out.saved = all_now - all_then
+	var lines := [
+		{"label": "Without it: %d × %d%% × %d damage" % [count, chance_now, damage_now], "value": all_now, "note": "expected damage a round"},
+		{"label": "With %s: %d × %d%% × %d damage" % [MagicRules.spell_name(spell_id), count, chance_then, damage_then], "value": -all_then,
+			"note": "expected damage a round"}]
+	out.breakdown = {"title": "%s against the %s" % [MagicRules.spell_name(spell_id), hitter_name],
+		"description": "The exchange fought with the battle's own hit chance (60%% + 4 for each point of attack over defense, 30%% to 90%%) and damage (half the attack, rounded up, less a quarter of the defense, rounded down), for the %s's hardest-hitting front-rank unit and your first one. %s" % [
+			_faction_name(state, rival), RulesCodex.text(String(sp.get("codex", "magic")))],
+		"lines": lines, "total_label": "Damage saved a round (expected)", "total": all_now - all_then,
+		"codex": String(sp.get("codex", "magic"))}
+	return out
+
+
+## "Spearmen" -> "Spearman", "Knights" -> "Knight", "War Bear" -> "War Bear": a unit type's name for one of them.
+static func _singular(name: String) -> String:
+	if name.ends_with("men"):
+		return name.trim_suffix("men") + "man"
+	return name.trim_suffix("s") if name.ends_with("s") else name
+
+
+## "the Crown's", "the Clans'": a faction's possessive, for running text.
+static func _possessive_name(name: String) -> String:
+	return "%s%s" % [name, "'" if name.ends_with("s") else "'s"]
