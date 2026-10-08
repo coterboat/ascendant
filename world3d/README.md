@@ -475,8 +475,14 @@ a ritual beat is the viewer's own report, and nothing here changes a state, roll
 - **Run it.** `godot --path . -- --battle3d --fixture magic_all` (every battle spell in round 1), `magic_sunburst`, `magic_shield`,
   `magic_snare`, `magic_bloodbolt`, `magic_moon`, `magic_pack` (the four new figures), `magic_big` (280 fighters, 6 casters), with
   `--rung N` and `--reduced-motion` (`tests/magic_stage_fixtures.gd`).
-- **Cost.** Spells add three draw calls to a battle (ground decals, sprites, beams; the budget is 150). `--perf` on `magic_big`:
-  see the PR.
+- **Cost.** Spells add three draw calls to a battle (ground decals, sprites, beams; the budget is 150), never more however many
+  effects are alive, and at most 32 effects. Measured on Alex's Mac (Apple M4, Metal, Forward+, a 1600 x 900 window, a shared machine, no
+  GPU timestamps on Metal): `godot --path . -- --battle3d --fixture magic_big --quit-at-end --rung 0 --window=1600x900` (280 fighters, 6
+  casters) 101.6 fps, frame time p95 10.85 ms, draw calls max 845, against the plain `biggest` battle's 100.4 fps, p95 11.14 ms, draw
+  calls 808 (the extra figures account for the rest); rung 3: 102.2 fps, p95 10.85 ms against 100.8 fps, p95 11.29 ms. The stage's CPU
+  with effects on, headless at 4x: about 0.2-0.4 ms a frame more than without (`tests/test_spell_fx.gd` prints it, and checks the
+  2.0 / 4.0 ms budget under `-- --perf`). The shaders' pipelines are warmed in the node's first frames (`SpellFx.WARM_FRAMES`), so the
+  first Sunburst of a battle does not hitch it.
 - **Tests.** `tests/test_spell_fx.gd` (see its header).
 
 # The spike (PR #81, `spike-3d-world`)

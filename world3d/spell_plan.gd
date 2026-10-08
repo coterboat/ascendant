@@ -23,6 +23,11 @@ extends RefCounted
 const RUNGS := 6 ## 0 Full .. 5 Compatibility (3D_DIRECTION §3.4)
 const POOL_CAP := 32 ## §12.2: at most 32 spell effects alive; a full pool skips a new one
 const BOLT_PARTICLES := 6
+## How wide a province's decals are, as a share of its radius (EnchantDecals.prov_r): a ward's band and a curse's veins fill most of the
+## province (a capital's fortress stands inside the band), a Far Sight's ring is smaller, under its eye.
+const WARD_K := 0.9
+const VEIN_K := 0.85
+const SIGHT_K := 0.5
 
 ## The shader's kind numbers (world3d/shaders/spell_fx.gdshaderinc): ground decals, then camera-facing sprites, then the beam.
 const KINDS := {
@@ -407,7 +412,7 @@ static func board(key: String, rung: int, args: Dictionary, reduced: bool = fals
 				var f: Vector3 = args["from"]
 				_add(plan, "puff", f + Vector3.UP * 4.0, 5.0, 0.0, 0.9, _alpha(SMOKE, 0.7), {"up": 0.0 if reduced else 5.0, "fin": 0.08, "fout": 0.6})
 				_add(plan, "fizzle_ring", f + Vector3.UP * 0.3, 9.0, 0.0, 0.8, _alpha(main, 0.8), {"r0": 9.0 if reduced else 2.0, "fin": 0.05, "fout": 0.5})
-			var ward: Dictionary = args.get("ward", {"at": at, "r": r * 0.55})
+			var ward: Dictionary = args.get("ward", {"at": at, "r": r * WARD_K})
 			_add(plan, "band", (ward["at"] as Vector3) + Vector3.UP * 0.3, float(ward["r"]), 0.15, 1.1, _alpha(LAW, 0.85), {"fin": 0.08, "fout": 0.7, "w": 0.0})
 			if rung <= 2 and not reduced:
 				_add(plan, "glow", at + Vector3.UP * 5.0, 9.0, 0.15, 0.7, _alpha(LAW, 0.5), {"fin": 0.05, "fout": 0.5})
@@ -464,7 +469,7 @@ static func board(key: String, rung: int, args: Dictionary, reduced: bool = fals
 			var arm2: Array = args.get("armies", [])
 			if arm2.is_empty():
 				arm2 = [{"at": at, "r": maxf(r * 0.3, 6.0)}]
-			_add(plan, "veins", at + Vector3.UP * 0.3, r * 0.75, 0.0, 1.0, _alpha(BLOOD, 0.9), {"fin": 0.08, "fout": 0.6, "w": 0.0})
+			_add(plan, "veins", at + Vector3.UP * 0.3, r * VEIN_K, 0.0, 1.0, _alpha(BLOOD, 0.9), {"fin": 0.08, "fout": 0.6, "w": 0.0})
 			for ai2 in arm2.size():
 				var ar2: Dictionary = arm2[ai2]
 				var ac2: Vector3 = ar2["at"]
@@ -477,8 +482,8 @@ static func board(key: String, rung: int, args: Dictionary, reduced: bool = fals
 				_add(plan, "ring", ac2 + Vector3.UP * 0.3, float(ar2["r"]), 0.05, 0.9, _alpha(BLOOD, 0.8), {"fin": 0.06, "fout": 0.5})
 		"far_sight_reading":
 			## the eye opens over the rival capital
-			_add(plan, "eye", at + Vector3.UP * 20.0, 9.0, 0.0, 1.8, _alpha(SIGHT, 0.95), {"fin": 0.25, "fout": 0.6, "w": 0.0 if rung >= 2 or reduced else 1.0})
-			_add(plan, "ring", at + Vector3.UP * 0.3, r * 0.4, 0.0, 1.5, _alpha(SIGHT, 0.8), {"fin": 0.1, "fout": 0.8})
+			_add(plan, "eye", at + Vector3.UP * 24.0, 13.0, 0.0, 1.8, _alpha(SIGHT, 0.95), {"fin": 0.25, "fout": 0.6, "w": 0.0 if rung >= 2 or reduced else 1.0})
+			_add(plan, "ring", at + Vector3.UP * 0.3, r * SIGHT_K, 0.0, 1.5, _alpha(SIGHT, 0.8), {"fin": 0.1, "fout": 0.8})
 			if rung <= 1 and not reduced:
 				_add(plan, "glow", at + Vector3.UP * 20.0, 18.0, 0.0, 1.5, _alpha(SIGHT, 0.35), {"fin": 0.2, "fout": 0.8})
 		_:
@@ -525,18 +530,18 @@ static func _arrive(plan: Dictionary, rung: int, reduced: bool, school: String, 
 		_add(plan, "column", at + Vector3.UP * 46.0, 4.5, delay, 0.8, _alpha(main, 0.9), {"to": at, "fin": 0.05, "fout": 0.5, "head": 0.3})
 	match kind:
 		"blessing":
-			_add(plan, "sun_ring", land, r * 0.5, delay, 1.4, _alpha(GILT, 0.9), {"r0": r * 0.5 if reduced else r * 0.1, "fin": 0.1, "fout": 0.8})
+			_add(plan, "sun_ring", land, r * 0.6, delay, 1.4, _alpha(GILT, 0.9), {"r0": r * 0.6 if reduced else r * 0.1, "fin": 0.1, "fout": 0.8})
 		"ward":
-			_add(plan, "band", land, r * 0.55, delay, 1.4, _alpha(LAW, 0.9), {"r0": r * 0.55 if reduced else r * 0.2, "fin": 0.1, "fout": 0.8})
+			_add(plan, "band", land, r * WARD_K, delay, 1.4, _alpha(LAW, 0.9), {"r0": r * WARD_K if reduced else r * 0.2, "fin": 0.1, "fout": 0.8})
 		"curse":
-			_add(plan, "veins", land, r * 0.7, delay, 1.4, _alpha(BLOOD, 0.9), {"r0": r * 0.7 if reduced else r * 0.2, "fin": 0.1, "fout": 0.8})
+			_add(plan, "veins", land, r * VEIN_K, delay, 1.4, _alpha(BLOOD, 0.9), {"r0": r * VEIN_K if reduced else r * 0.2, "fin": 0.1, "fout": 0.8})
 		"summon":
 			_add(plan, "summon_ring", land, r * 0.35, delay, 1.4, _alpha(WILD, 0.9), {"fin": 0.1, "fout": 0.8})
 		"raising":
 			_add(plan, "dust_ring", land, r * 0.35, delay, 1.4, _alpha(GILT, 0.85), {"fin": 0.1, "fout": 0.8})
 		"sight":
-			_add(plan, "ring", land, r * 0.4, delay, 1.4, _alpha(SIGHT, 0.9), {"fin": 0.1, "fout": 0.8})
-			_add(plan, "eye", at + Vector3.UP * 18.0, 7.0, delay + 0.2, 1.2, _alpha(SIGHT, 0.95), {"fin": 0.2, "fout": 0.6})
+			_add(plan, "ring", land, r * SIGHT_K, delay, 1.4, _alpha(SIGHT, 0.9), {"fin": 0.1, "fout": 0.8})
+			_add(plan, "eye", at + Vector3.UP * 24.0, 11.0, delay + 0.2, 1.2, _alpha(SIGHT, 0.95), {"fin": 0.2, "fout": 0.6})
 		_:
 			_add(plan, "ring", land, r * 0.45, delay, 1.4, _alpha(main, 0.9), {"fin": 0.1, "fout": 0.8})
 	if rung <= 1 and not reduced:
@@ -646,12 +651,12 @@ static func standing(kind: String, rung: int, args: Dictionary, reduced: bool = 
 			for ar in args.get("armies", []):
 				_add(plan, "sun_ring", (ar["at"] as Vector3) + Vector3.UP * 0.3, float(ar["r"]), 0.0, 1.0, _alpha(GILT, 0.85), {"w": anim, "fin": 0.0, "fout": 0.0, "hold": true})
 		"ward":
-			_add(plan, "band", land, r * 0.55, 0.0, 1.0, _alpha(LAW, 0.85), {"w": anim, "fin": 0.0, "fout": 0.0, "hold": true})
+			_add(plan, "band", land, r * WARD_K, 0.0, 1.0, _alpha(LAW, 0.85), {"w": anim, "fin": 0.0, "fout": 0.0, "hold": true})
 		"curse":
-			_add(plan, "veins", land, r * 0.7, 0.0, 1.0, _alpha(BLOOD, 0.85), {"w": anim, "fin": 0.0, "fout": 0.0, "hold": true})
+			_add(plan, "veins", land, r * VEIN_K, 0.0, 1.0, _alpha(BLOOD, 0.85), {"w": anim, "fin": 0.0, "fout": 0.0, "hold": true})
 		"sight":
-			_add(plan, "eye", at + Vector3.UP * 18.0, 7.0, 0.0, 1.0, _alpha(SIGHT, 0.95), {"w": anim, "fin": 0.0, "fout": 0.0, "hold": true})
-			_add(plan, "ring", land, r * 0.3, 0.0, 1.0, _alpha(SIGHT, 0.6), {"fin": 0.0, "fout": 0.0, "hold": true})
+			_add(plan, "eye", at + Vector3.UP * 24.0, 11.0, 0.0, 1.0, _alpha(SIGHT, 0.95), {"w": anim, "fin": 0.0, "fout": 0.0, "hold": true})
+			_add(plan, "ring", land, r * SIGHT_K, 0.0, 1.0, _alpha(SIGHT, 0.6), {"fin": 0.0, "fout": 0.0, "hold": true})
 	return plan["elements"]
 
 

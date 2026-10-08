@@ -838,6 +838,63 @@ func test_a_turns_ritual_and_enchantment_beats_all_play_on_the_board() -> void:
 	_free_board(b)
 
 
+## Games with magic the real AI plays through the real resolver: every turn's board model follows its events (a summoned pack, a fading one),
+## and every turn with a ritual or an enchantment's beat plays it on a real board, each beat drawing its effect.
+func test_the_ais_real_rituals_and_enchantments_play_on_the_board() -> void:
+	var magic_turns := 0
+	var b: Board3D = null
+	var kinds := {}
+	for game_seed in [2, 4, 6, 1, 3, 5, 7, 8]:
+		if magic_turns >= 3:
+			break
+		var st: GameState = GameState.with_magic(game_seed, {}, [])
+		for t in 24:
+			var orders := {}
+			var seat := 0
+			for f in st.factions:
+				var rng := SeededRNG.new(game_seed * 7919 + (seat + 1) * 104729 + t * 31)
+				orders[f.id] = AIPlayer.new().plan_orders(st, f.id, rng, "normal")
+				seat += 1
+			var res: Dictionary = TurnResolver.resolve(st, orders, TurnResolver.seed_for_turn(st))
+			if res.get("new_state") == null:
+				break
+			var after: GameState = res["new_state"]
+			var events: Array = res["events"]
+			var model := Playback.apply_events(Playback.model_of(st), events)
+			var built := Playback.model_of(after)
+			assert_eq(model["armies"], built["armies"], "seed %d turn %d: the board model follows the events' armies" % [game_seed, t + 1])
+			assert_eq(model["owners"], built["owners"], "seed %d turn %d: and the owners" % [game_seed, t + 1])
+			var plan := Playback.plan(st, events, after)
+			if not (plan["rituals"] as Array).is_empty() and magic_turns < 3:
+				magic_turns += 1
+				if b == null:
+					b = _board_for(st)
+				b.map.set_state(after, st.factions[0].id)
+				b.armies.snap_at_end = false
+				b.decals.played.clear()
+				assert_true(b.play_turn(st, events, after), "seed %d turn %d: a turn with rituals plays" % [game_seed, t + 1])
+				var guard := 0
+				while b.is_playing() and guard < 9000:
+					b.armies.step_playback(1.0 / 10.0)
+					guard += 1
+				assert_false(b.is_playing(), "the playback ends")
+				assert_eq(b.decals.played.size(), (plan["rituals"] as Array).size(), "seed %d turn %d: every beat drew its effect" % [game_seed, t + 1])
+				for p in b.decals.played:
+					kinds[p["key"]] = true
+					assert_true(SpellPlan.BOARD_KEYS.has(String(p["key"])), "%s is one of the effects" % p["key"])
+				b.armies.snap_at_end = true
+			st = after
+			var over := false
+			for f in st.factions:
+				var cap := st.find_province(f.capital)
+				over = over or cap == null or cap.owner != f.id
+			if over:
+				break
+	assert_true(magic_turns >= 1, "the AI cast something in these games (%d turns with magic beats, effects %s)" % [magic_turns, kinds.keys()])
+	if b != null:
+		_free_board(b)
+
+
 func test_ritual_beats_from_hidden_casters_start_at_the_target_and_reveal_nothing() -> void:
 	var two := _two_states()
 	var before: GameState = two[0]

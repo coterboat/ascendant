@@ -104,7 +104,7 @@ static func _wolf(b) -> void:
 		b.box(Vector3(0.14, 0.12, 0.1), Vector3(sx * 0.3, 3.2, -2.95), CRIMSON) ## eyes
 	b.cyl(0.08, 0.2, 1.7, Vector3(0, 2.75, 2.2), FUR_DK, 5, Basis(Vector3.RIGHT, 1.0)) ## the tail
 	for k in 6:
-		b.cyl(0.0, 0.17, 0.95, Vector3(0, 3.1 + 0.0 * k, -1.6 + 0.62 * k), MOSS, 4) ## briar thorns down the back
+		b.cyl(0.0, 0.17, 0.95, Vector3(0, 3.1, -1.6 + 0.62 * k), MOSS, 4) ## briar thorns down the back
 	b.box(Vector3(0.12, 0.7, 0.9), Vector3(0, 3.4, 0.0), TEAM, Basis(), true) ## a team pennant on its back
 
 
