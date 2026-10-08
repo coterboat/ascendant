@@ -1,0 +1,235 @@
+{
+ "style": {
+  "image": "",
+  "art_style": "Cel-Shaded",
+  "note": "Global style append is unused: every entry sets style:false and carries its full class block verbatim, first in the prompt (STYLE_BIBLE §6.1 C-banner and C-portrait; the proposed C-keyart for the vista). Drive it like asc-m1-batch1: its own driver on ludo.py's call() transport, asc_ request ids, n=2 per call, cutout on the pick only. PLANNED ONLY: Claude's lore bake-off entry, not run."
+ },
+ "batch": "asc-lore-bakeoff-claude",
+ "issue": null,
+ "prep": [
+  "Make assets/_anchors/portrait_grey.webp locally (free): a greyscale copy of assets/_anchors/portrait.webp, made the same way as banner_grey.webp.",
+  "Create assets/_bakeoff/ with a .gdignore (like assets/_anchors/) so Godot skips bake-off images. Bake-off picks are for blind judging, not shipping. Candidates stay gitignored.",
+  "Check GET /docs (free) for createImage image_type 'art' and aspect 'ar_16_9' (key-art row).",
+  "Budget guard as in STYLE_BIBLE §3 rule 19: balance_before minus credits.available, plus the next call's cost, must stay under the hard cap."
+ ],
+ "budget": {
+  "candidates_per_slot": 2,
+  "slots": 9,
+  "price_basis": "0.5 cr per image (createImage, generateWithStyle) and per removeBackground (studio/ludo-playbook.md §2)",
+  "planned_credits": 10.0,
+  "breakdown": "2 banners x (2 x 0.5 + 0.5 cutout) = 3.0; 6 portraits x 2 x 0.5 = 6.0; 1 vista x 2 x 0.5 = 1.0",
+  "reroll_reserve_credits": 10.0,
+  "bellmother_fallback_credits": 1.0,
+  "hard_cap_credits": 25.0,
+  "limit_credits": 150
+ },
+ "assets": [
+  {
+   "id": "asc_lore_claude_banner_candlewake",
+   "out": "assets/_bakeoff/claude/banners/candlewake.webp",
+   "prompt": "Cel-shaded heraldic banner: one tall cloth banner hanging from a short horizontal crossbar, one bold invented emblem in the centre readable at 48 pixels, flat saturated colours with one hard shadow tone, thick clean dark outline, viewed straight on, single banner centred with wide empty margin, plain flat mid-grey background. Subject: Banner of a nation of the gentle dead, soft lilac cloth with a soot-black border and a lower edge cut into long wax-drip points, an ivory candle with one tall amber flame inside a ring of small amber flames as the central emblem.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "asset",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/banner_grey.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields. Greyscale anchor: the cross-faction rule (STYLE_BIBLE §3 rule 3).",
+   "cutout": true,
+   "cutout_note": "remove-background on the pick only (0.5), as the M1 driver did; ludo.py's cutout:true would cut both takes",
+   "n": 2,
+   "credits_est": 1.5,
+   "gates": "Emblem identifiable at 48 px tall and in greyscale; hang point top-centre; clean alpha after the cutout; invented heraldry (re-roll anything like a real flag); reads apart from the kingdom and beast banners in hue, value and emblem shape at 48 px.",
+   "request_ids": [
+    "asc_lore_claude_banner_candlewake_v1"
+   ],
+   "pick": null,
+   "status": "planned"
+  },
+  {
+   "id": "asc_lore_claude_portrait_candlewake_half_death",
+   "out": "assets/_bakeoff/claude/portraits/candlewake/half_death.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: Half-Death, the god-ruler of the Candlewake, a tall serene figure in a lilac hooded veil, the left half of its face smooth ivory alabaster with a calm half-closed eye, the right half drawn only as glowing amber outline over soft shadow, a small amber candle flame floating above its brow, both hands holding a brass bell-shaped lantern close before its chest, gentle patient expression, eyes looking at the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait_grey.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields. Greyscale anchor: a new faction has no same-faction anchor, so the colour spearman anchor would leak kingdom blue and gold (PR #14: 8 of 9 beasts). Make it first (prep).",
+   "n": 2,
+   "credits_est": 1.0,
+   "gates": "Head and shoulders, eyes 35-41% from the top after the 3:4 crop; the named held item visible and inside the 3:4 crop (styled portraits come back near-square); faction reads from materials and palette at 96x128; zero kingdom blue or gold trim; same series look as the M1 portraits side by side.",
+   "request_ids": [
+    "asc_lore_claude_portrait_candlewake_half_death_v1"
+   ],
+   "pick": null,
+   "status": "planned",
+   "role": "ruler (god)"
+  },
+  {
+   "id": "asc_lore_claude_portrait_candlewake_wickwardens",
+   "out": "assets/_bakeoff/claude/portraits/candlewake/wickwardens.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: A wickwarden of the Candlewake, a soldier made of pale ivory candle wax with soft drips along the jaw, a brass candle-crowned helm with a short bright amber flame burning at its top, a lilac ribbon shroud over soot-dark wax armour, the upright brass shaft of a long snuffer-pike held close against the right shoulder, calm watchful expression, eyes looking at the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait_grey.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields. Greyscale anchor: a new faction has no same-faction anchor, so the colour spearman anchor would leak kingdom blue and gold (PR #14: 8 of 9 beasts). Make it first (prep).",
+   "n": 2,
+   "credits_est": 1.0,
+   "gates": "Head and shoulders, eyes 35-41% from the top after the 3:4 crop; the named held item visible and inside the 3:4 crop (styled portraits come back near-square); faction reads from materials and palette at 96x128; zero kingdom blue or gold trim; same series look as the M1 portraits side by side.",
+   "request_ids": [
+    "asc_lore_claude_portrait_candlewake_wickwardens_v1"
+   ],
+   "pick": null,
+   "status": "planned",
+   "role": "unit (infantry, trait Pall)"
+  },
+  {
+   "id": "asc_lore_claude_portrait_candlewake_great_taper",
+   "out": "assets/_bakeoff/claude/portraits/candlewake/great_taper.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: A great taper of the Candlewake, a towering giant of layered ivory candle wax with long drips down its broad shoulders, a crown of many small amber flames ringing its smooth round head, two soot-dark eye hollows glowing warm amber, lilac funeral ribbons tied around its neck, its huge wax hands clasped together before its chest, solemn gentle expression, eyes on the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait_grey.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields. Greyscale anchor: a new faction has no same-faction anchor, so the colour spearman anchor would leak kingdom blue and gold (PR #14: 8 of 9 beasts). Make it first (prep).",
+   "n": 2,
+   "credits_est": 1.0,
+   "gates": "Head and shoulders, eyes 35-41% from the top after the 3:4 crop; the named held item visible and inside the 3:4 crop (styled portraits come back near-square); faction reads from materials and palette at 96x128; zero kingdom blue or gold trim; same series look as the M1 portraits side by side.",
+   "request_ids": [
+    "asc_lore_claude_portrait_candlewake_great_taper_v1"
+   ],
+   "pick": null,
+   "status": "planned",
+   "role": "unit (monster, trait Flare)"
+  },
+  {
+   "id": "asc_lore_claude_banner_stormherd",
+   "out": "assets/_bakeoff/claude/banners/stormherd.webp",
+   "prompt": "Cel-shaded heraldic banner: one tall cloth banner hanging from a short horizontal crossbar, one bold invented emblem in the centre readable at 48 pixels, flat saturated colours with one hard shadow tone, thick clean dark outline, viewed straight on, single banner centred with wide empty margin, plain flat mid-grey background. Subject: Banner of a nation of storm shepherds, bright oilskin-yellow cloth with a slate-grey border and a straight lower edge hung with small brass bells, a slate-grey storm-cloud ram's head with curled horns and a cyan lightning fork as the central emblem.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "asset",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/banner_grey.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields. Greyscale anchor: the cross-faction rule (STYLE_BIBLE §3 rule 3).",
+   "cutout": true,
+   "cutout_note": "remove-background on the pick only (0.5), as the M1 driver did; ludo.py's cutout:true would cut both takes",
+   "n": 2,
+   "credits_est": 1.5,
+   "gates": "Emblem identifiable at 48 px tall and in greyscale; hang point top-centre; clean alpha after the cutout; invented heraldry (re-roll anything like a real flag); reads apart from the kingdom and beast banners in hue, value and emblem shape at 48 px.",
+   "request_ids": [
+    "asc_lore_claude_banner_stormherd_v1"
+   ],
+   "pick": null,
+   "status": "planned"
+  },
+  {
+   "id": "asc_lore_claude_portrait_stormherd_bellmother",
+   "out": "assets/_bakeoff/claude/portraits/stormherd/bellmother.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: The Bellmother, the mortal ruler of the Stormherd, a weathered broad-shouldered older woman with wind-tossed grey braids, a bright yellow oilskin coat with the hood thrown back, a heavy brass shepherd's bell held up close before her chest in both hands, a slate-grey storm-cloud ram's-head brooch at her collar, small cyan sparks crackling in her hair, wry confident smile, eyes looking at the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait_grey.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields. Greyscale anchor: a new faction has no same-faction anchor, so the colour spearman anchor would leak kingdom blue and gold (PR #14: 8 of 9 beasts). Make it first (prep).",
+   "n": 2,
+   "credits_est": 1.0,
+   "gates": "Head and shoulders, eyes 35-41% from the top after the 3:4 crop; the named held item visible and inside the 3:4 crop (styled portraits come back near-square); faction reads from materials and palette at 96x128; zero kingdom blue or gold trim; same series look as the M1 portraits side by side.",
+   "request_ids": [
+    "asc_lore_claude_portrait_stormherd_bellmother_v1"
+   ],
+   "pick": null,
+   "status": "planned",
+   "role": "ruler (mortal line)",
+   "risk": "anchors leak gender (M1: crossbowmen 6/6 male from the spearman anchor); the greyscale spearman anchor is male",
+   "fallback": {
+    "request_id": "asc_lore_claude_portrait_stormherd_bellmother_v2",
+    "kind": "image",
+    "type": "portrait",
+    "perspective": "Any perspective",
+    "aspect": "ar_3_4",
+    "n": 2,
+    "style": false,
+    "art_style": "Cel-Shaded",
+    "augment": false,
+    "prompt": "same as this entry, sent as a text-only createImage",
+    "when": "only if both v1 candidates come back male",
+    "credits_est": 1.0
+   }
+  },
+  {
+   "id": "asc_lore_claude_portrait_stormherd_thundersheep",
+   "out": "assets/_bakeoff/claude/portraits/stormherd/thundersheep.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: A thundersheep of the Stormherd, a sturdy sheep whose fleece is a billowing dark slate-grey storm cloud with bright white curling edges, small cyan lightning forks flickering through the wool, a black face with short curled horns, a brass bell on a yellow leather collar at its throat, alert friendly expression, bright eyes looking at the viewer.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait_grey.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields. Greyscale anchor: a new faction has no same-faction anchor, so the colour spearman anchor would leak kingdom blue and gold (PR #14: 8 of 9 beasts). Make it first (prep).",
+   "n": 2,
+   "credits_est": 1.0,
+   "gates": "Head and shoulders, eyes 35-41% from the top after the 3:4 crop; the named held item visible and inside the 3:4 crop (styled portraits come back near-square); faction reads from materials and palette at 96x128; zero kingdom blue or gold trim; same series look as the M1 portraits side by side.",
+   "request_ids": [
+    "asc_lore_claude_portrait_stormherd_thundersheep_v1"
+   ],
+   "pick": null,
+   "status": "planned",
+   "role": "unit (beast, trait Shock)",
+   "risk": "keep it a storm cloud, far from fluffy yellow electric-sheep monster designs (R1 red-team flag); reject any yellow fleece"
+  },
+  {
+   "id": "asc_lore_claude_portrait_stormherd_crooks",
+   "out": "assets/_bakeoff/claude/portraits/stormherd/crooks.webp",
+   "prompt": "Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: A crook of the Stormherd, a young hill shepherd with a sunburnt freckled face, a bright yellow oilskin hood and cape, a thick slate-grey wool scarf, the upright brass-hooked shepherd's crook held close against his left shoulder with a small cyan spark at the hook, cheerful determined grin, eyes looking to the left.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "portrait",
+   "augment": false,
+   "kind": "styled",
+   "style_from_file": "assets/_anchors/portrait_grey.webp",
+   "note": "sent as base64 style_image from the local file; generateWithStyle has no art_style/perspective/aspect fields. Greyscale anchor: a new faction has no same-faction anchor, so the colour spearman anchor would leak kingdom blue and gold (PR #14: 8 of 9 beasts). Make it first (prep).",
+   "n": 2,
+   "credits_est": 1.0,
+   "gates": "Head and shoulders, eyes 35-41% from the top after the 3:4 crop; the named held item visible and inside the 3:4 crop (styled portraits come back near-square); faction reads from materials and palette at 96x128; zero kingdom blue or gold trim; same series look as the M1 portraits side by side.",
+   "request_ids": [
+    "asc_lore_claude_portrait_stormherd_crooks_v1"
+   ],
+   "pick": null,
+   "status": "planned",
+   "role": "unit (infantry, trait Gathering)"
+  },
+  {
+   "id": "asc_lore_claude_keyart_fold_muster",
+   "out": "assets/_bakeoff/claude/keyart/fold_muster.webp",
+   "prompt": "Cel-shaded key art of bright high fantasy: wide landscape vista seen from a high three-quarter angle like a strategy game camera, thick clean dark outline of even weight, flat saturated colours with one hard-edged shadow tone and one highlight tone, simple bold shapes and large readable forms, warm golden late-afternoon light from the upper left with long soft shadows, clear depth from foreground to middle ground to far distance, wordless pure pictorial image. Subject: A Stormherd fortress on a green upland fell in the middle ground: concentric rings of pale drystone walls around round stone huts with turf roofs, and one huge slate-grey storm cloud tethered above the fortress by heavy iron chains, lit from inside by cyan lightning. Through the open gate an army musters and spills down the hillside toward the viewer: shepherds in bright yellow oilskin coats carrying tall brass-hooked crooks, driving a flock of round slate-grey storm-cloud sheep with black faces and a few great storm rams with curled horns. Far in the distance across rolling golden hills stands a tall mountain whose upper half is drawn only as glowing white outline against the sky, under a huge low golden afternoon sun.",
+   "style": false,
+   "art_style": "Cel-Shaded",
+   "type": "art",
+   "augment": false,
+   "kind": "image",
+   "perspective": "High Angle",
+   "aspect": "ar_16_9",
+   "note": "World key-art vista: a fortress with an army mustering (director, 2026-10-04). Uses the PROPOSED C-keyart block (the bible has no key-art class yet; art lead owns adding it). Text-only createImage, because no same-class anchor exists. Before sending, confirm on GET /docs (free) that createImage takes image_type 'art' and aspect 'ar_16_9'; otherwise use 'ar_4_3', then 'ar_1_1' and crop to 16:9.",
+   "n": 2,
+   "credits_est": 1.0,
+   "gates": "Fortress, tethered cloud and mustering flock all read at 960x540; yellow oilskins and cyan lightning visible at 480x270; Noonmark mountain outline legible; wordless, invented heraldry.",
+   "request_ids": [
+    "asc_lore_claude_keyart_fold_muster_v1"
+   ],
+   "pick": null,
+   "status": "planned"
+  }
+ ]
+}
