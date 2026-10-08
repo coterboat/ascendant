@@ -12,6 +12,10 @@ re-rolled or a pose edited later without Ludo URLs (which die after 7 days). God
   the unit it changes, each an edit of that unit's picked pose picture with the bible §5 block;
   `<faction>/<new unit>_<pose>.webp`: the transformations' new units, the `ready` picture styled from the
   fork's variant picture, cut out and laid on plain grey (their soft shadows fused into floor slabs).
+- `grok3d/<faction>/<family>_<pose>.webp` (batch `asc-3d-grok`, `tools/ludo/asc_3d_grok.py`, #162): the transformation
+  looks and new units re-rolled from Alex's Grok Imagine art in `lore/crown/` and `lore/thornmane/`. `ready` is a cutout
+  of one figure of his sheet (crop, removeBackground, laid on plain grey); `march`, `strike`, `fallen` are edits of it.
+  Candidate models stay in the Review Table batch `review/m4_looks` until Alex accepts them.
 - `<faction>/standard_bearer_<faction>.webp`, `<faction>/musician_<faction>.webp`: army extras,
   edits of a picked unit picture of the same faction.
 - `<faction>/fortress_<faction>.webp`, `fort_<faction>.webp`, `camp_<faction>.webp`; `world/`:
