@@ -1212,12 +1212,21 @@ static func to_markdown(s: Dictionary) -> String:
 static func _magic_summary(results: Array) -> Dictionary:
 	var out := {"games": 0, "fog_games": 0, "casts": {}, "blood": 0, "blood_hp": 0, "turned_aside": 0, "spells": {}, "healed": 0, "drained": 0,
 		"moon": 0, "forecast": {"checks": 0, "mismatches": 0, "turned_aside": 0, "unseen": 0}, "hp": {"checks": 0, "mismatches": 0},
-		"fog": {"probes": 0, "views": 0, "view_mismatches": 0, "plans": 0, "plan_mismatches": 0, "illegal": 0, "skipped": 0}, "arcana": {}}
+		"fog": {"probes": 0, "views": 0, "view_mismatches": 0, "plans": 0, "plan_mismatches": 0, "illegal": 0, "skipped": 0}, "arcana": {},
+		"mages": {}}
 	for r in results:
 		var m: Dictionary = r.get("magic", {})
 		if m.is_empty():
 			continue
 		out.games += 1
+		for fid in r.get("recruits", {}):  # {faction id: {"mages", "regulars"}}: the mages among the regular recruits (band G8)
+			if not out.mages.has(fid):
+				out.mages[fid] = {"mages": 0, "regulars": 0}
+			for tid in r.recruits[fid]:
+				if MagicRules.is_mage_id(str(tid)):
+					out.mages[fid].mages += int(r.recruits[fid][tid])
+				if not FactionData.FACTIONS.any(func(f): return f.id == fid and f.commander.id == tid):
+					out.mages[fid].regulars += int(r.recruits[fid][tid])
 		for c in m.casts:
 			_bump(out.casts, "%s:%s" % [c.faction, c.ritual])
 			if c.outcome == "turned_aside":
@@ -1262,6 +1271,10 @@ static func _magic_lines(mg: Dictionary) -> Array:
 		var parts := str(key).split(":")
 		_bump_by(spells, "%s %s" % [faction_name(parts[0]), MagicRules.spell_name(parts[1])], int(mg.spells[key]))
 	L.append("- **Battle spells cast:** %s." % _counts(spells))
+	var mage_parts := []
+	for fid in mg.mages:
+		mage_parts.append("%s %s (%d of %d)" % [faction_name(fid), _pct(mg.mages[fid].mages, mg.mages[fid].regulars), mg.mages[fid].mages, mg.mages[fid].regulars])
+	L.append("- **Mages among regular recruits:** %s." % ", ".join(mage_parts))
 	var research := {}
 	for key in mg.arcana:
 		var parts := str(key).split(":")

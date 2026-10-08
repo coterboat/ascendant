@@ -599,15 +599,31 @@ static func _g7(g: Array, gf: Array, tables: Dictionary) -> Dictionary:
 				continue
 			var s := _ratio(cast, knows)
 			var row_ok := knows == 0 or s >= G7_EACH - 0.000001
-			rows.append({"faction": fid, "ritual": sid, "knows": knows, "cast": cast, "share": s, "ok": row_ok})
+			rows.append({"faction": fid, "ritual": sid, "knows": knows, "cast": cast, "share": s, "ok": row_ok, "fog": common})
 			if not row_ok:
 				each_ok = false
 				missing.append("%s's %s %s" % [Simulator.faction_name(fid), ritual_name(sid), _pct(s)])
 	tables["ritual_rows"] = rows
 	var ok := share >= G7_SHARE - 0.000001 and each_ok
+	var notes := []
+	if not missing.is_empty():
+		notes.append("below 10%: " + ", ".join(missing))
+	# When the first ritual comes: the turn the first cast of a game was made (median), and what the fog games do (Far Sight needs no research).
+	var firsts := []
+	for r in g:
+		var turns: Array = _mlog(r).get("casts", []).map(func(c): return int(c.turn))
+		if not turns.is_empty():
+			firsts.append(turns.min())
+	if not firsts.is_empty():
+		var fs := Simulator.stats_of(firsts)
+		notes.append("the first ritual of a game comes on turn %s (median; %d games cast one)" % [Simulator._num(fs.median), fs.n])
+	if not gf.is_empty():
+		var fog_reached := gf.filter(func(r): return _reached(r, G7_BY_TURN))
+		var fog_early: int = fog_reached.filter(func(r): return _mlog(r).get("casts", []).any(func(c): return int(c.turn) <= G7_BY_TURN)).size()
+		notes.append("in the fog games, where Far Sight needs no research, a ritual by turn 10 in %s" % _pct_of(fog_early, fog_reached.size()))
 	return _band("G7", what, target, "a ritual by turn 10 in %s (Crown %s, Clans %s); %d of %d rituals below 10%% of the games that know them" % [
 		_pct_of(early, reached.size()), _pct(_ratio(per_faction.kingdom, reached.size())), _pct(_ratio(per_faction.beasts, reached.size())),
-		missing.size(), rows.size()], "pass" if ok else "miss", "" if missing.is_empty() else "below 10%: " + ", ".join(missing))
+		missing.size(), rows.size()], "pass" if ok else "miss", "; ".join(notes))
 
 
 ## G8: mages bought. Mages are 4-20% of each faction's regular recruits.
@@ -860,7 +876,7 @@ static func _g12(g: Array, pc: Array, m2: Array, fixture: Dictionary, records: D
 	if not f_ok:
 		details.append("F is outside 15-50%")
 	elif held_by_control and not in_band:
-		details.append("F is outside 15-50% (literally a miss), but so it is with magic off (%s): magic moved it by %+.0f points, within the %d points allowed" % [
+		details.append("F is outside 15-50%% (literally a miss), but so it is with magic off (%s): magic moved it by %+.0f points, within the %d points allowed" % [
 			_pct(control_share), 100.0 * (f_share - control_share), roundi(100.0 * F_SLACK)])
 	var ok := digests_ok and records_ok and f_ok
 	return _band("G12", what, target, "; ".join(parts), "pass" if ok else "miss", "; ".join(details.filter(func(x): return not str(x).is_empty())))
@@ -1043,7 +1059,7 @@ static func to_markdown(j: Dictionary, header: String = "") -> String:
 		var rr: Array = t.get("ritual_rows", [])
 		for row in rr:
 			var key := "%s|%s" % [row.faction, row.ritual]
-			L.append("| %s | %s | %d | %s | %d | %s |" % [Simulator.faction_name(row.faction), ritual_name(row.ritual), int(t.ritual_casts.get(key, 0)),
+			L.append("| %s | %s | %d | %s | %d | %s |" % [Simulator.faction_name(row.faction), ritual_name(row.ritual) + (" (fog games)" if bool(row.get("fog", false)) else ""), int(t.ritual_casts.get(key, 0)),
 				_pct(_ratio(t.ritual_casts.get(key, 0), t.ritual_totals.get(row.faction, 0))), row.knows, _pct_of(row.cast, row.knows)])
 		L.append("")
 		L.append("### Top \"why\" factor, by spell or ritual (G2): %d battles" % int(t.get("battles", 0)))
