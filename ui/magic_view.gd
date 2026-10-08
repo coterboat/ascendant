@@ -489,9 +489,9 @@ static func chip(state: GameState, fid: String, orders: Array = []) -> Dictionar
 		parts.append("%s queued: each holds its army this turn. %s" % [TooltipText.count(casts, "ritual"), String(Forecast.cast_budget(state, fid, orders).text)])
 	for e in view.enchantments:
 		if String(e.kind) == "global":
-			parts.append("%s (%s) is up through turn %d: in every battle %s fighters heal back a quarter of the damage they deal." % [
+			parts.append("%s (%s) is up through turn %d: in every battle %s fighters heal back %s of the damage they deal." % [
 				MagicRules.spell_name(String(e.ritual)), MagicRules._faction_display(view, String(e.faction)), int(e.until_turn),
-				"your" if String(e.faction) == fid else "its"])
+				"your" if String(e.faction) == fid else "its", MagicRules.moon_share_word()])
 	parts.append("Click to open the Magic tab: your arcana, mastery and the battle spellbook.")
 	var desc := "%s %s" % ["Every spell and ritual you have researched; the Magic tab has what is left." if not known.is_empty() \
 		else "You know no spell yet: research one in the Magic tab, and your mages can be recruited.", RulesCodex.text("magic")]

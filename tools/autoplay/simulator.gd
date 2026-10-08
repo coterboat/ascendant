@@ -448,15 +448,26 @@ static func replay_check(session: GameSession) -> String:
 	return "differs: the replayed final state is not the one the game reached (%d vs %d characters)" % [b.length(), a.length()]
 
 
+## What each Clans preset keeps beside the new mandate in a Tithe pair (band G9). Tithe of Blood costs 3 of the 10 power and the
+## presets spend 0, 5 and 10, so Blood of the Fang and Clan Moot cannot keep what they have; and a ruler left with LOW_KEPT
+## power or less is played at home (AIPlayer.preset_for), which is another game than the preset's. So each keeps the mandate that
+## suits Tithe and leaves its ruler at least TITHE_MIN_KEPT power: Clan Moot its Blood Frenzy (blood given is wounds taken, and
+## wounds are what Frenzy feeds on), Blood of the Fang its Iron Discipline. Beast-God Unbound spends nothing, so it keeps nothing.
+const TITHE_KEEPS := {"beast_god_unbound": [], "clan_moot": ["blood_frenzy"], "blood_of_the_fang": ["iron_discipline"]}
+const TITHE_MIN_KEPT := 3
+
 ## The Thornmane Clans build `build` ({"preset", "ruler", "mandates"}) with Tithe of Blood (`mode` "tithe" or "bleed") or
-## the test-only mandate of the same price (`mode` "null"), for a Tithe pair (band G9). Both cost 3 power, so a pair's two
-## builds keep the same power; a build with too little left loses its last mandates until the new one fits. The preset
-## name stays, so reports still group the games by the preset they began as.
+## the test-only mandate of the same price (`mode` "null"), for a Tithe pair (band G9). Both cost the same power, so a pair's two
+## builds keep the same power. A preset keeps what TITHE_KEEPS says; any other build loses its last mandates until its ruler
+## would keep TITHE_MIN_KEPT power with the new one. The preset name stays, so reports still group the games by the preset
+## they began as.
 static func tithe_build(build: Dictionary, mode: String) -> Dictionary:
 	var extra := NULL_MANDATE if mode == "null" else MagicRules.TITHE_OF_BLOOD
 	var mandates: Array = build.get("mandates", []).duplicate()
 	var cost := RulerRules.mandate_cost(extra)
-	while not mandates.is_empty() and RulerRules.kept_after({"ruler": build.ruler, "mandates": mandates}) < cost:
+	if TITHE_KEEPS.has(str(build.get("preset", ""))):
+		mandates = TITHE_KEEPS[str(build.preset)].duplicate()
+	while not mandates.is_empty() and RulerRules.kept_after({"ruler": build.ruler, "mandates": mandates}) < cost + TITHE_MIN_KEPT:
 		mandates.pop_back()
 	mandates.append(extra)
 	return {"preset": build.get("preset", ""), "ruler": build.ruler, "mandates": mandates}

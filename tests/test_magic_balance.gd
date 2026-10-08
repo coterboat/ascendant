@@ -452,6 +452,25 @@ func test_the_ritual_forecast_check_compares_numbers_and_sets_aside_what_it_cann
 	assert_eq(log.forecast.mismatches, 3, "an order the session took and the forecast refused is a mismatch")
 
 
+func test_a_ward_that_ends_a_rival_curse_names_it_by_a_view_id_under_fog() -> void:
+	# §2.7: a rival's enchantment is "seen-<ritual>-<province>" in a view and "beasts-e3" in the truth. The forecast made from
+	# the view and the result agree when they end as many and each is the same or a view id.
+	var forecast := {"ritual": "sanctum_ward", "army": "kingdom-1", "ends": ["seen-bloodrot-westwatch"]}
+	var pending := {"faction": CROWN, "army": "kingdom-1", "ritual": "sanctum_ward", "ok": true, "reason": "", "numbers": forecast, "clear": true}
+	var event := {"type": "ritual_cast", "factions": [CROWN], "phase": "rituals", "numbers": {"ritual": "sanctum_ward", "army": "kingdom-1", "ends": ["beasts-e3"]}}
+	var log := MagicLog.new_log()
+	MagicLog.check_forecasts(log, [pending], [event], 9)
+	assert_eq([log.forecast.checks, log.forecast.mismatches], [1, 0], str(log.forecast.first))
+	event.numbers.ends = ["beasts-e3", "beasts-e4"]
+	MagicLog.check_forecasts(log, [pending], [event], 10)
+	assert_eq(log.forecast.mismatches, 1, "ending more than the forecast said is a mismatch")
+	var own := {"ritual": "sanctum_ward", "army": "kingdom-1", "ends": ["beasts-e3"]}
+	pending.numbers = own
+	event.numbers.ends = ["beasts-e4"]
+	MagicLog.check_forecasts(log, [pending], [event], 11)
+	assert_eq(log.forecast.mismatches, 2, "a true id that is not the result's is a mismatch")
+
+
 func _ledger_states() -> Array:
 	var prev := GameState.with_magic(11, {}, [])
 	var state := prev.deep_copy()
@@ -533,10 +552,14 @@ func test_a_tithe_pair_buys_the_same_power_and_the_null_mandate_does_nothing() -
 		assert_eq(RulerRules.kept_after(with), RulerRules.kept_after(without), "%s: the same kept power" % k.id)
 		assert_true(RulerRules.build_errors(CLANS, with).is_empty(), str(RulerRules.build_errors(CLANS, with)))
 		assert_true(RulerRules.build_errors(CLANS, without).is_empty(), str(RulerRules.build_errors(CLANS, without)))
-		assert_true(RulerRules.kept_after(with) >= 0)
-		# The mandates the preset spends first are kept; only trailing ones make room.
-		var kept: Array = with.mandates.slice(0, -1)
-		assert_eq(kept, build.mandates.slice(0, kept.size()))
+		assert_true(RulerRules.kept_after(with) >= Simulator.TITHE_MIN_KEPT, "%s: the ruler keeps power enough to stay in the field" % k.id)
+		# What a preset keeps is one of its own mandates.
+		for mid in with.mandates.slice(0, -1):
+			assert_true(build.mandates.has(mid), "%s keeps only its own mandates (%s)" % [k.id, mid])
+	# A build of its own (no preset) loses its last mandates until its ruler keeps enough.
+	var own := Simulator.tithe_build({"preset": "", "ruler": "fang_chieftain", "mandates": ["iron_discipline", "blood_frenzy", "sworn_vassals"]}, "tithe")
+	assert_eq(own.mandates, ["iron_discipline", MagicRules.TITHE_OF_BLOOD])
+	assert_true(RulerRules.kept_after(own) >= Simulator.TITHE_MIN_KEPT)
 	# Both builds start a game with magic, the null one without any Tithe.
 	var game_with := GameState.with_magic(3, {CLANS: Simulator.tithe_build(RulerRules.preset_build("blood_of_the_fang"), "tithe")}, [])
 	var game_without := GameState.with_magic(3, {CLANS: Simulator.tithe_build(RulerRules.preset_build("blood_of_the_fang"), "null")}, [])

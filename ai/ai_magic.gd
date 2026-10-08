@@ -24,8 +24,10 @@ extends RefCounted
 ## Rituals take at most this share of the gold left after the troops the capital cannot do without (§10.2).
 const RITUAL_SHARE_PCT := 40
 const RITUAL_SHARE := RITUAL_SHARE_PCT / 100.0
-## One mage for every this many regular units in an army, so its second rank is not exposed (§10.2).
-const MAGE_PER := 6
+## One mage for every this many regular units in an army, so its second rank is not exposed (§10.2). M5-11: 6 -> 4, the
+## bottom of §13.3's range: the capital's garrison, where recruits stand, is small, and a cap of 6 kept the Crown at about
+## 1% of its recruits being Adepts.
+const MAGE_PER := 4
 ## A Shaman's army pays in blood only while it keeps this share of its hit points (§10.2: two thirds).
 const TITHE_KEEP := 2.0 / 3.0
 ## A Far Sight that came to nothing is not tried on the same province again for this many turns (§10.2).

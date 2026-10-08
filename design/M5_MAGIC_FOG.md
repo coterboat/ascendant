@@ -454,8 +454,8 @@ The rest of the time, the forecast is honest about its guess, and §2.8's "what 
 
 | id | name | faction | hp | attack | defense | morale | cost | trait |
 |---|---|---|---|---|---|---|---|---|
-| `adepts` | Sunstone Adepts | Aurel Crown | 8 | 7 | 5 | 9 | 18 | Mage |
-| `shamans` | Thornmane Shamans | Thornmane Clans | 10 | 7 | 4 | 8 | 16 | Mage |
+| `adepts` | Sunstone Adepts | Aurel Crown | 10 | 7 | 5 | 9 | 15 | Mage |
+| `shamans` | Thornmane Shamans | Thornmane Clans | 10 | 7 | 4 | 8 | 14 | Mage |
 
 - **On the roster from turn 1; recruitable once the faction knows a spell.** The roster stays static, so it never reveals research (§2.2).
   - `TurnResolver.check_recruit` gates them: "The Sunstone Adepts can be recruited once the Crown knows a spell. Research Sunlance or Shield of Law (10 research). The Ever-Regent's own Sunlance doesn't count."
@@ -624,7 +624,7 @@ Opening with a spell costs the transformation about one turn. That is the new de
 
 ### 5.3 no stacking (the veteran's question)
 - **A unit takes a given hex or shield at most once a round,** and Sunburst comes once per side per battle. A second caster with the same spell covers more units, or moves on (§5.1).
-- **Bolts add up,** because each is one caster's action and costs 16-18 gold of fragile second-rank fighter. They focus on one target until it dies, never overkill, and reach rulers last.
+- **Bolts add up,** because each is one caster's action and costs 14-15 gold of fragile second-rank fighter. They focus on one target until it dies, never overkill, and reach rulers last.
 - **Spell parts stack with other parts** as separate named parts, exactly as mandate and path parts do. Shield of Law is the exception by its own rule.
 - **No morale spells in battle.** M4-6 found that −4 morale stacks decide games. The only morale magic is Dawn Blessing's +1 on your own armies (§6.2).
 
@@ -724,7 +724,7 @@ Opening with a spell costs the transformation about one turn. That is the new de
 | `call_the_pack` | Call the Pack | Wild | II | summon | **5 a wolf** | the caster's province | T + 4 | You choose 3 up to 3 + Wild bonus Thornwolves. They form **a new army of their own** there, which holds this turn. A new pack can be called only once the last has faded or fallen. |
 | `wake_the_greenwrath` | Wake the Greenwrath | Wild | III | summon | 30 | the caster's province, which must be **forest** | until it falls | The Greenwrath forms a new army of its own there, which holds this turn. One at a time. |
 | `bloodrot` | Bloodrot | Blood | II | curse | 15 | a province not yours within 2 | T + 2 | **Fighters there not of your faction can't heal.** In the enchantments phase it takes **12 hp** (+4 per Blood bonus) from them, one hp at a time from the fighter with the most hp left, never below 1. It first bites after this turn's battles. |
-| `blood_moon` | Blood Moon | Blood | III | global | 30 | none | T + 2 | In every battle, each of your standing fighters heals back a quarter of the damage its attacks dealt that round, **rounded down**. A fighter that already heals back (Lifedrinker) heals the larger share, not both. **Under the moon none of yours heals back above maximum − 1:** the wound stays open. Spell damage isn't healed back. Battles in a rival's warded province are outside the moon. Only one global ritual can be up at a time. |
+| `blood_moon` | Blood Moon | Blood | III | global | 26 | none | T + 2 | In every battle, each of your standing fighters heals back a fifth of the damage its attacks dealt that round, **rounded down**. A fighter that already heals back (Lifedrinker) heals the larger share, not both. **Under the moon none of yours heals back above maximum − 1:** the wound stays open. Spell damage isn't healed back. Battles in a rival's warded province are outside the moon. Only one global ritual can be up at a time. |
 | `far_sight` | Far Sight | common | – | sight | 6 | any province within 3 | T + 2 | You see it **in clear sight at the start of your next 2 turns.** On a rival's capital you also get a **reading**: that rival's gold, mandates, kept power, research pool, nodes, spells and spellbook, but not its research target. A rival caster standing there blocks the reading, not the sight. |
 
 **Turned aside costs half.** A ritual aimed at a province a rival has warded is turned aside, and you pay half its price, rounded down: "the power is spent". This keeps a ward a real guess and stops free probing.
@@ -939,7 +939,7 @@ The fixed order. `RulesCodex "phase_order"` must say exactly this.
 - **Recruits.** `_recruit_value` values a mage from its spellbook, using the resolver's own constants, over `ROUNDS_GUESS`:
   - a bolt at its damage
   - a hex or shield at its count × the expected damage its part moves, against the most numerous enemy front-rank type (or our own)
-  - At most one mage per 6 regular units in an army, so its second rank isn't exposed.
+  - At most one mage per 4 regular units in an army, so its second rank isn't exposed (M5-11: 6 → 4, §13.3).
 - **Rituals:** at most one a turn per eligible army, only from armies that hold anyway (garrisons) or a ruler on its `home` role. It never pins an army it ordered to attack. The first rule that applies wins:
 
 | priority | ritual | when |
@@ -1117,7 +1117,7 @@ Pillar 4 and fog pull against each other. The resolution is that every rule stay
   - **The Wild:** control and disposable bodies.
   - **Blood:** finishing the weak, attrition that stops healing, and sustain.
 - **Mages should be worth their price, not more.**
-  - Sunlance's 4 sure damage, focused until a creature falls, is about a crossbowman's 4.4 against Tuskers and better against anything big, for 18 gold against 10.
+  - Sunlance's 4 sure damage, focused until a creature falls, is about a crossbowman's 4.4 against Tuskers and better against anything big, for 15 gold against 10.
   - Shield of Law blocks about 7 a round in the field. Briar Snare saves about 7 a round (9 in a forest). Bloodbolt deals 5 a round from a 16-gold body.
   - So a mage is roughly 1-1.5 crossbowmen at 1.6-1.8 times the price, and rituals pay back the gap.
   - M2's lesson holds: battles are steep (+8 gold on one side of an even 137-gold battle wins 71%). So these numbers are first-pass, and M5-11 measures them.
@@ -1126,7 +1126,7 @@ Pillar 4 and fog pull against each other. The resolution is that every rule stay
   - Bloodrot (15): 36 hp, plus no healing.
   - Call the Pack (5 a wolf): disposable Fangthrower-like fighters at 5 gold each.
   - Far Sight (6): the truth about one province, twice.
-  - The greater workings (30): each worth about a transformation's province rule.
+  - The greater workings (26-30): each worth about a transformation's province rule.
 - **Magic must not break the fork.** M4's P1 and P2 must still hold. If a school makes one side of a fork dominant, the school is tuned, not the fork.
 - **Magic should shorten stand-offs:**
   - Shield of Law never covers a unit with a terrain or fort bonus.

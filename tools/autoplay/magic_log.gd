@@ -174,7 +174,7 @@ static func check_forecasts(log: Dictionary, pending: Array, events: Array, turn
 			for k in keys:
 				if FORECAST_SKIP.has(k):
 					continue
-				if JSON.stringify(p.numbers.get(k)) != JSON.stringify(got.get(k)):
+				if not _same_number(str(k), p.numbers.get(k), got.get(k)):
 					diff.append("%s: forecast %s, result %s" % [k, JSON.stringify(p.numbers.get(k)), JSON.stringify(got.get(k))])
 			if not diff.is_empty():
 				why = "numbers differ (%s)" % "; ".join(diff)
@@ -182,6 +182,20 @@ static func check_forecasts(log: Dictionary, pending: Array, events: Array, turn
 			out.mismatches += 1
 			if String(out.first).is_empty():
 				out.first = "turn %d, %s's %s from %s: %s" % [turn, p.faction, p.ritual, p.army, why]
+
+
+## Whether a ritual number is the same in the forecast and the result. A rival's enchantment is named by a view id in a
+## fog view ("seen-bloodrot-westwatch", FogRules, §2.7) and by its own id in the truth, so the enchantments a ward `ends`
+## agree when they are as many and each is either the same or a view id.
+static func _same_number(key: String, forecast, result) -> bool:
+	if key == "ends" and forecast is Array and result is Array:
+		if forecast.size() != result.size():
+			return false
+		for i in forecast.size():
+			if str(forecast[i]) != str(result[i]) and not str(forecast[i]).begins_with("seen-"):
+				return false
+		return true
+	return JSON.stringify(forecast) == JSON.stringify(result)
 
 
 # --- the hit point ledger (band G13) ---------------------------------------------------------------------------

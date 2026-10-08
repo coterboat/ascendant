@@ -275,7 +275,7 @@ static func judge(results: Array, stray_errors: int = 0, fixture: Dictionary = {
 	var tables := {}
 	var bands := []
 	bands.append(_g1(g, tables))
-	bands.append(_g2(g, tables))
+	bands.append(_g2(g, gf, tables))
 	bands.append(_g3(g, tables))
 	bands.append(_g4(g, pc, tables))
 	bands.append(_g5(g, pc))
@@ -351,7 +351,7 @@ static func _g1(g: Array, tables: Dictionary) -> Dictionary:
 
 ## G2: no dominant spell. No spell or ritual is the top "why" factor in more than 25% of battles, and no ritual is more than 50%
 ## of its faction's rituals.
-static func _g2(g: Array, tables: Dictionary) -> Dictionary:
+static func _g2(g: Array, gf: Array, tables: Dictionary) -> Dictionary:
 	var what := "no dominant spell"
 	var target := "no spell or ritual is the top why factor in over 25% of battles; no ritual over 50% of its faction's rituals"
 	if g.is_empty():
@@ -394,6 +394,25 @@ static func _g2(g: Array, tables: Dictionary) -> Dictionary:
 		if share > worst_rshare:
 			worst_rshare = share
 			worst_ritual = "%s's %s" % [Simulator.faction_name(fid), ritual_name(str(key).split("|")[1])]
+	# The same shares with the fog games added: Far Sight, which needs fog, is the one ritual that dilutes the others (reported).
+	var all_casts := casts.duplicate()
+	var all_totals := totals.duplicate()
+	for r in gf:
+		for c in _mlog(r).get("casts", []):
+			var key := "%s|%s" % [c.faction, c.ritual]
+			all_casts[key] = int(all_casts.get(key, 0)) + 1
+			all_totals[c.faction] = int(all_totals.get(c.faction, 0)) + 1
+	var with_fog := ""
+	if not gf.is_empty():
+		var top_key := ""
+		var top_share := 0.0
+		for key in all_casts:
+			var sh := _ratio(all_casts[key], all_totals[str(key).split("|")[0]])
+			if sh > top_share:
+				top_share = sh
+				top_key = key
+		with_fog = "with the fog games' Far Sights added, the biggest share is %s's %s %s" % [Simulator.faction_name(str(top_key).split("|")[0]),
+			ritual_name(str(top_key).split("|")[1]), _pct(top_share)]
 	tables["top_why"] = top
 	tables["cited_why"] = cited
 	tables["battles"] = battles
@@ -402,7 +421,7 @@ static func _g2(g: Array, tables: Dictionary) -> Dictionary:
 	var ok := worst_share <= G2_SPELL_MAX + 0.000001 and worst_rshare <= G2_RITUAL_MAX + 0.000001
 	return _band("G2", what, target, "top why: %s; biggest ritual share: %s" % [
 		"none" if worst_spell.is_empty() else "%s %s of %d battles" % [spell_label(worst_spell), _pct(worst_share), battles],
-		"none" if worst_ritual.is_empty() else "%s %s" % [worst_ritual, _pct(worst_rshare)]], "pass" if ok else "miss")
+		"none" if worst_ritual.is_empty() else "%s %s" % [worst_ritual, _pct(worst_rshare)]], "pass" if ok else "miss", with_fog)
 
 
 ## G3 (report): the share of battles with a caster whose "why" names a spell (target 30-60%), and the win rate of the side whose
@@ -616,7 +635,13 @@ static func _g7(g: Array, gf: Array, tables: Dictionary) -> Dictionary:
 			firsts.append(turns.min())
 	if not firsts.is_empty():
 		var fs := Simulator.stats_of(firsts)
-		notes.append("the first ritual of a game comes on turn %s (median; %d games cast one)" % [Simulator._num(fs.median), fs.n])
+		var later := []
+		for by in [12, 14]:
+			var reaching := g.filter(func(r): return _reached(r, by))
+			var cast_by: int = reaching.filter(func(r): return _mlog(r).get("casts", []).any(func(c): return int(c.turn) <= by)).size()
+			later.append("by turn %d in %s" % [by, _pct_of(cast_by, reaching.size())])
+		notes.append("the first ritual of a game comes on turn %s (median; %d games cast one; %s of the games that reach it)" % [
+			Simulator._num(fs.median), fs.n, ", ".join(later)])
 	if not gf.is_empty():
 		var fog_reached := gf.filter(func(r): return _reached(r, G7_BY_TURN))
 		var fog_early: int = fog_reached.filter(func(r): return _mlog(r).get("casts", []).any(func(c): return int(c.turn) <= G7_BY_TURN)).size()
@@ -680,7 +705,9 @@ static func _g9(gt: Array, gb: Array, tables: Dictionary) -> Dictionary:
 	tables["tithe"] = {"with": a, "without": b, "rows": rows, "bleed": scripted, "with_stats": _tithe_stats(with), "without_stats": _tithe_stats(without),
 		"bleed_stats": _tithe_stats(gb)}
 	var ok := absf(delta) <= G9_DELTA + 0.000001
-	var res := "Clans with Tithe %s, with the null mandate %s: %+.1f points" % [_pct_of(a.wins, a.decisive), _pct_of(b.wins, b.decisive), 100.0 * delta]
+	var se := sqrt(wa * (1.0 - wa) / maxf(1.0, float(a.decisive)) + wb * (1.0 - wb) / maxf(1.0, float(b.decisive)))  # one standard error of the difference
+	var res := "Clans with Tithe %s, with the null mandate %s: %+.1f points (one standard error: %.1f)" % [_pct_of(a.wins, a.decisive),
+		_pct_of(b.wins, b.decisive), 100.0 * delta, 100.0 * se]
 	if not gb.is_empty():
 		res += "; scripted bleeding build %s" % _pct_of(scripted.wins, scripted.decisive)
 	return _band("G9", what, target, res, "pass" if ok else "miss")

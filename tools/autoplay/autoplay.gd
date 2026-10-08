@@ -61,7 +61,8 @@ extends SceneTree
 ##   --work-dir PATH  with --matrix and --jobs above 1, where the worker processes write their results
 ##                    (default user://autoplay_matrix); the files are removed afterwards
 ##   --save-results PATH  with --matrix --magic, also write the games' raw results to PATH, so a run can be chunked (--only
-##                    G:, --only GF:, --only GT:, --only GB:, --only P:, --only P7:) and judged later with --merge
+##                    G:, --only GF:, --only GT:, --only GB:, --only P, and with & for both: --only "G:&+iron_crown")
+##                    and judged later with --merge
 ##   --merge A,B,...  with --matrix --magic, play nothing: judge the results saved by earlier runs
 ##   --records        with --matrix --magic, also replay the earlier fixture records for band G12 (the default unless --only
 ##                    or --merge is given); --no-records leaves them out
@@ -471,8 +472,9 @@ func _run_magic_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
 	var started := Time.get_ticks_msec()
 	var fixture := PathMatrix.load_fixture()
 	var cells := MagicMatrix.plan(opts.scale, opts.seed, fixture)
-	if not str(opts.only).is_empty():
-		cells = cells.filter(func(c): return str(c.id).contains(opts.only))
+	if not str(opts.only).is_empty():  # with --matrix --magic, "A&B" keeps the cells whose id contains both (G:&+warrior_king)
+		var parts := str(opts.only).split("&", false)
+		cells = cells.filter(func(c): return parts.size() > 0 and Array(parts).all(func(part): return str(c.id).contains(part)))
 	var results := []
 	var problems := []
 	var doubled := []
