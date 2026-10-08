@@ -1006,6 +1006,12 @@ func test_a_mage_card_lists_the_spellbook_and_a_recruit_warns_when_the_second_ra
 		game.map.orders.view_state().find_faction(CROWN).gold] + " " + str(game.map.details.get_children().map(func(n): return String(n.name)).slice(-14)))
 	if warn != null:
 		assert_eq(warn.text, MagicView.recruit_warning(game.map.orders.view_state(), CROWN, mage, "", game.map.orders.orders()))
+	# A front-rank recruit joins the rank that shields the second: it never warns, even while the rank is exposed; a second-rank
+	# one (Crossbowmen) does.
+	for front_unit in ["spearmen", "knights"]:
+		assert_true(game.map.details.find_child("RecruitExposed_%s" % front_unit, true, false) == null, "%s: no warning on a front-rank recruit" % front_unit)
+		assert_eq(MagicView.recruit_warning(game.map.orders.view_state(), CROWN, front_unit, "", game.map.orders.orders()), "")
+	assert_true(game.map.details.find_child("RecruitExposed_crossbowmen", true, false) != null, "Crossbowmen would sit in the exposed second rank too")
 	game.free()
 	# Crossbowmen too: only when exposed, never a note when it isn't.
 	assert_eq(MagicView.recruit_note(s, CROWN, "spearmen"), "", "a front-rank unit says nothing")

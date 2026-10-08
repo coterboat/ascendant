@@ -438,6 +438,10 @@ static func recruit_note(state: GameState, fid: String, unit_type_id: String, at
 static func recruit_warning(state: GameState, fid: String, unit_type_id: String, at: String = "", orders: Array = []) -> String:
 	if not MagicRules.has_magic(state):
 		return ""
+	var f := state.find_faction(fid)
+	var ut: UnitType = TurnResolver.recruitable_type(f, unit_type_id) if f != null else null
+	if ut == null or (not MagicRules.is_mage(ut) and ut.trait_id != AutoBattleResolver.VOLLEY):
+		return ""  # a front-rank recruit joins the rank that shields the second: it never exposes it
 	var r := Forecast.second_rank(state, fid, unit_type_id, at, orders)
 	return String(r.text) if bool(r.ok) and bool(r.exposed) else ""
 

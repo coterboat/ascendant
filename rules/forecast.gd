@@ -2195,10 +2195,10 @@ static func second_rank(state: GameState, faction_id: String, unit_type_id: Stri
 	out.front = front
 	out.second = second
 	out.exposed = second > front
-	var who := TurnReportText.army_title(view, joins, false) if joins != null else "the new army it forms"
+	var who := TurnReportText.army_name(view, joins.id, faction_id) if joins != null else "the new army it forms"
 	var counts := "%d second-rank and %d front-rank fighters" % [second, front]
 	if out.exposed:
-		out.text = "This army (%s) will have %s: its second rank is exposed. Fangthrowers, Seraphs and every Skirmish or Wings fighter reach it at once, and the front rank no longer shields it." % [who, counts]
+		out.text = "This army (%s) will have %s: its second rank is exposed, so Fangthrowers, Seraphs and other Skirmish or Wings fighters reach it at once." % [who, counts]
 	else:
 		out.text = "This army (%s) will have %s: the second rank stays safe behind the front rank." % [who, counts]
 	return out
