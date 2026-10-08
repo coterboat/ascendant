@@ -18,6 +18,11 @@ extends Control
 ## the end (its ruler and kept power, mandates, path, gold and armies) and every "what you didn't see" of the game, from
 ## `fog_lift` (FogView.lift, which the game screen sets from the observer once the game is over).
 ##
+## Layout (MVP-1, #141): the panel is as tall as the window leaves room for (1600x900 and 1280x720 both fit). The body
+## scrolls when it is taller (a game with paths, sieges and fog adds blocks), and the buttons below it, New game and Back
+## to title with the host's own actions above them, are pinned, so they are always on screen. tests/test_screens_fit.gd
+## checks it at both sizes.
+##
 ## API:
 ##   show_for(session) -> bool    shows session.victory(); false (and hidden) while the game runs
 ##   show_victory(victory, state = null, players = [], computer_seats = {})
@@ -43,8 +48,8 @@ signal codex_requested(key: String)
 
 const BACKGROUND := Color("#14131F")  # a shade under UiPalette.PANEL_BG, so the screen reads as a full page
 ## The winner's banner (STYLE_BIBLE.md 2.1: 192 px tall in panels), and each banner on a draw.
-const WINNER_BANNER_HEIGHT := 210.0
-const DRAW_BANNER_HEIGHT := 150.0
+const WINNER_BANNER_HEIGHT := 192.0
+const DRAW_BANNER_HEIGHT := 140.0
 const ROW_BANNER_HEIGHT := 40.0
 
 var victory := {}
@@ -76,8 +81,10 @@ var fog_heading: Label
 var fog_box: VBoxContainer
 var _scroll: ScrollContainer
 var _box: VBoxContainer
-## The panel's body is never taller than this outside the tree (in the tree: the window less the panel's margins).
-const MAX_BODY_HEIGHT := 760.0
+## MVP-1 (#141): the panel is as tall as the window leaves room for (SCREEN_MARGIN around it). The body scrolls
+## between the panel's top and its buttons, which are pinned, so New game and Back to title are always on screen.
+const SCREEN_MARGIN := 20
+const PANEL_PADDING := 26
 var _siege_labels: Array[Label] = []
 
 
@@ -272,16 +279,6 @@ func _show_fog_lift(state: GameState) -> void:
 		fog_box.add_child(l)
 
 
-## M5-2: the scrolling body is as tall as its content, but never taller than the window allows.
-func _fit_scroll() -> void:
-	if _scroll == null or _box == null:
-		return
-	var limit := MAX_BODY_HEIGHT
-	if is_inside_tree():
-		limit = maxf(240.0, get_viewport_rect().size.y - 2 * 36 - 48)
-	_scroll.custom_minimum_size = Vector2(0, minf(_box.get_combined_minimum_size().y, limit))
-
-
 ## Adds a smaller button for the host's own action in a row above "New game". Returns it so the host
 ## can connect `pressed`.
 func add_action(node_name: String, text: String, tooltip: String) -> Button:
@@ -448,10 +445,18 @@ func _build() -> void:
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(background)
 
-	var center := CenterContainer.new()
-	center.name = "Center"
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
+	var margin := MarginContainer.new()
+	margin.name = "Margin"
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, SCREEN_MARGIN)
+	add_child(margin)
+	var centered := HBoxContainer.new()
+	centered.name = "Centered"
+	centered.alignment = BoxContainer.ALIGNMENT_CENTER
+	centered.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_child(centered)
 
 	var panel := PanelContainer.new()
 	panel.name = "Panel"
@@ -460,24 +465,29 @@ func _build() -> void:
 	style.border_color = UiPalette.GILT
 	style.set_border_width_all(2)
 	style.set_corner_radius_all(8)
-	style.set_content_margin_all(36)
+	style.set_content_margin_all(PANEL_PADDING)
 	panel.add_theme_stylebox_override("panel", style)
-	center.add_child(panel)
+	centered.add_child(panel)
 
-	# M5-2: the body scrolls when it is taller than the window (a game with sieges and fog adds blocks), so the buttons
-	# at its foot are always reachable.
+	var frame := VBoxContainer.new()
+	frame.name = "Frame"
+	frame.add_theme_constant_override("separation", 12)
+	panel.add_child(frame)
+
+	# M5-2, MVP-1: the body scrolls when it is taller than the window leaves room for (a game with sieges and fog adds
+	# blocks), and the buttons at its foot stay where they are.
 	_scroll = ScrollContainer.new()
 	_scroll.name = "Scroll"
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	panel.add_child(_scroll)
+	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	frame.add_child(_scroll)
 	var box := VBoxContainer.new()
 	box.name = "Box"
 	box.custom_minimum_size = Vector2(860, 0)
-	box.add_theme_constant_override("separation", 14)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation", 12)
 	_scroll.add_child(box)
 	_box = box
-	box.minimum_size_changed.connect(_fit_scroll)
-	resized.connect(_fit_scroll)
 
 	# The hero: the winner's banner, then the caption, the headline and who won.
 	var hero := HBoxContainer.new()
@@ -591,20 +601,17 @@ func _build() -> void:
 	box.add_child(captures_heading)
 	box.move_child(captures_heading, captures_box.get_index())
 
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 12)
-	box.add_child(spacer)
 	actions_row = HBoxContainer.new()
 	actions_row.name = "Actions"
 	actions_row.add_theme_constant_override("separation", 16)
 	actions_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	actions_row.visible = false
-	box.add_child(actions_row)
+	frame.add_child(actions_row)
 	var buttons := HBoxContainer.new()
 	buttons.name = "Buttons"
 	buttons.add_theme_constant_override("separation", 20)
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_child(buttons)
+	frame.add_child(buttons)
 	new_game_button = _button("NewGameButton", "New game", "Set up a new game: choose who plays which faction, and a seed.")
 	new_game_button.pressed.connect(_on_new_game_pressed)
 	buttons.add_child(new_game_button)

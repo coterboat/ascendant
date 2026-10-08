@@ -199,26 +199,36 @@ func _build() -> void:
 	background.mouse_filter = Control.MOUSE_FILTER_STOP
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(background)
-	var center := CenterContainer.new()
-	center.name = "Center"
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
+	# MVP-1 (#141): the panel is as tall as the window leaves room for; the list scrolls and Back stays on screen.
+	var margin := MarginContainer.new()
+	margin.name = "Margin"
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 20)
+	add_child(margin)
+	var centered := HBoxContainer.new()
+	centered.name = "Centered"
+	centered.alignment = BoxContainer.ALIGNMENT_CENTER
+	centered.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_child(centered)
 	var panel := PanelContainer.new()
 	panel.name = "Panel"
-	panel.add_theme_stylebox_override("panel", UiPalette.panel_style(32))
-	center.add_child(panel)
+	panel.add_theme_stylebox_override("panel", UiPalette.panel_style(28))
+	centered.add_child(panel)
 	var box := VBoxContainer.new()
 	box.name = "Box"
 	box.custom_minimum_size = Vector2(1000, 0)
-	box.add_theme_constant_override("separation", 14)
+	box.add_theme_constant_override("separation", 12)
 	panel.add_child(box)
-	box.add_child(_label("TitleLabel", "Load game", 44, UiPalette.GILT))
+	box.add_child(_label("TitleLabel", "Load game", 40, UiPalette.GILT))
 	var note := _label("NoteLabel", "The game saves itself at the start of every turn and keeps the last three autosaves. %s" % SaveGame.ORDERS_NOTE, 17, UiPalette.TEXT_SECONDARY)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(note)
 	var scroll := ScrollContainer.new()
 	scroll.name = "Scroll"
-	scroll.custom_minimum_size = Vector2(1000, 520)
+	scroll.custom_minimum_size = Vector2(1000, 160)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	box.add_child(scroll)
 	list_box = VBoxContainer.new()

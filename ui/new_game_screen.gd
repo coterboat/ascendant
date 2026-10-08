@@ -37,6 +37,9 @@ extends Control
 ## flip (launching with `-- --independents` ticks it), independent of every other box. Ticked, config() adds
 ## "independents": true (GameScreen.starting_state then calls GameState.setup_independents: a Free Holds garrison in
 ## every neutral province). Quick start always has them.
+## Layout (MVP-1, #141): it fits the default window (1600x900) and 1280x720. The title sits above, the error
+## line and the Start and Back buttons below (always on screen), and the body scrolls between them when it is taller than
+## the window leaves room for. The six boxes sit in two columns. tests/test_screens_fit.gd checks it at both sizes.
 ## Builds its children in code, so it works before it is in the tree (headless tests).
 ##
 ## API:
@@ -84,8 +87,14 @@ const DEFAULT_KINDS := ["human", "computer"]  # MVP: you against the computer
 const MAX_SEED_DIGITS := 18  # any 18-digit number fits in a 64-bit int
 const MAX_RANDOM_SEED := 999999999
 const BACKGROUND := Color("#14131F")
+## MVP-1 (#141): the screen's layout. The panel is as tall as the window leaves room for (SCREEN_MARGIN around it); its
+## title, error line and Start and Back buttons are pinned, and the body between them scrolls (body_scroll).
+const SCREEN_MARGIN := 20
+const PANEL_WIDTH := 960.0
+const PANEL_PADDING := 24
 const NEGATIVE := UiPalette.NEGATIVE  # design/STYLE_BIBLE.md 1.3 "negative"
 
+var body_scroll: ScrollContainer  # the seats, seed and boxes: scrolls when the window is too small for them
 var seat_pickers: Array[OptionButton] = []
 var kind_pickers: Array[OptionButton] = []  # Human or Computer, per seat
 var level_pickers: Array[OptionButton] = []  # Easy or Normal, per seat; shown for computer seats only
@@ -629,52 +638,79 @@ func _build() -> void:
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(background)
 
-	var center := CenterContainer.new()
-	center.name = "Center"
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
+	# MVP-1 (#141): the panel is as tall as the window leaves room for. The title is pinned above and Start and Back
+	# below (so Start is always on screen), and the body between them scrolls when it does not fit: at 1600x900 the
+	# default game fits as it stands, at 1280x720 the toggles scroll.
+	var margin := MarginContainer.new()
+	margin.name = "Margin"
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, SCREEN_MARGIN)
+	add_child(margin)
+	var centered := HBoxContainer.new()
+	centered.name = "Centered"
+	centered.alignment = BoxContainer.ALIGNMENT_CENTER
+	centered.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_child(centered)
 
 	var panel := PanelContainer.new()
 	panel.name = "Panel"
+	panel.custom_minimum_size = Vector2(PANEL_WIDTH, 0)
 	var style := StyleBoxFlat.new()
 	style.bg_color = UiPalette.PANEL_BG
 	style.border_color = UiPalette.PANEL_BORDER
 	style.set_border_width_all(2)
 	style.set_corner_radius_all(8)
-	style.set_content_margin_all(36)
+	style.set_content_margin_all(PANEL_PADDING)
 	panel.add_theme_stylebox_override("panel", style)
-	center.add_child(panel)
+	centered.add_child(panel)
 
-	var box := VBoxContainer.new()
-	box.name = "Box"
-	box.custom_minimum_size = Vector2(900, 0)
-	box.add_theme_constant_override("separation", 14)
-	panel.add_child(box)
+	var frame := VBoxContainer.new()
+	frame.name = "Box"
+	frame.add_theme_constant_override("separation", 10)
+	panel.add_child(frame)
 
-	box.add_child(_label("TitleLabel", "New game", 48, UiPalette.GILT))
-	rematch_label = _label("RematchLabel", "Rematch: the same players in the same seats as the last game, with a new seed. Change anything you like.", 18, UiPalette.GILT)
+	frame.add_child(_label("TitleLabel", "New game", 40, UiPalette.GILT))
+	rematch_label = _label("RematchLabel", "Rematch: the same players in the same seats as the last game, with a new seed. Change anything you like.", 17, UiPalette.GILT)
 	rematch_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rematch_label.visible = false
-	box.add_child(rematch_label)
+	frame.add_child(rematch_label)
+	body_scroll = ScrollContainer.new()
+	body_scroll.name = "Scroll"
+	body_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	body_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	frame.add_child(body_scroll)
+	var box := VBoxContainer.new()
+	box.name = "Body"
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation", 10)
+	body_scroll.add_child(box)
+
 	var hotseat := RulesCodex.entry("hotseat")
-	_hotseat_title = _label("HotseatTitle", String(hotseat.get("title", "")), 22, UiPalette.TEXT_PRIMARY)
+	_hotseat_title = _label("HotseatTitle", String(hotseat.get("title", "")), 20, UiPalette.TEXT_PRIMARY)
 	box.add_child(_hotseat_title)
-	hotseat_label = _label("HotseatLabel", String(hotseat.get("text", "")), 18, UiPalette.TEXT_SECONDARY)
+	hotseat_label = _label("HotseatLabel", String(hotseat.get("text", "")), 16, UiPalette.TEXT_SECONDARY)
 	hotseat_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_tooltip(hotseat_label, TooltipText.plain(String(RulesCodex.entry("handoff").get("title", "")), RulesCodex.text("handoff")))
 	box.add_child(hotseat_label)
 	var computer_entry := RulesCodex.entry("computer_opponent")
-	computer_title = _label("ComputerTitle", String(computer_entry.get("title", "")), 22, UiPalette.TEXT_PRIMARY)
+	computer_title = _label("ComputerTitle", String(computer_entry.get("title", "")), 20, UiPalette.TEXT_PRIMARY)
 	computer_title.visible = false
 	box.add_child(computer_title)
-	computer_label = _label("ComputerLabel", "", 18, UiPalette.TEXT_SECONDARY)
+	computer_label = _label("ComputerLabel", "", 16, UiPalette.TEXT_SECONDARY)
 	computer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	computer_label.visible = false
 	_tooltip(computer_label, CodexLink.with_link(TooltipText.plain(String(computer_entry.get("title", "")),
 		RulesCodex.text("computer_opponent")), "computer_opponent"))
 	box.add_child(computer_label)
 
-	box.add_child(_label("SeatsHeading", "Who plays which faction", 26, UiPalette.GILT))
+	var seats_head := HBoxContainer.new()
+	seats_head.name = "SeatsHead"
+	box.add_child(seats_head)
+	var seats_heading := _label("SeatsHeading", "Who plays which faction", 24, UiPalette.GILT)
+	seats_heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	seats_head.add_child(seats_heading)
 	for i in SEAT_COUNT:
 		var seat_box := VBoxContainer.new()
 		seat_box.name = "Seat%d" % (i + 1)
@@ -707,7 +743,7 @@ func _build() -> void:
 		seat_pickers.append(picker)
 		row.add_child(_kind_picker(i))
 		row.add_child(_level_picker(i))
-		var summary := _label("FactionSummary", "", 17, UiPalette.TEXT_SECONDARY)
+		var summary := _label("FactionSummary", "", 16, UiPalette.TEXT_SECONDARY)
 		summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		summary.mouse_filter = Control.MOUSE_FILTER_PASS
 		seat_box.add_child(summary)
@@ -716,18 +752,19 @@ func _build() -> void:
 	swap_button = Button.new()
 	swap_button.name = "SwapButton"
 	swap_button.text = "Swap seats"
-	swap_button.custom_minimum_size = Vector2(200, 44)
-	swap_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	swap_button.add_theme_font_size_override("font_size", 20)
+	swap_button.custom_minimum_size = Vector2(170, 38)
+	swap_button.add_theme_font_size_override("font_size", 18)
 	swap_button.tooltip_text = "Player 1 and Player 2 trade factions, and with them their colours (colours belong to the seat). Player 1 still gives orders first, and each seat keeps its player, a person or the computer."
 	swap_button.pressed.connect(swap_seats)
-	box.add_child(swap_button)
+	seats_head.add_child(swap_button)
 
-	box.add_child(_label("SeedHeading", "Seed", 26, UiPalette.GILT))
 	var seed_row := HBoxContainer.new()
 	seed_row.name = "SeedRow"
 	seed_row.add_theme_constant_override("separation", 12)
 	box.add_child(seed_row)
+	var seed_heading := _label("SeedHeading", "Seed", 24, UiPalette.GILT)
+	seed_heading.custom_minimum_size = Vector2(150, 0)
+	seed_row.add_child(seed_heading)
 	seed_edit = LineEdit.new()
 	seed_edit.name = "SeedEdit"
 	seed_edit.custom_minimum_size = Vector2(320, 44)
@@ -747,43 +784,44 @@ func _build() -> void:
 	new_seed_button.pressed.connect(new_seed)
 	seed_row.add_child(new_seed_button)
 
-	var rulers_row := HBoxContainer.new()
-	rulers_row.name = "RulersRow"
-	rulers_row.add_theme_constant_override("separation", 14)
-	box.add_child(rulers_row)
+	# The six boxes in two columns; what the Rulers box does is explained on a line of its own below them.
+	var grid := GridContainer.new()
+	grid.name = "Toggles"
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 40)
+	grid.add_theme_constant_override("v_separation", 4)
+	box.add_child(grid)
 	rulers_toggle = CheckBox.new()
 	rulers_toggle.name = "RulersToggle"
 	rulers_toggle.text = "Rulers"
 	rulers_toggle.add_theme_font_size_override("font_size", 20)
-	rulers_toggle.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	rulers_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Rulers",
 		"Before the game each player picks a ruler and how much of its power to keep, and spends the rest on mandates for the whole nation. Untick it for the simpler game without rulers. %s" % RulesCodex.text("build_screen")), "build_screen")
 	rulers_toggle.set_pressed_no_signal(_rulers_by_default())
 	rulers_toggle.toggled.connect(func(_on: bool): _refresh())
-	rulers_row.add_child(rulers_toggle)
-	rulers_label = _label("RulersLabel", "Each player picks a ruler and mandates on the next screen, in secret. Builds are public once the game starts.", 17, UiPalette.TEXT_SECONDARY)
+	grid.add_child(rulers_toggle)
+	_build_paths_row(grid)
+	_build_sieges_row(grid)
+	_build_magic_row(grid)
+	_build_fog_row(grid)
+	_build_independents_row(grid)
+	rulers_label = _label("RulersLabel", "Each player picks a ruler and mandates on the next screen, in secret. Builds are public once the game starts.", 16, UiPalette.TEXT_SECONDARY)
 	rulers_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	rulers_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_tooltip(rulers_label, CodexLink.with_link(TooltipText.plain(String(RulesCodex.entry("build").get("title", "")), RulesCodex.text("build")), "build"))
 	rulers_label.visible = false
-	rulers_row.add_child(rulers_label)
-	_build_paths_row(box)
-	_build_sieges_row(box)
-	_build_magic_row(box)
-	_build_fog_row(box)
-	_build_independents_row(box)
+	box.add_child(rulers_label)
 
 	error_label = _label("ErrorLabel", "", 19, NEGATIVE)
 	error_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	error_label.visible = false
 	_tooltip(error_label, "Start stays off until this is fixed.")
-	box.add_child(error_label)
+	frame.add_child(error_label)  # pinned with the buttons, so why Start is off is always on screen
 
 	var buttons := HBoxContainer.new()
 	buttons.name = "Buttons"
 	buttons.add_theme_constant_override("separation", 20)
 	buttons.alignment = BoxContainer.ALIGNMENT_END
-	box.add_child(buttons)
+	frame.add_child(buttons)
 	back_button = Button.new()
 	back_button.name = "BackButton"
 	back_button.text = "Back"
@@ -810,53 +848,38 @@ func _build() -> void:
 
 ## M4-1: the "Paths (M4 preview)" box under the rulers box. Ticking it ticks rulers (paths need them).
 func _build_paths_row(box: Container) -> void:
-	var row := HBoxContainer.new()
-	row.name = "PathsRow"
-	row.add_theme_constant_override("separation", 14)
-	box.add_child(row)
 	paths_toggle = CheckBox.new()
 	paths_toggle.name = "PathsToggle"
 	paths_toggle.text = "Paths (M4 preview)"
 	paths_toggle.add_theme_font_size_override("font_size", 20)
-	paths_toggle.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	paths_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Paths (preview)",
 		"A preview of milestone 4, the paths of ascension: each faction researches its path with research points from its land, then swears an Oath that transforms its people. Paths need rulers, so this ticks Rulers too. Paths are still being built, so some of their effects may not be in play yet. %s" % RulesCodex.text("path")), "path")
 	paths_toggle.set_pressed_no_signal(_paths_by_default())
 	if paths_toggle.button_pressed:
 		rulers_toggle.set_pressed_no_signal(true)
 	paths_toggle.toggled.connect(func(on: bool): set_paths(on))
-	row.add_child(paths_toggle)
+	box.add_child(paths_toggle)
 
 
 ## M3c: the "Forts & sieges (M3c preview)" box under the paths box. It is independent of Rulers and Paths.
 func _build_sieges_row(box: Container) -> void:
-	var row := HBoxContainer.new()
-	row.name = "SiegesRow"
-	row.add_theme_constant_override("separation", 14)
-	box.add_child(row)
 	sieges_toggle = CheckBox.new()
 	sieges_toggle.name = "SiegesToggle"
 	sieges_toggle.text = "Forts & sieges (M3c preview)"
 	sieges_toggle.add_theme_font_size_override("font_size", 20)
-	sieges_toggle.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	sieges_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Forts & sieges (preview)",
 		"A preview of milestone 3c: forts have levels and walls, you recruit at any fort you own and can build more, and an army that marches into an enemy fort with a garrison inside besieges it instead of fighting, until it storms the walls or they fall. It works with or without Rulers and Paths. Forts and sieges are still being built, so the map and the panels may not show all of it yet. %s" % RulesCodex.text("fort_levels")), "fort_levels")
 	sieges_toggle.set_pressed_no_signal(_sieges_by_default())
 	sieges_toggle.toggled.connect(func(on: bool): set_sieges(on))
-	row.add_child(sieges_toggle)
+	box.add_child(sieges_toggle)
 
 
 ## M5-5: the "Magic (M5 preview)" box under the sieges box. Ticking it ticks Paths and Rulers (magic needs them).
 func _build_magic_row(box: Container) -> void:
-	var row := HBoxContainer.new()
-	row.name = "MagicRow"
-	row.add_theme_constant_override("separation", 14)
-	box.add_child(row)
 	magic_toggle = CheckBox.new()
 	magic_toggle.name = "MagicToggle"
 	magic_toggle.text = "Magic (M5 preview)"
 	magic_toggle.add_theme_font_size_override("font_size", 20)
-	magic_toggle.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	magic_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Magic (preview)",
 		"Research spells, recruit mages and cast rituals. Needs Paths and Rulers, so they're on too. Magic is still being built: battle spells work, but rituals don't take effect yet. %s" % RulesCodex.text("magic")), "magic")
 	magic_toggle.set_pressed_no_signal(_magic_by_default())
@@ -864,43 +887,33 @@ func _build_magic_row(box: Container) -> void:
 		paths_toggle.set_pressed_no_signal(true)
 		rulers_toggle.set_pressed_no_signal(true)
 	magic_toggle.toggled.connect(func(on: bool): set_magic(on))
-	row.add_child(magic_toggle)
+	box.add_child(magic_toggle)
 
 
 ## M5-1: the "Fog of war (M5 preview)" box under the sieges box. It is independent of every other box. Its tooltip is
 ## §1.3's, with the codex entry one click away.
 func _build_fog_row(box: Container) -> void:
-	var row := HBoxContainer.new()
-	row.name = "FogRow"
-	row.add_theme_constant_override("separation", 14)
-	box.add_child(row)
 	fog_toggle = CheckBox.new()
 	fog_toggle.name = "FogToggle"
 	fog_toggle.text = "Fog of war (M5 preview)"
 	fog_toggle.add_theme_font_size_override("font_size", 20)
-	fog_toggle.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	fog_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Fog of war (preview)", fog_tooltip()), "fog_of_war")
 	fog_toggle.set_pressed_no_signal(_fog_by_default())
 	fog_toggle.toggled.connect(func(on: bool): set_fog(on))
-	row.add_child(fog_toggle)
+	box.add_child(fog_toggle)
 
 
 ## IND-1: the "Independents" box under the fog box. Its tooltip says what it does, with the codex
 ## entry one click away.
 func _build_independents_row(box: Container) -> void:
-	var row := HBoxContainer.new()
-	row.name = "IndependentsRow"
-	row.add_theme_constant_override("separation", 14)
-	box.add_child(row)
 	independents_toggle = CheckBox.new()
 	independents_toggle.name = "IndependentsToggle"
 	independents_toggle.text = "Independents"
 	independents_toggle.add_theme_font_size_override("font_size", 20)
-	independents_toggle.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	independents_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Independents", independents_tooltip()), "independents")
 	independents_toggle.set_pressed_no_signal(_independents_by_default())
 	independents_toggle.toggled.connect(func(on: bool): set_independents(on))
-	row.add_child(independents_toggle)
+	box.add_child(independents_toggle)
 
 
 ## The independents box's explanation.

@@ -179,7 +179,10 @@ func apply(tree: SceneTree) -> void:
 
 ## M5-2: one-time hints ("fog": the first fog turn's line, design/M5_MAGIC_FOG.md §11.1) are remembered in the file's
 ## [hints] section once the player presses Got it, so they never show again. The other settings are not touched.
+## MVP-1 (#141): "first_game_guide" is the first-game guide card (ui/first_game_guide.gd): remembered once every person
+## has finished or hidden it on their first turn, and brought back by reset_hint (Settings' "Show the first-game guide again").
 const HINTS := "hints"
+const HINT_FIRST_GAME := "first_game_guide"
 
 
 static func hint_seen(key: String, file_path: String = "") -> bool:
@@ -190,11 +193,25 @@ static func hint_seen(key: String, file_path: String = "") -> bool:
 
 
 static func mark_hint_seen(key: String, file_path: String = "") -> String:
+	return _set_hint(key, true, file_path)
+
+
+## MVP-1 (#141): Settings' "Show the first-game guide again" takes a hint back, so it shows once more.
+static func reset_hint(key: String, file_path: String = "") -> String:
+	if not hint_seen(key, file_path):
+		return ""
+	return _set_hint(key, false, file_path)
+
+
+static func _set_hint(key: String, seen: bool, file_path: String) -> String:
 	var p := file_path if not file_path.is_empty() else default_path
 	var cfg := ConfigFile.new()
 	if FileAccess.file_exists(p):
 		cfg.load(p)
-	cfg.set_value(HINTS, key, true)
+	if seen:
+		cfg.set_value(HINTS, key, true)
+	elif cfg.has_section_key(HINTS, key):
+		cfg.erase_section_key(HINTS, key)
 	var folder := p.get_base_dir()
 	if not folder.is_empty() and not DirAccess.dir_exists_absolute(folder):
 		DirAccess.make_dir_recursive_absolute(folder)

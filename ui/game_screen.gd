@@ -133,6 +133,7 @@ var codex_button: Button
 var results_button: Button  # only once the game is over
 var ruler_button: Button  # M2-6: opens the ruler panel; only in a game with rulers
 var research_hud: ResearchHud  # M4-4: the research chip, the research panel and the lock-in preview
+var first_game_guide: FirstGameGuide  # MVP-1 (#141): the card with the first turn's three steps (turn 1 of a first game)
 var report_overlay: Control
 var report_panel: TurnReportPanel
 var battle_viewer: BattleReportViewer
@@ -968,6 +969,8 @@ func _show_setup_errors(errors: Array) -> void:
 func _update_hud() -> void:
 	if research_hud:
 		research_hud.refresh()  # M4-4: the chip, and the research panel follows the seat
+	if first_game_guide:
+		first_game_guide.sync(session, map.state)  # MVP-1: ticks from the viewer's own orders; hidden behind the cover
 	var watching := is_watching()
 	var playing: bool = session != null and session.phase() == GameSession.Phase.ORDERS and not watching
 	var n: int = session.current_orders().size() if playing else 0
@@ -1094,6 +1097,9 @@ func _bind() -> void:
 	map.codex_requested.connect(open_codex)
 	_build_hud()
 	_build_overlays()
+	first_game_guide = FirstGameGuide.new()  # over the map, under every overlay layer
+	first_game_guide.codex_requested.connect(open_codex)
+	add_child(first_game_guide)
 
 
 func _build_hud() -> void:
