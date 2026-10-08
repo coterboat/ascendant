@@ -346,6 +346,9 @@ func _sync_marks() -> void:
 		if here != null:
 			for n in here.neighbors:
 				move[n] = true
+	if map.casting():  ## M5-8: the cast dialog lights the provinces in range and rings its target (the move glow and the ring)
+		move = map.cast_lit()
+		road = map.cast_ringed()
 	## provinces the rules turned to forest since the land was baked (the Wild Spreads)
 	var grown := {}
 	if st != null:

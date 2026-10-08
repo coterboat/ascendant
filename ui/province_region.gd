@@ -59,6 +59,12 @@ var owner_seat := -1  # the owner's 0-based seat, which picks the ring emblem; -
 ## Drawn as a dashed gilt ring inside the region; the tooltip names the way through.
 var road_target := false
 var _road_via := ""  # the way-through name the road tooltip shows
+## M5-8: the cast dialog's marks (§11.2: "a ring on the board, with the provinces in range lit"): CAST_LIT for a province
+## in range of the ritual shown, CAST_RING for the one chosen, CAST_NONE otherwise.
+const CAST_NONE := 0
+const CAST_LIT := 1
+const CAST_RING := 2
+var cast_mark := CAST_NONE
 var _polygon := PackedVector2Array()
 var _fill := Color.WHITE
 var _terrain_texture: Texture2D = null  # Art.terrain(p.terrain), or null: then the flat _fill colour
@@ -83,6 +89,8 @@ var countdown_badge: Label = null
 var wild_marker: Control = null
 ## M3c S-3: the fort chip under the income (null without sieges, or with no fort and no construction site).
 var fort_chip: FortChip = null
+## M5-8: the province's enchantment badges ("Bloodrot · through turn 9"), or null when it has none (EnchantmentBadges).
+var enchantment_badges: EnchantmentBadges = null
 ## M3c S-3: true while the viewer has a Fortify order here (a dashed scaffold ghost; set_fortify_ghost).
 var fortify_ghost := false
 var ghost_marker: Control = null
@@ -95,7 +103,7 @@ var vision_mode := false
 ## Builds the region for `province_id` from `state`. `center` is in the map canvas' design space.
 ## `seats` is the seat order (faction ids, seat 1 first) that picks the player colours; empty means
 ## the state's faction order (see UiPalette.owner_color).
-func setup(state: GameState, p: Province, center: Vector2, seats: Array = []) -> void:
+func setup(state: GameState, p: Province, center: Vector2, seats: Array = [], viewer: String = "") -> void:
 	province_id = p.id
 	name = "Region_%s" % p.id
 	var r := MapLayout.radius_of(p)
@@ -161,6 +169,9 @@ func setup(state: GameState, p: Province, center: Vector2, seats: Array = []) ->
 	fort_chip = FortChip.make(state, p.id, seats, codex_requested.emit)  # M3c S-3: only in a game with sieges
 	if fort_chip != null:
 		box.add_child(fort_chip)
+	enchantment_badges = EnchantmentBadges.make(state, p.id, viewer, codex_requested.emit)  # M5-8: wards, curses and Far Sight on it
+	if enchantment_badges != null:
+		box.add_child(enchantment_badges)
 
 	army_box = HFlowContainer.new()
 	army_box.name = "Armies"
@@ -549,6 +560,8 @@ func _draw() -> void:
 		draw_polyline(grown, UiPalette.SELECTION, 3.0, true)
 	if road_target:
 		_draw_road_ring()
+	if cast_mark != CAST_NONE:
+		_draw_cast_mark()
 	var r := size.x / 2.0
 	if _is_capital:
 		_draw_crown(Vector2(r, r * 0.32))
@@ -618,6 +631,32 @@ func _draw_road_ring() -> void:
 		var b := inner[(i + 1) % inner.size()]
 		draw_dashed_line(a, b, UiPalette.KEYLINE_INK, 6.0, 10.0, true)
 		draw_dashed_line(a, b, UiPalette.GILT, 3.5, 10.0, true)
+
+
+## M5-8: lights this province for the cast dialog (CAST_LIT: a gilt wash and a dashed ring; CAST_RING: a solid white ring over
+## the wash for the target chosen), or clears it (CAST_NONE).
+func set_cast_mark(mark: int) -> void:
+	if mark == cast_mark:
+		return
+	cast_mark = mark
+	queue_redraw()
+
+
+func _draw_cast_mark() -> void:
+	var c := size / 2.0
+	draw_colored_polygon(_polygon, Color(UiPalette.GILT, 0.28 if cast_mark == CAST_RING else 0.16))
+	var inner := PackedVector2Array()
+	for pt in _polygon:
+		inner.append(c + (pt - c) * 0.9)
+	inner.append(inner[0])
+	if cast_mark == CAST_RING:
+		draw_polyline(inner, UiPalette.KEYLINE_INK, 9.0, true)
+		draw_polyline(inner, UiPalette.SELECTION, 5.0, true)
+		draw_polyline(inner, UiPalette.GILT, 2.0, true)
+		return
+	for i in inner.size() - 1:
+		draw_dashed_line(inner[i], inner[i + 1], UiPalette.KEYLINE_INK, 5.0, 9.0, true)
+		draw_dashed_line(inner[i], inner[i + 1], UiPalette.GILT, 2.5, 9.0, true)
 
 
 ## Where the owner emblem sits: on the ring at the upper left (upper right on the mirrored east half),

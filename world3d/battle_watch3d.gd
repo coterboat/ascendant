@@ -7,7 +7,8 @@ extends Control
 ##   godot --path . res://world3d/battle_watch3d.tscn -- --fixture king_falls_wins
 ##   options: --fixture NAME (a file in tests/fixtures/battles, or path_wings / path_iron_hide /
 ##            path_lifedrinker / path_red_harvest / massive (322 fighters: M3's files), fought on the spot by
-##            the tests' fixtures; default starting_plains), --speed 1|2|4, --paused, --reduced-motion,
+##            the tests' fixtures; siege_<case> (siege_storm_keep, siege_breach, siege_sally, ...: tests/
+##            walls_stage_fixtures.gd, with the game they were fought in); default starting_plains), --speed 1|2|4, --paused, --reduced-motion,
 ##            --quit-at-end (prints the frame times, fps and draw calls, then quits), --rung N (a fixed
 ##            quality rung, the automatic ladder off: the min-spec measurement, world3d/README.md),
 ##            --window WxH (the window's size, e.g. 1920x1080)
@@ -20,6 +21,7 @@ signal closed
 const Watch := preload("res://ui/battle/battle_watch.gd")
 const DEFAULT_FIXTURE := "starting_plains"
 const PATH_FIXTURES := "res://tests/battle_playback_fixtures.gd"
+const SIEGE_FIXTURES := "res://tests/walls_stage_fixtures.gd" ## --fixture siege_<case>: a battle at walls (M3c S-5)
 
 var stage: BattleStage3D
 var viewer: BattleReportViewer
@@ -116,12 +118,18 @@ func watch(source: Dictionary, seats: Array = [], report: Dictionary = {}) -> St
 	if source.has("numbers"):
 		return stage.show_event(source, seats)
 	if source.has("log") and source.log is Dictionary:
+		if source.get("state") is GameState:
+			## M3c S-5: a siege fixture brings the game it was fought in, so the besiegers' engines stand in their camp
+			return stage.play(source.log, source.get("report", report), source.state, seats)
 		return stage.show_battle(source.log, source.get("report", report), seats)
 	return stage.show_battle(source, report, seats)
 
 
 ## A stored battle fixture, or one of the tests' path battles, as {"log", "report"} ({} when unknown).
 static func load_fixture(fixture_name: String) -> Dictionary:
+	if fixture_name.begins_with("siege_") and ResourceLoader.exists(SIEGE_FIXTURES):
+		var siege_fixtures: Script = load(SIEGE_FIXTURES)
+		return siege_fixtures.call("battle", fixture_name.trim_prefix("siege_"))
 	if (fixture_name.begins_with("path_") or fixture_name == "massive") and ResourceLoader.exists(PATH_FIXTURES):
 		var fixtures: Script = load(PATH_FIXTURES)
 		return fixtures.call("battle", fixture_name)

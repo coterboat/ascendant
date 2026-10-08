@@ -1822,6 +1822,8 @@ static func _research_done_event(s: GameState, fid: String, step: Dictionary, tu
 	else:
 		var text := MagicRules.done_text(s, fid, nid, turn) if AscensionRules.is_arcana(nid) \
 			else AscensionRules.done_text(s, fid, nid, step.applied)  # M5-5: an arcana node says what it opens
+		if AscensionRules.is_arcana(nid):
+			numbers["own_text"] = MagicRules.done_own_text(s, fid, nid, turn)  # M5-8: the faction's own words (the first spell)
 		events.append(_event("research_done", "research", [], [fid], [], "researched", numbers, text, codex))
 
 

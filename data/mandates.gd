@@ -131,7 +131,7 @@ const PATH_MANDATES: Array[Dictionary] = [
 const MAGIC_MANDATES: Array[Dictionary] = [
 	{
 		"id": "tithe_of_blood", "name": "Tithe of Blood", "faction": "beasts", "cost": 3, "area": "economy",
-		"effect": "Rituals your Shamans cast can be paid in hit points instead of gold: 1 hit point a gold, from the regular units in the Shamans' own army, one soldier at a time. Rituals your ruler casts always cost gold. Can't be held with Feast of Victory.",
+		"effect": "Lets rituals your Shamans cast be paid in hit points instead of gold: 1 hit point a gold, from the regular units in the Shamans' own army, one soldier at a time. You choose gold or blood on each cast. Rituals your ruler casts always cost gold, because a ruler stands alone. Can't be taken with Feast of Victory.",
 		"codex": "mandate_tithe_of_blood", "magic": true, "excludes": "feast_of_victory",
 		"excludes_why": "blood given is not taken back",
 	},
