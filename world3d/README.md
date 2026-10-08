@@ -166,6 +166,12 @@ fails on a unit type without a row or a row whose model is missing).
                                            // pose's body size); without it: the row's height (fallen: its length)
           "models": {"<faction id>": "res://..."}, "model_height": {"<faction id>": 1.2}
                                            // army extras (bearer, musician): the model per owner's faction
+          "tint": 0.8, "model_tint": {"<faction id>": 0.8}
+                                           // IND-2: darken a model figure (vertex colour x texture, 1 = as made); an
+                                           // extra's own tint per faction. Pale undyed wool blows out to white at 1
+          "fallbacks": {"<faction id>": "<Kit.figure id>"}
+                                           // IND-2: the primitive an extra wears for that faction when it has no model
+                                           // (the Free Holds' "free_bearer")
         }
       },
       "buildings": {
@@ -346,6 +352,33 @@ switch is off, every older board test holds unchanged.
   **0.08 ms a frame at rung 0**, under the 0.2 ms budget. CPU: `Vision.levels` 0.06 ms and `set_vision` 0.003 ms a turn; a
   whole fog `stand()` (armies, plates, sight) 6 ms (`tests/test_fog_board.gd` checks the three with `--perf`).
 
+## The Free Holds' look (IND-2, #161)
+
+The independents' garrisons (`data/independents.gd`, IND-1 #142) stand on the 3D board and fight on the 3D stage in their own
+look: plain local militia in undyed bone-cream wool and weathered grey, apart from the Crown's blue and gold and the Clans'
+tawny and moss (STYLE_BIBLE: slate is the independents' colour, `UiPalette.NEUTRAL`).
+
+- **The kit's independents style** (`kit.gd`): a figure for each unit id, `free_spears`, `hill_slingers`, `wildkin` (a silver-grey
+  badger of the deep woods) and `hold_captain` (`Kit.INDEPENDENTS`), plus the colour party's `free_bearer`
+  (`Kit.INDEPENDENTS_PARTY`) and a plain wool war tent (`Kit.tent("independents")`). Palette: `WOOL`, `SLATE`, `GREY`, `IRON`,
+  `BADGER`; never blue, gold, tawny, moss or crimson (`tests/test_free_holds_look.gd` checks it against the Crown's and the
+  Clans' signature colours). Kept a little under white on purpose: the cel light blows anything lighter out to a ghost.
+- **The model table** has a row per unit id with `"model": ""`: the board and the stage draw the kit figure until the Ludo
+  model is installed, and the row then names the GLB, its height and its poses like any unit's. The bearer and the musician rows
+  carry `"fallbacks": {"independents": "free_bearer"}`: the primitive a faction's army wears when it has no model of its
+  own, so a garrison's colour party is not a Crown man with a blue plume.
+- **The banner** of an army that belongs to nobody (a garrison, `seat < 0`) carries the independents' heater shield
+  (`Kit.EMBLEM_SHIELD`, drawn by `banner.gdshader`), where it used to borrow Player 1's circle; the plate keeps the shield
+  glyph the 2D map uses. The bases stand on slate.
+- **Portraits** are found by unit id under `assets/portraits/independents/<id>.webp` (`Art.unit_faction`).
+- **Where the art comes from:** `tools/ludo/asc_3d_free_holds.py` (batch `asc-3d-free-holds`, ledger
+  `studio/ledgers/asc-3d-free-holds.jsonl`): concept pictures, poses and portraits go into the Review Table batch
+  `review/ind_concept/` and the slimmed models into `review/ind_models/` (each model's target is its install path); the owner
+  judges them there and the batch's install action (`install-accepted`) puts the accepted models in
+  `assets/models/units/independents/` with their `models.json` rows and the unit rows of this table, so the placeholders swap
+  out. A Ludo model carries a floor slab (the picture's soft ground shadow fused into a plate under the feet): the script cuts
+  it away before slimming (`trim_floor`).
+
 ## Battles on the land (M3b)
 
 A battle is played back in 3D on the province where it happened (design/3D_DIRECTION.md 7), driven entirely by
@@ -426,6 +459,64 @@ and, for the engines, the game `play()` was given.
 - **Tests**: `tests/test_battle_stage_walls.gd` (the storm, breach and open placements, nobody inside a wall, the table
   against the models, the walls' defense on screen before the first hit, the fort on the land, the camp and its
   engines, a fighter on a wall, the camera, determinism, files, the stage only shows).
+
+## Magic in 3D (M5-9, #120)
+
+design/M5_MAGIC_FOG.md §5, §6, §12.2, §12.3, §15.3; 3D_DIRECTION §3.4. The battle stage draws every battle spell and the board
+draws rituals and enchantments, as **code placeholders** (rings, beams, billboards, motes: the VFX sheets of §15 replace them
+without code changes elsewhere), on the quality ladder, in a few draw calls. Effects only read: a cast beat is the log's own event,
+a ritual beat is the viewer's own report, and nothing here changes a state, rolls a die or looks a hidden caster up.
+
+- **Files.** `spell_plan.gd` (pure: what each effect draws on each rung, as lists of marks; every number of the ladder is here),
+  `spell_fx.gd` (the node: three MultiMeshes, the pool, the flash limiter), `shaders/spell_fx*.gdshader*` (every mark in one
+  shader: ground decals depth-tested so a figure hides a ring at its feet, sprites and beams over the figures),
+  `battle_spells.gd` (a `cast` beat to a plan, the legend rows), `enchant_decals.gd` (the board), `magic_beats.gd` (which ritual beats
+  play before the marches and which after the battles), `spell_figures.gd` (the four new figures). The stage's, the board's and
+  `Armies`' edits are small hooks (`_cast_beat`, `_moon_heal`, `_spells_seeked`, `decals.sync`, `magic_beat`).
+- **The ladder** (`SpellPlan`, thinned and never dropped: `tests/test_spell_fx.gd` checks every effect on every rung, still and
+  moving). Bolts (Sunlance's gilt beam, Bloodbolt's crimson one): beam, trail and glow on rung 0-1, no glow on 2, a plain beam on 3,
+  a straight line on 4-5, the impact sheet half size from 4. Briar Snare: a ring of thorns under each snared unit on every rung,
+  vines and briars and 32 particles on 0-1 (16 on 2), one briar each on 3, the ring alone from 4. Shield of Law: a translucent
+  shield before each covered unit on 0-3 (the rim pulses on 0-2), a ▲ under it from 4. Sunburst: the glare ring sweeping the enemy
+  front on every rung, the flare sheet to 3, the bloom and a 4 px shake on 0-1 (the shake to 2), the ring alone from 4. The Blood
+  Moon's heal: 24 rising motes, 12 on 2, the number alone from 3. On the map: a ritual cast is a pillar at a visible caster and a mote
+  along the roads, then the decal (no mote on 3, the decal alone from 4); enchantments are animated decals on 0-1 and still from 2; a
+  summoning's ring and a raised fort fade in on 3 and pop in from 4.
+- **Pools, the flash limiter, reduced motion.** At most 32 effects alive (`SpellPlan.POOL_CAP`); a full pool SKIPS a new effect,
+  it is never queued (the caption and the bars carry the facts). A bolt or Sunburst asks `BattleFx.FlashLimiter` once (Sunburst
+  counts as a flash); refused, it plays without bright frames (its bright marks stay at or under 80%); allowed, a bright mark is above
+  80% for at most `BattleFx.BRIGHT_FRAMES` real frames. Sunburst's shake goes through the stage's own `ShakeLimiter`. Reduced motion
+  plays every effect as a still mark (no sweep, travel, pulse, particles, shake or flash) and the standing decals do not animate.
+- **The battle stage.** A `cast` beat becomes an effect on the caster and its targets, the spell's name and numbers float over
+  the caster ("Sunlance 4", "Briar Snare -2 attack", "Bloodbolt 5" with "-2 hp"), a bolt makes `battle_arcane`'s sound, and the bars
+  and glyphs refresh (a bolt's damage is pending). A hex or shield lasts to its round's `round_end` beat; a seek rebuilds the ones the
+  state still has (`BattleSpells.standing`). The effect's colour is the school's, "effects are untinted": ownership is the ring under
+  the caster and under a snared or shielded unit, in its side's colour. The legend has a row for each spell (`BattleSpells.legend_rows`).
+- **The board.** `Playback.plan`'s "rituals" now carry every event of §12.3 (`SpellPlan.EARLY_EVENTS` before the marches, which then
+  start after the rituals phase; `LATE_EVENTS` after the battles); `Armies.magic_beat` hands each whole to `EnchantDecals`, and the
+  playback bar gains the Rituals and Enchantments phases (captions and help in `Choreo`). A cast the viewer sees starts at its caster;
+  one from a caster it can't see (the beat's `from` is "") arrives at its target with no direction, and a heralded global ritual is a
+  moon over the map. Standing decals come from the state the board stands (under fog the viewer's view): a gilt ring under each blessed
+  army, a blue band on a warded province, crimson veins on a cursed one, an eye over a province in Far Sight. A summoning's creatures
+  step out of a briar ring as the armies re-form (a new army in the state after is a recruit to the board); a Bastion rises behind
+  scaffolding (the board's own `_rising` piece), and its fort stands from the state in a game without sieges
+  (`WorldView.set_raised_forts`: the baked map has none there). `Playback.apply_events` follows `summoned` and `summon_faded`.
+- **Figures.** `adepts`, `shamans`, `thornwolves` and `greenwrath` have rows in `models.json` (`"model": ""`, the fallback is the
+  Kit figure of the same name, `spell_figures.gd`: a robed caster with a sunstone staff, a furred caster with antlers and a skull
+  staff, a low four-legged wolf wider than it is tall, a tall thicket with a stag's skull). `kit.gd` gained one arm in `figure()`, one in
+  `_base()` and `has_figure()` knows them; the GLBs drop in by filling the row.
+- **Run it.** `godot --path . -- --battle3d --fixture magic_all` (every battle spell in round 1), `magic_sunburst`, `magic_shield`,
+  `magic_snare`, `magic_bloodbolt`, `magic_moon`, `magic_pack` (the four new figures), `magic_big` (280 fighters, 6 casters), with
+  `--rung N` and `--reduced-motion` (`tests/magic_stage_fixtures.gd`).
+- **Cost.** Spells add three draw calls to a battle (ground decals, sprites, beams; the budget is 150), never more however many
+  effects are alive, and at most 32 effects. Measured on Alex's Mac (Apple M4, Metal, Forward+, a 1600 x 900 window, a shared machine, no
+  GPU timestamps on Metal): `godot --path . -- --battle3d --fixture magic_big --quit-at-end --rung 0 --window=1600x900` (280 fighters, 6
+  casters) 101.6 fps, frame time p95 10.85 ms, draw calls max 845, against the plain `biggest` battle's 100.4 fps, p95 11.14 ms, draw
+  calls 808 (the extra figures account for the rest); rung 3: 102.2 fps, p95 10.85 ms against 100.8 fps, p95 11.29 ms. The stage's CPU
+  with effects on, headless at 4x: about 0.2-0.4 ms a frame more than without (`tests/test_spell_fx.gd` prints it, and checks the
+  2.0 / 4.0 ms budget under `-- --perf`). The shaders' pipelines are warmed in the node's first frames (`SpellFx.WARM_FRAMES`), so the
+  first Sunburst of a battle does not hitch it.
+- **Tests.** `tests/test_spell_fx.gd` (see its header).
 
 # The spike (PR #81, `spike-3d-world`)
 

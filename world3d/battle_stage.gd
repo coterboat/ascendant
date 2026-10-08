@@ -59,6 +59,8 @@ const Figures := preload("res://world3d/battle_figures.gd")
 const Walls := preload("res://world3d/battle_walls.gd")
 const Scenery := preload("res://world3d/battle_scenery.gd")
 const SiegeBoard := preload("res://world3d/siege_board.gd")
+const SpellFx := preload("res://world3d/spell_fx.gd")
+const SpellPlan := preload("res://world3d/spell_plan.gd")
 
 ## The field's band the camera frames the battle in (field pixels kept clear at the top for the round banner,
 ## the moment toast and the morale tags, and at the sides and bottom).
@@ -128,6 +130,8 @@ var _drag_from := Vector2.ZERO
 var _user_rig := false
 var _proj: Array = [] ## projectiles: {"kind", "from", "to", "t0", "life", "arc", "hit", "mi_slot"}
 var _proj_mm := {} ## kind -> MultiMeshInstance3D
+var sfx: SpellFx ## M5-9: the spell effects (world3d/spell_fx.gd; rungs, pool and flash limiter as SpellPlan and BattleFx say)
+var _round_ends := {} ## M5-9: round -> the playback time its round_end beat fires (a hex or shield lasts to there)
 var _fx: Array = [] ## projected effects: {"kind", "at": Vector3, "age", "life", "r", "big", "bright", "frames", ...}
 var _numbers: Array = [] ## {"at": Vector3, "text", "color", "size", "age", "life"}
 var _glyph_cache := {} ## fighter id -> glyph kinds
@@ -263,6 +267,11 @@ func build_now() -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		proj_root.add_child(mi)
 		_proj_mm[kind] = mi
+	sfx = SpellFx.new() ## M5-9: three more draw calls for every spell of the battle (rings, sprites, beams)
+	sfx.flash = _flash
+	sfx.bind_ground((wv.gmat as ShaderMaterial).get_shader_parameter("height_tex"), Terrain3D.ORIGIN, Terrain3D.EXTENT) ## M5-9: decals lie on the land
+	sfx.rung = SpellPlan.rung_of(quality, RenderingServer.get_current_rendering_method() == "gl_compatibility")
+	wv.add_child(sfx)
 	_fit_viewport()
 
 
@@ -638,7 +647,7 @@ func _build_field() -> void:
 	for si in _log.sides.size():
 		_side_colours.append(UiPalette.seat_color(_side_seat[si]))
 		_side_lin.append(figure_colour(_side_seat[si]))
-		emblems.append(maxi(_side_seat[si], 0))
+		emblems.append(_side_seat[si] if _side_seat[si] >= 0 else Kit.EMBLEM_SHIELD)  # IND-2: nobody's banner is the independents' heater shield
 		factions.append(String(_log.sides[si].faction))
 	## M3c S-5: a battle at a fort stands at the walls of the fort the log describes (BattleWalls), else on the ground
 	_dress_forts()
@@ -669,6 +678,8 @@ func _build_field() -> void:
 	_proj.clear()
 	_fx.clear()
 	_numbers.clear()
+	sfx.clear() ## M5-9
+	_round_ends = BattleSpells.round_ends(player.beats())
 	_glyph_cache = {}
 	_user_rig = false
 	_focus_left = -1.0
@@ -1024,6 +1035,8 @@ func tick(delta: float) -> void:
 			figures.prune(now)
 	_clock_last = now
 	_step_projectiles(now)
+	if sfx != null:
+		sfx.step(dt) ## M5-9: the spell effects age with the playback (paused: they hold)
 	_tick_camera(delta)
 	## glyphs and auras follow the state at most every GLYPH_INTERVAL of real time while playing (the why
 	## panel's rule), at once when paused
@@ -1095,6 +1108,8 @@ func set_quality(q: int) -> void:
 	quality = clampi(q, 0, MAX_RUNG)
 	if wv == null:
 		return
+	if sfx != null:
+		sfx.rung = SpellPlan.rung_of(quality, RenderingServer.get_current_rendering_method() == "gl_compatibility") ## M5-9: the effects thin with the ladder
 	wv.set_quality(mini(quality, 3) if quality < 4 else 3)
 	wv.sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	figures.set_shadows(quality < 3)
@@ -1185,6 +1200,8 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 			_attack_started(b)
 		"attack_landed":
 			_attack_landed(b, st)
+		"cast":
+			_cast_beat(b)
 		"wound":
 			_bars_dirty = true
 			_glyphs_dirty_3d = true
@@ -1210,7 +1227,7 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 			_bars_dirty = true
 		"heal":
 			var ends2: Array = _ends_home(int(b.fighter))
-			if not ends2.is_empty():
+			if not ends2.is_empty() and not _moon_heal(b): ## M5-9: the Blood Moon's heal has its own motes and number
 				_add_fx({"kind": "heal", "at": ends2[0], "life": HEAL_LIFE, "r": 1.0})
 				_add_number((ends2[1] as Vector3), "+%d hp" % int(b.data.healed), UiPalette.POSITIVE, _number_size(false))
 			_bars_dirty = true
@@ -1429,6 +1446,7 @@ func _on_seeked(st: Dictionary) -> void:
 	_step_projectiles(player.time())
 	_glyphs_dirty_3d = true
 	_refresh_glyph_cache()
+	_spells_seeked(st) ## M5-9: the hexes and shields still on their fighters
 	## a key-moment jump (the playhead now sits just before a moment's beat): frame its camera hint
 	var nb := player.next_beat()
 	var beats := player.beats()
@@ -1568,6 +1586,92 @@ func _projectile_material() -> StandardMaterial3D:
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	m.no_depth_test = false
 	return m
+
+
+# --- spells (M5-9) --------------------------------------------------------------------------------------
+# The cast step's effects (world3d/spell_plan.gd plans them, world3d/spell_fx.gd draws them, world3d/battle_spells.gd turns a
+# cast beat into a plan). They only draw what the log already says: nothing here changes a fighter, a number or the game.
+
+## Where a fighter stands for an effect: {"foot", "head", "r"} (its place and footprint), {} when it isn't on the stage.
+func _spell_ends(fid: int) -> Dictionary:
+	var e: Array = _ends_home(fid)
+	if e.is_empty():
+		return {}
+	var f: Dictionary = figures.figs[figures.index_of(fid)]
+	return {"foot": e[0], "head": e[1], "r": clampf(minf(float(f["w"]), float(f["len"])) * 0.6, 2.4, 6.0)}
+
+
+func _spell_ctx(side: int, life: float) -> Dictionary:
+	return {"ends": _spell_ends, "col": _side_colours[side] if side >= 0 and side < _side_colours.size() else Color.WHITE, "life": life,
+		"rung": sfx.rung, "reduced": reduced_motion, "log": _log, "col_of": func(fid): return _side_colours[int(_log.fighters[int(fid)].side)]}
+
+
+## A cast beat plays: the spell's effect, its name and numbers over the caster, a shake for a greater working (within M3's limits),
+## and a bolt's sound. A full pool skips the effect (the bars and the caption carry the facts).
+func _cast_beat(b: Dictionary) -> void:
+	_bars_dirty = true ## a bolt's damage is pending on its target now
+	_glyphs_dirty_3d = true
+	if sfx == null or plan.is_empty():
+		return
+	sfx.reduced_motion = reduced_motion
+	var life := maxf(0.8, float(_round_ends.get(int(b.round), float(b.t) + 2.0)) - float(b.t))
+	var p := BattleSpells.plan_for_beat(b, _spell_ctx(int(b.side), life))
+	if p.is_empty():
+		return
+	var played := sfx.play(p, _real)
+	if bool(played.get("skipped", false)):
+		return
+	_spell_words(played)
+	if float(played["shake"]) > 0.0:
+		_try_shake({"amp": float(played["shake"]), "dur": 0.2}, int(b.event))
+	if String(b.data.kind) == "bolt" and _sound.allow("battle_arcane", _real):
+		GameAudio.sfx("battle_arcane")
+
+
+## The words an effect puts over the field (the spell's name and number over its caster): floating text like a damage number.
+func _spell_words(p: Dictionary) -> void:
+	for lb in p["labels"]:
+		var stacked := 0 ## words said a moment ago right here: this line goes above them
+		for n in _numbers:
+			if bool(n.get("tag", false)) and float(n["age"]) < 0.7 and ((n["at"] as Vector3) - (lb["at"] as Vector3)).length() < 14.0:
+				stacked += 1
+		var before := _numbers.size()
+		_add_number(lb["at"], String(lb["text"]), lb["col"], _number_size(false), Vector2(0, -17.0 * stacked))
+		if _numbers.size() > before:
+			var tag: Dictionary = _numbers[_numbers.size() - 1]
+			tag["life"] = float(lb["life"])
+			tag["tag"] = true
+
+
+## The Blood Moon's heal beat: green motes rising and its +hp; false for any other heal (the generic rise draws it) or when the
+## pool is full.
+func _moon_heal(b: Dictionary) -> bool:
+	if sfx == null or not BattleSpells.is_moon_heal(b, _log):
+		return false
+	sfx.reduced_motion = reduced_motion
+	var p := BattleSpells.heal_plan(b, _spell_ctx(int(b.side), 1.0))
+	if p.is_empty():
+		return false
+	var played := sfx.play(p, _real)
+	if bool(played.get("skipped", false)):
+		return false
+	_spell_words(played)
+	return true
+
+
+## A seek: the effects stand as the state says (a hex or shield still on its fighters keeps its marks, the rest are gone).
+func _spells_seeked(st: Dictionary) -> void:
+	if sfx == null:
+		return
+	sfx.clear()
+	sfx.reduced_motion = reduced_motion
+	var now := player.time()
+	var life := maxf(0.8, float(_round_ends.get(int(st.round), now + 2.0)) - now)
+	var any := false
+	for p in BattleSpells.standing(st, _spell_ctx(0, life)):
+		any = not bool(sfx.play(p, _real).get("skipped", false)) or any
+	if any:
+		sfx.step(minf(0.7, life * 0.5)) ## their intro is over: they stand
 
 
 # --- the 2D effects and numbers -------------------------------------------------------------------------
@@ -2339,7 +2443,7 @@ static func stage_rows(seat: int = 0) -> Array:
 		BattleLegend._row("camera3d", "Camera", "The camera frames the whole battle. F frames it again; drag with the right button to turn it, the wheel zooms. A key-moment jump frames that moment.",
 			"battle_playback", "BattleStage3D.draw_camera_hint", func(ci: CanvasItem, r: Rect2):
 				draw_camera_hint(ci, BattleLegend._font(ci), r.end - Vector2(2, 10), "F")),
-	]
+	] + BattleSpells.legend_rows(seat) ## M5-9: how to name each spell from what it draws
 
 
 static func _ellipse_pts(c: Vector2, rad: Vector2) -> PackedVector2Array:
