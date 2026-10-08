@@ -1668,8 +1668,8 @@ func _add_magic_lines(a: Army, box: Control) -> void:
 	cast.text = "Cast a ritual…"
 	cast.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	cast.focus_mode = Control.FOCUS_NONE
-	cast.tooltip_text = TooltipText.plain("Cast a ritual", "%s holds %s. %s" % [RulerRules._cap(TurnReportText.army_name(state, a.id)),
-		MagicView.casters_phrase(state, a), RulesCodex.text("cast_order")])
+	cast.tooltip_text = TooltipText.plain("Cast a ritual", "%s%s. %s" % [RulerRules._cap(TurnReportText.army_name(state, a.id)),
+		" casts rituals" if a.ruler != null else " holds %s" % MagicView.casters_phrase(state, a), RulesCodex.text("cast_order")])
 	CodexLink.attach(cast, "cast_order", request_codex)
 	cast.pressed.connect(open_cast_dialog.bind(a.id, ""))
 	box.add_child(cast)

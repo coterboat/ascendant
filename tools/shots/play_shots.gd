@@ -265,7 +265,7 @@ func _magic_casters(game: GameScreen, turn: int) -> void:
 		if not bool(o.ok):
 			continue
 		game.map.open_cast_dialog(army.id, String(o.ritual))
-		await _frames(2)
+		await _wait(0.8)  # the board eases the lit provinces in
 		await _shot("t%02d_cast_dialog" % turn, "The cast dialog for %s: targets lit on the board, the forecast, the risk, the budget." % MagicRules.spell_name(String(o.ritual)))
 		game.map.cast_dialog.confirm()
 		cast_done = true

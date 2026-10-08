@@ -147,9 +147,12 @@ func show_for(p_orders: OrdersController, p_army_id: String, select: String = ""
 	options = orders.cast_options(army_id)
 	var army := orders.state.find_army(army_id)
 	var who := MagicView.casters_phrase(orders.state, army)
-	intro_label.text = "%s at %s holds %s. It casts from where it starts the turn, before anyone moves, so it holds this turn." % [
-		RulerRules._cap(TurnReportText.army_name(orders.state, army_id)), MagicRules._province_name(orders.state, army.location if army else ""),
-		who]
+	var name := RulerRules._cap(TurnReportText.army_name(orders.state, army_id))
+	var here := MagicRules._province_name(orders.state, army.location if army else "")
+	if army != null and army.ruler != null:  # a ruler's army is the ruler alone: no "holds the Ever-Regent"
+		intro_label.text = "%s at %s casts from where it starts the turn, before anyone moves, so it holds this turn." % [name, here]
+	else:
+		intro_label.text = "%s at %s holds %s. It casts from where it starts the turn, before anyone moves, so it holds this turn." % [name, here, who]
 	var first := ""
 	for o in options:
 		var b := Button.new()
@@ -273,10 +276,7 @@ func _fill_choices(o: Dictionary) -> void:
 	numbers_box = null
 	budget_label = null
 	forecast_label = null
-	var line := _label(String(MagicRules.spell_data(ritual).text), 13, UiPalette.TEXT_SECONDARY)
-	line.name = "RitualText"
-	line.set_meta("rule_text", true)  # the ritual's rule in words; its numbers are under the forecast
-	choice_box.add_child(line)
+	# (The ritual's own line is the tooltip of its button above; the forecast below says what it does with your numbers.)
 	var targets: Array = o.targets
 	if not (targets.size() == 1 and String(targets[0]).is_empty()):
 		choice_box.add_child(_label("Target: pick one below, or click a lit province on the board", 15, UiPalette.TEXT_PRIMARY))

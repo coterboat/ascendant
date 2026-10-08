@@ -559,6 +559,26 @@ func test_the_dialog_offers_only_legal_targets_and_its_forecast_is_the_rules() -
 	game.free()
 
 
+func test_the_dialog_counts_its_casters_once_and_a_ruler_alone_casts() -> void:
+	var s := _clans_state()
+	var game := _screen(s, [CLANS, CROWN])
+	var map := game.map
+	var state := game.session.state()
+	var army := _army_at(state, CLANS, "thornvale")
+	assert_eq(MagicView.casters_phrase(state, army), "your 2 %s" % String(MagicData.MAGES[CLANS].name))
+	map.open_cast_dialog(army.id)
+	var intro: String = map.cast_dialog.intro_label.text
+	assert_true(intro.contains("holds your 2 %s." % String(MagicData.MAGES[CLANS].name)), intro)
+	assert_false(intro.contains(" and your "), "no caster is named twice")
+	var fang := RulerRules.ruler_army(state, CLANS)
+	assert_eq(MagicView.casters_phrase(state, fang), RulerRules.current_name(state, CLANS))
+	map.open_cast_dialog(fang.id)
+	var alone: String = map.cast_dialog.intro_label.text
+	assert_true(alone.contains("casts from where it starts the turn"), alone)
+	assert_false(alone.contains("holds %s" % RulerRules.current_name(state, CLANS)), "a ruler's army is the ruler: it holds no one else")
+	game.free()
+
+
 func test_the_dialogs_sections_budget_pin_and_numbers_match_the_rules() -> void:
 	var s := _clans_state()
 	var game := _screen(s, [CLANS, CROWN])
