@@ -1,0 +1,36 @@
+{
+  "sensitive": [
+    {
+      "glob": "rules/*_resolver.gd",
+      "why": "Deterministic turn and battle resolution; changes break replays"
+    },
+    {
+      "glob": "rules/seeded_rng.gd",
+      "why": "Sole RNG wrapper; any change alters every seeded outcome"
+    },
+    {
+      "glob": "rules/serial.gd",
+      "why": "JSON round-trip and load validation for saved game data"
+    },
+    {
+      "glob": "rules/game_state.gd",
+      "why": "Central state to_dict/from_dict used for saves and replays"
+    },
+    {
+      "glob": "data/*.gd",
+      "why": "Balance-tuned faction, map and ruler data tests depend on"
+    },
+    {
+      "glob": "AGENTS.md",
+      "why": "Rules steering builder bots (and CLAUDE.md copy): scope, secrets, protected dirs"
+    },
+    {
+      "glob": "design/GAME_BRIEF.md",
+      "why": "Alex-approved brief bots build against; changes need his OK"
+    },
+    {
+      "glob": "tools/ludo/ludo.py",
+      "why": "Spends paid Ludo credits using LUDO_API_KEY"
+    }
+  ]
+}

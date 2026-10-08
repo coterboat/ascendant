@@ -18,9 +18,6 @@ config/features=PackedStringArray("4.5", "Forward Plus")
 [autoload]
 
 World3DLaunch="*res://world3d/launch.gd"
-
-[autoload]
-
 Audio="*res://ui/audio.gd"
 
 [display]
@@ -36,8 +33,6 @@ theme/custom="res://ui/ascendant_theme.tres"
 
 [rendering]
 
-renderer/rendering_method="forward_plus"
-renderer/rendering_method.mobile="mobile"
+textures/vram_compression/import_etc2_astc=true
 anti_aliasing/quality/msaa_3d=1
 anti_aliasing/quality/screen_space_aa=1
-textures/vram_compression/import_etc2_astc=true
