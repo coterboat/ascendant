@@ -40,6 +40,7 @@ The milestone proves three things:
   - A Wake-Line province is a harbour and pays 1 less gold, because the living sit up all night.
   - Lose it, and a **cold wake** lingers 2 turns per stage. While it lasts it is still a harbour for the Candlewake, and retaking it resumes the old stage.
   - Buildings melt in step on the board.
+  - **The dead rise** from Deep Wake: 1 Wickwarden every 4 turns a province, up to 2 a turn. It is a trickle, not their recruitment (Alex 10-8).
 - **The host:**
   - **Wickwardens:** the cheap line, with Pall (harder to hit).
   - **Gleaners:** reapers, with Siphon (heal on a hit).
@@ -216,7 +217,7 @@ Siege camps are not harbours: they want the storm, not the wait.
 |---|---|---|---|
 | 1 | Sitting Up | taken this turn or later | nothing yet: a lilac flame in every window |
 | 2 | the Wake-Line | 3 turns | a harbour for Wick; the province pays −1 gold |
-| 3 | Deep Wake | 6 turns | as the Wake-Line (the look is the payoff) |
+| 3 | Deep Wake | 6 turns | as the Wake-Line, and **the dead rise** (§3.6) |
 
 Every household keeps a candle in its window all night, as you do for the dead, and each flame gives a little warmth as the host passes. Nobody is hurt. The wax is the receipt.
 
@@ -264,6 +265,19 @@ This is the "map tells the war story" part (Alex 10-7): you can read from the gr
   - medium: adds posts and building melts;
   - high: adds drips and flicker.
 
+### 3.6 the Risen: the dead rise from Deep Wake (Alex 10-8)
+As a province becomes more made in their likeness, its dead turn to wax and rise again. It was one of Alex's favourite Dominions mechanics. **It is a trickle, not their recruitment:** the Candlewake must never depend on it, or they'd be stranded once there was nothing left to consume.
+
+- **When:** in the wake step, each Deep Wake province you own raises **1 Wickwarden** every 4 turns it has been Deep Wake, at `held` = 10, 14, 18 and so on. The capital counts as Deep Wake from the start, so it raises one at the ends of turns 3, 7, 11 and so on.
+- **Where:** a Risen Wickwarden joins the lowest-id Candlewake regular army in that province, at that army's flame (it doesn't cool it). If there is none, it forms a new army there at flame 1. That army counts as created this turn and skips the idle step.
+- **The cap:** at most **2 Risen a turn** across all provinces, in province-id order.
+- **Paths** change it: the Golden Wake makes it a steady stream (§6.2). The Red Wake leaves it alone and swells Harvest instead (§6.3).
+- **Explained:**
+  - the province tooltip: "Deep Wake: the dead rise here. Next Wickwarden in 2 turns.";
+  - the turn report: "At Thornvale the dead rose: 1 Wickwarden.";
+  - a codex line under "The Wake".
+- **Fog:** a Risen army is an army like any other, so it is seen when its province is.
+
 ---
 
 ## 4. the host (CW-2)
@@ -306,8 +320,10 @@ House rule: attacks are odd, and defence is 4k or 4k+1.
 | **Half-Death** | god, front, 13 | {20, 3, 1} | {9, 1, 1} | {5, 1, 2} | **Harvest** | back in 1 turn, 3 kept power smaller (as the Great Thornmane) |
 | **Mother Tallow, the Ninth Chandler** | mortal line, second, 10 | {14, 1, 1} | {7, 1, 2} | {6, 1, 2} | **Vigil** | the Tenth Chandler, in 2 turns, at half kept power |
 
-- **Harvest.** Once a turn, when a battle Half-Death fought in, in Half-Death's province, is won **against at least one player's army** (not only a Free Hold):
-  - 1 Wickwarden rises at ability ranks 1–2, and 2 at ranks 3–4. A fort's chain counts once.
+- **Harvest.** Once a turn, when a battle Half-Death fought in, in Half-Death's province, is won:
+  - against at least one player's army, 1 Wickwarden rises at ability ranks 1–2, and 2 at ranks 3–4;
+  - against only a Free Hold, a **reduced Harvest** of 1 Wickwarden at any rank. A strong early game is part of the faction (Alex 10-8);
+  - a fort's chain counts once.
   - A ruler travels in its own army with no units (the engine's invariant), so the Wickwardens join **the lowest-id Candlewake regular army that fought in that battle**, at that army's flame. They rose in the fire, so they don't cool it.
   - If no such army survives, they form a new army in the province at flame 1 (2 with Kindling). It counts as created this turn and skips that turn's idle step.
   - It never raises the enemy's dead.
@@ -351,20 +367,22 @@ The six shared mandates, plus:
 An Oath needs any 2 of them, as in M4.
 
 ### 6.2 the Golden Wake (Oath of the Kept, 20, then 30)
-The Kept win. They feed on hives and meadows instead of people, and the wax turns honey-gold. **This is the economy and defence side,** and it leaves Wick alone.
+The Kept win. They feed on hives and meadows instead of people, and the wax turns honey-gold. **This is the side that cools down** (Alex 10-8): a defensive, money-making Candlewake that leaves Wick alone and grows its host from the land.
 - **Transformation:** Wickwardens become **Combwardens**: +2 hp, +1 morale.
 - **New unit:** **Amber Saints**, 24/11/9/11, 22 gold, front, with **Iron Hide** (reused).
 - **Province rule, Meadow Wake:** Wake provinces pay +1 gold instead of −1, and the Wake-Line comes 1 turn sooner. It stacks with Sitting Up Early, to at least 1 turn.
+- **The Long Sleep (the Risen, §3.6):** the dead also rise from Wake-Line provinces, and every 3 turns instead of 4. The cap becomes 3 a turn. It pumps out troops over time.
 - Forswears **Muster Grounds**.
 
 ### 6.3 the Red Wake (Oath of the Snuffed, 20, then 30)
-They stop apologising, and the wax runs cherry-red.
+They stop apologising, and the wax runs cherry-red. **This side fuels the fire** (Alex 10-8): it burns hot and swells the horde through battle, not the land.
 - **Flame cap 4.** An army above 3 that doesn't win drops to 3 the same turn, even in a harbour. An army idle outside a harbour loses 2.
 - **Vigil and Kindle** never raise a flame above 3.
 - **Transformation:** Gleaners become **Red Gleaners**: +2 attack, −2 hp, and Siphon heals 2.
 - **New unit:** **Pyre-Walkers**, 16/13/5/9, 18 gold, front, with **Berserk** (reused).
 - **Province rule, Pyre Roads:** a win gives +2 flame instead of +1, once a turn. It applies when the battle's province was owned by the Candlewake and at the Wake-Line or deeper **at the start of the battle phase**. A scar retaken that turn doesn't qualify.
 - **Effective flame** caps at 4 (§2.2): Bonfire Night can't lift a flame-4 army past +3 attack.
+- **The Swelling (Harvest):** every Harvest raises 1 more Wickwarden, from player armies and Free Holds alike. The Risen stay at the base rate.
 - Forswears **Iron Discipline**.
 
 ### 6.4 explained
@@ -404,7 +422,7 @@ The existing AI reads only what it already knows: `ai/ai_player.gd:67-76` and `:
 3. **Recruit destination.** It doesn't cool a flame-2+ army unless that army is outnumbered: recruits go to a new or cooler army.
 4. **Harvest.** It keeps Half-Death fighting in its own province when the odds allow.
 5. **Vigil.** It parks Mother Tallow at the busiest muster.
-6. **The Wake.** It holds taken provinces three turns behind the front and retakes scars first.
+6. **The Wake.** It holds taken provinces three turns behind the front, keeps Deep Wake provinces (the Risen), and retakes scars first.
 7. **Paths and rituals:**
    - Golden presets build the Wake.
    - Red presets chase Pyre Roads.
@@ -430,7 +448,8 @@ The existing AI reads only what it already knows: `ai/ai_player.gd:67-76` and `:
 | **C3** | each pair (Crown–Clans, Crown–Candlewake, Clans–Candlewake) 40–60% over pooled presets |
 | **W1** | the median flame at the start of a Candlewake battle is 1.3–2.3 |
 | **W2** | guttering happens in 10–40% of Candlewake games; no army spends more than 60% of its turns at the cap |
-| **W3** | Harvest supplies at most 20% of the Candlewake fighters ever fielded |
+| **W3** | Harvest supplies at most 25% of the Candlewake fighters ever fielded (Red Wake: 35%) |
+| **W6** | the Risen supply at most 15% of Candlewake fighters (Golden Wake: 25%); no Candlewake game is won with fewer than 3 recruit orders |
 | **W4** | the median number of Wake-Line provinces at turn 12 is ≥ 2; the Wake's gold cost is ≤ 10% of income |
 | **W5** | median decisive game 10–16 turns in Candlewake pairs |
 | **P1c** | each Candlewake fork side 40–60% |
@@ -469,6 +488,10 @@ The existing AI reads only what it already knows: `ai/ai_player.gd:67-76` and `:
   - no green and black.
 
   Keep "dark but not grim": Alex flagged a mound of wax heads in round 3b.
+- **Faces are empty** (Alex 10-8, his verdict on art round 6c: eyeless). The host are **hollow shells**: a hood or helm of wax gives shape to a face that is nothing, with only the lilac wick-light inside. They are warlike, not sad.
+  - The reference is the canon `candlewake_tide.png`.
+  - Rank-and-file are pure wax; the hood and helm shapes vary by unit so the host reads as an army.
+  - **The lookalike guard:** the hooded void is an old archetype. Stay clear of the famous one's tells: no black riders on black horses, no spiked iron crowns, no pale-blade daggers. Ours are ivory wax lit lilac from inside, dripping.
 
 ---
 
@@ -521,13 +544,13 @@ Rates are from `studio/ledgers/asc-3d-factions.jsonl`: 3.0 a model, 1.5 a 3-cand
    - recruit destination;
    - the micro-benchmarks (§9);
    - every §2.5 explanation.
-3. **CW-3** `code` **The Wake** (§3): `MarkData`, stages, the cold wake truth table (§3.3), tooltips, report lines and codex.
+3. **CW-3** `code` **The Wake** (§3): `MarkData`, stages, the cold wake truth table (§3.3), the Risen (§3.6), tooltips, report lines and codex.
 4. **CW-4** `code` **Paths** (§6), with §6.4's explanations.
 5. **CW-5** `code` **Wick and Wax** (§7).
 6. **CW-6** `code` **The computer** (§8), with the early smoke run.
 7. **CW-7** `code` **New game and screens:** 3 factions to 2 seats, `capital_name` everywhere a capital is named, title banners and the victory text.
 8. **CW-8** `code` **3D:** flame height, wax massing, the fort kit, and the Wake on the board (§3.5).
-9. **CW-9** `design` **Art lead:** manifest rows from the canon, and the eyes call.
+9. **CW-9** `design` **Art lead:** manifest rows from the canon. Eyes are settled: empty hooded shells (§10).
 10. **CW-10** `asset` **Asset builder:** the Ludo batches into the Review Table (§11).
 11. **CW-11** `code` **Balance:** pair-keyed matrices and the W bands (§9).
 
@@ -562,17 +585,14 @@ Rates are from `studio/ledgers/asc-3d-factions.jsonl`: 3.0 a model, 1.5 a 3-cand
    - the flame effect and the battle flame global;
    - reused Iron Hide, Berserk, bolt, shield, summon and blessing.
 
-## 15. questions only Alex can answer
-1. **The flame curve:**
-   - a) flame − 1 (−1/0/+1/+2): my pick, and Codex's numbers say +1 a flame breaks the cost curve.
-   - b) +1 per flame, with pricier units.
-2. **Free Holds as fuel:**
-   - a) a win over a Free Hold raises flame, with no Harvest (my pick: it's their early game).
-   - b) only player armies count.
-3. **The Golden Wake as the economy side:**
-   - a) keep it (my pick).
-   - b) a second aggressive fork.
-4. **Eyes:** your verdict on art round 6c in the Review Table settles it.
+## 15. Alex's answers (2026-10-08)
+1. **The flame curve:** a) flame − 1. "Sounds like a good balanced start."
+2. **Free Holds as fuel:** flame yes, and **a reduced Harvest** (1 Wickwarden). "A strong early game should be part of his strengths. It's OK to break a few things if everyone has access to broken shit."
+3. **The Golden Wake:** a) keep. Golden lets a player cool down into a defensive, money-making style; Red fuels the fire.
+4. **Eyes:** eyeless, in his art round 6c verdict: "more warlike, empty shells with hoods of wax to give shape" (§10).
+5. **His new idea (§3.6):** as their land is made in their likeness, the dead turn to wax and rise again. The Golden Wake keeps it pumping, and the Red Wake swells the horde through Harvest instead.
+
+**Design note for every faction:** asymmetric power spikes are welcome when every faction has its own. The bands are guardrails, not a flattening.
 
 ---
 
