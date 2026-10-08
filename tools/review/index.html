@@ -256,6 +256,14 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
 .tk:disabled { opacity: .4; }
 .tk.on { border-color: var(--brass); color: var(--ink); box-shadow: 0 0 0 2px var(--brass-glow); }
 .tk.pk::after { content: "\2713"; color: var(--green-ink); font-weight: 700; }
+/* keep both (K): a chip marked with Shift+click, the "Kept N takes" tag, and the hint under the takes */
+.tk.mk { border-color: var(--brass-2); }
+.tk.mk::after { content: "\25C6"; color: var(--brass); font-size: 10px; }
+.kept-n { font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--green-ink); margin-left: 4px; }
+.kh { flex-basis: 100%; font-size: 11.5px; color: var(--ink-3); }
+.kh kbd { margin: 0 2px; }
+.big.concept .keepb { grid-column: 1 / -1; height: 34px; font-size: 13px; border: 1.5px solid var(--brass-2); color: var(--brass); }
+.big.concept .keepb:hover:not(:disabled) { background: rgba(217, 178, 95, .12); border-color: var(--brass); }
 .tk.old { color: var(--red-ink); border-style: dashed; }
 .tk.game { border-color: var(--brass-2); color: var(--brass); }
 .tk.playing { background: rgba(217, 178, 95, .22); }
@@ -677,6 +685,7 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
       <span><kbd>Space</kbd>play / pause</span>
       <span><kbd>A</kbd><span id="kAcc">accept</span></span>
       <span id="kChgWrap" hidden><kbd>C</kbd>good with changes</span>
+      <span id="kKeepWrap" hidden title="On an item with takes: K keeps every take, or only the ones marked with Shift+click"><kbd>K</kbd>keep both</span>
       <span><kbd>R</kbd><span id="kRej">reject</span></span>
       <span><kbd>E</kbd><span id="kEdit">edit line</span></span>
       <span><kbd>N</kbd>note</span>
@@ -741,9 +750,10 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
     <dl>
       <dt><kbd>Space</kbd></dt><dd>Play / pause the current line (images: open large)</dd>
       <dt><kbd>&darr;</kbd><kbd>J</kbd></dt><dd>Next item</dd>
-      <dt><kbd>&uarr;</kbd><kbd>K</kbd></dt><dd>Previous item</dd>
+      <dt><kbd>&uarr;</kbd><kbd>K</kbd></dt><dd>Previous item. (In a concept batch, <kbd>K</kbd> on an item that has takes keeps both instead, see below; <kbd>&uarr;</kbd> always goes back)</dd>
       <dt><kbd>A</kbd></dt><dd>Accept, then advance (concept batch: <b>Good</b>)</dd>
       <dt><kbd>C</kbd></dt><dd>Concept batches: <b>Good with changes</b>. Opens the note; a note is required, and it travels with the take</dd>
+      <dt><kbd>K</kbd></dt><dd>Concept batches, an item with takes: <b>keep both</b>. Keeps every take (or only those you marked with <b>Shift+click</b> on their chips) and opens the note. With a note it is <b>Good with changes</b>: say what to take from each, for a fusion. With no note it is <b>Good</b>. Canon gets every kept take as its own image in one entry</dd>
       <dt><kbd>R</kbd></dt><dd>Reject, then advance (concept batch: <b>Bad</b>, a note is optional)</dd>
       <dt><kbd>U</kbd></dt><dd>Back to pending</dd>
       <dt><kbd>&larr;</kbd><kbd>&rarr;</kbd></dt><dd>Previous / next take, when a line was rolled more than once (Accept keeps the one you are on)</dd>
@@ -817,6 +827,8 @@ const S = {
   run: null, runs: [], drawerOpen: false,
   // v1.11: the take you're on per item (index into it.takes), and the item whose game copy is playing
   take: new Map(), gameId: null,
+  // keep both: the takes marked with Shift+click per item (item id -> Set of take files), for K
+  marks: new Map(),
   // 3D models: one <model-viewer> kept per item (so a turned model stays turned), the items showing what the
   // game has now instead of the candidate, the turntable, and the one in the large view
   mviews: new Map(), gameModel: new Set(), turntable: true, vmodel: null,
@@ -907,8 +919,33 @@ function revealText(it, patch) {
     const seats = [...new Set(list.map(x => x.seat).filter(Boolean))];
     return seats.length ? `That was ${seats.join(' and ')}` : '';
   }
+  if (patch.takes && patch.takes.length > 1) {  // keep both: every seat that made a kept take
+    const seats = [...new Set(list.filter(x => patch.takes.includes(x.file)).map(x => x.seat).filter(Boolean))];
+    return seats.length ? `Those were ${seats.join(' and ')}` : '';
+  }
   const t = it.takes && it.takes.length ? it.takes[takeIdx(it)] : it;
   return t && t.seat ? `That was ${t.seat}` : '';
+}
+// Keep both (K, concept batches): an item with more than one take can keep several of them. Shift+click on a
+// chip marks it; K keeps the marked takes, or every take when none is marked.
+const canKeep = it => !!it && isConcept() && !!it.takes && it.takes.filter(t => t.exists).length > 1;
+function markedTakes(it) {
+  const m = S.marks.get(it.id);
+  return m && it.takes ? it.takes.filter(t => t.exists && m.has(t.file)).map(t => t.file) : [];
+}
+const keepSet = it => { const m = markedTakes(it); return m.length ? m : it.takes.filter(t => t.exists).map(t => t.file); };
+const nTakes = n => n === 1 ? '1 take' : `${n} takes`;
+function keepLabel(it) {
+  const m = markedTakes(it).length, all = it.takes.filter(t => t.exists).length;
+  return m ? `Keep ${m} marked` : all === 2 ? 'Keep both takes' : `Keep all ${all} takes`;
+}
+function toggleMark(id, i) {
+  const it = S.byId.get(id), t = it && it.takes && it.takes[i];
+  if (!canKeep(it) || !t || !t.exists) return;
+  const m = S.marks.get(id) || new Set();
+  if (m.has(t.file)) m.delete(t.file); else m.add(t.file);
+  if (m.size) S.marks.set(id, m); else S.marks.delete(id);
+  renderRow(id, true);
 }
 function standIn(it) {
   if (!it || !it.takes || !it.takes.length) return it;
@@ -1178,12 +1215,14 @@ function rowHTML(it) {
 
   let note = '';
   if (ed === 'note') {
-    const chips = noteChips(it), rev = !!(S.edit && S.edit.revise);
+    const chips = noteChips(it), rev = !!(S.edit && S.edit.revise), kp = !!(S.edit && S.edit.keep);
+    const nk = kp ? keepSet(it).length : 0;
     note = (rev ? `<div class="rev-hint"><b>Good with changes</b>say what to change: the note is required, and it goes to the next round</div>` : '') +
-      `<input class="note-in" type="text" value="${esc(it.note)}" placeholder="${rev ? 'What should change, keeping what works…' : 'What’s wrong, or what to change next time…'}" spellcheck="true">
+      (kp ? `<div class="rev-hint"><b>Keep ${nTakes(nk)}</b>a note (what to take from each) makes it Good with changes; no note, Good</div>` : '') +
+      `<input class="note-in" type="text" value="${esc(it.note)}" placeholder="${kp ? 'What to take from each…' : rev ? 'What should change, keeping what works…' : 'What’s wrong, or what to change next time…'}" spellcheck="true">
       <div class="chips">${chips.map(c => `<button class="chip-n" data-act="chip" data-t="${esc(c)}">${esc(c)}</button>`).join('')}</div>
-      <div class="edit-bar"><span>${rev ? 'Enter saves it as Good with changes' : 'Enter saves'} · Esc cancels</span><span class="sp"></span>
-      <button data-act="edit-cancel">Cancel</button>${rev ? '<button class="go rev-go" data-act="edit-save">Save as Good with changes</button>' : '<button class="go note-go" data-act="edit-save">Save note</button>'}</div>`;
+      <div class="edit-bar"><span>${kp ? `Enter keeps ${nTakes(nk)}: with a note Good with changes, without one Good` : rev ? 'Enter saves it as Good with changes' : 'Enter saves'} · Esc cancels</span><span class="sp"></span>
+      <button data-act="edit-cancel">Cancel</button>${kp ? `<button class="go rev-go" data-act="edit-save">Keep ${nTakes(nk)}</button>` : rev ? '<button class="go rev-go" data-act="edit-save">Save as Good with changes</button>' : '<button class="go note-go" data-act="edit-save">Save note</button>'}</div>`;
   } else if (it.note && !it.regenerated) {
     note = `<div class="note"><b>note</b><span>${esc(it.note)}</span></div>`;
   }
@@ -1207,6 +1246,7 @@ function rowHTML(it) {
       <button class="acc" data-act="accept" ${it.exists ? '' : 'disabled'} title="Good (A): keep this one as it is">&#x2713;&nbsp;Good<kbd>A</kbd></button>
       <button class="rej" data-act="reject" title="Bad (R): do it again. A note is optional">&#x2717;&nbsp;Bad<kbd>R</kbd></button>
       <button class="chg" data-act="revise" ${it.exists ? '' : 'disabled'} title="Good with changes (C): keep what works, say what to change. Opens the note, and a note is required">&#x270E;&nbsp;Good with changes<kbd>C</kbd></button>
+      ${canKeep(it) ? `<button class="keepb" data-act="keep" title="Keep both (K): keep ${markedTakes(it).length ? 'the marked takes' : 'every take'}, and say what to fuse. A note makes it Good with changes; no note, Good. Shift+click a take's chip to keep only some">&#x29C9;&nbsp;${keepLabel(it)}<kbd>K</kbd></button>` : ''}
     </div>` : `<div class="big">
       <button class="acc" data-act="accept" ${it.exists ? '' : 'disabled'} title="Accept (A)">&#x2713;&nbsp;Accept<kbd>A</kbd></button>
       <button class="rej" data-act="reject" title="Reject (R)">&#x2717;&nbsp;Reject<kbd>R</kbd></button>
@@ -1225,13 +1265,22 @@ function takesHTML(it) {
   if (!many && !game) return '';
   const cur = takeIdx(it), hide = seatHidden(it);
   let h = many ? '<span class="tl">takes</span>' : '';
+  const several = kept(it) && it.picks && it.picks.length > 1;  // keep both: this verdict kept several takes
+  const marks = canKeep(it) ? markedTakes(it) : [];
   if (many) h += takeOrder(it).map((ti, pos) => {
-    const t = it.takes[ti], mine = kept(it) && t.picked;
-    const cls = ['tk', ti === cur ? 'on' : '', mine ? 'pk' : '', /^rejected/.test(t.label) ? 'old' : '',
+    const t = it.takes[ti], mine = kept(it) && t.picked, mk = !mine && marks.includes(t.file);
+    const cls = ['tk', ti === cur ? 'on' : '', mine ? 'pk' : '', mk ? 'mk' : '', /^rejected/.test(t.label) ? 'old' : '',
       hide && t.seat ? 'blind' : '', !hide && t.seat ? 'seat-' + seatClass(t.seat) : ''].filter(Boolean).join(' ');
     const lbl = takeLabel(it, t, pos);
-    return `<button class="${cls}" data-act="take" data-i="${ti}" ${t.exists ? '' : 'disabled'} title="${esc(lbl)}${mine ? ' · the one you kept' : ''}">${pos < 9 ? `<kbd>${pos + 1}</kbd>` : ''}${esc(lbl)}</button>`;
+    const tip = mine ? (several ? ' · kept' : ' · the one you kept') : mk ? ' · marked to keep (Shift+click to unmark)'
+      : canKeep(it) ? ' · Shift+click marks it for K, keep both' : '';
+    return `<button class="${cls}" data-act="take" data-i="${ti}" ${t.exists ? '' : 'disabled'} title="${esc(lbl)}${tip}">${pos < 9 ? `<kbd>${pos + 1}</kbd>` : ''}${esc(lbl)}</button>`;
   }).join('');
+  if (several) h += `<span class="kept-n" title="Every kept take goes to canon as its own image, in one entry">Kept ${it.picks.length} takes</span>`;
+  else if (canKeep(it) && !kept(it) && !(S.edit && S.edit.id === it.id)) {
+    h += `<span class="kh">${marks.length ? `<kbd>K</kbd> keeps the ${marks.length} marked take${marks.length === 1 ? '' : 's'}. Shift+click a chip to unmark it`
+      : `<kbd>K</kbd> keeps every take, with a note on what to fuse. Shift+click chips to keep only some`}</span>`;
+  }
   if (game) {
     const playing = it.kind === 'model' ? S.gameModel.has(it.id) : (S.gameId === it.id && !gplayer.paused);
     h += `<button class="tk game${playing ? ' playing' : ''}" data-act="game" title="What ${gameWord()} has now: the file this one would replace (0)"><kbd>0</kbd>in ${isConcept() ? 'canon' : 'game'} now</button>`;
@@ -1392,7 +1441,7 @@ function lessonsHTML(d) {
   const seats = Object.entries(d.seats || {}).sort((a, b) => b[1].items - a[1].items);
   if (seats.length) h += `<h3>By seat</h3><table class="ls-t"><tr><th>seat</th><th>items</th><th>good</th><th>good with changes</th><th>bad</th><th>passed over</th></tr>` +
     seats.map(([s, b]) => `<tr><td><span class="seat s-${seatClass(s)}">${esc(s)}</span></td><td class="n">${b.items}</td><td class="n">${b.good}</td><td class="n">${b.revise}</td><td class="n">${b.bad}</td><td class="n">${b.passed}</td></tr>`).join('') +
-    `</table><p class="fin-sub">Good and Good with changes go to the seat whose take was kept; the other seats' takes of that item were passed over. Bad counts against every seat that made a take.</p>`;
+    `</table><p class="fin-sub">Good and Good with changes go to the seat whose take was kept (every kept take counts for its seat when you keep both); the other seats' takes of that item were passed over. Bad counts against every seat that made a take.</p>`;
   const th = d.themes || [];
   h += `<h3>What the notes ask for</h3>` + (th.length ? `<table class="ls-t"><tr><th>theme</th><th>notes</th><th>fixed by a redo</th><th>open</th><th>for example</th></tr>` +
     th.map(t => `<tr><td>${esc(t.label)}</td><td class="n">${t.notes}</td><td class="n">${t.theme === 'praise' ? '' : t.fixed}</td><td class="n">${t.theme === 'praise' ? '' : t.open}</td><td class="ls-ex">${t.examples.slice(0, 3).map(x => `<span>“${esc(x.note)}” <small>${esc(x.batch)} · ${esc(x.id)}</small></span>`).join('')}</td></tr>`).join('') + '</table>'
@@ -2055,6 +2104,15 @@ function decide(id, patch, { advance = false } = {}) {
     if (ti >= 0) S.take.set(id, ti);
   }
   applyLocal(it, patch);
+  if (patch.verdict) it.picks = undefined;  // a new verdict keeps one take, unless it says which several (below)
+  if (patch.takes && it.takes && (patch.verdict === 'accept' || patch.verdict === 'revise')) {
+    // keep both: show the kept chips at once; the server's answer replaces this
+    it.takes.forEach(t => { t.picked = patch.takes.includes(t.file); });
+    if (patch.takes.length > 1) it.picks = it.takes.filter(t => t.picked).map(t => t.file);
+    const ti = it.takes.findIndex(t => t.picked);
+    if (ti >= 0) S.take.set(id, ti);
+  }
+  if (patch.verdict) S.marks.delete(id);  // a verdict spends the marks
   if (reveal) toast(reveal, 'ok');
   const n = ++S.seqN;
   S.seq.set(id, n);
@@ -2099,6 +2157,15 @@ function revise(id) {
   closeViewer();
   startEdit(id, 'note', { revise: true });
 }
+// K (concept batches, an item with takes): keep both. Keeps every take, or only the ones marked with Shift+click,
+// and opens the note: with a note it is Good with changes (say what to take from each, for a fusion), without one Good.
+function keepBoth(id) {
+  const it = S.byId.get(id);
+  if (!it) return;
+  if (!canKeep(it)) { toast('K keeps several takes of one item: this one has a single take (A keeps it)'); return; }
+  closeViewer();
+  startEdit(id, 'note', { keep: true });
+}
 const unmark = id => decide(id, { verdict: 'pending' });
 
 /* ---------------------------------------------------------------- editing */
@@ -2108,7 +2175,7 @@ function startEdit(id, kind, opts) {
   if (!it) return;
   if (S.edit) cancelEdit();
   if (S.curId !== id) setCurrent(id);
-  S.edit = { id, kind, revise: !!(opts && opts.revise) };
+  S.edit = { id, kind, revise: !!(opts && opts.revise), keep: !!(opts && opts.keep) };
   renderRow(id, true);
   const el = S.rows.get(id);
   const f = el && el.querySelector(kind === 'text' ? 'textarea.edit-in' : 'input.note-in');
@@ -2132,6 +2199,15 @@ function commitEdit({ advance = true, blur = false } = {}) {
   const it = S.byId.get(e.id), el = S.rows.get(e.id);
   const f = el && el.querySelector(e.kind === 'text' ? 'textarea.edit-in' : 'input.note-in');
   const v = (f ? f.value : '').replace(/\s*\n\s*/g, ' ').trim();
+  if (e.keep) {
+    // keep both: a note makes it Good with changes (a fusion), no note is Good. Focus leaving with no note drops it quietly.
+    if (!v && blur) { cancelEdit(); return; }
+    S.edit = null;
+    if (!it || !canKeep(it)) { renderRow(e.id, true); return; }
+    const takes = keepSet(it);
+    decide(e.id, v ? { verdict: 'revise', note: v, takes } : { verdict: 'accept', note: '', takes }, { advance });
+    return;
+  }
   if (e.revise && !v) {
     // Good with changes with no note: stay in the editor on a click, drop it quietly when focus left
     if (!blur) { toast('Good with changes needs a note: say what to change (Esc cancels)', 'err'); if (f) f.focus(); }
@@ -2246,6 +2322,7 @@ async function openBatch(name) {
     loadRuns(name);
     S.items = d.items;
     S.take.clear();
+    S.marks.clear();
     S.items.forEach(standIn);
     S.byId = new Map(S.items.map(it => [it.id, it]));
     const f = (S.mem.filt || {})[name] || {};
@@ -2293,6 +2370,7 @@ function renderModeUI() {
   $('#kRej').textContent = c ? 'bad' : 'reject';
   $('#kEdit').textContent = c ? 'edit prompt' : 'edit line';
   $('#kChgWrap').hidden = !c;
+  $('#kKeepWrap').hidden = !c;
   $('#vhAcc').textContent = c ? 'good' : 'accept';
   $('#vhRej').textContent = c ? 'bad' : 'reject';
   $('#vhChg').hidden = !c;
@@ -2676,7 +2754,11 @@ $('#list').addEventListener('click', e => {
     case 'note': startEdit(id, 'note'); break;
     case 'edit-save': commitEdit({ advance: false }); break;
     case 'edit-cancel': cancelEdit(); break;
-    case 'take': selectTake(id, +act.dataset.i, true); break;
+    case 'take':
+      if (e.shiftKey && canKeep(S.byId.get(id))) toggleMark(id, +act.dataset.i);  // keep both: Shift+click marks a take
+      else selectTake(id, +act.dataset.i, true);
+      break;
+    case 'keep': keepBoth(id); break;
     case 'game': playGame(id); break;
     case 'chip': addChip(id, act.dataset.t); break;
   }
@@ -2875,8 +2957,11 @@ document.addEventListener('keydown', e => {
       break;
     case 'ArrowDown': case 'j': case 'J':
       e.preventDefault(); move(1); break;
-    case 'ArrowUp': case 'k': case 'K':
+    case 'ArrowUp': case 'k': case 'K': {
+      const cur = id && S.byId.get(id);
+      if (k !== 'ArrowUp' && once && canKeep(cur)) { e.preventDefault(); keepBoth(id); break; }  // keep both (concept batch, item with takes)
       e.preventDefault(); move(-1); break;
+    }
     case 'Home':
       e.preventDefault(); if (S.view.length) setCurrent(S.view[0]); break;
     case 'End':
