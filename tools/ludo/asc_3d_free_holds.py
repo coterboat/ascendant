@@ -443,7 +443,7 @@ def concept_items():
         lead = [c for c in ordered if os.path.basename(c).split("_c")[-1].split(".")[0] == str(pick)] or ordered[:1]
         rest = [c for c in ordered if c not in lead]
         uid, pose = r["unit"], r["pose"]
-        stem = r["id"].split("_", 1)[1]
+        stem = r["id"].split("_", 1)[1] + ("_portrait" if r["group"] == "portraits" else "")
         files = []
         crop = state.get("portrait_crops", {}).get(r["id"], {})
         for c in lead + rest:
