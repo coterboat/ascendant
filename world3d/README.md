@@ -339,8 +339,12 @@ switch is off, every older board test holds unchanged.
   sight / seen 3 turns ago", "never seen") with the level's words and the province's fog paragraph on hover; a province's
   tooltip says how the ground shows its level; a stand-in's tooltip says its blocks are an estimate, a ghost's how old it is
   and that it fades a step every 2 turns.
-- **Cost** (Apple M4, Metal): see the PR for the measured GPU time of the veil (rung 0 and rung 3). CPU: `Vision.levels` plus
-  `set_vision` take well under a millisecond a turn (`tests/test_fog_board.gd` checks it with `--perf`).
+- **Cost** (Apple M4, Metal, 1600 × 900 window, the whole map with half of it never seen: veil, hatching and clouds all
+  on, a shared machine). Metal gives no GPU timestamps through `viewport_get_measured_render_time_gpu` (it reads 0), so the
+  veil was measured as frame time, switched off and on in turn: within the noise at 1× (rung 0: -0.03 ms, rung 3: +0.06 ms),
+  and +0.32 ms at four times the pixels (the viewport's 3D scale 2.0, six interleaved pairs, every pair the same way): about
+  **0.08 ms a frame at rung 0**, under the 0.2 ms budget. CPU: `Vision.levels` 0.06 ms and `set_vision` 0.003 ms a turn; a
+  whole fog `stand()` (armies, plates, sight) 6 ms (`tests/test_fog_board.gd` checks the three with `--perf`).
 
 ## Battles on the land (M3b)
 
