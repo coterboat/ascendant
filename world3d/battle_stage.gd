@@ -14,6 +14,12 @@ extends BattleSimpleView
 ## fort behind it; the attacker toward the road it came by; a border battle on the crossing), with the
 ## woods, rocks and houses where it stands lifted off the table and put back afterwards (clear_for).
 ##
+## At a fort (M3c S-5, world3d/battle_walls.gd): a battle whose log has a `siege` block stands at the walls of the fort the log
+## describes (drawn by the board's own show_forts rows, in the look its walls have): a storm puts the garrison on the wall walk
+## and the stormers at the foot with ladders or the trunk, a breach puts the garrison in the gap, an open battle forms before the
+## gate with those from inside marching out of it; the besiegers' camp (world3d/battle_scenery.gd) stands beside their lines. A
+## plate over the walls and a line under the first caption say what the walls give before the first hit lands.
+##
 ## The fighters (world3d/battle_figures.gd): every fighter its own figure, the real models in their pose
 ## families, front rank, second rank and back line, rulers and commanders in their places, a standard
 ## bearer and a musician per side. Beats drive them: attack_started / attack_landed (a lunge and the strike

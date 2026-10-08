@@ -10,6 +10,9 @@
 ##
 ## Motions (motion kinds, each {"kind", "t0", "dur", ...} on a figure; none draws a random number):
 ##   deploy  the front rank steps forward into its place, marching
+##   march_out  M3c S-5: a sally spills out of the gate (a column from the yard, through the gate, to its place), or a relief
+##           comes in along the road; a fighter on a wall (or behind one in a storm: slot "rail") strikes where it stands, and
+##           keeps the height it stands at ("lift") while it moves
 ##   lunge   a melee blow: the strike pose and a lunge toward the target (25% of the way, at most LUNGE_MAX)
 ##           and back; the impact lands at BattlePlayer.MELEE_IMPACT
 ##   shoot   a ranged release: the strike pose for a moment (the projectile is the stage's)
