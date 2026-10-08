@@ -68,6 +68,7 @@ var _prop_chunks: Array = [] ## the model woods' and rocks' MultiMeshes, in chun
 const PROP_CHUNK := 200.0 ## world units a side of a model-props chunk
 ## M3c S-4 (#102): forts and sieges drawn from the state (show_forts; design/M3C_SIEGES.md §10.1)
 var fort_rows := {} ## province id -> the SiegeBoard.board_table row drawn now (a game with sieges)
+var _raised := {} ## M5-9: province id -> true for a fort Bastion raised in a game without sieges (set_raised_forts)
 var fort_draw := {} ## province id -> {"root" (a fort's own frame node, null at a capital), "dress", "mats", "h", "hs", "frame", "colour"}
 var _sieges_drawn := false ## the map's forts were taken over by show_forts (a game with sieges)
 var _ghost_scaffolds := {} ## province id -> Node3D: the viewer's own queued Fortify orders (set_fortify_ghosts)
@@ -748,6 +749,25 @@ func _place_fort(id: String, i: int, gate: Vector2) -> void:
 func set_fort_colour(province_id: String, team: Color) -> void:
 	if forts.has(province_id):
 		(forts[province_id]["mat"] as ShaderMaterial).set_shader_parameter("team", team)
+
+
+## M5-9 (#120): the forts Bastion raised in a game without sieges (the baked map has none there; with sieges every fort is a
+## show_forts row): exactly `want` (province ids) stand, placed as the map's forts are, their villages cleared from under them.
+func set_raised_forts(want: Array) -> void:
+	for pid in _raised.keys():
+		if not want.has(pid):
+			if forts.has(pid) and is_instance_valid(forts[pid]["node"]):
+				(forts[pid]["node"] as Node).queue_free()
+			forts.erase(pid)
+			_raised.erase(pid)
+			_show_villages(pid, true)
+	for pid in want:
+		var i: int = terrain.index_of(pid)
+		if _raised.has(pid) or i < 0 or terrain.has_fort[i] or forts.has(pid) or _sieges_drawn:
+			continue
+		_place_fort(pid, i, gate_dir(pid))
+		_show_villages(pid, false)
+		_raised[pid] = true
 
 
 ## The faction whose capital is nearest province index `i` (a fort's builder; captured, it keeps its look).
