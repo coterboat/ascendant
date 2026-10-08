@@ -61,8 +61,8 @@ func rebuild(armies: Node3D) -> void:
 	var st: GameState = armies.state
 	for id in armies.armies.keys():
 		var e: Dictionary = armies.armies[id]
-		if bool(e.get("ghost", false)) or not in_woods(st, String(e["province"])):
-			continue
+		if bool(e.get("ghost", false)) or bool(e.get("memory", false)) or not in_woods(st, String(e["province"])):
+			continue ## (M5-3: a remembered army stands on no tray)
 		var list := trays_of(e, func(t: String) -> Vector2:
 			return reach_of(armies._spacing(t) * 0.5, model_half_width(armies, e, t)))
 		if not list.is_empty():

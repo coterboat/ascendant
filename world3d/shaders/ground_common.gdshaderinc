@@ -11,6 +11,7 @@ uniform sampler2D data_n : filter_nearest, repeat_disable; // r: province index 
 uniform sampler2D data_l : filter_linear, repeat_disable;  // g: coast distance, b: border distance, a: wall
 uniform sampler2D owner_tex : filter_nearest, repeat_disable; // 16x1: rgb owner colour, a owned
 uniform sampler2D mark_tex : filter_nearest, repeat_disable; // 16x1: r road target, g move target, b focus flash
+uniform sampler2D vision_tex : filter_nearest, repeat_disable; // M5-3 16x1 R8: 0 never seen, 85 remembered, 170 glimpsed, 255 in clear sight
 uniform sampler2D tile_plains : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D tile_forest : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D tile_hills : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -29,6 +30,12 @@ uniform int select_id = -1;
 // index (-1: none). Outside the front the province still shows sweep_old (its old owner: rgb, a owned).
 uniform vec4 sweep_a[4];
 uniform vec4 sweep_old[4];
+// M5-3 fog of war (design/M5_MAGIC_FOG.md 12.1). fog_on is 0 in a game without fog, and then the ground is untouched:
+// one uniform branch, no fetch. fog_drift moves the clouds over a never-seen province (the quality ladder stops it
+// from rung 3: the clouds stand still).
+uniform float fog_on = 0.0;
+uniform float fog_drift = 1.0;
+uniform vec3 fog_veil : source_color = vec3(0.106, 0.133, 0.200); // the cool veil, the 2D map's too (#1B2233)
 
 varying vec2 mp;
 varying float wy;
@@ -111,6 +118,22 @@ Ground paint_ground() {
 	col = mix(col, vec3(0.90, 0.82, 0.60), beach * (1.0 - rocky));
 	float sand = smoothstep(-1.0, 1.0, g.coast);
 	col = mix(mix(vec3(0.72, 0.66, 0.48), vec3(0.20, 0.34, 0.38), smoothstep(0.0, 16.0, -g.coast)), col, sand);
+	// fog of war: the terrain out of sight is desaturated 70% under a cool veil at 40%, a glimpsed province has a faint
+	// veil (13%, 12% drained: the spec's 10% did not read against a clear province at the whole-map zoom), a never-seen
+	// one adds slow clouds. The owner's wash goes on after it and stays true (owners are public); the edges are hard, on
+	// the province border, because the lookup is the province's own texel.
+	float fog_out = 0.0;
+	if (fog_on > 0.5 && g.id < 255) {
+		float v = texture(vision_tex, vec2((float(g.id) + 0.5) / 16.0, 0.5)).r;
+		fog_out = 1.0 - step(0.5, v);
+		float never = 1.0 - step(0.17, v);
+		float glimpsed = step(0.5, v) * (1.0 - step(0.84, v));
+		float luma = dot(col, vec3(0.299, 0.587, 0.114));
+		col = mix(col, vec3(luma), (0.70 * fog_out + 0.12 * glimpsed) * sand);
+		col = mix(col, fog_veil, (0.40 * fog_out + 0.13 * glimpsed) * sand);
+		float cl = texture(grain_tex, mp / 64.0 + vec2(TIME * 0.011, TIME * 0.005) * fog_drift).g;
+		col = mix(col, vec3(0.80, 0.84, 0.92), smoothstep(0.5, 0.85, cl) * 0.22 * never * sand);
+	}
 	// owners: a wash of the owner's colour inside the province's edge
 	vec4 st = texture(owner_tex, vec2((float(g.id) + 0.5) / 16.0, 0.5));
 	float sweep_edge = 0.0;
@@ -139,6 +162,14 @@ Ground paint_ground() {
 		float keyl = (1.0 - smoothstep(px * 5.0, px * 6.0, ed)) * smoothstep(px * 4.2, px * 5.0, ed);
 		col = mix(col, st.rgb * 1.05, band * 0.85 * k);
 		col = mix(col, vec3(0.102, 0.086, 0.071), keyl * 0.55 * k);
+	}
+	// fog of war, out of sight: fine 45 degree hatching at a constant screen size, kept off the owner's inner band
+	if (fog_out > 0.5) {
+		float pxh = max(length(fwidth(mp)), 0.05);
+		float hh = fract((mp.x + mp.y) / (pxh * 12.0));
+		float hline = smoothstep(0.0, 0.07, hh) * (1.0 - smoothstep(0.15, 0.23, hh));
+		float hed = min(g.bdist, max(g.coast, 0.0));
+		col = mix(col, vec3(0.102, 0.086, 0.071), hline * 0.42 * smoothstep(pxh * 5.5, pxh * 8.0, hed) * sand);
 	}
 	// a capture's sweep front: a gilt edge running out from the arriving column
 	col = mix(col, vec3(1.0, 0.86, 0.45), sweep_edge * 0.75 * sand);
