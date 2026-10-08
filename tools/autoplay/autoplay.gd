@@ -23,6 +23,9 @@ extends SceneTree
 ##   --independents   play with independents (IND-1, #142): Free Holds garrisons in every neutral province
 ##                    (GameState.setup_independents), on top of whatever else is chosen. With --matrix, every
 ##                    game has them; with --matrix --paths, band P's games do (P7's M2 games never do)
+##   --sieges         play with forts and sieges (M3c, design/M3C_SIEGES.md; GameState.setup_sieges), on top of whatever else is
+##                    chosen, and the report adds the siege sections. With --matrix it is the siege balance check (S-7, #105,
+##                    tools/autoplay/siege_matrix.gd): bands S1-S10 of §11.2, with the sieges-off baseline beside them
 ##   --paths          play with paths of ascension (M4; implies --rulers): GameState.with_paths. The computer
 ##                    (ai, ai_easy) researches along its build's plan and rolls its side of the fork with
 ##                    AIPlayer.choose_branch for the seed and seat, as an AI seat does; the report adds wins
@@ -43,21 +46,34 @@ extends SceneTree
 ##   --jobs N         with --matrix, games run in N headless Godot processes at once (default: the
 ##                    processor count, at most 8). The results are the same for any N
 ##   --scale F        with --matrix, play F times the games of every band (default 1; 0.25 for a quick look)
-##   --only TEXT      with --matrix, play only the cells whose id contains TEXT (e.g. blood_of_the_fang);
+##   --only TEXT      with --matrix, play only the cells whose id contains TEXT (e.g. blood_of_the_fang); with
+##                    --matrix --sieges, TEXT may be several texts joined by & (all must be in the id: S:&beast_god)
 ##                    the bands are then judged on those games alone
+##   --save PATH      with --matrix --sieges, also write every game's result to PATH (a Godot var file), so the bands can be
+##                    judged again, with other judging code, without playing the games
+##   --judge-from PATH  with --matrix --sieges, judge and print the games saved by --save, and play nothing
 ##   --work-dir PATH  with --matrix and --jobs above 1, where the worker processes write their results
 ##                    (default user://autoplay_matrix); the files are removed afterwards
+##
+## Setup flags (--independents, --sieges, and the ones M5 adds) are one list in this file (SETUP_FLAGS): each is a switch
+## on the command line, a key of Simulator.play_game's `options`, and is passed on to the matrix workers as it was typed.
 ##
 ## Exit code: 0 when every game ran with no invariant violation, no session error and no script
 ## error; 1 otherwise; 2 for bad arguments. With --matrix: 0 only when band H (integrity) holds; the
 ## other bands are reported but don't change the exit code. With --matrix --paths --independents (the balance
 ## contract since Alex's 10-5 call on #131): 0 only when bands P7 (M1 and M2 not broken) and P8 (integrity) hold.
 ## A plain --matrix --paths run gates on integrity only (P8 and P7's M1/M2 digests); P7's F band is report-only.
+## With --matrix --sieges: 0 only when bands S8 (sieges off is byte-identical) and S9 (integrity) hold; the other bands are
+## reported as pass or miss, target ranges to tune toward and not hard caps. The balance contract config is --independents.
 
 const Simulator := preload("res://tools/autoplay/simulator.gd")
 const Policies := preload("res://tools/autoplay/policies.gd")
 const Matrix := preload("res://tools/autoplay/matrix.gd")
 const PathMatrix := preload("res://tools/autoplay/path_matrix.gd")
+const SiegeMatrix := preload("res://tools/autoplay/siege_matrix.gd")
+## Switches that change how a game is set up. `--name` on the command line, `name` in Simulator.play_game's options;
+## a matrix worker is started with the same switches. Add M5's `--fog` and `--magic` here.
+const SETUP_FLAGS := ["independents", "sieges"]
 const FACTIONS := ["kingdom", "beasts"]
 const MAX_JOBS := 8
 
@@ -95,6 +111,9 @@ func _initialize() -> void:
 	if opts.worker:
 		_run_worker(opts, catcher)
 		return
+	if opts.matrix and opts.setup.sieges:
+		_run_siege_matrix(opts, catcher)
+		return
 	if opts.matrix and opts.paths:
 		_run_path_matrix(opts, catcher)
 		return
@@ -103,8 +122,8 @@ func _initialize() -> void:
 		return
 	var started := Time.get_ticks_msec()
 	# Every engine or script error logged during a game is filed under that game's seed and turn.
-	var options := {"rulers": opts.rulers, "builds": opts.builds, "paths": opts.paths, "branches": opts.branches,
-		"independents": opts.independents}
+	var options := {"rulers": opts.rulers, "builds": opts.builds, "paths": opts.paths, "branches": opts.branches}
+	options.merge(opts.setup)
 	var results := Simulator.run_batch(opts.games, opts.seed, opts.seats, opts.policies, opts.turn_cap, catcher.take, options)
 	var summary := Simulator.summarize(results)
 	var seconds := (Time.get_ticks_msec() - started) / 1000.0
@@ -112,6 +131,8 @@ func _initialize() -> void:
 	OS.remove_logger(catcher)
 
 	var md := Simulator.to_markdown(summary)
+	if opts.setup.sieges:
+		md += "\n\n" + "\n".join(SiegeMatrix.sections(results))  # M3c S-7: siege counts, storms, forts, recruits, lengths
 	if not stray_errors.is_empty():
 		md += "\n- **Script errors outside games:** %d. First: %s" % [stray_errors.size(), stray_errors[0]]
 	for key in ["violations", "script_errors"]:
@@ -126,8 +147,7 @@ func _initialize() -> void:
 			extra += " --builds %s" % ",".join(opts.builds.map(func(b): return "roll" if str(b).is_empty() else str(b)))
 		if opts.branches.any(func(b): return not str(b).is_empty()):
 			extra += " --branches %s" % ",".join(opts.branches.map(func(b): return "roll" if str(b).is_empty() else str(b)))
-	if opts.independents:
-		extra += " --independents"
+	extra += _setup_text(opts)
 	md += "\n- **Run:** `--games %d --seed %d --p1 %s --p2 %s --seat1 %s --turn-cap %d%s`, %.1f s." % [opts.games, opts.seed,
 		opts.policies[0], opts.policies[1], opts.seats[0], opts.turn_cap, extra, seconds]
 	if opts.list:
@@ -151,9 +171,11 @@ func _initialize() -> void:
 
 func _parse(args: PackedStringArray) -> Dictionary:
 	var opts := {"games": 50, "seed": 1, "policies": ["greedy", "greedy"], "seats": FACTIONS.duplicate(),
-		"turn_cap": Simulator.TURN_CAP, "out": "", "list": false, "rulers": false, "builds": ["", ""], "paths": false, "independents": false, "branches": ["", ""],
+		"turn_cap": Simulator.TURN_CAP, "out": "", "list": false, "rulers": false, "builds": ["", ""], "paths": false, "setup": {}, "branches": ["", ""],
 		"matrix": false, "jobs": clampi(OS.get_processor_count(), 1, MAX_JOBS), "scale": 1.0, "work_dir": "user://autoplay_matrix",
-		"worker": false, "cell": "", "from": 0, "count": 0, "only": "", "record_m2": "", "note": ""}
+		"worker": false, "cell": "", "from": 0, "count": 0, "only": "", "record_m2": "", "note": "", "save": "", "judge_from": ""}
+	for flag in SETUP_FLAGS:
+		opts.setup[flag] = false
 	var builds_arg := ""
 	var branches_arg := ""
 	var i := 0
@@ -167,8 +189,8 @@ func _parse(args: PackedStringArray) -> Dictionary:
 			opts.rulers = true
 			i += 1
 			continue
-		if key == "--independents":
-			opts.independents = true
+		if SETUP_FLAGS.has(key.trim_prefix("--")) and key.begins_with("--"):
+			opts.setup[key.trim_prefix("--")] = true
 			i += 1
 			continue
 		if key == "--paths":
@@ -224,6 +246,10 @@ func _parse(args: PackedStringArray) -> Dictionary:
 				opts.work_dir = value
 			"--only":
 				opts.only = value
+			"--save":
+				opts.save = value
+			"--judge-from":
+				opts.judge_from = value
 			"--record-m2":
 				opts.record_m2 = value
 			"--note":
@@ -252,6 +278,8 @@ func _parse(args: PackedStringArray) -> Dictionary:
 				return {"error": "seat %d (%s): %s Its presets: %s; or an explicit build like %s+...; or roll" % [seat + 1,
 					opts.seats[seat], parsed.error, ", ".join(ids), RulerRules.rulers_for(opts.seats[seat])[0]]}
 			opts.builds[seat] = pid
+	if opts.matrix and opts.setup.sieges and (opts.paths or opts.rulers):
+		return {"error": "--matrix --sieges plays rulers, and paths on and off, itself: leave --paths and --rulers out"}
 	if not str(opts.record_m2).is_empty() and not (opts.matrix and opts.paths):
 		return {"error": "--record-m2 needs --matrix --paths"}
 	if not str(opts.note).is_empty() and str(opts.record_m2).is_empty():
@@ -308,7 +336,7 @@ func _run_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
 		md += "\n- **Worker problem:** %s" % e
 	if not stray.is_empty():
 		md += "\n- **Script errors outside games:** %d. First: %s" % [stray.size(), stray[0]]
-	md += "\n- **Run:** `--matrix%s --seed %d --turn-cap %d --scale %s --jobs %d%s`, %d games, %.1f s." % [" --independents" if opts.independents else "",
+	md += "\n- **Run:** `--matrix%s --seed %d --turn-cap %d --scale %s --jobs %d%s`, %d games, %.1f s." % [_setup_text(opts),
 		opts.seed, opts.turn_cap, str(opts.scale), opts.jobs, "" if str(opts.only).is_empty() else " --only " + str(opts.only), results.size(), seconds]
 	print(md)
 	if not opts.out.is_empty():
@@ -380,7 +408,7 @@ func _run_path_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
 		md += "\n- **Worker problem:** %s" % e
 	if not stray.is_empty():
 		md += "\n- **Script errors outside games:** %d. First: %s" % [stray.size(), stray[0]]
-	md += "\n- **Run:** `--matrix --paths%s --seed %d --turn-cap %d --scale %s --jobs %d%s`, %d games, %.1f s." % [" --independents" if opts.independents else "",
+	md += "\n- **Run:** `--matrix --paths%s --seed %d --turn-cap %d --scale %s --jobs %d%s`, %d games, %.1f s." % [_setup_text(opts),
 		opts.seed, opts.turn_cap, str(opts.scale), opts.jobs, "" if str(opts.only).is_empty() else " --only " + str(opts.only), results.size(), seconds]
 	print(md)
 	if not opts.out.is_empty():
@@ -391,12 +419,97 @@ func _run_path_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
 			f.store_string(md + "\n")
 			f.close()
 	# Alex 10-5 (#131): the contract is the MVP config, --independents. A plain run gates on integrity only.
-	var gate_ok: bool = j.ok if opts.independents else bool(j.get("integrity_ok", j.ok))
+	var gate_ok: bool = j.ok if opts.setup.independents else bool(j.get("integrity_ok", j.ok))
 	if not gate_ok:
 		printerr("autoplay: band P7 (M1 and M2 not broken) or P8 (integrity) does not hold")
 	elif not j.ok:
 		print("autoplay: plain run (no --independents): P7's F band is report-only; the balance contract is --independents")
 	quit(0 if gate_ok else 1)
+
+
+## " --independents --sieges" for the setup flags that are on (empty when none is): the part of a "Run:" line that
+## reproduces a game's setup.
+func _setup_text(opts: Dictionary) -> String:
+	var out := ""
+	for flag in SETUP_FLAGS:
+		if opts.setup[flag]:
+			out += " --" + flag
+	return out
+
+
+## The siege balance check (M3c S-7, #105, design/M3C_SIEGES.md §11.2): tools/autoplay/siege_matrix.gd. Bands S1-S10 as a
+## pass/miss table, the sieges-off baseline beside them; exit 0 only when S8 (sieges off is byte-identical) and S9 hold.
+func _run_siege_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
+	var started := Time.get_ticks_msec()
+	var fixture := PathMatrix.load_fixture()
+	var cells := SiegeMatrix.plan(opts.scale, opts.seed, fixture)
+	if not str(opts.only).is_empty():
+		cells = cells.filter(func(c): return SiegeMatrix.matches(str(c.id), str(opts.only)))
+	var results := []
+	var problems := []
+	var doubled := []
+	var off := {}
+	var stray := PackedStringArray()
+	if not str(opts.judge_from).is_empty():
+		var saved = str_to_var(FileAccess.get_file_as_string(opts.judge_from))
+		if not (saved is Dictionary) or not saved.has("results"):
+			printerr("autoplay: %s holds no saved siege games" % opts.judge_from)
+			quit(2)
+			return
+		results = saved.results
+		problems = saved.get("problems", [])
+		doubled = saved.get("doubled", [])
+		off = saved.get("off", {})
+		stray = PackedStringArray(saved.get("stray", []))
+		OS.remove_logger(catcher)
+	else:
+		results.append_array(_play_items(Matrix.work_items(cells), cells, opts, catcher, problems))
+		# A preset pairing with too few decisive siege games plays its siege games, and the baseline's, again on the next seeds, once.
+		var short := SiegeMatrix.short_pairings(results, opts.scale)
+		var again := cells.filter(func(c): return short.has(c.pairing) and SiegeMatrix.doubles(c))
+		doubled = short.keys()
+		if not again.is_empty():
+			var offsets := {}
+			for c in again:
+				offsets[c.id] = int(c.games)
+			results.append_array(_play_items(Matrix.work_items(again, offsets), cells, opts, catcher, problems))
+		off = SiegeMatrix.replay_off_fixtures() if str(opts.only).is_empty() else {}  # S8's turn-by-turn replays
+		stray = catcher.take()
+		OS.remove_logger(catcher)
+		if not str(opts.save).is_empty():
+			var sf := FileAccess.open(opts.save, FileAccess.WRITE)
+			if sf == null:
+				printerr("autoplay: could not write %s" % opts.save)
+			else:
+				sf.store_string(var_to_str({"results": results, "problems": problems, "doubled": doubled, "off": off, "stray": Array(stray)}))
+				sf.close()
+	var j := SiegeMatrix.judge(results, stray.size() + problems.size(), fixture, off)
+	var seconds := (Time.get_ticks_msec() - started) / 1000.0
+	var md := SiegeMatrix.to_markdown(j)
+	if not doubled.is_empty():
+		doubled.sort()
+		md += "\n- **Doubled** (fewer than %d decisive siege games): %s." % [ceili(SiegeMatrix.MIN_DECISIVE * opts.scale),
+			", ".join(doubled.map(func(p): return " vs ".join(Array(str(p).split("|")).map(func(b): return Simulator.build_name(str(b))))))]
+	for e in problems:
+		md += "\n- **Worker problem:** %s" % e
+	if not stray.is_empty():
+		md += "\n- **Script errors outside games:** %d. First: %s" % [stray.size(), stray[0]]
+	md += "\n- **Run:** `--matrix%s --seed %d --turn-cap %d --scale %s --jobs %d%s`, %d games, %.1f s." % [_setup_text(opts),
+		opts.seed, opts.turn_cap, str(opts.scale), opts.jobs, "" if str(opts.only).is_empty() else " --only " + str(opts.only), results.size(), seconds]
+	print(md)
+	if not opts.out.is_empty():
+		var f := FileAccess.open(opts.out, FileAccess.WRITE)
+		if f == null:
+			printerr("autoplay: could not write %s (%s)" % [opts.out, error_string(FileAccess.get_open_error())])
+		else:
+			f.store_string(md + "\n")
+			f.close()
+	# The exit code is S8 and S9 (§11.2). Every other band is a target range we tune toward, reported pass or miss.
+	if not j.ok:
+		printerr("autoplay: band S8 (sieges off is byte-identical) or S9 (integrity) does not hold")
+	elif not opts.setup.independents:
+		print("autoplay: plain run (no --independents): the balance contract is --independents (Alex, 10-5)")
+	quit(0 if j.ok else 1)
 
 
 ## Plays the work items, in this process (--jobs 1) or in up to --jobs headless worker processes, and
@@ -405,10 +518,12 @@ func _play_items(items: Array, cells: Array, opts: Dictionary, catcher: ErrorCat
 	var out := []
 	if opts.jobs <= 1:
 		for item in items:
-			if opts.paths:
-				out.append_array(PathMatrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.independents))
+			if opts.setup.sieges:
+				out.append_array(SiegeMatrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.setup))
+			elif opts.paths:
+				out.append_array(PathMatrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.setup))
 			else:
-				out.append_array(Matrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.independents))
+				out.append_array(Matrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.setup))
 		return out
 	var dir := ProjectSettings.globalize_path(opts.work_dir) if str(opts.work_dir).begins_with("user://") or str(opts.work_dir).begins_with("res://") else str(opts.work_dir)
 	DirAccess.make_dir_recursive_absolute(dir)
@@ -427,8 +542,9 @@ func _play_items(items: Array, cells: Array, opts: Dictionary, catcher: ErrorCat
 				"--turn-cap", str(opts.turn_cap), "--out", path]
 			if opts.paths:
 				args.append("--paths")
-			if opts.independents:
-				args.append("--independents")
+			for flag in SETUP_FLAGS:
+				if opts.setup[flag]:
+					args.append("--" + flag)
 			var pid := OS.create_process(exe, args)
 			if pid <= 0:
 				problems.append("could not start a worker for %s, seeds %d-%d" % [item.cell, item.from, item.from + item.count - 1])
@@ -456,11 +572,14 @@ func _play_items(items: Array, cells: Array, opts: Dictionary, catcher: ErrorCat
 func _run_worker(opts: Dictionary, catcher: ErrorCatcher) -> void:
 	var item := {"cell": opts.cell, "from": opts.from, "count": opts.count}
 	var results := []
-	if opts.paths:
+	if opts.setup.sieges:
+		var siege_cells := SiegeMatrix.plan(1.0, opts.seed, PathMatrix.load_fixture())
+		results = SiegeMatrix.play_item(siege_cells, item, opts.turn_cap, catcher.take, opts.setup)
+	elif opts.paths:
 		var path_cells := PathMatrix.plan(1.0, opts.seed, true, PathMatrix.load_fixture())
-		results = PathMatrix.play_item(path_cells, item, opts.turn_cap, catcher.take, opts.independents)
+		results = PathMatrix.play_item(path_cells, item, opts.turn_cap, catcher.take, opts.setup)
 	else:
-		results = Matrix.play_item(Matrix.plan(1.0, opts.seed), item, opts.turn_cap, catcher.take, opts.independents)
+		results = Matrix.play_item(Matrix.plan(1.0, opts.seed), item, opts.turn_cap, catcher.take, opts.setup)
 	var stray := catcher.take()
 	OS.remove_logger(catcher)
 	var f := FileAccess.open(opts.out, FileAccess.WRITE)

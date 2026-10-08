@@ -14,21 +14,24 @@ extends RefCounted
 ## forecast budget is spent.
 
 # --- §8.1 ------------------------------------------------------------------------------------------
-const STORM_WIN := 0.65  # storm a fort when the storm odds are at least this
-const CAPITAL_STORM_WIN := 0.5  # ...the enemy capital (taking it wins the game)
-const RACE_STORM_WIN := 0.45  # ...when an enemy relief army can reach the fort this turn
-const SIEGE_START_WIN := 0.55  # start a siege at these odds in the open, counting every enemy army within REACH
-const STANDOFF_START_WIN := 0.5  # ...in a #94 stand-off
-const SIEGE_STAY_WIN := 0.45  # stay at these odds; on the turn before the breach, only at the start odds
-const SIEGE_SALLY_WIN := 0.65  # our garrison armies sally at these odds
-const RELIEF_WIN := 0.65  # send relief, with a sally, at these combined odds
-const CAPITAL_RELIEF_WIN := 0.5  # ...for the capital
+# S-7 (#105) tuned these within §11.3's ±0.1 and ±1; the first values were STORM_WIN 0.65, CAPITAL_STORM_WIN 0.5, RACE_STORM_WIN
+# 0.45, SIEGE_START_WIN 0.55, STANDOFF_START_WIN 0.5, SIEGE_STAY_WIN 0.45, SIEGE_SALLY_WIN 0.65, RELIEF_WIN 0.65,
+# CAPITAL_RELIEF_WIN 0.5 and REACH 2 (design/M3C_SIEGES.md §11.4 has the runs).
+const STORM_WIN := 0.75  # storm a fort when the storm odds are at least this
+const CAPITAL_STORM_WIN := 0.6  # ...the enemy capital (taking it wins the game)
+const RACE_STORM_WIN := 0.55  # ...when an enemy relief army can reach the fort this turn
+const SIEGE_START_WIN := 0.45  # start a siege at these odds in the open, counting every enemy army within REACH
+const STANDOFF_START_WIN := 0.4  # ...in a #94 stand-off
+const SIEGE_STAY_WIN := 0.35  # stay at these odds; on the turn before the breach, only at the start odds
+const SIEGE_SALLY_WIN := 0.55  # our garrison armies sally at these odds
+const RELIEF_WIN := 0.55  # send relief, with a sally, at these combined odds
+const CAPITAL_RELIEF_WIN := 0.4  # ...for the capital
 const ABANDON_ODDS := 0.35  # leave a fort that isn't the capital before its breach below these odds in the open
 const ENGINES_PER_SIEGE := 2  # engines the computer brings to a siege...
 const ENGINES_AT_KEEP := 3  # ...3 when it besieges a keep, where the third saves a turn
 const FORTIFY_TURN := 6  # the first turn the computer builds a fort
 const MUSTER_WEIGHT := 0.25  # what a fort's recruit limit adds to its capture value (x the cheapest troop's price)
-const REACH := 2  # moves: the horizon of the start, stay and abandon rules ("within 2 turns")
+const REACH := 1  # moves: the horizon of the start, stay and abandon rules ("within 1 move"; it was 2)
 ## The rough guess's strength bonus for each point of defense the walls give in a storm, and for each point of
 ## cover (only when the forecast is skipped). Taken from §4.2's measurements: walls +4 take about 1.25-1.5 times
 ## the gold to storm and +6 about 1.5 times (about 2 and 2.5 times the strength), while +2 cover counts only near

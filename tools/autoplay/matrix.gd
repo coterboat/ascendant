@@ -143,9 +143,10 @@ static func work_items(cells: Array, offset_by_cell: Dictionary = {}) -> Array:
 
 
 ## Plays one work item and returns its results (play_game results without "final_state", each with
-## "cell" and "band" added). `probe` files logged errors under each game, as in autoplay.gd. `independents` plays
-## every game with Free Holds garrisons in the neutral provinces (IND-1, #142; autoplay.gd --matrix --independents).
-static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Callable = Callable(), independents := false) -> Array:
+## "cell" and "band" added). `probe` files logged errors under each game, as in autoplay.gd. `setup` are autoplay.gd's
+## setup flags ({"independents": true}: every game has Free Holds garrisons in the neutral provinces, IND-1, #142;
+## autoplay.gd --matrix --independents), passed on to every game's options.
+static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Callable = Callable(), setup: Dictionary = {}) -> Array:
 	var cell := find_cell(cells, str(item.cell))
 	var out := []
 	if cell.is_empty():
@@ -153,8 +154,8 @@ static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Call
 	for i in int(item.count):
 		var game_seed: int = int(item.from) + i
 		# Every REPLAY_EVERY-th game of a cell, its first included, is replayed from its record (band H).
-		var options := {"rulers": true, "builds": cell.builds.duplicate(), "replay_check": (game_seed - int(cell.seed)) % REPLAY_EVERY == 0,
-			"independents": independents}
+		var options := {"rulers": true, "builds": cell.builds.duplicate(), "replay_check": (game_seed - int(cell.seed)) % REPLAY_EVERY == 0}
+		options.merge(setup)
 		var r := Simulator.play_game(game_seed, cell.seats, [POLICY, POLICY], turn_cap, probe, options)
 		r.erase("final_state")
 		r["cell"] = str(cell.id)

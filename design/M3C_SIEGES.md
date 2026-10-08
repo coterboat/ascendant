@@ -84,7 +84,7 @@ Alex's call, 2026-10-04: *"we need a world where we see armies mustering on the 
 - **A recruit order names where it is made:** your capital (`at` = "", as in M1), another fort you own (`at` = its province id), or your ruler through Warband Muster (`at` = "ruler", unchanged). In a game with sieges, an `at` naming the capital's own id is read as "" (without sieges it is rejected, as today).
 - **A recruit at a fort is legal when:**
   - sieges are on, and the province had a fort at the start of the turn;
-  - you have owned it **since the start of the previous turn**, and still own it after capture. So a fort you take on turn 7 can take recruits from turn 9. **Retaking your own fort** within 2 turns of losing it restores your old standing, so you can recruit there at once. A fort you build stands at the end of a turn and takes recruits from the turn after (§2.4);
+  - you have owned it **for `CAPTURE_WAIT` (2) full turns** since you took it, and still own it after capture. So a fort you take on turn 7 can take recruits from turn 10 (S-7 raised the wait from 1 to 2, §11.4). **Retaking your own fort** within 2 turns of losing it restores your old standing, so you can recruit there at once. A fort you build stands at the end of a turn and takes recruits from the turn after (§2.4);
   - it was **not cut off** at the start of the turn (§3.3). A cut-off fort refuses the order: "Stonegate is cut off by the Thornmane Clans' siege: nobody can recruit there this turn, even if you lift the siege." Pickets cut nothing off, and on the turn the enemy arrives, recruits already ordered there still arrive;
   - the unit may be recruited at that level: commanders and engines need a keep or citadel;
   - the recruits already ordered there this turn are fewer than its limit.
@@ -92,7 +92,7 @@ Alex's call, 2026-10-04: *"we need a world where we see armies mustering on the 
 - **The capital counts as a fort,** a citadel taking 8 a turn. At 12-53 gold a turn and 8-22 gold a unit, that limit binds only for a rich realm buying cheap units: Muster Grounds Spearmen at 7 gold take 56 gold to reach 8. So recruiting at forts is mostly about **where** an army gathers, not how many it gets, and the place a realm builds its second fort is where its armies will gather.
 - **Recruits join the first army there,** or form a new army there: M1's rule at the capital, now at any fort. They never join a ruler's army. Engines join the first army there with a fighter (§5). Warband Muster recruits don't count toward a fort's limit.
 - **Why forts and not every province:** the brief keeps Dominions' "forts that gate recruitment", and Alex's picture is armies mustering in a fortress. A forward fort lets you choose where the muster happens, and the board shows it filling up.
-- **Rejection reasons,** for example: "Stonegate is a palisade: it recruits troops only. Commanders need a keep or a citadel." / "Stonegate has taken 4 of its 4 recruits this turn." / "You took Blackwood on turn 7: it can take recruits from turn 9."
+- **Rejection reasons,** for example: "Stonegate is a palisade: it recruits troops only. Commanders need a keep or a citadel." / "Stonegate has taken 4 of its 4 recruits this turn." / "You took Blackwood on turn 7: it can take recruits from turn 10."
 
 ### 2.4 building and upgrading: the Fortify order
 - **FortifyOrder(province)** builds the next level in a province you own: a palisade where there is no fort, a keep where there is a palisade. Serialized as `{"type": "fortify", "province": id}`.
@@ -213,7 +213,7 @@ In the sieges phase, for each besieged fort in province id order:
 - **Why automatic, and why open:** an open fort is just a province with two enemies in it, and enemies in one province fight. Giving the garrison the ground and the defender's round-cap hold would make relief always wait for the breach (appendix A, round 1). The +2 cover is the same in a sally as at the breach, so relief timing stays neutral while home keeps an edge near parity (round 2). And it ends any chance of a besieger sitting on a breached fort forever.
 
 ### 3.8 empty forts
-- **A fort with no garrison falls to the first army that walks in,** in the capture phase, as in M1. It keeps its level and its walls as they are; any construction there is razed. Its new owner can recruit there from the turn after next (§2.3).
+- **A fort with no garrison falls to the first army that walks in,** in the capture phase, as in M1. It keeps its level and its walls as they are; any construction there is razed. Its new owner can recruit there from the third turn after the capture (§2.3).
 - If the owner's army and an enemy arrive at an empty fort on the same turn, they meet in the open (nobody defends), and the winner holds it.
 - **Why:** a fort only delays an enemy if someone holds it. This is the strongest brake on fort spam (§11.1), because every empty fort is a recruiting post handed to the enemy.
 
@@ -422,16 +422,18 @@ Nothing in M2 or M4 changes, except Forge Tithe's count below. Where they meet M
 Built on `AIPlayer` as it stands after #94 (stand-offs read from the state alone, then hunt, besiege or raid). Nothing below runs without sieges, so M1, M2 and M4 AI games stay identical. Every decision that risks an army uses `Forecast` odds, which fight the real battle rules through `SiegeRules.next_battle` (§9.2).
 
 ### 8.1 constants
+S-7 tuned these within §11.3's ±0.1 and ±1 (the first values the build used are in §11.4, before → after). `REACH`, `STANDOFF_START_WIN` and `CAPITAL_RELIEF_WIN` are named in the rows' text; all of them live at the top of `ai/ai_sieges.gd`.
+
 | name | value | use |
 |---|---|---|
-| `STORM_WIN` | 0.65 | storm a fort when the storm odds are at least this |
-| `CAPITAL_STORM_WIN` | 0.5 | storm the enemy capital (taking it wins the game) |
-| `RACE_STORM_WIN` | 0.45 | storm when an enemy relief army can reach the fort this turn |
-| `SIEGE_START_WIN` | 0.55 | start a siege only if our odds against the garrison with its +2 cover, plus every enemy army that could reach the fort within 2 turns, are at least this; 0.5 in a #94 stand-off |
-| `SIEGE_STAY_WIN` | 0.45 | stay while those odds are at least this; on the turn before the breach, stay only at `SIEGE_START_WIN` |
-| `SIEGE_SALLY_WIN` | 0.65 | our garrison armies sally at these odds (M1's `SALLY_WIN` of 0.9 stays for coming out of a capital that isn't besieged) |
-| `RELIEF_WIN` | 0.65 | send relief, with a sally, when the combined odds are at least this; 0.5 for the capital |
-| `ABANDON_ODDS` | 0.35 | leave a non-capital fort before its breach when the odds in the open are below this and no relief can come within 2 turns |
+| `STORM_WIN` | 0.75 | storm a fort when the storm odds are at least this |
+| `CAPITAL_STORM_WIN` | 0.6 | storm the enemy capital (taking it wins the game) |
+| `RACE_STORM_WIN` | 0.55 | storm when an enemy relief army can reach the fort this turn |
+| `SIEGE_START_WIN` | 0.45 | start a siege only if our odds against the garrison with its +2 cover, plus every enemy army that could reach the fort within `REACH` (1) move, are at least this; `STANDOFF_START_WIN` 0.4 in a #94 stand-off |
+| `SIEGE_STAY_WIN` | 0.35 | stay while those odds are at least this; on the turn before the breach, stay only at `SIEGE_START_WIN` |
+| `SIEGE_SALLY_WIN` | 0.55 | our garrison armies sally at these odds (M1's `SALLY_WIN` of 0.9 stays for coming out of a capital that isn't besieged) |
+| `RELIEF_WIN` | 0.55 | send relief, with a sally, when the combined odds are at least this; `CAPITAL_RELIEF_WIN` 0.4 for the capital |
+| `ABANDON_ODDS` | 0.35 | leave a non-capital fort before its breach when the odds in the open are below this and no relief can come within `REACH` moves |
 | `ENGINES_PER_SIEGE` | 2 | engines the AI brings to a siege (3 when the objective is a keep, where the third saves a turn), never more than 1 for every 5 troops |
 | `FORTIFY_TURN` | 6 | first turn the AI builds a fort |
 | `MUSTER_WEIGHT` | 0.25 | how much a fort's recruit limit adds to its capture value (§8.2) |
@@ -440,12 +442,12 @@ Built on `AIPlayer` as it stands after #94 (stand-offs read from the state alone
 - **Targets:** an enemy fort on the main army's road to the enemy capital, or the capital itself.
   - An **empty** enemy fort next to a free army is walked into: a recruiting post for nothing.
   - A fort's capture value adds `MUSTER_WEIGHT` × its recruit limit × the price of our cheapest troop, so a keep counts about as one extra province of income (0.25 × 4 × 8 = 8 gold). Under siege, the province's base income counts for us from the second turn.
-- **Start a siege** when our odds against the garrison with its +2 cover, plus every enemy army that could reach the fort within 2 turns, are at least `SIEGE_START_WIN`. Sallies and breach battles are the same battle (open, garrison with cover), so that one number answers both "can they come out and beat us?" and "do we win at the breach?". Otherwise mass, raid or wait, as today.
+- **Start a siege** when our odds against the garrison with its +2 cover, plus every enemy army that could reach the fort within `REACH` moves, are at least `SIEGE_START_WIN`. Sallies and breach battles are the same battle (open, garrison with cover), so that one number answers both "can they come out and beat us?" and "do we win at the breach?". Otherwise mass, raid or wait, as today.
 - **Each turn of a siege:**
   - storm when the storm odds reach `STORM_WIN` (`CAPITAL_STORM_WIN` at the enemy capital), or `RACE_STORM_WIN` when a relief army can reach the fort this turn;
   - otherwise wait;
   - leave when the stay rule says go.
-- **No dance.** The start and stay tests both count every enemy army within 2 turns of the fort, so stepping a relief army 1 or 2 provinces back doesn't bring the AI back into a siege it would lose. If it leaves because of relief, it attacks the relief army at `LIKELY_WIN`, or turns to another fort, or raids. All of this is read from positions in the state, with no memory between turns (#94's rule).
+- **No dance.** The start and stay tests both count every enemy army within `REACH` moves of the fort, so stepping a relief army back out of reach and in again doesn't bring the AI back into a siege it would lose. **S-7 set `REACH` to 1 (it was 2):** against two computers it was the single most effective of §11.3's knobs on the stand-offs (§11.4), but it means a relief army two provinces away no longer deters a siege, so a player can dance a relief army two provinces back and in again. That is Alex's call to keep or revert (§11.4). If it leaves because of relief, it attacks the relief army at `LIKELY_WIN`, or turns to another fort, or raids. All of this is read from positions in the state, with no memory between turns (#94's rule).
 - **Engines:** when the main army's next objective is a fort with a garrison and standing walls, recruit engines at our keep or citadel nearest the objective, into the army there (with troops recruited first if no army stands there), and march that army to join the main army. Up to `ENGINES_PER_SIEGE`, and only while the capital's garrison need is met. The recruit forecast's "turns saved" decides whether each one is worth buying.
 - **Never a cycle.** The AI besieges only what it would win in the open. Once in a siege it stays until the breach battle unless the stay rule says go. The walls drop by at least 1 a turn, so every siege it keeps up ends in a battle within a few turns.
 
@@ -455,7 +457,7 @@ Built on `AIPlayer` as it stands after #94 (stand-offs read from the state alone
   - If a relief army can reach the fort this turn and the combined relief-and-sally odds reach `RELIEF_WIN` (0.5 at the capital), send it and sally with every garrison army but the ruler's.
   - Otherwise, sally with the armies whose odds alone reach `SIEGE_SALLY_WIN`, keeping the rest inside.
   - Otherwise hold, recruit at other forts, and march relief toward the fort.
-  - A non-capital fort whose odds in the open are below `ABANDON_ODDS`, with no relief within 2 turns, is abandoned the turn before its breach if a safe neighbour exists.
+  - A non-capital fort whose odds in the open are below `ABANDON_ODDS`, with no relief within `REACH` moves, is abandoned the turn before its breach if a safe neighbour exists.
 - **Garrisons.** The AI leaves at least one army in each keep or citadel it owns that an enemy army could reach this turn, and in a palisade when it has an army to spare. It never hands a fort to a passing raider.
 
 ### 8.4 recruiting and building
@@ -466,7 +468,7 @@ Built on `AIPlayer` as it stands after #94 (stand-offs read from the state alone
   Limits and level rules come from `SiegeRules`, so the AI never orders an illegal recruit.
 - **Fortify,** from `FORTIFY_TURN`, one site at a time:
   - a **palisade** in a province we owned at the start of the turn, at least 2 moves from our capital, with no enemy army next to it, nearest the enemy capital (ties: income, then id), when the gold left after this turn's recruit plan is at least its cost or the recruit limits leave that much unspent;
-  - an **upgrade** of the palisade nearest the front to a keep, when no enemy army is within 2 moves of it and 50 gold is left over.
+  - an **upgrade** of the palisade nearest the front to a keep, when no enemy army is within `REACH` moves of it and 50 gold is left over.
 - **Stand-offs (#94):** with sieges on, #94's "siege" action is a real siege. The main army besieges the enemy capital, or the nearest enemy fort on its road, with `SIEGE_START_WIN` at 0.5 and engines bought for it.
 
 ### 8.5 what the player sees of it
@@ -497,7 +499,7 @@ Built on `AIPlayer` as it stands after #94 (stand-offs read from the state alone
 | sally | the fort panel's Sally ticks, one per army, ruler off by default: "If they lose, the armies that came out are destroyed. 1 army stays inside." | odds for the armies ticked; with a relief army ordered in, the combined odds | the battle line, or `sally_found_nothing` | `sally` |
 | relief | the move preview into your own besieged fort, with "The garrison comes out to join you" ticked | relief odds, with and without the sally | the battle line | `relief` |
 | the breach | the walls chip turns to "breached" | "you fight at Stonegate next turn (9), in the open, unless you leave: odds ..." | `walls_breached` | `breach` |
-| empty forts | the move preview into an empty enemy fort | "You take the keep at Stonegate unopposed (6 of 6 walls). You can recruit there from turn 9." | `captured` says the fort came with it | `empty_fort` |
+| empty forts | the move preview into an empty enemy fort | "You take the keep at Stonegate unopposed (6 of 6 walls). You can recruit there from turn 10." | `captured` says the fort came with it | `empty_fort` |
 | siege engines | the army tooltip lists them: "2 Siege Rams: don't fight; +1 siege damage each while besieging, for every 5 troops with them" | the recruit forecast: "joins the Aurel Crown army at Stonegate; +1 siege damage at Crownkeep: the walls drop to 0 in 2 turns instead of 3" | `recruited`; a lost battle's aftermath names lost engines | `trait_siege_engine`, `unit_siege_ram`, `unit_wallbreakers` |
 
 ### 9.2 forecasts (all from `SiegeRules`, the functions the resolver uses)
@@ -548,7 +550,7 @@ New event types, each with `codex` set (phase in brackets):
 - **Clauses on existing events:**
   - `recruited` names the fort: "at Stonegate (keep, 3 of 4 this turn)".
   - `income` names cut-off provinces on both sides: "Stonegate paid nothing: it is cut off, and its 8 gold went to the Thornmane Clans." / "...and 8 from besieged Stonegate."
-  - `captured` says a fort came with the province: "with its keep, 2 of 6 walls; you can recruit there from turn 9".
+  - `captured` says a fort came with the province: "with its keep, 2 of 6 walls; you can recruit there from turn 10".
   - a battle's aftermath names engines lost with their armies: "...and its 2 Siege Rams were lost."
 - **"Needs you" lines:**
   - "Your fort at Stonegate is besieged: its walls reach 0 in 2 turns (end of turn 9), if the besiegers stay as they are. Sally, send relief, or hold."
@@ -671,7 +673,7 @@ Anything else, or a band that can't be met within these knobs, goes back to the 
 - **Data** (`data/forts.gd`, `FortData`, const dictionaries like `data/factions.gd`):
   - `LEVELS`: per level `{id, name, walls, recruits, commanders, engines, repair, cost, turns}` (§2.1)
   - `WALL_STEP = 3`, `SIEGE = {"camp": 1, "per_troops": 10, "troops_max": 2, "engine": 1, "engines_max": 3, "max": 6}`
-  - `START = {"capital": 3, "fort": 2}`, `CAPTURE_WAIT = 1` (turns before a captured fort takes recruits)
+  - `START = {"capital": 3, "fort": 2}`, `CAPTURE_WAIT = 2` (turns before a captured fort takes recruits; it was 1 until S-7), `CAPTURE_WAIT_WORDS` (the same wait in words for the texts that name no numbers)
   - `ENGINES`: the two engines (§5) by faction: id, name, cost, text. They are not added to any roster.
 - **State** (serialized, validated and deep-copied only in a game with sieges):
   - `GameState.sieges: bool`, saved only when true.
@@ -944,7 +946,7 @@ Github issues are to be cut once Alex has seen this. S-n are placeholders, and e
 ---
 
 ## 16. director's calls (review these first)
-1. **Forts are where you recruit.** You recruit at any fort you own: a palisade takes 2 a turn, a keep 4, a citadel 8. Capitals start as citadels, and Stonegate and Blackwood as keeps. A fort you capture takes recruits from the turn after next, or at once if you retake your own within 2 turns. In games with sieges, this replaces M1's "recruit only at the capital".
+1. **Forts are where you recruit.** You recruit at any fort you own: a palisade takes 2 a turn, a keep 4, a citadel 8. Capitals start as citadels, and Stonegate and Blackwood as keeps. A fort you capture takes recruits from the third turn after the capture (S-7 raised the wait from the second, §11.4), or at once if you retake your own within 2 turns. In games with sieges, this replaces M1's "recruit only at the capital".
 2. **Three levels, two of them buildable.** A palisade costs 30 gold and 2 turns; a keep 50 more and 3 turns. Citadels exist only at capitals. Each faction has one fort under construction at a time. Work stops while an enemy army is there, and a captured site is razed.
 3. **Arriving at a garrisoned fort with standing walls starts a siege, not a battle.** No order is needed to besiege or to hold.
 4. **Walls 3 / 6 / 9, with +2 defense in a storm for every 3 left.** Siege damage is 1, +1 per 10 troops (at most +2), +1 per engine (at most +3), never more than 6 a turn. Walls repair by the level each turn no enemy is there.
@@ -999,7 +1001,7 @@ Two rounds on the draft, each from three seats, before the PR. The draft was rev
 - *Relief should always wait for the breach,* because the breach battle gave the garrison the ground and the round-cap hold. **Fixed:** breach battles are open, so the timing of relief is about time, not ground (§3.7).
 - *Storm or wait was a lookup,* because +2 walls barely matter and two engines skipped the +4 step at a citadel. **Fixed:** engines give +1 each (at most 3), so a citadel with two engines stands at 4 walls (+4) on its last turn. §4.2 now shows that +2 matters near parity. The rest is the forecast's job.
 - *The turtle counter was weak,* since the cut-off cost a capital 12 of about 53 gold and gave the besiegers nothing. **Fixed:** the base income goes to the besiegers, a 24-gold swing at a capital (§3.3). The AI's siege test is one open-battle number, so it besieges at parity in a stand-off (§8.2). The S7 turtle gets a rear keep.
-- *A captured fort recruited the next turn,* so an 8-gold raider could take an empty keep and recruit 4 there behind 6 walls. **Fixed:** a captured fort takes recruits from the turn after next (§2.3), and the AI garrisons its keeps (§8.3).
+- *A captured fort recruited the next turn,* so an 8-gold raider could take an empty keep and recruit 4 there behind 6 walls. **Fixed:** a captured fort takes recruits from the turn after next (§2.3; S-7 later made it the third turn after, §11.4), and the AI garrisons its keeps (§8.3).
 - *Always exactly two engines.* **Fixed** by +1 engines with a cap of 3, and the recruit forecast shows the turns each one saves (§5). Escorts aren't required, because lone engines are lost.
 - *The AI could ride into breach battles at 40% odds, and loop besiege-leave-return.* **Fixed:** it re-checks at `SIEGE_START_WIN` on the turn before the breach, and doesn't return to a fort while its relief stands next to it (§8.2).
 - *An all-or-nothing sally made a cheap pin* (a small siege next to a big enemy army). **Fixed:** sallies are per army (§3.4).

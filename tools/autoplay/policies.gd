@@ -16,7 +16,9 @@ extends RefCounted
 ##           "likely loss", unless that province is the enemy capital, which greedy always attacks.
 ##   random  every army holds or moves to a random neighbor; recruits random affordable units.
 ##   turtle  recruits like greedy, keeps its strongest army in the capital, walks the others home, and
-##           only attacks adjacent enemy armies that Forecast.battle_odds calls a "likely win".
+##           only attacks adjacent enemy armies that Forecast.battle_odds calls a "likely win". In a game with
+##           sieges (M3c S-7, #105) it claims the safest neighbor of its capital once, builds a palisade and then a
+##           keep there, recruits there too, keeps armies standing in its forts, and never besieges or storms a fort.
 ##   ai      the computer opponent, AIPlayer (ai/ai_player.gd) at "normal": guards its capital against
 ##           anything that can reach it, masses armies, attacks on good odds, expands when it is safe.
 ##   ai_easy AIPlayer at "easy": sometimes lets good moves pass and recruits at random.
@@ -381,6 +383,8 @@ class RandomPolicy extends Base:
 class Turtle extends Base:
 	## Most Forecast.battle_odds calls per turn.
 	var odds_cap := 4
+	## M3c: the claim looks no further than this many moves for a rival army, to be safe leaving the capital.
+	const CLAIM_SAFE_MOVES := 3
 
 	func _init() -> void:
 		policy_name = "turtle"
@@ -390,21 +394,23 @@ class Turtle extends Base:
 		if me == null:
 			return []
 		var armies := armies_of(state, faction_id)
+		var claim := _claim(state, faction_id, armies) if state.sieges else {}  # M3c: {army id: province id}
+		var staying := _staying_provinces(state, faction_id) if state.sieges else {}
 		var keep := ""
-		var home := armies.filter(func(a): return a.location == me.capital)
+		var home := armies.filter(func(a): return a.location == me.capital and not claim.has(a.id))
 		if not home.is_empty():
 			keep = strongest(home).id
 		var to_home := distances(state, me.capital)
 		var by_loc := {}
 		for a in armies:
-			if a.id == keep:
+			if a.id == keep or claim.has(a.id):
 				continue
 			if not by_loc.has(a.location):
 				by_loc[a.location] = []
 			by_loc[a.location].append(a.id)
 		var locs: Array = by_loc.keys()
 		locs.sort()
-		var plan := {}
+		var plan := claim.duplicate()
 		var calls := 0
 		for loc in locs:
 			var ids: Array = by_loc[loc]
@@ -412,6 +418,8 @@ class Turtle extends Base:
 			for n in sorted_neighbors(state, loc):
 				if enemies_at(state, n, faction_id).is_empty():
 					continue
+				if state.sieges and _is_rival_fort(state, n, faction_id):
+					continue  # M3c: a turtle never besieges or storms
 				if calls >= odds_cap:
 					bump("odds_capped")
 					break
@@ -421,14 +429,168 @@ class Turtle extends Base:
 				if odds.get("ok", false) and odds.get("label", "") == "likely win":
 					dest = n
 					break
-			if dest.is_empty() and loc != me.capital:
-				dest = step_toward(state, loc, to_home, {}, rng)
+			if dest.is_empty() and loc != me.capital and not staying.has(loc):
+				dest = step_toward(state, loc, to_home, {}, rng)  # M3c: an army in one of its forts, or at its site, stays
 			if not dest.is_empty():
 				for id in ids:
 					plan[id] = dest
 		var out := checked_moves(state, faction_id, plan)
-		out.append_array(best_recruits(state, faction_id))
+		if state.sieges:
+			out.append_array(_fortify_and_recruit(state, faction_id))
+		else:
+			out.append_array(best_recruits(state, faction_id))
 		return out
+
+	# --- M3c (design/M3C_SIEGES.md §11.2, band S7) -------------------------------------------------------
+	# The turtle in a game with sieges owns one province besides its capital (it claims the safest neighbor of the capital
+	# once, with its strongest army, if the odds call it a likely win), builds a palisade and then a keep there, one site
+	# at a time, and recruits there too (the fort first, the capital for what the fort won't take). The army in that
+	# province stays. It never besieges or storms a fort and never sallies: the walls are all it has.
+
+	## {army id: province id}: while the faction owns nothing but its capital and no rival army is within CLAIM_SAFE_MOVES of
+	## it, its strongest army at the capital claims the safest neighbor of the capital that is neutral, with no rival army
+	## near it and a likely win against any garrison.
+	func _claim(state: GameState, faction_id: String, armies: Array) -> Dictionary:
+		var me := state.find_faction(faction_id)
+		for p in state.provinces:
+			if p.owner == faction_id and not p.is_capital:
+				return {}
+		if _rival_within(state, faction_id, CLAIM_SAFE_MOVES):
+			return {}
+		var home := armies.filter(func(a): return a.location == me.capital and not a.units.is_empty())
+		if home.is_empty():
+			return {}
+		var army: Army = strongest(home)
+		var from_rival := distances(state, _rival_capital(state, faction_id))
+		var options := []
+		for n in sorted_neighbors(state, me.capital):
+			var p := state.find_province(n)
+			if p != null and p.owner.is_empty():
+				options.append(p)
+		options.sort_custom(func(x, y):
+			var kx := [-int(from_rival.get(x.id, 0)), x.id]
+			var ky := [-int(from_rival.get(y.id, 0)), y.id]
+			return _key_less(kx, ky))
+		var calls := 0
+		for p in options:
+			if not enemies_at(state, p.id, faction_id).is_empty():
+				if calls >= odds_cap:
+					break
+				calls += 1
+				bump("odds_calls")
+				var odds := Forecast.battle_odds(state, faction_id, [army.id], p.id)
+				if not (odds.get("ok", false) and odds.get("label", "") == "likely win"):
+					continue
+			bump("claims")
+			return {army.id: p.id}
+		return {}
+
+	## The provinces where its armies stay: its forts, and the one it is fortifying (or about to).
+	func _staying_provinces(state: GameState, faction_id: String) -> Dictionary:
+		var out := {}
+		for p in state.provinces:
+			if p.owner == faction_id and not p.is_capital and (p.fort_level > 0 or not p.works.is_empty()):
+				out[p.id] = true
+		var next := _safest_province(state, faction_id)
+		if not next.is_empty():
+			out[next] = true
+		return out
+
+	func _fortify_and_recruit(state: GameState, faction_id: String) -> Array:
+		var out := []
+		var reserve := 0
+		var site := _safest_province(state, faction_id)
+		if not site.is_empty():
+			var f := FortifyOrder.new(site)
+			var priced: Dictionary = TurnResolver.price_recruits(state, faction_id, [f]).results.back()
+			if bool(priced.ok):
+				out.append(f)
+				reserve = int(priced.cost)
+				bump("fortify")
+			elif not _rival_within(state, faction_id, CLAIM_SAFE_MOVES):
+				reserve = SiegeRules.fortify_cost(state, site)  # saves up for it while no rival is close
+				bump("saving")
+		var forts := _own_forts(state, faction_id)
+		for order in best_recruits(state, faction_id, reserve):
+			var placed := false
+			for place in forts + [""]:
+				var trial := out.duplicate()
+				var r := RecruitOrder.new(order.unit_type_id, place)
+				trial.append(r)
+				if bool(TurnResolver.price_recruits(state, faction_id, trial).results.back().ok):
+					out.append(r)
+					placed = true
+					if not place.is_empty():
+						bump("fort_recruits")
+					break
+			if not placed:
+				bump("dropped_invalid")
+		return out
+
+	## The province to fortify next: a palisade of this faction's still to be made a keep, else the safest province it
+	## owns with no fort yet (the farthest from the rival's capital, then the nearest its own), with no rival army in or
+	## next to it. "" when it is already building, or nothing qualifies.
+	func _safest_province(state: GameState, faction_id: String) -> String:
+		if not SiegeRules.site_of(state, faction_id).is_empty():
+			return ""
+		var me := state.find_faction(faction_id)
+		var from_rival := distances(state, _rival_capital(state, faction_id))
+		var from_home := distances(state, me.capital)
+		var best := ""
+		var best_key := []
+		for p in state.provinces:
+			if p.owner != faction_id or p.is_capital or not SiegeRules.check_fortify(state, faction_id, p.id).is_empty():
+				continue
+			var danger := _rival_near(state, p.id, faction_id)
+			for n in p.neighbors:
+				danger = danger or _rival_near(state, n, faction_id)
+			if danger:
+				continue
+			var key := [-p.fort_level, -int(from_rival.get(p.id, 0)), int(from_home.get(p.id, 999)), p.id]
+			if best.is_empty() or _key_less(key, best_key):
+				best = p.id
+				best_key = key
+		return best
+
+	## An army of another real faction (not the Free Holds) stands within `moves` of this faction's capital.
+	func _rival_within(state: GameState, faction_id: String, moves: int) -> bool:
+		var to_home := distances(state, state.find_faction(faction_id).capital)
+		for a in state.armies:
+			if a.owner != faction_id and not IndependentData.is_independent(a.owner) and int(to_home.get(a.location, 999)) <= moves:
+				return true
+		return false
+
+	## The capital of the first other real faction (not the Free Holds), "" if none.
+	func _rival_capital(state: GameState, faction_id: String) -> String:
+		var rival := ""
+		for f in state.factions:
+			if f.id != faction_id and not IndependentData.is_independent(f.id) and (rival.is_empty() or f.id < rival):
+				rival = f.id
+		return state.find_faction(rival).capital if not rival.is_empty() else ""
+
+	## The forts of this faction outside its capital, the highest level first (then by id).
+	func _own_forts(state: GameState, faction_id: String) -> Array:
+		var forts: Array = state.provinces.filter(func(p): return p.owner == faction_id and not p.is_capital and p.fort_level > 0)
+		forts.sort_custom(func(a, b): return a.fort_level > b.fort_level if a.fort_level != b.fort_level else a.id < b.id)
+		return forts.map(func(p): return p.id)
+
+	## A fort of another faction that has an owner (neutral forts don't count: nobody is inside).
+	func _is_rival_fort(state: GameState, province_id: String, faction_id: String) -> bool:
+		var p := state.find_province(province_id)
+		return p != null and p.fort_level > 0 and not p.owner.is_empty() and p.owner != faction_id
+
+	## An army of another real faction (not the Free Holds) stands in the province.
+	func _rival_near(state: GameState, province_id: String, faction_id: String) -> bool:
+		for a in enemies_at(state, province_id, faction_id):
+			if not IndependentData.is_independent(a.owner):
+				return true
+		return false
+
+	static func _key_less(a: Array, b: Array) -> bool:
+		for i in a.size():
+			if a[i] != b[i]:
+				return a[i] < b[i]
+		return false
 
 
 class AIPolicy extends Base:
