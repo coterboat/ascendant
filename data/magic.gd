@@ -87,8 +87,8 @@ const SPELLS := {
 		"cost": 15, "range": 2, "target": "not_own", "duration": 2, "value": 12, "per_bonus": {"value": 4}, "codex": "spell_bloodrot",
 		"text": "Curses a province not yours within 2 through turn T + 2: fighters there not of your faction can't heal, and it takes 12 hit points a turn from them, from the healthiest first, never below 1."},
 	"blood_moon": {"id": "blood_moon", "name": "Blood Moon", "school": "blood", "tier": "III", "kind": "global", "battle": false,
-		"cost": 30, "range": 0, "target": "none", "duration": 2, "share": 4, "per_bonus": {}, "codex": "spell_blood_moon",
-		"text": "Through turn T + 2, in every battle, each of your standing fighters heals back a quarter of the damage it dealt that round, rounded down, never above its maximum - 1. Only one global ritual at a time."},
+		"cost": 26, "range": 0, "target": "none", "duration": 2, "share": 5, "per_bonus": {}, "codex": "spell_blood_moon",
+		"text": "Through turn T + 2, in every battle, each of your standing fighters heals back a fifth of the damage it dealt that round, rounded down, never above its maximum - 1. Only one global ritual at a time."},
 	"far_sight": {"id": "far_sight", "name": "Far Sight", "school": "common", "tier": "", "kind": "sight", "battle": false,
 		"cost": 6, "range": 3, "target": "any", "duration": 2, "per_bonus": {}, "codex": "spell_far_sight",
 		"text": "You see a province within 3 in clear sight at the start of your next 2 turns. On a rival's capital it also reads that rival's gold, mandates, kept power, research, spells and spellbook. Known by every faction with a caster."},
@@ -161,7 +161,7 @@ const ARCANA := {
 		{"id": "blood_moon", "name": "Blood Moon", "kind": "spell", "tier": "III", "school": "blood", "cost": 25,
 			"requires": ["bloodrot", "beasts_oath_blood"], "requires_any": 0, "branch": "", "oath_branch": "blood_pact",
 			"codex": "spell_blood_moon",
-			"text": "Greater working (Blood): for 3 turns your fighters heal back a quarter of the damage they deal. Needs the Oath of Blood."},
+			"text": "Greater working (Blood): for 3 turns your fighters heal back a fifth of the damage they deal. Needs the Oath of Blood."},
 	],
 }
 
@@ -169,8 +169,8 @@ const ARCANA := {
 ## recruitable once the faction knows a spell. It fights from the second rank and casts instead of attacking.
 const MAGE_TRAIT := "Mage"
 const MAGES := {
-	"kingdom": {"id": "adepts", "name": "Sunstone Adepts", "hp": 8, "attack": 7, "defense": 5, "morale": 9, "cost": 18, "trait": "Mage"},
-	"beasts": {"id": "shamans", "name": "Thornmane Shamans", "hp": 10, "attack": 7, "defense": 4, "morale": 8, "cost": 16, "trait": "Mage"},
+	"kingdom": {"id": "adepts", "name": "Sunstone Adepts", "hp": 10, "attack": 7, "defense": 5, "morale": 9, "cost": 15, "trait": "Mage"},
+	"beasts": {"id": "shamans", "name": "Thornmane Shamans", "hp": 10, "attack": 7, "defense": 4, "morale": 8, "cost": 14, "trait": "Mage"},
 }
 
 ## The summoned creatures (§6.2): never recruited, never on a roster; in a magic game GameState.from_dict loads
@@ -201,6 +201,9 @@ const RULER_MAGIC := {
 const MASTERY := {"mage": 0, "transformation": 1, "node": 1, "cap": 3}
 ## The school's mastery node, by school.
 const MASTERY_NODES := {"sun": "sun_mastery", "law": "law_mastery", "wild": "wild_mastery", "blood": "blood_mastery"}
+
+## How a share of the damage is said in words (Blood Moon's "share" is the divisor: 4 is a quarter, 5 a fifth). MagicRules.moon_share_word.
+const SHARE_WORDS := {2: "half", 3: "a third", 4: "a quarter", 5: "a fifth"}
 
 ## Spell resistance (§5.2): each bolt on a ruler deals ability rank / RULER_RESIST less, rounded down, never below 1.
 const RULER_RESIST := 2

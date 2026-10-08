@@ -29,9 +29,22 @@ extends SceneTree
 ##                    by side of the fork and by pairing, when transformations land, and path mandates
 ##   --branches A,B   with --paths, force the side of the fork of seat 1 and seat 2 (celestial_host or
 ##                    living_iron for the Crown, thorn_wild or blood_pact for the Clans), or "roll"
+##   --magic          play with magic (M5; implies --paths): GameState.with_magic. The computer researches the arcana, buys
+##                    mages and casts rituals (AIMagic); the report adds the rituals cast, the spells cast in battle, the
+##                    ritual forecast check and the hit point ledger
+##   --fog            play with fog of war (M5): the policies are handed their seat's view, as a computer seat in a real game
+##                    is; every 10th turn the snapshot test runs on the live game (tools/autoplay/fog_probe.gd)
+##   --tithe [MODE]   with --magic, give the Thornmane Clans Tithe of Blood: MODE tithe (default), null (a test-only mandate
+##                    of the same price that does nothing: the control of band G9) or bleed (Tithe of Blood played by the
+##                    scripted "ai_bleed" policy, which pays every ritual it can in blood). Tithe of Blood costs 3 power: a
+##                    Clans build with less left loses its last mandates until it fits (Simulator.tithe_build)
 ##   --matrix         the M2 build balance check (#36, design/M2_RULER.md §8.2): plays bands A-H with
 ##                    AIPlayer in both seats and prints a pass/miss table (tools/autoplay/matrix.gd).
 ##                    --seed and --turn-cap apply; --games, --p1/--p2, --seat1, --builds and --rulers don't
+##   --matrix --magic the M5 balance check for magic and fog (#122, design/M5_MAGIC_FOG.md §13.2): bands G1-G14 over the main
+##                    matrix (1,800 games, fog off), the fog matrix (720) with its no-fog control, the Tithe pairs (720) with the
+##                    null mandate and a scripted bleeding build, the magic-off path matrix as the control, and the M2 games
+##                    of band G12 (tools/autoplay/magic_matrix.gd). Exit code 0 only when G12 and G13 hold
 ##   --matrix --paths the M4 path balance check (#71, design/M4_ASCENSION.md §10.2): every Crown side x Clans
 ##                    side x preset pairing x seat order with paths on, plus band P7's M2 games, and a
 ##                    pass/miss table for bands P1-P8 (tools/autoplay/path_matrix.gd). --branches doesn't apply
@@ -47,9 +60,15 @@ extends SceneTree
 ##                    the bands are then judged on those games alone
 ##   --work-dir PATH  with --matrix and --jobs above 1, where the worker processes write their results
 ##                    (default user://autoplay_matrix); the files are removed afterwards
+##   --save-results PATH  with --matrix --magic, also write the games' raw results to PATH, so a run can be chunked (--only
+##                    G:, --only GF:, --only GT:, --only GB:, --only P, and with & for both: --only "G:&+iron_crown")
+##                    and judged later with --merge
+##   --merge A,B,...  with --matrix --magic, play nothing: judge the results saved by earlier runs
+##   --records        with --matrix --magic, also replay the earlier fixture records for band G12 (the default unless --only
+##                    or --merge is given); --no-records leaves them out
 ##
 ## Exit code: 0 when every game ran with no invariant violation, no session error and no script
-## error; 1 otherwise; 2 for bad arguments. With --matrix: 0 only when band H (integrity) holds; the
+## error; 1 otherwise; 2 for bad arguments. With --matrix --magic: 0 only when bands G12 and G13 hold. With --matrix: 0 only when band H (integrity) holds; the
 ## other bands are reported but don't change the exit code. With --matrix --paths --independents (the balance
 ## contract since Alex's 10-5 call on #131): 0 only when bands P7 (M1 and M2 not broken) and P8 (integrity) hold.
 ## A plain --matrix --paths run gates on integrity only (P8 and P7's M1/M2 digests); P7's F band is report-only.
@@ -58,6 +77,7 @@ const Simulator := preload("res://tools/autoplay/simulator.gd")
 const Policies := preload("res://tools/autoplay/policies.gd")
 const Matrix := preload("res://tools/autoplay/matrix.gd")
 const PathMatrix := preload("res://tools/autoplay/path_matrix.gd")
+const MagicMatrix := preload("res://tools/autoplay/magic_matrix.gd")
 const FACTIONS := ["kingdom", "beasts"]
 const MAX_JOBS := 8
 
@@ -95,6 +115,9 @@ func _initialize() -> void:
 	if opts.worker:
 		_run_worker(opts, catcher)
 		return
+	if opts.matrix and opts.magic:
+		_run_magic_matrix(opts, catcher)
+		return
 	if opts.matrix and opts.paths:
 		_run_path_matrix(opts, catcher)
 		return
@@ -104,7 +127,7 @@ func _initialize() -> void:
 	var started := Time.get_ticks_msec()
 	# Every engine or script error logged during a game is filed under that game's seed and turn.
 	var options := {"rulers": opts.rulers, "builds": opts.builds, "paths": opts.paths, "branches": opts.branches,
-		"independents": opts.independents}
+		"independents": opts.independents, "magic": opts.magic, "fog": opts.fog, "tithe": opts.tithe}
 	var results := Simulator.run_batch(opts.games, opts.seed, opts.seats, opts.policies, opts.turn_cap, catcher.take, options)
 	var summary := Simulator.summarize(results)
 	var seconds := (Time.get_ticks_msec() - started) / 1000.0
@@ -128,6 +151,12 @@ func _initialize() -> void:
 			extra += " --branches %s" % ",".join(opts.branches.map(func(b): return "roll" if str(b).is_empty() else str(b)))
 	if opts.independents:
 		extra += " --independents"
+	if opts.magic:
+		extra = extra.replace(" --paths", "") + " --magic"
+	if opts.fog:
+		extra += " --fog"
+	if not str(opts.tithe).is_empty():
+		extra += " --tithe " + str(opts.tithe)
 	md += "\n- **Run:** `--games %d --seed %d --p1 %s --p2 %s --seat1 %s --turn-cap %d%s`, %.1f s." % [opts.games, opts.seed,
 		opts.policies[0], opts.policies[1], opts.seats[0], opts.turn_cap, extra, seconds]
 	if opts.list:
@@ -152,6 +181,7 @@ func _initialize() -> void:
 func _parse(args: PackedStringArray) -> Dictionary:
 	var opts := {"games": 50, "seed": 1, "policies": ["greedy", "greedy"], "seats": FACTIONS.duplicate(),
 		"turn_cap": Simulator.TURN_CAP, "out": "", "list": false, "rulers": false, "builds": ["", ""], "paths": false, "independents": false, "branches": ["", ""],
+		"magic": false, "fog": false, "tithe": "", "save_results": "", "merge": "", "records": false, "no_records": false,
 		"matrix": false, "jobs": clampi(OS.get_processor_count(), 1, MAX_JOBS), "scale": 1.0, "work_dir": "user://autoplay_matrix",
 		"worker": false, "cell": "", "from": 0, "count": 0, "only": "", "record_m2": "", "note": ""}
 	var builds_arg := ""
@@ -175,6 +205,31 @@ func _parse(args: PackedStringArray) -> Dictionary:
 			opts.paths = true
 			opts.rulers = true  # paths need rulers
 			i += 1
+			continue
+		if key == "--magic":
+			opts.magic = true
+			opts.paths = true  # magic needs paths, and paths need rulers
+			opts.rulers = true
+			i += 1
+			continue
+		if key == "--fog":
+			opts.fog = true
+			i += 1
+			continue
+		if key == "--records":
+			opts.records = true
+			i += 1
+			continue
+		if key == "--no-records":
+			opts.no_records = true
+			i += 1
+			continue
+		if key == "--tithe":
+			opts.tithe = "tithe"
+			i += 1
+			if i < args.size() and ["tithe", "null", "bleed"].has(args[i]):
+				opts.tithe = args[i]
+				i += 1
 			continue
 		if key == "--matrix" or key == "--matrix-worker":
 			opts.matrix = true
@@ -208,6 +263,10 @@ func _parse(args: PackedStringArray) -> Dictionary:
 				opts.turn_cap = value.to_int()
 			"--out":
 				opts.out = value
+			"--save-results":
+				opts.save_results = value
+			"--merge":
+				opts.merge = value
 			"--builds":
 				builds_arg = value
 			"--branches":
@@ -252,6 +311,10 @@ func _parse(args: PackedStringArray) -> Dictionary:
 				return {"error": "seat %d (%s): %s Its presets: %s; or an explicit build like %s+...; or roll" % [seat + 1,
 					opts.seats[seat], parsed.error, ", ".join(ids), RulerRules.rulers_for(opts.seats[seat])[0]]}
 			opts.builds[seat] = pid
+	if not str(opts.tithe).is_empty() and not opts.magic:
+		return {"error": "--tithe needs --magic"}
+	if (not str(opts.save_results).is_empty() or not str(opts.merge).is_empty()) and not (opts.matrix and opts.magic):
+		return {"error": "--save-results and --merge need --matrix --magic"}
 	if not str(opts.record_m2).is_empty() and not (opts.matrix and opts.paths):
 		return {"error": "--record-m2 needs --matrix --paths"}
 	if not str(opts.note).is_empty() and str(opts.record_m2).is_empty():
@@ -273,6 +336,10 @@ func _parse(args: PackedStringArray) -> Dictionary:
 						ok.append(b)
 				return {"error": "seat %d (%s): '%s' is not one of its sides of the fork (%s, or roll)" % [seat + 1, opts.seats[seat], side, ", ".join(ok)]}
 			opts.branches[seat] = side
+	if opts.tithe == "bleed" and not opts.matrix:  # the scripted build plays the Clans seat with the bleeding policy
+		var clans_seat: int = opts.seats.find("beasts")
+		if opts.policies[clans_seat] == "ai":
+			opts.policies[clans_seat] = "ai_bleed"
 	return opts
 
 
@@ -399,13 +466,84 @@ func _run_path_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
 	quit(0 if gate_ok else 1)
 
 
+# --- the magic and fog balance matrix (M5-11, #122) ------------------------------------------------------
+
+func _run_magic_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
+	var started := Time.get_ticks_msec()
+	var fixture := PathMatrix.load_fixture()
+	var cells := MagicMatrix.plan(opts.scale, opts.seed, fixture)
+	if not str(opts.only).is_empty():  # with --matrix --magic, "A&B" keeps the cells whose id contains both (G:&+warrior_king)
+		var parts := str(opts.only).split("&", false)
+		cells = cells.filter(func(c): return parts.size() > 0 and Array(parts).all(func(part): return str(c.id).contains(part)))
+	var results := []
+	var problems := []
+	var doubled := []
+	if not str(opts.merge).is_empty():
+		for path in str(opts.merge).split(","):
+			var data = str_to_var(FileAccess.get_file_as_string(path.strip_edges()))
+			if not (data is Dictionary) or not data.has("results"):
+				problems.append("could not read saved results from %s" % path)
+				continue
+			results.append_array(data.results)
+	else:
+		results.append_array(_play_items(Matrix.work_items(cells), cells, opts, catcher, problems))
+		# A branch pairing with too few decisive games plays its games again on the next seeds, once (§13.2).
+		var short := MagicMatrix.short_pairings(results, opts.scale)
+		var again := cells.filter(func(c): return str(c.band) == "G" and short.has(c.pairing))
+		doubled = short.keys()
+		if not again.is_empty():
+			var offsets := {}
+			for c in again:
+				offsets[c.id] = int(c.games)
+			results.append_array(_play_items(Matrix.work_items(again, offsets), cells, opts, catcher, problems))
+	var stray := catcher.take()
+	OS.remove_logger(catcher)
+	if not str(opts.save_results).is_empty():
+		var sf := FileAccess.open(opts.save_results, FileAccess.WRITE)
+		if sf == null:
+			printerr("autoplay: could not write %s (%s)" % [opts.save_results, error_string(FileAccess.get_open_error())])
+		else:
+			sf.store_string(var_to_str({"results": results, "stray": Array(stray), "problems": problems}))
+			sf.close()
+	var want_records: bool = opts.records or (str(opts.only).is_empty() and str(opts.merge).is_empty() and not opts.no_records)
+	var records := MagicMatrix.records_check() if want_records else {}
+	var j := MagicMatrix.judge(results, stray.size() + problems.size(), fixture, records)
+	var seconds := (Time.get_ticks_msec() - started) / 1000.0
+	var md := MagicMatrix.to_markdown(j)
+	if not doubled.is_empty():
+		doubled.sort()
+		md += "\n- **Doubled** (fewer than %d decisive games): %s." % [ceili(MagicMatrix.MIN_DECISIVE * opts.scale),
+			", ".join(doubled.map(func(p): return " vs ".join(Array(str(p).split("|")).map(func(b): return Simulator.side_name(str(b))))))]
+	for e in problems:
+		md += "\n- **Worker problem:** %s" % e
+	if not stray.is_empty():
+		md += "\n- **Script errors outside games:** %d. First: %s" % [stray.size(), stray[0]]
+	md += "\n- **Run:** `--matrix --magic%s --seed %d --turn-cap %d --scale %s --jobs %d%s%s`, %d games, %.1f s." % [" --independents" if opts.independents else "",
+		opts.seed, opts.turn_cap, str(opts.scale), opts.jobs, "" if str(opts.only).is_empty() else " --only " + str(opts.only),
+		"" if str(opts.merge).is_empty() else " --merge " + str(opts.merge), results.size(), seconds]
+	print(md)
+	if not opts.out.is_empty():
+		var f := FileAccess.open(opts.out, FileAccess.WRITE)
+		if f == null:
+			printerr("autoplay: could not write %s (%s)" % [opts.out, error_string(FileAccess.get_open_error())])
+		else:
+			f.store_string(md + "\n")
+			f.close()
+	# Exit code 0 only when G12 (earlier games unbroken) and G13 (integrity) hold.
+	if not j.ok:
+		printerr("autoplay: band G12 (earlier games unbroken) or G13 (integrity) does not hold")
+	quit(0 if j.ok else 1)
+
+
 ## Plays the work items, in this process (--jobs 1) or in up to --jobs headless worker processes, and
 ## returns their results. Problems with a worker (it could not start, or wrote no results) go to `problems`.
 func _play_items(items: Array, cells: Array, opts: Dictionary, catcher: ErrorCatcher, problems: Array) -> Array:
 	var out := []
 	if opts.jobs <= 1:
 		for item in items:
-			if opts.paths:
+			if opts.magic:
+				out.append_array(MagicMatrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.independents))
+			elif opts.paths:
 				out.append_array(PathMatrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.independents))
 			else:
 				out.append_array(Matrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.independents))
@@ -425,7 +563,9 @@ func _play_items(items: Array, cells: Array, opts: Dictionary, catcher: ErrorCat
 			var args := ["--headless", "--quiet", "--path", project, "-s", "res://tools/autoplay/autoplay.gd", "--", "--matrix-worker",
 				"--cell", str(item.cell), "--from", str(item.from), "--count", str(item.count), "--seed", str(opts.seed),
 				"--turn-cap", str(opts.turn_cap), "--out", path]
-			if opts.paths:
+			if opts.magic:
+				args.append("--magic")
+			elif opts.paths:
 				args.append("--paths")
 			if opts.independents:
 				args.append("--independents")
@@ -456,7 +596,10 @@ func _play_items(items: Array, cells: Array, opts: Dictionary, catcher: ErrorCat
 func _run_worker(opts: Dictionary, catcher: ErrorCatcher) -> void:
 	var item := {"cell": opts.cell, "from": opts.from, "count": opts.count}
 	var results := []
-	if opts.paths:
+	if opts.magic:
+		var magic_cells := MagicMatrix.plan(1.0, opts.seed, PathMatrix.load_fixture())
+		results = MagicMatrix.play_item(magic_cells, item, opts.turn_cap, catcher.take, opts.independents)
+	elif opts.paths:
 		var path_cells := PathMatrix.plan(1.0, opts.seed, true, PathMatrix.load_fixture())
 		results = PathMatrix.play_item(path_cells, item, opts.turn_cap, catcher.take, opts.independents)
 	else:

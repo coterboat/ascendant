@@ -858,7 +858,7 @@ const ENTRIES := {
 	},
 	"mage": {
 		"title": "Mages",
-		"text": "Each faction has one mage: the Crown's Sunstone Adepts (8 hit points, attack 7, defense 5, morale 9, 18 gold) and the Clans' Thornmane Shamans (10 hit points, attack 7, defense 4, morale 8, 16 gold). In a game with magic they are on your roster from turn 1, but you can recruit them only once your faction knows a spell; the Ever-Regent's own Sunlance doesn't count. They are regular units, so mandates apply to them, and they have the trait Mage.",
+		"text": "Each faction has one mage: the Crown's Sunstone Adepts (10 hit points, attack 7, defense 5, morale 9, 15 gold) and the Clans' Thornmane Shamans (10 hit points, attack 7, defense 4, morale 8, 14 gold). In a game with magic they are on your roster from turn 1, but you can recruit them only once your faction knows a spell; the Ever-Regent's own Sunlance doesn't count. They are regular units, so mandates apply to them, and they have the trait Mage.",
 	},
 	"trait_mage": {
 		"title": "Mage (trait)",
@@ -994,7 +994,7 @@ const ENTRIES := {
 	},
 	"spell_blood_moon": {
 		"title": "Blood Moon",
-		"text": "Blood's greater working, tier III, 25 research, 30 gold, opened only by the Oath of Blood. Through turn T + 2, in every battle, each of your standing fighters heals back a quarter of the damage its attacks dealt that round, rounded down, never above its maximum - 1. Spell damage isn't healed back, and battles in a rival's warded province are outside the moon. Only one global ritual can be up at a time.",
+		"text": "Blood's greater working, tier III, 25 research, 26 gold, opened only by the Oath of Blood. Through turn T + 2, in every battle, each of your standing fighters heals back a fifth of the damage its attacks dealt that round, rounded down, never above its maximum - 1. Spell damage isn't healed back, and battles in a rival's warded province are outside the moon. Only one global ritual can be up at a time.",
 	},
 	"spell_far_sight": {
 		"title": "Far Sight",

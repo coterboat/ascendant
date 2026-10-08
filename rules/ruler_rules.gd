@@ -77,6 +77,9 @@ static func mandate_data(mandate_id: String) -> Dictionary:
 	for m in MandateData.MAGIC_MANDATES:  # M5-5: the mandates of magic (games with magic only)
 		if m.id == mandate_id:
 			return m
+	for m in MandateData.TEST_MANDATES:  # M5-11: the balance check's do-nothing mandate (on no list anyone picks from)
+		if m.id == mandate_id:
+			return m
 	return {}
 
 

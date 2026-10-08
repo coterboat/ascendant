@@ -43,9 +43,22 @@ extends RefCounted
 ## record's JSON (band P7 compares M2 games with a fixture recorded on main). Paths games also carry "recruits":
 ## {faction id: {unit type id: recruit orders accepted}}, so the report can say how often the new units are bought.
 
+## Magic and fog (M5-11, #122): `options` {"magic": true} starts the game with magic (GameState.with_magic: the paths game plus
+## each faction's mage and the rituals; it implies paths), and the result then carries "magic" (MagicLog: the research, every
+## ritual cast, the healing and draining, the battle spells, the ritual forecast check and the hit point ledger) and the
+## battle records carry the spells they cite. {"fog": true} plays the game with fog of war (GameState.setup_fog): the policies are
+## handed their seat's VIEW (GameSession.view_state), as AISeat hands it to the computer, and the invariants keep the true
+## state; on every FogProbe.PROBE_EVERY-th turn the snapshot test runs on the live game (result "fog"; {"fog_probe": false} leaves
+## it out). {"tithe": mode} gives the
+## Thornmane Clans seat Tithe of Blood ("tithe"), a test-only mandate of the same price that does nothing ("null", the control
+## of band G9), or Tithe of Blood for the scripted bleeding build ("bleed", played by the "ai_bleed" policy); see tithe_build.
 const Policies := preload("res://tools/autoplay/policies.gd")
+const MagicLog := preload("res://tools/autoplay/magic_log.gd")
+const FogProbe := preload("res://tools/autoplay/fog_probe.gd")
 
 const TURN_CAP := 60
+## The mandate a Tithe pair's control run buys with the same power (MandateData.TEST_MANDATES): it does nothing.
+const NULL_MANDATE := "null_mandate"
 ## Every event type the M1 turn report may hold. Anything else is reported as an error.
 const EVENT_TYPES := ["order_rejected", "army_moved", "battle", "border_battle", "captured", "recruited", "income", "game_over"]
 ## Event types a game with rulers adds: ruler deaths, the rulers phase's healing, successors (M2-3, #31),
@@ -73,7 +86,7 @@ const END_NAMES := {"rout": "rout (a side broke and fled)", "destroyed": "destro
 const SUMMARY_KEYS := ["games", "matchup", "seats", "policies", "seeds", "turn_cap", "finished", "unfinished",
 	"draws", "wins_by_faction", "wins_by_seat", "length", "length_decisive", "length_all", "length_buckets", "battles",
 	"why_factors", "final_gold", "mean_gold", "provinces_held", "orders", "rejections",
-	"resolution_rejections", "violations", "errors", "script_errors", "policy_stats", "patterns", "builds", "rulers", "paths"]
+	"resolution_rejections", "violations", "errors", "script_errors", "policy_stats", "patterns", "builds", "rulers", "paths", "magic"]
 ## Trait names as they appear as "why" factor ids (data/factions.gd), for the trait line of the report.
 const TRAITS := ["Shield Wall", "Volley", "Charge", "Inspire", "Berserk", "Skirmish", "Fury", "Pack Leader"]
 const LENGTH_BUCKETS := [[1, 9, "under 10"], [10, 15, "10-15"], [16, 20, "16-20"], [21, 30, "21-30"], [31, 100000, "31+"]]
@@ -124,6 +137,8 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 		"research": {"turn_checks": 0, "turn_mismatches": 0, "target_checks": 0, "target_mismatches": 0, "first": ""},
 		# M4-6: recruit orders the session accepted in a game with paths, {faction id: {unit type id: n}}.
 		"recruits": {},
+		# M5-11: a game with magic carries its log (MagicLog), a game with fog the snapshot probe's (FogProbe).
+		"magic": {}, "fog": {},
 	}
 	if seat_factions.size() != policy_names.size():
 		_error(result, 0, "There are %d seats but %d policies." % [seat_factions.size(), policy_names.size()])
@@ -137,7 +152,10 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 			return result
 		policies.append(policy)
 		rngs.append(SeededRNG.new(policy_seed(game_seed, i)))
-	var paths: bool = options.get("paths", false)
+	var magic: bool = options.get("magic", false)
+	var fog: bool = options.get("fog", false)
+	var tithe_mode := str(options.get("tithe", ""))
+	var paths: bool = options.get("paths", false) or magic  # magic needs paths (M5-5), and paths need rulers
 	var forced_sides: Array = options.get("branches", [])
 	for i in policies.size():
 		policies[i].configure(game_seed, i, str(forced_sides[i]) if i < forced_sides.size() and forced_sides[i] != null else "")
@@ -160,8 +178,18 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 				return result
 			builds[fid] = {"preset": parsed.preset, "ruler": parsed.ruler, "mandates": parsed.mandates}
 			result.builds[fid] = str(parsed.id)
+		if not tithe_mode.is_empty():
+			if not magic:
+				_error(result, 0, "setup: Tithe of Blood needs a game with magic.")
+				return result
+			for fid in builds:
+				if fid == "beasts":
+					builds[fid] = tithe_build(builds[fid], tithe_mode)
 		var build_errors := []
-		start = GameState.with_paths(game_seed, builds, build_errors) if paths else GameState.with_rulers(game_seed, builds, build_errors)
+		if magic:
+			start = GameState.with_magic(game_seed, builds, build_errors)
+		else:
+			start = GameState.with_paths(game_seed, builds, build_errors) if paths else GameState.with_rulers(game_seed, builds, build_errors)
 		if start == null:
 			for e in build_errors:
 				_error(result, 0, "setup: %s" % e)
@@ -172,11 +200,22 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 			for e in ind_errors:
 				_error(result, 0, "setup: %s" % e)
 			return result
+	if fog:
+		var fog_errors := []
+		if not start.setup_fog(fog_errors):  # M5-1: a lens, not a rule: the game resolves as it does without it
+			for e in fog_errors:
+				_error(result, 0, "setup: %s" % e)
+			return result
 	var session := GameSession.new(start, seat_factions, game_seed, AutoBattleResolver.new())
 	for e in session.setup_errors():
 		_error(result, 0, "setup: %s" % e)
 	if session.phase() == GameSession.Phase.INVALID:
 		return result
+	if magic:
+		result.magic = MagicLog.new_log()
+	if fog:
+		result.fog = FogProbe.new_log()
+	var probe_fog: bool = fog and options.get("fog_probe", true)
 
 	var gold_sum := {}
 	var quiet := 0
@@ -186,6 +225,9 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 		var turn := session.turn_number()
 		var played_before := session.turns_played()
 		var forecasts := {}  # M4-6: faction id -> Forecast.research for the orders it queued this turn
+		var ritual_forecasts := []  # M5-11: the forecasts of the rituals queued this turn (MagicLog.forecast_orders)
+		if probe_fog and FogProbe.due(turn):
+			FogProbe.check(session, seat_factions, game_seed, policy_names, forced_sides, rngs, turn, result.fog)
 		for seat in seat_factions.size():
 			var fid := str(seat_factions[seat])
 			if session.phase() == GameSession.Phase.HANDOFF:
@@ -195,9 +237,13 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 			if session.current_player() != fid:
 				_error(result, turn, "Seat %d should be ordering as %s, but the session says it is %s's turn." % [
 					seat + 1, fid, session.current_player()])
-			var view := session.state()
+			# M5-1: in a fog game the seat is handed its view, as AISeat hands it to the computer; the true state stays here
+			var view := session.state_for(fid)
 			var orders: Array = policies[seat].orders(view, fid, rngs[seat])
 			var accepted := _queue(session, view, fid, orders, result)
+			if magic:
+				var sight := FogRules.sight(session.state(), fid) if fog and accepted.any(func(o): return o is CastOrder) else {}
+				ritual_forecasts.append_array(MagicLog.forecast_orders(view, fid, accepted, sight))
 			if paths:
 				forecasts[fid] = Forecast.research(view, fid, accepted)
 				for o in accepted:
@@ -214,6 +260,10 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 		var state := session.state()
 		var events: Array = session.turn_report().get("events", [])
 		var found := check_invariants(prev, state, events)
+		if magic:
+			found.append_array(MagicLog.hp_ledger(prev, state, events, result.magic.hp))
+			MagicLog.record_turn(result.magic, turn, events)
+			MagicLog.check_forecasts(result.magic, ritual_forecasts, events, turn)
 		if paths:
 			check_research(prev, state, turn, forecasts, pending_research, result.research)
 		for v in found:
@@ -274,6 +324,8 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 	result.final_state = final_state.to_dict()
 	_log_rulers(result, final_state)
 	_log_paths(result, final_state)
+	if magic:
+		MagicLog.finish(result.magic, final_state)
 	if options.get("replay_check", false):
 		result.replay = replay_check(session)
 	if options.get("record_digest", false):
@@ -395,6 +447,31 @@ static func replay_check(session: GameSession) -> String:
 	if a == b:
 		return "identical"
 	return "differs: the replayed final state is not the one the game reached (%d vs %d characters)" % [b.length(), a.length()]
+
+
+## What each Clans preset keeps beside the new mandate in a Tithe pair (band G9). Tithe of Blood costs 3 of the 10 power and the
+## presets spend 0, 5 and 10, so Blood of the Fang and Clan Moot cannot keep what they have; and a ruler left with LOW_KEPT
+## power or less is played at home (AIPlayer.preset_for), which is another game than the preset's. So each keeps the mandate that
+## suits Tithe and leaves its ruler at least TITHE_MIN_KEPT power: Clan Moot its Blood Frenzy (blood given is wounds taken, and
+## wounds are what Frenzy feeds on), Blood of the Fang its Iron Discipline. Beast-God Unbound spends nothing, so it keeps nothing.
+const TITHE_KEEPS := {"beast_god_unbound": [], "clan_moot": ["blood_frenzy"], "blood_of_the_fang": ["iron_discipline"]}
+const TITHE_MIN_KEPT := 3
+
+## The Thornmane Clans build `build` ({"preset", "ruler", "mandates"}) with Tithe of Blood (`mode` "tithe" or "bleed") or
+## the test-only mandate of the same price (`mode` "null"), for a Tithe pair (band G9). Both cost the same power, so a pair's two
+## builds keep the same power. A preset keeps what TITHE_KEEPS says; any other build loses its last mandates until its ruler
+## would keep TITHE_MIN_KEPT power with the new one. The preset name stays, so reports still group the games by the preset
+## they began as.
+static func tithe_build(build: Dictionary, mode: String) -> Dictionary:
+	var extra := NULL_MANDATE if mode == "null" else MagicRules.TITHE_OF_BLOOD
+	var mandates: Array = build.get("mandates", []).duplicate()
+	var cost := RulerRules.mandate_cost(extra)
+	if TITHE_KEEPS.has(str(build.get("preset", ""))):
+		mandates = TITHE_KEEPS[str(build.preset)].duplicate()
+	while not mandates.is_empty() and RulerRules.kept_after({"ruler": build.ruler, "mandates": mandates}) < cost + TITHE_MIN_KEPT:
+		mandates.pop_back()
+	mandates.append(extra)
+	return {"preset": build.get("preset", ""), "ruler": build.ruler, "mandates": mandates}
 
 
 ## A seat's build from an autoplay --builds value or a matrix cell (M2-8): a preset id from
@@ -921,6 +998,7 @@ static func summarize(results: Array) -> Dictionary:
 	s.builds = by_build
 	s.rulers = rulers
 	s.paths = _paths_summary(results)
+	s.magic = _magic_summary(results)
 	return s
 
 
@@ -1113,6 +1191,9 @@ static func to_markdown(s: Dictionary) -> String:
 	var pa = s.get("paths", {})
 	if pa is Dictionary and int(pa.get("games", 0)) > 0:
 		L.append_array(_paths_lines(pa))
+	var mg = s.get("magic", {})
+	if mg is Dictionary and int(mg.get("games", 0)) > 0:
+		L.append_array(_magic_lines(mg))
 	var v: Dictionary = s.violations
 	if v.count == 0:
 		L.append("- **Invariant violations:** 0.")
@@ -1134,6 +1215,93 @@ static func to_markdown(s: Dictionary) -> String:
 		L.append("- **Script errors during games:** %d in %d games (seeds %s). First: seed %d, turn %d: %s" % [se.count, se.games,
 			", ".join(se.seeds.map(func(x): return str(x))), first_se.seed, first_se.turn, first_se.detail])
 	return "\n".join(L)
+
+
+## M5-11: the magic part of summarize(): {"games" (with magic), "fog_games", "casts" ({"<faction id>:<ritual id>": n}), "blood"
+## (rituals paid in blood), "blood_hp", "turned_aside", "spells" ({"<faction id>:<spell id>": n} cast in battle), "healed",
+## "drained", "moon", "forecast" and "hp" (the checks), "fog" (the snapshot probes), "arcana" ({"<faction id>:<node id>": games
+## that researched it})}. {"games": 0} without magic.
+static func _magic_summary(results: Array) -> Dictionary:
+	var out := {"games": 0, "fog_games": 0, "casts": {}, "blood": 0, "blood_hp": 0, "turned_aside": 0, "spells": {}, "healed": 0, "drained": 0,
+		"moon": 0, "forecast": {"checks": 0, "mismatches": 0, "turned_aside": 0, "unseen": 0}, "hp": {"checks": 0, "mismatches": 0},
+		"fog": {"probes": 0, "views": 0, "view_mismatches": 0, "plans": 0, "plan_mismatches": 0, "illegal": 0, "skipped": 0}, "arcana": {},
+		"mages": {}}
+	for r in results:
+		var m: Dictionary = r.get("magic", {})
+		if m.is_empty():
+			continue
+		out.games += 1
+		for fid in r.get("recruits", {}):  # {faction id: {"mages", "regulars"}}: the mages among the regular recruits (band G8)
+			if not out.mages.has(fid):
+				out.mages[fid] = {"mages": 0, "regulars": 0}
+			for tid in r.recruits[fid]:
+				if MagicRules.is_mage_id(str(tid)):
+					out.mages[fid].mages += int(r.recruits[fid][tid])
+				if not FactionData.FACTIONS.any(func(f): return f.id == fid and f.commander.id == tid):
+					out.mages[fid].regulars += int(r.recruits[fid][tid])
+		for c in m.casts:
+			_bump(out.casts, "%s:%s" % [c.faction, c.ritual])
+			if c.outcome == "turned_aside":
+				out.turned_aside += 1
+			if c.pay == "blood":
+				out.blood += 1
+				out.blood_hp += int(c.hp)
+		for fid in m.spells:
+			for sid in m.spells[fid]:
+				out.spells["%s:%s" % [fid, sid]] = int(out.spells.get("%s:%s" % [fid, sid], 0)) + int(m.spells[fid][sid])
+		for sid in m.healed:
+			out.healed += int(m.healed[sid])
+		for sid in m.drained:
+			out.drained += int(m.drained[sid])
+		out.moon += int(m.moon)
+		for k in out.forecast:
+			out.forecast[k] += int(m.forecast.get(k, 0))
+		for k in out.hp:
+			out.hp[k] += int(m.hp.get(k, 0))
+		for fid in m.arcana:
+			for nid in m.arcana[fid]:
+				_bump(out.arcana, "%s:%s" % [fid, nid])
+		var f: Dictionary = r.get("fog", {})
+		if not f.is_empty():
+			out.fog_games += 1
+			for k in out.fog:
+				out.fog[k] += int(f.get(k, 0))
+	return out
+
+
+## The magic lines of to_markdown (M5-11).
+static func _magic_lines(mg: Dictionary) -> Array:
+	var L := []
+	var by_ritual := {}
+	for key in mg.casts:
+		var parts := str(key).split(":")
+		_bump_by(by_ritual, "%s %s" % [faction_name(parts[0]), MagicRules.spell_name(parts[1])], int(mg.casts[key]))
+	L.append("- **Magic:** %d games. Rituals cast: %s; %d turned aside by a ward; %d paid in blood (%d hit points). Healed by blessings %d hp, drained by curses %d hp, healed back by the Blood Moon %d hp." % [
+		mg.games, _counts(by_ritual), mg.turned_aside, mg.blood, mg.blood_hp, mg.healed, mg.drained, mg.moon])
+	var spells := {}
+	for key in mg.spells:
+		var parts := str(key).split(":")
+		_bump_by(spells, "%s %s" % [faction_name(parts[0]), MagicRules.spell_name(parts[1])], int(mg.spells[key]))
+	L.append("- **Battle spells cast:** %s." % _counts(spells))
+	var mage_parts := []
+	for fid in mg.mages:
+		mage_parts.append("%s %s (%d of %d)" % [faction_name(fid), _pct(mg.mages[fid].mages, mg.mages[fid].regulars), mg.mages[fid].mages, mg.mages[fid].regulars])
+	L.append("- **Mages among regular recruits:** %s." % ", ".join(mage_parts))
+	var research := {}
+	for key in mg.arcana:
+		var parts := str(key).split(":")
+		_bump_by(research, "%s %s" % [faction_name(parts[0]), str(MagicRules.arcana_node(parts[1]).get("name", parts[1]))], int(mg.arcana[key]))
+	L.append("- **Arcana researched** (games): %s." % _counts(research))
+	L.append("- **Ritual forecasts:** %d mismatches in %d checks (%d turned aside, %d out of clear sight). **Hit point ledger:** %d mismatches in %d armies." % [
+		mg.forecast.mismatches, mg.forecast.checks, mg.forecast.turned_aside, mg.forecast.unseen, mg.hp.mismatches, mg.hp.checks])
+	if int(mg.fog_games) > 0:
+		L.append("- **Fog snapshot probes** (%d fog games): %d views and %d computer plans compared, %d view, %d plan and %d legality failures (%d skipped)." % [
+			mg.fog_games, mg.fog.views, mg.fog.plans, mg.fog.view_mismatches, mg.fog.plan_mismatches, mg.fog.illegal, mg.fog.skipped])
+	return L
+
+
+static func _bump_by(counts: Dictionary, key: String, by: int) -> void:
+	counts[key] = int(counts.get(key, 0)) + by
 
 
 ## The paths lines of to_markdown (M4-5).
@@ -1218,9 +1386,12 @@ static func _battle_record(turn: int, e: Dictionary) -> Dictionary:
 	var factors := []
 	for f in report.get("factors", []):
 		factors.append({"id": str(f.get("id", "")), "faction": str(f.get("faction", "")), "favors_winner": bool(f.get("favors_winner", false))})
-	return {"turn": turn, "kind": str(report.get("kind", "border" if e.type == "border_battle" else "province")),
+	var record := {"turn": turn, "kind": str(report.get("kind", "border" if e.type == "border_battle" else "province")),
 		"end": str(report.get("end", "none")), "rounds": int(report.get("rounds_fought", 0)),
 		"winner": str(numbers.get("winner", "")), "defender": str(numbers.get("defender", "")), "factors": factors}
+	if report.get("sides", []).any(func(sr): return sr.has("casters")):  # M5-11: a battle of a game with magic says who cast what
+		record["magic"] = MagicLog.battle_extras(report)
+	return record
 
 
 static func _check_battle_report(report: Dictionary) -> Array:
@@ -1306,6 +1477,9 @@ static func _factor_name(id: String) -> String:
 			return "fort"
 		"round_cap":
 			return "round cap"
+	var spell := MagicLog.spell_of(id)  # M5-11: a battle spell or a blessing ("spell_sunlance", "morale_spell_dawn_blessing")
+	if not spell.is_empty() and not MagicRules.spell_data(spell).is_empty():
+		return "%s%s" % [MagicRules.spell_name(spell), " morale" if id.begins_with("morale_") else ""]
 	return id
 
 

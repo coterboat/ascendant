@@ -136,3 +136,15 @@ const MAGIC_MANDATES: Array[Dictionary] = [
 		"excludes_why": "blood given is not taken back",
 	},
 ]
+
+## A mandate for the balance check and nothing else (M5-11, #122; design/M5_MAGIC_FOG.md §13.2, band G9): it costs what
+## Tithe of Blood costs and does nothing, so a Tithe pair's control run keeps the same power without the mandate. It is on
+## no list a person or the computer picks from (not in MANDATES, PATH_MANDATES or MAGIC_MANDATES): only RulerRules.mandate_data
+## finds it, so an explicit build ("fang_chieftain+null_mandate") can hold it.
+const TEST_MANDATES: Array[Dictionary] = [
+	{
+		"id": "null_mandate", "name": "Null Mandate (test only)", "faction": "beasts", "cost": 3, "area": "economy",
+		"effect": "Does nothing. It costs the power Tithe of Blood costs, for the balance check's control runs.",
+		"codex": "mandate_tithe_of_blood", "test_only": true,
+	},
+]

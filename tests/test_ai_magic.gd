@@ -2,7 +2,7 @@ extends "res://tests/test_case.gd"
 ## M5-10 (#121) acceptance, the computer with magic (design/M5_MAGIC_FOG.md §10.2, §18). What is proved:
 ##   1. The research plan: the aligned school's tier I after the first ordinary node, the rest of the arcana in the order of
 ##      §10.2, every step legal, and a game that follows it; with magic off the plan is the M4 one.
-##   2. Mages as recruits: valued by their spells (the rules' own numbers), at most one for every six regular units, never
+##   2. Mages as recruits: valued by their spells (the rules' own numbers), at most one for every AIMagic.MAGE_PER regular units, never
 ##      more second-rank fighters than front-rank ones.
 ##   3. Every ritual rule fires on a constructed board, ward ahead and the read capital included, and does not fire when its
 ##      condition fails; the gold share, the crisis, the pack's size, Bastion's cap, Tithe of Blood's payments and the
@@ -413,7 +413,7 @@ func test_a_mage_is_worth_recruiting_for_what_it_adds() -> void:
 	assert_eq(ctx.casts[CROWN].book, ["sunlance"], "the Crown's is Sunlance (Sunburst is a greater working)")
 
 
-func test_at_most_one_mage_for_every_six_regular_units() -> void:
+func test_at_most_one_mage_for_every_so_many_regular_units() -> void:
 	var s := _board([], {CROWN: ["sunlance"], CLANS: ["bloodbolt"]})
 	for fid in SEATS:
 		var regular := "spearmen" if fid == CROWN else "tuskers"
@@ -426,7 +426,7 @@ func test_at_most_one_mage_for_every_six_regular_units() -> void:
 		assert_true(AIMagic.room_for_mage(_units(s, fid, _many(regular, 2 * per) + [mage])), "%s: twice as many take another" % fid)
 		assert_false(AIMagic.room_for_mage(_units(s, fid, _many(regular, per - 1) + [cmd])), "%s: a commander is not a regular unit" % fid)
 		assert_false(AIMagic.room_for_mage(_units(s, fid, _many(regular, per - 1) + [mage])), "%s: nor is a mage" % fid)
-	assert_eq(AIMagic.MAGE_PER, 6, "the spec's ratio")
+	assert_true(AIMagic.MAGE_PER >= 4 and AIMagic.MAGE_PER <= 8, "§13.3's range for the ratio: from 1 in 4 to 1 in 8")
 
 
 func test_the_recruit_plan_keeps_the_mage_ratio_and_a_shielded_second_rank() -> void:

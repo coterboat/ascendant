@@ -1557,7 +1557,7 @@ static func _setup_enchantments(s: Dictionary, state: GameState, pid: String) ->
 	if not moon.is_empty():
 		s.moon = _rival_ward(state, fid, pid).is_empty()
 		s.enchant_log.append({"id": String(moon.id), "ritual": "blood_moon",
-			"effect": "heals back a quarter of the damage its attacks deal" if s.moon else "outside the moon: a rival ward lies on this province"})
+			"effect": "heals back %s of the damage its attacks deal" % MagicRules.moon_share_word() if s.moon else "outside the moon: a rival ward lies on this province"})
 	if not MagicRules.can_heal(state, fid, pid):
 		s.cursed = true
 		for e in state.enchantments:
@@ -3032,7 +3032,7 @@ static func _spell_words(s: Dictionary, key: String, dmg: int, sides: Array, si:
 	var name := String(sp.name)
 	if sid == "blood_moon":
 		return {"done": "under the Blood Moon, %s healed back %d hp" % [s.name, int(s.moon_healed)], "tail": "",
-			"brief": "the Blood Moon (%s heals back a quarter of the damage its attacks deal)" % s.name}
+			"brief": "the Blood Moon (%s heals back %s of the damage its attacks deal)" % [s.name, MagicRules.moon_share_word()]}
 	var st: Dictionary = s.spell_stats.get(sid, {})
 	if st.is_empty():
 		return {}

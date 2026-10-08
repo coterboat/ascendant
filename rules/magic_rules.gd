@@ -71,6 +71,11 @@ const PART_CAP := "mastery_cap"
 
 # --- data lookups ---------------------------------------------------------------------------------
 
+## The Blood Moon's share in words ("a fifth"): MagicData.SPELLS.blood_moon.share, which every text about the moon reads.
+static func moon_share_word() -> String:
+	return String(MagicData.SHARE_WORDS.get(int(MagicData.SPELLS.blood_moon.get("share", 4)), "a share"))
+
+
 static func has_magic(state: GameState) -> bool:
 	return state != null and state.magic
 
@@ -1198,8 +1203,8 @@ static func _effect_words(state: GameState, after: GameState, faction_id: String
 			var fort := "a fort" if not state.sieges else "a fort (%s, walls %d)" % [SiegeRules.level_word(1), SiegeRules.walls_max(1)]
 			return "raises %s at %s for good: %d of %d Bastion forts used, ever." % [fort, where, used, MagicData.BASTION_CAP]
 		"global":
-			return "through turn %d, in every battle %s standing fighters heal back a quarter of the damage their attacks deal, rounded down, never above their maximum - 1. Battles in a rival's warded province are outside the moon." % [
-				until, your]
+			return "through turn %d, in every battle %s standing fighters heal back %s of the damage their attacks deal, rounded down, never above their maximum - 1. Battles in a rival's warded province are outside the moon." % [
+				until, your, moon_share_word()]
 		"sight":
 			var text := "%s %s in clear sight at the start of %s next 2 turns, through turn %d." % ["you see" if own else "they see", where,
 				your, until]
@@ -1238,7 +1243,7 @@ static func brief_words(state: GameState, after: GameState, faction_id: String, 
 			var f := after.find_faction(faction_id)
 			return "A fort at %s for good (%d of %d Bastion forts)." % [where, f.bastions.size() if f != null else 0, MagicData.BASTION_CAP]
 		"global":
-			return "Your fighters heal back a quarter of the damage they deal, in every battle through turn %d." % until
+			return "Your fighters heal back %s of the damage they deal, in every battle through turn %d." % [moon_share_word(), until]
 		"sight":
 			return "%s in clear sight on your next 2 turns, through turn %d." % [where, until]
 	return ""
