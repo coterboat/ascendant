@@ -115,6 +115,17 @@ extends RefCounted
 ## likely win. Its notes say so in plain words ("Breaking the stand-off: ..."), and the turn report shows them
 ## once the turn resolves (AISeat.report_notes). Nothing is kept between turns.
 ## Gold is never banked: when every recruit adds only a sliver against an overwhelming foe, the best sliver buys.
+##
+## Fog of war (M5-4, #115; design/M5_MAGIC_FOG.md §10.1; ai/ai_fog.gd). In a fog game the state it is handed is the
+## seat's VIEW (FogRules.view_state), and it plans from that alone: a rival's armies are the stand-ins it sighted or
+## remembers, at the shown numbers. Nothing else changes in how it reads a state, so the same view always gives the
+## same orders, whatever is hidden from it. Four rules are new, all rules with no draw from the seat's RNG:
+##   * Remembered armies older than AIFog.MEMORY_TRUST turns are dropped from the view before the plan is made.
+##   * Attacks are judged against the shown numbers, as a person sees them; the defence of the capital (the garrison,
+##     the recall, the sacrifice, the ruler's safety) is judged against the top of each sighting's total (AIFog.top).
+##   * When the objective is out of sight, the nearest free scout army takes one safe step toward it (AIFog.scout).
+##   * Its notes say what it did and why in the same plain words ("Scouting: ..."); the screen keeps them back until
+##     the game is over (AISeat.report_notes).
 
 const DIFFICULTIES := ["easy", "normal"]
 
@@ -267,12 +278,15 @@ var _sally_to := ""  # where the garrison sallies to this turn (_sally), or ""
 var _foe_cache := {}  # #131: _foe_side's cache of the foe summaries for _recruit_value, this plan only
 ## M3c S-6 (#104): forts and sieges (ai/ai_sieges.gd), called behind one `state.sieges` check each.
 var _sieges := AISieges.new()
+var _fog := AIFog.new()  # M5-4: stale ghosts, the top of each sighting and scouting in a fog game (ai/ai_fog.gd)
+var _scratch_top: GameState = null  # M5-4: _scratch for the top of the view (the capital's defence), made once per plan
 var _gold_reserved := 0  # M3c: gold set aside for Fortify and engines before the troops are planned (0 without sieges)
 
 
 ## Orders for `faction_id` this turn. See the class comment. Unknown difficulties play as "normal".
 func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficulty: String = "normal") -> Array:
 	var started := Time.get_ticks_usec()
+	state = AIFog.trusted_view(state)  # M5-4: in a fog game, the view without its old ghosts; any other state as it is
 	_begin(state, faction_id, rng, difficulty)
 	if _me == null:
 		return []
@@ -299,6 +313,7 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 	_attack_armies()
 	if _state.sieges:
 		_sieges.keep_garrisons()  # M3c: a reachable keep keeps an army
+	_fog.scout()  # M5-4: a free scout army looks toward an objective it cannot see (nothing in a game without fog)
 	_field_moves()
 	_ruler_moves()
 	if _state.sieges:
@@ -327,7 +342,9 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 	_arrival = {}
 	_hunt = {}
 	_foe_cache = {}
+	_scratch_top = null
 	_sieges.end()
+	_fog.end()
 	return out
 
 
@@ -436,6 +453,7 @@ func _begin(state: GameState, faction_id: String, rng: SeededRNG, difficulty: St
 	_vias = {}
 	_busy = {}
 	_scratch = null
+	_scratch_top = null
 	_capital_short = false
 	_home_rate = 1.0
 	_recruit_plan = []
@@ -454,6 +472,7 @@ func _begin(state: GameState, faction_id: String, rng: SeededRNG, difficulty: St
 		return
 	if state.sieges:
 		_sieges.attach(self)  # M3c: forts and sieges (ai/ai_sieges.gd) for this plan
+	_fog.attach(self)  # M5-4: fog of war (ai/ai_fog.gd) for this plan; _collect_armies finds the top of the view
 	_nbrs = {}
 	for p in state.provinces:
 		var n: Array = p.neighbors.duplicate()
@@ -493,6 +512,8 @@ func _collect_armies() -> void:
 			_foes.append(a)
 	_mine.sort_custom(func(x, y): return x.id < y.id)
 	_foes.sort_custom(func(x, y): return x.id < y.id)
+	_scratch_top = null
+	_fog.refresh()  # M5-4: the top of the view's sightings (null in a game without fog)
 
 
 ## Plans the rest of the turn on `state` instead (the state with this turn's sacrifice applied). The map
@@ -504,6 +525,7 @@ func _rebase(state: GameState) -> void:
 	_me = state.find_faction(_fid)
 	_cache = {}
 	_scratch = null
+	_scratch_top = null
 	_moves = {}
 	_vias = {}
 	_busy = {}
@@ -535,7 +557,7 @@ func _defend_capital() -> void:
 	if _state.sieges and _sieges.capital_besieged():
 		return  # M3c: a besieged capital is AISieges.defend_forts' business
 	var home := _mine_at(cap.id)
-	var threats := _threats_to(cap.id)  # M4: plus enemy road moves (King's Roads, Forest Stride) with paths
+	var threats := _fog.top(_threats_to(cap.id))  # M4: plus enemy road moves (King's Roads, Forest Stride) with paths; M5-4: at the top of each sighting
 	if threats.is_empty():
 		_size_garrison(cap, home)
 		return
@@ -653,6 +675,7 @@ func _keepers(pid: String, home: Array, threats: Array) -> Array:
 ## case over the attacking factions. Forecast.battle_odds is run from the attacker's side on a scratch
 ## copy of the state where the defenders stand in `pid`.
 func _defense_rate(pid: String, defenders: Array, threats: Array) -> float:
+	threats = _fog.top(threats)  # M5-4: a defence is judged against the top of each sighting (the same armies in a game without fog)
 	if _state.sieges and _sieges.walls_stand(pid):
 		return _sieges.defense_rate(pid, defenders, threats)  # M3c: behind walls the enemy storms or besieges
 	if defenders.is_empty():
@@ -662,7 +685,7 @@ func _defense_rate(pid: String, defenders: Array, threats: Array) -> float:
 		return 0.95
 	if ratio <= HOPELESS_RATIO:
 		return 0.05
-	var st := _scratch_with(defenders, pid)
+	var st := _scratch_with(defenders, pid, true)
 	var by_faction := {}
 	for e in threats:
 		if not by_faction.has(e.owner):
@@ -691,7 +714,7 @@ func _size_garrison(cap: Province, home: Array) -> void:
 			far.append(e)
 	if near.is_empty() and far.is_empty():
 		return
-	var threat: Array = near + far
+	var threat: Array = _fog.top(near + far)  # M5-4: at the top of each sighting
 	if not home.is_empty() and _hunting_the_pin(threat):
 		# #94: a stand-off, and the army that keeps the garrison home is one we can beat: the garrison
 		# marches out against it (_field_moves) instead. Nobody can reach the capital this turn.
@@ -1786,7 +1809,7 @@ func _capital_danger() -> String:
 	var cap := _state.find_province(_me.capital)
 	if cap == null or cap.owner != _fid:
 		return ""
-	var threats := _threats_to(cap.id)
+	var threats := _fog.top(_threats_to(cap.id))  # M5-4: at the top of each sighting
 	if threats.is_empty():
 		return ""
 	var defenders := _mine_at(cap.id)
@@ -2471,6 +2494,8 @@ func _odds(st: GameState, attacker: String, ids: Array, pid: String, essential: 
 			sig.append(a.id)
 	sig.sort()
 	var key := "%s|%s|%s|%s" % [attacker, ",".join(sorted_ids), pid, ",".join(sig)]
+	if _scratch_top != null and st == _scratch_top:
+		key = "top|" + key  # M5-4: the same ids with more fighters in them
 	if _cache.has(key):
 		_stats.odds_cached += 1
 		return _cache[key]
@@ -2497,16 +2522,24 @@ func _odds(st: GameState, attacker: String, ids: Array, pid: String, essential: 
 ## A scratch copy of the state (made once per plan) where `placed` armies stand in `pid`, our other
 ## armies that really are in `pid` stand next door instead (they are not counted on to stay), and
 ## every other army is where it really is. The real state is never changed.
-func _scratch_with(placed: Array, pid: String) -> GameState:
-	if _scratch == null:
-		_scratch = _state.deep_copy([])
-		if _scratch == null:
+func _scratch_with(placed: Array, pid: String, top: bool = false) -> GameState:
+	# M5-4: `top` copies the view with every sighting at the top of its range instead (AIFog.top_view), for the capital's
+	# defence; the same armies and ids, so a battle is fought by the same names. Without fog there is only the state.
+	var at_top: bool = top and _fog.top_state != null
+	var scratch: GameState = _scratch_top if at_top else _scratch
+	if scratch == null:
+		scratch = (_fog.top_state if at_top else _state).deep_copy([])
+		if scratch == null:
 			return null
+		if at_top:
+			_scratch_top = scratch
+		else:
+			_scratch = scratch
 	var ids := {}
 	for a in placed:
 		ids[a.id] = true
 	var aside: String = _nbrs[pid][0] if not _nbrs.get(pid, []).is_empty() else pid
-	for a in _scratch.armies:
+	for a in scratch.armies:
 		var real := _state.find_army(a.id)
 		if real == null:
 			continue
@@ -2516,7 +2549,7 @@ func _scratch_with(placed: Array, pid: String) -> GameState:
 			a.location = aside
 		else:
 			a.location = real.location
-	return _scratch
+	return scratch
 
 
 # --- rough strength guess -------------------------------------------------------------------------

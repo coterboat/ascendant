@@ -968,7 +968,7 @@ func defense_rate(pid: String, defenders: Array, threats: Array) -> float:
 		var attackers: Array = by_faction[f]
 		var key := "hold|%s|%s|%s" % [pid, _ids(defenders), _ids(attackers)]
 		var r := _call(key, _fighters(defenders + attackers), true, func():
-			var st: GameState = ai._scratch_with(defenders, pid)
+			var st: GameState = ai._scratch_with(defenders, pid, true)  # M5-4: a defence is judged at the top of each sighting
 			if st == null:
 				return {}
 			var moves := attackers.map(func(a): return MoveOrder.new(a.id, pid))

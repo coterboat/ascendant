@@ -8,7 +8,7 @@ extends RefCounted
 ##   computer.play(session)   # after every human end_turn (and once at the start)
 ##
 ## When a computer seat's ORDERS phase starts, take_turn() reads the start-of-turn state from
-## session.state() (it never sees another seat's pending orders: the session hands out nothing but the
+## session.view_state(faction) (it never sees another seat's pending orders: the session hands out nothing but the
 ## state), asks that seat's AIPlayer for orders, queues each one through session.queue_order (the same
 ## OrderBook checks a person's orders get) and ends the turn. Its orders go into the session's history
 ## like anyone's, so GameSession.replay rebuilds the game without running the AI again.
@@ -29,6 +29,14 @@ extends RefCounted
 ## so its side of the fork is AIPlayer.choose_branch's roll, the first draw of a stream of its own
 ## (seat_seed + AIPaths.BRANCH_SALT). The seat RNG makes no extra draw, so M1 and M2 games are unchanged,
 ## and a restored save rolls the same side.
+##
+## Fog of war (M5-4, design/M5_MAGIC_FOG.md §10.1): the computer is handed its VIEW and nothing else. In a game with
+## fog, view_state(faction) is FogRules.view_state: its own side whole and the rival's armies as the stand-ins it has
+## sighted or remembers (AIFog drops the old ghosts before it plans). The seat never calls a truth accessor of the
+## session (state, turn_report, battle_events, builds, record, history, victory): the build pick reads the view, and
+## report_notes the filtered turn_report_for. Its orders are checked on the true state by the same OrderBook, which
+## reads only public facts and the seat's own state (§2.10), so none are refused. With fog off, view_state is
+## state(), and the games are the same as before.
 ##
 ## Notes: AIPlayer.last_plan_notes() say what the computer is about to do, so they would give away its
 ## simultaneous orders. They are kept per planned turn, and report_notes(session) only ever returns the
@@ -56,19 +64,19 @@ func _init(session: GameSession = null, game_seed: int = 0) -> void:
 		return
 	var players := session.players()
 	var seats := session.computer_seats()
-	var state := session.state()
-	var rulers := state != null and RulerRules.has_rulers(state)
 	for fid in seats:
 		var seat := players.find(fid)
 		if seat < 0:
 			continue
+		var view := session.state_for(fid)  # its view in a fog game (public facts all that is read here), else the state
+		var rulers := view != null and RulerRules.has_rulers(view)
 		_levels[fid] = String(seats[fid])
 		_seats[fid] = seat
 		_brains[fid] = AIPlayer.new()
 		_brains[fid].configure(game_seed, seat)  # M4: the side of the fork is this seat's roll (no effect without paths)
 		_rngs[fid] = SeededRNG.new(seat_seed(game_seed, seat))
 		if rulers:
-			_builds[fid] = AIPlayer.choose_build(state, fid, _rngs[fid])
+			_builds[fid] = AIPlayer.choose_build(view, fid, _rngs[fid])
 
 
 ## The RNG seed of the computer in the 0-based seat `seat`.
@@ -150,8 +158,8 @@ func rejections() -> Array:
 	return _rejected.duplicate(true)
 
 
-## Plays the current seat if the computer has it: plans from the start-of-turn state, queues every
-## order and ends the turn. Returns "" when it played, otherwise why it could not.
+## Plays the current seat if the computer has it: plans from the start-of-turn view (the state when there is no fog),
+## queues every order and ends the turn. Returns "" when it played, otherwise why it could not.
 func take_turn(session: GameSession) -> String:
 	if session == null or session.phase() != GameSession.Phase.ORDERS:
 		return "The computer can only give orders while a seat is giving orders."
@@ -160,7 +168,7 @@ func take_turn(session: GameSession) -> String:
 		return "It is a person's turn, not the computer's."
 	var turn := session.turn_number()
 	var brain: AIPlayer = _brains[fid]
-	var orders: Array = brain.plan_orders(session.state(), fid, _rngs[fid], _levels[fid])
+	var orders: Array = brain.plan_orders(session.view_state(fid), fid, _rngs[fid], _levels[fid])
 	for o in orders:
 		var why := session.queue_order(o)
 		if not why.is_empty():
@@ -199,15 +207,19 @@ func play(session: GameSession) -> Dictionary:
 
 ## The computer's notes for the turn the session last resolved, one entry per computer seat in seat
 ## order: {"faction", "faction_name", "seat" (0-based), "level", "notes": [plain-language lines]}.
-## Empty before the first resolution. Never the notes of a turn that has not resolved.
+## Empty before the first resolution. Never the notes of a turn that has not resolved. M5-4: read through the
+## first computer seat's view (turn_report_for, state_for): the turn number and the faction names are public.
+## Under fog the notes name the computer's hidden armies and plans; the screen keeps them back until the game is over
+## (GameScreen), they stay in the save.
 func report_notes(session: GameSession) -> Array:
 	var out := []
-	if session == null:
+	if session == null or _seats.is_empty():
 		return out
-	var turn := int(session.turn_report().get("turn", 0))
+	var reader: String = factions()[0]
+	var turn := int(session.turn_report_for(reader).get("turn", 0))
 	if turn <= 0 or turn > session.turns_played() or not _notes.has(turn):
 		return out
-	var state := session.state()
+	var state := session.state_for(reader)
 	for fid in factions():
 		if not _notes[turn].has(fid):
 			continue
