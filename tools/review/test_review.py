@@ -1128,13 +1128,28 @@ class KeepBothTests(unittest.TestCase):
         self.assertEqual(sorted(x.name for x in self.lore().iterdir()), ["CANON.md", "chord__claude.png", "chord__grok.png"], out)
         self.assertEqual((self.lore() / "chord__claude.png").read_bytes(), self.png + b"redone")
         self.assertNotIn("is taken", out)
-        # going back to one take: the entry is the single image's again, and nothing is deleted
+        # going back to one take: the entry is the single image's again, and the copies it no longer lists go
         R.decide(self.name, "chord", verdict="accept", take="grok/chord.png")
-        self.canon()
+        out = self.canon()
         md = (self.lore() / "CANON.md").read_text(encoding="utf-8")
         self.assertIn("file=chord.png -->", md)
         self.assertNotIn("files=", md)
-        self.assertTrue((self.lore() / "chord__claude.png").is_file())
+        self.assertEqual(sorted(x.name for x in self.lore().iterdir()), ["CANON.md", "chord.png"], out)
+        self.assertIn("its entry now uses other images", out)
+
+    def test_canon_removes_the_single_copy_when_an_item_becomes_keep_both(self):
+        # 10-8: a single-take canon run, then keep both, left the single copy behind, listed by nothing
+        R.decide(self.name, "chord", verdict="revise", note="fuse later", take="grok/chord.png")
+        self.canon()
+        self.assertTrue((self.lore() / "chord.png").is_file())
+        R.decide(self.name, "chord", verdict="revise", note="fuse them", takes=["codex/chord.png", "grok/chord.png"])
+        out = self.canon()
+        self.assertEqual(sorted(x.name for x in self.lore().iterdir()), ["CANON.md", "chord__codex.png", "chord__grok.png"], out)
+        # a file canon never listed is never touched
+        (self.lore() / "hand_made.png").write_bytes(self.png)
+        R.decide(self.name, "chord", verdict="accept", take="codex/chord.png")
+        self.canon()
+        self.assertTrue((self.lore() / "hand_made.png").is_file())
 
     ## rejected.json
     def test_rejected_json_says_fuse(self):
