@@ -1442,7 +1442,7 @@ class Handler(BaseHTTPRequestHandler):
                                 "counts": summarize(mb["items"])})
                 except ReviewError as e:
                     out.append({"batch": name, "title": name, "error": str(e)})
-            return self._json(200, {"batches": out, "root": str(REVIEW)}, head)
+            return self._json(200, {"batches": out, "root": str(REVIEW), "boot": self.server.boot}, head)
         if path.startswith("/api/batch/"):
             name = unquote(path[len("/api/batch/"):]).strip("/")
             return self._json(200, merged_batch(name), head)
@@ -1551,12 +1551,36 @@ class Server(ThreadingHTTPServer):
         super().__init__(*a, **kw)
         # new each start: the served page carries it, every POST must echo it back
         self.token = secrets.token_urlsafe(24)
+        # new each start too: a page that sees it change knows the server restarted, and reloads itself
+        self.boot = secrets.token_hex(6)
 
     def handle_error(self, request, client_address):
         # a browser closing an idle keep-alive or a half-read media stream is not an error
         if isinstance(sys.exc_info()[1], _DROPPED):
             return
         super().handle_error(request, client_address)
+
+
+def _code_stamp() -> int:
+    """review.py's mtime: the server restarts itself when it changes (a git pull, an edit)."""
+    try:
+        return Path(__file__).resolve().stat().st_mtime_ns
+    except OSError:
+        return 0
+
+
+def _code_compiles() -> bool:
+    """A half-written or broken review.py keeps the old server running instead of killing it."""
+    try:
+        compile(Path(__file__).resolve().read_text(encoding="utf-8"), str(Path(__file__)), "exec")
+        return True
+    except (OSError, SyntaxError, ValueError):
+        return False
+
+
+def _restart_argv(argv: list[str]) -> list[str]:
+    """The same serve command, minus --open: the page that is already open reloads itself."""
+    return [a for a in argv if a != "--open"]
 
 
 def cmd_serve(args) -> int:
@@ -1581,13 +1605,39 @@ def cmd_serve(args) -> int:
     print("review: Ctrl+C to stop", flush=True)
     if args.open:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+    ## Serve on a thread and watch review.py here: after a pull the old server would keep running old code
+    ## and silently ignore what the new page sends (10-8: "keep both" picks were dropped that way). When the
+    ## file changes, is stable for a second, compiles, and no action is running, come back as the new code.
+    worker = threading.Thread(target=httpd.serve_forever, daemon=True)
+    worker.start()
+    stamp, seen, restart = _code_stamp(), None, False
     try:
-        httpd.serve_forever()
+        while worker.is_alive():
+            time.sleep(1.0)
+            now = _code_stamp()
+            if now == stamp:
+                seen = None
+                continue
+            if now != seen:  # changed: wait one more tick so a pull has finished writing
+                seen = now
+                continue
+            if any(r.status == "running" for r in _RUNS.values()):
+                continue
+            if not _code_compiles():
+                print("review: review.py changed but doesn't compile; still serving the old code", flush=True)
+                stamp = now
+                continue
+            print("review: the tool changed on disk; restarting with the new code", flush=True)
+            restart = True
+            break
     except KeyboardInterrupt:
         print("\nreview: stopped")
     finally:
+        httpd.shutdown()
         cancel_all_runs()  # don't leave a generator running with nobody watching it
         httpd.server_close()
+    if restart:
+        os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve())] + _restart_argv(sys.argv[1:]))
     return 0
 
 

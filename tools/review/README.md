@@ -16,7 +16,7 @@ python3 tools/review/review.py sample              # optional: build the demo ba
 python3 tools/review/test_review.py                # the tool's own tests (throwaway batches, no Ludo calls)
 ```
 
-After changing `review.py`, restart `serve`: the page is re-read on every load, the server code is not.
+The server restarts itself when `review.py` changes on disk (a `git pull`, an edit): it waits until the file has stopped changing, compiles and no action is running, then comes back on the same port as the new code, and an open page reloads itself in place. A `review.py` that doesn't compile is reported and the old server keeps running. The page itself (`index.html`) is re-read on every load.
 
 ## Commands
 

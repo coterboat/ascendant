@@ -858,6 +858,7 @@ async function api(path, opts) {
   const r = await fetch(path, opts);
   let body = null;
   try { body = await r.json(); } catch { }
+  if (r.status === 403 && body && /stale X-Review-Token/.test(body.error || '')) { location.reload(); }
   if (!r.ok) {
     const e = new Error((body && body.error) || `${r.status} ${r.statusText}`);
     e.status = r.status;
@@ -2293,6 +2294,8 @@ function toggleHelp(force) {
 /* ---------------------------------------------------------------- loading */
 async function loadBatches() {
   const d = await api('/api/batches');
+  // the server restarts itself when its code changes; a page from the old one reloads (your place is remembered)
+  if (d.boot) { if (S.boot && S.boot !== d.boot) { location.reload(); return; } S.boot = d.boot; }
   S.batches = d.batches || [];
   renderBatchSel();
 }
