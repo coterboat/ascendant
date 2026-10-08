@@ -330,26 +330,28 @@ func test_a_mage_counts_the_damage_of_its_spells_each_round() -> void:
 	assert_eq(_pressure(mine2, foe2, false, 0.0), float(MagicRules.spell_numbers("sunlance", 1).value))
 
 
+func test_the_expected_damage_used_here_is_the_battle_rules_own() -> void:
+	for attack in [7, 9, 11, 13]:
+		for defense in [4, 5, 8, 9, 13]:
+			assert_true(absf(_expected_hit(float(attack), float(defense)) - _hit(attack, defense)) < 0.00001, "attack %d on defense %d" % [attack, defense])
+
+
 func test_a_hex_is_worth_the_damage_it_takes_off_the_units_it_covers() -> void:
 	var s := _board([], {CLANS: ["briar_snare"]})
 	var ctx := {"casts": AIMagic.cast_profiles(s)}
-	var snare := MagicRules.spell_data("briar_snare")
-	var part := absf(float(snare.value))
-	var tusker := TurnResolver.recruitable_type(s.find_faction(CLANS), "tuskers", s)
+	var part := absf(float(MagicRules.spell_data("briar_snare").value))
 	var knights := TurnResolver.recruitable_type(s.find_faction(CROWN), "knights", s)
 	for n_foes in [4, 6, 20]:
-		var mine := AIPlayer._side_summary(_units(s, CLANS, ["shamans"]), ctx)
-		mine["front"] = 1
 		var foe := AIPlayer._side_summary(_units(s, CROWN, _many("knights", n_foes)), ctx)
-		var each := _hit(knights.attack, tusker.defense) - _hit(knights.attack - int(part), tusker.defense)
-		# Our defense is that of the mage itself here; make it the Tuskers' by summarising Tuskers beside it.
+		# Our side: a Shaman with four Tuskers in front of it, whose mean defense the hex is measured against.
 		var side := AIPlayer._side_summary(_units(s, CLANS, ["shamans"] + _many("tuskers", 4)), ctx)
 		var covered := mini(int(MagicRules.spell_numbers("briar_snare", 0).count), n_foes)
 		var d := AIPlayer._summary_defense(side)
-		var want := float(covered) * (AutoBattleResolver_hit(knights.attack, d) - AutoBattleResolver_hit(knights.attack - int(part), d))
+		var each := _expected_hit(knights.attack, d) - _expected_hit(knights.attack - int(part), d)
+		assert_true(each > 0.0, "a hex takes damage off the Knights' hits")
+		var want := float(covered) * each
 		assert_true(absf(_pressure(side, foe, false, 0.0) - want) < 0.0001,
 			"%d Knights: the snare covers %d and saves %.2f a round (got %.2f)" % [n_foes, covered, want, _pressure(side, foe, false, 0.0)])
-		assert_true(each > 0.0)
 	# No front-rank enemy to snare (only a second rank): the mage's other spells or nothing.
 	var rank2 := AIPlayer._side_summary(_units(s, CROWN, _many("crossbowmen", 5)), ctx)
 	var us := AIPlayer._side_summary(_units(s, CLANS, ["shamans", "tuskers"]), ctx)
@@ -357,7 +359,7 @@ func test_a_hex_is_worth_the_damage_it_takes_off_the_units_it_covers() -> void:
 
 
 ## The expected damage of one attack by the rules, with fractional defense (an average).
-func AutoBattleResolver_hit(attack: float, defense: float) -> float:
+func _expected_hit(attack: float, defense: float) -> float:
 	var hit := clampf(float(AutoBattleResolver.BASE_HIT) + float(AutoBattleResolver.HIT_PER_POINT) * (attack - defense),
 		float(AutoBattleResolver.MIN_HIT), float(AutoBattleResolver.MAX_HIT)) / 100.0
 	return hit * maxf(float(AutoBattleResolver.MIN_DAMAGE), ceilf(attack * 0.5) - floorf(defense * 0.25))
@@ -387,7 +389,7 @@ func test_casters_spread_over_the_spellbook_as_the_resolver_does() -> void:
 	var def_with_wall := float(spear.defense) + float(AutoBattleResolver.SHIELD_WALL_DEFENSE)
 	var covered := float(mini(6, 6))
 	var aimed := 6.0 / 6.0  # six attackers on six front-rank targets
-	var want := lance + covered * aimed * (AutoBattleResolver_hit(float(tusker.attack), float(spear.defense)) - AutoBattleResolver_hit(float(tusker.attack), float(spear.defense) + 4.0))
+	var want := lance + covered * aimed * (_expected_hit(float(tusker.attack), float(spear.defense)) - _expected_hit(float(tusker.attack), float(spear.defense) + 4.0))
 	assert_true(def_with_wall > 0.0)
 	assert_true(absf(in_the_open - want) < 0.0001, "Sunlance plus the damage Shield of Law blocks: %.3f vs %.3f" % [in_the_open, want])
 
@@ -1143,7 +1145,7 @@ func _versus(ai_fid: String, level: String, fog: bool, game_seed: int, turns: in
 		state.setup_fog([])
 	var session := GameSession.new(state, SEATS, game_seed, AutoBattleResolver.new(), {ai_fid: level})
 	var computer := AISeat.new(session, game_seed)
-	var person = Policies_make(policy)
+	var person = _policy_named(policy)
 	person.configure(game_seed, SEATS.find(human))
 	var rng := SeededRNG.new(99 if policy == "turtle" else AISeat.seat_seed(game_seed, SEATS.find(human)))
 	var played := 0
@@ -1172,7 +1174,7 @@ func _versus(ai_fid: String, level: String, fog: bool, game_seed: int, turns: in
 		"history": session.history()}
 
 
-func Policies_make(policy_name: String):
+func _policy_named(policy_name: String):
 	return preload("res://tools/autoplay/policies.gd").make(policy_name)
 
 
@@ -1269,6 +1271,41 @@ func test_computer_against_computer_with_magic_finishes_and_is_never_refused() -
 	assert_true(fought >= games / 2, "most games had a battle (%d of %d)" % [fought, games])
 	assert_true(mages > 0, "they recruit mages (%d)" % mages)
 	assert_true(casts.size() >= 3, "and cast several kinds of ritual: %s" % [casts])
+
+
+func test_magic_with_forts_sieges_free_holds_and_fog_is_never_refused() -> void:
+	var casts := {}
+	for flags in [["sieges"], ["sieges", "independents", "fog"]]:
+		for game_seed in [5, 6]:
+			var state := GameState.with_magic(game_seed, {CROWN: RulerRules.preset_build("regents_court"), CLANS: RulerRules.preset_build("blood_of_the_fang")})
+			if flags.has("sieges"):
+				assert_true(state.setup_sieges([]), "forts and sieges")
+			if flags.has("independents"):
+				assert_true(state.setup_independents([]), "Free Holds")
+			if flags.has("fog"):
+				assert_true(state.setup_fog([]), "fog")
+			var session := GameSession.new(state, SEATS, game_seed, AutoBattleResolver.new(), {CROWN: "normal", CLANS: "normal"})
+			var ai := AISeat.new(session, game_seed)
+			while not session.is_over() and session.turns_played() < 40:
+				if ai.play(session).played.is_empty():
+					break
+			var what := "%s, seed %d" % ["+".join(flags), game_seed]
+			assert_eq(ai.rejections(), [], "%s: no order refused" % what)
+			assert_true(session.turns_played() >= 8, "%s: the game ran (%d turns)" % [what, session.turns_played()])
+			_check_holds(session.history(), CROWN, what)
+			_check_holds(session.history(), CLANS, what)
+			# A siege order and a cast never name the same army (a sally or a storm is a job, a cast holds).
+			for h in session.history():
+				for fid in SEATS:
+					var cast_by := {}
+					for o in h.orders.get(fid, []):
+						if o.type == "cast":
+							cast_by[o.army] = true
+							casts[o.ritual] = int(casts.get(o.ritual, 0)) + 1
+					for o in h.orders.get(fid, []):
+						if o.type == "siege" and o.get("action", "") == "sally":
+							assert_false(cast_by.has(o.army), "%s turn %d: a sallying army does not cast" % [what, h.turn])
+	assert_true(casts.size() >= 1, "and they cast: %s" % [casts])
 
 
 # --- 6. with magic off, the games of main ----------------------------------------------------------------

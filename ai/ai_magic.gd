@@ -615,7 +615,15 @@ func _sight_proposals() -> Array:
 		return []
 	var out := []
 	var targets := []
-	var objective: String = ai._fog.objective()
+	# The objective of the plan (AIFog.objective's, made from the main army: by now every free army has its job): the army a
+	# stand-off hunts, otherwise the enemy capital nearest the main army.
+	var objective := ""
+	if not ai._hunt.is_empty():
+		objective = String(ai._hunt.pid)
+	else:
+		var g := _main_group()
+		if not g.is_empty():
+			objective = String(ai._objective_for(String(g.loc)))
 	if not objective.is_empty():
 		targets.append(objective)
 	var caps := []
