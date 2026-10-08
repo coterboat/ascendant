@@ -38,6 +38,9 @@ const STATE_COLOURS := {
 	"unresearched": UiPalette.TEXT_SECONDARY,
 }
 
+## M5-8: the most caster armies the Magic tab's spellbook preview lists (the rest are counted).
+const PREVIEW_ROWS := 3
+
 var state: GameState = null
 var viewer_fid := ""  # the faction at the controls
 var showing_fid := ""  # whose path is shown: the viewer's, or the enemy's (read-only)
@@ -221,7 +224,7 @@ func _refresh_magic() -> void:
 	status_label.text = status_text
 	status_label.visible = not status_text.is_empty()
 	_fill_magic_sidebar()
-	footer_label.text = "Spells come from the same research pool as your path, one target at a time; only your Oath opens a greater working. Hover a card for its numbers now; F1 for its codex entry."
+	footer_label.text = "Spells use the same research pool as your path, one target at a time; only your Oath opens a greater working. Hover a card for its numbers; F1 for its codex entry. %s" % MagicView.preview_note()
 	links.queue_redraw()
 
 
@@ -268,7 +271,7 @@ func _fill_magic_sidebar() -> void:
 		_bd(sold, Breakdown.research_sold(state, viewer_fid))
 	sidebar.add_child(HSeparator.new())
 	_heading(sidebar, "Battle spellbook", "spellbook")
-	var how := _label(sidebar, "Each round every caster casts the first useful spell nobody on its side has cast yet. Tick a spell on or off; the arrows change the order.", 13, UiPalette.TEXT_SECONDARY)
+	var how := _label(sidebar, "Each round casters cast the first useful spell nobody on their side has cast yet. Tick a spell on or off; the arrows reorder.", 13, UiPalette.TEXT_SECONDARY)
 	how.name = "SpellbookHow"
 	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_tip(how, "Battle spellbook", RulesCodex.text("spellbook"), "spellbook")
@@ -276,17 +279,52 @@ func _fill_magic_sidebar() -> void:
 	var book := MagicView.spellbook(state, viewer_fid, orders)
 	for r in MagicView.spellbook_rows(state, viewer_fid, orders):
 		sidebar.add_child(_spellbook_row(r, book))
+	_fill_spellbook_preview()
 	sidebar.add_child(HSeparator.new())
 	var casters := _label(sidebar, MagicView.casters_text(state, viewer_fid), 13, UiPalette.TEXT_SECONDARY)
 	casters.name = "CastersText"
 	casters.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_tip(casters, "Casters", "%s\n\n%s" % [RulesCodex.text("caster"), RulesCodex.text("mage")], "caster")
 	casters.set_meta("rule_text", true)
-	var note := _label(sidebar, MagicView.preview_note(), 13, UiPalette.TEXT_DISABLED)
-	note.name = "PreviewNote"
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_tip(note, "Magic (M5 preview)", RulesCodex.text("magic"), "magic")
-	note.set_meta("rule_text", true)
+
+
+## M5-8 (§5.1, §11.2): what each of your caster armies will cast, from the real cast step with the spellbook as it stands
+## (queued changes included): one block a province, at most PREVIEW_ROWS of them, the rest named. The tooltip says why each
+## cast is what it is.
+func _fill_spellbook_preview() -> void:
+	var previews := MagicView.spellbook_preview(state, viewer_fid, orders)
+	var box := VBoxContainer.new()
+	box.name = "SpellbookPreview"
+	box.add_theme_constant_override("separation", 1)
+	sidebar.add_child(box)
+	if previews.is_empty():
+		var none := _label(box, "No army of yours holds a caster yet: recruit a mage, or bring the Ever-Regent to your army. Then each army's casts are previewed here.", 12, UiPalette.TEXT_DISABLED)
+		none.name = "PreviewNone"
+		none.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		none.set_meta("rule_text", true)
+		return
+	var head := _label(box, "What your casters will cast, round 1", 13, UiPalette.GILT)
+	head.name = "PreviewHead"
+	_tip(head, "What your casters will cast", RulesCodex.text("spellbook_preview"), "spellbook_preview")
+	head.set_meta("rule_text", true)
+	for i in mini(previews.size(), PREVIEW_ROWS):
+		var pv: Dictionary = previews[i]
+		var title := _label(box, String(pv.title), 13, UiPalette.TEXT_PRIMARY)
+		title.name = "PreviewTitle_%s" % String(pv.province)
+		title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_tip(title, String(pv.title), String(pv.tooltip), "spellbook_preview")
+		title.set_meta("rule_text", true)
+		var k := 0
+		for line in pv.lines:
+			var l := _label(box, String(line), 12, UiPalette.TEXT_SECONDARY)
+			l.name = "PreviewLine_%s_%d" % [String(pv.province), k]
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			_tip(l, String(pv.title), String(pv.tooltip), "spellbook_preview")
+			l.set_meta("rule_text", true)
+			k += 1
+	if previews.size() > PREVIEW_ROWS:
+		var more := _label(box, "and %d more armies with casters" % (previews.size() - PREVIEW_ROWS), 12, UiPalette.TEXT_DISABLED)
+		more.name = "PreviewMore"
 
 
 ## One spellbook row: on or off, the spell, whether your casters can cast it now, and the arrows.
@@ -368,14 +406,14 @@ func _card(c: Dictionary, own: bool) -> PanelContainer:
 	style.border_color = accent
 	style.set_border_width_all(3 if st == AscensionRules.RESEARCHING else 2)
 	style.set_corner_radius_all(6)
-	style.set_content_margin_all(10)
+	var compact := bool(c.get("compact", false))  # M5-5: an arcana card puts its kind on the name's line
+	style.set_content_margin_all(8 if compact else 10)  # M5-8: the Magic tab's cards are a line taller (the delay), so they are tighter
 	panel.add_theme_stylebox_override("panel", style)
 	if st == AscensionRules.CLOSED:
 		panel.modulate = Color(1, 1, 1, 0.6)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 3)
+	box.add_theme_constant_override("separation", 1 if compact else 3)
 	panel.add_child(box)
-	var compact := bool(c.get("compact", false))  # M5-5: an arcana card puts its kind on the name's line
 	var top: Container = box
 	if compact:
 		top = HBoxContainer.new()
@@ -392,6 +430,7 @@ func _card(c: Dictionary, own: bool) -> PanelContainer:
 	kind_label.name = "Kind"
 	if compact:
 		kind_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		kind_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var effect := _label(box, String(c.effect), 14, UiPalette.TEXT_SECONDARY)
 	effect.name = "Effect"
 	effect.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -420,10 +459,23 @@ func _card(c: Dictionary, own: bool) -> PanelContainer:
 	number.set_meta("breakdown", c.breakdown)
 	number.tooltip_text = TooltipText.from_breakdown(c.breakdown)
 	CodexLink.attach(number, String(c.breakdown.get("codex", "research")), codex_requested.emit)
+	if not String(c.get("delay_line", "")).is_empty():  # M5-8 (§4, §11.2): what researching this first does to your transformation
+		var delay: Dictionary = c.delay
+		var d := _label(box, String(c.delay_line), 13, UiPalette.GILT if int(delay.delay) > 0 else UiPalette.TEXT_SECONDARY)
+		d.name = "Delay"
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.set_meta("breakdown", delay.breakdown)
+		d.tooltip_text = TooltipText.from_breakdown(delay.breakdown)
+		CodexLink.attach(d, "arcana", codex_requested.emit)
 	if own:
 		var b := _card_button(c)
 		if b != null:
-			box.add_child(b)
+			if compact:  # M5-8: the button sits on the name's line, so the card is a line shorter
+				b.add_theme_font_size_override("font_size", 14)
+				b.custom_minimum_size = Vector2(0, 26)
+				top.add_child(b)
+			else:
+				box.add_child(b)
 			buttons[nid] = b
 	cards[nid] = panel
 	return panel

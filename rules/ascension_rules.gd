@@ -402,6 +402,46 @@ static func eta(cost: int, pool: int, rate: int) -> int:
 	return int(ceil(float(cost - pool) / float(rate)))
 
 
+## What is still to research to become `side`'s people (M4 §9.1; M5-8: the Magic tab's "delays your transformation"
+## reads it too): {"need" (research), "lines" ([{"label", "value", "note"}]: the cheapest ordinary nodes the Oath still
+## needs, the Oath and the transformation, only for what is not researched yet), "parts" (the same as short words)}, or
+## {} when the side is closed to the faction or already transformed.
+static func road_need(state: GameState, faction_id: String, side: String) -> Dictionary:
+	var oath := String(branch_data(side).get("oath", ""))
+	var trans := String(branch_data(side).get("transformation", ""))
+	if has_node(state, faction_id, trans) or node_state(state, faction_id, trans).state == CLOSED:
+		return {}
+	var lines := []
+	var parts := []
+	var need := 0
+	if not has_node(state, faction_id, oath):
+		var done := 0
+		for nid in researched(state, faction_id):
+			if is_ordinary(nid):
+				done += 1
+		var missing := maxi(0, int(node_data(oath).get("requires_any", 0)) - done)
+		if missing > 0:
+			var costs := []
+			for nid in node_ids(faction_id):
+				if is_ordinary(nid) and not has_node(state, faction_id, nid):
+					costs.append(node_cost(nid))
+			costs.sort()
+			var sum := 0
+			for i in mini(missing, costs.size()):
+				sum += int(costs[i])
+			lines.append({"label": "Ordinary nodes still needed (%d, the cheapest)" % missing, "value": sum,
+				"note": "the Oath needs any two ordinary nodes first"})
+			parts.append("ordinary %d" % sum)
+			need += sum
+		lines.append({"label": node_name(oath), "value": node_cost(oath), "note": "the lock-in"})
+		parts.append("Oath %d" % node_cost(oath))
+		need += node_cost(oath)
+	lines.append({"label": node_name(trans), "value": node_cost(trans), "note": "the transformation"})
+	parts.append("%d" % node_cost(trans))
+	need += node_cost(trans)
+	return {"need": need, "lines": lines, "parts": parts}
+
+
 ## The first ResearchOrder in `orders`, or null.
 static func queued_research(orders: Array) -> ResearchOrder:
 	for o in orders:
