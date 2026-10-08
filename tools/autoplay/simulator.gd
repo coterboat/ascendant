@@ -48,7 +48,8 @@ extends RefCounted
 ## ritual cast, the healing and draining, the battle spells, the ritual forecast check and the hit point ledger) and the
 ## battle records carry the spells they cite. {"fog": true} plays the game with fog of war (GameState.setup_fog): the policies are
 ## handed their seat's VIEW (GameSession.view_state), as AISeat hands it to the computer, and the invariants keep the true
-## state; on every FogProbe.PROBE_EVERY-th turn the snapshot test runs on the live game (result "fog"). {"tithe": mode} gives the
+## state; on every FogProbe.PROBE_EVERY-th turn the snapshot test runs on the live game (result "fog"; {"fog_probe": false} leaves
+## it out). {"tithe": mode} gives the
 ## Thornmane Clans seat Tithe of Blood ("tithe"), a test-only mandate of the same price that does nothing ("null", the control
 ## of band G9), or Tithe of Blood for the scripted bleeding build ("bleed", played by the "ai_bleed" policy); see tithe_build.
 const Policies := preload("res://tools/autoplay/policies.gd")

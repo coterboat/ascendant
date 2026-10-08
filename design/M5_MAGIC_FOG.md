@@ -1185,6 +1185,59 @@ M5-11 may change these without asking, recording before → after in its PR and 
 
 Anything else, or a band that can't be met within these knobs, goes back to the director as a question for Alex.
 
+### 13.4 the first measured run (M5-11, #122)
+Run on the MVP config (independents on, Alex's 10-5 call), seed 1, turn cap 60, `AIPlayer` in both seats. **5,292 games:** 1,800 main, 720 fog (with its 720-game no-fog control, the first 10 games of the main cells), 720 Tithe pairs, 180 scripted-bleeding games, 1,800 magic-off control and the 72 M2 games of G12. The harness is `tools/autoplay/magic_matrix.gd`:
+```
+godot --headless --path . -s tools/autoplay/autoplay.gd -- --matrix --magic --independents --jobs 4 [--only TEXT[&TEXT]] [--save-results F] [--merge F,G,...] [--records]
+```
+The plain run (no `--independents`) is report-only. The exit code is 0 only when G12 and G13 hold. `--magic`, `--fog` and `--tithe [tithe|null|bleed]` also work on a plain batch (`--games N`).
+
+**Number changes (every one is inside §13.3's range):**
+
+| knob | before | after |
+|---|---|---|
+| Sunstone Adepts: cost | 18 | 15 |
+| Sunstone Adepts: hp | 8 | 10 |
+| Thornmane Shamans: cost | 16 | 14 |
+| AI mage ratio (`AIMagic.MAGE_PER`) | 1 in 6 | 1 in 4 |
+| Blood Moon: price | 30 | 26 |
+| Blood Moon: share of the damage healed back | a quarter | a fifth |
+
+Every text that states one of them follows it (the codex, the arcana cards, the forecast and the "why" lines read `MagicRules.moon_share_word()` and the data).
+
+**The bands, before → after** (before: main at 0.4 scale, 720 main, 288 fog, 288 Tithe, 72 bleeding games; after: the full matrices above):
+
+| band | target | before | after |
+|---|---|---|---|
+| G1 | each school 40%+ researched, 25%+ used | Crown Law used 23% **miss** | Law 27%, every other school 50-66% **pass** |
+| G2 | no spell over 25% of top whys; no ritual over 50% of a faction's | Sunlance 3%; Dawn Blessing 59% of the Crown's rituals **miss** | Sunlance 3%; Dawn Blessing 66% (61% with the fog games' Far Sights), Bloodrot 56% **miss** |
+| G3 | report (30-60%) | 52% name a spell; the larger spell worth won 79% | 47%; won 82% |
+| G4 | P1 40-60%, P2 under 65% | CH 57 / LI 43; TW 49 / BP 51; worst 55% **pass** | CH 52 / LI 48; TW 51 / BP 49; worst 54% **pass** (magic off: CH 51 / LI 49; TW 49 / BP 51; worst 61%) |
+| G5 | median 12-25; at most 15% capped | 19; 1% **pass** | 18; 1% (23 of 1,800) **pass** (magic off: 19; 1%) |
+| G6 | median 8-12; 80%+ by turn 15 | 10; 100% **pass** | 10; 100% **pass** (magic off: 9; 100%) |
+| G7 | a ritual by turn 10 in 80%+; each ritual in 10%+ of games that know it | 2%; Blood Moon 8% **miss** | 3%; every ritual 16% or more (**miss**, first clause only) |
+| G8 | mages 4-20% of recruits | Adepts 1%, Shamans 2% **miss** | Adepts 2%, Shamans 5% **miss** (Crown only) |
+| G9 | Tithe within 5 points of the null mandate | +1.8, SE 4.8 (builds too weak to tell) | +1.2, SE 3.8 **pass**; scripted bleeding build 50% |
+| G10 | Regent's Court at most 60%; no more capped than the others | 55%; 2% capped vs 0% **miss** | 58%; 1% vs 1% **pass** |
+| G11 | fog length within 3 turns; Far Sights in 30%+; Crown / Clans 40-60% (report) | +1; 46%; 37 / 63 fog, 49 / 51 control **pass** | +1; 39%; 44 / 56 fog, 53 / 47 control **pass** |
+| G12 | earlier games identical; M2's F | 72 of 72, fixtures identical; F 68% (magic off 68%) **pass** | the same **pass** |
+| G13 | 0 of everything | 17 forecast mismatches (one cause, below) **miss** | 0 in 5,292 games **pass** |
+| G14 | 1-4 hp per gold (report) | Dawn Blessing 3.4, Bloodrot 2.7, Blood Moon 4.5 | 3.1, 2.8, 3.3 |
+
+**Still missed, and why** (each is a target to tune toward, and none is a bug):
+1. **G2, the ritual clause.** Without fog the Crown has three rituals and uses one routinely: Dawn Blessing is cast about once a game, Sanctum Ward only in answer to a threat, Bastion at most twice. Nothing in §13.3's range moved it: Dawn Blessing at 15 gold (not 12) kept its share at 67%; Bloodrot at 19 (not 15) kept Bloodrot at 53-57%; budgets 9 for 3 turns, Bastion's cap 3 and `RITUAL_SHARE` 0.5 all landed within 3 points of the same share. The AI's rules decide who casts what, not the prices. The Clans' Bloodrot is 56% (45% in the fog games). The top-why clause passes with room (the biggest, Sunlance, is 3%).
+2. **G7, the first clause.** The first ritual of a game comes on turn 13 (median), because the AI researches a school's tier II after its transformation (§10.2), and the transformation lands on turn 10, inside G6's 8-12. By turn 12 a ritual has been cast in 33% of the games that reach it, by turn 14 in 57%. In the fog games Far Sight needs no research, and a ritual comes by turn 10 in 42%. Arcana costs (tier II 15 → 12) would pull it forward by under a turn. **Question for Alex (§20, 10):** relax the band to turn 14, or let the AI research tier II before the transformation (it costs the transformation about two turns).
+3. **G8, the Crown.** Adepts are 2% of the Crown's recruits (Shamans 5%). Cost 15 and hp 10 (the ends of §13.3's range) and the ratio 1 in 4 took the Crown from 1% to 2%. The computer buys where its recruits stand, the capital's fort, where Shield of Law covers nothing, so an Adept is worth less to it than a Crossbowman per gold (0.0073 against 0.0091 of value a gold in `AIPlayer._recruit_value`, for a typical garrison; at cost 18 and hp 8 it was 0.0049). Sunlance 5 would close part of the gap but is out of the Regent's range (3-4).
+
+**What else the run found:**
+- **G12's band F (sacrifices in 15-50% of games) is outside its band, and was before magic:** 68% with magic off, the same with magic on. It is judged against the control: magic moves it by under 5 points. The literal reading misses (#131 and #147 reported the same miss).
+- **The one G13 failure at the start was the harness:** a Sanctum Ward that ends a rival curse names it by its view id under fog (§2.7), and the forecast check compared ids. It now compares the number ended.
+- **Scouting is lopsided:** the Crown sent a scout in 73% of fog games, the Clans in 35% (M5-4 measured 100% and 22%). Fog did not move the split by much: Crown / Clans 44 / 56 with fog against 53 / 47 without, both inside 40-60%. M5-4's untested fix (count any free army of up to 3 units that holds a scout) was not needed.
+- **Tithe pairs use stronger builds than the presets.** Tithe of Blood costs 3 of the 10 power and the presets spend 0, 5 and 10, so a pair keeps what suits the mandate (`Simulator.TITHE_KEEPS`): Beast-God Unbound keeps nothing, Clan Moot its Blood Frenzy, Blood of the Fang its Iron Discipline. Left to trim from the end they dropped to 2 power or less and the computer plays that ruler at home, where the Clans won 8% in both runs and showed nothing.
+- **Presets:** Clan Moot (65-66%) and Regent's Court (57-58%) are the strong ones, Iron Crown (38-40%) and Beast-God Unbound (46%) the weak ones, as in #147. Magic did not move them.
+
+**How the tool reads the bands** (so a different reading is one line to change): G1's "researched" is by the end of the game, among games that reach turn 10; "used" is a battle spell cast or a ritual ordered. G2's top "why" is the first chosen factor of a battle's report, counting `spell_<id>` and `morale_spell_<id>` as the spell. G3's "a caster" is a mage or an enchantment in the battle. G7's "cast by turn 10" counts a cast order resolved on turn 10 or earlier; Far Sight is judged in the fog games. G11's successful Far Sight is cast (not turned aside) with the reading not blocked. G12's records are `tests/fixtures/main_records.json` and `m5_base_records.json` replayed turn by turn, plus the computer's rerun of the second. G13's hit point ledger is, for every army that fought nothing and kept its fighters, the change in its hit points against the events that move them outside a battle (Mending Light, ruler healing, Hallowed Land and the Forges, blessings, curses, blood paid); transformations, sacrificed Veteran Levies and nodes that change hit points set the faction's armies aside that turn. The snapshot probe is `tests/fog_test_kit.gd`'s perturbation plus a rival's enchantment counter, Bastion list and out-of-sight wards, curses and sights, on every 10th turn of every fog game, checked against the real view and the computer's orders.
+
 ---
 
 ## 14. engine changes at a glance (for builders)
@@ -1706,7 +1759,7 @@ art          M5-12 (now) ── M5-13
 18. **Seasons are deferred** (§20).
 19. **Art:** 4 new figures, 4 portraits, 14 icons and 5 VFX sheets, for 118 credits planned and 177 with reserve, against a budget of 180.
     - The cheaper option is figures and portraits only (104).
-20. **First-pass numbers, not yet simulated.** They follow #41's breakpoint rule and M2's rules of thumb. M5-11 tunes within §13.3.
+20. **First-pass numbers, simulated once.** They followed #41's breakpoint rule and M2's rules of thumb. M5-11 measured them and tuned within §13.3 (§13.4): the mages, the mage ratio and the Blood Moon changed; the rest stood.
 21. **All names are proposals,** and the lore writers' room can rename any of them:
     - the schools ("Law" was renamed from "Order", so it can't be confused with orders)
     - every spell and ritual
@@ -1724,6 +1777,9 @@ art          M5-12 (now) ── M5-13
 7. **Hotseat honesty:** is "the save file holds the truth" acceptable, or should fog wait for per-player files? And should there be an ironman option against the computer?
 8. **Defaults:** when should Magic and Fog become on by default? After your playtest of this milestone, or later?
 9. **Budget:** 180 Ludo credits for the M5 batch, or the 104-credit option with figures and portraits only?
+10. **When should the first ritual come?** G7 asks for one by turn 10 in 80% of games, and the computer researches a ritual after its transformation, which lands on turn 10. The first ritual comes on turn 13. Relax G7 to turn 14, or let the computer research tier II before the transformation (the transformation then comes about two turns later, against G6's 8-12)?
+11. **Band F.** M2's "a sacrifice in 15-50% of games" has missed since #131 (68% with or without magic). G12 judges it against the magic-off control. Widen it (#147 proposed 15-70%), or keep it and judge the contract by the control?
+12. **The Crown's mages.** The computer buys 2 Adepts in 100 recruits against the Clans' 5 Shamans, because its recruits stand in a fortified capital where Shield of Law covers nothing. Teach it to count Shield of Law where the army will fight, or accept two kinds of mage player?
 
 ---
 
