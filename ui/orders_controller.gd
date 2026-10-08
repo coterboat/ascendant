@@ -151,7 +151,7 @@ func cast_preview(ritual: String, army_id: String, target: String, pay: String =
 	var order := CastOrder.new(ritual, army_id, target, pay, size)
 	var list := orders()
 	list.append(order)
-	return MagicRules.forecast_ritual(state, faction_id, order, list)
+	return MagicRules.forecast_ritual(state, faction_id, order, list, Forecast.veiled_provinces(view_state(), faction_id))
 
 
 ## The queued Sacrifice order, or null.

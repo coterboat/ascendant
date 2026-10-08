@@ -1018,7 +1018,7 @@ static func _read_capital(state: GameState, faction_id: String, province_id: Str
 ## wards in sight), and the text says the risk. Returns {"ok", "code", "reason" (when not ok), "effect" (ritual_effect's
 ## result), "lines" (the sentences), "sections" (the same, each with its kind: effect, blood, risk or pin), "text" (them
 ## joined), "effect_text" (what it does in one sentence, for the orders list)}.
-static func forecast_ritual(state: GameState, faction_id: String, order, orders: Array = []) -> Dictionary:
+static func forecast_ritual(state: GameState, faction_id: String, order, orders: Array = [], veiled: Dictionary = {}) -> Dictionary:
 	var board := RulerRules.state_after_orders(state, faction_id, orders)
 	var before := []
 	for o in orders:
@@ -1044,7 +1044,7 @@ static func forecast_ritual(state: GameState, faction_id: String, order, orders:
 		if item.order == order:
 			effect = fx
 			break
-	var sections := forecast_sections(board, faction_id, effect, copy, orders)
+	var sections := forecast_sections(board, faction_id, effect, copy, orders, veiled)
 	var lines := sections.map(func(s): return String(s.text))
 	var short := String(lines[0]) if String(effect.outcome) != CAST else brief_words(board, copy, faction_id, effect)
 	return {"ok": true, "code": "", "reason": "", "effect": effect, "lines": lines, "sections": sections, "text": " ".join(lines),
@@ -1054,13 +1054,13 @@ static func forecast_ritual(state: GameState, faction_id: String, order, orders:
 ## The forecast's sentences for a ritual_effect result (to the player, §11.2): what it will do with your numbers, the
 ## price (or the soldiers who bleed), the risk of a ward, and the pin. `state` is the state before; `after` the copy
 ## the effect was applied to.
-static func forecast_lines(state: GameState, faction_id: String, fx: Dictionary, after: GameState, orders: Array = []) -> Array:
-	return forecast_sections(state, faction_id, fx, after, orders).map(func(s): return String(s.text))
+static func forecast_lines(state: GameState, faction_id: String, fx: Dictionary, after: GameState, orders: Array = [], veiled: Dictionary = {}) -> Array:
+	return forecast_sections(state, faction_id, fx, after, orders, veiled).map(func(s): return String(s.text))
 
 
 ## forecast_lines with what each sentence is, for the cast dialog's headings (M5-8): [{"kind" ("effect", "blood", "risk" or
 ## "pin"), "text"}], in the order the player reads them.
-static func forecast_sections(state: GameState, faction_id: String, fx: Dictionary, after: GameState, orders: Array = []) -> Array:
+static func forecast_sections(state: GameState, faction_id: String, fx: Dictionary, after: GameState, orders: Array = [], veiled: Dictionary = {}) -> Array:
 	var out := []
 	var ritual := String(fx.ritual)
 	var name := spell_name(ritual)
@@ -1073,7 +1073,7 @@ static func forecast_sections(state: GameState, faction_id: String, fx: Dictiona
 		out.append({"kind": "effect", "text": "%s for %s: %s" % [head, _price_words(fx), _effect_words(state, after, faction_id, fx, true)]})
 	if int(fx.hp) > 0:
 		out.append({"kind": "blood", "text": _blood_words(state, faction_id, fx, true)})
-	var risk := ward_risk_line(state, faction_id, fx)
+	var risk := ward_risk_line(state, faction_id, fx, veiled)
 	if not risk.is_empty():
 		out.append({"kind": "risk", "text": risk})
 	out.append({"kind": "pin", "text": pin_line(state, faction_id, fx, orders)})
@@ -1082,8 +1082,9 @@ static func forecast_sections(state: GameState, faction_id: String, fx: Dictiona
 
 ## The risk of a rival's ward, from what the caster can see (§11.2): "" when none applies. A ward seen turns the cast aside
 ## (the forecast's first line says so); with none seen, one cast this turn would still turn it aside (wards resolve first),
-## and out of sight (a fog view) the ward can't be seen at all.
-static func ward_risk_line(state: GameState, faction_id: String, fx: Dictionary) -> String:
+## and out of sight the ward can't be seen at all: `veiled` ({province id: true}, Forecast.veiled_provinces: the provinces a
+## fog view can't see, {} without fog) is the caller's, so no rule here reads the fog.
+static func ward_risk_line(state: GameState, faction_id: String, fx: Dictionary, veiled: Dictionary = {}) -> String:
 	if String(fx.outcome) != CAST or String(fx.target).is_empty():
 		return ""
 	var p := state.find_province(String(fx.target))
@@ -1092,7 +1093,7 @@ static func ward_risk_line(state: GameState, faction_id: String, fx: Dictionary)
 	var half := floori(float(int(fx.price)) / MagicData.TURNED_ASIDE)
 	var costs := "%d hit points in blood" % (half * MagicData.BLOOD_PER_GOLD) if int(fx.hp) > 0 else "%d gold" % half
 	var rival := _the(state, p.owner)
-	if state.fog and state.is_view and String(FogRules.sight(state, faction_id).get(p.id, FogRules.VEILED)) == FogRules.VEILED:
+	if veiled.has(p.id):
 		return "%s is out of sight, so you can't see whether %s has warded it: if it has, %s will be turned aside and half its price (%s) is spent." % [
 			p.name, rival, spell_name(String(fx.ritual)), costs]
 	return "No ward seen on %s at the start of the turn; one cast this turn would still turn %s aside, for half its price (%s)." % [
@@ -1127,10 +1128,10 @@ static func seen_there_words(state: GameState, faction_id: String, province_id: 
 	for a in state.armies:
 		if a.location != province_id or a.owner == faction_id:
 			continue
-		var level := String(a.seen.get("level", ""))
-		if level == FogData.MEMORY:
+		var level := String(a.seen.get("level", ""))  # Army.seen: "clear", "glimpse" or "memory" (a ghost)
+		if level == "memory":
 			continue
-		rough = rough or level == FogRules.GLIMPSE
+		rough = rough or level == "glimpse"
 		n += a.units.size() + (1 if a.commander != null else 0) + (1 if a.ruler != null else 0)
 	if n == 0:
 		return "none you can see"
@@ -1177,7 +1178,10 @@ static func _effect_words(state: GameState, after: GameState, faction_id: String
 			var names := Array(fx.blessed).map(func(aid): return TurnReportText.army_name(after, String(aid), faction_id))
 			var effect := "each heals %d hit points a turn, wherever it goes, and a side at least half blessed fights with +1 morale." % int(n.value)
 			if own:
-				return "blesses %s there (%s) through turn %d: %s Armies arriving this turn aren't blessed." % [
+				# §11.2: each army with its size ("the Crown's 3rd (24 fighters)").
+				names = Array(fx.blessed).map(func(aid): return "%s (%s)" % [TurnReportText.army_name(after, String(aid), faction_id),
+					fighters_words(after, after.find_army(String(aid))) if after.find_army(String(aid)) != null else "gone"])
+				return "blesses %s there, %s, through turn %d: %s Armies arriving this turn aren't blessed." % [
 					_count(names.size(), "army of yours", "armies of yours"), _and_list(names), until, effect]
 			return "%s %s blessed through turn %d: %s" % [Serial.cap(_and_list(names)), "is" if names.size() == 1 else "are", until, effect]
 		"summon":

@@ -22,6 +22,7 @@ signal codex_requested(key: String)
 signal rings_changed(lit: Array, chosen: String)
 
 const PANEL_WIDTH := 580
+const NOTE := "Nothing changes until you cast. You can cancel the order from your orders list until you end the turn."
 const SECTION_TITLES := {"effect": "What it will do", "blood": "The price in blood", "risk": "The risk", "pin": "The army"}
 
 var orders: OrdersController = null
@@ -46,6 +47,7 @@ var numbers_box: VBoxContainer = null  # the price and the ritual's own number, 
 var budget_label: Label = null
 var confirm_button: Button
 var cancel_button: Button
+var note_label: Label  # the line above the Cast button; nudge() borrows it
 var _forecast_lines: Array = []  # the sentences on screen, for shown_forecast
 
 
@@ -116,11 +118,10 @@ func _init() -> void:
 	foot.name = "Foot"
 	foot.add_theme_constant_override("separation", 12)
 	box.add_child(foot)
-	var note := _label("Nothing changes until you cast. You can cancel the order from your orders list until you end the turn.", 13,
-		UiPalette.TEXT_SECONDARY)
-	note.name = "Note"
-	note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	foot.add_child(note)
+	note_label = _label(NOTE, 13, UiPalette.TEXT_SECONDARY)
+	note_label.name = "Note"
+	note_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	foot.add_child(note_label)
 	confirm_button = _button("ConfirmButton", "Cast", "")
 	confirm_button.add_theme_color_override("font_color", UiPalette.GILT)
 	confirm_button.pressed.connect(confirm)
@@ -145,10 +146,10 @@ func show_for(p_orders: OrdersController, p_army_id: String, select: String = ""
 	ritual_buttons.clear()
 	options = orders.cast_options(army_id)
 	var army := orders.state.find_army(army_id)
-	var who := MagicRules.casters(orders.state, army).map(func(c): return MagicRules.caster_name(c))
+	var who := MagicView.casters_phrase(orders.state, army)
 	intro_label.text = "%s at %s holds %s. It casts from where it starts the turn, before anyone moves, so it holds this turn." % [
 		RulerRules._cap(TurnReportText.army_name(orders.state, army_id)), MagicRules._province_name(orders.state, army.location if army else ""),
-		MagicRules._and_list(who)]
+		who]
 	var first := ""
 	for o in options:
 		var b := Button.new()
@@ -207,6 +208,12 @@ func set_pay(how: String) -> void:
 func set_wolves(n: int) -> void:
 	wolves = n
 	_refresh()
+
+
+## Says something to the player in the foot line (a click on a province out of reach); the next choice puts the usual note back.
+func nudge(text: String) -> void:
+	note_label.text = text
+	note_label.add_theme_color_override("font_color", UiPalette.GILT)
 
 
 ## True while the dialog is open and `province_id` is a legal target of the ritual shown: a click on it on the board picks it.
@@ -327,6 +334,8 @@ func _fill_choices(o: Dictionary) -> void:
 
 
 func _refresh() -> void:
+	note_label.text = NOTE
+	note_label.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 	for pid in target_buttons:
 		target_buttons[pid].set_pressed_no_signal(pid == target)
 	for how in pay_buttons:
@@ -388,6 +397,9 @@ func _fill_numbers() -> void:
 		return
 	var view := orders.view_state()
 	var fid := orders.faction_id
+	var head := _label("The numbers (hover each for where it comes from)", 13, UiPalette.GILT)
+	head.name = "Heading_numbers"
+	numbers_box.add_child(head)
 	var price := Breakdown.ritual_price(view, fid, ritual, wolves)
 	var text := "Price: %d gold" % int(price.total)
 	if pay == CastOrder.BLOOD:

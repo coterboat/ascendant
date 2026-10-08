@@ -643,8 +643,16 @@ func test_a_ward_seen_turns_the_cast_aside_and_out_of_sight_it_is_a_guess() -> v
 	var view := FogRules.view_state(fog, CLANS, {}, {})
 	var cast_army := _army_at(view, CLANS, "thornvale")
 	var far := CastOrder.new("bloodrot", cast_army.id, "crownkeep")
-	var vf := MagicRules.forecast_ritual(view, CLANS, far, [far])
+	var veiled := Forecast.veiled_provinces(view, CLANS)
+	for p in view.provinces:
+		assert_eq(veiled.has(p.id), String(FogRules.sight(view, CLANS).get(p.id, FogRules.VEILED)) == FogRules.VEILED, "%s: out of sight exactly when the view says so" % p.id)
+	assert_true(veiled.has("crownkeep"), "the Crown's capital is out of the Clans' sight at the start")
+	assert_eq(Forecast.veiled_provinces(fog, CLANS), {}, "no fog view, nothing is out of sight")
+	var vf := MagicRules.forecast_ritual(view, CLANS, far, [far], veiled)
 	assert_true(vf.ok, vf.text)
+	# Without the caller's list the rules say nothing about sight (they never read the fog).
+	var plain := MagicRules.forecast_ritual(view, CLANS, far, [far])
+	assert_true(String(plain.sections.filter(func(sec): return sec.kind == "risk")[0].text).begins_with("No ward seen on Crownkeep"))
 	var risk: Array = vf.sections.filter(func(sec): return sec.kind == "risk")
 	assert_eq(risk.size(), 1)
 	assert_true(String(risk[0].text).begins_with("Crownkeep is out of sight"), risk[0].text)
@@ -682,9 +690,18 @@ func test_the_dialog_lights_the_provinces_in_range_and_a_click_on_the_board_pick
 	assert_eq(map.selected_province_id, selected_before, "the province selection did not change")
 	map.select_province("thornvale")  # your own province: not a target of a curse
 	assert_eq(dialog.target, other)
+	assert_true(dialog.note_label.text.contains("Thornvale is out of this ritual's reach"), "the dialog says why nothing happened: %s" % dialog.note_label.text)
 	assert_true(map.orders.orders().is_empty(), "no order was queued by clicking")
+	map.select_province(legal[0])
+	assert_eq(dialog.note_label.text, CastDialog.NOTE, "the usual note is back after a pick")
 	# The 3D board's marks read the same sets.
 	assert_eq(map.cast_lit().size() + map.cast_ringed().size(), legal.size())
+	# A new state (a new turn, another seat) closes it: its orders are stale.
+	map.set_state(game.session.state().deep_copy([]), CLANS)
+	assert_false(map.casting(), "a new state closes the dialog")
+	assert_eq(map.cast_lit().size() + map.cast_ringed().size(), 0)
+	map.open_cast_dialog(army.id, "bloodrot")
+	dialog = map.cast_dialog
 	# Closing the dialog clears them.
 	dialog.close()
 	assert_false(map.casting())
@@ -747,6 +764,28 @@ func test_the_dialogs_preview_equals_the_result_for_a_cast() -> void:
 	assert_true(budget_line.begins_with("Gold after your queued rituals and recruits:"), "the budget line was shown")
 	assert_eq(after.find_faction(CLANS).gold, int(g.gold_next_turn), "gold after the turn is the forecast's: gold after rituals plus income")
 	game.free()
+
+
+func test_the_forecast_names_the_blessed_armies_with_their_size_and_bastion_its_count() -> void:
+	var s := _scripted()
+	s = Fx.with_nodes(s, CROWN, ["crown_drillyard", "crown_charters", "crown_oath_forge", "bastion"])
+	s.find_faction(CROWN).gold = 200
+	for pid in ["highcrag", "westwatch", "rivermarch"]:
+		s.find_province(pid).owner = CROWN
+	var regent := RulerRules.ruler_army(s, CROWN)
+	var blessing := CastOrder.new("dawn_blessing", regent.id, "highcrag")
+	var fc := MagicRules.forecast_ritual(s, CROWN, blessing, [blessing])
+	assert_true(fc.ok, fc.text)
+	var army := _army_at(s, CROWN, "highcrag")
+	var text := String(fc.sections[0].text)
+	assert_true(text.contains("blesses 1 army of yours there, %s (%s), through turn" % [TurnReportText.army_name(s, army.id, CROWN), MagicRules.fighters_words(s, army)]), text)
+	assert_true(text.contains("Armies arriving this turn aren't blessed"), text)
+	# Bastion: the count of forts used of the cap.
+	var raise := CastOrder.new("bastion", regent.id, "westwatch")
+	var rf := MagicRules.forecast_ritual(s, CROWN, raise, [raise])
+	assert_true(rf.ok, rf.text)
+	assert_true(String(rf.sections[0].text).contains("1 of %d Bastion forts used" % MagicData.BASTION_CAP), rf.sections[0].text)
+	_assert_no_raw_ids(text + String(rf.sections[0].text), "the blessing and bastion forecasts")
 
 
 # --- badges ------------------------------------------------------------------------------------------------
@@ -987,21 +1026,55 @@ func test_the_first_spell_text_and_every_magic_row_of_the_report() -> void:
 	# Nothing left to research: the report row that sells it (research_sold), with its codex link.
 	var all := _magic({CROWN: "regents_court"})
 	var every: Array = []
-	for nid in AscensionRules.node_ids(CROWN):
-		every.append(nid)
-	var done_ids: Array = every.filter(func(n): return String(AscensionRules.node_state(all, CROWN, String(n)).state) != AscensionRules.CLOSED)
-	var finished := AscensionRules.with_nodes(all, CROWN, ["crown_drillyard", "crown_charters", "crown_oath_dawn", "crown_celestial_host", "crown_arbalests", "crown_stables",
-		"sunlance", "shield_of_law", "dawn_blessing", "sanctum_ward", "sun_mastery", "law_mastery", "sunburst"])
-	for nid in AscensionRules.node_ids(CROWN):
-		if String(AscensionRules.node_state(finished, CROWN, String(nid)).state) == AscensionRules.AVAILABLE:
-			finished = AscensionRules.with_nodes(finished, CROWN, [nid])
+	for nid in AscensionRules.node_ids(CROWN) + MagicRules.arcana_ids(CROWN):
+		var side := String(AscensionRules.node_data(String(nid)).get("branch", ""))
+		if side != "living_iron" and nid != "bastion":  # the Forge side and Bastion close when the Dawn is sworn
+			every.append(nid)
+	var finished := AscensionRules.with_nodes(all, CROWN, every)
+	assert_true(AscensionRules.all_complete(finished, CROWN), "everything is researched or closed")
 	finished.find_faction(CROWN).research_points = 11
-	assert_true(AscensionRules.all_complete(finished, CROWN) or done_ids.size() > 0)
-	if AscensionRules.all_complete(finished, CROWN):
-		var r4 := TurnResolver.resolve(finished, {}, TurnResolver.seed_for_turn(finished))
-		var sold: Dictionary = r4.events.filter(func(e): return String(e.type) == "research_sold")[0]
-		assert_eq(String(sold.codex), "research_sold")
-		assert_true(RulesCodex.ENTRIES.has(String(sold.codex)))
+	var r4 := TurnResolver.resolve(finished, {}, TurnResolver.seed_for_turn(finished))
+	var sold: Dictionary = r4.events.filter(func(e): return String(e.type) == "research_sold")[0]
+	var pool := 11 + int(AscensionRules.research_rate(finished, CROWN).rate)
+	var expect := MagicRules.research_sold(pool)
+	assert_eq(int(sold.numbers.gold), int(expect.gold), "the research the phase gained is sold at 2 a gold")
+	assert_eq(int(sold.numbers.research), int(expect.research))
+	assert_eq(String(sold.codex), "research_sold")
+	assert_true(RulesCodex.ENTRIES.has(String(sold.codex)))
+	assert_true(String(sold.text).contains(str(int(expect.gold))), sold.text)
+	var chip := PathView.chip(finished, CROWN)
+	assert_true(String(chip.text).contains("nothing left"), chip.text)
+	assert_eq(String(chip.codex), "research_sold")
+	assert_eq(Breakdown.research_sold(finished, CROWN).gold, MagicRules.research_sold(11).gold)
+
+
+func test_a_curse_that_falls_on_you_says_how_to_stop_it() -> void:
+	var s := _clans_state()
+	var army := _army_at(s, CLANS, "thornvale")
+	var order := CastOrder.new("bloodrot", army.id, "crownkeep")
+	# The Crown knows Sanctum Ward: the line says to cast it, and what it does.
+	var r := TurnResolver.resolve(s, {CLANS: [order]}, TurnResolver.seed_for_turn(s))
+	var fell: Dictionary = r.events.filter(func(e): return String(e.type) == "ritual_fell")[0]
+	var text := String(fell.text)
+	assert_true(text.begins_with("Bloodrot fell on Crownkeep"), text)
+	assert_true(text.contains("To stop it, the Aurel Crown can cast Sanctum Ward on Crownkeep (it bites once more, then ends), or move out."), text)
+	assert_true(text.contains("%d hit points" % int(MagicRules.spell_numbers("bloodrot", 0).value)), "the curse's number")
+	assert_true(text.contains("through turn %d" % int(fell.numbers.until_turn)), text)
+	assert_true(String(TurnReportText.line(fell, r.events, r.new_state, CROWN)).contains("To stop it"), "the owner reads it")
+	assert_eq(String(fell.codex), "spell_bloodrot")
+	# Without Law the line says what would end it and what it takes to reach.
+	var bare := GameState.with_magic(9, {CROWN: "regents_court", CLANS: {"ruler": "fang_chieftain", "mandates": []}})
+	bare = AscensionRules.with_nodes(bare, CLANS, ["bloodbolt", "bloodrot"])
+	for f in bare.factions:
+		f.gold = 100
+	var a2 := Fx.army(bare, CLANS, bare.new_army_id(CLANS), "thornvale", ["shamans"])
+	bare.find_province("thornvale").owner = CLANS
+	var r2 := TurnResolver.resolve(bare, {CLANS: [CastOrder.new("bloodrot", a2.id, "crownkeep")]}, TurnResolver.seed_for_turn(bare))
+	var fell2: Dictionary = r2.events.filter(func(e): return String(e.type) == "ritual_fell")[0]
+	var reach := MagicRules.reach_cost(bare, CROWN, "sanctum_ward")
+	assert_eq(reach, AscensionRules.node_cost("shield_of_law") + AscensionRules.node_cost("sanctum_ward"))
+	assert_true(String(fell2.text).contains("Sanctum Ward (Law: %d research to reach) would end it. Until then, move out or wait for the end of turn %d." % [reach, int(fell2.numbers.until_turn)]), fell2.text)
+	_assert_no_raw_ids(text + String(fell2.text), "the curse lines")
 
 
 func test_every_magic_event_row_has_a_line_and_a_valid_codex_link() -> void:

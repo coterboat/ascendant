@@ -2040,6 +2040,19 @@ static func spell_outlook(state: GameState, faction_id: String, spell_id: String
 	return out
 
 
+## The provinces a fog view can't see ({province id: true}), for forecasts that say "out of sight" (the cast dialog's risk of a
+## ward): {} for a state that is no fog view. MagicRules.forecast_ritual takes it, so the rules never read the fog.
+static func veiled_provinces(state: GameState, faction_id: String) -> Dictionary:
+	var out := {}
+	if not is_fog_view(state):
+		return out
+	var level := FogRules.sight(state, faction_id)
+	for p in state.provinces:
+		if String(level.get(p.id, FogRules.VEILED)) == FogRules.VEILED:
+			out[p.id] = true
+	return out
+
+
 # --- the spells of a battle you forecast, and what a fog view assumes ----------------------------------------
 
 ## The spell a rival's mage is assumed to cast when you know none of its spells (a fog view, §11.2: "Their Shamans:

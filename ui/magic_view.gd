@@ -442,6 +442,21 @@ static func recruit_warning(state: GameState, fid: String, unit_type_id: String,
 	return String(r.text) if bool(r.ok) and bool(r.exposed) else ""
 
 
+## The casters an army holds, as a phrase: "your 2 Sunstone Adepts", "the Ever-Regent", "your Thornmane Shamans and the Ninth Fang"
+## (each kind once, with its count: never "your Sunstone Adepts and your Sunstone Adepts").
+static func casters_phrase(state: GameState, army: Army) -> String:
+	var counts := {}
+	var listed := []
+	for c in MagicRules.casters(state, army):
+		var nm := MagicRules.caster_name(c)
+		if not counts.has(nm):
+			counts[nm] = 0
+			listed.append(nm)
+		counts[nm] += 1
+	var bits := listed.map(func(nm): return nm if int(counts[nm]) == 1 else "your %d %s" % [int(counts[nm]), String(nm).trim_prefix("your ")])
+	return MagicRules._and_list(bits)
+
+
 # --- the HUD chip (M5-8) ---------------------------------------------------------------------------------------------
 
 ## The top bar's Magic chip: {"text" (two short lines: "Magic: 3 spells" and "2 mages · 1 cast ordered"), "breakdown" (one line for

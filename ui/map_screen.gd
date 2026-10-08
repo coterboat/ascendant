@@ -154,6 +154,8 @@ func set_fog(memory: Dictionary, intel: Dictionary, before: GameState) -> void:
 ## Shows `new_state` as seen by `faction_id`. Rebuilds every region; the state is only read.
 func set_state(new_state: GameState, faction_id: String) -> void:
 	if orders == null or orders.state != new_state or orders.faction_id != faction_id or orders.session != session:
+		if cast_dialog != null and cast_dialog.visible:
+			cast_dialog.close()  # M5-8: a new turn or another seat: the dialog's orders are stale
 		orders = OrdersController.new(new_state, faction_id, session)
 		status_text = ""
 	orders.fog_memory = fog_memory
@@ -230,6 +232,8 @@ func select_province(province_id: String) -> void:
 	if casting():  # M5-8: with the cast dialog open, a lit province is the target; any other click changes nothing
 		if cast_dialog.accepts_province(province_id):
 			cast_dialog.select_target(province_id)
+		else:
+			cast_dialog.nudge("%s is out of this ritual's reach. Pick a lit province, or cancel." % state.find_province(province_id).name)
 		return
 	# Two-click move: with one of your armies selected, clicking another province orders it there.
 	var mover := state.find_army(selected_army_id)
@@ -1662,7 +1666,7 @@ func _add_magic_lines(a: Army, box: Control) -> void:
 	cast.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	cast.focus_mode = Control.FOCUS_NONE
 	cast.tooltip_text = TooltipText.plain("Cast a ritual", "%s holds %s. %s" % [RulerRules._cap(TurnReportText.army_name(state, a.id)),
-		MagicRules._and_list(MagicRules.casters(state, a).map(func(c): return MagicRules.caster_name(c))), RulesCodex.text("cast_order")])
+		MagicView.casters_phrase(state, a), RulesCodex.text("cast_order")])
 	CodexLink.attach(cast, "cast_order", request_codex)
 	cast.pressed.connect(open_cast_dialog.bind(a.id, ""))
 	box.add_child(cast)

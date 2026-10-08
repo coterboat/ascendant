@@ -20,7 +20,10 @@ extends SceneTree
 ##                      file, so the first-game guide shows (MVP-1, #141), and the player's file is never read or written
 ## With --magic the person's seat also walks #116's playtest through the real screens: on turn 1 it opens the
 ## research panel's Magic tab (a shot), researches its first spell and sets the battle spellbook (a shot); once the
-## spell is known it opens the tab again (a shot) and recruits two mages (an orders shot that turn).
+## spell is known it opens the tab again (a shot) and recruits two mages (an orders shot that turn). M5-8 (#119): once a
+## mage stands in an army it shoots that army's panel (the casters line), the Magic tab with its spellbook preview and, when
+## the army can cast a ritual (Far Sight with --fog, or any ritual researched), the cast dialog, then orders the cast: that
+## turn's report (a shot) has the rituals rows.
 ##   --fast             skip the board's playback on turns that get no shot
 ## Windowed only: headless has no renderer, so the shots would be blank. walk.md lists every shot with the
 ## turn report's headline lines, so the walk can be read without opening the images.
@@ -41,6 +44,9 @@ var walk: PackedStringArray = []
 var shot_n := 0
 var mages_queued := 0  # --magic: the mages the person's seat has recruited
 var spell_seen := false  # --magic: the Magic tab was shot once the first spell was known
+var casters_seen := false  # --magic: the army panel and the spellbook preview were shot once a mage stood in an army
+var cast_done := false  # --magic: the cast dialog was shot and a ritual ordered
+var cast_turn := -1  # the turn that ritual was ordered: its report is shot
 
 
 func _initialize() -> void:
@@ -162,7 +168,7 @@ func _run() -> void:
 		var report := game.session.turn_report_for(human)
 		var mine := BattleHost.battles_of(game.session.battle_events(), human)
 		var lines := _headlines(report)
-		if turn == 1 or turn % every == 0 or not mine.is_empty() or game.session.is_over():
+		if turn == 1 or turn % every == 0 or not mine.is_empty() or game.session.is_over() or turn == cast_turn:
 			if not game.report_overlay.visible:
 				game.open_turn_report()
 			await _shot("t%02d_report" % turn, "Turn %d report: %s" % [turn, lines])
@@ -230,7 +236,42 @@ func _magic_steps(game: GameScreen, turn: int) -> bool:
 			break
 		mages_queued += 1
 		shot = true
+	await _magic_casters(game, turn)
 	return shot
+
+
+## M5-8: a mage stands in an army of the person's seat: its panel (the casters line), the Magic tab (the spellbook preview) and,
+## when the army can cast a ritual, the cast dialog (a shot) and the cast, ordered for this turn.
+func _magic_casters(game: GameScreen, turn: int) -> void:
+	var st := game.session.state()
+	var army: Army = null
+	for a in st.armies:
+		if a.owner == human and a.ruler == null and a.units.any(func(u): return MagicRules.is_mage(u.type)):
+			army = a
+			break
+	if army == null:
+		return
+	if not casters_seen:
+		casters_seen = true
+		game.map.select_province(army.location)
+		await _shot("t%02d_army_casters" % turn, "The army with the mages: the casters line and each spell with its number.")
+		game.research_hud.open_panel()
+		game.research_hud.panel.show_magic()
+		await _shot("t%02d_magic_tab_spellbook" % turn, "The Magic tab with the spellbook previewed for each army that holds a caster.")
+		game.research_hud.close_all()
+	if cast_done:
+		return
+	for o in game.map.orders.cast_options(army.id):
+		if not bool(o.ok):
+			continue
+		game.map.open_cast_dialog(army.id, String(o.ritual))
+		await _frames(2)
+		await _shot("t%02d_cast_dialog" % turn, "The cast dialog for %s: targets lit on the board, the forecast, the risk, the budget." % MagicRules.spell_name(String(o.ritual)))
+		game.map.cast_dialog.confirm()
+		cast_done = true
+		cast_turn = turn
+		walk.append("- turn %d: ordered %s from the army at %s" % [turn, MagicRules.spell_name(String(o.ritual)), army.location])
+		return
 
 
 func _menus() -> void:
