@@ -884,6 +884,283 @@ class SeatTests(unittest.TestCase):
         self.assertEqual([t["seat"] for t in rows["c"]["takes"]], ["codex", "grok", "claude"], "a redo knows every seat's take")
 
 
+class KeepBothTests(unittest.TestCase):
+    """TOOL-2: K keeps several takes of an item (`picks`), for a fusion: the verdict, canon, rejected.json and the lessons."""
+
+    LORE = R.REPO / "assets" / "_concept" / "lore"
+    GROUP = "zz" + TAG + "_reed"          # a canon group no real batch uses, removed afterwards
+    OWN = {"codex": "codex/chord.png", "grok": "grok/chord.png", "claude": "claude/chord.png"}
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lore_existed = cls.LORE.exists()
+        R.ensure_review_root()
+        cls.png = png_bytes()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.LORE / R.slug(cls.GROUP), ignore_errors=True)
+        if not cls.lore_existed:
+            try:
+                cls.LORE.rmdir()
+            except OSError:
+                pass
+
+    def setUp(self):
+        self.name = TAG + "_keep"
+        shutil.rmtree(R.REVIEW / self.name, ignore_errors=True)
+        shutil.rmtree(self.LORE / R.slug(self.GROUP), ignore_errors=True)
+        blob = lambda s: self.png + s.encode()
+        self.files = {f: blob(f) for f in (*self.OWN.values(), "n1.png", "n2.png", "solo.png")}
+        make_batch(self.name, {"title": "keep both", "mode": "concept", "items": [
+            {"id": "chord", "file": "codex/chord.png", "seat": "codex", "group": self.GROUP, "label": "Reed chord", "text": "codex prompt",
+             "takes": [{"file": "grok/chord.png", "seat": "grok", "prompt": "grok prompt"},
+                       {"file": "claude/chord.png", "seat": "claude", "prompt": "claude prompt"}]},
+            {"id": "plain", "file": "n1.png", "group": self.GROUP, "text": "shared prompt", "takes": [{"file": "n2.png"}]},
+            {"id": "solo", "file": "solo.png", "group": self.GROUP, "seat": "claude"},
+        ]}, self.files)
+        self.httpd = R.Server(("127.0.0.1", 0), R.Handler)
+        self.base = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def tearDown(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        shutil.rmtree(R.REVIEW / self.name, ignore_errors=True)
+        shutil.rmtree(self.LORE / R.slug(self.GROUP), ignore_errors=True)
+
+    def item(self, iid):
+        return {it["id"]: it for it in R.merged_batch(self.name)["items"]}[iid]
+
+    def entry(self, iid):
+        return R.load_review(R.REVIEW / self.name)["items"][iid]
+
+    def canon(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            code = R.main(["canon", self.name])
+        self.assertEqual(code, 0, out.getvalue())
+        return out.getvalue()
+
+    def lore(self):
+        return self.LORE / R.slug(self.GROUP)
+
+    ## K with and without a note
+    def test_k_with_a_note_is_good_with_changes(self):
+        every = list(self.OWN.values())
+        it = R.decide(self.name, "chord", verdict="revise", note="Codex's stance, Grok's lacquer sheen", takes=every)
+        self.assertEqual((it["status"], it["verdict"]), ("revise", "revise"))
+        self.assertEqual(it["picks"], every)
+        self.assertEqual([t["picked"] for t in it["takes"]], [True, True, True], "each kept chip carries the mark")
+        self.assertEqual([(k["file"], k["seat"], k["prompt"]) for k in it["kept"]],
+                         [("codex/chord.png", "codex", "codex prompt"), ("grok/chord.png", "grok", "grok prompt"),
+                          ("claude/chord.png", "claude", "claude prompt")], "every kept take with its seat and its own prompt")
+        e = self.entry("chord")
+        self.assertEqual((e["verdict"], e["picks"], e["note"]), ("revise", every, "Codex's stance, Grok's lacquer sheen"))
+        self.assertNotIn("pick", e)
+        self.assertEqual(R.summarize(R.merged_batch(self.name)["items"])["revise"], 1)
+
+    def test_k_without_a_note_is_good(self):
+        it = R.decide(self.name, "chord", verdict="accept", note="", takes=list(self.OWN.values()))
+        self.assertEqual((it["status"], it["note"], len(it["picks"])), ("accept", "", 3))
+        # Good with changes still needs its note, several takes or not
+        with self.assertRaises(R.ReviewError):
+            R.decide(self.name, "chord", verdict="revise", note="", takes=list(self.OWN.values()))
+
+    def test_the_page_posts_takes_over_http(self):
+        body = json.dumps({"batch": self.name, "id": "chord", "verdict": "revise", "note": "fuse them",
+                           "takes": ["grok/chord.png", "claude/chord.png"]}).encode()
+        rq = urllib.request.Request(self.base + "/api/decide", data=body, method="POST",
+                                    headers={"Content-Type": "application/json", "X-Review-Token": self.httpd.token})
+        with urllib.request.urlopen(rq, timeout=15) as r:
+            item = json.loads(r.read())["item"]
+        self.assertEqual((item["status"], item["picks"]), ("revise", ["grok/chord.png", "claude/chord.png"]))
+
+    ## Shift+click: only the marked takes
+    def test_a_marked_subset_keeps_only_those_in_take_order(self):
+        it = R.decide(self.name, "chord", verdict="revise", note="fuse", takes=["claude/chord.png", "grok/chord.png"])
+        self.assertEqual(it["picks"], ["grok/chord.png", "claude/chord.png"], "take order, whatever order they were marked in")
+        self.assertEqual([t["picked"] for t in it["takes"]], [False, True, True])
+        self.assertEqual([k["seat"] for k in it["kept"]], ["grok", "claude"])
+        self.assertEqual(it["seat"], "grok", "the first kept take stands in for the item")
+        self.assertEqual(it["src"], "grok/chord.png")
+
+    def test_one_marked_take_is_a_single_pick(self):
+        it = R.decide(self.name, "chord", verdict="accept", takes=["claude/chord.png"])
+        self.assertEqual((it["pick"], it.get("picks"), it.get("kept")), ("claude/chord.png", None, None))
+        e = self.entry("chord")
+        self.assertEqual(e["pick"], "claude/chord.png")
+        self.assertNotIn("picks", e)
+        # the item's own file alone is no pick at all
+        R.decide(self.name, "chord", verdict="accept", takes=["codex/chord.png"])
+        self.assertNotIn("pick", self.entry("chord"))
+
+    def test_bad_takes_are_refused(self):
+        for bad in (["nope.png", "grok/chord.png"], ["grok/chord.png", "../x.png"]):
+            with self.assertRaises(R.ReviewError) as cm:
+                R.decide(self.name, "chord", verdict="accept", takes=bad)
+            self.assertEqual(cm.exception.status, 404)
+        for bad in ("grok/chord.png", [3], {"a": 1}):
+            with self.assertRaises(R.ReviewError):
+                R.decide(self.name, "chord", verdict="accept", takes=bad)
+        (R.REVIEW / self.name / "claude" / "chord.png").unlink()
+        with self.assertRaises(R.ReviewError) as cm:
+            R.decide(self.name, "chord", verdict="accept", takes=list(self.OWN.values()))
+        self.assertEqual(cm.exception.status, 404, "a listed take whose file is gone is no take, as for `take`")
+        (R.REVIEW / self.name / "codex" / "chord.png").unlink()
+        with self.assertRaises(R.ReviewError) as cm:
+            R.decide(self.name, "chord", verdict="accept", takes=["codex/chord.png", "grok/chord.png"])
+        self.assertEqual(cm.exception.status, 409, "the item's own file is missing: can't accept it")
+        self.assertNotIn("chord", R.load_review(R.REVIEW / self.name)["items"])
+
+    def test_any_other_verdict_clears_the_picks(self):
+        R.decide(self.name, "chord", verdict="accept", takes=list(self.OWN.values()))
+        for verdict, extra in (("reject", {}), ("pending", {}), ("accept", {"take": "grok/chord.png"}), ("accept", {})):
+            R.decide(self.name, "chord", verdict="accept", takes=list(self.OWN.values()))
+            R.decide(self.name, "chord", verdict=verdict, **extra)
+            self.assertNotIn("picks", self.entry("chord"), verdict)
+            self.assertNotIn("picks", self.item("chord"))
+        self.assertEqual(self.entry("chord").get("pick"), None)
+        # a note on its own leaves the keep as it was
+        R.decide(self.name, "chord", verdict="accept", takes=list(self.OWN.values()))
+        R.decide(self.name, "chord", note="more menace")
+        self.assertEqual(len(self.item("chord")["picks"]), 3)
+
+    def test_changing_a_kept_take_is_a_new_take(self):
+        R.decide(self.name, "chord", verdict="accept", takes=list(self.OWN.values()))
+        self.assertEqual(self.item("chord")["status"], "accept")
+        later = time.time() + 30
+        os.utime(R.REVIEW / self.name / "claude" / "chord.png", (later, later))  # not the first take, but a kept one
+        it = self.item("chord")
+        self.assertEqual((it["status"], it["regenerated"]), ("pending", True))
+
+    def test_a_single_take_item_and_old_review_files_are_unchanged(self):
+        it = R.decide(self.name, "solo", verdict="accept")
+        self.assertNotIn("picks", it)
+        self.assertNotIn("kept", it)
+        # an old review.json: `pick` only
+        rv = R.load_review(R.REVIEW / self.name)
+        rv["items"]["chord"] = {"verdict": "revise", "note": "old", "pick": "grok/chord.png", "at": "2026-10-01T00:00:00",
+                                "file_mtime": (R.REVIEW / self.name / "grok" / "chord.png").stat().st_mtime}
+        R.atomic_write_json(R.REVIEW / self.name / "review.json", rv)
+        old = self.item("chord")
+        self.assertEqual((old["status"], old["pick"], old["seat"], old["src"]), ("revise", "grok/chord.png", "grok", "grok/chord.png"))
+        self.assertEqual([t["picked"] for t in old["takes"]], [False, True, False])
+        self.assertNotIn("picks", old)
+        self.assertEqual(old["text"], "grok prompt", "a single pick shows its own prompt, as before")
+        # a `picks` that names one live take, or none, is no keep-both
+        for picks in (["grok/chord.png"], ["gone.png", "also/gone.png"], "grok/chord.png"):
+            rv["items"]["chord"] = {"verdict": "accept", "picks": picks}
+            R.atomic_write_json(R.REVIEW / self.name / "review.json", rv)
+            self.assertNotIn("picks", self.item("chord"))
+
+    ## canon
+    def test_canon_copies_every_kept_take_into_one_entry(self):
+        R.decide(self.name, "chord", verdict="revise", note="Codex's stance, Grok's lacquer sheen",
+                 takes=["codex/chord.png", "grok/chord.png", "claude/chord.png"])
+        R.decide(self.name, "plain", verdict="accept", takes=["n1.png", "n2.png"])
+        R.decide(self.name, "solo", verdict="accept")
+        out = self.canon()
+        names = sorted(p.name for p in self.lore().iterdir())
+        self.assertEqual(names, ["CANON.md", "chord__claude.png", "chord__codex.png", "chord__grok.png",
+                                 "plain__take1.png", "plain__take2.png", "solo.png"])
+        for seat, rel in self.OWN.items():
+            self.assertEqual((self.lore() / f"chord__{seat}.png").read_bytes(), self.files[rel])
+        self.assertIn("copied 6", out)
+        self.assertIn("3 new entries", out)
+        md = (self.lore() / "CANON.md").read_text(encoding="utf-8")
+        self.assertEqual(md.count("<!-- canon:item "), 3, "one entry per item, not per image")
+        block = re.search(r"<!-- canon:item \S+/chord file=chord__codex\.png files=(\S+) -->\n(.*?)<!-- /canon:item -->", md, re.S)
+        self.assertIsNotNone(block, md)
+        self.assertEqual(block.group(1), "chord__codex.png,chord__grok.png,chord__claude.png")
+        body = block.group(2)
+        self.assertIn("- **verdict:** Good with changes", body)
+        self.assertIn("- **kept:** 3 takes (a fusion", body)
+        self.assertIn("- **note:** Codex's stance, Grok's lacquer sheen", body)
+        for seat, prompt in (("codex", "codex prompt"), ("grok", "grok prompt"), ("claude", "claude prompt")):
+            self.assertIn(f"![Reed chord, {seat}](chord__{seat}.png)", body)
+            self.assertIn(f"- **image:** `chord__{seat}.png`\n- **seat:** {seat}\n- **prompt:** {prompt}\n", body)
+        plain = re.search(r"<!-- canon:item \S+/plain file=plain__take1\.png files=\S+ -->\n(.*?)<!-- /canon:item -->", md, re.S).group(1)
+        self.assertIn("- **verdict:** Good\n", plain)
+        self.assertEqual(plain.count("- **prompt:** shared prompt"), 2, "a take with no prompt of its own shows the item's")
+        self.assertEqual(plain.count("- **seat:** —"), 2)
+        # the canon copy of the item is its first kept take
+        self.assertEqual(R.canon_file(self.name, self.item("chord")).resolve(), (self.lore() / "chord__codex.png").resolve())
+
+    def test_canon_is_safe_to_run_again_and_follows_a_redone_take(self):
+        R.decide(self.name, "chord", verdict="accept", takes=["grok/chord.png", "claude/chord.png"])
+        self.canon()
+        first = (self.lore() / "CANON.md").read_text(encoding="utf-8")
+        again = self.canon()
+        self.assertEqual((self.lore() / "CANON.md").read_text(encoding="utf-8"), first)
+        self.assertIn("unchanged 2", again)
+        # the second kept take is redone and kept again: its copy is replaced, not renamed
+        p = R.REVIEW / self.name / "claude" / "chord.png"
+        p.write_bytes(self.png + b"redone")
+        R.decide(self.name, "chord", verdict="accept", takes=["grok/chord.png", "claude/chord.png"])
+        out = self.canon()
+        self.assertEqual(sorted(x.name for x in self.lore().iterdir()), ["CANON.md", "chord__claude.png", "chord__grok.png"], out)
+        self.assertEqual((self.lore() / "chord__claude.png").read_bytes(), self.png + b"redone")
+        self.assertNotIn("is taken", out)
+        # going back to one take: the entry is the single image's again, and nothing is deleted
+        R.decide(self.name, "chord", verdict="accept", take="grok/chord.png")
+        self.canon()
+        md = (self.lore() / "CANON.md").read_text(encoding="utf-8")
+        self.assertIn("file=chord.png -->", md)
+        self.assertNotIn("files=", md)
+        self.assertTrue((self.lore() / "chord__claude.png").is_file())
+
+    ## rejected.json
+    def test_rejected_json_says_fuse(self):
+        R.decide(self.name, "chord", verdict="revise", note="Codex's stance, Grok's sheen",
+                 takes=["codex/chord.png", "grok/chord.png"])
+        R.decide(self.name, "plain", verdict="revise", note="warmer", take="n2.png")
+        path, n = R.write_rejected(self.name)
+        rows = {e["id"]: e for e in json.loads(path.read_text())}
+        self.assertEqual(n, 2)
+        chord = rows["chord"]
+        self.assertEqual((chord["verdict"], chord["fuse"], chord["note"]), ("revise", True, "Codex's stance, Grok's sheen"))
+        self.assertEqual(chord["kept"], [{"file": "codex/chord.png", "seat": "codex", "prompt": "codex prompt"},
+                                         {"file": "grok/chord.png", "seat": "grok", "prompt": "grok prompt"}])
+        self.assertEqual([t["seat"] for t in chord["takes"]], ["codex", "grok", "claude"], "every candidate, as before")
+        self.assertNotIn("fuse", rows["plain"], "a single pick is a plain Good with changes")
+        self.assertNotIn("kept", rows["plain"])
+        # Good (no note) with several takes is not redone, and Bad has no fusion
+        R.decide(self.name, "chord", verdict="accept", note="", takes=list(self.OWN.values()))
+        R.decide(self.name, "plain", verdict="reject")
+        path, n = R.write_rejected(self.name)
+        rows = {e["id"]: e for e in json.loads(path.read_text())}
+        self.assertEqual(set(rows), {"plain"})
+        self.assertNotIn("fuse", rows["plain"])
+
+    ## lessons
+    def test_every_kept_take_counts_for_its_seat(self):
+        R.decide(self.name, "chord", verdict="revise", note="fuse", takes=["codex/chord.png", "grok/chord.png"])
+        seats = R.lessons([self.name])["seats"]
+        self.assertEqual(seats["codex"], {"good": 0, "revise": 1, "bad": 0, "passed": 0, "items": 1})
+        self.assertEqual(seats["grok"], {"good": 0, "revise": 1, "bad": 0, "passed": 0, "items": 1})
+        self.assertEqual(seats["claude"], {"good": 0, "revise": 0, "bad": 0, "passed": 1, "items": 1}, "no take kept: passed over")
+        R.decide(self.name, "chord", verdict="accept", takes=list(self.OWN.values()))
+        seats = R.lessons([self.name])["seats"]
+        self.assertEqual({s: (r["good"], r["revise"], r["passed"]) for s, r in seats.items()},
+                         {"codex": (1, 0, 0), "grok": (1, 0, 0), "claude": (1, 0, 0)})
+        # a single pick still goes to one seat only
+        R.decide(self.name, "chord", verdict="accept", take="grok/chord.png")
+        seats = R.lessons([self.name])["seats"]
+        self.assertEqual({s: (r["good"], r["passed"]) for s, r in seats.items()},
+                         {"codex": (0, 1), "grok": (1, 0), "claude": (0, 1)})
+
+    ## the page
+    def test_the_page_has_k_and_the_shift_click_marks(self):
+        html = R.INDEX_HTML.read_text(encoding="utf-8")
+        self.assertIn('id="kKeepWrap"', html, "K in the key footer")
+        self.assertIn("<b>keep both</b>", html, "K in the key help")
+        self.assertIn("e.shiftKey && canKeep", html, "Shift+click marks a take")
+        self.assertIn("Kept ${it.picks.length} takes", html, "the row says how many were kept")
+        # Blind still hides the seats of an item until it has a verdict
+        self.assertIn("const seatHidden = it => blind() && (it.status === 'pending' || it.status === 'missing');", html)
+
+
 class ModelTests(unittest.TestCase):
     """3D models: kind, MIME types, "in game now", and the vendored viewer that works offline."""
 
