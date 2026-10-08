@@ -342,6 +342,43 @@ default (Settings > Battle view keeps Simple).
   and skip, the game unchanged, hover and click selection, raw ids, reduced motion, the flash limiter, the ground
   plan, the camera, the legend rows, the creature scale, the host contract, the CPU budget).
 
+## Battles at walls (M3c S-5, #103)
+
+A battle whose log has a `siege` block (a game with sieges, at a fort) stands at the walls instead of on the open
+ground (design/M3C_SIEGES.md 10.3). The stage only shows: nothing here changes a result, draws a random number or
+calls the rules. Everything it needs is in the log's `siege` block (kind, why, fort, walls, from_inside, garrison)
+and, for the engines, the game `play()` was given.
+
+- **The fort on the land** (`BattleStage3D._dress_forts`): the stage's own WorldView draws the fort the log
+  describes through the board's own `show_forts` rows (the kit of its level and builder, the damage look of its
+  walls: intact, damaged, battered, breached), over the map's; with no siege block the map's forts come back.
+- **Where everyone stands** (`battle_walls.gd`, pure; `BattleWalls.plan`, same result shape as `BattleFormation.plan`):
+  - *storm*: the garrison on the wall walk (its Volley tier and mages along the gate-side wall, the commander and
+    ruler on the gatehouse, then the side walls, then the yard); in the Clans' kit and the palisade there is no walk,
+    so it stands in the yard behind the stakes. The stormers form up at the foot, facing the wall, with ladders
+    leaning on it (the Crown) or the trunk before the gate (the Clans).
+  - *breach*: the gate-side wall is down (the breached look): the garrison's front rank in the gap, the rest behind
+    it in the yard, then on the stubs of the side walls; the attackers form up before the gap.
+  - *open* (a sally, a relief, a relief with a sally, the gate battle): both lines form up before the gate, the side
+    with fighters from inside nearest it, and exactly those fighters (`from_inside`) march out of the gate in a column
+    during the deploy beat (`march_out` in `battle_figures.gd`).
+  - A table of each model's walls (`BattleWalls.SPECS`: deck heights, the gatehouse, the yard's floor, what a
+    fighter must not stand inside) was measured off the models; a model row's own `walls` group overrides it, and
+    `tests/test_battle_stage_walls.gd` checks the table against the models, so an art pass that swaps one says so.
+- **Scenery** (`battle_scenery.gd`): ladders or the trunk at the wall, and the besiegers' camp beside their lines: a
+  tent to an army with a fire, the siege works and the engines the besiegers still carry (from the game `play()` was
+  given: an army lost in the battle took its engines with it, and the log does not keep them). Models from the table
+  where there are any (`camp.<faction>`, `siege_works`, `siege_engine`), else the code primitives of `kit.gd`.
+- **The walls' +N reads before the first hit**: the caption strip's second line says what the walls (or their lack)
+  mean for the fight about to be played, a plate hangs over the gate-side wall for the whole battle (with the
+  wall-strength cells in the steps a storm counts), and both explain themselves on hover and link to the codex.
+  The top bar's chip (M3c S-3) is unchanged.
+- **Run it**: `godot --path . -- --battle3d --fixture siege_storm_keep` (any case of `tests/walls_stage_fixtures.gd`
+  with `siege_` in front: `siege_breach`, `siege_sally`, `siege_storm_capital_beasts`, ...).
+- **Tests**: `tests/test_battle_stage_walls.gd` (the storm, breach and open placements, nobody inside a wall, the table
+  against the models, the walls' defense on screen before the first hit, the fort on the land, the camp and its
+  engines, a fighter on a wall, the camera, determinism, files, the stage only shows).
+
 # The spike (PR #81, `spike-3d-world`)
 
 A real 3D world map for ascendant, built from the real rules, to judge the look and the cost before the art
