@@ -137,7 +137,9 @@ It makes the approved art the reference that later 3D work starts from:
   `<!-- /canon:item -->` markers, so the next run updates it in place; anything you write in the file outside the markers is kept.
 - it is safe to run again: identical images are left alone (`=`), an entry is rewritten only when something changed, and a
   redone image (a newer file for an item you accepted again) replaces its copy. An item that is no longer Good or Good with
-  changes loses its entry (the run says so), but **an image is never deleted**.
+  changes loses its entry (the run says so), and its image stays. The one thing `canon` deletes is an image it wrote itself for an entry
+  whose new version lists other images (a single take that became keep both, or the reverse; the run prints it with `-`). A file
+  no entry ever listed is never touched.
 - it never overwrites what it did not write: when `<item id>.<ext>` is already another batch's canon image, or a file nobody wrote
   through `canon`, the entry's image is named `<item id>__<batch>.<ext>` instead.
 - `--dry-run` lists what it would do and writes nothing. It also writes `review/<batch>/rejected.json` (the Bad items, and the

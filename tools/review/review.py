@@ -1770,6 +1770,14 @@ CANON_HEAD = (
 _CANON_CACHE: dict = {}
 
 
+def _canon_entry_files(m: re.Match) -> set[str]:
+    """The image names an entry's marker lists: file= and, for keep both, files=."""
+    fs = {unquote(m.group(2))}
+    if m.group(3):
+        fs |= {unquote(x) for x in m.group(3).split(",") if x}
+    return fs
+
+
 def canon_group(item: dict) -> str:
     return slug(str(item.get("group") or ""), "ungrouped")
 
@@ -1921,6 +1929,7 @@ def cmd_canon(args) -> int:
         text = md.read_text(encoding="utf-8") if md.is_file() else CANON_HEAD.format(group=group)
         mine = entries.get(group, {})
         seen: set[str] = set()
+        orphans: set[str] = set()  # images one of our entries used to list and its new version doesn't
 
         def swap(m: re.Match) -> str:
             nonlocal changed, dropped
@@ -1929,6 +1938,9 @@ def cmd_canon(args) -> int:
                 seen.add(key)
                 if mine[key][1] != m.group(0):
                     changed += 1
+                    nm = CANON_ITEM_RE.search(mine[key][1])
+                    if nm:
+                        orphans.update(_canon_entry_files(m) - _canon_entry_files(nm))
                 return mine[key][1]
             if key.startswith(prefix):  # this batch's entry for an item that is not kept any more
                 dropped += 1
@@ -1948,6 +1960,18 @@ def cmd_canon(args) -> int:
                 tmp = md.with_name(".CANON.md.tmp")
                 tmp.write_text(out, encoding="utf-8")
                 os.replace(tmp, md)
+        ## an image canon itself wrote for an entry that now uses other images goes (10-8: a single-take run, then
+        ## keep both, left three byte-identical copies nobody listed); anything still listed by any entry stays
+        still: set[str] = set()
+        for m2 in CANON_ITEM_RE.finditer(out):
+            still |= _canon_entry_files(m2)
+        gdir = root / group
+        for f in sorted(orphans - still):
+            pth = gdir / f
+            if pth.parent == gdir and pth.is_file():
+                print(f"  {tag}-  {pth.relative_to(REPO.resolve())}  (its entry now uses other images)")
+                if not dry:
+                    pth.unlink()
 
     rejected = rejected_entries(mb["items"], mb["mode"])
     rj = d / "rejected.json"
