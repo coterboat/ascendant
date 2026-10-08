@@ -126,6 +126,20 @@ extends RefCounted
 ##   * When the objective is out of sight, the nearest free scout army takes one safe step toward it (AIFog.scout).
 ##   * Its notes say what it did and why in the same plain words ("Scouting: ..."); the screen keeps them back until
 ##     the game is over (AISeat.report_notes).
+##
+## Games with magic (M5-10, #121; design/M5_MAGIC_FOG.md §10.2; ai/ai_magic.gd). Every rule is a rule with ties by id and no
+## draw from the seat's RNG; with magic off none of it runs and games are the same as before:
+##   * Research: AIPaths.sequence puts the arcana in the plan (the aligned school's tier I after the first ordinary node, then
+##     the path, then the aligned tier II, tier III and mastery, the other ordinary nodes, the other school's spells).
+##   * Mages: _side_summary counts a mage in the second rank and AIMagic.mage_pressure values its spells with the battle
+##     rules' numbers (a bolt, or what a hex or a shield moves), so _recruit_value buys mages for what they add; _plan_recruits
+##     keeps at most one mage for every AIMagic.MAGE_PER regular units and never more second-rank fighters than front-rank ones.
+##   * Rituals: AIMagic.plan, after the moves, casts at most one ritual from each army that holds anyway (never one with a move
+##     order, so never one ordered to attack), in the order of §10.2's table; they take at most AIMagic.RITUAL_SHARE of the gold
+##     the troops leave and none in a turn the capital needs its recruits. The gold is set aside first (_ritual_gold) and the
+##     recruits are priced from the rest. A Shamans' army pays in blood under Tithe of Blood when it keeps two thirds of its hp.
+##   * The sacrifice: Blood of the Fang puts Tithe of Blood first in its picks (AIMagic.sacrifice_picks).
+##   * Its notes say "Casting Sanctum Ward on Crownkeep ...: why" in plain words.
 
 const DIFFICULTIES := ["easy", "normal"]
 
@@ -281,6 +295,8 @@ var _sieges := AISieges.new()
 var _fog := AIFog.new()  # M5-4: stale ghosts, the top of each sighting and scouting in a fog game (ai/ai_fog.gd)
 var _scratch_top: GameState = null  # M5-4: _scratch for the top of the view (the capital's defence), made once per plan
 var _gold_reserved := 0  # M3c: gold set aside for Fortify and engines before the troops are planned (0 without sieges)
+var _magic := AIMagic.new()  # M5-10: the research plan's mages, rituals and Tithe of Blood (ai/ai_magic.gd); nothing runs without magic
+var _ritual_gold := 0  # M5-10: gold the rituals of this turn hold back from the troops (0 without magic)
 
 
 ## Orders for `faction_id` this turn. See the class comment. Unknown difficulties play as "normal".
@@ -318,10 +334,12 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 	_ruler_moves()
 	if _state.sieges:
 		_sieges.plan_builds()  # M3c: Fortify, with its gold set aside before the troops are planned
+	_magic.plan()  # M5-10: rituals from the armies that hold anyway, their gold set aside before the troops are planned (nothing without magic)
 	if _level != "easy":
 		_recruit_plan = _plan_recruits(_armies_ending_at(_me.capital))
 	_guard_holds()  # IND-1: no march into a garrison the armies going there together can't beat
 	out.append_array(_checked_moves())
+	out.append_array(_magic.checked(out))  # M5-10: the casts, after the moves they were planned around and before the recruits they were priced for
 	if _state.sieges:
 		out.append_array(_sieges.siege_orders(out))
 		out.append_array(_sieges.checked_recruits())  # M3c: recruits across our forts, Fortify and engines
@@ -345,6 +363,7 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 	_scratch_top = null
 	_sieges.end()
 	_fog.end()
+	_magic.end()
 	return out
 
 
@@ -467,12 +486,14 @@ func _begin(state: GameState, faction_id: String, rng: SeededRNG, difficulty: St
 	_sally_to = ""
 	_foe_cache = {}
 	_gold_reserved = 0
+	_ritual_gold = 0
 	_me = state.find_faction(faction_id) if state != null else null
 	if _me == null:
 		return
 	if state.sieges:
 		_sieges.attach(self)  # M3c: forts and sieges (ai/ai_sieges.gd) for this plan
 	_fog.attach(self)  # M5-4: fog of war (ai/ai_fog.gd) for this plan; _collect_armies finds the top of the view
+	_magic.attach(self)  # M5-10: magic (ai/ai_magic.gd) for this plan; it reads what last turn's Far Sight came to
 	_nbrs = {}
 	for p in state.provinces:
 		var n: Array = p.neighbors.duplicate()
@@ -1166,19 +1187,22 @@ func _plan_recruits(base: Array) -> Array:
 		if ut.cost > 0 and not (MagicRules.is_mage(ut) and not MagicRules.knows_a_spell(_state, _fid)):  # M5-5: the mage gate
 			roster.append(ut)
 	var cmd: UnitType = _me.commander_type if _me.commander_type != null and _me.commander_type.cost > 0 else null
-	var gold := _me.gold - _gold_reserved  # M3c: less what Fortify and engines take (0 without sieges)
+	var gold := _me.gold - _gold_reserved - _ritual_gold  # M3c: less what Fortify and engines take (0 without sieges); M5-10: and the rituals (0 without magic)
 	var out := []
 	if _level == "easy":
 		# Cruder: random affordable picks until the gold runs out.
 		var pool: Array = roster.duplicate()
 		if cmd != null:
 			pool.append(cmd)
+		var garrison: Array = _units(_mine_at(cap.id)) if _state.magic else []  # M5-10: the mage ratio counts who stands here already
 		for _i in 16:
-			var affordable := pool.filter(func(ut): return _price(ut) <= gold)
+			var affordable := pool.filter(func(ut): return _price(ut) <= gold and not (_state.magic and MagicRules.is_mage(ut) and not AIMagic.room_for_mage(garrison)))
 			if affordable.is_empty():
 				break
 			var pick: UnitType = affordable[_rng.randi_range(0, affordable.size() - 1)]
 			out.append(pick)
+			if _state.magic:
+				garrison.append(_recruit_unit(pick))
 			gold -= _price(pick)
 		return out
 	# Normal: each pick most raises the garrison's trait-aware odds against the enemy's armies per gold
@@ -1217,6 +1241,9 @@ func _plan_recruits(base: Array) -> Array:
 			# past that (AutoBattleResolver._targets).
 			if ut.trait_id == AutoBattleResolver.VOLLEY and ranks.volley + 1 > ranks.front:
 				continue
+			# M5-10: a mage fights from the second rank too, and the army holds at most one for every AIMagic.MAGE_PER regulars.
+			if MagicRules.is_mage(ut) and (ranks.volley + 1 > ranks.front or not AIMagic.room_for_mage(units)):
+				continue
 			var trial: Array = units.duplicate()
 			trial.append(_recruit_unit(ut))
 			var v := _recruit_value(trial, foe_units)
@@ -1253,7 +1280,7 @@ static func _ranks(units: Array) -> Dictionary:
 	for u in units:
 		if u.type.is_commander or u.type.is_ruler:
 			continue
-		if u.type.trait_id == AutoBattleResolver.VOLLEY:
+		if u.type.trait_id == AutoBattleResolver.VOLLEY or MagicRules.is_mage(u.type):  # M5-10: mages fight from the second rank
 			out.volley += 1
 		else:
 			out.front += 1
@@ -1313,7 +1340,8 @@ static func _side_summary(units: Array, ctx: Dictionary = {}) -> Dictionary:
 	var s := {"hp": 0.0, "morale": 0, "regulars": 0, "best_morale": 0, "cmd": false, "inspire": false, "pack": false,
 		"bears": 0, "front": 0, "volley": 0, "skirmish": 0, "fighters": 0, "def_hp": 0.0, "shield_hp": 0.0, "kinds": {},
 		"commanders": 0, "cmd_hp": 0.0, "cmd_def_hp": 0.0, "wings": 0, "iron_hide_hp": 0.0, "rooted": 0,
-		"iron_discipline": false, "frenzy": 0, "wounded_aware": false}
+		"iron_discipline": false, "frenzy": 0, "wounded_aware": false,
+		"mages": {}, "mages_n": 0, "casts": ctx.get("casts", {}), "shield_ok": ctx.get("shield_ok", true)}  # M5-10: mages cast, from the second rank
 	var stats: Dictionary = ctx.get("stats", {})
 	var disciplined: Dictionary = ctx.get("iron_discipline", {})
 	var frenzy: Dictionary = ctx.get("frenzy", {})
@@ -1355,6 +1383,10 @@ static func _side_summary(units: Array, ctx: Dictionary = {}) -> Dictionary:
 			s.regulars += 1
 			if ut.trait_id == AutoBattleResolver.VOLLEY:
 				s.volley += 1
+			elif ut.trait_id == AutoBattleResolver.MAGE:
+				s.volley += 1  # M5-10: a mage stands in the second rank, under the same shield rule as Volley
+				s.mages_n += 1
+				s.mages[u.owner] = int(s.mages.get(u.owner, 0)) + 1
 			else:
 				s.front += 1
 			if ut.trait_id == AutoBattleResolver.SKIRMISH:
@@ -1372,7 +1404,8 @@ static func _side_summary(units: Array, ctx: Dictionary = {}) -> Dictionary:
 				s.rooted += 1
 				s.def_hp += hp * AutoBattleResolver.ROOTED_DEFENSE * float(ctx.get("forest_share", 0.0))
 		if not s.kinds.has(ut.id):
-			s.kinds[ut.id] = {"type": ut, "n": 0, "attack": attack, "wounded": 0}
+			s.kinds[ut.id] = {"type": ut, "n": 0, "attack": attack, "wounded": 0, "defense": defense,
+				"front": not ut.is_commander and ut.trait_id != AutoBattleResolver.VOLLEY and ut.trait_id != AutoBattleResolver.MAGE}
 		s.kinds[ut.id].n += 1
 		if u.current_hp < max_hp:
 			s.kinds[ut.id].wounded += 1  # #94: Lifedrinker heals from the first round (Blood Levy recruits arrive so)
@@ -1432,6 +1465,9 @@ static func _trait_power(s: Dictionary, foe: Dictionary) -> float:
 			var took := _kind_power(k, s, foe_def, keep, hide_share, shielded, foe_reach, our_targets, bool(part[1]))
 			dmg += float(took.dmg)
 			drink += float(took.drink)
+	if int(s.get("mages_n", 0)) > 0:
+		# M5-10: a mage casts instead of attacking; shielded in the second rank it lasts longer, as Volley does
+		dmg += AIMagic.mage_pressure(s, foe, 1.0 + VOLLEY_SHIELD_VALUE * (1.0 - foe_reach) if shielded else 1.0, ROUNDS_GUESS)
 	# What the side can lose before it breaks. Lifedrinker's healing lands before morale is checked, so every
 	# hp healed is an hp not lost: it counts in full, not just the share the side would lose of it (#94).
 	return (float(s.hp) * hold + drink * ROUNDS_GUESS) * dmg
@@ -1444,6 +1480,8 @@ static func _kind_power(k: Dictionary, s: Dictionary, foe_def: float, keep: floa
 	var dmg := 0.0
 	var drink := 0.0
 	var ut: UnitType = k.type
+	if ut.trait_id == AutoBattleResolver.MAGE:
+		return {"dmg": 0.0, "drink": 0.0}  # M5-10: its spells are counted together (AIMagic.mage_pressure)
 	var atk := float(k.attack)
 	if not ut.is_commander and s.pack:
 		atk += AutoBattleResolver.PACK_LEADER_ATTACK if keep >= 1.0 else AutoBattleResolver.PACK_LEADER_ATTACK * keep
@@ -1581,12 +1619,12 @@ func _checked_recruits() -> Array:
 		var order := RecruitOrder.new(ut.id, RecruitOrder.AT_RULER if field > 0 and not ut.is_commander else RecruitOrder.AT_CAPITAL)
 		var trial := out.duplicate()
 		trial.append(order)
-		var r: Dictionary = TurnResolver.price_recruits(_state, _fid, trial).results.back()
+		var r: Dictionary = TurnResolver.price_recruits(_state, _fid, trial, null, _ritual_gold).results.back()  # M5-10: less the rituals' gold
 		if not r.ok and order.is_with_ruler():
 			order = RecruitOrder.new(ut.id)
 			trial = out.duplicate()
 			trial.append(order)
-			r = TurnResolver.price_recruits(_state, _fid, trial).results.back()
+			r = TurnResolver.price_recruits(_state, _fid, trial, null, _ritual_gold).results.back()
 		if not r.ok:
 			_stats.dropped_invalid += 1
 			continue
@@ -1776,6 +1814,7 @@ func _choose_sacrifice() -> String:
 		return ""
 	var pick := ""
 	var picks: Array = _preset.get("ai_sacrifices", []).duplicate()
+	picks = AIMagic.sacrifice_picks(_state, String(_preset.get("id", "")), picks)  # M5-10: Blood of the Fang puts Tithe of Blood first (a game with magic)
 	if _paths:
 		# M4: once transformed, the mandate it opened goes last; a forsworn pick fails sacrifice_check.
 		for mid in AscensionRules.opened_mandates(_state, _fid):
@@ -2097,6 +2136,11 @@ func _build_ctx() -> void:
 	_ctx = {"stats": stats, "front": front.size(), "forest": forest, "iron_discipline": disciplined, "frenzy": frenzy,
 		"base_hit": base_hit, "dread": dread,
 		"forest_share": float(forest) / float(front.size()) if not front.is_empty() else 0.0}
+	if _state.magic:
+		# M5-10: every faction's battle spells, for the worth of a mage (AIMagic.mage_pressure), and whether Shield of Law has
+		# anything to cover where our garrison stands.
+		_ctx["casts"] = AIMagic.cast_profiles(_state)
+		_ctx["shield_ok"] = AIMagic.shield_ok(_state, _me.capital)
 
 
 ## A unit's attack, defense and morale for this plan: unit_stats' totals (mandates and path parts), or its type's
