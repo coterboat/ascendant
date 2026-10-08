@@ -13,18 +13,22 @@
 ## knocks back for 0.15 s; a fall topples about the feet, then the fallen pose takes over; a cheer hops.
 ## Every phase offset comes from a hash of the figure's id, never from a random number generator.
 ##
-## Phases, in the turn report's order (TurnReportPanel.PHASE_TITLES keys): movement, battles, sieges (M3c S-4, a game
-## with sieges), capture, recruitment. Each plays only when the turn has something in it, under its caption.
+## Phases, in the turn report's order (TurnReportPanel.PHASE_TITLES keys): rituals (M5-9, a game with magic), movement, battles,
+## sieges (M3c S-4, a game with sieges), capture, recruitment, enchantments (M5-9). Each plays only when the turn has something in
+## it, under its caption.
 ##
 ## Sounds (GameAudio.sfx, from the board): a beat's sound comes from its kind and its index in the turn
 ## (sound_for), never from a random number generator, and playing it never changes anything.
 extends RefCounted
 
 ## The report's phase keys the playback shows, in order, with their captions.
-const PHASES := ["movement", "battles", "sieges", "capture", "recruitment"]
-const CAPTIONS := {"movement": "Movement", "battles": "Battles", "sieges": "Sieges", "capture": "Captures", "recruitment": "Recruits"}
+const PHASES := ["rituals", "movement", "battles", "sieges", "capture", "recruitment", "enchantments"] ## M5-9: a game with magic opens with its rituals and closes with its enchantments
+const CAPTIONS := {"rituals": "Rituals", "movement": "Movement", "battles": "Battles", "sieges": "Sieges", "capture": "Captures", "recruitment": "Recruits",
+	"enchantments": "Enchantments"}
 ## What each caption means, for the playback bar's tooltip and the legend.
 const CAPTION_HELP := {
+	"rituals": "A game with magic opens every turn with its rituals, before anyone marches. A ritual you can see cast starts with a pillar of light at its caster and a mote running the roads to its target, then marks the land: a gilt ring for a blessing, a blue band for a ward, crimson veins for a curse, an eye for Far Sight, a ring of thorns for a summoning, a rising fort for Bastion. A ritual from a caster you can't see arrives at its target with no direction.",
+	"enchantments": "A game with magic closes every turn with its enchantments: blessed armies heal in gilt motes, a curse bites in crimson ones, an enchantment that has run its course lets go of the land, and summoned creatures whose time is up dissolve into leaves.",
 	"movement": "Every army ordered to march leaves by its gate (or the edge of its province) and marches the roads. Armies that will meet the enemy stop where the battle is.",
 	"battles": "Each battle plays a short exchange where it is fought: the blows, then the fallen. Losers topple; a winner's losses fall too. At a fort, a sally spills out of the gate, a storm meets the walls and a breach battle meets in the gap. The turn report has the full battle.",
 	"sieges": "Each fort's turn of siege, in the report's order: the besiegers' camps go up round the walls with their chevron banners, the siege works and engines strike and the walls take their damage look, a breach collapses the gate side, a lifted siege folds its camps; masons repair walls, and scaffolding raises a new fort.",

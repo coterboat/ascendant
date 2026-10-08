@@ -53,6 +53,7 @@ const SH_GHOST := preload("res://world3d/shaders/ghost.gdshader")
 const SH_SMOKE := preload("res://world3d/shaders/smoke.gdshader")
 const SH_MEMORY := preload("res://world3d/shaders/memory_ghost.gdshader")
 const Vision := preload("res://world3d/vision.gd")
+const MagicBeats := preload("res://world3d/magic_beats.gd")
 const SPEED := 21.0 ## march speed, world units a second at 1x
 const IN_SPEED := 24.0 ## recruits marching in
 const GAP := 4.4 ## between pairs in a column
@@ -96,8 +97,12 @@ signal fort_beat(province_id: String, kind: String, index: int)
 ## M5-3: the re-form begins: the board shows the state after's sight from here (the veil lifts or falls as everyone re-forms).
 signal reform_started
 ## M5-3: a ritual's beat (Playback.plan's "rituals"): where it starts (`from`, "" when the caster is hidden from the viewer:
-## the beat then starts at the target) and where it falls. The spell effects (M5-9) hook here; nothing is drawn yet.
+## the beat then starts at the target) and where it falls. The effects are drawn from magic_beat (below), which carries every beat whole.
 signal ritual_beat(from: String, at: String, ritual: String, index: int)
+## M5-9: any magic beat of the turn (Playback.plan's "rituals": a cast, a fizzle, a fall, a payment in blood, a summoning, a fort raised,
+## an enchantment beginning or ending, a heal or a bite, a fading, a reading), whole, when it plays; the spell effects draw it
+## (world3d/enchant_decals.gd). `phase` is the report's (rituals or enchantments). It reads the beat; nothing here changes the game.
+signal magic_beat(beat: Dictionary, index: int)
 
 var wv: Node3D ## world_view.gd
 var prefer_models := true ## false: every figure as its primitive (the preview's P key)
@@ -1354,12 +1359,15 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 	var beats: Array = []
 	var T0 := 0.35
 	## M5-3: the rituals phase (before movement): each ritual's beat starts where the viewer may see it start (a cast of the
-	## viewer's own: at its caster; one from a hidden caster: at its target), and falls at its target. Spell effects hook here (M5-9).
+	## viewer's own: at its caster; one from a hidden caster: at its target), and falls at its target. M5-9: the marches begin
+	## after the phase (MagicBeats.span), each beat carries its plan beat for the effects, and the enchantments phase's come later.
 	var ritual_i := 0
-	for r in plan.get("rituals", []):
-		beats.append({"kind": "ritual", "t": 0.05 + 0.04 * ritual_i, "phase": "rituals", "index": ritual_i, "from": String(r.get("from", "")),
-			"at": String(r.get("at", "")), "ritual": String(r.get("ritual", "")), "province": String(r.get("at", ""))})
+	var ritual_beats: Array = MagicBeats.early(plan.get("rituals", []))
+	for r in ritual_beats:
+		beats.append({"kind": "ritual", "t": 0.05 + MagicBeats.gap(ritual_beats.size()) * ritual_i, "phase": "rituals", "index": ritual_i, "from": String(r.get("from", "")),
+			"at": String(r.get("at", "")), "ritual": String(r.get("ritual", "")), "province": String(r.get("at", "")), "beat": r})
 		ritual_i += 1
+	T0 += MagicBeats.span(ritual_beats.size())
 	## the full way of every march, and where it is cut for its battles
 	var ways := {}
 	for m in marches:
@@ -1630,6 +1638,21 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 		if rdetail.is_empty():
 			rdetail = String(sites[0]["label"])
 		phases.append({"key": "recruitment", "t0": t_reform, "t1": t_reform + REFORM, "detail": rdetail})
+	## M5-9: the magic phases. The rituals phase opens the turn; the enchantments phase closes it (blessings heal, curses bite, endings,
+	## summons fade) and a summoning's creatures step out of their ring as the armies re-form.
+	var late_beats: Array = MagicBeats.late(plan.get("rituals", []))
+	var t_magic := 0.0
+	for li in late_beats.size():
+		var lb: Dictionary = late_beats[li]
+		var tl := t_reform + 0.2 + MagicBeats.gap(late_beats.size()) * li
+		beats.append({"kind": "ritual", "t": tl, "phase": String(lb.get("phase", "enchantments")), "index": ritual_i + li, "from": String(lb.get("from", "")),
+			"at": String(lb.get("at", "")), "ritual": String(lb.get("ritual", "")), "province": String(lb.get("at", "")), "beat": lb})
+		t_magic = maxf(t_magic, tl + 1.6)
+	if not ritual_beats.is_empty():
+		phases.insert(0, {"key": "rituals", "t0": 0.0, "t1": maxf(T0 - 0.1, 0.1), "detail": MagicBeats.detail(ritual_beats)})
+	var ench_beats: Array = late_beats.filter(func(x): return String(x.get("phase", "")) == "enchantments")
+	if not ench_beats.is_empty():
+		phases.append({"key": "enchantments", "t0": t_reform + 0.2, "t1": t_magic, "detail": MagicBeats.detail(ench_beats)})
 	var active: Array = []
 	for aid in armies.keys():
 		for f in armies[aid]["figs"]:
@@ -1643,7 +1666,7 @@ func play(plan: Dictionary, before: GameState, after: GameState) -> void:
 			bt["index"] = march_i
 			march_i += 1
 	fort_steps.sort_custom(func(a, b): return float(a["t"]) < float(b["t"]))
-	var t_end: float = t_reform + REFORM + TAIL
+	var t_end: float = maxf(t_reform + REFORM + TAIL, t_magic + TAIL)
 	for st in fort_steps:
 		t_end = maxf(t_end, float(st["t1"]) + TAIL)
 	var fm := SiegeBoard.model_of(before)
@@ -2292,7 +2315,9 @@ func step_playback(delta: float, skipping: bool = false) -> void:
 						clash_started.emit(String(_play["clashes"][ci]["label"]))
 				beat_province = String(bt.get("province", ""))
 				if bt["kind"] == "ritual":
-					ritual_beat.emit(String(bt.get("from", "")), String(bt.get("at", "")), String(bt.get("ritual", "")), int(bt.get("index", 0)))
+					if String((bt.get("beat", {}) as Dictionary).get("kind", "ritual_cast")) in ["ritual_cast", "ritual_turned_aside", "ritual_fell"]:
+						ritual_beat.emit(String(bt.get("from", "")), String(bt.get("at", "")), String(bt.get("ritual", "")), int(bt.get("index", 0)))
+					magic_beat.emit(bt.get("beat", {}), int(bt.get("index", 0)))
 				beat.emit(String(bt["kind"]), int(bt.get("index", 0)))
 				beat_province = ""
 	## M3c S-4: the fort beats: the camps go up or fold as each fires, the forts' looks change at its end

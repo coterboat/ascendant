@@ -8,6 +8,7 @@
 extends RefCounted
 
 const FIG := 6.0 ## a man's height, base included (world units)
+const SpellFigures := preload("res://world3d/spell_figures.gd") ## M5-9: the mages and the summoned creatures
 
 ## faction palettes (style bible 1.3: worn in art, independent of the player's colour)
 const STEEL := Color("#B9C3CE")
@@ -118,7 +119,7 @@ const FIGURES := ["spearmen", "crossbowmen", "knights", "knight_captain", "tuske
 
 ## True for a figure id figure() draws (anything else gets the generic figure).
 static func has_figure(type_id: String) -> bool:
-	return FIGURES.has(type_id)
+	return FIGURES.has(type_id) or SpellFigures.has(type_id) ## M5-9: the mages and the summoned (world3d/spell_figures.gd)
 
 
 ## A primitive figure. `s` scales the whole figure (a ruler or a monster stands bigger); `ruler` adds
@@ -171,6 +172,8 @@ static func figure(type_id: String, s: float = 1.0, ruler: bool = false) -> Arra
 			b.box(Vector3(0.08, 1.6, 1.4), Vector3(1.7, 8.3, -0.75), TEAM, Basis(), true)
 		"bearer":
 			_human(b, LINEN, STEEL)
+		"adepts", "shamans", "thornwolves", "greenwrath": ## M5-9 (#120): the mages and the summoned (world3d/spell_figures.gd)
+			SpellFigures.build(b, type_id)
 		_:
 			_human(b, Color("#8D88A0"), STEEL)
 	if not is_equal_approx(s, 1.0):
@@ -193,6 +196,11 @@ static func _base(b: Builder, type_id: String, ruler: bool = false, s: float = 1
 		"war_bear":
 			r = 2.6
 			sc = Vector3(1.0, 1.0, 1.7)
+		"thornwolves": ## M5-9
+			r = 2.1
+			sc = Vector3(1.0, 1.0, 1.9)
+		"greenwrath":
+			r = 3.6
 	r *= s
 	var m := CylinderMesh.new()
 	m.top_radius = r

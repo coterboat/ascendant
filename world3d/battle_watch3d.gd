@@ -8,7 +8,8 @@ extends Control
 ##   options: --fixture NAME (a file in tests/fixtures/battles, or path_wings / path_iron_hide /
 ##            path_lifedrinker / path_red_harvest / massive (322 fighters: M3's files), fought on the spot by
 ##            the tests' fixtures; siege_<case> (siege_storm_keep, siege_breach, siege_sally, ...: tests/
-##            walls_stage_fixtures.gd, with the game they were fought in); default starting_plains), --speed 1|2|4, --paused, --reduced-motion,
+##            walls_stage_fixtures.gd, with the game they were fought in; magic_<case>: magic_all, magic_sunburst, magic_big ...:
+##            tests/magic_stage_fixtures.gd); default starting_plains), --speed 1|2|4, --paused, --reduced-motion,
 ##            --quit-at-end (prints the frame times, fps and draw calls, then quits), --rung N (a fixed
 ##            quality rung, the automatic ladder off: the min-spec measurement, world3d/README.md),
 ##            --window WxH (the window's size, e.g. 1920x1080)
@@ -22,6 +23,7 @@ const Watch := preload("res://ui/battle/battle_watch.gd")
 const DEFAULT_FIXTURE := "starting_plains"
 const PATH_FIXTURES := "res://tests/battle_playback_fixtures.gd"
 const SIEGE_FIXTURES := "res://tests/walls_stage_fixtures.gd" ## --fixture siege_<case>: a battle at walls (M3c S-5)
+const MAGIC_FIXTURES := "res://tests/magic_stage_fixtures.gd" ## --fixture magic_<case>: a battle with spells (M5-9): magic_all, magic_big ...
 
 var stage: BattleStage3D
 var viewer: BattleReportViewer
@@ -130,6 +132,9 @@ static func load_fixture(fixture_name: String) -> Dictionary:
 	if fixture_name.begins_with("siege_") and ResourceLoader.exists(SIEGE_FIXTURES):
 		var siege_fixtures: Script = load(SIEGE_FIXTURES)
 		return siege_fixtures.call("battle", fixture_name.trim_prefix("siege_"))
+	if fixture_name.begins_with("magic_") and ResourceLoader.exists(MAGIC_FIXTURES):
+		var magic_fixtures: Script = load(MAGIC_FIXTURES)
+		return magic_fixtures.call("battle", fixture_name)
 	if (fixture_name.begins_with("path_") or fixture_name == "massive") and ResourceLoader.exists(PATH_FIXTURES):
 		var fixtures: Script = load(PATH_FIXTURES)
 		return fixtures.call("battle", fixture_name)
