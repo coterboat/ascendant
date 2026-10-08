@@ -96,6 +96,8 @@ func setup(state: GameState, p: Province, seats: Array, open: Callable = Callabl
 	if besieged:
 		row.add_child(_glyph("chevron", edge))
 	tooltip_text = tooltip_for(state, p.id)
+	if works_label != null:
+		works_label.tooltip_text = tooltip_text  # the "0/3" of a keep being raised explains itself too (the work line of the tip)
 	CodexLink.attach(self, codex_for(state, p.id), open if open.is_valid() else func(_k): pass)
 
 
