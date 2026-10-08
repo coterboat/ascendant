@@ -73,3 +73,17 @@ Entries between the `canon:item` markers are rewritten by the next run; write an
 - **batch:** art_r3b
 - **date:** 2026-10-08
 <!-- /canon:item -->
+
+<!-- canon:item art_r3c/candlewake_host_eyeless file=candlewake_host_eyeless.png -->
+## The wax host, eyeless
+
+![The wax host, eyeless](candlewake_host_eyeless.png)
+
+- **image:** `candlewake_host_eyeless.png`
+- **verdict:** Good with changes
+- **note:** i like these, add variations to make them more war-like and empty shells with hoods of wax to give shape, like in the concept art image The tide meets the Crown
+- **prompt:** Edit candlewake_host_eyes.png only in the four pure-wax rank-and-file faces. Remove every lilac eye glint and every dark face opening, flowing matching ivory wax smoothly across each face so it becomes eyeless, featureless, smooth or half-melted solid wax. Preserve the entire canvas as closely as possible outside those four facial areas: exactly the same seven figures, identities, positions, poses, silhouettes, proportions, weapons, clothes on the named characters, wax drips, crown flames, lantern flames, taper flame, colors, outlines, shadows, background, spacing, framing, and resolution. Keep Half-Death, Mother Tallow, and the Lamplighter completely unchanged, including the Lamplighter's lilac eyes. The four troop faces have no eyes, sockets, cavities, glowing facial marks, mouths, noses, teeth, or skull features; their lilac crown flames remain unchanged and are the only face-like beacon. No text, labels, logos, borders, recomposition, restyling, or added figures.
+- **seat:** codex
+- **batch:** art_r3c
+- **date:** 2026-10-08
+<!-- /canon:item -->
