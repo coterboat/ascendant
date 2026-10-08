@@ -77,8 +77,10 @@ static func settings(path: String = "") -> Dictionary:
 static func save_settings(changes: Dictionary, path: String = "") -> String:
 	var file := path if not path.is_empty() else GameSettings.default_path
 	var cfg := ConfigFile.new()
-	if FileAccess.file_exists(file):
+	var existed := FileAccess.file_exists(file)
+	if existed:
 		cfg.load(file)  # a broken file is simply rewritten
+	GameSettings.stamp_new_file(cfg, existed)  # MVP-2: a file made now knows the current new-game defaults
 	var wrote := false
 	for key in changes:
 		var v = changes[key]

@@ -8,14 +8,15 @@ const RAW_IDS := ["kingdom", "beasts", "crownkeep", "fangridge", "knight_captain
 	"tuskers", "war_bear", "codex:", "_"]
 
 
-## The screen set up for the M1 hotseat game these tests are about: both seats human, no rulers. (The
-## MVP default, you against the computer with rulers, is tested in tests/test_mvp_defaults.gd.)
+## The screen set up for the M1 hotseat game these tests are about: both seats human, no system box ticked. (The
+## MVP default, you against the computer with every system, is tested in tests/test_mvp_defaults.gd and
+## tests/test_defaults_flip.gd.)
 func _screen() -> NewGameScreen:
 	var screen := load(SCENE).instantiate() as NewGameScreen
 	assert_true(screen != null, "scene instantiates as NewGameScreen")
 	if screen:
 		assert_true(screen.set_seat_kind(2, "human"))
-		screen.set_rulers(false)
+		screen.set_all_systems(false)
 	return screen
 
 

@@ -14,6 +14,9 @@ extends RefCounted
 ##                        0 to 100 (percent, 100 by default): the Master, Music, SFX and Ambiance buses
 ##                        (GameAudio). The mix itself lives in assets/audio/audio.json.
 ##   muted                false by default: true silences everything (the Master bus)
+##   new_game_defaults    MVP-2 (#163): which new-game defaults this file has seen (DEFAULTS_VERSION). Written whenever
+##                        this game creates the file; a file without it is from before the defaults flip, and the new
+##                        game screen says once that every system starts ticked now (defaults_notice_due).
 ## A missing or unreadable file, or a value this game doesn't know, gives the defaults for those values.
 ## apply(tree) puts window_mode, ui_scale and the volumes into effect (the title screen does it once at
 ## start-up, and the settings panel after every change); apply_audio() does the volumes alone (the
@@ -30,6 +33,12 @@ const PLAYBACK_SPEEDS := [1, 2, 4]
 ## Each volume setting and the bus it sets.
 const VOLUME_BUSES := {"master_volume": "Master", "music_volume": "Music", "sfx_volume": "SFX", "ambiance_volume": "Ambiance"}
 const VOLUME_NAMES := {"master_volume": "Master", "music_volume": "Music", "sfx_volume": "Effects", "ambiance_volume": "Ambiance"}
+
+## MVP-2 (#163): the defaults of the new game screen. 1 is the MVP flip: every system box (Rulers, Paths, Forts and
+## sieges, Independents, Magic, Fog of war) starts ticked; before it only Rulers did. The boxes themselves are never
+## saved, so an old file can't keep the old defaults: it just hears about the new ones, once.
+const DEFAULTS_VERSION := 1
+const DEFAULTS_KEY := "new_game_defaults"
 
 static var default_path := "user://settings.cfg"
 static var _applied_at_start := false
@@ -86,8 +95,10 @@ static func load_from(file_path: String = "") -> GameSettings:
 func save() -> String:
 	var cfg := ConfigFile.new()
 	# Keep the file's other sections (the battle screen's [battle] settings, M3-4); a broken file is rewritten.
-	if FileAccess.file_exists(path):
+	var existed := FileAccess.file_exists(path)
+	if existed:
 		cfg.load(path)
+	stamp_new_file(cfg, existed)
 	cfg.set_value(SECTION, "window_mode", window_mode)
 	cfg.set_value(SECTION, "ui_scale", ui_scale)
 	cfg.set_value(SECTION, "auto_watch_battles", auto_watch_battles)
@@ -206,12 +217,46 @@ static func reset_hint(key: String, file_path: String = "") -> String:
 static func _set_hint(key: String, seen: bool, file_path: String) -> String:
 	var p := file_path if not file_path.is_empty() else default_path
 	var cfg := ConfigFile.new()
-	if FileAccess.file_exists(p):
+	var existed := FileAccess.file_exists(p)
+	if existed:
 		cfg.load(p)
+	stamp_new_file(cfg, existed)
 	if seen:
 		cfg.set_value(HINTS, key, true)
 	elif cfg.has_section_key(HINTS, key):
 		cfg.erase_section_key(HINTS, key)
+	var folder := p.get_base_dir()
+	if not folder.is_empty() and not DirAccess.dir_exists_absolute(folder):
+		DirAccess.make_dir_recursive_absolute(folder)
+	return "" if cfg.save(p) == OK else "Your settings could not be saved."
+
+
+## MVP-2 (#163): a file this game creates knows the current new-game defaults from the start, so only a file from
+## before the flip (one that already existed, without the stamp) hears about them. Every writer of the file calls this
+## before it saves (`existed`: whether the file was there before the write).
+static func stamp_new_file(cfg: ConfigFile, existed: bool) -> void:
+	if not existed and not cfg.has_section_key(SECTION, DEFAULTS_KEY):
+		cfg.set_value(SECTION, DEFAULTS_KEY, DEFAULTS_VERSION)
+
+
+## True when the settings file exists from before the defaults flip: it has no new_game_defaults stamp (or an older
+## one), so the new game screen says once that the defaults changed. No file at all is a new player: nothing to say.
+static func defaults_notice_due(file_path: String = "") -> bool:
+	var cfg := ConfigFile.new()
+	if cfg.load(file_path if not file_path.is_empty() else default_path) != OK:
+		return false
+	var seen = cfg.get_value(SECTION, DEFAULTS_KEY, 0)
+	return not (seen is int or seen is float) or int(seen) < DEFAULTS_VERSION
+
+
+## The new game screen has told this file's player about the current defaults: they are not told again. The rest of
+## the file is kept as it was. Returns "" or why it could not be saved.
+static func mark_defaults_noticed(file_path: String = "") -> String:
+	var p := file_path if not file_path.is_empty() else default_path
+	var cfg := ConfigFile.new()
+	if FileAccess.file_exists(p):
+		cfg.load(p)
+	cfg.set_value(SECTION, DEFAULTS_KEY, DEFAULTS_VERSION)
 	var folder := p.get_base_dir()
 	if not folder.is_empty() and not DirAccess.dir_exists_absolute(folder):
 		DirAccess.make_dir_recursive_absolute(folder)

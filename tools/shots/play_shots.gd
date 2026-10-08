@@ -15,6 +15,8 @@ extends SceneTree
 ##   --battles=N        watch up to N of the person's battles in the battle host, one shot each (default 3)
 ##   --rulers / --paths / --sieges / --fog / --magic / --independents   switch those systems on (paths turn rulers on;
 ##                      magic turns paths and rulers on, as the new game screen's box does)
+##   --defaults         MVP-2 (#163): the game as a new player gets it: every system on, and the new game screen left exactly
+##                      as it ships (no box touched), so the shot shows the defaults. Combine with --fresh.
 ##   --no-menus         skip the title, new game and build screen shots
 ##   --fresh            the walk's settings are DIR/settings.cfg, deleted first, instead of the player's own: no settings
 ##                      file, so the first-game guide shows (MVP-1, #141), and the player's file is never read or written
@@ -40,6 +42,7 @@ var flags := {"rulers": false, "paths": false, "sieges": false, "fog": false, "m
 var menus := true
 var fast := false
 var fresh := false
+var defaults := false
 var walk: PackedStringArray = []
 var shot_n := 0
 var mages_queued := 0  # --magic: the mages the person's seat has recruited
@@ -62,9 +65,13 @@ func _initialize() -> void:
 			"no-menus": menus = false
 			"fast": fast = true
 			"fresh": fresh = true
+			"defaults": defaults = true
 			_:
 				if flags.has(kv[0]):
 					flags[kv[0]] = true
+	if defaults:
+		for k in flags:
+			flags[k] = true
 	if flags.magic:
 		flags.paths = true  # M5-5: magic needs paths, and paths need rulers
 	if flags.paths:
@@ -285,12 +292,13 @@ func _menus() -> void:
 	root.add_child(ng)
 	await _frames(2)
 	ng.set_seat_kind(2, "computer")
-	ng.set_rulers(flags.rulers)
-	ng.set_paths(flags.paths)
-	ng.set_sieges(flags.sieges)
-	ng.set_fog(flags.fog)
-	ng.set_magic(flags.magic)
-	ng.set_independents(flags.independents)
+	if not defaults:  # --defaults leaves every box as the screen ships it
+		ng.set_rulers(flags.rulers)
+		ng.set_paths(flags.paths)
+		ng.set_sieges(flags.sieges)
+		ng.set_fog(flags.fog)
+		ng.set_magic(flags.magic)
+		ng.set_independents(flags.independents)
 	await _shot("new_game", "Config: %s" % JSON.stringify(ng.config()))
 	if flags.rulers:
 		ng.start()

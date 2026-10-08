@@ -1,6 +1,6 @@
 extends "res://tests/test_case.gd"
 ## The pre-game build screen (M2-5, #33; design/M2_RULER.md §4), headless through the real screens: the
-## "Rulers (M2 preview)" box on the new game screen (off: the M1 flow, unchanged; on: Start goes to the
+## "Rulers" box on the new game screen (off: the M1 flow, unchanged; on: Start goes to the
 ## build screen), the balanced preset as the default, every number's breakdown equal to the RulerRules /
 ## Breakdown output, unaffordable mandates disabled with build_errors' reason, presets and Clear, the
 ## hotseat cover that never lets the other build on screen, computer seats' seeded presets, Start giving
@@ -24,12 +24,12 @@ const NOT_NUMBERS := ["HeaderLabel", "RulerHeading", "PowerHeading", "NationHead
 
 # --- helpers --------------------------------------------------------------------------------------
 
-## The new game screen set up as two people with the rulers box clear, which these tests start from
-## (the default is you against the computer with rulers: tests/test_mvp_defaults.gd).
+## The new game screen set up as two people with every system box clear, which these tests start from
+## (the default is you against the computer with every system: tests/test_mvp_defaults.gd).
 func _setup() -> NewGameScreen:
 	var screen := load(NEW_GAME_SCENE).instantiate() as NewGameScreen
 	screen.set_seat_kind(2, "human")
-	screen.set_rulers(false)
+	screen.set_all_systems(false)
 	screen.set_seed(SEED)
 	return screen
 
@@ -214,7 +214,7 @@ func test_rulers_box_cleared_gives_the_m1_flow() -> void:
 	title._ready()
 	title.new_game_button.pressed.emit()
 	title.new_game_screen.set_seat_kind(2, "human")
-	title.new_game_screen.set_rulers(false)
+	title.new_game_screen.set_all_systems(false)
 	title.new_game_screen.set_seed(SEED)
 	title.new_game_screen.start_button.pressed.emit()
 	var game := title.next_scene as GameScreen
@@ -600,6 +600,7 @@ func test_start_gives_a_game_whose_factions_carry_exactly_the_chosen_builds() ->
 	setup.set_seat_kind(2, "human")  # two people
 	setup.set_seed(SEED)
 	setup.swap_seats()  # Thornmane Clans are player 1
+	setup.set_all_systems(false)  # the rulers game on its own (the default also has every other system)
 	setup.rulers_toggle.button_pressed = true
 	setup.start_button.pressed.emit()
 	var b := setup.build_screen

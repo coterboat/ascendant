@@ -1,6 +1,6 @@
 extends "res://tests/test_case.gd"
 ## M5-5 (#116): a magic game's state (design/M5_MAGIC_FOG.md §1.3, §6.2, §6.4, §14). with_magic and setup_magic, the
-## Magic (M5 preview) box, the summoned creatures (loaded from MagicData, round-tripping, and left alone by Veteran
+## Magic box, the summoned creatures (loaded from MagicData, round-tripping, and left alone by Veteran
 ## Levies and Blood Levy), the checks M5-0 deferred to MagicData (spell and ritual ids, the Bastion cap, the mastery
 ## cap on an enchantment, a wolf's fading turn, the mage on the roster), and a recorded magic game replaying exactly.
 
@@ -54,7 +54,8 @@ func test_with_magic_is_the_paths_game_plus_magic() -> void:
 
 func test_the_magic_box_ticks_paths_and_rulers_and_starts_a_magic_game() -> void:
 	var screen := load("res://ui/new_game_screen.tscn").instantiate() as NewGameScreen
-	assert_false(screen.magic_on(), "off by default")
+	assert_true(screen.magic_on(), "on by default (MVP-2)")
+	screen.set_all_systems(false)
 	assert_false(screen.config().has("magic"))
 	screen.set_magic(true)
 	assert_true(screen.magic_on())
@@ -69,8 +70,9 @@ func test_the_magic_box_ticks_paths_and_rulers_and_starts_a_magic_game() -> void
 	screen.prefill({"players": [CROWN, CLANS], "seed": 5, "rulers": true, "paths": true, "magic": true})
 	assert_true(screen.magic_on(), "a rematch of a magic game has magic")
 	var tip := String(screen.magic_toggle.tooltip_text).replace("\n", " ")
-	assert_true(tip.contains("Research spells, recruit mages and cast rituals. Needs Paths and Rulers, so they're on too."), tip)
-	assert_true(tip.contains("don't take effect yet"), "the box says what this preview does not do yet")
+	assert_true(tip.contains("Research spells, recruit mages and cast rituals."), tip)
+	assert_true(tip.contains("Magic needs Paths and Rulers, so ticking it ticks them too"), tip)
+	assert_false(tip.contains("(M5 preview)") or tip.contains("still being built"), "no preview wording left: %s" % tip)
 	screen.free()
 	var s := GameScreen.starting_state({"players": [CROWN, CLANS], "seed": 5, "rulers": true, "paths": true, "magic": true})
 	assert_true(s != null and s.magic and s.paths)

@@ -309,7 +309,9 @@ func test_a_neutral_fort_garrison_holds_its_ground_in_a_sieges_game() -> void:
 
 func test_the_new_game_screen_has_an_independents_box_and_quick_start_uses_it() -> void:
 	var ng: NewGameScreen = load("res://ui/new_game_screen.tscn").instantiate()
-	assert_false(ng.independents_on(), "off by default until the MVP defaults flip, like every other system box")
+	assert_true(ng.independents_on(), "on by default, like every other system box (MVP-2)")
+	assert_eq(ng.config().get("independents"), true)
+	ng.set_all_systems(false)
 	assert_false(ng.config().has("independents"), "an M1 config stays exactly as it was")
 	ng.set_independents(true)
 	assert_eq(ng.config().get("independents"), true)

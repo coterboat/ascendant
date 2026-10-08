@@ -337,7 +337,8 @@ func test_no_raw_ids_in_research_text() -> void:
 
 func test_the_paths_box_needs_rulers_and_starts_a_game_with_paths() -> void:
 	var screen := load("res://ui/new_game_screen.tscn").instantiate() as NewGameScreen
-	assert_false(screen.paths_on(), "off by default")
+	assert_true(screen.paths_on(), "on by default (MVP-2)")
+	screen.set_all_systems(false)
 	assert_false(screen.config().has("paths"))
 	screen.set_paths(true)
 	assert_true(screen.paths_on())

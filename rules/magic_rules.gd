@@ -1744,7 +1744,7 @@ static func school_ref(school_id: String) -> String:
 
 # --- text -------------------------------------------------------------------------------------------
 
-const NO_MAGIC := "This game is played without magic, so there are no spells or rituals. Magic is a preview: tick Magic (M5 preview) when you set up a new game."
+const NO_MAGIC := "This game is played without magic, so there are no spells or rituals. Tick Magic when you set up a new game to play with it."
 
 
 ## Why a mage can't be recruited yet (§3.2): "The Sunstone Adepts can be recruited once the Aurel Crown knows a

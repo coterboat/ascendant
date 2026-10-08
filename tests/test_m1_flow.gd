@@ -27,10 +27,10 @@ func _start_from_title(game_seed: int) -> GameScreen:
 	var setup := title.new_game_screen
 	assert_true(setup != null and setup.visible, "New game opens the new game screen")
 	assert_eq(setup.get_index(), title.get_child_count() - 1, "on top of the title")
-	# The M1 hotseat game: Player 2 to Human and rulers off (the default is the computer, with rulers).
+	# The M1 hotseat game: Player 2 to Human and every system off (the default is the computer, with every system).
 	setup.kind_pickers[1].select(NewGameScreen.KINDS.find("human"))
 	setup.kind_pickers[1].item_selected.emit(NewGameScreen.KINDS.find("human"))
-	setup.rulers_toggle.button_pressed = false
+	setup.set_all_systems(false)
 	setup.swap_button.pressed.emit()
 	setup.seed_edit.text = str(game_seed)
 	setup.seed_edit.text_changed.emit(setup.seed_edit.text)
