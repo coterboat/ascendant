@@ -332,6 +332,9 @@ main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
 .chg { border: 1.5px solid rgba(230, 164, 69, .55); color: #f3d49b; }
 .chg:hover:not(:disabled) { background: rgba(230, 164, 69, .14); border-color: var(--amber); }
 .s-revise .chg { background: var(--amber); border-color: var(--amber); color: #1d1405; }
+/* keep both: the button you pressed is the one that shows, not Good / Good with changes */
+.row.kb .chg, .row.kb .acc { background: transparent; color: inherit; border-color: var(--line-hi); }
+.row.kb .keepb { background: var(--brass); border-color: var(--brass); color: #1d1405; }
 .big.concept .chg { grid-column: 1 / -1; height: 38px; font-size: 13.5px; }
 .big button:disabled { opacity: .28; }
 .big kbd { margin-left: 7px; }
@@ -1065,6 +1068,7 @@ function rowClass(it) {
   const c = ['row', 'k-' + it.kind, 's-' + it.status];
   if (isConcept()) c.push('concept');
   if (it.installed && kept(it)) c.push('inst');
+  if (kept(it) && it.picks && it.picks.length > 1) c.push('kb');  // keep both: light the Keep button
   if (it.regenerated) c.push('regen');
   if (it.id === S.curId) c.push('cur');
   if (!matches(it)) c.push('out');
@@ -1076,6 +1080,10 @@ const isPlaying = id => (S.playingId === id && !player.paused) || (S.vidId === i
 function pillText(it) {
   if (it.status === 'missing') return 'Missing';
   if (it.regenerated) return it.kind === 'audio' ? 'Needs a listen' : 'Needs a look';
+  if (kept(it) && it.picks && it.picks.length > 1) {
+    const n = it.picks.length === 2 ? 'both' : `all ${it.picks.length}`;
+    return `Kept ${n}${it.status === 'revise' ? ' · fuse' : ''}${it.installed ? ' · in canon' : ''}`;
+  }
   if (it.installed && kept(it)) return isConcept() ? 'In canon' : 'In game';
   const names = isConcept() ? { accept: 'Good', revise: 'Good with changes', reject: 'Bad', pending: 'Pending' }
     : { accept: 'Accepted', revise: 'Good with changes', reject: 'Rejected', pending: 'Pending' };
