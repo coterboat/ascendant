@@ -638,7 +638,7 @@ func _build_field() -> void:
 	for si in _log.sides.size():
 		_side_colours.append(UiPalette.seat_color(_side_seat[si]))
 		_side_lin.append(figure_colour(_side_seat[si]))
-		emblems.append(maxi(_side_seat[si], 0))
+		emblems.append(_side_seat[si] if _side_seat[si] >= 0 else Kit.EMBLEM_SHIELD)  # IND-2: nobody's banner is the independents' heater shield
 		factions.append(String(_log.sides[si].faction))
 	## M3c S-5: a battle at a fort stands at the walls of the fort the log describes (BattleWalls), else on the ground
 	_dress_forts()

@@ -37,6 +37,8 @@ var board: Control ## board3d.gd
 var _plates := {} ## province id -> {"root": Control, "name": Label, "income": Label, "glyph": Control, "pennant": Control, "badge": Label, "chip": FortChip or null}
 ## M3c S-4: the forts and sieges part of the legend (a game with sieges), between the close-up line and the keys.
 const SIEGE_LEGEND := "\n\nForts and sieges (M3c preview):\n- A fort's kit shows its level: a palisade (a ring of stakes round a small yard), a keep (a walled fort), a citadel (a capital's fortress). A fort someone built wears its builder's kit; a captured fort keeps its look and flies its new owner's colours. The chip on its plate gives the level and the exact walls.\n- Damaged walls: one step of 3 wall strength lost knocks a corner of the gate-side wall down; two steps (battered) knock it lower, with smoke, fire and rubble at its foot; at 0 the whole gate side is down to its footing, rubble in the gap: breached. The look changes exactly where a storm's defense does.\n- Scaffolding round a fort: a level being built. The new walls rise inside it as the work is done (solid up to the turns of work done, faint above). Translucent scaffolding is a Fortify you queued: only you see it.\n- A besieged fort: the besiegers camp in a ring round its walls (a tent and a fire behind each army, facing the walls), their siege works stand before the gate (ladders and mantlets, or a mound, stakes and logs), the siege engines they carry stand at the walls, and chevron banners in their colour are planted round the walls. The garrison stands packed inside, tighter the bigger it is; what doesn't fit packs at the gate.\n- During a turn's playback, Sieges: the camps go up, the camp and engines strike the walls in a burst of dust and the damage look changes; a breach collapses the gate side and shakes the camera; a lifted siege folds its camps. In the Battles, a sally's garrison files out of the gate two abreast, a storm meets at the walls, a breach battle in the gap. Recruits at any fort march in through its gate."
+## IND-2 (#161): the Free Holds' part of the legend (a game with independents), between the siege lines and the keys.
+const INDEPENDENTS_LEGEND := "\n\nThe Free Holds (independents):\n- A neutral province's garrison: plain local militia in undyed wool and grey (spearmen, slingers, the grey badger Wildkin of the deep woods, a grey-bearded Hold Captain at the back), on slate bases under a slate banner with a heater shield. They answer to no ruler, never move or heal, and everyone knows their strength even through fog (the plate gives the exact count). Take the province by beating them."
 var _army_plates := {} ## army id -> PanelContainer
 var _built_for: GameState = null
 var _army_sig := ""
@@ -556,7 +558,8 @@ func has_cut_mark(pid: String) -> bool:
 ## The legend's text for the state the board shows (the siege lines only in a game with sieges).
 func legend_text() -> String:
 	var st: GameState = board.map.state if board != null and board.map != null else null
-	return LEGEND % [Models.block_rule_text(), (SIEGE_LEGEND if st != null and st.sieges else "") + Vision.legend_lines(st)]
+	return LEGEND % [Models.block_rule_text(), (SIEGE_LEGEND if st != null and st.sieges else "") \
+		+ (INDEPENDENTS_LEGEND if st != null and st.independents else "") + Vision.legend_lines(st)]
 
 
 ## An army's tooltip: its 2D badge's own (its units' breakdown or the ruler's summary, whose it is, a

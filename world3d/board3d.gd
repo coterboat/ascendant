@@ -171,6 +171,8 @@ static func _bake() -> void:
 			Models.building_model(kind, String(f.id))
 		for extra in ["bearer", "musician"]:
 			Models.figure_mesh(extra, true, "ready", String(f.id))
+	for extra in ["bearer", "musician"]:
+		Models.figure_mesh(extra, true, "ready", IndependentData.FACTION_ID)  # IND-2: the Free Holds' colour party
 	for type_id in (Models.table().get("figures", {}) as Dictionary).keys():
 		Models.pose_meshes(type_id)
 	for kind in (Models.table().get("buildings", {}) as Dictionary).keys():

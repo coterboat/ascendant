@@ -773,7 +773,7 @@ func _base_order(d: Dictionary, in_fort: bool) -> Array:
 func _make_entry(d: Dictionary, placed: Array, ghost: bool = false) -> Dictionary:
 	var seat: int = UiPalette.seat_index(state, d["owner"], seats)
 	var col: Color = UiPalette.seat_color(seat)
-	var e := {"id": d["id"], "owner": d["owner"], "colour": col, "emblem": maxi(seat, 0), "figs": [], "types": {},
+	var e := {"id": d["id"], "owner": d["owner"], "colour": col, "emblem": seat if seat >= 0 else Kit.EMBLEM_SHIELD, "figs": [], "types": {},
 		"province": d["location"], "units": d.get("units", 0), "ruler": d.get("ruler", false), "ghost": ghost,
 		"transformation": AscensionRules.transformation(state, String(d["owner"])) if state != null else ""}
 	if bool(d.get("memory", false)):

@@ -5,7 +5,7 @@ shader_type spatial;
 render_mode cull_disabled, specular_disabled;
 
 uniform vec3 colour : source_color = vec3(0.847, 0.263, 0.173);
-uniform int emblem = 0; // 0 circle, 1 square, 2 triangle, 3 diamond
+uniform int emblem = 0; // 0 circle, 1 square, 2 triangle, 3 diamond, 6 heater shield (nobody: the independents)
 uniform float cel = 1.0;
 uniform float phase = 0.0;
 uniform float wind = 1.0;
@@ -31,6 +31,8 @@ float emblem_mask(vec2 p) {
 		r = max(d.x, d.y);
 	} else if (emblem == 2) {
 		r = max(abs(q.x) * 0.866 + q.y * 0.5, -q.y) - 0.12;
+	} else if (emblem == 6) {
+		r = max(abs(q.x) - 0.18 + max(q.y - 0.02, 0.0) * 0.75, abs(q.y - 0.02) - 0.2);
 	} else {
 		r = abs(q.x) + abs(q.y) - 0.22;
 	}
