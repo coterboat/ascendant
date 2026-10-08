@@ -30,8 +30,6 @@ const CLANS := "beasts"
 ## The truth accessors (§2.1): nothing in world3d/ may call them, there are no observer paths on the board.
 const TRUTH := ["state", "turn_report", "battle_events", "builds", "record", "history", "victory"]
 
-static var _board_cache: Board3D = null
-
 
 # --- fixtures --------------------------------------------------------------------------------------------
 
@@ -167,11 +165,6 @@ func _model_diff(played: Dictionary, built: Dictionary) -> Array:
 
 func _json(v) -> String:
 	return JSON.stringify(v.to_dict() if v is GameState else v)
-
-
-## The kit's games of one kind first (m1, m2, m4, sieges), so a short loop covers every kind.
-func _sampled_games(count: int) -> Array:
-	return Kit.games().slice(0, count)
 
 
 func _gd_files(dir: String) -> Array:
