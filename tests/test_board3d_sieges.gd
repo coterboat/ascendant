@@ -84,13 +84,16 @@ func _autoplay(game_seed: int, turns: int, rulers: bool) -> Array:
 	return out
 
 
-## The scripted siege (real rules, real battles): the Crown besieges Stonegate with 22 troops and 2 Siege Rams to
-## the breach and takes it through the breach battle; a Crown raid on Blackwood is beaten by a sally and the siege
-## lifts; the Crown raises a palisade at Rivermarch and starts a keep, which a Clans siege halts and, once the
-## garrison leaves, razes. Between them, every fort event the board plays.
+## The scripted siege (real rules, real battles): the Crown besieges Stonegate with 22 troops and 2 Siege Rams (or
+## the force nearest that FortData's numbers breach on the siege's second turn, so the walls are hit before they fall)
+## to the breach and takes it through the breach battle; a Crown raid on Blackwood is beaten by a sally and the siege
+## lifts; the Crown raises a palisade at Rivermarch and, the turn after it stands, starts a keep, which a Clans siege
+## halts and, once the garrison leaves, razes. Between them, every fort event the board plays.
 func _story() -> Array:
+	var force := F.force_to_breach(SiegeRules.walls_max(2), 2, 22, 2)
+	assert_false(force.is_empty(), "some force breaches a keep on the siege's second turn")
 	var s: GameState = F.state([
-		["k_siege", CR, "westwatch", F.units("spearmen", 22), 2],
+		["k_siege", CR, "westwatch", F.units("spearmen", force[0]), force[1]],
 		["k_raid", CR, "wildmoor", F.units("spearmen", 5)],
 		["k_rm", CR, "rivermarch", F.units("spearmen", 6)],
 		["k_home", CR, "crownkeep", F.units("crossbowmen", 4)],
@@ -104,11 +107,15 @@ func _story() -> Array:
 	var script := [
 		{CR: [MoveOrder.new("k_siege", "stonegate"), MoveOrder.new("k_raid", "blackwood"), FortifyOrder.new("rivermarch")]},
 		{CL: [SiegeOrder.sally("b_bw")]},
-		{},
+	]
+	## the palisade ordered on turn 1 stands at the end of turn 1 + its turns of work; the keep is ordered the turn after
+	for _i in int(FortData.LEVELS[1].turns) - 1:
+		script.append({})
+	script.append_array([
 		{CR: [FortifyOrder.new("rivermarch")]},
 		{CL: [MoveOrder.new("b_gg", "rivermarch")]},
 		{CR: [MoveOrder.new("k_rm", "crownkeep")]},
-	]
+	])
 	var out: Array = []
 	for i in script.size():
 		var orders := {CR: [], CL: []}
@@ -157,7 +164,7 @@ func _play_out(b: Board3D, turn: Dictionary) -> bool:
 
 func test_the_board_model_of_a_state_has_its_levels_looks_sites_and_camp_rings() -> void:
 	var turns := _story()
-	assert_true(turns.size() >= 6, "the scripted siege resolves every turn")
+	assert_eq(turns.size(), int(FortData.LEVELS[1].turns) + 4, "the scripted siege resolves every turn")
 	var checked := {"looks": {}, "sites": 0, "sieges": 0}
 	for turn in turns:
 		var st: GameState = turn["after"]
@@ -557,7 +564,14 @@ func test_a_damage_looks_own_model_replaces_the_code_fallback() -> void:
 		b.stand(s)
 		assert_eq(b.wv.fort_piece(pid), SiegeBoard.kind_of(level), "%s: without the look's model the intact kit stands, cut by code" % pid)
 		rows[key]["model"] = String(rows[String(c[2])]["model"])
-		s.find_province(pid).walls = damaged_w - 1 ## the same look, a new walls count: the board redraws it
+		## the same look, a new walls count: the board redraws it (a lost step is a whole WALL_STEP, so it has another)
+		var other_w := -1
+		for w in range(damaged_w - 1, 0, -1) + range(damaged_w + 1, top):
+			if SiegeRules.damage_look(level, w) == SiegeRules.damage_look(level, damaged_w):
+				other_w = w
+				break
+		assert_true(other_w > 0, "%s: the damaged look spans more than one walls count" % pid)
+		s.find_province(pid).walls = other_w
 		b.stand(s)
 		assert_eq(b.wv.fort_piece(pid), lk, "%s: with a model on disk the board draws the look's own model" % pid)
 		if pid != "fangridge":

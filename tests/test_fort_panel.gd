@@ -546,7 +546,7 @@ func test_the_plate_has_a_fort_chip_with_the_walls_bar() -> void:
 	# A breached fort and a construction site.
 	p.walls = 0
 	s.find_province("rivermarch").owner = CROWN
-	s.find_province("rivermarch").works = {"faction": CROWN, "to": 1, "left": 2, "turn": 1}
+	s.find_province("rivermarch").works = {"faction": CROWN, "to": 1, "left": int(FortData.LEVELS[1].turns), "turn": 1}
 	map.set_state(s, CROWN)
 	assert_true(map.regions["stonegate"].fort_chip.label.text.contains("breached"), map.regions["stonegate"].fort_chip.label.text)
 	var site: FortChip = map.regions["rivermarch"].fort_chip
