@@ -29,9 +29,13 @@
 extends RefCounted
 
 const SiegeBoard := preload("res://world3d/siege_board.gd")
+const SpellPlan := preload("res://world3d/spell_plan.gd")
 const BATTLES := ["battle", "border_battle"]
 ## M5-3: the ritual events the board's beats read (design/M5_MAGIC_FOG.md §12.3): who sees which is FogData.AUDIENCE's.
-const RITUAL_EVENTS := ["ritual_cast", "ritual_turned_aside", "ritual_fell"]
+## M5-9 (#120): all of §12.3's events, the rituals phase's first and the enchantments phase's after the battles (SpellPlan's lists);
+## each is read from the viewer's own report, so a beat shows only what the viewer was told.
+const RITUAL_EVENTS := ["ritual_cast", "ritual_turned_aside", "ritual_fell", "blood_paid", "enchantment_began", "fort_raised", "far_sight_reading",
+	"summoned", "blessing_healed", "curse_bit", "enchantment_ended", "summon_faded"]
 
 
 ## What the board shows of a state: who owns each province and where every army stands (with sieges, its forts).
@@ -59,6 +63,8 @@ static func model_of(state: GameState) -> Dictionary:
 ##   ruler_died             the ruler's army is gone (a ruler travels alone, so its army goes with it)
 ##   captured, vassal_joined   the province now belongs to the event's first faction
 ##   recruited              the army it joined (or formed) stands at the event's province
+##   summoned               (M5-9) the pack or the Greenwrath's army stands at the event's province, as a recruit's
+##   summon_faded           (M5-9) a pack that faded and left its army empty (numbers.removed) takes the army with it
 ##   ruler_arrived          the new ruler's army stands at the capital
 ##   M3c S-4, with sieges: the forts part moves as SiegeBoard.apply_events says; a new army (recruited, ruler_arrived)
 ##   belongs to the event's faction, and who stands inside follows the owners and armies
@@ -81,7 +87,7 @@ static func apply_events(model: Dictionary, events: Array) -> Dictionary:
 				armies[vid] = String(sn.get("location", ""))
 				army_owner[vid] = String(sn.get("owner", ""))
 			continue
-		if model.has("forts") and String(e.get("type", "")) in ["recruited", "ruler_arrived"] and not ids.is_empty():
+		if model.has("forts") and String(e.get("type", "")) in ["recruited", "ruler_arrived", "summoned"] and not ids.is_empty():
 			var fids0: Array = e.get("factions", [])
 			if not army_owner.has(ids[0]) and not fids0.is_empty():
 				army_owner[ids[0]] = fids0[0]
@@ -102,9 +108,13 @@ static func apply_events(model: Dictionary, events: Array) -> Dictionary:
 				var fids: Array = e.get("factions", [])
 				if not provs.is_empty() and not fids.is_empty():
 					owners[provs[0]] = fids[0]
-			"recruited", "ruler_arrived":
+			"recruited", "ruler_arrived", "summoned":
 				if not ids.is_empty() and not provs.is_empty():
 					armies[ids[0]] = provs[0]
+			"summon_faded":
+				## M5-9: a pack that faded and left its army empty takes the army with it
+				if bool((e.get("numbers", {}) as Dictionary).get("removed", false)) and not ids.is_empty():
+					armies.erase(ids[0])
 	var out := {"owners": owners, "armies": armies}
 	if model.has("forts"):
 		out.merge(SiegeBoard.apply_events(model, events))
@@ -258,7 +268,9 @@ static func _seen_marches(before: GameState, after: GameState, e: Dictionary, cl
 	return out
 
 
-## M5-3: one ritual's beat: {"kind" (the event type), "ritual", "faction" (the caster's), "from", "at", "global"}. `from` is where
+## M5-3: one ritual's beat: {"kind" (the event type), "ritual", "faction" (the caster's), "from", "at", "global"} and, M5-9, "phase" (the
+## report's: rituals or enchantments), "armies" (the event's army ids), "rkind" (the ritual's kind), "ekind" (an enchantment's kind),
+## "army" (a summoned or fading army) and "removed" (a fading army left empty). `from` is where
 ## it starts: the viewer's own cast at its caster (the event names it), a turned-aside ritual of the viewer's at its caster's army;
 ## "" for everything else, so a ritual that fell on the viewer's land from a hidden caster starts at the target, and a heralded
 ## global ritual (no province) starts nowhere.
@@ -278,16 +290,20 @@ static func _ritual_beat(e: Dictionary, before: GameState) -> Dictionary:
 			var caster := before.find_army(String(ids[0])) if not ids.is_empty() and before != null else null
 			if caster != null and caster.seen.is_empty():
 				from = caster.location
-	return {"kind": t, "ritual": String(n.get("ritual", "")), "faction": String(facs[0]) if not facs.is_empty() else "", "from": from, "at": at,
-		"global": bool(n.get("global", false)) or at.is_empty()}
+	var ritual := String(n.get("ritual", ""))
+	var armies: Array = e.get("armies", [])
+	return {"kind": t, "ritual": ritual, "faction": String(facs[0]) if not facs.is_empty() else "", "from": from, "at": at,
+		"global": bool(n.get("global", false)) or at.is_empty(), "phase": String(e.get("phase", "")), "armies": armies.duplicate(),
+		"rkind": SpellPlan.rkind_of(ritual), "ekind": String(n.get("kind", "")) if t.begins_with("enchantment_") else "",
+		"army": String(n.get("army", armies[0] if not armies.is_empty() else "")), "removed": bool(n.get("removed", false))}
 
 
-## True when a plan has nothing to play (no march, battle, capture, recruit, arrival or fort beat). M5-3: a turn that only changes
+## True when a plan has nothing to play (no march, battle, capture, recruit, arrival, fort or ritual beat). M5-3: a turn that only changes
 ## what the viewer sees (sightings: a block fading into the veil, a ghost appearing) is not played for itself: it would be a few
 ## seconds of nothing most turns of a fog game. The board shows the view after at once, and the report says what was seen;
 ## in a turn that does play, the sightings animate with the re-form.
 static func is_empty(plan: Dictionary) -> bool:
-	for k in ["marches", "battles", "recruits", "arrivals", "captures", "forts"]:
+	for k in ["marches", "battles", "recruits", "arrivals", "captures", "forts", "rituals"]:
 		if not (plan.get(k, []) as Array).is_empty():
 			return false
 	return true

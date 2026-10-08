@@ -460,6 +460,64 @@ and, for the engines, the game `play()` was given.
   against the models, the walls' defense on screen before the first hit, the fort on the land, the camp and its
   engines, a fighter on a wall, the camera, determinism, files, the stage only shows).
 
+## Magic in 3D (M5-9, #120)
+
+design/M5_MAGIC_FOG.md §5, §6, §12.2, §12.3, §15.3; 3D_DIRECTION §3.4. The battle stage draws every battle spell and the board
+draws rituals and enchantments, as **code placeholders** (rings, beams, billboards, motes: the VFX sheets of §15 replace them
+without code changes elsewhere), on the quality ladder, in a few draw calls. Effects only read: a cast beat is the log's own event,
+a ritual beat is the viewer's own report, and nothing here changes a state, rolls a die or looks a hidden caster up.
+
+- **Files.** `spell_plan.gd` (pure: what each effect draws on each rung, as lists of marks; every number of the ladder is here),
+  `spell_fx.gd` (the node: three MultiMeshes, the pool, the flash limiter), `shaders/spell_fx*.gdshader*` (every mark in one
+  shader: ground decals depth-tested so a figure hides a ring at its feet, sprites and beams over the figures),
+  `battle_spells.gd` (a `cast` beat to a plan, the legend rows), `enchant_decals.gd` (the board), `magic_beats.gd` (which ritual beats
+  play before the marches and which after the battles), `spell_figures.gd` (the four new figures). The stage's, the board's and
+  `Armies`' edits are small hooks (`_cast_beat`, `_moon_heal`, `_spells_seeked`, `decals.sync`, `magic_beat`).
+- **The ladder** (`SpellPlan`, thinned and never dropped: `tests/test_spell_fx.gd` checks every effect on every rung, still and
+  moving). Bolts (Sunlance's gilt beam, Bloodbolt's crimson one): beam, trail and glow on rung 0-1, no glow on 2, a plain beam on 3,
+  a straight line on 4-5, the impact sheet half size from 4. Briar Snare: a ring of thorns under each snared unit on every rung,
+  vines and briars and 32 particles on 0-1 (16 on 2), one briar each on 3, the ring alone from 4. Shield of Law: a translucent
+  shield before each covered unit on 0-3 (the rim pulses on 0-2), a ▲ under it from 4. Sunburst: the glare ring sweeping the enemy
+  front on every rung, the flare sheet to 3, the bloom and a 4 px shake on 0-1 (the shake to 2), the ring alone from 4. The Blood
+  Moon's heal: 24 rising motes, 12 on 2, the number alone from 3. On the map: a ritual cast is a pillar at a visible caster and a mote
+  along the roads, then the decal (no mote on 3, the decal alone from 4); enchantments are animated decals on 0-1 and still from 2; a
+  summoning's ring and a raised fort fade in on 3 and pop in from 4.
+- **Pools, the flash limiter, reduced motion.** At most 32 effects alive (`SpellPlan.POOL_CAP`); a full pool SKIPS a new effect,
+  it is never queued (the caption and the bars carry the facts). A bolt or Sunburst asks `BattleFx.FlashLimiter` once (Sunburst
+  counts as a flash); refused, it plays without bright frames (its bright marks stay at or under 80%); allowed, a bright mark is above
+  80% for at most `BattleFx.BRIGHT_FRAMES` real frames. Sunburst's shake goes through the stage's own `ShakeLimiter`. Reduced motion
+  plays every effect as a still mark (no sweep, travel, pulse, particles, shake or flash) and the standing decals do not animate.
+- **The battle stage.** A `cast` beat becomes an effect on the caster and its targets, the spell's name and numbers float over
+  the caster ("Sunlance 4", "Briar Snare -2 attack", "Bloodbolt 5" with "-2 hp"), a bolt makes `battle_arcane`'s sound, and the bars
+  and glyphs refresh (a bolt's damage is pending). A hex or shield lasts to its round's `round_end` beat; a seek rebuilds the ones the
+  state still has (`BattleSpells.standing`). The effect's colour is the school's, "effects are untinted": ownership is the ring under
+  the caster and under a snared or shielded unit, in its side's colour. The legend has a row for each spell (`BattleSpells.legend_rows`).
+- **The board.** `Playback.plan`'s "rituals" now carry every event of §12.3 (`SpellPlan.EARLY_EVENTS` before the marches, which then
+  start after the rituals phase; `LATE_EVENTS` after the battles); `Armies.magic_beat` hands each whole to `EnchantDecals`, and the
+  playback bar gains the Rituals and Enchantments phases (captions and help in `Choreo`). A cast the viewer sees starts at its caster;
+  one from a caster it can't see (the beat's `from` is "") arrives at its target with no direction, and a heralded global ritual is a
+  moon over the map. Standing decals come from the state the board stands (under fog the viewer's view): a gilt ring under each blessed
+  army, a blue band on a warded province, crimson veins on a cursed one, an eye over a province in Far Sight. A summoning's creatures
+  step out of a briar ring as the armies re-form (a new army in the state after is a recruit to the board); a Bastion rises behind
+  scaffolding (the board's own `_rising` piece), and its fort stands from the state in a game without sieges
+  (`WorldView.set_raised_forts`: the baked map has none there). `Playback.apply_events` follows `summoned` and `summon_faded`.
+- **Figures.** `adepts`, `shamans`, `thornwolves` and `greenwrath` have rows in `models.json` (`"model": ""`, the fallback is the
+  Kit figure of the same name, `spell_figures.gd`: a robed caster with a sunstone staff, a furred caster with antlers and a skull
+  staff, a low four-legged wolf wider than it is tall, a tall thicket with a stag's skull). `kit.gd` gained one arm in `figure()`, one in
+  `_base()` and `has_figure()` knows them; the GLBs drop in by filling the row.
+- **Run it.** `godot --path . -- --battle3d --fixture magic_all` (every battle spell in round 1), `magic_sunburst`, `magic_shield`,
+  `magic_snare`, `magic_bloodbolt`, `magic_moon`, `magic_pack` (the four new figures), `magic_big` (280 fighters, 6 casters), with
+  `--rung N` and `--reduced-motion` (`tests/magic_stage_fixtures.gd`).
+- **Cost.** Spells add three draw calls to a battle (ground decals, sprites, beams; the budget is 150), never more however many
+  effects are alive, and at most 32 effects. Measured on Alex's Mac (Apple M4, Metal, Forward+, a 1600 x 900 window, a shared machine, no
+  GPU timestamps on Metal): `godot --path . -- --battle3d --fixture magic_big --quit-at-end --rung 0 --window=1600x900` (280 fighters, 6
+  casters) 101.6 fps, frame time p95 10.85 ms, draw calls max 845, against the plain `biggest` battle's 100.4 fps, p95 11.14 ms, draw
+  calls 808 (the extra figures account for the rest); rung 3: 102.2 fps, p95 10.85 ms against 100.8 fps, p95 11.29 ms. The stage's CPU
+  with effects on, headless at 4x: about 0.2-0.4 ms a frame more than without (`tests/test_spell_fx.gd` prints it, and checks the
+  2.0 / 4.0 ms budget under `-- --perf`). The shaders' pipelines are warmed in the node's first frames (`SpellFx.WARM_FRAMES`), so the
+  first Sunburst of a battle does not hitch it.
+- **Tests.** `tests/test_spell_fx.gd` (see its header).
+
 # The spike (PR #81, `spike-3d-world`)
 
 A real 3D world map for ascendant, built from the real rules, to judge the look and the cost before the art

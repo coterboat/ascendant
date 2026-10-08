@@ -72,6 +72,8 @@ const Stands := preload("res://world3d/stands.gd")
 const Trays := preload("res://world3d/trays.gd")
 const SiegeBoard := preload("res://world3d/siege_board.gd")
 const Vision := preload("res://world3d/vision.gd")
+const EnchantDecals := preload("res://world3d/enchant_decals.gd")
+const SpellPlan := preload("res://world3d/spell_plan.gd")
 
 const SPAN_NEAR := 70.0
 const PITCH_FAR := 60.0
@@ -99,6 +101,7 @@ static var view_rig := {}
 var map: Control = null ## the MapScreen this board serves
 var wv: Node3D ## world_view.gd
 var armies: Node3D ## armies.gd
+var decals: EnchantDecals ## M5-9 (#120): the enchantments' decals and the turn's magic beats (world3d/enchant_decals.gd)
 var stands: Node3D ## stands.gd (#125): the far-zoom army stands
 var trays: Node3D ## trays.gd (#125): the forest armies' movement trays
 var overlay: Control ## board_overlay.gd
@@ -232,6 +235,11 @@ func _build_world() -> void:
 	armies.fort_beat.connect(_on_fort_beat)
 	armies.reform_started.connect(_on_reform_started)
 	armies.ritual_beat.connect(_on_ritual_beat)
+	decals = EnchantDecals.new() ## M5-9: ritual beats, enchantment decals, a Bastion's fort
+	decals.setup(wv, armies)
+	decals.set_rung(SpellPlan.rung_of(wv.quality, RenderingServer.get_current_rendering_method() == "gl_compatibility"))
+	wv.add_child(decals)
+	armies.magic_beat.connect(decals.on_beat)
 	stands = Stands.new()
 	stands.wv = wv
 	wv.add_child(stands)
@@ -315,6 +323,8 @@ func vision_of(province_id: String) -> String:
 
 
 func _paint_owners(st: GameState) -> void:
+	if decals != null:
+		decals.sync(st) ## M5-9: the enchantments' decals and a Bastion's fort, before the forts take their owners' colours
 	var cols := {}
 	for p in st.provinces:
 		if not p.owner.is_empty():
@@ -463,6 +473,7 @@ func play_turn(before: GameState, events: Array, after: GameState) -> bool:
 	_sync_vision(before) ## M5-3: the veil of the turn's start; the state after's sight takes the ground at the re-form
 	_playing = true
 	armies.play(plan, before, after)
+	decals.begin_play() ## M5-9
 	_frame_action(plan)
 	_sync_marks()
 	if overlay != null:
@@ -556,7 +567,7 @@ func _seen_level(province_id: String, st: GameState) -> bool:
 	return level != FogRules.VEILED
 
 
-## M5-3: a ritual's beat plays (Playback.plan's "rituals"): where it starts and falls. M5-9 draws the effects; the board keeps the beat.
+## M5-3: a ritual's beat plays (Playback.plan's "rituals"): where it starts and falls. M5-9 draws the effects from Armies.magic_beat (EnchantDecals); the board keeps this beat for its tests.
 func _on_ritual_beat(from: String, at: String, ritual: String, _index: int) -> void:
 	rituals_played.append({"from": from, "at": at, "ritual": ritual})
 
@@ -627,6 +638,7 @@ func _on_captured(province_id: String, owner_id: String) -> void:
 
 
 func _on_playback_finished() -> void:
+	decals.end_play() ## M5-9: a Bastion's scaffolding comes down; its fort stands from the state
 	_playing = false
 	_play_after = null
 	wv.clear_sweeps()
@@ -1052,6 +1064,8 @@ func _watch_speed(delta: float) -> void:
 ## bearers stay (they carry the banners).
 func set_quality_rung(q: int) -> void:
 	wv.set_quality(q)
+	if decals != null:
+		decals.set_rung(SpellPlan.rung_of(wv.quality, RenderingServer.get_current_rendering_method() == "gl_compatibility")) ## M5-9: the effects thin with the ladder
 	var keep := Armies.musicians_at(wv.quality)
 	if keep == Armies.musicians:
 		return
