@@ -434,6 +434,7 @@ S-7 tuned these within §11.3's ±0.1 and ±1 (the first values the build used a
 | `SIEGE_SALLY_WIN` | 0.55 | our garrison armies sally at these odds (M1's `SALLY_WIN` of 0.9 stays for coming out of a capital that isn't besieged) |
 | `RELIEF_WIN` | 0.55 | send relief, with a sally, when the combined odds are at least this; `CAPITAL_RELIEF_WIN` 0.4 for the capital |
 | `ABANDON_ODDS` | 0.35 | leave a non-capital fort before its breach when the odds in the open are below this and no relief can come within `REACH` moves |
+| `SIEGE_STANDOFF_TURNS` | 12 | a stand-off (#94) is read in a game with sieges when a faction's units and treasury are worth this many turns of its income (20, `STANDOFF_TURNS`, without sieges: §11.4 says why; it is in `ai/ai_player.gd`, not a §11.3 knob) |
 | `ENGINES_PER_SIEGE` | 2 | engines the AI brings to a siege (3 when the objective is a keep, where the third saves a turn), never more than 1 for every 5 troops |
 | `FORTIFY_TURN` | 6 | first turn the AI builds a fort |
 | `MUSTER_WEIGHT` | 0.25 | how much a fort's recruit limit adds to its capture value (§8.2) |
@@ -666,6 +667,7 @@ Bots aren't humans: the bands prove that nothing is broken or dominant for the b
 - **S8:** the 9 games of `tests/fixtures/main_records.json` and `m4_path_records.json` replay turn by turn against their recorded digests, and the 72 M2 matrix games' record digests equal `m2_matrix_digests.json`.
 - **S9:** the invariants of §11.2 as `Simulator.check_invariants` states them; replays of every 10th siege game; and the breach forecast: each `siege_started` or `walls_damaged` event says on which turn the walls reach 0, and while the same armies stand outside and the siege damage is the same, the next event must say the same turn and the walls must reach 0 on it.
 - **S10:** a siege "ended by a sally or relief" is one lifted by a battle of kind sally, gate, relief or relief with a sally. A relief chance is a turn when the owner of a besieged fort with standing walls has an army with a fighter one province away; it is taken when that army is ordered in.
+- **With everything on** (`--matrix --sieges --magic --fog --independents`, the MVP's defaults): the same bands over the paths cells only (magic needs paths), without S7 and S8, plus a stall table: a stall is 8 turns in a row with no battle between the two factions (a fight with a Free Holds garrison does not count), after their first clash or in a game with none (`SiegeMatrix.stall_of`). §11.4 has the first numbers.
 
 ### 11.3 tuning knobs
 S-7 may change these without asking, recording before → after in its PR and updating this file's tables (that ticket authorises the edit):
@@ -682,24 +684,24 @@ S-7 may change these without asking, recording before → after in its PR and up
 Anything else, or a band that can't be met within these knobs, goes back to the director as a question for Alex.
 
 ### 11.4 S-7's first run: bands, tuning and what is still missed
-`autoplay.gd -- --matrix --sieges --independents --jobs 4`, seed 1, turn cap 60, AI in both seats. 2,072 games (900 siege games, the same 900 with sieges off, 100 turtle games and 100 more with sieges off, 72 M2 games), about 22 minutes with 4 jobs on a shared Mac. The first run (the numbers as §2-§8 first stated them) is the "before"; the "after" is the tuning below. Both used the same seeds, and the sieges-off games are identical in the two runs.
+`autoplay.gd -- --matrix --sieges --independents --jobs 4`, seed 1, turn cap 60, AI in both seats. 2,072 games (900 siege games, the same 900 with sieges off, 100 turtle games and 100 more with sieges off, 72 M2 games), about 25 minutes with 4 jobs on a shared Mac. The first run (the numbers as §2-§8 first stated them) is the "before"; the "after" is the tuning below. Both used the same seeds, and the sieges-off games are identical in the two runs.
 
 **Bands, before → after** (target ranges, not hard caps):
 
 | band | target | before | after |
 |---|---|---|---|
-| S1 length | median decisive 12-22; at most 5% at the cap | median 23; 211 of 1,100 at the cap (19%) **miss** | median 21; 11 of 900 at the cap (1%) **pass** (sieges off: median 20, 1 of 900) |
-| S2 sieges happen | 60%+ of games reaching turn 12 | 76% **pass** | 95% **pass** (first siege on turn 9, was 19; 2.3 sieges a game, was 1.2) |
-| S3 storm or wait | storms 15-60% of battles at forts | 73% (1,458 of 1,992), stormers won 96% **miss** | 57% (1,335 of 2,325), stormers won 96% **pass** (the 55-85% expected win rate is not met) |
+| S1 length | median decisive 12-22; at most 5% at the cap | median 23; 211 of 1,100 at the cap (19%) **miss** | median 20; 11 of 900 at the cap (1%) **pass** (sieges off: median 20, 1 of 900) |
+| S2 sieges happen | 60%+ of games reaching turn 12 | 76% **pass** | 94% **pass** (first siege on turn 9, was 19; 2.3 sieges a game, was 1.2) |
+| S3 storm or wait | storms 15-60% of battles at forts | 73% (1,458 of 1,992), stormers won 96% **miss** | 61% (1,487 of 2,438), stormers won 97% **miss by a point** (see the calls) |
 | S4 forts built | median 1-3; 95th percentile 5 or fewer | median 1, 95th 4 **pass** | median 1, 95th 3 **pass** |
-| S5 recruiting at forts | 10-50% outside the capital | 59% **miss** | 43% **pass** (46% counting Warband Muster) |
-| S6 nothing new dominates | no pairing newly above 65% | 3 of 9 pairings newly above; Crown / Clans 49 / 51 (sieges off 41 / 59) **miss** | 2 of 9 newly above (Regent's Court vs Clan Moot, Clans 76%; Warrior King vs Blood of the Fang, Crown 67%); Crown / Clans 44 / 56 **miss** |
+| S5 recruiting at forts | 10-50% outside the capital | 59% **miss** | 41% **pass** (44% counting Warband Muster) |
+| S6 nothing new dominates | no pairing newly above 65% | 3 of 9 pairings newly above; Crown / Clans 49 / 51 (sieges off 41 / 59) **miss** | 1 of 9 (Regent's Court vs Clan Moot, Clans 73%, 1.4 standard errors from the 64% without sieges); Crown / Clans 44 / 56 **miss** |
 | S7 turtling loses | turtle wins 10% or fewer, at most 10% at the cap | 0 of 100, 0 at the cap **pass** | 0 of 100, 0 at the cap **pass** |
 | S8 off is identical | fixtures and M2 games | 9 of 9 and 72 of 72 **pass** | 9 of 9 and 72 of 72 **pass** |
-| S9 integrity | 0 problems, 0 forecast mismatches | 0 in 2,472 games, 744 forecast checks **pass** | 0 in 2,072 games, 1,098 forecast checks **pass** |
-| S10 defence works (report) | 10%+ of sieges ended by a sally or relief | 1% (7 of 1,298); relief chances taken 29% (23 of 79) | 4% (91 of 2,098); relief chances taken 60% (155 of 260); 876 sally orders, was 67 |
+| S9 integrity | 0 problems, 0 forecast mismatches | 0 in 2,472 games, 744 forecast checks **pass** | 0 in 2,072 games, 1,050 forecast checks **pass** |
+| S10 defence works (report) | 10%+ of sieges ended by a sally or relief | 1% (7 of 1,298); relief chances taken 29% (23 of 79) | 4% (87 of 2,027); relief chances taken 62% (207 of 334); 961 sally orders, was 67 |
 
-**Every number change, before → after** (all inside §11.3):
+**Every number change, before → after** (the data and the AI's §8.1 numbers are inside §11.3; the stand-off row is not, see the calls):
 
 | what | before → after | why |
 |---|---|---|
@@ -711,9 +713,10 @@ Anything else, or a band that can't be met within these knobs, goes back to the 
 | `STANDOFF_START_WIN` | 0.5 → **0.4** | the same, in a #94 stand-off. |
 | `SIEGE_STAY_WIN` | 0.45 → **0.35** | S1: stay in a siege a little longer. |
 | `REACH` | 2 → **1** | S1: counts the enemy armies within one move of a fort, not two, when deciding to start, stay, abandon or garrison. With `REACH` 2 and everything else the same, 7-10% of games reached the cap (e, i below). See the call below. |
-| `SIEGE_SALLY_WIN` | 0.65 → **0.55** | S10: a garrison sallies at lower odds (sally orders 67 → 876). |
+| `SIEGE_SALLY_WIN` | 0.65 → **0.55** | S10: a garrison sallies at lower odds (sally orders 67 → 961). |
 | `RELIEF_WIN` | 0.65 → **0.55** | S10: relief is sent at lower odds. |
 | `CAPITAL_RELIEF_WIN` | 0.5 → **0.4** | S10: the same for the capital. |
+| `SIEGE_STANDOFF_TURNS` (`ai/ai_player.gd`, new) | 20 (`STANDOFF_TURNS`) → **12** with sieges | The all-systems run below: two computers each holding a keep or a capital against the other's stack read #94's stand-off too late. Only in a game with sieges, so every other game is as before. It costs S3 a few points (57% → 61%) and halves the games at the cap with everything on. |
 
 Texts that named the wait ("the turn after next") now read it from `FortData.CAPTURE_WAIT_WORDS`; the codex, the forecasts and the refusal reasons already took the turn number from the data.
 
@@ -727,7 +730,7 @@ Texts that named the wait ("the turn after next") now read it from `FortData.CAP
 | d | c, storm thresholds +0.1 (the AI numbers above) | 540 | 4% | 59% | 50% | 5% |
 | e | d with `REACH` 2 | 540 | 10% | 63% | 52% | 6% |
 | f | the AI numbers above alone, full size | 900 | 4% | 57% | 51% | 4% |
-| g | f and `CAPTURE_WAIT` 2 (**what shipped**) | 900 | 1% | 57% | 43% | 4% |
+| g | f and `CAPTURE_WAIT` 2 | 900 | 1% | 57% | 43% | 4% |
 | h | `CAPTURE_WAIT` 2 with the first AI numbers | 900 | 9% | 73% | 47% | 1% |
 | i | `CAPTURE_WAIT` 2 and the AI numbers with `REACH` 2 | 900 | 7% | 64% | 45% | 4% |
 | j | f and recruit limits keep 3, palisade 1 | 900 | 4% | 58% | 42% | 4% |
@@ -740,22 +743,41 @@ Texts that named the wait ("the turn after next") now read it from `FortData.CAP
 | q | d, walls 4 / 7 / 10 | 540 | 5% | 53% | 50% | 6% |
 | r | d, slower damage and walls 4 / 7 / 10 | 540 | 5% | 58% | 50% | 9% |
 | s | recruit limits 1 / 3 / 10 (Beast-God Unbound games only) | 300 | 49% of those | 71% | 67% | – |
+| t | g and `SIEGE_STANDOFF_TURNS` 15 / 12 (**what shipped**: 12) | 900 | 1% / 1% | 59% / 61% | 45% / 41% | 4% / 4% |
 
 - **The data knobs on walls and siege damage did not move the stalls** (k, l, m): the games at the cap had no siege at all (180 of 211 in the first run), so nothing about breaching mattered. They moved the storm share a little (q: 53%) and the sally and relief share (p, r: 8-9%), at some cost to the cap share and to the recruit share (q misses S5 by a hair). I kept the first walls and damage, because palisade walls above 3 give the board a damaged-palisade look it has no model for (`SiegeRules.damage_look`), and the gain is in a report band.
 - **Recruit limits did not bind** (j, o, s): the computer buys 2-4 units a turn, under every limit in range, so the forward keep took everything either way; lowering them did not stop the stack.
 - **The stand-off is the same as #93's.** Both computers stack at the two forward keeps (115 and 141 troops by turn 60 in the traced game), each judging the other's keep not worth besieging (24-34% in the open with the garrison's cover) and its own not safe to leave. 91% of the capped games (193 of 211) had Beast-God Unbound in them (its ruler keeps all 10 power). The capture wait and `REACH` were the two knobs that broke it; what would break it for good is an AI rule (for example: recruit at the capital once the forward keep holds a stack, and use that army to take the Free Holds garrisons or go round), which is not a §11.3 knob and belongs to the AI's owner.
 
+**With everything on** (the MVP's defaults: independents, rulers, paths, sieges, magic and fog; `autoplay.gd -- --matrix --sieges --magic --fog --independents --jobs 4`, the nine pairings × both seat orders × 25 games with paths, 900 siege games and the same 900 with sieges off; magic needs paths, so the paths-off cells are left out). A walk of one such game (play_shots, seed 777, the Crown played by a second AIPlayer) showed no battle between the factions from turn 8 to turn 24 and no winner at the walk's 25-turn limit, so the run counts a **stall** as 8 or more turns in a row with no battle between the two factions (not a Free Holds fight), after the first clash or in a game with none:
+
+| | stalled | at the 60-turn cap | a quiet run of 16+ turns | of 24+ | first clash, median turn | sieges a game |
+|---|---|---|---|---|---|---|
+| first numbers, sieges on | 35% | 1% (10 of 900) | – | – | 10 | 1.5 |
+| tuned numbers, sieges on (before the stand-off row) | 40% | 2% (14 of 900) | 61 games | 12 | 10 | 2.1 |
+| **shipped**, sieges on | 36% | 1% (7 of 900) | 31 games | 0 | 10 | 2.0 |
+| sieges off, same seeds | 20% | 2% (14 of 900) | 50 games | 28 | 16 | 0 |
+
+- **The walk was the long tail, not the middle.** With everything on, 36% of siege games have a quiet run of 8 turns or more, against 20% with sieges off; most end on their own (7 of 900 reach the cap). A run of 16 or more turns happens in 31 games of 900 (3%) with sieges and in 50 (6%) without, and none lasts 24 or more with sieges, against 28 without. The walk's 16 quiet turns are a rare quiet stretch that the walk's 25-turn limit cut off.
+- **Why the computer does not attack a fortified capital it seems to outnumber.** Traced games with a long quiet run (a capped Regent's Court against Beast-God Unbound, seed 7; Iron Crown against Beast-God Unbound, seed 9) show the same mutual hostage: each side's main army "holds" at its capital or forward keep ("an enemy army two moves away") and the other writes "massing at Stonegate before pushing on to Crownkeep: the road ahead is guarded by stronger armies". The march needs the step to be 1.2 times safer than every enemy army within three moves, the capital's garrison counted with its cover, so an income lead is not enough while both sides recruit every turn: a side with only a small lead keeps massing, and the games that stalled longest are the ones where income was close. It fired the stand-off rule all along (21 stand-off plans a game in the stalled games, with fog on), so the rule does not fail under fog; it fired late, which is what `SIEGE_STANDOFF_TURNS` moves.
+- **Fog is not the cause.** The same run without fog stalls in 35% of siege games with 1% at the cap; with fog 36% and 1%. Without sieges fog does make stalls commoner (12% without fog, 20% with).
+- **Two crashes the run found, fixed here** (a game whose state no longer validated made `GameSession.state()` return null, so a real game would have broken at that turn; 4 games in 900 without fog, none of them in the first fog run by luck):
+  1. A **summoned pack besieging a fort fades** at the end of the turn it began its siege (Call the Pack), after the sieges phase, leaving the siege recorded with no besieger. `MagicRules.enchantment_step` now ends a siege whose armies are gone when it removes the faded army (`_end_stale_siege`).
+  2. A **Fortify order under a Bastion**: the rituals phase comes first and Bastion raises a palisade at once, then the recruitment phase paid a Fortify order for a palisade at the same province and started a site that builds level 1 on a level 1 fort. `SiegeRules.check_fortify` now drops the order at no cost when the fort's level changed since the start of the turn.
+  Both are in `tests/test_siege_balance.gd`.
+
 **Bands still missed**
-- **S6, two pairings and a faction split.** Regent's Court vs Clan Moot: the Clans win 76% (95% range 66-83%) against 64% with sieges off, 1.8 standard errors apart, so mostly the preset (it was already 64%). Warrior King vs Blood of the Fang: the Crown wins 67% (57-75%) against 46%, 3.0 standard errors apart, which is real. The diagnostic is the same in both: the side that wins more starts two to four times as many sieges (Warrior King 143 against Blood of the Fang's 70 in that pairing; Clan Moot 135 against Regent's Court's 40). Warrior King vs Clan Moot is over 65% for the Clans with sieges off (68%), and went to 77% in the first run and 80% now. Crown / Clans is 44 / 56 (sieges off 41 / 59; the first run 49 / 51). **Not tuned: a miss goes to Alex, as with M2's band C.** The knob that would move it is the engines' cost (±4), which moves every pairing at once.
-- **S10, 4% against 10%.** The computer sallies and sends relief far more (sally orders 67 → 876; relief chances taken 29% → 60%) but a sally or relief still ends only 4% of sieges: most sieges end by storm, by the breach battle, or because the besiegers leave first. The slower-damage runs (p, r) reach 8-9%, but cost S3 or the cap margin and rewrite §3.3's table, so they are left for Alex's call. It is a report band.
-- **S3's storm win rate** is 96% against an expected 55-85%: the computer storms only when it is nearly sure. Lowering `STORM_WIN` would bring the win rate into the band and push the storm share back above 60%, so I kept the share, the band that is a pass or a miss.
+- **S6, one pairing and a faction split.** Regent's Court vs Clan Moot: the Clans win 73% (95% range 64-81%) against 64% with sieges off, 1.4 standard errors apart, so mostly the preset (it was already 64%). In the first run Iron Crown vs Blood of the Fang (+28 points, 4.0 standard errors) and Warrior King vs Blood of the Fang (+21, 3.0) were the real ones: the side that wins more starts two to four times as many sieges (Warrior King 143 against Blood of the Fang's 70; Clan Moot 135 against Regent's Court's 40). Warrior King vs Clan Moot is over 65% for the Clans with sieges off (68%) and is 82% now. Crown / Clans is 44 / 56 (sieges off 41 / 59; the first run 49 / 51). **Not tuned: a miss goes to Alex, as with M2's band C.** The knob that would move it is the engines' cost (±4), which moves every pairing at once.
+- **S3, 61% against 60%.** The storm share was 57% before `SIEGE_STANDOFF_TURNS`; with 15 it is 59% and passes, but then the games at the cap with everything on are 12 of 900, not 7, and 4 games run 24 turns or more without a battle (t above). The storm win rate is 97% against an expected 55-85%: the computer storms only when it is nearly sure.
+- **S10, 4% against 10%.** The computer sallies and sends relief far more (sally orders 67 → 961; relief chances taken 29% → 62%) but a sally or relief still ends only 4% of sieges: most sieges end by storm, by the breach battle, or because the besiegers leave first. With everything on it is 12% (219 of 1,864 sieges). The slower-damage runs (p, r) reach 8-9% in the plain config but cost S3 or the cap margin and rewrite §3.3's table, so they are left for Alex's call. It is a report band.
 
 **Calls S-7 made**
 1. **`REACH` is now 1.** It was 2 in §8.2 precisely so that a relief army stepping back two provinces could not be danced in and out of the AI's sights (appendix A, round 2). Against two computers it was the strongest lever for S1, so I took it, but a player can now do that dance again. Alex's call: keep it, or go back to 2 and accept 7-10% of games at the cap (e, i).
-2. **Palisade walls above 3 are not a free knob** (the board has no damaged-palisade model), and I did not use them.
-3. **The turtle claims a province.** The turtle of M1 owned only its capital, so it could never build a fort; it now walks its strongest army into the safest neighbour of its capital once and builds there. It still attacks an adjacent army in the field at likely odds, as in M1, and never a fort.
-4. **The independents config only.** The plain (no Free Holds) matrix was not run; the contract is `--independents`.
-5. **The AI was touched only in constants** (`ai/ai_sieges.gd`, ten values, with the first ones in a comment there).
+2. **`SIEGE_STANDOFF_TURNS` is not in §11.3's list.** It is one number in `ai/ai_player.gd`, read only in a game with sieges, and it is the stand-off rule's threshold, the smallest fix found for the stalls with everything on. Alex's call: keep 12, use 15 (S3 passes, the stalls come back a little), or drop it.
+3. **Palisade walls above 3 are not a free knob** (the board has no damaged-palisade model), and I did not use them.
+4. **The turtle claims a province.** The turtle of M1 owned only its capital, so it could never build a fort; it now walks its strongest army into the safest neighbour of its capital once and builds there. It still attacks an adjacent army in the field at likely odds, as in M1, and never a fort.
+5. **The independents config only** for the bands. The plain (no Free Holds) matrix was not run; the contract is `--independents`. The all-systems run is a report beside the bands, with S7 and S8 not played in it.
+6. **The AI was touched in constants** (`ai/ai_sieges.gd`, ten values, with the first ones in a comment there; `ai/ai_player.gd`, one new constant and one line) **and nowhere else.**
 
 ---
 
@@ -1067,6 +1089,8 @@ The build goes ahead on the **default** for each; Alex can change any of them, a
    - **Default: no, it stays an opt-in preview** until S-7's bands pass and you have played it. The decision is yours after the playtest.
 6. **The AI's horizon (`REACH`, §8.2, §11.4).** S-7 set it to 1 so that two computers stop stacking at the forward keeps; a relief army two provinces away no longer deters a siege, so a player can dance one back and in again.
    - **Default: 1,** because with 2 about 7-10% of games still reach the cap. The alternative is the constant `REACH` in `ai/ai_sieges.gd` set back to 2, at that cost.
+7. **The stand-off rule with sieges (`SIEGE_STANDOFF_TURNS`, §11.4).** With everything on, two computers can sit a long time, each holding its keep or capital against the other's stack. S-7 made #94's stand-off read at a pile worth 12 turns of income instead of 20 in a game with sieges, which halves the games at the turn cap and removes the 24-turn quiet runs, and costs the storm share a few points.
+   - **Default: 12.** The alternatives are 15 (the storm band passes, the long quiet runs come back a little) or 20 (as before).
 
 ---
 
