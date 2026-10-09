@@ -138,16 +138,14 @@ func _new_game() -> Control:
 	return NewGameScreen.new()
 
 
-## Every box ticked, a rematch note, and the computer's explanation: the most the screen ever shows.
+## Every box ticked (MVP-2: the default), a rematch note, the settings-file note, and the computer's explanation: the most the
+## screen ever shows.
 func _new_game_full() -> Control:
 	var s := NewGameScreen.new()
-	s.set_rulers(true)
-	s.set_paths(true)
-	s.set_sieges(true)
-	s.set_magic(true)
-	s.set_fog(true)
-	s.set_independents(true)
-	s.prefill({"players": ["kingdom", "beasts"], "seed": 7, "ai": {"beasts": "normal"}, "rulers": true})
+	var last := {"players": ["kingdom", "beasts"], "seed": 7, "ai": {"beasts": "normal"}}
+	last.merge(NewGameScreen.default_systems())
+	s.prefill(last)
+	s.defaults_label.visible = true
 	s.set_seat_kind(1, "computer")
 	s.set_seat_kind(2, "computer")
 	return s

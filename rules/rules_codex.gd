@@ -26,7 +26,20 @@ const ENTRIES := {
 			+ "4. Resolve: everyone gives orders at the same time, without seeing anyone else's, and then all of them resolve together in one fixed order (see How a turn resolves). Nobody gets to react to what you chose this turn.\n"
 			+ "5. Watch: battles play out on the land and you can watch the ones you care about, or skim the rest from their reports. Then read the next report and plan again.\n"
 			+ "You win by capturing the enemy capital.\n"
-			+ "Nothing is hidden. Hover any number to see where it comes from, and right-click it (or press F1 while hovering) to open its codex entry. The Codex button in the top bar opens this book at any time.",
+			+ "No rule is hidden. Hover any number to see where it comes from, and right-click it (or press F1 while hovering) to open its codex entry. The Codex button in the top bar opens this book at any time.",
+	},
+	# --- MVP-2 (#163): the six boxes on the new game screen, all ticked by default. Plain text, no links: the codex panel links
+	# the other entries' titles by itself. Each line says what the system adds; its own entry has the rules.
+	"game_systems": {
+		"title": "Game systems",
+		"text": "A new game plays with six systems, and every one starts ticked on the new game screen (Quick start has them all too). Each is a choice: untick a box and the game plays without it, as the simpler game underneath.\n"
+			+ "Rulers: each side is led by a ruler, and the power it spends buys mandates for the whole nation. See Ruler.\n"
+			+ "Paths: each faction researches a path of upgrades, and swears an Oath that locks it in and transforms its people. Needs rulers. See Paths of ascension.\n"
+			+ "Forts & sieges: forts have levels and walls, you recruit at any fort you own, and an army that marches into an enemy fort with a garrison inside besieges it. See Fort levels.\n"
+			+ "Magic: spells, mages and rituals, learned by research. Needs paths. See Magic.\n"
+			+ "Fog of war: you see exactly only near your land and your armies, and what you saw last beyond. See Fog of war.\n"
+			+ "Independents: every neutral province starts with a garrison of free fighters you must beat to take it. See Independents: the Free Holds.\n"
+			+ "Ticking a box ticks the ones it needs, and unticking one unticks the ones that need it. A game keeps the systems it started with: a saved game loads with its own, and a rematch starts from the last game's.",
 	},
 	"neutral": {
 		"title": "Neutral provinces",
@@ -38,7 +51,7 @@ const ENTRIES := {
 	},
 	"fort": {
 		"title": "Fort",
-		"text": "Some provinces have a fort, drawn as a small tower on the map. An army holding a province with a fort gets +2 defense in battles there, on top of the terrain. Only the defender gets it, never armies that just arrived. A fort does not change income. In a game with magic, the Crown's Bastion raises a fort for good, at most 2 per faction, ever. In a game with forts and sieges (the M3c preview), a fort has a level (a palisade, a keep or a citadel) and walls instead: it is where you recruit, an enemy army that marches in besieges it instead of fighting while its walls stand, and its walls help a stormed garrison. See Fort levels, Walls and Siege.",
+		"text": "Some provinces have a fort, drawn as a small tower on the map. An army holding a province with a fort gets +2 defense in battles there, on top of the terrain. Only the defender gets it, never armies that just arrived. A fort does not change income. In a game with magic, the Crown's Bastion raises a fort for good, at most 2 per faction, ever. In a game with forts and sieges, a fort has a level (a palisade, a keep or a citadel) and walls instead: it is where you recruit, an enemy army that marches in besieges it instead of fighting while its walls stand, and its walls help a stormed garrison. See Fort levels, Walls and Siege.",
 	},
 	# --- forts and sieges (M3c S-1a, #98; design/M3C_SIEGES.md §9.6): only a game with sieges uses these rules. The
 	# numbers come from FortData, so a retuned fort shows up here by itself. Plain text: tooltips quote them.
@@ -79,7 +92,7 @@ const ENTRIES := {
 		"title": "Recruiting at forts",
 		"text": "In a game with forts and sieges you recruit at any fort you own, not only at your capital. Each fort takes only so many recruits a turn, troops, commanders and siege engines all counting: a palisade %d," % FortData.LEVELS[1].recruits
 			+ " a keep %d," % FortData.LEVELS[2].recruits + " a citadel %d." % FortData.LEVELS[3].recruits
-			+ " Commanders and engines need a keep or a citadel. A fort you capture takes recruits from the turn after next (taken on turn 7, it recruits from turn %d)," % (7 + FortData.CAPTURE_WAIT + 1)
+			+ " Commanders and engines need a keep or a citadel. A fort you capture takes recruits from " + FortData.CAPTURE_WAIT_WORDS[FortData.CAPTURE_WAIT] + " (taken on turn 7, it recruits from turn %d)," % (7 + FortData.CAPTURE_WAIT + 1)
 			+ " but a fort of yours that you retake within %d turns of losing it recruits again at once." % FortData.RETAKE_TURNS
 			+ " A fort you build takes recruits from the turn after it stands. Nobody can recruit at a fort that was cut off by a siege at the start of the turn. Recruits join the first army of yours there, or form a new one, and every recruit and Fortify order is paid from one pool of gold, in the order you gave them.",
 	},
@@ -167,7 +180,7 @@ const ENTRIES := {
 	},
 	"empty_fort": {
 		"title": "Empty forts",
-		"text": "A fort with nobody inside falls to the first army that walks in, as any province does, with its level and its walls as they are; any construction there is razed. Its new owner can recruit there from the turn after next. If its owner's army and an enemy arrive together, they meet in the open and the winner holds it. A fort only delays an enemy if someone holds it.",
+		"text": "A fort with nobody inside falls to the first army that walks in, as any province does, with its level and its walls as they are; any construction there is razed. Its new owner can recruit there from " + FortData.CAPTURE_WAIT_WORDS[FortData.CAPTURE_WAIT] + ". If its owner's army and an enemy arrive together, they meet in the open and the winner holds it. A fort only delays an enemy if someone holds it.",
 	},
 	"trait_siege_engine": {
 		"title": "Siege Engine",
@@ -257,7 +270,7 @@ const ENTRIES := {
 	},
 	"phase_order": {
 		"title": "How a turn resolves",
-		"text": "Everyone gives orders first. Then the whole turn resolves at once, always in this order: 1. sacrifice: each ruler's Sacrifice order is checked and applied, faction by faction, so its new mandate already counts this turn; 2. orders: every other order is checked against the state after the sacrifices; 3. movement; 4. battles; 5. capture, then Sworn Vassals; 6. recruitment; 7. income; 8. rulers: Mending Light heals, rulers heal, then successors who are due arrive. Without rulers, steps 1 and 8 have nothing to do. In a game with paths (the M4 preview), research resolves between income and rulers: see the research phase. The same orders and seed always give the same result. In a game with forts and sieges (the M3c preview), sieges resolve between battles and capture: a siege starts or goes on and the walls drop, a siege is lifted or a fort falls, walls repair where no enemy stands and construction works; Fortify orders are paid with the recruits. In a game with magic (the M5 preview) the order is: 1. sacrifice; 2. orders (spellbook orders apply, cast orders are checked first and pin their armies, then every other order); 3. rituals: each cast is turned aside, fails, or is paid and takes effect, wards first, then curses, blessings, summons, raisings, the global ritual and sight; 4. movement (pinned armies and new summons hold); 5. battles; 6. capture; 7. recruitment (priced from the gold left after rituals); 8. income; 9. research (healing skips cursed fighters); 10. rulers (healing skips cursed fighters); 11. enchantments: blessings heal, curses bite, then what lasted through this turn ends and summoned creatures whose time is up fade.",
+		"text": "Everyone gives orders first. Then the whole turn resolves at once, always in this order: 1. sacrifice: each ruler's Sacrifice order is checked and applied, faction by faction, so its new mandate already counts this turn; 2. orders: every other order is checked against the state after the sacrifices; 3. movement; 4. battles; 5. capture, then Sworn Vassals; 6. recruitment; 7. income; 8. rulers: Mending Light heals, rulers heal, then successors who are due arrive. Without rulers, steps 1 and 8 have nothing to do. In a game with paths, research resolves between income and rulers: see the research phase. The same orders and seed always give the same result. In a game with forts and sieges, sieges resolve between battles and capture: a siege starts or goes on and the walls drop, a siege is lifted or a fort falls, walls repair where no enemy stands and construction works; Fortify orders are paid with the recruits. In a game with magic the order is: 1. sacrifice; 2. orders (spellbook orders apply, cast orders are checked first and pin their armies, then every other order); 3. rituals: each cast is turned aside, fails, or is paid and takes effect, wards first, then curses, blessings, summons, raisings, the global ritual and sight; 4. movement (pinned armies and new summons hold); 5. battles; 6. capture; 7. recruitment (priced from the gold left after rituals); 8. income; 9. research (healing skips cursed fighters); 10. rulers (healing skips cursed fighters); 11. enchantments: blessings heal, curses bite, then what lasted through this turn ends and summoned creatures whose time is up fade.",
 	},
 	"orders": {
 		"title": "Orders",
@@ -463,11 +476,11 @@ const ENTRIES := {
 	},
 	"capture": {
 		"title": "Capturing provinces",
-		"text": "After battles, a province with armies of only one faction in it becomes that faction's. This happens whether it was neutral or an enemy's. Taking the enemy capital stops them from recruiting. In a game with paths, the Thornmane Clans' Raiding Parties also take gold when their armies capture a province: twice its income, once, right away, so they can spend it on this turn's recruits. In a game with forts and sieges, an empty fort is captured with its level and walls, any construction there is razed, and a captured fort takes recruits from the turn after next. A fort with a garrison behind standing walls is besieged, not captured.",
+		"text": "After battles, a province with armies of only one faction in it becomes that faction's. This happens whether it was neutral or an enemy's. Taking the enemy capital stops them from recruiting. In a game with paths, the Thornmane Clans' Raiding Parties also take gold when their armies capture a province: twice its income, once, right away, so they can spend it on this turn's recruits. In a game with forts and sieges, an empty fort is captured with its level and walls, any construction there is razed, and a captured fort takes recruits from " + FortData.CAPTURE_WAIT_WORDS[FortData.CAPTURE_WAIT] + ". A fort with a garrison behind standing walls is besieged, not captured.",
 	},
 	"recruit": {
 		"title": "Recruiting",
-		"text": "Recruit units from your own roster at your capital. Each unit costs gold, paid in the order you gave the orders, from your gold before this turn's income. Recruiting happens after capture, so if your capital falls this turn your recruits are cancelled and you keep the gold. New units join your army at the capital, or form a new army if none is there. In a game with rulers, recruits never join the ruler's army: they join another army of yours there, or form a new one. With Muster Grounds every recruit costs less, and every price on screen already includes it. With Warband Muster the Ninth Fang can also recruit regular units where it starts the turn, a few each turn (more at a higher ability rank), paid from the same gold; they appear there at the end of the turn, and are cancelled and cost nothing if the Fang has fallen or that province isn't yours after the battles. In a game with paths, the Thornmane Clans' Blood Levy makes every regular recruit cost a quarter less and arrive missing a quarter of its hit points, rounded down, never below one, and recruits made with the Ninth Fang arrive wounded too. A transformation adds its new unit to your roster from the next turn, at your capital and with the Ninth Fang. In a game with forts and sieges, you recruit at any fort you own: each fort takes only so many recruits a turn, a captured fort takes recruits from the turn after next, and a fort cut off by a siege takes none.",
+		"text": "Recruit units from your own roster at your capital. Each unit costs gold, paid in the order you gave the orders, from your gold before this turn's income. Recruiting happens after capture, so if your capital falls this turn your recruits are cancelled and you keep the gold. New units join your army at the capital, or form a new army if none is there. In a game with rulers, recruits never join the ruler's army: they join another army of yours there, or form a new one. With Muster Grounds every recruit costs less, and every price on screen already includes it. With Warband Muster the Ninth Fang can also recruit regular units where it starts the turn, a few each turn (more at a higher ability rank), paid from the same gold; they appear there at the end of the turn, and are cancelled and cost nothing if the Fang has fallen or that province isn't yours after the battles. In a game with paths, the Thornmane Clans' Blood Levy makes every regular recruit cost a quarter less and arrive missing a quarter of its hit points, rounded down, never below one, and recruits made with the Ninth Fang arrive wounded too. A transformation adds its new unit to your roster from the next turn, at your capital and with the Ninth Fang. In a game with forts and sieges, you recruit at any fort you own: each fort takes only so many recruits a turn, a captured fort takes recruits from " + FortData.CAPTURE_WAIT_WORDS[FortData.CAPTURE_WAIT] + ", and a fort cut off by a siege takes none.",
 	},
 	"income": {
 		"title": "Income",
@@ -652,7 +665,7 @@ const ENTRIES := {
 	# dread_lands) and M4-3 the new traits.
 	"research": {
 		"title": "Research",
-		"text": "In a game with paths (the M4 preview), every faction researches one node of its path at a time. Research points come from land: 5 a turn for your capital and 1 for every other province you own. They go into one pool, and when the pool holds the cost of your research target, the node is done and its effects start. You choose the target with a research order, and it stays until the node is done or you change it. Switching costs nothing and spare points are never lost. Every node shows how many turns it would take before you pick it. In a game with magic the same pool also pays for the arcana, your faction's spells and mastery (the Magic tab), and once nothing at all is left to research, research is sold for gold.",
+		"text": "In a game with paths, every faction researches one node of its path at a time. Research points come from land: 5 a turn for your capital and 1 for every other province you own. They go into one pool, and when the pool holds the cost of your research target, the node is done and its effects start. You choose the target with a research order, and it stays until the node is done or you change it. Switching costs nothing and spare points are never lost. Every node shows how many turns it would take before you pick it. In a game with magic the same pool also pays for the arcana, your faction's spells and mastery (the Magic tab), and once nothing at all is left to research, research is sold for gold.",
 	},
 	"research_points": {
 		"title": "Research points",
@@ -668,7 +681,7 @@ const ENTRIES := {
 	},
 	"path": {
 		"title": "Paths of ascension",
-		"text": "Paths are a preview of the next milestone, behind the Paths (M4 preview) box on the new game screen, which needs rulers. Each faction has one path of 8 nodes: two tier I nodes (10 research each), two tier II nodes (15 each, each needing one tier I node), then a fork. Each side of the fork is an Oath (20), which needs any two of the four ordinary nodes, followed by a transformation (30), which needs its Oath. Swearing one Oath closes the other side for the rest of the game, so a faction completes at most 6 of its 8 nodes, 100 research in all. Completed nodes, Oaths and transformations are public; your research target is not.",
+		"text": "Paths are on in a new game unless you untick the Paths box on the new game screen, and they need rulers. Each faction has one path of 8 nodes: two tier I nodes (10 research each), two tier II nodes (15 each, each needing one tier I node), then a fork. Each side of the fork is an Oath (20), which needs any two of the four ordinary nodes, followed by a transformation (30), which needs its Oath. Swearing one Oath closes the other side for the rest of the game, so a faction completes at most 6 of its 8 nodes, 100 research in all. Completed nodes, Oaths and transformations are public; your research target is not.",
 	},
 	"path_node": {
 		"title": "Path nodes",
@@ -830,7 +843,7 @@ const ENTRIES := {
 	# them. Plain text: tooltips quote them.
 	"magic": {
 		"title": "Magic",
-		"text": "In a game with magic (the M5 preview, which needs paths and rulers), each faction learns two schools of magic by research: the Aurel Crown the Sun and Law, the Thornmane Clans the Wild and Blood. Each school has a battle spell, a ritual, a mastery node and a greater working. Mages cast battle spells by themselves in every round of a battle, from your spellbook, and never roll dice. Rituals are orders: a caster, a ritual and a target, paid in gold. Your Oath opens one greater working, and your transformation makes your casters better in its school.",
+		"text": "In a game with magic (which needs paths and rulers), each faction learns two schools of magic by research: the Aurel Crown the Sun and Law, the Thornmane Clans the Wild and Blood. Each school has a battle spell, a ritual, a mastery node and a greater working. Mages cast battle spells by themselves in every round of a battle, from your spellbook, and never roll dice. Rituals are orders: a caster, a ritual and a target, paid in gold. Your Oath opens one greater working, and your transformation makes your casters better in its school.",
 	},
 	"school_sun": {
 		"title": "School of the Sun",
@@ -1041,7 +1054,7 @@ const ENTRIES := {
 	# ranges and the rounding come from FogData, so a retuned number shows up here by itself. Plain text: tooltips quote them.
 	"fog_of_war": {
 		"title": "Fog of war",
-		"text": "In a game with fog of war (the M5 preview), the world is dark beyond your borders. Every province is in clear sight, glimpsed or out of sight for you. In clear sight you see exactly what is there; glimpsed, you see rival armies roughly (\"about 20 fighters\"); out of sight, you see only what you saw there last. Fog changes only what each player is shown, never the rules: battles, moves and captures resolve exactly as they would without it. Province owners, terrain, forts and capitals stay public, and so do each rival's ruler, its death and its successor, Oaths and transformations. Armies, gold, recruits, research, mandates and kept power are hidden until you see them, fight them or learn of them. In hotseat, each player sees only their own view.",
+		"text": "In a game with fog of war, the world is dark beyond your borders. Every province is in clear sight, glimpsed or out of sight for you. In clear sight you see exactly what is there; glimpsed, you see rival armies roughly (\"about 20 fighters\"); out of sight, you see only what you saw there last. Fog changes only what each player is shown, never the rules: battles, moves and captures resolve exactly as they would without it. Province owners, terrain, forts and capitals stay public, and so do each rival's ruler, its death and its successor, Oaths and transformations. Armies, gold, recruits, research, mandates and kept power are hidden until you see them, fight them or learn of them. In hotseat, each player sees only their own view.",
 	},
 	"sight": {
 		"title": "Sight",

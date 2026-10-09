@@ -181,7 +181,7 @@ custom_minimum_size = Vector2(340, 48)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 24
-tooltip_text = "Set up a game: who plays which faction (you against the computer by default, or two people at one computer), rulers, and a seed."
+tooltip_text = "Set up a game: who plays which faction (you against the computer by default, or two people at one computer), which systems to play with (all of them by default), and a seed."
 text = "New game"
 
 [node name="LoadGameButton" type="Button" parent="Center/Box"]
@@ -197,7 +197,7 @@ custom_minimum_size = Vector2(340, 48)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 24
-tooltip_text = "Play right away against the computer (Normal), with a random faction, rulers on and a random seed. Your ruler starts with its balanced build."
+tooltip_text = "Play right away against the computer (Normal), with a random faction, every system on (rulers, paths, forts and sieges, magic, fog of war and independents) and a random seed. Your ruler starts with its balanced build."
 text = "Quick start"
 
 [node name="CodexButton" type="Button" parent="Center/Box"]

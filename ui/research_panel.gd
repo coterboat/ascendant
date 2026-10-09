@@ -224,7 +224,7 @@ func _refresh_magic() -> void:
 	status_label.text = status_text
 	status_label.visible = not status_text.is_empty()
 	_fill_magic_sidebar()
-	footer_label.text = "Spells use the same research pool as your path, one target at a time; only your Oath opens a greater working. Hover a card for its numbers; F1 for its codex entry. %s" % MagicView.preview_note()
+	footer_label.text = "Spells use the same research pool as your path, one target at a time; only your Oath opens a greater working. Hover a card for its numbers; F1 for its codex entry."
 	links.queue_redraw()
 
 

@@ -17,26 +17,28 @@ extends Control
 ## MVP defaults: Player 1 is a person and Player 2 the computer at Normal, with rulers on. Hotseat is one
 ## click away (Player 2's picker to Human), and Quick start skips this screen with the same defaults
 ## (quick_start_config). A rematch (prefill) keeps the last game's choices instead.
-## Rulers (M2-5, #33): the "Rulers" box, ticked by default. Ticked, config() adds "rulers": true and Start
+## MVP-2 (#163), the defaults flip: all six system boxes start ticked (SYSTEMS), with the preview labels gone, and every
+## box stays a choice: untick one and the game plays without it. Each box shows a line of what it adds (the same one the
+## first-game guide uses), a tooltip with the whole of it, and a link to its codex entry; the line beside the "Game systems"
+## heading says which systems this game plays with and how the boxes lean on each other. A settings file from before the flip gets one
+## extra line, once (defaults_label, GameSettings.defaults_notice_due). Launching with `-- --rulers`, `--paths`, `--sieges`,
+## `--magic`, `--fog` or `--independents` still forces that system into any game (GameScreen.starting_state).
+## Rulers (M2-5, #33): the "Rulers" box. Ticked, config() adds "rulers": true and Start
 ## opens the BuildScreen on top of this screen: every human seat picks a ruler and mandates in secret,
 ## computer seats get a seeded preset, and only then is start_requested emitted, with the config plus
 ## "builds" ({faction id: build}). Back on the build screen returns here and drops those builds.
-## Paths (M4-1, #66): the "Paths (M4 preview)" box, off by default (launching with `-- --paths` ticks it).
-## Paths need rulers, so ticking it ticks the rulers box too, and clearing the rulers box clears it.
-## Ticked, config() adds "paths": true (GameScreen.starting_state then uses GameState.with_paths).
-## Forts & sieges (M3c S-1a, #98; design/M3C_SIEGES.md §1.3): the "Forts & sieges (M3c preview)" box, off by
-## default (launching with `-- --sieges` ticks it), independent of Rulers and Paths. Ticked, config() adds
-## "sieges": true (GameScreen.starting_state then uses GameState.with_sieges).
-## Magic (M5-5, #116; design/M5_MAGIC_FOG.md §1.3): the "Magic (M5 preview)" box, off by default (launching with
-## `-- --magic` ticks it). Magic needs Paths: ticking it ticks Paths and Rulers, and clearing Paths (or Rulers)
-## clears it. Ticked, config() adds "magic": true (GameScreen.starting_state then uses GameState.with_magic).
-## Fog of war (M5-1, #112; design/M5_MAGIC_FOG.md §1.3): the "Fog of war (M5 preview)" box, off by default (launching
-## with `-- --fog` ticks it), independent of every other box. Ticked, config() adds "fog": true (GameScreen.starting_state
-## then calls GameState.setup_fog on whichever game the other boxes make).
-## Independents (IND-1, #142): the "Independents" box, off by default like every other system until the MVP defaults
-## flip (launching with `-- --independents` ticks it), independent of every other box. Ticked, config() adds
+## Paths (M4-1, #66): the "Paths" box. Paths need rulers, so ticking it ticks the rulers box too, and clearing the rulers
+## box clears it. Ticked, config() adds "paths": true (GameScreen.starting_state then uses GameState.with_paths).
+## Forts & sieges (M3c S-1a, #98; design/M3C_SIEGES.md §1.3): the "Forts & sieges" box, independent of Rulers and Paths.
+## Ticked, config() adds "sieges": true (GameScreen.starting_state then uses GameState.with_sieges).
+## Magic (M5-5, #116; design/M5_MAGIC_FOG.md §1.3): the "Magic" box. Magic needs Paths: ticking it ticks Paths and Rulers,
+## and clearing Paths (or Rulers) clears it. Ticked, config() adds "magic": true (GameScreen.starting_state then uses
+## GameState.with_magic).
+## Fog of war (M5-1, #112; design/M5_MAGIC_FOG.md §1.3): the "Fog of war" box, independent of every other box. Ticked,
+## config() adds "fog": true (GameScreen.starting_state then calls GameState.setup_fog on whichever game the other boxes make).
+## Independents (IND-1, #142): the "Independents" box, independent of every other box. Ticked, config() adds
 ## "independents": true (GameScreen.starting_state then calls GameState.setup_independents: a Free Holds garrison in
-## every neutral province). Quick start always has them.
+## every neutral province).
 ## Layout (MVP-1, #141): it fits the default window (1600x900) and 1280x720. The title sits above, the error
 ## line and the Start and Back buttons below (always on screen), and the body scrolls between them when it is taller than
 ## the window leaves room for. The six boxes sit in two columns. tests/test_screens_fit.gd checks it at both sizes.
@@ -59,15 +61,18 @@ extends Control
 ##                                   the same seating, the same human and computer seats at the same
 ##                                   levels, the rulers box as it was, each human seat's last build as
 ##                                   its starting build, and a new seed (the victory screen's New game)
-##   set_rulers(on), rulers_on()     the "Rulers" box (ticked by default)
-##   set_paths(on), paths_on()       the "Paths (M4 preview)" box (M4-1); ticking it ticks rulers
-##   set_sieges(on), sieges_on()     the "Forts & sieges (M3c preview)" box (M3c), on its own
-##   set_magic(on), magic_on()       the "Magic (M5 preview)" box (M5-5); ticking it ticks paths and rulers
-##   set_fog(on), fog_on()           the "Fog of war (M5 preview)" box (M5-1), on its own
+##   set_rulers(on), rulers_on()     the "Rulers" box
+##   set_paths(on), paths_on()       the "Paths" box (M4-1); ticking it ticks rulers
+##   set_sieges(on), sieges_on()     the "Forts & sieges" box (M3c), on its own
+##   set_magic(on), magic_on()       the "Magic" box (M5-5); ticking it ticks paths and rulers
+##   set_fog(on), fog_on()           the "Fog of war" box (M5-1), on its own
 ##   set_independents(on), independents_on()   the "Independents" box (IND-1), on its own
+##   set_all_systems(on)             every box at once (cleared: the basic game)
+##   systems_ticked() -> Array       the SYSTEMS keys whose box is ticked, in screen order
+##   default_systems() -> Dictionary (static) the config keys every system starts with: {"rulers": true, ...}
 ##   quick_start_config(rng) -> Dictionary   Quick start's config (static): a random faction for the person
-##                                   in seat 1, the computer at Normal in seat 2, rulers on with the balanced
-##                                   preset for the person, and a random seed
+##                                   in seat 1, the computer at Normal in seat 2, every system on (default_systems)
+##                                   with the balanced preset for the person, and a random seed
 ##   build_screen                    the BuildScreen Start opens while rulers are on (null until then);
 ##                                   build_screen_open() -> bool
 ##   seat_faction(seat) -> String, faction_ids() -> Array[String]
@@ -84,6 +89,27 @@ const KIND_NAMES := ["Human", "Computer"]
 const LEVELS := ["easy", "normal"]  # AIPlayer.DIFFICULTIES, in the level pickers' order
 const DEFAULT_LEVEL := "normal"
 const DEFAULT_KINDS := ["human", "computer"]  # MVP: you against the computer
+## MVP-2 (#163): the six system boxes in screen order, with the config key each adds and its name on the screen. Every one
+## starts ticked (default_systems); the grid of two columns fills across in this order.
+const SYSTEMS := [
+	{"key": "rulers", "name": "Rulers"},
+	{"key": "paths", "name": "Paths"},
+	{"key": "sieges", "name": "Forts & sieges"},
+	{"key": "magic", "name": "Magic"},
+	{"key": "fog", "name": "Fog of war"},
+	{"key": "independents", "name": "Independents"},
+]
+## MVP-2: the one line a settings file from before the flip gets, once, beside the title.
+const DEFAULTS_NOTICE := "New: every system now starts ticked. Untick any you would rather play without."
+## What each system adds, in one line under its box (the first-game guide says the same in FirstGameGuide.SYSTEMS).
+const SYSTEM_LINES := {
+	"rulers": "A ruler for each side; its power buys mandates.",
+	"paths": "Research a path of upgrades; its Oaths lock you in.",
+	"sieges": "Forts with walls: recruit at any fort, besiege or storm.",
+	"magic": "Spells, mages and rituals, learned by research.",
+	"fog": "You see only near your land and your armies.",
+	"independents": "Free fighters garrison every neutral province.",
+}
 const MAX_SEED_DIGITS := 18  # any 18-digit number fits in a 64-bit int
 const MAX_RANDOM_SEED := 999999999
 const BACKGROUND := Color("#14131F")
@@ -113,11 +139,14 @@ var start_button: Button
 var back_button: Button
 var rulers_toggle: CheckBox  # "Rulers": on by default
 var rulers_label: Label  # what the box does, shown while it is ticked
-var paths_toggle: CheckBox  # M4-1: "Paths (M4 preview)": off by default; needs rulers
-var sieges_toggle: CheckBox  # M3c: "Forts & sieges (M3c preview)": off by default; independent of rulers and paths
-var magic_toggle: CheckBox  # M5-5: "Magic (M5 preview)": off by default; needs paths
-var fog_toggle: CheckBox  # M5-1: "Fog of war (M5 preview)": off by default; works with any game
-var independents_toggle: CheckBox  # IND-1: "Independents": off by default for now; works with any game
+var paths_toggle: CheckBox  # M4-1: "Paths": on by default; needs rulers
+var sieges_toggle: CheckBox  # M3c: "Forts & sieges": on by default; independent of rulers and paths
+var magic_toggle: CheckBox  # M5-5: "Magic": on by default; needs paths
+var fog_toggle: CheckBox  # M5-1: "Fog of war": on by default; works with any game
+var independents_toggle: CheckBox  # IND-1: "Independents": on by default; works with any game
+var systems_label: Label  # MVP-2: which systems this game plays with, and how the boxes lean on each other
+var defaults_label: Label  # MVP-2: shown once to a settings file from before the flip: every system starts ticked now
+var settings_file := ""  # the settings file the defaults notice reads ("" = GameSettings.default_path); tests set it
 var build_screen: BuildScreen = null  # opened by Start while rulers are on; built on first use
 var _last_builds := {}  # faction id -> the last game's build of a human seat (rematch)
 var _model: GameState
@@ -136,6 +165,13 @@ func _init() -> void:
 		seat_pickers[i].select(i % _model.factions.size())
 		kind_pickers[i].select(KINDS.find(DEFAULT_KINDS[i]))
 	new_seed()
+
+
+func _ready() -> void:
+	# MVP-2: a settings file from before the flip hears once that every system starts ticked now.
+	if GameSettings.defaults_notice_due(settings_file):
+		defaults_label.visible = true
+		GameSettings.mark_defaults_noticed(settings_file)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -233,28 +269,30 @@ func prefill(last_game: Dictionary) -> void:
 	for fid in builds:
 		if not ai.has(String(fid)):
 			_last_builds[String(fid)] = builds[fid]
+	# MVP-2: a rematch plays the systems the last game had, even a game from before the flip that had none (a launch switch
+	# forces its system into every game, so it stays).
 	if last_game.get("rulers", false) == true or not builds.is_empty():
 		set_rulers(true)
 	elif last_game.has("players"):
-		set_rulers(OS.get_cmdline_user_args().has("--rulers"))  # a game without rulers: a rematch without them
+		set_rulers(_forced("rulers"))  # a game without rulers: a rematch without them
 	if last_game.get("paths", false) == true:  # M4-1
 		set_paths(true)
 	elif last_game.has("players"):
-		set_paths(_paths_by_default())
+		set_paths(_forced("paths"))
 	if last_game.get("sieges", false) == true:  # M3c
 		set_sieges(true)
 	elif last_game.has("players"):
-		set_sieges(_sieges_by_default())
+		set_sieges(_forced("sieges"))
 	if last_game.get("magic", false) == true:  # M5-5
 		set_magic(true)
 	elif last_game.has("players"):
-		set_magic(_magic_by_default())
+		set_magic(_forced("magic"))
 	if last_game.get("fog", false) == true:  # M5-1
 		set_fog(true)
 	elif last_game.has("players"):
-		set_fog(_fog_by_default())
-	if last_game.has("players"):  # IND-1: a rematch keeps the last game's choice
-		set_independents(last_game.get("independents", false) == true)
+		set_fog(_forced("fog"))
+	if last_game.has("players"):  # IND-1
+		set_independents(last_game.get("independents", false) == true or _forced("independents"))
 	new_seed(int(last_game.get("seed", -1)))
 
 
@@ -355,7 +393,7 @@ func rulers_on() -> bool:
 	return rulers_toggle.button_pressed
 
 
-## Ticks or clears the "Paths (M4 preview)" box (M4-1). Paths need rulers: ticking it ticks rulers too.
+## Ticks or clears the "Paths" box (M4-1). Paths need rulers: ticking it ticks rulers too.
 func set_paths(on: bool) -> void:
 	paths_toggle.set_pressed_no_signal(on)
 	if on:
@@ -367,12 +405,7 @@ func paths_on() -> bool:
 	return paths_toggle.button_pressed
 
 
-## Paths start ticked when the game was launched with `-- --paths` (GameScreen.starting_state).
-static func _paths_by_default() -> bool:
-	return OS.get_cmdline_user_args().has("--paths")
-
-
-## Ticks or clears the "Forts & sieges (M3c preview)" box (M3c). It needs neither rulers nor paths.
+## Ticks or clears the "Forts & sieges" box (M3c). It needs neither rulers nor paths.
 func set_sieges(on: bool) -> void:
 	sieges_toggle.set_pressed_no_signal(on)
 	_refresh()
@@ -382,12 +415,7 @@ func sieges_on() -> bool:
 	return sieges_toggle.button_pressed
 
 
-## Forts and sieges start ticked when the game was launched with `-- --sieges` (GameScreen.starting_state).
-static func _sieges_by_default() -> bool:
-	return OS.get_cmdline_user_args().has("--sieges")
-
-
-## Ticks or clears the "Magic (M5 preview)" box (M5-5). Magic needs paths: ticking it ticks paths and rulers too.
+## Ticks or clears the "Magic" box (M5-5). Magic needs paths: ticking it ticks paths and rulers too.
 func set_magic(on: bool) -> void:
 	magic_toggle.set_pressed_no_signal(on)
 	if on:
@@ -400,12 +428,7 @@ func magic_on() -> bool:
 	return magic_toggle.button_pressed
 
 
-## Magic starts ticked when the game was launched with `-- --magic` (GameScreen.starting_state).
-static func _magic_by_default() -> bool:
-	return OS.get_cmdline_user_args().has("--magic")
-
-
-## Ticks or clears the "Fog of war (M5 preview)" box (M5-1). It needs no other box.
+## Ticks or clears the "Fog of war" box (M5-1). It needs no other box.
 func set_fog(on: bool) -> void:
 	fog_toggle.set_pressed_no_signal(on)
 	_refresh()
@@ -413,11 +436,6 @@ func set_fog(on: bool) -> void:
 
 func fog_on() -> bool:
 	return fog_toggle.button_pressed
-
-
-## Fog of war starts ticked when the game was launched with `-- --fog` (GameScreen.starting_state).
-static func _fog_by_default() -> bool:
-	return OS.get_cmdline_user_args().has("--fog")
 
 
 ## Ticks or clears the "Independents" box (IND-1). It needs no other box.
@@ -430,22 +448,43 @@ func independents_on() -> bool:
 	return independents_toggle.button_pressed
 
 
-## Independents start ticked when the game was launched with `-- --independents` (GameScreen.starting_state).
-static func _independents_by_default() -> bool:
-	return OS.get_cmdline_user_args().has("--independents")
+## Ticks or clears every system box at once: cleared is the basic game (config() adds no system key).
+func set_all_systems(on: bool) -> void:
+	for toggle in [rulers_toggle, paths_toggle, sieges_toggle, magic_toggle, fog_toggle, independents_toggle]:
+		toggle.set_pressed_no_signal(on)
+	_refresh()
+
+
+## The system keys whose box is ticked now, in screen order (SYSTEMS).
+func systems_ticked() -> Array:
+	var out := []
+	for sys in SYSTEMS:
+		if bool(call(String(sys.key) + "_on")):
+			out.append(String(sys.key))
+	return out
+
+
+## MVP-2 (#163): what every system starts as, as the config keys it adds: all six on. The boxes start from this, and so
+## does Quick start.
+static func default_systems() -> Dictionary:
+	var out := {}
+	for sys in SYSTEMS:
+		out[String(sys.key)] = true
+	return out
+
+
+## A `-- --<system>` launch switch forces that system into every game (GameScreen.starting_state), so a rematch keeps it.
+static func _forced(key: String) -> bool:
+	return OS.get_cmdline_user_args().has("--" + key)
 
 
 func build_screen_open() -> bool:
 	return build_screen != null and build_screen.visible
 
 
-## Rulers start ticked (MVP default).
-static func _rulers_by_default() -> bool:
-	return true
-
-
 ## Quick start's config: the person in seat 1 plays a random faction against the computer at Normal in
-## seat 2, with rulers on and a random seed. The person gets their faction's balanced preset and the
+## seat 2, with every system on (default_systems: rulers, paths, forts and sieges, magic, fog of war and independents)
+## and a random seed. The person gets their faction's balanced preset and the
 ## computer the preset its seeded dice pick (BuildScreen.computer_build, the same roll AISeat makes), so
 ## the game starts at once, without the build screen. The same as Start with this screen's defaults.
 static func quick_start_config(rng: RandomNumberGenerator = null) -> Dictionary:
@@ -462,8 +501,9 @@ static func quick_start_config(rng: RandomNumberGenerator = null) -> Dictionary:
 	var game_seed := dice.randi_range(1, MAX_RANDOM_SEED)
 	var builds := {human: RulerRules.preset_build(RulerRules.balanced_preset(human)),
 		opponent: BuildScreen.computer_build(opponent, game_seed, 1)}
-	return {"players": [human, opponent], "seed": game_seed, "ai": {opponent: DEFAULT_LEVEL}, "rulers": true, "builds": builds,
-		"independents": true}
+	var out := {"players": [human, opponent], "seed": game_seed, "ai": {opponent: DEFAULT_LEVEL}, "builds": builds}
+	out.merge(default_systems())
+	return out
 
 
 func _open_builds() -> void:
@@ -581,6 +621,30 @@ func _refresh() -> void:
 		faction_labels[i].tooltip_text = _faction_tooltip(f) if f else ""
 		seat_pickers[i].tooltip_text = "Player %d plays %s.\n\n%s" % [i + 1, f.faction_name, _faction_tooltip(f)] if f \
 			else "Pick the faction Player %d plays." % (i + 1)
+	_refresh_systems_label()
+
+
+## MVP-2: the line under the boxes: which systems this game plays with, and how the boxes lean on each other.
+func _refresh_systems_label() -> void:
+	if systems_label == null:
+		return
+	var out: Array[String] = []
+	for sys in SYSTEMS:
+		if not bool(call(String(sys.key) + "_on")):
+			out.append(String(sys.name))
+	var head := "All six systems are on."
+	if out.size() == SYSTEMS.size():
+		head = "Playing the basic game, without any system."
+	elif not out.is_empty():
+		head = "Playing without %s." % _names_list(out)
+	systems_label.text = "%s Paths need Rulers, and Magic needs Paths." % head
+
+
+## "A", "A and B", "A, B and C".
+static func _names_list(names: Array[String]) -> String:
+	if names.size() <= 1:
+		return "".join(names)
+	return "%s and %s" % [", ".join(names.slice(0, names.size() - 1)), names.back()]
 
 
 func _faction(fid: String) -> Faction:
@@ -671,7 +735,18 @@ func _build() -> void:
 	frame.add_theme_constant_override("separation", 10)
 	panel.add_child(frame)
 
-	frame.add_child(_label("TitleLabel", "New game", 40, UiPalette.GILT))
+	# The title row also holds the one-time note to a settings file from before the flip, so it costs no height.
+	var title_row := HBoxContainer.new()
+	title_row.name = "TitleRow"
+	title_row.add_theme_constant_override("separation", 24)
+	frame.add_child(title_row)
+	title_row.add_child(_label("TitleLabel", "New game", 40, UiPalette.GILT))
+	defaults_label = _label("DefaultsLabel", DEFAULTS_NOTICE, 17, UiPalette.GILT)
+	defaults_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	defaults_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	defaults_label.size_flags_vertical = Control.SIZE_SHRINK_END
+	defaults_label.visible = false
+	title_row.add_child(defaults_label)
 	rematch_label = _label("RematchLabel", "Rematch: the same players in the same seats as the last game, with a new seed. Change anything you like.", 17, UiPalette.GILT)
 	rematch_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rematch_label.visible = false
@@ -784,7 +859,25 @@ func _build() -> void:
 	new_seed_button.pressed.connect(new_seed)
 	seed_row.add_child(new_seed_button)
 
-	# The six boxes in two columns; what the Rulers box does is explained on a line of its own below them.
+	# The six boxes in two columns, each with a line of what it adds. Their heading carries a line of which of them this game
+	# plays with and how they lean on each other (both link the codex's "Game systems"); what the Rulers box leads to has a
+	# line of its own below them.
+	var systems_row := HBoxContainer.new()
+	systems_row.name = "SystemsRow"
+	systems_row.add_theme_constant_override("separation", 16)
+	box.add_child(systems_row)
+	var systems_tip := CodexLink.with_link(TooltipText.plain("Game systems", RulesCodex.text("game_systems")), "game_systems")
+	var systems_heading := _label("SystemsHeading", "Game systems", 24, UiPalette.GILT)
+	systems_heading.tooltip_text = systems_tip
+	systems_heading.mouse_filter = Control.MOUSE_FILTER_PASS
+	systems_row.add_child(systems_heading)
+	systems_label = _label("SystemsLabel", "", 16, UiPalette.TEXT_SECONDARY)
+	systems_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	systems_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	systems_label.size_flags_vertical = Control.SIZE_SHRINK_END
+	systems_label.tooltip_text = systems_tip
+	systems_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	systems_row.add_child(systems_label)
 	var grid := GridContainer.new()
 	grid.name = "Toggles"
 	grid.columns = 2
@@ -796,10 +889,10 @@ func _build() -> void:
 	rulers_toggle.text = "Rulers"
 	rulers_toggle.add_theme_font_size_override("font_size", 20)
 	rulers_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Rulers",
-		"Before the game each player picks a ruler and how much of its power to keep, and spends the rest on mandates for the whole nation. Untick it for the simpler game without rulers. %s" % RulesCodex.text("build_screen")), "build_screen")
-	rulers_toggle.set_pressed_no_signal(_rulers_by_default())
+		"Before the game each player picks a ruler and how much of its power to keep, and spends the rest on mandates for the whole nation. Untick it for the simpler game without rulers. Paths and Magic need Rulers, so unticking it unticks them too. %s" % RulesCodex.text("build_screen")), "build_screen")
+	rulers_toggle.set_pressed_no_signal(true)
 	rulers_toggle.toggled.connect(func(_on: bool): _refresh())
-	grid.add_child(rulers_toggle)
+	_add_system(grid, rulers_toggle, "rulers")
 	_build_paths_row(grid)
 	_build_sieges_row(grid)
 	_build_magic_row(grid)
@@ -846,61 +939,79 @@ func _build() -> void:
 	buttons.add_child(start_button)
 
 
-## M4-1: the "Paths (M4 preview)" box under the rulers box. Ticking it ticks rulers (paths need them).
+## One cell of the two-column grid: the box, and under it a line of what the system adds, in the box's own tooltip.
+func _add_system(grid: Container, toggle: CheckBox, key: String) -> void:
+	var cell := VBoxContainer.new()
+	cell.name = "%sCell" % key.capitalize()
+	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cell.add_theme_constant_override("separation", 0)
+	cell.add_child(toggle)
+	var indent := MarginContainer.new()
+	indent.add_theme_constant_override("margin_left", 34)
+	cell.add_child(indent)
+	var adds := _label("%sAdds" % key.capitalize(), system_line(key), 15, UiPalette.TEXT_SECONDARY)
+	adds.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	adds.tooltip_text = toggle.tooltip_text
+	adds.mouse_filter = Control.MOUSE_FILTER_PASS
+	indent.add_child(adds)
+	grid.add_child(cell)
+
+
+## What `key`'s system adds, in a line (under its box).
+static func system_line(key: String) -> String:
+	return String(SYSTEM_LINES.get(key, ""))
+
+
+## M4-1: the "Paths" box under the rulers box. Ticking it ticks rulers (paths need them).
 func _build_paths_row(box: Container) -> void:
 	paths_toggle = CheckBox.new()
 	paths_toggle.name = "PathsToggle"
-	paths_toggle.text = "Paths (M4 preview)"
+	paths_toggle.text = "Paths"
 	paths_toggle.add_theme_font_size_override("font_size", 20)
-	paths_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Paths (preview)",
-		"A preview of milestone 4, the paths of ascension: each faction researches its path with research points from its land, then swears an Oath that transforms its people. Paths need rulers, so this ticks Rulers too. Paths are still being built, so some of their effects may not be in play yet. %s" % RulesCodex.text("path")), "path")
-	paths_toggle.set_pressed_no_signal(_paths_by_default())
-	if paths_toggle.button_pressed:
-		rulers_toggle.set_pressed_no_signal(true)
+	paths_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Paths",
+		"Each faction researches its path with research points from its land, then swears an Oath that transforms its people. Untick it for a game without paths. Paths need rulers, so ticking it ticks Rulers too, and unticking it unticks Magic. %s" % RulesCodex.text("path")), "path")
+	paths_toggle.set_pressed_no_signal(true)
 	paths_toggle.toggled.connect(func(on: bool): set_paths(on))
-	box.add_child(paths_toggle)
+	_add_system(box, paths_toggle, "paths")
 
 
-## M3c: the "Forts & sieges (M3c preview)" box under the paths box. It is independent of Rulers and Paths.
+## M3c: the "Forts & sieges" box under the paths box. It is independent of Rulers and Paths.
 func _build_sieges_row(box: Container) -> void:
 	sieges_toggle = CheckBox.new()
 	sieges_toggle.name = "SiegesToggle"
-	sieges_toggle.text = "Forts & sieges (M3c preview)"
+	sieges_toggle.text = "Forts & sieges"
 	sieges_toggle.add_theme_font_size_override("font_size", 20)
-	sieges_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Forts & sieges (preview)",
-		"A preview of milestone 3c: forts have levels and walls, you recruit at any fort you own and can build more, and an army that marches into an enemy fort with a garrison inside besieges it instead of fighting, until it storms the walls or they fall. It works with or without Rulers and Paths. Forts and sieges are still being built, so the map and the panels may not show all of it yet. %s" % RulesCodex.text("fort_levels")), "fort_levels")
-	sieges_toggle.set_pressed_no_signal(_sieges_by_default())
+	sieges_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Forts & sieges",
+		"Forts have levels and walls, you recruit at any fort you own and can build more, and an army that marches into an enemy fort with a garrison inside besieges it instead of fighting, until it storms the walls or they fall. Untick it for the plain forts of the basic game. It works with or without Rulers and Paths. %s" % RulesCodex.text("fort_levels")), "fort_levels")
+	sieges_toggle.set_pressed_no_signal(true)
 	sieges_toggle.toggled.connect(func(on: bool): set_sieges(on))
-	box.add_child(sieges_toggle)
+	_add_system(box, sieges_toggle, "sieges")
 
 
-## M5-5: the "Magic (M5 preview)" box under the sieges box. Ticking it ticks Paths and Rulers (magic needs them).
+## M5-5: the "Magic" box under the sieges box. Ticking it ticks Paths and Rulers (magic needs them).
 func _build_magic_row(box: Container) -> void:
 	magic_toggle = CheckBox.new()
 	magic_toggle.name = "MagicToggle"
-	magic_toggle.text = "Magic (M5 preview)"
+	magic_toggle.text = "Magic"
 	magic_toggle.add_theme_font_size_override("font_size", 20)
-	magic_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Magic (preview)",
-		"Research spells, recruit mages and cast rituals. Needs Paths and Rulers, so they're on too. Magic is still being built: battle spells work, but rituals don't take effect yet. %s" % RulesCodex.text("magic")), "magic")
-	magic_toggle.set_pressed_no_signal(_magic_by_default())
-	if magic_toggle.button_pressed:
-		paths_toggle.set_pressed_no_signal(true)
-		rulers_toggle.set_pressed_no_signal(true)
+	magic_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Magic",
+		"Research spells, recruit mages and cast rituals. Untick it for a game without magic. Magic needs Paths and Rulers, so ticking it ticks them too, and unticking either unticks it. %s" % RulesCodex.text("magic")), "magic")
+	magic_toggle.set_pressed_no_signal(true)
 	magic_toggle.toggled.connect(func(on: bool): set_magic(on))
-	box.add_child(magic_toggle)
+	_add_system(box, magic_toggle, "magic")
 
 
-## M5-1: the "Fog of war (M5 preview)" box under the sieges box. It is independent of every other box. Its tooltip is
-## §1.3's, with the codex entry one click away.
+## M5-1: the "Fog of war" box under the magic box. It is independent of every other box. Its tooltip is §1.3's, with the
+## codex entry one click away.
 func _build_fog_row(box: Container) -> void:
 	fog_toggle = CheckBox.new()
 	fog_toggle.name = "FogToggle"
-	fog_toggle.text = "Fog of war (M5 preview)"
+	fog_toggle.text = "Fog of war"
 	fog_toggle.add_theme_font_size_override("font_size", 20)
-	fog_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Fog of war (preview)", fog_tooltip()), "fog_of_war")
-	fog_toggle.set_pressed_no_signal(_fog_by_default())
+	fog_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Fog of war", fog_tooltip()), "fog_of_war")
+	fog_toggle.set_pressed_no_signal(true)
 	fog_toggle.toggled.connect(func(on: bool): set_fog(on))
-	box.add_child(fog_toggle)
+	_add_system(box, fog_toggle, "fog")
 
 
 ## IND-1: the "Independents" box under the fog box. Its tooltip says what it does, with the codex
@@ -911,9 +1022,9 @@ func _build_independents_row(box: Container) -> void:
 	independents_toggle.text = "Independents"
 	independents_toggle.add_theme_font_size_override("font_size", 20)
 	independents_toggle.tooltip_text = CodexLink.with_link(TooltipText.plain("Independents", independents_tooltip()), "independents")
-	independents_toggle.set_pressed_no_signal(_independents_by_default())
+	independents_toggle.set_pressed_no_signal(true)
 	independents_toggle.toggled.connect(func(on: bool): set_independents(on))
-	box.add_child(independents_toggle)
+	_add_system(box, independents_toggle, "independents")
 
 
 ## The independents box's explanation.
@@ -921,9 +1032,9 @@ static func independents_tooltip() -> String:
 	return "Every neutral province starts with a garrison of the %s, local fighters who answer to no ruler. To take a province you must beat its garrison in battle, so expanding costs troops and the richest provinces need a real army. Unticked, neutral provinces are empty and fall to the first army that walks in. It works with every other box." % IndependentData.FACTION_NAME
 
 
-## The fog box's explanation (design/M5_MAGIC_FOG.md §1.3), then what the preview has so far.
+## The fog box's explanation (design/M5_MAGIC_FOG.md §1.3).
 static func fog_tooltip() -> String:
-	return "You see exactly only where you own land or have an army; next to that, roughly; beyond, only what you saw last. In hotseat, each player sees only their own view. It works with or without Rulers, Paths and Forts & sieges. Fog of war is still being built: the rules that decide what each player can see are in, but the map and the panels don't hide anything yet."
+	return "You see exactly only where you own land or have an army; next to that, roughly; beyond, only what you saw last. In hotseat, each player sees only their own view. Untick it to see the whole map. It works with or without Rulers, Paths and Forts & sieges."
 
 
 ## Human or Computer for seat `i` (0-based).

@@ -140,7 +140,7 @@ func test_the_magic_tab_shows_only_in_a_magic_game() -> void:
 	(mp.spellbook_checks["bloodbolt"] as CheckBox).toggled.emit(false)
 	assert_eq(books, [[MagicData.SPELLBOOK[CLANS], ["bloodbolt"]]])
 	var text := _texts(mp)
-	assert_true(text.contains(MagicView.PREVIEW_NOTE), "the tab says what this build of the preview does")
+	assert_false(text.to_lower().contains("preview:") or text.contains("numbers can still change"), "MVP-2: the tab no longer calls Magic a preview")
 	assert_true(text.contains(MagicRules.mage_gate_reason(s, CLANS, MagicRules.mage_type(CLANS)).get_slice(".", 0)) or text.contains("recruitable once you know a spell"),
 		"the mage gate is named")
 	_assert_no_raw_ids(text, "the Magic tab")

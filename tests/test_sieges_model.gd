@@ -53,7 +53,7 @@ func test_damage_equals_siege_damage_for_constructed_armies() -> void:
 		[20, 0, 0, 0], [25, 0, 0, 0],              # 20 troops
 		[7, 3, 0, 0], [12, 3, 0, 0], [5, 1, 0, 0], # engines count only one for every 5 troops
 		[20, 1, 0, 0], [20, 2, 0, 0], [20, 3, 0, 0],
-		[22, 3, 3, 1],                             # the cap: four engines, at most three count
+		[22, 3, 3, 1],                             # the cap: four engines, at most engines_max count
 	]
 	for row in rows:
 		var troops: int = row[0] + row[2]
@@ -78,7 +78,12 @@ func test_damage_equals_siege_damage_for_constructed_armies() -> void:
 		for part in ev.numbers.damage_parts:
 			sum += int(part.value)
 		assert_eq(sum, expected, "the parts add up to the siege damage")
-	assert_eq(_expected_damage(1000, 3), int(FortData.SIEGE.max), "never more than the cap")
+	# Never more than the cap; the most a siege can do is the cap or, when the parts can't reach it, all of them.
+	var sd := FortData.SIEGE
+	var most := int(sd.camp) + int(sd.troops_max) + int(sd.engines_max) * int(sd.engine)
+	var biggest := SiegeRules.siege_damage(1000, int(sd.engines_max) + 1)
+	assert_eq(int(biggest.total), mini(most, int(sd.max)), "never more than the cap")
+	assert_eq(bool(biggest.capped), most > int(sd.max), "capped only when the parts pass the cap")
 
 
 func test_the_cut_off_starts_on_the_second_turn_with_half_the_garrison_and_moves_the_income() -> void:
@@ -141,10 +146,12 @@ func test_the_cut_off_starts_on_the_second_turn_with_half_the_garrison_and_moves
 
 
 func test_a_breach_at_zero_a_lift_when_the_besiegers_leave_and_a_fall_that_clears_the_siege() -> void:
-	# The breach: twenty troops drop a palisade's walls in one turn.
+	# The breach: twenty troops or more (with engines if FortData needs them) drop a palisade's walls in one turn.
+	var force := F.force_to_breach(SiegeRules.walls_max(1), 1, 20)
+	assert_false(force.is_empty(), "some force breaches a palisade in one turn")
 	var big := F.state([
 		["kingdom-1", CROWN, "westwatch", ["spearmen"]],
-		["beasts-2", CLANS, "stonegate", F.units("tuskers", 20)],
+		["beasts-2", CLANS, "stonegate", F.units("tuskers", force[0]), force[1]],
 	], {"westwatch": CROWN, "stonegate": CLANS})
 	F.set_fort(big, "westwatch", 1)
 	var r := F.resolve(big, {CLANS: [MoveOrder.new("beasts-2", "westwatch")]})

@@ -41,8 +41,11 @@ const SIEGE := {"camp": 1, "per_troops": 10, "troops_max": 2, "engine": 1, "engi
 ## on the map a keep, all at full walls.
 const START := {"capital": 3, "fort": 2}
 ## Turns after a capture before the new owner's fort takes recruits (§2.3): a fort taken on turn 7 takes
-## recruits from turn 9 (owned_since + CAPTURE_WAIT < the turn being ordered).
-const CAPTURE_WAIT := 1
+## recruits from turn 10 (owned_since + CAPTURE_WAIT < the turn being ordered). S-7 (#105) set it to 2 (it was 1, recruits
+## from turn 9): it was the lever that most reduced the games ending at the turn cap (design/M3C_SIEGES.md §11.4).
+const CAPTURE_WAIT := 2
+## The same wait in words, by CAPTURE_WAIT (0-2), for the texts that name no numbers: "takes recruits from <these words>".
+const CAPTURE_WAIT_WORDS := ["the turn after the capture", "the turn after next", "the third turn after the capture"]
 ## A faction that retakes its own fort by this many turns after losing it gets its old standing back.
 const RETAKE_TURNS := 2
 

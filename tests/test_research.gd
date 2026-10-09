@@ -217,7 +217,7 @@ func test_every_nodes_legality_is_checked_with_plain_reasons() -> void:
 	assert_true(AscensionRules.check_research(s, CROWN, "crown_drillyard").is_empty(), "the target stays legal")
 	var plain := AscensionRules.check_research(GameState.with_rulers(7), CROWN, "crown_drillyard")
 	assert_eq(plain.code, "no_paths")
-	assert_true(String(plain.reason).contains("Paths (M4 preview)"), plain.reason)
+	assert_true(String(plain.reason).contains("Tick Paths"), plain.reason)
 
 
 func test_the_spec_example_reason_reads_as_written() -> void:

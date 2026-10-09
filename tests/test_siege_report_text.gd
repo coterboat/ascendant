@@ -60,7 +60,10 @@ func test_a_siege_start_speaks_in_the_readers_turns() -> void:
 
 
 func test_the_walls_falling_and_the_breach_speak_in_the_readers_turns() -> void:
-	var s := Fx.state([["kingdom-3", CROWN, "stonegate", Fx.units("knights", 20), 2], ["beasts-5", CLANS, "blackwood", Fx.units("tuskers", 3)]],
+	# A force that breaches Blackwood's keep on the siege's second turn, whatever FortData's numbers are.
+	var force := Fx.force_to_breach(SiegeRules.walls_max(2), 2, 20, 2)
+	assert_false(force.is_empty(), "some force breaches a keep in two turns")
+	var s := Fx.state([["kingdom-3", CROWN, "stonegate", Fx.units("knights", force[0]), force[1]], ["beasts-5", CLANS, "blackwood", Fx.units("tuskers", 3)]],
 		{"stonegate": CROWN, "blackwood": CLANS})
 	var t1 := Fx.resolve(s, {CROWN: [MoveOrder.new("kingdom-3", "blackwood")]})
 	var t2 := Fx.resolve(t1.new_state, {}, false, 8)
@@ -116,7 +119,9 @@ func test_a_capture_says_the_fort_came_with_it() -> void:
 	assert_true(line.begins_with("Stonegate fell to Aurel Crown"), "the #55 line: %s" % line)
 	assert_true(line.ends_with(" It came with its keep (walls %d of %d): the Aurel Crown can recruit there from %s." % [int(e.numbers.walls),
 		int(FortData.LEVELS[2].walls), TurnReportText.reader_turn(int(e.numbers.recruit_from), now)]), line)
-	assert_true(line.contains("from next turn (%d)" % (now + 1)), "a capture waits a turn: %s" % line)
+	assert_eq(int(e.numbers.recruit_from), now + FortData.CAPTURE_WAIT, "a capture waits CAPTURE_WAIT turns")
+	assert_true(line.contains("from %s" % TurnReportText.reader_turn(now + FortData.CAPTURE_WAIT, now)), "a capture waits %d turns: %s" % [
+		FortData.CAPTURE_WAIT, line])
 	# A fort retaken within the window recruits at once.
 	var s2 := Fx.state([["kingdom-3", CROWN, "westwatch", Fx.units("knights", 2)]], {"westwatch": CROWN, "stonegate": CLANS})
 	s2.current_turn = 2

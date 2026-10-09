@@ -309,12 +309,12 @@ static func node_state(state: GameState, faction_id: String, node_id: String) ->
 	if f == null:
 		return _st(CLOSED, "unknown_faction", "Those orders are for a faction that is not in this game.")
 	if not has_paths(state):
-		return _st(CLOSED, "no_paths", "This game has no paths, so there is nothing to research. Paths are a preview: tick Paths (M4 preview) when you set up a new game.")
+		return _st(CLOSED, "no_paths", "This game has no paths, so there is nothing to research. Tick Paths when you set up a new game to play with them.")
 	var n := node_data(node_id)
 	if n.is_empty():
 		return _st(CLOSED, "unknown_node", "'%s' is not something to research in this game." % node_id)
 	if is_arcana(node_id) and not MagicRules.has_magic(state):  # M5-5: the arcana are magic's research
-		return _st(CLOSED, "no_magic", "%s is magic, and this game is played without magic. Magic is a preview: tick Magic (M5 preview) when you set up a new game." % node_name(node_id))
+		return _st(CLOSED, "no_magic", "%s is magic, and this game is played without magic. Tick Magic when you set up a new game to play with it." % node_name(node_id))
 	if String(n.faction) != faction_id:
 		return _st(CLOSED, "foreign_node", "%s is on the path of the %s, not of the %s." % [_cap(node_ref(node_id)),
 			_faction_name(state, String(n.faction)), f.faction_name])

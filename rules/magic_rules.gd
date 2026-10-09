@@ -1502,6 +1502,7 @@ static func enchantment_step(state: GameState, turn: int) -> Dictionary:
 		var engines: int = a.engines if removed else 0  # M3c: siege engines ride only with a fighter, so they go with the army
 		if removed:
 			state.armies.erase(a)
+			_end_stale_siege(state, a.location)
 		out.faded.append({"army": a.id, "faction": a.owner, "province": a.location, "type": gone[0].type.id, "count": gone.size(),
 			"until": gone[0].until, "removed": removed, "engines_lost": engines})
 	# The endings.
@@ -1637,6 +1638,17 @@ static func ended_text(state: GameState, e: Dictionary) -> String:
 	return "%s ended: it lasted through turn %d." % [what, int(e.until_turn)]
 
 
+## M3c S-7 (#105): a summoned army that was besieging a fort, or was its garrison, fades after the sieges phase with the siege still
+## recorded; GameState.validate holds `siege_since` to the owner's armies and another faction's both standing there, so the siege
+## ends with the army (and the fort, if its garrison faded and the besiegers stay, is captured next turn like any empty fort).
+static func _end_stale_siege(state: GameState, province_id: String) -> void:
+	if not state.sieges:
+		return
+	var p := state.find_province(province_id)
+	if p != null and p.siege_since > 0 and not SiegeRules.siege_stands(state, province_id):
+		p.siege_since = 0
+
+
 ## The summon_faded sentence.
 static func faded_text(state: GameState, f: Dictionary) -> String:
 	var army := TurnReportText.army_name(state, String(f.army), String(f.faction))
@@ -1744,7 +1756,7 @@ static func school_ref(school_id: String) -> String:
 
 # --- text -------------------------------------------------------------------------------------------
 
-const NO_MAGIC := "This game is played without magic, so there are no spells or rituals. Magic is a preview: tick Magic (M5 preview) when you set up a new game."
+const NO_MAGIC := "This game is played without magic, so there are no spells or rituals. Tick Magic when you set up a new game to play with it."
 
 
 ## Why a mage can't be recruited yet (§3.2): "The Sunstone Adepts can be recruited once the Aurel Crown knows a

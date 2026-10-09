@@ -43,6 +43,13 @@ extends RefCounted
 ## record's JSON (band P7 compares M2 games with a fixture recorded on main). Paths games also carry "recruits":
 ## {faction id: {unit type id: recruit orders accepted}}, so the report can say how often the new units are bought.
 
+## Sieges (M3c S-7, #105): `options` {"sieges": true} starts the game with forts and sieges (GameState.setup_sieges), on top of
+## rulers, paths and independents, in the order GameScreen sets them up. Results then carry "sieges", the siege log
+## (siege_log_new says what it holds: sieges started and ended, battles at forts, forts built, recruits by place, how the
+## capital fell) and the breach forecast check of band S9 (design/M3C_SIEGES.md §11.2): the turn each siege event forecasts
+## the walls will reach 0, against when they did. check_invariants adds the S9 checks for sieges (_check_sieges and "no battle
+## side without a fighter"). The bands are tools/autoplay/siege_matrix.gd (--matrix --sieges).
+
 ## Magic and fog (M5-11, #122): `options` {"magic": true} starts the game with magic (GameState.with_magic: the paths game plus
 ## each faction's mage and the rituals; it implies paths), and the result then carries "magic" (MagicLog: the research, every
 ## ritual cast, the healing and draining, the battle spells, the ritual forecast check and the hit point ledger) and the
@@ -137,6 +144,10 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 		"research": {"turn_checks": 0, "turn_mismatches": 0, "target_checks": 0, "target_mismatches": 0, "first": ""},
 		# M4-6: recruit orders the session accepted in a game with paths, {faction id: {unit type id: n}}.
 		"recruits": {},
+		# M3c S-7 (#105): what happened at forts, in a game with sieges (see siege_log_new); {} without.
+		"sieges": {},
+		# M3c S-7: the turns with a duel, a battle between two real factions (not a Free Holds garrison), in order.
+		"duels": [],
 		# M5-11: a game with magic carries its log (MagicLog), a game with fog the snapshot probe's (FogProbe).
 		"magic": {}, "fog": {},
 	}
@@ -152,6 +163,8 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 			return result
 		policies.append(policy)
 		rngs.append(SeededRNG.new(policy_seed(game_seed, i)))
+	var sieges: bool = options.get("sieges", false)
+	var siege_log := siege_log_new()
 	var magic: bool = options.get("magic", false)
 	var fog: bool = options.get("fog", false)
 	var tithe_mode := str(options.get("tithe", ""))
@@ -194,6 +207,12 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 			for e in build_errors:
 				_error(result, 0, "setup: %s" % e)
 			return result
+	if options.get("sieges", false):
+		var siege_errors := []
+		if not start.setup_sieges(siege_errors):  # M3c S-7 (#105): forts and sieges, before turn 1, as GameScreen does
+			for e in siege_errors:
+				_error(result, 0, "setup: %s" % e)
+			return result
 	if options.get("independents", false):
 		var ind_errors := []
 		if not start.setup_independents(ind_errors):  # IND-1 (#142): Free Holds garrisons in every neutral province
@@ -225,6 +244,8 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 		var turn := session.turn_number()
 		var played_before := session.turns_played()
 		var forecasts := {}  # M4-6: faction id -> Forecast.research for the orders it queued this turn
+		var queued := []  # M3c S-7: [{"faction", "order"}] every order the session accepted this turn, for the siege log
+		var turn_start := session.state()  # the state the turn's orders were given against
 		var ritual_forecasts := []  # M5-11: the forecasts of the rituals queued this turn (MagicLog.forecast_orders)
 		if probe_fog and FogProbe.due(turn):
 			FogProbe.check(session, seat_factions, game_seed, policy_names, forced_sides, rngs, turn, result.fog)
@@ -241,6 +262,9 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 			var view := session.state_for(fid)
 			var orders: Array = policies[seat].orders(view, fid, rngs[seat])
 			var accepted := _queue(session, view, fid, orders, result)
+			if sieges:
+				for o in accepted:
+					queued.append({"faction": fid, "order": o})
 			if magic:
 				var sight := FogRules.sight(session.state(), fid) if fog and accepted.any(func(o): return o is CastOrder) else {}
 				ritual_forecasts.append_array(MagicLog.forecast_orders(view, fid, accepted, sight))
@@ -266,6 +290,8 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 			MagicLog.check_forecasts(result.magic, ritual_forecasts, events, turn)
 		if paths:
 			check_research(prev, state, turn, forecasts, pending_research, result.research)
+		if sieges:
+			log_sieges(siege_log, turn_start, state, events, queued, turn)
 		for v in found:
 			result.violations.append({"seed": game_seed, "turn": turn, "check": v.check, "detail": v.detail})
 		var logged: Array = Array(probe.call()) if probe.is_valid() else []
@@ -281,6 +307,11 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 			if BATTLE_TYPES.has(type):
 				fought = true
 				result.battles.append(_battle_record(turn, e))
+				var real := 0  # M3c S-7: a duel is a battle with two real factions in it, not a Free Holds garrison
+				for fid in e.get("factions", []):
+					real += 0 if IndependentData.is_independent(str(fid)) else 1
+				if real >= 2 and not result.duels.has(turn):
+					result.duels.append(turn)
 			elif type == "captured":
 				result.captures += 1
 			elif type == "order_rejected":
@@ -322,6 +353,8 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 	for p in policies:
 		result.policy_stats.append(p.stats.duplicate())
 	result.final_state = final_state.to_dict()
+	if sieges:
+		result.sieges = siege_log_done(siege_log, final_state, result)
 	_log_rulers(result, final_state)
 	_log_paths(result, final_state)
 	if magic:
@@ -593,6 +626,11 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 				if state.find_army(str(id)) != null:
 					out.append({"check": "destroyed_army_present", "detail": "Army %s was destroyed in a battle but is still on the map." % id})
 			out.append_array(_check_battle_report(numbers.get("report", {})))
+			if state.sieges:  # M3c band S9: no battle side without a fighter (an engine never fights)
+				for side in numbers.get("report", {}).get("sides", []):
+					if int(side.get("fighters_start", 0)) < 1:
+						out.append({"check": "battle_side_without_fighter", "detail": "%s had no fighter in a battle at %s." % [
+							side.get("faction", "?"), ", ".join(e.get("provinces", []))]})
 			if numbers.has("red_harvest"):
 				var winner := str(numbers.get("winner", ""))
 				harvested[winner] = int(harvested.get(winner, 0)) + int(numbers.red_harvest)
@@ -714,6 +752,190 @@ static func _check_sieges(prev: GameState, state: GameState, events: Array) -> A
 		if before != null and before.fort_level != p.fort_level and not built.has(p.id):
 			out.append({"check": "fort_level_changed", "detail": "%s went from fort level %d to %d without being built." % [p.id, before.fort_level, p.fort_level]})
 	return out
+
+
+## --- the siege log (M3c S-7, #105; design/M3C_SIEGES.md §11.2) ---------------------------------------------------
+## What happened at forts in a game with sieges, filled in turn by turn (log_sieges) and kept in a result's "sieges"
+## (siege_log_done). It reads only the state, the turn report and the orders the session accepted, and changes nothing.
+##   "started"   [{"turn", "province", "level", "capital" (the owner's), "owner", "besieger", "troops", "engines"}]
+##   "ended"     [{"turn", "province", "level", "capital", "owner", "besieger", "kind" ("lifted" | "fallen"), "why" (lifted:
+##               "beaten" | "left", fallen: "battle" | "left"), "length" (turns the siege stood), "by" (the last battle's
+##               "why" at that fort that turn: storm, breach, sally, gate, relief, relief_sally, rivals; "" if none)}]
+##   "battles"   [{"turn", "province", "level", "capital", "kind" (storm | open | breach), "why", "winner", "owner" (the
+##               fort's owner at the start of the turn), "attacker_won" (the winner is not the owner), "turn_of_siege"}]
+##               for every battle with a siege block except an arrival at an empty fort (why "empty")
+##   "built"     {faction id: {"palisade": n, "keep": n}} forts finished; "works" {faction id: n} sites started (paid)
+##   "recruits"  {faction id: {"capital": n, "palisade": n, "keep": n, "ruler": n (Warband Muster), "engines": n}}
+##   "orders"    {"storm": n, "sally": n} siege orders the session accepted
+##   "relief"    {"chances": n, "taken": n}: fort-turns when the owner of a besieged fort (walls standing) had a fighting army
+##               one province away, and the ones when that army was ordered in
+##   "cut_off"   fort-turns a fort stood cut off
+##   "capital_taken" {} or {"turn", "province", "faction", "how"}: how the game's capital fell: "storm" | "breach" | "open"
+##               (an open battle at the gate or the ruins) | "walked_in" (nobody fought there that turn)
+##   "last_battle" the last turn any battle was fought; "final" (siege_log_done) where each faction's troops stood at the end
+##   "forecast"  {"checks", "mismatches", "first"}: the breach turn each siege event forecasts (numbers.breach_turn) against
+##               when the walls reached 0, while no army entered or left the siege (design §11.2 band S9)
+static func siege_log_new() -> Dictionary:
+	return {"started": [], "ended": [], "battles": [], "built": {}, "works": {}, "recruits": {},
+		"orders": {"storm": 0, "sally": 0}, "relief": {"chances": 0, "taken": 0}, "cut_off": 0, "capital_taken": {},
+		"forecast": {"checks": 0, "mismatches": 0, "first": ""}, "last_battle": 0, "pending": {}}
+
+
+## The log a finished game keeps: the working notes (pending forecasts) left out.
+static func siege_log_done(log: Dictionary, final_state: GameState, _result: Dictionary) -> Dictionary:
+	var out := log.duplicate(true)
+	out.erase("pending")
+	# Where each faction's troops stood at the end ("final": {faction id: {"provinces": n, "stacks": [[province id, troops],
+	# the three largest], "at_forts": troops standing in a fort}}), for the diagnostic behind a capped game.
+	var final := {}
+	for f in final_state.factions:
+		var by_province := {}
+		var at_forts := 0
+		for a in final_state.armies:
+			if a.owner != f.id:
+				continue
+			by_province[a.location] = int(by_province.get(a.location, 0)) + a.units.size()
+			if final_state.find_province(a.location).fort_level > 0:
+				at_forts += a.units.size()
+		var stacks := []
+		for pid in by_province:
+			stacks.append([str(pid), int(by_province[pid])])
+		stacks.sort_custom(func(x, y): return x[1] > y[1] if x[1] != y[1] else x[0] < y[0])
+		var owned := 0
+		for p in final_state.provinces:
+			if p.owner == f.id:
+				owned += 1
+		final[f.id] = {"provinces": owned, "stacks": stacks.slice(0, 3), "at_forts": at_forts}
+	out["final"] = final
+	return out
+
+
+## Adds one resolved turn to `log`. `start` is the state the turn's orders were given against, `state` the state after the
+## turn, `events` its turn report, `queued` [{"faction", "order"}] every order accepted this turn, `turn` as players count it.
+static func log_sieges(log: Dictionary, start: GameState, state: GameState, events: Array, queued: Array, turn: int) -> void:
+	# Relief chances, read from the start of the turn (design §3.6): the owner of a besieged fort with a fighting army next door.
+	for p in start.provinces:
+		if p.fort_level <= 0 or p.siege_since <= 0 or p.walls <= 0 or p.owner.is_empty() or not SiegeRules.siege_stands(start, p.id):
+			continue
+		var near := {}
+		for a in start.armies:
+			if a.owner == p.owner and a.location != p.id and p.neighbors.has(a.location) and (not a.units.is_empty() or a.commander != null):
+				near[a.id] = true
+		if near.is_empty():
+			continue
+		log.relief.chances += 1
+		for q in queued:
+			if q.faction == p.owner and q.order is MoveOrder and near.has(q.order.army_id) and q.order.to == p.id:
+				log.relief.taken += 1
+				break
+	for q in queued:
+		if q.order is SiegeOrder:
+			log.orders[q.order.action] = int(log.orders.get(q.order.action, 0)) + 1
+	var battle_why := {}  # province id -> the "why" of the last siege battle there this turn
+	var pending: Dictionary = log.pending
+	for e in events:
+		var type := str(e.get("type", ""))
+		var n: Dictionary = e.get("numbers", {})
+		var pid := _first(e, "provinces")
+		var fid := _first(e, "factions")
+		match type:
+			"battle", "border_battle":
+				log["last_battle"] = turn
+				var sg: Dictionary = n.get("siege", {})
+				if sg.is_empty() or str(sg.get("why", "")) == "empty":
+					continue
+				battle_why[pid] = str(sg.why)
+				var owner := start.find_province(pid).owner
+				log.battles.append({"turn": turn, "province": pid, "level": state.find_province(pid).fort_level,
+					"capital": _is_capital_of(state, pid, owner), "kind": str(sg.kind), "why": str(sg.why), "winner": str(n.get("winner", "")),
+					"owner": owner, "attacker_won": str(n.get("winner", "")) != owner, "turn_of_siege": int(sg.get("turn_of_siege", 0))})
+			"siege_started":
+				log.started.append({"turn": turn, "province": pid, "level": state.find_province(pid).fort_level,
+					"capital": _is_capital_of(state, pid, str(n.owner)), "owner": str(n.owner), "besieger": str(n.besieger),
+					"troops": int(n.get("troops", 0)), "engines": int(n.get("engines", 0))})
+				_forecast_step(log, e, turn)
+			"walls_damaged", "walls_breached":
+				_forecast_step(log, e, turn)
+			"siege_lifted", "siege_ended":
+				pending.erase(pid)
+				log.ended.append({"turn": turn, "province": pid, "level": state.find_province(pid).fort_level,
+					"capital": _is_capital_of(state, pid, str(n.owner)), "owner": str(n.owner), "besieger": str(n.besieger),
+					"kind": "lifted" if type == "siege_lifted" else "fallen", "why": str(n.get("why", "")),
+					"length": int(n.get("turn_of_siege", 0)), "by": ""})
+			"fort_built":
+				var level := str(FortData.level(int(n.get("level", 0))).id)
+				if not log.built.has(fid):
+					log.built[fid] = {"palisade": 0, "keep": 0}
+				log.built[fid][level] = int(log.built[fid].get(level, 0)) + 1
+			"construction_started":
+				log.works[fid] = int(log.works.get(fid, 0)) + 1
+			"recruited":
+				if not log.recruits.has(fid):
+					log.recruits[fid] = {"capital": 0, "palisade": 0, "keep": 0, "ruler": 0, "engines": 0}
+				var place := "ruler" if str(e.get("cause", "")) == "with_ruler" else ("capital" if _is_capital_of(state, pid, fid) \
+					else str(FortData.level(start.find_province(pid).fort_level).id))
+				log.recruits[fid][place] = int(log.recruits[fid].get(place, 0)) + 1
+				if str(e.get("cause", "")) == "engine":
+					log.recruits[fid].engines += 1
+			"captured":
+				if bool(n.get("is_capital", false)) and log.capital_taken.is_empty():
+					log.capital_taken = {"turn": turn, "province": pid, "faction": fid, "how": "walked_in"}
+	for entry in log.ended:
+		if int(entry.turn) == turn and battle_why.has(entry.province):
+			entry["by"] = battle_why[entry.province]
+	if not log.capital_taken.is_empty() and int(log.capital_taken.turn) == turn and battle_why.has(log.capital_taken.province):
+		var last := {}
+		for b in log.battles:
+			if int(b.turn) == turn and str(b.province) == str(log.capital_taken.province):
+				last = b
+		log.capital_taken["how"] = "open" if str(last.get("kind", "open")) == "open" else str(last.kind)
+	for p in state.provinces:
+		if p.fort_level > 0 and p.siege_since > 0 and SiegeRules.is_cut_off(state, p.id, turn + 1):
+			log.cut_off += 1
+
+
+static func _first(e: Dictionary, key: String) -> String:
+	var list: Array = e.get(key, [])
+	return str(list[0]) if not list.is_empty() else ""
+
+
+static func _is_capital_of(state: GameState, province_id: String, faction_id: String) -> bool:
+	var f := state.find_faction(faction_id)
+	return f != null and f.capital == province_id
+
+
+## Band S9, forecast equals result (design §11.2): a siege event forecasts the turn at whose end the walls reach 0
+## (numbers.breach_turn). While the same armies stand outside and the siege damage does not change, the next event must
+## forecast the same turn, and the walls must reach 0 on it. A change of armies or damage starts the forecast over.
+static func _forecast_step(log: Dictionary, e: Dictionary, turn: int) -> void:
+	var out: Dictionary = log.forecast
+	var pending: Dictionary = log.pending
+	var pid := str(e.provinces[0])
+	var n: Dictionary = e.numbers
+	var armies: Array = Array(e.get("armies", [])).duplicate()
+	armies.sort()
+	var prev: Dictionary = pending.get(pid, {})
+	# The step that takes the walls to 0 makes a walls_damaged (or siege_started) event, then a walls_breached one.
+	var breached := str(e.type) == "walls_breached" or (n.has("walls") and int(n.walls) == 0)
+	if not prev.is_empty() and prev.armies == armies and prev.damage == int(n.get("damage", prev.damage)):
+		out.checks += 1
+		var forecast_turn := int(prev.breach_turn)
+		var bad := ""
+		if breached and turn != forecast_turn:
+			bad = "the walls of %s reached 0 on turn %d, but turn %d forecast turn %d" % [pid, turn, int(prev.turn), forecast_turn]
+		elif not breached and turn >= forecast_turn:
+			bad = "the walls of %s stood after turn %d, but turn %d forecast they would reach 0 then" % [pid, turn, int(prev.turn)]
+		elif not breached and int(n.get("breach_turn", forecast_turn)) != forecast_turn:
+			bad = "the forecast for %s moved from turn %d (made on turn %d) to turn %d (turn %d) with the same armies" % [pid,
+				forecast_turn, int(prev.turn), int(n.breach_turn), turn]
+		if not bad.is_empty():
+			out.mismatches += 1
+			if str(out.first).is_empty():
+				out.first = bad
+	if breached:
+		pending.erase(pid)
+		return
+	pending[pid] = {"armies": armies, "damage": int(n.get("damage", 0)), "breach_turn": int(n.get("breach_turn", 0)), "turn": turn}
 
 
 ## Terrain (M4-2, design/M4_ASCENSION.md §11): a province's terrain changes only by the Wild Spreads, so
@@ -1475,6 +1697,10 @@ static func _factor_name(id: String) -> String:
 			return "terrain"
 		"fort":
 			return "fort"
+		"walls":
+			return "walls"
+		"cover":
+			return "cover of the walls"
 		"round_cap":
 			return "round cap"
 	var spell := MagicLog.spell_of(id)  # M5-11: a battle spell or a blessing ("spell_sunlance", "morale_spell_dawn_blessing")
