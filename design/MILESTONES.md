@@ -331,3 +331,16 @@ M5-0 goes first: a scaffold of the shared state fields and the fixture, about a 
 13. M5-13 `asset` Asset builder: 4 figures, 4 portraits, 14 icons, 5 VFX sheets. (needs 12, and the lore room's looks)
 
 Budget: 180 Ludo credits for the milestone (118 planned, 177 with the re-roll reserve). The cheaper option is figures and portraits only (104).
+
+---
+
+## milestone C: the Candlewake (the third faction)
+Status: **PROPOSED by the director (2026-10-08).** Alex picked the faction (10-6), set it to be built right after the MVP walk with the spec written now (CW1, 10-7), and made its mark on the land the pilot of the marks system (CW2, 10-7). The full spec is `design/CANDLEWAKE.md`; read its §14 and §15 first.
+
+**The goal:** a tide that has to keep fighting.
+- **Wick:** a flame from 0 to 3 on every army. Wins feed it, and idling outside a harbour starves it.
+- **The Wake:** wax land, with a cold wake that remembers who held it.
+- **Any two of three** factions in a game. Every Crown–Clans game stays byte-identical.
+
+**Tickets:** CW-0 to CW-11. CW-0 (three factions in the engine) and CW-1 (the scaffold) go first.
+
