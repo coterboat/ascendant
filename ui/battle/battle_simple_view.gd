@@ -888,10 +888,38 @@ func _set_caption(lines: Array) -> void:
 			l.text = FIRST_HINT if not _hint_seen else DEPLOY_LINE
 			l.tooltip_text = TooltipText.plain("Watching a battle", "The battle was already fought; this plays it back with the same rolls as the report, so watching can never change it. A caption after every round says what mattered most.")
 			CodexLink.attach(l, "battle_playback", codex_requested.emit)
+		elif k == 1 and lines.is_empty() and not garrison_caption().is_empty():
+			# MVP-3 (#177): a battle against a neutral province's garrison says what the Free Holds are and what they hold.
+			l.text = garrison_caption()
+			l.tooltip_text = TooltipText.plain("The Free Holds", RulesCodex.text("independents"))
+			CodexLink.attach(l, "independents", codex_requested.emit)
 		else:
 			l.text = ""
 			l.tooltip_text = ""
 	hint_button.visible = lines.is_empty() and not _hint_seen
+
+
+## MVP-3 (#177): the line under a garrison battle's first caption, before the first blow: who the Free Holds are, that they hold the
+## ground, and what that gives them. "" for any other battle. A neutral fort's battle gets the walls' caption on the 3D stage
+## instead (BattleWalls.caption_text), which says the same about the fort.
+func garrison_caption() -> String:
+	return garrison_caption_for(_log)
+
+
+static func garrison_caption_for(battle_log: Dictionary) -> String:
+	if battle_log.is_empty() or String(battle_log.get("defender", "")) != IndependentData.FACTION_ID or battle_log.get("kind", "province") != "province":
+		return ""
+	var name := IndependentData.FACTION_NAME
+	for side in battle_log.get("sides", []):
+		if String(side.get("faction", "")) == IndependentData.FACTION_ID:
+			name = String(side.get("name", name))
+	var pids: Array = battle_log.get("provinces", [])
+	var place := BattleBackdrop.province_name(String(pids[0])) if not pids.is_empty() else "the province"
+	var ground := AutoBattleResolver.ground_words(String(battle_log.get("terrain", "")))
+	var fort := ""
+	if battle_log.get("fort", false) and not battle_log.has("siege"):
+		fort = ", and its fort +%d defense" % AutoBattleResolver.FORT_DEFENSE
+	return "The %s, the neutral land's own fighters, hold %s (%s%s)." % [name, place, ground if not ground.is_empty() else "no terrain bonus", fort]
 
 
 func _show_tag(si: int, text: String) -> void:
@@ -1005,7 +1033,7 @@ func end_card_lines() -> Array:
 			if aft < 0 or not String(_log.events[aft].get("text", "")).contains(harvest):
 				out.append("%s: %s took %d gold from the %d enemy fighters lost." % [harvest, _log.sides[int(e.side)].name, int(e.gold), int(e.fighters)])
 		elif e.t == "aftermath" and not String(e.get("text", "")).is_empty():
-			out.append(String(e.text))
+			out.append(TurnReportText.readable_aftermath(String(e.text)))
 	return out
 
 
@@ -1119,7 +1147,7 @@ func _fill_top_bar() -> void:
 				var wchip := _chip(String(walls.text), String(walls.tip))
 				wchip.name = "SiegeChip"
 				wchip.set_meta("full", wchip.text)  # #125: "Walls +3 def" where the full words don't fit (_place_chips)
-				wchip.set_meta("short", wchip.text.get_slice(" (", 0).replace(": ", " ").replace(" defense", " def"))
+				wchip.set_meta("short", String(walls.get("short", wchip.text.get_slice(" (", 0).replace(": ", " ").replace(" defense", " def"))))
 				chip_boxes[k].add_child(wchip)
 				CodexLink.attach(wchip, String(walls.codex), codex_requested.emit)
 			elif _log.get("fort", false):

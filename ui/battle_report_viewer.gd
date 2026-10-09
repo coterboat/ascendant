@@ -500,7 +500,7 @@ func _add_casualties() -> void:
 		elif String(sr.get("faction", "")) == winner:
 			_text(box, "It won, so its wounded survivors stay in its armies, still wounded.", tip, 17, UiPalette.TEXT_SECONDARY)
 		else:
-			_text(box, "It lost, so all of its armies there were destroyed or scattered (there are no retreats yet).", tip, 17, UiPalette.TEXT_SECONDARY)
+			_text(box, "It lost, so all of its armies there were destroyed as they fled or fell.", tip, 17, UiPalette.TEXT_SECONDARY)
 		var r: Dictionary = sr.get("ruler", {})
 		if not r.is_empty() and (r.get("fell", false) or String(sr.get("faction", "")) != winner):
 			var death := "%s fell, though its side won: a ruler whose hit points reach 0 dies." % _cap(String(r.get("name", ""))) \

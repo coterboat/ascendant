@@ -974,7 +974,9 @@ const SIEGE_CODEX := {"storm": "storm", "sally": "sally", "gate": "sally", "reli
 ## fighters ("Thornmane Clans (4 fighters) and Aurel Crown (4 fighters).").
 static func _siege_where(s: GameState, pid: String, siege: Dictionary, fids: Array, parts: Array) -> String:
 	var names := fids.map(func(fid): return _faction_name(s, fid))
-	return "%s %s." % [AutoBattleResolver.siege_sentence(siege, _province_name(s, pid), names), RulerRules._cap(" and ".join(parts))]
+	var province := s.find_province(pid)
+	return "%s %s." % [AutoBattleResolver.siege_sentence(siege, _province_name(s, pid), names, province.terrain if province != null else ""),
+		RulerRules._cap(" and ".join(parts))]
 
 
 ## What happened to each losing side, one sentence each (RulesCodex "battle_rounds"): its armies are

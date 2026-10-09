@@ -238,7 +238,7 @@ static func needs_you(state: GameState, viewer: String, report_turn: int) -> Arr
 ## "codex"}, or {} for a battle without one. In a storm, "Walls: +4 defense (5 of 9)"; in an open battle,
 ## "Outside the walls: nobody holds the ground; the garrison's fighters have +2 cover" (no cover clause when
 ## nobody came from inside, a relief alone); through the breach, "Through the breach: no walls, and nobody gets
-## the hills". The codex entries are S-2's battle entries once they exist, the S-1a ones until then.
+## the hills"; at a neutral fort (MVP-3: the block's "holder"), "Holds the ground: no walls, no cover". The codex entries are S-2's battle entries once they exist, the S-1a ones until then.
 static func siege_chip(siege: Dictionary) -> Dictionary:
 	if siege.is_empty():
 		return {}
@@ -256,6 +256,10 @@ static func siege_chip(siege: Dictionary) -> Dictionary:
 				"tip": TooltipText.plain("Through the breach", "The walls were down, so this battle came on its own and was fought in the open: nobody defended and nobody got the terrain, but the garrison's fighters kept +%d cover among the ruins." % FortData.COVER_DEFENSE),
 				"codex": _entry("battle_breach", "breach")}
 		"open":
+			if int(siege.get("holder", -1)) >= 0:  # MVP-3 (#177): a neutral fort's garrison holds the ground in the open
+				return {"text": "Holds the ground: no walls, no cover", "short": "No walls, no cover",
+					"tip": TooltipText.plain("The garrison holds the ground", "This neutral fort's garrison met the attackers in the open, so it defended: the province's terrain gives it its bonus. Nobody owns the fort, so no walls and no cover came into the battle, for either side. Only a storm is fought behind walls."),
+					"codex": _entry("battle_open", "inside_outside")}
 			var cover := int(siege.get("cover_defense", 0))
 			var text := "Outside the walls: nobody holds the ground"
 			var tip := "This battle was fought outside the walls, in the open: nobody defended, so nobody got walls or terrain."
@@ -269,11 +273,13 @@ static func siege_chip(siege: Dictionary) -> Dictionary:
 ## A side's role in a battle at a fort, from the battle's `siege` block and the side's index (sides in faction id
 ## order, as the block's "garrison" counts them), in the words of the report's first line (S-2,
 ## AutoBattleResolver._siege_role): "defending the walls", "storming", "garrison, in the breach", "attacking
-## through the breach", "sallying garrison", "relief", "relief and sallying garrison", "outside the walls". ""
-## without a block.
+## through the breach", "sallying garrison", "relief", "relief and sallying garrison", "outside the walls"; at a
+## neutral fort (the block has a "holder") "holding the ground" and "attacking". "" without a block.
 static func siege_role(siege: Dictionary, side_index: int) -> String:
 	if siege.is_empty():
 		return ""
+	if String(siege.get("kind", "")) == "open" and int(siege.get("holder", -1)) >= 0:
+		return "holding the ground" if side_index == int(siege.holder) else "attacking"  # MVP-3 (#177): a neutral fort's garrison
 	var garrison := side_index == int(siege.get("garrison", -1))
 	match String(siege.get("kind", "")):
 		"storm":
@@ -314,6 +320,12 @@ static func role_meaning(siege: Dictionary, side_index: int) -> Dictionary:
 		"relief":
 			return {"text": "it arrived outside its own fort and fought in the open, with no cover.", "title": "Relief",
 				"codex": _entry("battle_open", "relief")}
+		"holding the ground":
+			return {"text": "it met the attackers in the open before the fort and held the ground: the terrain's bonus was its, with no walls and no cover.",
+				"title": "Holding the ground", "codex": _entry("battle_open", "inside_outside")}
+		"attacking":
+			return {"text": "it marched on a neutral fort and met its garrison in the open, where the garrison held the ground.",
+				"title": "Attacking", "codex": _entry("battle_open", "inside_outside")}
 	return {"text": "it stood outside the walls, where nobody holds the ground.", "title": "Outside the walls",
 		"codex": _entry("battle_open", "inside_outside")}
 

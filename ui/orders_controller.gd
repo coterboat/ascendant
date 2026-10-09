@@ -638,7 +638,8 @@ func recruit_breakdown(unit_type_id: String, at: String = RecruitOrder.AT_CAPITA
 
 ## What a move of `army_id` into `to` meets at a fort (§3.9, §9.2): "besiege" (an enemy fort with standing walls
 ## and a garrison inside), "breach" (its walls are down), "empty" (an enemy or neutral fort nobody holds),
-## "relief" (your own besieged fort), "own" (your own fort, with no siege), or "" (no sieges, or no fort there).
+## "relief" (your own besieged fort), "own" (your own fort, with no siege), or "" (no sieges, or no fort there, or a
+## neutral fort held by the Free Holds: that is a battle in the open, forecast like any garrison's).
 func siege_kind(army_id: String, to: String) -> String:
 	var view := view_state()
 	if view == null or not view.sieges:
@@ -649,6 +650,8 @@ func siege_kind(army_id: String, to: String) -> String:
 		return ""
 	if dest.owner == faction_id:
 		return "relief" if SiegeRules.siege_stands(view, to) else "own"
+	if dest.owner.is_empty() and view.garrison_at(to) != null:
+		return ""  # MVP-3 (#177): a neutral fort's Free Holds garrison fights you in the open: an ordinary move into a defended province
 	if SiegeRules.garrison(view, to).is_empty():
 		return "empty"
 	return "breach" if dest.walls <= 0 else "besiege"

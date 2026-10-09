@@ -80,8 +80,9 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 
 ## M3c (§9.2): the move forecast into a fort in a game with sieges says which row of §3.9 it will be, if the other
 ## side holds: a siege (and how fast the walls drop), a storm (with a storm order queued), the battle through the
-## breach, a relief, an empty fort taken whole, or your own fort. The odds come from battle_odds (the same plan).
-## The result adds "siege_row": "besiege" | "storm" | "breach" | "relief" | "empty" | "own".
+## breach, a relief, an empty fort taken whole, your own fort, or (IND-1) a neutral fort whose Free Holds garrison holds
+## the ground in the open. The odds come from battle_odds (the same plan).
+## The result adds "siege_row": "besiege" | "storm" | "breach" | "relief" | "empty" | "own" | "holds".
 static func _fort_move(state: GameState, fid: String, order: MoveOrder, others: Array, army: Army, here: Province, dest: Province,
 		text: String, arrival: int) -> Dictionary:
 	var out := {"ok": true, "code": "", "reason": "", "from": here.id, "to": dest.id, "via": order.via, "arrival_turn": arrival,
@@ -103,6 +104,15 @@ static func _fort_move(state: GameState, fid: String, order: MoveOrder, others: 
 		else:
 			out.siege_row = "own"
 			out.text += " If an enemy army arrives there this turn too, you meet outside the walls, where nobody gets walls or ground."
+		return out
+	var holds := state.garrison_at(dest.id)  # IND-1 (#142): a neutral fort's Free Holds garrison is not an owner's garrison
+	if holds != null and dest.owner.is_empty():
+		# MVP-3 (#177): SiegeRules.next_battle meets you in the open, and the garrison holds the ground: its terrain, no walls, no cover.
+		out.enemy_present = true
+		out.siege_row = "holds"
+		out.text += " %s holds it for the %s: a garrison never moves, so you fight a battle there, in the open before the %s, and it defends (%s). Win, and %s is yours with %d gold per turn, and you can recruit there from turn %d. Lose, and your army is destroyed while the garrison keeps its wounds: a garrison never heals, so a second attack meets fewer." % [
+			RulerRules._cap(TurnReportText.army_name(state, holds.id)), IndependentData.FACTION_NAME, SiegeRules.level_word(dest.fort_level),
+			neutral_fort_ground(dest), dest.name, dest.income, arrival + FortData.CAPTURE_WAIT]
 		return out
 	if not garrison.is_empty() and dest.walls <= 0:
 		out.enemy_present = true
@@ -220,6 +230,22 @@ static func defender_ground(province: Province) -> String:
 	var verb := "give" if province.terrain.ends_with("s") else "gives"
 	var ground := "the %s %s it %s" % [province.terrain, verb, " and ".join(parts)]
 	return "%s, and %s" % [ground, fort] if province.has_fort else ground
+
+
+## MVP-3 (#177): what the ground gives a neutral fort's Free Holds garrison in a game with sieges: its terrain, and
+## nothing from the fort ("the hills give it +1 defense and +1 attack, but its keep gives it nothing: no walls, no cover").
+static func neutral_fort_ground(province: Province) -> String:
+	var bonus: Dictionary = AutoBattleResolver.TERRAIN.get(province.terrain, {})
+	var parts := []
+	if int(bonus.get("defense", 0)) > 0:
+		parts.append("+%d defense" % int(bonus.defense))
+	if int(bonus.get("attack", 0)) > 0:
+		parts.append("+%d attack" % int(bonus.attack))
+	var level := SiegeRules.level_word(province.fort_level)
+	if parts.is_empty():
+		return "open %s give no terrain bonus, and its %s gives it nothing: no walls, no cover" % [province.terrain, level]
+	return "the %s %s it %s, but its %s gives it nothing: no walls, no cover" % [province.terrain,
+		"give" if province.terrain.ends_with("s") else "gives", " and ".join(parts), level]
 
 
 ## M3c (§4.1): what a fort's ground gives in a game with sieges: its terrain and walls only to a stormed garrison.
