@@ -129,7 +129,10 @@ func _rects(screen: Control) -> Dictionary:
 		rects = {"panel": _r(screen.find_child("Panel", true, false)), "back": _r(screen.back_button),
 			"list": _r(screen.find_child("Scroll", true, false))}
 	elif screen is FirstGameGuide:
-		rects = {"card": _r(screen)}
+		var title: Label = screen.title_label
+		var font: Font = title.get_theme_font("font")
+		rects = {"card": _r(screen), "title": _r(title),
+			"title_need": [font.get_string_size(title.text, HORIZONTAL_ALIGNMENT_LEFT, -1, title.get_theme_font_size("font_size")).x, 0.0, 0.0, 0.0, true]}
 	return rects
 
 

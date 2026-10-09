@@ -340,7 +340,7 @@ func _build() -> void:
 
 	var head := HBoxContainer.new()
 	head.name = "Head"
-	head.add_theme_constant_override("separation", 10)
+	head.add_theme_constant_override("separation", 5)
 	box.add_child(head)
 	title_label = _label("TitleLabel", "First game guide", 18, UiPalette.GILT)
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL

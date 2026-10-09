@@ -242,6 +242,15 @@ func test_the_top_bar_shows_every_button_at_both_sizes() -> void:
 	assert_false(float(wide.rects.narrow[0]) > 0.5, "at 1600x900 they all fit in one row")
 
 
+func test_the_first_game_cards_title_is_not_trimmed_by_its_head_row() -> void:
+	_each_size(func(key: String, _viewport: Vector2):
+		var g := _screen(key, "guide")
+		var title := _rect(g, "title")
+		assert_true(_shown(g, "title"), "the title shows at %s" % key)
+		assert_true(title.size.x >= float(g.rects.title_need[0]) - 0.5, "at %s the head row (title, n of 3, How to play, Hide) leaves the whole title %d px, it needs %d" % [
+			key, title.size.x, g.rects.title_need[0]]))
+
+
 func test_the_first_game_card_hangs_under_the_bar_and_leaves_the_capitals_neighbor() -> void:
 	_each_size(func(key: String, viewport: Vector2):
 		var g := _screen(key, "game")
