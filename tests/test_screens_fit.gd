@@ -249,8 +249,9 @@ func test_the_first_game_card_hangs_under_the_bar_and_leaves_the_capitals_neighb
 		assert_true(_shown(g, "guide"), "the card is up at %s" % key)
 		assert_true(card.position.y >= _rect(g, "bar").end.y, "at %s it hangs under the top bar (%s under %s)" % [key, card, _rect(g, "bar")])
 		assert_true(_inside(card, viewport), "and inside the window at %s" % key)
-		# The card folds its other systems: it is shorter than the 265 px it was with every system's line open.
-		assert_true(card.size.y <= 215.0, "folded, the card is short at %s (%d px)" % [key, card.size.y]))
+		# The card folds its other systems and keeps How to play in its head row: 160 px, where it was 265 with every system's line
+		# open. At 125% (the 1280x720 layout) that ends above the capital's neighbor's name plate.
+		assert_true(card.size.y <= 170.0, "folded, the card is short at %s (%d px)" % [key, card.size.y]))
 
 
 func test_the_big_panels_fit_the_window_at_both_sizes() -> void:

@@ -237,7 +237,7 @@ func _show_for(session: GameSession, view: GameState, fid: String, turn: int) ->
 		_showing = fid
 		_turn = turn
 		_set_systems(view)
-		_seat_title = "First game guide" if session.human_seats() <= 1 else "First game guide: Player %d" % session.current_seat()
+		_seat_title = "First game guide" if session.human_seats() <= 1 else "Guide: Player %d" % session.current_seat()
 		title_label.text = _seat_title
 		closing_label.visible = false
 		how_button.visible = true
@@ -335,7 +335,7 @@ func _refresh_systems() -> void:
 func _build() -> void:
 	var box := VBoxContainer.new()
 	box.name = "Box"
-	box.add_theme_constant_override("separation", 2)
+	box.add_theme_constant_override("separation", 1)
 	add_child(box)
 
 	var head := HBoxContainer.new()
@@ -344,6 +344,7 @@ func _build() -> void:
 	box.add_child(head)
 	title_label = _label("TitleLabel", "First game guide", 18, UiPalette.GILT)
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS  # the head row also holds How to play and Hide
 	head.add_child(title_label)
 	progress_label = _label("ProgressLabel", "0 of %d" % STEPS.size(), 15, UiPalette.TEXT_SECONDARY)
 	progress_label.tooltip_text = TooltipText.plain("Your first turn", "The three things to do on a first turn. Each ticks off by itself once you have done it.")
@@ -435,7 +436,10 @@ func _build() -> void:
 	how_button.add_theme_color_override("font_hover_color", UiPalette.GILT)
 	how_button.tooltip_text = TooltipText.plain("How to play", "The turn loop (read, plan, commit, resolve, watch), why orders are simultaneous and where every number explains itself, on one codex page.")
 	how_button.pressed.connect(func(): codex_requested.emit(HOW_TO_PLAY))
-	box.add_child(how_button)
+	# MVP-3 (#177): beside Hide in the head row, not a row of its own: the card is shorter by a line and leaves the capital's
+	# neighbor clear at 125% too.
+	head.add_child(how_button)
+	head.move_child(how_button, hide_button.get_index())
 
 
 ## The card is a small thing: a button or tick keeps no padding of its own, so each row is as tall as its text.
