@@ -181,3 +181,81 @@ Entries between the `canon:item` markers are rewritten by the next run; write an
 - **batch:** art_r3e
 - **date:** 2026-10-08
 <!-- /canon:item -->
+
+<!-- canon:item art_r3f/candlebeast_guttering_bear file=candlebeast_guttering_bear__codex.png files=candlebeast_guttering_bear__codex.png,candlebeast_guttering_bear__grok.png -->
+## The Guttering Bear
+
+- **verdict:** Good with changes
+- **kept:** 2 takes (a fusion: the note says what to take from each)
+- **note:** both nail the vibe
+- **batch:** art_r3f
+- **date:** 2026-10-09
+
+### Take 1 (codex)
+
+![The Guttering Bear, codex](candlebeast_guttering_bear__codex.png)
+
+- **image:** `candlebeast_guttering_bear__codex.png`
+- **seat:** codex
+- **prompt:** Wide 16:9 painterly fantasy strategy-game creature concept art, high three-quarter strategy-camera view. One massive Guttering Bear of soot and ivory wax, visibly mid-melt and slumping as it walks across plain packed umber earth, full body in frame. It rears only a little with one enormous forepaw raised; one shoulder has collapsed into long heavy wax drips nearly touching the ground while the other side still holds its bear shape. A single thick black wick rises from the hump with one small lilac flame. Matte warm ivory wax hangs over a soot-black heavy natural bear body. Each eye position is an empty recessed wax shell containing only a tiny lilac wick-flame, no eyeball or pupil. Painterly oil-brush texture matching the Codex Hundred-Wick reference; tactile, mournful, warlike, never cute. Subdued cloudy atmosphere, readable silhouette, generous margin. No text, letters, logo, border, watermark, UI, people, armor, purple body wax, all-over glow, glossy plastic, skeletons, smoke creatures, or fire elementals.
+
+### Take 2 (grok)
+
+![The Guttering Bear, grok](candlebeast_guttering_bear__grok.png)
+
+- **image:** `candlebeast_guttering_bear__grok.png`
+- **seat:** grok
+- **prompt:** A massive bear of soot and ivory candle wax, mid-melt, slumping as it walks across packed earth, rearing a little with one great forepaw raised. High three-quarter strategy-camera view, full body in frame. Painterly ivory-and-soot wax: matte cream tallow poured over a soot-black under-body, one shoulder sagging into long drips that pool on the ground. A thick black wick burns with a small lilac flame from its hump. Hollow eyeless wax shells with a tiny lilac wick-light inside each socket, no glowing eyes. Warlike and a little sad, oil-paint brushwork, matte wax. Wordless, no text.
+<!-- /canon:item -->
+
+<!-- canon:item art_r3f/candlebeast_tallow_stag file=candlebeast_tallow_stag__codex.png files=candlebeast_tallow_stag__codex.png,candlebeast_tallow_stag__grok.png -->
+## The Tallow Stag
+
+- **verdict:** Good with changes
+- **kept:** 2 takes (a fusion: the note says what to take from each)
+- **note:** these are both great. grok adding the candles into the rotted out openings is a nice touch.
+- **batch:** art_r3f
+- **date:** 2026-10-09
+
+### Take 1 (codex)
+
+![The Tallow Stag, codex](candlebeast_tallow_stag__codex.png)
+
+- **image:** `candlebeast_tallow_stag__codex.png`
+- **seat:** codex
+- **prompt:** Wide 16:9 painterly fantasy strategy-game creature concept art, high three-quarter strategy-camera view. One great Tallow Stag of ivory wax caught in a hard diagonal charge across plain packed umber earth, head lowered and complete body contained in frame. Broadside three-quarter angle clearly shows all four legs and the entire antler span. Huge branching antlers form a natural candelabra of matte wax tines; every terminal point ends in a short black wick with one small lilac flame. Long cooling wax drips stream backward from neck and shoulders like a torn mane. Matte warm ivory tallow is poured over a soot-black natural stag body visible through rents in the wax. Each eye position is an empty recessed wax shell holding only a tiny lilac wick-flame, never an eye or pupil. Painterly oil-brush texture matching the Codex Hundred-Wick reference; powerful, warlike, and sad. Subdued cloudy atmosphere, full silhouette, generous margin. No text, letters, logo, border, watermark, UI, people, armor, purple body wax, all-over glow, glossy plastic, skeletons, smoke creatures, or fire elementals.
+
+### Take 2 (grok)
+
+![The Tallow Stag, grok](candlebeast_tallow_stag__grok.png)
+
+- **image:** `candlebeast_tallow_stag__grok.png`
+- **seat:** grok
+- **prompt:** A great stag of ivory tallow mid-charge across packed earth, head lowered, full body in a high three-quarter strategy-camera view. Painterly ivory-and-soot wax: matte cream candle wax poured over a soot-black under-body, dripping, half-melted. Its antlers are a branching candelabra of wax tines, a small lilac flame on every point. Long wax drips trail behind it like a mane. Hollow eyeless wax shells with a tiny lilac wick-light inside each socket. Warlike and a little sad. Oil-paint brushwork, matte wax, wordless, no text.
+<!-- /canon:item -->
+
+<!-- canon:item art_r3f/candlebeast_wax_hounds file=candlebeast_wax_hounds__codex.png files=candlebeast_wax_hounds__codex.png,candlebeast_wax_hounds__grok.png -->
+## Wax Hounds: a pack of three
+
+- **verdict:** Good with changes
+- **kept:** 2 takes (a fusion: the note says what to take from each)
+- **note:** these are both great. grok adding the candles into the rotted out openings is a nice touch.
+- **batch:** art_r3f
+- **date:** 2026-10-09
+
+### Take 1 (codex)
+
+![Wax Hounds: a pack of three, codex](candlebeast_wax_hounds__codex.png)
+
+- **image:** `candlebeast_wax_hounds__codex.png`
+- **seat:** codex
+- **prompt:** Wide 16:9 painterly fantasy strategy-game creature concept art, high three-quarter view from about 35–45 degrees. A pack of exactly three lean hunting hounds of poured wax sprint low and fast together mid-lope across plain packed umber earth, every full body visible and separated enough to read. One hound is lean and very long; one is heavier with a drooping jowl of wax; one has a ridge of short black wicks down its spine. Matte warm ivory candle wax lies in irregular half-melted sheets over soot-black animal bodies. Where each eye would be is an empty recessed wax shell containing only a tiny lilac wick-flame, with no eyeball or pupil. Small restrained lilac flames burn from the beasts, including the dorsal wick ridge. Painterly oil-brush texture matching the Codex Hundred-Wick reference; tactile, warlike, mournful, never cute. Sparse subdued cloudy backdrop, full silhouettes, generous margin. No text, letters, logo, border, watermark, UI, people, armor, collars, purple body wax, all-over glow, glossy plastic, skeletons, smoke wolves, or fire elementals.
+
+### Take 2 (grok)
+
+![Wax Hounds: a pack of three, grok](candlebeast_wax_hounds__grok.png)
+
+- **image:** `candlebeast_wax_hounds__grok.png`
+- **seat:** grok
+- **prompt:** A pack of three lean hunting hounds of poured candle wax, mid-lope across packed brown earth, high three-quarter strategy-camera view with every full body in frame. Painterly oil-paint: matte ivory tallow poured over soot-black under-bodies, dripping and half-melted at the edges. One hound long and gaunt, one heavier with a drooping jowl of wax, one with a ridge of short black wicks down its spine. Hollow eyeless wax shells with a small lilac wick-light inside each socket; small lilac flames only on the wicks and inside the hollows. Warlike and a little sad. Dusky painterly sky. Wordless pictorial image, no text or lettering.
+<!-- /canon:item -->
