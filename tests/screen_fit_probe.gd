@@ -52,6 +52,9 @@ func _screens() -> Array:
 		["settings", _settings],
 		["load", _load],
 		["guide", _guide],
+		["game", _game],
+		["game_research", _game_research],
+		["game_report", _game_report],
 	]
 
 
@@ -65,7 +68,8 @@ func _measure(size: Vector2i, make: Callable) -> Dictionary:
 	for i in 4:
 		await process_frame
 	var clipped := []
-	_clipped(screen, Rect2(Vector2.ZERO, Vector2(size)), false, clipped)
+	if not screen is GameScreen:  # the game's map is bigger than its window by design: its screens are measured by rects
+		_clipped(screen, Rect2(Vector2.ZERO, Vector2(size)), false, clipped)
 	var out := {"clipped": clipped, "rects": _rects(screen)}
 	vp.queue_free()
 	await process_frame
@@ -79,9 +83,30 @@ func _r(c: Control) -> Array:
 	return [r.position.x, r.position.y, r.size.x, r.size.y, c.is_visible_in_tree()]
 
 
+## A rect as drawn: through the control's own transform, so a panel PanelFit has scaled reports the size it shows.
+func _rt(c: Control) -> Array:
+	if c == null:
+		return []
+	var r: Rect2 = c.get_global_transform() * Rect2(Vector2.ZERO, c.size)
+	return [r.position.x, r.position.y, r.size.x, r.size.y, c.is_visible_in_tree()]
+
+
 func _rects(screen: Control) -> Dictionary:
 	var rects := {}
-	if screen is NewGameScreen:
+	if screen is GameScreen:
+		var map := (screen as GameScreen).map
+		var report_box: Control = screen.report_overlay.get_node("Center/Box")
+		var research: Control = null
+		if screen.research_hud != null and screen.research_hud.panel != null:
+			research = screen.research_hud.panel.get_node("Center/Panel")
+		rects = {"bar": _r(map.get_node("Layout/TopBar")), "end_turn": _r(screen.end_turn_button), "menu": _r(map.back_button),
+			"hint": _r(map.hint_label), "research": _r(screen.research_hud.chip), "magic": _r(screen.research_hud.magic_chip),
+			"ruler": _r(screen.ruler_button), "report": _r(screen.report_button), "codex": _r(screen.codex_button),
+			"narrow": [1.0 if map.bar_is_narrow() else 0.0, 0.0, 0.0, 0.0, true], "side": _r(map.details.get_parent()),
+			"guide": _r(screen.first_game_guide), "map": _r(map.map_view),
+			"research_panel": _rt(research), "research_close": _r(screen.research_hud.panel.close_button) if research != null else [],
+			"report_box": _rt(report_box), "report_close": _r(screen.report_overlay.find_child("CloseReportButton", true, false))}
+	elif screen is NewGameScreen:
 		rects = {"start": _r(screen.start_button), "back": _r(screen.back_button), "scroll": _r(screen.body_scroll),
 			"panel": _r(screen.find_child("Panel", true, false)), "error": _r(screen.error_label),
 			"content_h": screen.body_scroll.get_child(0).get_combined_minimum_size().y}
@@ -104,7 +129,10 @@ func _rects(screen: Control) -> Dictionary:
 		rects = {"panel": _r(screen.find_child("Panel", true, false)), "back": _r(screen.back_button),
 			"list": _r(screen.find_child("Scroll", true, false))}
 	elif screen is FirstGameGuide:
-		rects = {"card": _r(screen)}
+		var title: Label = screen.title_label
+		var font: Font = title.get_theme_font("font")
+		rects = {"card": _r(screen), "title": _r(title),
+			"title_need": [font.get_string_size(title.text, HORIZONTAL_ALIGNMENT_LEFT, -1, title.get_theme_font_size("font_size")).x, 0.0, 0.0, 0.0, true]}
 	return rects
 
 
@@ -222,8 +250,43 @@ func _load() -> Control:
 	return l
 
 
+## A game with every system on at turn 1, orders phase, the first-game card up (the 2D map: the 3D board's land bake needs a
+## renderer, and the top bar, the cards and the panels are the same either way).
+func _game() -> Control:
+	var gs := GameSettings.new(SCRATCH.path_join("settings.cfg"))
+	gs.set_board("2d")
+	gs.save()
+	GameSettings.reset_hint(GameSettings.HINT_FIRST_GAME)  # a game before this one finished its first turn: the card shows again
+	GameSettings.reset_hint("fog")
+	var g: GameScreen = load("res://ui/game_screen.tscn").instantiate()
+	g.autosave_enabled = false
+	g.save_store = SaveStore.new(SCRATCH.path_join("saves"))
+	g.start_game({"players": ["kingdom", "beasts"], "seed": 777, "rulers": true, "paths": true, "sieges": true, "fog": true, "magic": true,
+		"independents": true, "ai": {"beasts": "normal"},
+		"builds": {"kingdom": RulerRules.preset_build(RulerRules.balanced_preset("kingdom")), "beasts": BuildScreen.computer_build("beasts", 777, 1)}})
+	return g
+
+
+## The same game with the research panel open on its Magic tab (the biggest centred panel).
+func _game_research() -> Control:
+	var g: GameScreen = _game()
+	g.close_turn_report()
+	g.research_hud.open_magic()
+	return g
+
+
+## The same game after turn 1, with the turn report open.
+func _game_report() -> Control:
+	var g: GameScreen = _game()
+	g.close_turn_report()
+	g.end_turn()
+	g.open_turn_report()
+	return g
+
+
 ## The first-game card in a game with every system on, its tallest state.
 func _guide() -> Control:
+	GameSettings.reset_hint(GameSettings.HINT_FIRST_GAME)
 	var state := GameState.with_rulers(9)
 	state.setup_paths()
 	state.setup_sieges()

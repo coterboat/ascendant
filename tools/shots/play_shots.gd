@@ -17,6 +17,8 @@ extends SceneTree
 ##                      magic turns paths and rulers on, as the new game screen's box does)
 ##   --defaults         MVP-2 (#163): the game as a new player gets it: every system on, and the new game screen left exactly
 ##                      as it ships (no box touched), so the shot shows the defaults. Combine with --fresh.
+##   --ui-scale=N       the interface size in percent, 100 or 125, as Settings' "Interface size" sets it (MVP-3, #177): the window
+##                      stays as launched, so `--resolution 1600x900 --ui-scale=125` lays the screens out at 1280x720
 ##   --no-menus         skip the title, new game and build screen shots
 ##   --fresh            the walk's settings are DIR/settings.cfg, deleted first, instead of the player's own: no settings
 ##                      file, so the first-game guide shows (MVP-1, #141), and the player's file is never read or written
@@ -43,6 +45,7 @@ var menus := true
 var fast := false
 var fresh := false
 var defaults := false
+var ui_scale := 100
 var walk: PackedStringArray = []
 var shot_n := 0
 var mages_queued := 0  # --magic: the mages the person's seat has recruited
@@ -66,6 +69,7 @@ func _initialize() -> void:
 			"fast": fast = true
 			"fresh": fresh = true
 			"defaults": defaults = true
+			"ui-scale": ui_scale = int(kv[1])
 			_:
 				if flags.has(kv[0]):
 					flags[kv[0]] = true
@@ -81,12 +85,24 @@ func _initialize() -> void:
 		GameSettings.default_path = out.path_join("settings.cfg")
 		if FileAccess.file_exists(GameSettings.default_path):
 			DirAccess.remove_absolute(GameSettings.default_path)
+	if GameSettings.UI_SCALES.has(ui_scale) and ui_scale != 100:
+		# As a player sets it in Settings: a saved ui_scale, which the title screen applies when it first appears (with no
+		# [hints] in the file the first-game guide still shows). The scale goes on the root now too, for --no-menus.
+		var saved := GameSettings.new(GameSettings.default_path if fresh else "")
+		saved.set_ui_scale(ui_scale)
+		if fresh:
+			saved.save()
+		root.content_scale_factor = ui_scale / 100.0
 	# The window stays as launched: `--resolution WxH` (see the header) takes a walk at another size, 1280x720 for
 	# instance (MVP-1, #141: every screen fits both), and without it the window is the project's default, W x H.
 	print("window: ", DisplayServer.window_get_size(), " (default ", Vector2i(W, H), ")")
 	# Without vsync the frame loop never waits on the display, so a window covered by other windows (macOS stops
 	# its display link) still renders at full speed and the walk doesn't stall.
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	# The walk drives the game through its API, never through input: a stray key or click from the real desktop (the window is
+	# always on top) would press Continue on the title, or put a tooltip in a shot. (MVP-3, #177: a 125% walk loaded the
+	# player's own autosave that way.)
+	root.gui_disable_input = true
 	_run()
 
 
@@ -343,7 +359,8 @@ func _headlines(report: Dictionary) -> String:
 
 func _write_walk() -> void:
 	var f := FileAccess.open(out.path_join("walk.md"), FileAccess.WRITE)
-	f.store_string("# play_shots walk (seed %d, %s vs computer, %s)\n\n%s\n" % [game_seed, human,
-		JSON.stringify(flags), "\n".join(walk)])
+	f.store_string("# play_shots walk (seed %d, %s vs computer, %s; window %s, interface %d%%: the screens are laid out at %s)\n\n%s\n" % [game_seed,
+		human, JSON.stringify(flags), DisplayServer.window_get_size(), int(root.content_scale_factor * 100.0 + 0.5),
+		root.get_visible_rect().size, "\n".join(walk)])
 	f.close()
 	print("walk written: ", out.path_join("walk.md"))

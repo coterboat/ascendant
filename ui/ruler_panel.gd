@@ -63,6 +63,7 @@ func _init() -> void:
 	panel.custom_minimum_size = PANEL_SIZE
 	panel.add_theme_stylebox_override("panel", UiPalette.panel_style(22))
 	center.add_child(panel)
+	PanelFit.attach(panel, center)  # MVP-3 (#177): a panel bigger than a 1280x720 viewport (125%) shrinks to fit it
 	var box := VBoxContainer.new()
 	box.name = "Box"
 	box.add_theme_constant_override("separation", 12)

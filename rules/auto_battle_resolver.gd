@@ -2205,7 +2205,7 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 	else:
 		# M3c (§4.5): the first line names the kind of battle at the fort.
 		var names := sides.map(func(x): return String(x.name))
-		lines.append("%s %s." % [siege_sentence(siege, String(env.get("place_name", "the fort")), names), "; ".join(who)])
+		lines.append("%s %s." % [siege_sentence(siege, String(env.get("place_name", "the fort")), names, String(env.get("terrain", ""))), "; ".join(who)])
 	var paths_line := _paths_line(sides)
 	if not paths_line.is_empty():
 		lines.append(paths_line)
@@ -2302,7 +2302,7 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 ## the province's name and the sides' names in side order: "The Thornmane Clans stormed the walls of Crownkeep
 ## (9 of 9: +6 defense) on the second turn of the siege." / "Through the breach at Stonegate, the Aurel Crown's
 ## garrison met the Thornmane Clans in the open: ...". TurnResolver's battle event starts with it too.
-static func siege_sentence(siege: Dictionary, place: String, names: Array) -> String:
+static func siege_sentence(siege: Dictionary, place: String, names: Array, terrain: String = "") -> String:
 	var gi := int(siege.get("garrison", -1))
 	var owner := String(names[gi]) if gi >= 0 and gi < names.size() else ""
 	var others := []
@@ -2331,6 +2331,17 @@ static func siege_sentence(siege: Dictionary, place: String, names: Array) -> St
 		"rivals":
 			return "At %s, the %s met outside the walls, where nobody holds the ground." % [place, everyone]
 		"empty":
+			var hi := int(siege.get("holder", -1))
+			if hi >= 0 and hi < names.size():
+				# MVP-3 (#177): a neutral fort's Free Holds garrison holds the ground in the open (SiegeRules.next_battle): the
+				# terrain's bonus is its, the walls and cover are nobody's.
+				var rest := []
+				for i in names.size():
+					if i != hi:
+						rest.append(String(names[i]))
+				var ground := ground_words(terrain)
+				return "At %s, the %s garrison met the %s before its %s, holding the ground%s." % [place, names[hi], " and ".join(rest),
+					String(siege.get("fort", "fort")), " (%s)" % ground if not ground.is_empty() else ""]
 			return "At %s, the %s arrived together before the empty fort, where nobody holds the ground." % [place, everyone]
 		"breach":
 			return "Through the breach at %s, the %s garrison met the %s in the open: nobody holds the ground, and the garrison keeps +%d cover among the ruins." % [
@@ -2338,8 +2349,24 @@ static func siege_sentence(siege: Dictionary, place: String, names: Array) -> St
 	return "At %s, the %s met outside the walls." % [place, everyone]
 
 
+## What the ground gives the side that holds it, in a few words: "hills: +1 defense, +1 attack", "forest: +2 defense",
+## "plains: no terrain bonus". "" when the terrain is unknown. The numbers are TERRAIN's.
+static func ground_words(terrain: String) -> String:
+	if terrain.is_empty():
+		return ""
+	var bonus: Dictionary = TERRAIN.get(terrain, {})
+	var parts := []
+	if int(bonus.get("defense", 0)) > 0:
+		parts.append("+%d defense" % int(bonus.defense))
+	if int(bonus.get("attack", 0)) > 0:
+		parts.append("+%d attack" % int(bonus.attack))
+	return "%s: %s" % [terrain, ", ".join(parts) if not parts.is_empty() else "no terrain bonus"]
+
+
 ## A side's role in a battle at a fort (M3c), for the report's first line.
 static func _siege_role(siege: Dictionary, si: int, s: Dictionary) -> String:
+	if String(siege.get("kind", "")) == SiegeRules.OPEN and int(siege.get("holder", -1)) >= 0:
+		return "holding the ground" if si == int(siege.holder) else "attacking"  # MVP-3 (#177): a neutral fort's garrison
 	var garrison := si == int(siege.get("garrison", -1))
 	var inside := false
 	for f in s.fighters:

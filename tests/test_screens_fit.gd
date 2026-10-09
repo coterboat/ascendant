@@ -12,7 +12,7 @@ const PROBE := "res://tests/screen_fit_probe.gd"
 const SCRATCH := "user://screen_fit_probe"  # the probe's own settings and saves (tests/screen_fit_probe.gd)
 const SIZES := {"1600x900": Vector2(1600, 900), "1280x720": Vector2(1280, 720)}
 const SCREENS := ["title", "new_game", "new_game_full", "new_game_error", "victory", "victory_actions", "victory_everything",
-	"victory_draw", "build", "codex", "settings", "load", "guide"]
+	"victory_draw", "build", "codex", "settings", "load", "guide", "game", "game_research", "game_report"]
 const NEW_GAMES := ["new_game", "new_game_full", "new_game_error"]
 const VICTORIES := ["victory", "victory_actions", "victory_everything", "victory_draw"]
 ## A scroll container smaller than this is not a visible way to the content in it.
@@ -218,3 +218,58 @@ func test_the_first_game_card_is_small_and_in_the_corner_at_both_sizes() -> void
 		assert_true(card.size.x <= 360.0, "narrow (%d px)" % card.size.x)
 		# The player's capital starts about 45% of the way down the map's left edge: with every system on the card ends above it.
 		assert_true(card.end.y <= viewport.y * 0.54, "and short enough to leave the map its room at %s: it ends %d px down of %d" % [key, card.end.y, viewport.y]))
+
+
+# --- the game screen with every system on (MVP-3, #177) ---------------------------------------------------------
+
+func test_the_top_bar_shows_every_button_at_both_sizes() -> void:
+	_each_size(func(key: String, viewport: Vector2):
+		var g := _screen(key, "game")
+		var where := "the game screen at %s" % key
+		assert_true(_inside(_rect(g, "bar"), viewport), "%s: the top bar is inside the window (%s)" % [where, _rect(g, "bar")])
+		assert_true(_shown(g, "end_turn") and _inside(_rect(g, "end_turn"), viewport), "%s: End turn is on screen (%s)" % [where, _rect(g, "end_turn")])
+		assert_true(_shown(g, "menu") and _inside(_rect(g, "menu"), viewport), "%s: Menu is on screen (%s)" % [where, _rect(g, "menu")])
+		assert_true(_shown(g, "hint") and _inside(_rect(g, "hint"), viewport), "%s: the hint is on screen (%s)" % [where, _rect(g, "hint")])
+		assert_true(_rect(g, "hint").size.x >= 300.0, "%s: the hint has room (%d px)" % [where, _rect(g, "hint").size.x])
+		for button in ["research", "magic", "ruler", "report", "codex"]:
+			assert_true(_shown(g, button) and _inside(_rect(g, button), viewport), "%s: %s is on screen (%s)" % [where, button, _rect(g, button)])
+		assert_true(_rect(g, "bar").end.y <= _rect(g, "map").position.y + 0.5, "%s: the map starts under the bar" % where)
+		assert_true(_rect(g, "side").end.x <= viewport.x + 0.5, "%s: the side panel is inside the window" % where))
+	# The narrow window needs the second row, the wide one does not: both come from the layout, not from this file.
+	var wide := _screen("1600x900", "game")
+	var narrow := _screen("1280x720", "game")
+	assert_true(float(narrow.rects.narrow[0]) > 0.5, "at 1280x720 (125%) the optional buttons wrap beside the hint")
+	assert_false(float(wide.rects.narrow[0]) > 0.5, "at 1600x900 they all fit in one row")
+
+
+func test_the_first_game_cards_title_is_not_trimmed_by_its_head_row() -> void:
+	_each_size(func(key: String, _viewport: Vector2):
+		var g := _screen(key, "guide")
+		var title := _rect(g, "title")
+		assert_true(_shown(g, "title"), "the title shows at %s" % key)
+		assert_true(title.size.x >= float(g.rects.title_need[0]) - 0.5, "at %s the head row (title, n of 3, How to play, Hide) leaves the whole title %d px, it needs %d" % [
+			key, title.size.x, g.rects.title_need[0]]))
+
+
+func test_the_first_game_card_hangs_under_the_bar_and_leaves_the_capitals_neighbor() -> void:
+	_each_size(func(key: String, viewport: Vector2):
+		var g := _screen(key, "game")
+		var card := _rect(g, "guide")
+		assert_true(_shown(g, "guide"), "the card is up at %s" % key)
+		assert_true(card.position.y >= _rect(g, "bar").end.y, "at %s it hangs under the top bar (%s under %s)" % [key, card, _rect(g, "bar")])
+		assert_true(_inside(card, viewport), "and inside the window at %s" % key)
+		# The card folds its other systems and keeps How to play in its head row: 160 px, where it was 265 with every system's line
+		# open. At 125% (the 1280x720 layout) that ends above the capital's neighbor's name plate.
+		assert_true(card.size.y <= 170.0, "folded, the card is short at %s (%d px)" % [key, card.size.y]))
+
+
+func test_the_big_panels_fit_the_window_at_both_sizes() -> void:
+	_each_size(func(key: String, viewport: Vector2):
+		var research := _screen(key, "game_research")
+		assert_true(_shown(research, "research_panel"), "the research panel is open at %s" % key)
+		assert_true(_inside(_rect(research, "research_panel"), viewport), "the research panel's Magic tab fits the window at %s (%s)" % [key, _rect(research, "research_panel")])
+		assert_true(_shown(research, "research_close") and _inside(_rect(research, "research_close"), viewport), "its Close is on screen at %s" % key)
+		var report := _screen(key, "game_report")
+		assert_true(_shown(report, "report_box"), "the turn report is open at %s" % key)
+		assert_true(_inside(_rect(report, "report_box"), viewport), "the turn report fits the window at %s (%s)" % [key, _rect(report, "report_box")])
+		assert_true(_shown(report, "report_close") and _inside(_rect(report, "report_close"), viewport), "its Close is on screen at %s" % key))

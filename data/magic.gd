@@ -120,7 +120,7 @@ const ARCANA := {
 		{"id": "sunburst", "name": "Sunburst", "kind": "spell", "tier": "III", "school": "sun", "cost": 25,
 			"requires": ["dawn_blessing", "crown_oath_dawn"], "requires_any": 0, "branch": "", "oath_branch": "celestial_host",
 			"codex": "spell_sunburst",
-			"text": "Greater working (Sun): in round 1, every enemy front-rank fighter has -2 attack. Needs the Oath of the Dawn."},
+			"text": "Greater working (Sun): in round 1, every enemy front-rank fighter has -2 attack."},
 		{"id": "shield_of_law", "name": "Shield of Law", "kind": "spell", "tier": "I", "school": "law", "cost": 10, "requires": [],
 			"requires_any": 0, "branch": "", "oath_branch": "", "codex": "spell_shield_of_law",
 			"text": "Battle spell (Law): +4 defense for 6 of your front-rank units in the open, every round."},
@@ -133,7 +133,7 @@ const ARCANA := {
 		{"id": "bastion", "name": "Bastion", "kind": "spell", "tier": "III", "school": "law", "cost": 25,
 			"requires": ["sanctum_ward", "crown_oath_forge"], "requires_any": 0, "branch": "", "oath_branch": "living_iron",
 			"codex": "spell_bastion",
-			"text": "Greater working (Law): raises a fort in a province of yours, at most 2 ever. Needs the Oath of the Forge."},
+			"text": "Greater working (Law): raises a fort in a province of yours, at most 2 ever."},
 	],
 	"beasts": [
 		{"id": "briar_snare", "name": "Briar Snare", "kind": "spell", "tier": "I", "school": "wild", "cost": 10, "requires": [],
@@ -148,7 +148,7 @@ const ARCANA := {
 		{"id": "wake_the_greenwrath", "name": "Wake the Greenwrath", "kind": "spell", "tier": "III", "school": "wild", "cost": 25,
 			"requires": ["call_the_pack", "beasts_oath_grove"], "requires_any": 0, "branch": "", "oath_branch": "thorn_wild",
 			"codex": "spell_wake_the_greenwrath",
-			"text": "Greater working (the Wild): wakes the Greenwrath in a forest, until it falls. Needs the Oath of the Grove."},
+			"text": "Greater working (the Wild): wakes the Greenwrath in a forest, until it falls."},
 		{"id": "bloodbolt", "name": "Bloodbolt", "kind": "spell", "tier": "I", "school": "blood", "cost": 10, "requires": [],
 			"requires_any": 0, "branch": "", "oath_branch": "", "codex": "spell_bloodbolt",
 			"text": "Battle spell (Blood): 5 sure damage that finishes the weakest enemy in reach; the caster bleeds 2."},
@@ -161,7 +161,7 @@ const ARCANA := {
 		{"id": "blood_moon", "name": "Blood Moon", "kind": "spell", "tier": "III", "school": "blood", "cost": 25,
 			"requires": ["bloodrot", "beasts_oath_blood"], "requires_any": 0, "branch": "", "oath_branch": "blood_pact",
 			"codex": "spell_blood_moon",
-			"text": "Greater working (Blood): for 3 turns your fighters heal back a fifth of the damage they deal. Needs the Oath of Blood."},
+			"text": "Greater working (Blood): for 3 turns your fighters heal back a fifth of the damage they deal."},
 	],
 }
 

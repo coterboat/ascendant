@@ -518,11 +518,13 @@ static func _check_sally(state: GameState, fid: String, order: SiegeOrder, moves
 ## storms and sallies ({"storms": {province id: {faction id: true}}, "sallies": {army id: {"faction", "with",
 ## "from"}}}); `fought` the kinds of the battles this fort has already had this turn, in order.
 ## Returns {"kind": "open" | "storm" | "breach", "why" (§3.9's last column), "sides": {faction id: [armies]},
-## "defender" (the owner in a storm, "" otherwise), "from_inside": [army ids], "siege": the battle's siege block
-## (§4.4, siege_block)}.
+## "defender" (the owner in a storm, the Free Holds at a neutral fort, "" otherwise), "from_inside": [army ids],
+## "siege": the battle's siege block (§4.4, siege_block)}.
 ##
 ## The rule: at a fort the only defender is a garrison being stormed. Every other battle there is in the open and
 ## nobody defends, but fighters coming from inside the walls (a sally, or the garrison at the breach) get cover.
+## The one exception is a neutral fort's Free Holds garrison (IND-1): it meets you in the open and holds the ground,
+## so it is the defender and gets the terrain's bonus, but no walls and no cover (nobody owns the fort to man them).
 ## Inside a province the open battle outside the walls comes first (when two or more factions are outside,
 ## counting sallying armies as their owner's), then the storm (when one was ordered and stormers and garrison
 ## armies are still there). At a breached fort the garrison and the enemy fight once, through the breach.
@@ -666,7 +668,8 @@ static func called_off(state: GameState, province_id: String, moved: Dictionary,
 ## "walls_defense" (the part each garrison fighter gets in a storm; 0 otherwise), "cover_defense"
 ## (FortData.COVER_DEFENSE for the from_inside fighters of a sally or breach battle; 0 otherwise), "garrison" (the
 ## owner's side index among the sides in faction id order, or -1), "from_inside", "turn_of_siege" (0 when there
-## was no siege at the start of the turn)}. Walls never change during a battle.
+## was no siege at the start of the turn)}, and "holder" (the side index of the Free Holds garrison that holds the
+## ground in an open battle at a neutral fort; the key is there only then). Walls never change during a battle.
 static func siege_block(state: GameState, p: Province, kind: String, why: String, fids: Array, from_inside: Array) -> Dictionary:
 	var ids := from_inside.map(func(a): return a.id if a is Army else String(a))
 	return {"kind": kind, "why": why, "fort": String(level_data(p.fort_level).id), "walls": p.walls,
@@ -685,8 +688,13 @@ static func _plan(state: GameState, p: Province, kind: String, why: String, owne
 	var fids: Array = sides.keys()
 	fids.sort()
 	var ids := from_inside.map(func(a): return a.id)
-	return {"kind": kind, "why": why, "sides": sides, "defender": defender, "from_inside": ids,
-		"siege": siege_block(state, p, kind, why, fids, ids)}
+	var block := siege_block(state, p, kind, why, fids, ids)
+	if kind == OPEN and not defender.is_empty():
+		# MVP-3 (#177): an open battle with a defender is a neutral fort's Free Holds garrison holding the ground (IND-1).
+		# The block says which side it is ("holder", a side index like "garrison"), so the battle's lines can say so; a
+		# battle without a holder keeps the block exactly as it was.
+		block["holder"] = fids.find(defender)
+	return {"kind": kind, "why": why, "sides": sides, "defender": defender, "from_inside": ids, "siege": block}
 
 
 ## Whether the relief army `army_id` stands in `province_id`, having arrived this turn (outside the walls).

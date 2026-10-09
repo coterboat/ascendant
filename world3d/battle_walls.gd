@@ -207,13 +207,16 @@ static func plate_text(siege: Dictionary) -> String:
 		"breach":
 			return "Breached: no walls, +%d cover" % cover
 		"open":
+			if int(siege.get("holder", -1)) >= 0:  # MVP-3 (#177): a neutral fort's garrison holds the ground
+				return String(FortView.siege_chip(siege).get("text", ""))
 			return "Outside the walls: +%d cover from inside" % cover if cover > 0 else "Outside the walls: no cover for anyone"
 	return ""
 
 
 ## The line under the battle's first caption, before the first blow lands: what the walls (or their lack) mean for the fight
-## that is about to be played. `place` is the province's name. "" without a siege block.
-static func caption_text(siege: Dictionary, place: String) -> String:
+## that is about to be played. `place` is the province's name; `terrain` and `holder_name` (the garrison's faction name) only
+## matter at a neutral fort (the block's "holder"), where the garrison holds the ground. "" without a siege block.
+static func caption_text(siege: Dictionary, place: String, terrain: String = "", holder_name: String = "") -> String:
 	var walls := int(siege.get("walls", 0))
 	var top := int(siege.get("walls_max", 0))
 	var cover := int(siege.get("cover_defense", 0))
@@ -224,6 +227,10 @@ static func caption_text(siege: Dictionary, place: String) -> String:
 		"breach":
 			return "The walls of %s are down: nobody holds the ground, and the garrison keeps +%d cover among the ruins." % [place, cover]
 		"open":
+			if int(siege.get("holder", -1)) >= 0:
+				var who := "The %s garrison" % holder_name if not holder_name.is_empty() else "The garrison"
+				var ground := AutoBattleResolver.ground_words(terrain)
+				return "%s of %s holds the ground in the open%s; no walls, no cover." % [who, place, " (%s)" % ground if not ground.is_empty() else ""]
 			if cover > 0:
 				return "Outside the walls of %s nobody holds the ground, but those who came out of the gate keep +%d cover." % [place, cover]
 			return "Outside the walls of %s nobody holds the ground: no walls, no terrain, no cover for anyone." % place

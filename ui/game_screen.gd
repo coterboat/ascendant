@@ -114,6 +114,10 @@ const TURN_START_DELAY := 0.45
 const REPORT_CUE_DELAY := 1.1
 ## M3-5: the z_index of an overlay opened over the battle screen (above its result card and legend).
 const OVER_BATTLE_Z := BattleHost.OVER_Z
+## MVP-3 (#177): the notice hangs this far under the top bar (it was 84 under a 62 px bar).
+const NOTICE_GAP := 22.0
+## MVP-3 (#177): how dark the turn report's backdrop is (it was 0.45, which left the side panel's text half readable).
+const REPORT_DIM := 0.82
 ## The Ruler button's help (without fog).
 const RULER_HELP := "Your ruler and the enemy ruler, every number explained, with the mandates each side has and how succession works. Builds are public. Your living ruler can sacrifice power for a new mandate here."
 
@@ -476,7 +480,7 @@ func _computer_notes() -> Array:
 	for fid in session.computer_seats():
 		var f := map.state.find_faction(String(fid))
 		out.append({"faction": fid, "faction_name": f.faction_name if f else "The computer", "seat": players.find(fid),
-			"level": session.computer_level(String(fid)), "notes": [FogView.NOTES_HIDDEN]})
+			"level": session.computer_level(String(fid)), "notes": [FogView.NOTES_HIDDEN], "hidden": true})
 	return out
 
 
@@ -600,6 +604,12 @@ const FOG_HINT := "Fog of war is on. You see exactly where you own land or stand
 func _fog_hint() -> void:
 	if not FogView.active(map.state) or _report_turn() > 0 or GameSettings.hint_seen("fog"):
 		return
+	if first_game_guide != null:
+		# MVP-3 (#177): one card at a time. The first-game guide has a fog line that says the same, and when it is up the
+		# banner would stack beside it (covering the board hint and the research panel's tabs).
+		first_game_guide.sync(session, map.state)
+		if first_game_guide.explains_fog():
+			return
 	show_notice("Fog of war", FOG_HINT)
 	_fog_hint_up = true
 	notice_ok.text = "Got it"
@@ -1103,6 +1113,22 @@ func _bind() -> void:
 	first_game_guide = FirstGameGuide.new()  # over the map, under every overlay layer
 	first_game_guide.codex_requested.connect(open_codex)
 	add_child(first_game_guide)
+	map.top_bar_changed.connect(_hang_under_top_bar)
+	_hang_under_top_bar()
+
+
+## MVP-3 (#177): what hangs under the top bar (the first-game guide, the notice) follows the bar's height, which is more
+## than one row in a narrow window (Settings' 125% interface size) and has the hint's row under the buttons.
+func _hang_under_top_bar() -> void:
+	if map == null or not is_inside_tree():
+		return
+	var bottom := map.top_bar_bottom()
+	if bottom <= 0.0:
+		return
+	if first_game_guide != null:
+		first_game_guide.hang_under(bottom)
+	if notice_panel != null:
+		notice_panel.offset_top = bottom + NOTICE_GAP
 
 
 func _build_hud() -> void:
@@ -1125,7 +1151,7 @@ func _build_hud() -> void:
 	end_turn_button.custom_minimum_size = Vector2(210, 0)
 	end_turn_button.add_theme_font_size_override("font_size", 18)
 	end_turn_button.add_theme_color_override("font_color", UiPalette.GILT)
-	map.add_top_bar_control(end_turn_button)
+	map.add_top_bar_control(end_turn_button, true)  # MVP-3 (#177): End turn and Menu never leave the bar's first row
 	map.back_button.text = "Menu"
 	map.back_button.tooltip_text = TooltipText.plain("Menu",
 		"Save the game, load another, change the settings or quit to the title screen (Esc). The game also saves itself at the start of every turn.")
@@ -1378,7 +1404,8 @@ func _build_notice() -> void:
 
 ## The turn report panel in a modal frame with a footer: a hint and a Close button.
 func _report_overlay() -> Control:
-	var overlay := _overlay_base("ReportOverlay", 0.45)
+	# MVP-3 (#177): dim enough that what the box doesn't cover (the side panel's half-cut lines down its right edge) stays quiet.
+	var overlay := _overlay_base("ReportOverlay", REPORT_DIM)
 	var center := CenterContainer.new()
 	center.name = "Center"
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1389,6 +1416,7 @@ func _report_overlay() -> Control:
 	box.custom_minimum_size = Vector2(1040, 760)
 	box.add_theme_constant_override("separation", 0)
 	center.add_child(box)
+	PanelFit.attach(box, center)  # MVP-3 (#177): at 125% the 760 px box is taller than the 720 px viewport: it shrinks to fit
 	report_panel = TurnReportPanel.new()
 	report_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	report_panel.province_focus_requested.connect(_on_report_focus)

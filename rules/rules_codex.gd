@@ -138,7 +138,8 @@ const ENTRIES := {
 			+ " for every %d wall strength left." % FortData.WALL_STEP
 			+ " 2. A sally, a relief army, armies arriving together, and the fight after the breach are all in the open: nobody gets walls or ground, but the garrison's own fighters keep +%d cover from their fort." % FortData.COVER_DEFENSE
 			+ " 3. An empty fort falls to whoever walks in. 4. From the turn after a real army besieges a fort, the fort is cut off: nobody can recruit there, and its income goes to the besiegers. A handful of pickets cuts nothing off."
-			+ " The garrison is the fort owner's armies that were there at the start of the turn and didn't move, a ruler's army too: they are inside the walls. Everyone else in the province is outside: enemy armies, and the owner's armies that arrive this turn, a relief army. If the owner's armies arrive while no enemy is there, they simply go in.",
+			+ " The garrison is the fort owner's armies that were there at the start of the turn and didn't move, a ruler's army too: they are inside the walls. Everyone else in the province is outside: enemy armies, and the owner's armies that arrive this turn, a relief army. If the owner's armies arrive while no enemy is there, they simply go in."
+			+ " A neutral fort is the one exception to an open battle where nobody gets the ground: in a game with independents its Free Holds garrison meets you in the open and holds the ground, so it gets the terrain's bonus, but no walls and no cover.",
 	},
 	"siege_damage": {
 		"title": "Siege damage",
@@ -304,7 +305,7 @@ const ENTRIES := {
 	# read that class: it needs AutoBattleResolver, which needs this one.
 	"independents": {
 		"title": "Independents: the Free Holds",
-		"text": "In a game with independents, every neutral province starts with a garrison of the Free Holds, local fighters who answer to no ruler. To take the province you must beat its garrison: moving in starts a battle in which the garrison holds the ground, so it gets the province's terrain and fort bonuses. If you win, the garrison is gone and the province is yours. If you lose, your armies are destroyed like any loser's, the province stays neutral, and the garrison keeps its wounds. A garrison never moves, recruits, heals or takes a province, and it is never a threat to your land."
+		"text": "In a game with independents, every neutral province starts with a garrison of the Free Holds, local fighters who answer to no ruler. To take the province you must beat its garrison: moving in starts a battle in which the garrison holds the ground, so it gets the province's terrain bonus, and in a game without forts and sieges its fort's too. In a game with forts and sieges a neutral fort's garrison fights you in the open before the fort, so its walls and cover do nothing for it. If you win, the garrison is gone and the province is yours. If you lose, your armies are destroyed like any loser's, the province stays neutral, and the garrison keeps its wounds. A garrison never moves, recruits, heals or takes a province, and it is never a threat to your land."
 			+ " It follows the land: the plains raise a Free Company of Free Spears and Hill Slingers, the hills a Hillguard of slingers behind a few spears, and the forests the Wildkin, unaligned beastfolk of the deep woods. A province earning up to 6 gold holds 3 units, 7 to 8 gold holds 4, and 9 or more holds 5; from 8 gold a Hold Captain leads it."
 			+ " Every garrison is public knowledge, even under fog of war, and the move preview gives your odds against it. With Sworn Vassals, a province that swears fealty brings no fight: its garrison lays down its arms and goes home.",
 	},
@@ -335,7 +336,7 @@ const ENTRIES := {
 		"text": "Only the defender, the side that was already holding the province, gets the ground: forest +%d defense," % AutoBattleResolver.TERRAIN.forest.defense
 			+ " hills +%d defense" % AutoBattleResolver.TERRAIN.hills.defense + " and +%d attack, plains nothing." % AutoBattleResolver.TERRAIN.hills.attack
 			+ " A fort adds +%d defense on top." % AutoBattleResolver.FORT_DEFENSE
-			+ " Border battles and armies that all arrived at once have no defender, so nobody gets terrain. Knights' charge is weaker in a forest. In a game with forts and sieges the fort's flat bonus is gone: a stormed garrison gets its walls instead (Storming the walls), and every other battle at a fort is fought outside the walls, where nobody gets the ground.",
+			+ " Border battles and armies that all arrived at once have no defender, so nobody gets terrain. Knights' charge is weaker in a forest. In a game with forts and sieges the fort's flat bonus is gone: a stormed garrison gets its walls instead (Storming the walls), and every other battle at a fort is fought outside the walls, where nobody gets the ground, except at a neutral fort, where the Free Holds garrison holds it and gets the terrain's bonus.",
 	},
 	"battle_morale": {
 		"title": "Morale and routs",
@@ -467,7 +468,8 @@ const ENTRIES := {
 		"title": "Outside the walls",
 		"text": "Every battle at a fort except a storm is fought outside the walls: a sally, a relief army meeting the siege lines, armies arriving together, rival besiegers. Nobody defends, so nobody gets walls or terrain, and if nothing is decided by the round cap the side with more of its strength left wins."
 			+ " The garrison's fighters who come out keep +%d cover from their fort; a relief army gets none." % AutoBattleResolver.COVER_DEFENSE
-			+ " When a storm is ordered too, the battle outside comes first, and the storm follows only if the stormers won it.",
+			+ " When a storm is ordered too, the battle outside comes first, and the storm follows only if the stormers won it."
+			+ " The exception is a neutral fort in a game with independents: its Free Holds garrison holds the ground, so it is the defender and gets the terrain's bonus, but no walls and no cover, because nobody owns the fort to man its walls.",
 	},
 	"battle_breach": {
 		"title": "Through the breach",

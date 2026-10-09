@@ -158,6 +158,7 @@ func open_new_game(last_game: Dictionary = {}) -> void:
 		new_game_screen = NewGameScreen.new()
 		new_game_screen.start_requested.connect(start_game)
 		new_game_screen.back_requested.connect(close_new_game)
+		new_game_screen.codex_requested.connect(open_codex)  # MVP-3 (#177): the computer's paragraph links its entry
 		add_child(new_game_screen)
 	if not last_game.is_empty():
 		new_game_screen.prefill(last_game)

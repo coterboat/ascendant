@@ -71,10 +71,57 @@ static func rows(events: Array, state: GameState, viewer: String = "", before: G
 	var texts := {}
 	for i in events.size():
 		texts[i] = _line_at(i, ctx)
+	var shown := []
 	for i in _order(events, state):
 		if not is_beat(events[i], events):
-			out.append({"event": events[i], "text": texts[i]})
+			shown.append(i)
+	var k := 0
+	while k < shown.size():
+		# MVP-3 (#177): recruits of one faction at one place, into one army, are one line ("recruited 4 Iron Knights at
+		# Blackwood (keep, 4 of 4 this turn) for 68 gold (36 gold left)"), not a line for each unit. The events themselves
+		# (the record) stay as they are; only the report's rows are folded.
+		var group := [shown[k]]
+		while k + group.size() < shown.size() and _same_recruit_place(events[group[0]], events[shown[k + group.size()]]):
+			group.append(shown[k + group.size()])
+		if group.size() == 1:
+			out.append({"event": events[shown[k]], "text": texts[shown[k]]})
+		else:
+			var merged := _merged_recruits(group.map(func(g): return events[g]))
+			out.append({"event": merged, "text": _recruited_line(merged, ctx)})
+		k += group.size()
 	return out
+
+
+## True when `b` is another order-recruit of the faction, at the place and into the army, `a` recruited into (MVP-3, #177).
+static func _same_recruit_place(a: Dictionary, b: Dictionary) -> bool:
+	for e in [a, b]:
+		if String(e.get("type", "")) != "recruited" or String(e.get("cause", "")) != "order" or not e.get("numbers", {}).has("cost"):
+			return false
+		if Array(e.get("factions", [])).size() != 1 or Array(e.get("provinces", [])).size() != 1 or Array(e.get("armies", [])).size() != 1:
+			return false
+	return a.factions[0] == b.factions[0] and a.provinces[0] == b.provinces[0] and a.armies[0] == b.armies[0]
+
+
+## One "recruited" event standing for `group` (events of the same faction, place and army, in order): the first event's fields,
+## the costs added up, the last event's gold left and place in the fort's count, and "recruit_texts" (each event's own text,
+## from which the unit's name is read).
+static func _merged_recruits(group: Array) -> Dictionary:
+	var merged: Dictionary = (group[0] as Dictionary).duplicate(true)
+	var numbers: Dictionary = merged.numbers
+	var texts := []
+	var cost := 0
+	var new_army := false
+	for e in group:
+		cost += int(e.numbers.cost)
+		new_army = new_army or bool(e.numbers.get("new_army", false))
+		texts.append(String(e.get("text", "")))
+	numbers["cost"] = cost
+	numbers["new_army"] = new_army
+	numbers["gold_after"] = int(group[-1].numbers.get("gold_after", 0))
+	if group[-1].numbers.has("count"):
+		numbers["count"] = int(group[-1].numbers.count)
+	numbers["recruit_texts"] = texts
+	return merged
 
 
 ## M5-6: true for a board beat whose sentence another line of the same report already says, so the report shows it
@@ -878,10 +925,15 @@ static func _side_phrase(fid: String, side: Dictionary, ctx: Dictionary) -> Stri
 ## The side as a sentence's subject: "The Tuskers (the Clans' 5th)". {"text", "plural"}.
 ## A short side goes by its units, with its armies' names after them; a side of many kinds of fighters, or
 ## with a ruler, goes by its armies' names alone ("The Clans' 2nd", "The Crown's 1st and King Corvane I").
-static func _side_subject(side: Dictionary, ctx: Dictionary) -> Dictionary:
+static func _side_subject(side: Dictionary, ctx: Dictionary, fid: String = "") -> Dictionary:
 	var has_ruler: bool = side.entries.any(func(en): return en.role == "ruler")
 	if side.entries.is_empty() or side.entries.size() > 2 or has_ruler:
-		return {"text": _cap(_names(side.armies, ctx)), "plural": side.armies.size() > 1}
+		var names := _cap(_names(side.armies, ctx))
+		if names.is_empty() and not fid.is_empty():
+			# MVP-3 (#177): under fog a side's armies can be ones the reader never saw, so none is named: it goes by its faction
+			# ("Free Holds' army was wiped out"), not as an empty subject (" was wiped out").
+			return {"text": "%s army" % _possessive(_faction_name(ctx.state, fid)), "plural": false}
+		return {"text": names, "plural": side.armies.size() > 1}
 	var text := "The %s" % units_phrase(side.entries)
 	if not side.armies.is_empty():
 		text += " (%s)" % _names(side.armies, ctx)
@@ -889,7 +941,7 @@ static func _side_subject(side: Dictionary, ctx: Dictionary) -> Dictionary:
 
 
 static func _loser_outcome(fid: String, side: Dictionary, report: Dictionary, winner: String, ctx: Dictionary) -> String:
-	var subj := _side_subject(side, ctx)
+	var subj := _side_subject(side, ctx, fid)
 	var were := "were" if subj.plural else "was"
 	var they := "they" if subj.plural else "it"
 	var their := "their" if subj.plural else "its"
@@ -899,16 +951,16 @@ static func _loser_outcome(fid: String, side: Dictionary, report: Dictionary, wi
 	if bool(sr.get("destroyed", false)):
 		return "%s %s wiped out." % [subj.text, were]
 	if bool(sr.get("routed", false)):
-		return "%s broke and fled, and %s destroyed as %s fled (there are no retreats yet)." % [subj.text, were, they]
+		return "%s broke and fled, and %s destroyed as %s fled." % [subj.text, were, they]
 	if String(report.get("end", "")) == "round_cap" and String(report.get("defender", "")) == winner:
-		return "%s could not break the defenders within %d rounds and %s destroyed (there are no retreats yet)." % [
+		return "%s could not break the defenders within %d rounds and %s destroyed." % [
 			subj.text, int(report.get("round_cap", AutoBattleResolver.ROUND_CAP)), were]
-	return "%s had less of %s strength left when the battle ended and %s destroyed (there are no retreats yet)." % [subj.text, their, were]
+	return "%s had less of %s strength left when the battle ended and %s destroyed." % [subj.text, their, were]
 
 
 ## The winner's losses, starting lower-case: "the Knights (the Crown's 3rd) lost no fighters.".
 static func _winner_outcome(winner: String, side: Dictionary, e: Dictionary, real: bool, ctx: Dictionary) -> String:
-	var subj := _side_subject(side, ctx)
+	var subj := _side_subject(side, ctx, winner)
 	var who: String = subj.text.substr(0, 1).to_lower() + subj.text.substr(1) if subj.text.begins_with("The ") else subj.text
 	if not real:
 		return "%s took no losses." % who
@@ -1116,6 +1168,13 @@ static func reader_end(turn: int, now: int) -> String:
 	return "in %d turns (end of turn %d)" % [n, turn]
 
 
+## A battle's aftermath sentence for a player. The record's own sentence (the event text, the battle log's aftermath) ends
+## "(5 fighters lost; there are no retreats yet)", words the recorded games' digests and the battle fixtures pin; a player
+## reads "(5 fighters lost)" and "destroyed as it fled", which says what happens without promising a feature.
+static func readable_aftermath(text: String) -> String:
+	return text.replace("; there are no retreats yet)", ")").replace(" (there are no retreats yet)", "")
+
+
 ## Where an open or breach battle at a fort was fought, from its siege block (numbers.siege): "through the breach",
 ## "outside the walls, as the garrison sallied", "outside the walls, as a relief arrived", "outside the walls, as a
 ## relief arrived and the garrison sallied to join it", "outside the walls". "" for any other battle (a storm, a
@@ -1210,6 +1269,9 @@ static func _recruited_line(e: Dictionary, ctx: Dictionary) -> String:
 	var unit := _recruited_unit_name(e, s)
 	if unit.is_empty():
 		return ""
+	var many := _recruit_names(e, s)  # MVP-3: the units of a folded line, in order; one name for an ordinary line
+	if many.size() > 1:
+		unit = _units_phrase(many)
 	var where := _province_name(s, String(provinces[0]))
 	var how := "at %s" % where
 	if numbers.has("fort") and numbers.has("limit"):  # M3c: "at Stonegate (keep, 3 of 4 this turn)"
@@ -1219,21 +1281,49 @@ static func _recruited_line(e: Dictionary, ctx: Dictionary) -> String:
 		how = "with %s at %s, where it started the turn," % [ruler if not ruler.is_empty() else "its ruler", where]
 	var text := "%s recruited %s %s for %d gold (%d gold left)." % [fname, unit, how, int(numbers.cost), int(numbers.get("gold_after", 0))]
 	var id := String(armies[0])
-	var plural := _plural_word(unit)
+	var plural := _plural_word(unit) or many.size() > 1
 	var f := s.find_faction(fid)
-	var is_commander := f != null and f.commander_type != null and f.commander_type.name == unit
+	var is_commander := many.size() <= 1 and f != null and f.commander_type != null and f.commander_type.name == unit
 	if bool(numbers.get("new_army", false)):
 		text += " %s formed a new army, %s." % ["They" if plural else "It", _name(id, ctx)]
 	elif is_commander:
 		text += " The %s now leads %s." % [unit, _name(id, ctx)]
 	else:
 		text += " %s joined %s." % ["They" if plural else "It", _name(id, ctx)]
-	if numbers.has("hp") and numbers.has("max_hp"):
+	if numbers.has("hp") and numbers.has("max_hp") and many.size() <= 1:
 		var ut := _unit_type_by_name(s, fid, unit)
 		var wounded := AscensionRules.arrival_text(ut, int(numbers.hp), int(numbers.max_hp), int(numbers.get("blood_levy", 4)))
 		if not wounded.is_empty():
 			text += " " + wounded
 	return text
+
+
+## The names of the units a "recruited" row stands for: its own unit, or (a folded row, MVP-3) every unit of the group in order.
+static func _recruit_names(e: Dictionary, s: GameState) -> Array:
+	var texts: Array = e.get("numbers", {}).get("recruit_texts", [])
+	if texts.is_empty():
+		return [_recruited_unit_name(e, s)]
+	var out := []
+	for t in texts:
+		out.append(_recruited_unit_name({"text": t, "factions": e.get("factions", [])}, s))
+	return out
+
+
+## "2 Knights", "2 Knights and Crossbowmen": each name once with its count (1 stays the bare name, as the one-unit line has it).
+static func _units_phrase(names: Array) -> String:
+	var order := []
+	var counts := {}
+	for n in names:
+		if not counts.has(n):
+			order.append(n)
+			counts[n] = 0
+		counts[n] += 1
+	var parts := []
+	for n in order:
+		parts.append(String(n) if int(counts[n]) == 1 else "%d %s" % [int(counts[n]), _plural_name(String(n))])
+	if parts.size() <= 1:
+		return "".join(parts)
+	return "%s and %s" % [", ".join(parts.slice(0, parts.size() - 1)), parts.back()]
 
 
 ## The unit a "recruited" event is about, as its text names it ("Aurel Crown recruited Knights at ...").

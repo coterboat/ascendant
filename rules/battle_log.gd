@@ -499,6 +499,16 @@ static func _validate_siege(r: Array, battle_log: Dictionary) -> void:
 			_add(r, "A storm needs a garrison side behind standing walls.")
 		elif String(battle_log.defender) != String(battle_log.sides[gi].faction):
 			_add(r, "In a storm the garrison defends, but the log's defender is '%s'." % String(battle_log.defender))
+	elif sg.has("holder"):
+		# MVP-3 (#177): a neutral fort's Free Holds garrison holds the ground in the open (IND-1): the one open battle at a
+		# fort with a defender, named by the block's "holder" side.
+		var hi := int(sg.holder) if _is_int(sg.holder) else -1
+		if kind != "open" or String(sg.why) != "empty":
+			_add(r, "Only an open battle at an empty fort has a holder, but this one is a %s (%s)." % [kind, String(sg.why)])
+		elif hi < 0 or hi >= ns:
+			_add(r, "The siege's holder is side %s, but the log has %d sides." % [str(sg.holder), ns])
+		elif String(battle_log.defender) != String(battle_log.sides[hi].faction):
+			_add(r, "The holder defends, but the log's defender is '%s'." % String(battle_log.defender))
 	elif not String(battle_log.defender).is_empty():
 		_add(r, "A battle %s has no defender, but the log names '%s'." % ["through the breach" if kind == "breach" else "outside the walls",
 			String(battle_log.defender)])

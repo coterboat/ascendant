@@ -90,7 +90,7 @@ func test_the_scripted_turn_reads_cleanly_under_the_new_rules() -> void:
 	var rows := TurnReportText.rows(r.events, ns, "", s)
 	var texts := _texts(rows)
 	assert_eq(r.events.size(), 16, "the scripted turn has 16 events")
-	assert_eq(rows.size(), 16, "one line per event")
+	assert_eq(rows.size(), r.events.size() - 1, "one line per event, except that the Crown's two recruits at Crownkeep are one line (MVP-3, #177)")
 	_assert_reads_cleanly(texts, "scripted turn")
 
 	# Rule 6: the War Bear's rejected move says where it stays.
@@ -139,10 +139,13 @@ func test_the_scripted_turn_reads_cleanly_under_the_new_rules() -> void:
 	var new_crown := String(recruits[1].event.armies[0])
 	assert_eq(recruits[0].text, "Thornmane Clans recruited Tuskers at Fangridge for %d gold (%d gold left). They formed a new army, %s." % [
 		tusker_cost, s.find_faction("beasts").gold - tusker_cost, TurnReportText.army_name(ns, new_beasts)])
-	assert_eq(recruits[1].text, "Aurel Crown recruited Knights at Crownkeep for %d gold (%d gold left). They formed a new army, %s." % [
-		knight_cost, crown_gold - knight_cost, TurnReportText.army_name(ns, new_crown)])
-	assert_eq(recruits[2].text, "Aurel Crown recruited Knights at Crownkeep for %d gold (%d gold left). They joined %s." % [
-		knight_cost, crown_gold - 2 * knight_cost, TurnReportText.army_name(ns, new_crown)])
+	assert_eq(recruits.size(), 2, "the Crown's two orders for Knights at Crownkeep, into one army, are one line")
+	assert_eq(recruits[1].text, "Aurel Crown recruited 2 Knights at Crownkeep for %d gold (%d gold left). They formed a new army, %s." % [
+		2 * knight_cost, crown_gold - 2 * knight_cost, TurnReportText.army_name(ns, new_crown)])
+	# The events themselves are as the resolver made them: one per unit, the second joining the first's army.
+	var knight_events: Array = r.events.filter(func(e): return e.type == "recruited" and e.factions == ["kingdom"])
+	assert_eq(knight_events.size(), 2)
+	assert_true(String(knight_events[1].text).contains("They joined"), "the record is unchanged: %s" % knight_events[1].text)
 
 	# Rule 6: the third Knights order says what they cost, what the Crown had, and that income came too late.
 	var had := crown_gold - 2 * knight_cost
