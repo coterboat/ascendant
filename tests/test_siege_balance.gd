@@ -121,6 +121,125 @@ func test_the_capture_wait_has_its_words_and_every_text_that_names_it_says_it() 
 	assert_eq(SiegeRules.check_recruit_at(s, CROWN, "stonegate", ut, 0), {}, "and on turn %d it takes recruits" % turn_ok)
 
 
+func test_stalls_are_runs_of_turns_with_no_battle_between_the_two_factions() -> void:
+	var n := SiegeMatrix.STALL_TURNS
+	# Two clashes early, then nothing to the end: a stall.
+	var early := SiegeMatrix.stall_of({"duels": [3, 4], "turns": 4 + n + 3})
+	assert_eq([early.first, early.gap, early.late_gap], [3, n + 3, n + 3])
+	# A long opening, then fighting to the end: the run is the opening, not a stall.
+	var slow := SiegeMatrix.stall_of({"duels": [n + 4, n + 5], "turns": n + 6})
+	assert_eq([slow.first, slow.gap, slow.late_gap], [n + 4, n + 3, 1])
+	# Never a clash: the whole game is the run.
+	var none := SiegeMatrix.stall_of({"duels": [], "turns": 20})
+	assert_eq([none.first, none.gap, none.late_gap], [0, 20, 20])
+	# A quiet middle counts.
+	var middle := SiegeMatrix.stall_of({"duels": [5, 5 + n + 2, 5 + n + 3], "turns": 5 + n + 3})
+	assert_eq(middle.late_gap, n + 1)
+	var counts := SiegeMatrix.stall_counts([
+		{"duels": [3, 4], "turns": 4 + n + 3, "finished": false, "sieges": {"started": [{}, {}]}},
+		{"duels": [n + 4, n + 5], "turns": n + 6, "finished": true, "sieges": {"started": []}},
+		{"duels": [], "turns": 20, "finished": false}])
+	assert_eq([counts.games, counts.with_gap, counts.stalled, counts.no_duel, counts.capped], [3, 3, 2, 1, 2])
+	assert_eq(counts.sieges, 2.0 / 3.0)
+	# A real game records its duels: turns with a battle between two real factions, never a fight with a Free Holds garrison.
+	var r := Simulator.play_game(7, [CROWN, CLANS], ["ai", "ai"], 30, Callable(), {"rulers": true, "sieges": true, "independents": true,
+		"builds": ["warrior_king", "beast_god_unbound"]})
+	assert_true(r.duels.size() <= r.battles.size(), "a duel is a battle")
+	var sorted: Array = r.duels.duplicate()
+	sorted.sort()
+	assert_eq(r.duels, sorted, "in turn order")
+
+
+# --- two crashes the all-systems run found (magic and sieges together) --------------------------------
+
+func test_a_summoned_pack_that_was_besieging_a_fort_fades_without_leaving_the_siege_recorded() -> void:
+	var s := GameState.with_magic(7, {CROWN: "regents_court", CLANS: "blood_of_the_fang"})
+	assert_true(s != null and s.setup_sieges([]), "a magic game with sieges")
+	var stone := s.find_province("stonegate")
+	stone.owner = CROWN
+	var guard := Army.new()
+	guard.id = s.new_army_id(CROWN)
+	guard.owner = CROWN
+	guard.location = "stonegate"
+	guard.units.append(Unit.new(s.find_faction(CROWN).unit_types[0], CROWN))
+	s.armies.append(guard)
+	s.current_turn = 3  # the end of turn 3
+	var pack := MagicRules.place_summon(s, CLANS, "thornwolves", 3, "stonegate", 3)
+	stone.siege_since = 3  # the sieges phase of this turn recorded the pack's siege
+	assert_true(SiegeRules.siege_stands(s, "stonegate"), "the siege stands while the pack does")
+	var errors := []
+	var step := MagicRules.enchantment_step(s, 3)  # the turn ends: the pack's time is up
+	assert_eq(step.faded.size(), 1, "the pack fades")
+	assert_eq(s.find_army(pack.id), null, "and is gone")
+	assert_eq(stone.siege_since, 0, "so the siege it made is over")
+	errors = []
+	assert_true(s.validate(errors), "and the state is still valid: %s" % [errors])
+	# A pack that fades while a real army stays on keeps the siege.
+	var t := GameState.with_magic(7, {CROWN: "regents_court", CLANS: "blood_of_the_fang"})
+	t.setup_sieges([])
+	var keep := t.find_province("stonegate")
+	keep.owner = CROWN
+	var inside := Army.new()
+	inside.id = t.new_army_id(CROWN)
+	inside.owner = CROWN
+	inside.location = "stonegate"
+	inside.units.append(Unit.new(t.find_faction(CROWN).unit_types[0], CROWN))
+	t.armies.append(inside)
+	var outside := Army.new()
+	outside.id = t.new_army_id(CLANS)
+	outside.owner = CLANS
+	outside.location = "stonegate"
+	outside.units.append(Unit.new(t.find_faction(CLANS).unit_types[0], CLANS))
+	t.armies.append(outside)
+	t.current_turn = 3
+	MagicRules.place_summon(t, CLANS, "thornwolves", 3, "stonegate", 3)
+	keep.siege_since = 3
+	MagicRules.enchantment_step(t, 3)
+	assert_eq(keep.siege_since, 3, "the siege goes on with the Clans' own army outside")
+	errors = []
+	assert_true(t.validate(errors), "%s" % [errors])
+
+
+func test_a_fortify_order_is_dropped_when_bastion_raised_a_fort_there_the_same_turn() -> void:
+	var s := GameState.with_magic(7, {CROWN: "regents_court", CLANS: "blood_of_the_fang"})
+	assert_true(s != null and s.setup_sieges([]))
+	s.current_turn = 6
+	var p := s.find_province("rivermarch")
+	p.owner = CROWN
+	p.owned_since = 1
+	_rich(s)
+	var start := s.deep_copy()
+	assert_eq(SiegeRules.check_fortify(s, CROWN, "rivermarch", start), {}, "legal at the start of the turn")
+	# The rituals phase comes first: Bastion raises a palisade at once, and the Fortify order is then paid against the changed province.
+	p.fort_level = 1
+	p.has_fort = true
+	p.walls = SiegeRules.walls_max(1)
+	var why := SiegeRules.check_fortify(s, CROWN, "rivermarch", start)
+	assert_eq(String(why.get("code", "")), "fortify_raised", "dropped, with no gold spent: %s" % [why])
+	var priced := TurnResolver.price_recruits(s, CROWN, [FortifyOrder.new("rivermarch")], start)
+	assert_false(priced.results[0].ok, "the price check refuses it too")
+	assert_eq(priced.spent, 0)
+
+
+func _rich(s: GameState) -> void:
+	for f in s.factions:
+		f.gold = 500
+
+
+func test_a_stand_off_is_read_sooner_with_sieges_and_as_before_without() -> void:
+	assert_true(AIPlayer.SIEGE_STANDOFF_TURNS < AIPlayer.STANDOFF_TURNS, "sieges read it sooner")
+	var between := (AIPlayer.SIEGE_STANDOFF_TURNS + AIPlayer.STANDOFF_TURNS) / 2.0
+	for sieges in [false, true]:
+		var s := GameState.with_sieges(5) if sieges else GameState.new(5)
+		s.armies.clear()  # the pile is the treasury alone
+		var income := int(TurnResolver.income_of(s, CROWN).total)
+		s.find_faction(CROWN).gold = int(between * income)
+		var info := AIPlayer.standoff_info(s, CROWN)
+		assert_eq(not info.is_empty(), sieges, "a pile worth %.0f turns of income is a stand-off only with sieges" % between)
+		s.find_faction(CROWN).gold = int((AIPlayer.STANDOFF_TURNS + 1.0) * income)
+		assert_false(AIPlayer.standoff_info(s, CROWN).is_empty(), "and one worth more than STANDOFF_TURNS always is")
+
+
 func test_a_pairing_with_too_few_decisive_siege_games_is_short() -> void:
 	var results := []
 	for i in 5:

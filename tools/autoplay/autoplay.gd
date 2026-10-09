@@ -48,7 +48,9 @@ extends SceneTree
 ##                    both seat orders x paths off and on x 25), the same seeds with sieges off, 100 games of the turtle against
 ##                    the computer, and the sieges-off games of band S8 (tools/autoplay/siege_matrix.gd). Prints a pass/miss
 ##                    table for bands S1-S10. Use it with --independents, the balance contract (Alex, 10-5). It plays rulers and
-##                    paths itself: leave --paths, --rulers, --magic and --fog out
+##                    paths itself: leave --paths and --rulers out. Add --magic and --fog for the MVP's all-systems config
+##                    (independents, rulers, paths, sieges, magic, fog): only the paths cells are played, with no turtle or M2
+##                    games, and the report's stall table says how often the two factions stopped fighting for 8+ turns
 ##   --matrix --magic the M5 balance check for magic and fog (#122, design/M5_MAGIC_FOG.md §13.2): bands G1-G14 over the main
 ##                    matrix (1,800 games, fog off), the fog matrix (720) with its no-fog control, the Tithe pairs (720) with the
 ##                    null mandate and a scripted bleeding build, the magic-off path matrix as the control, and the M2 games
@@ -336,8 +338,8 @@ func _parse(args: PackedStringArray) -> Dictionary:
 		return {"error": "--tithe needs --magic"}
 	if (not str(opts.save_results).is_empty() or not str(opts.merge).is_empty()) and not (opts.matrix and (opts.magic or opts.sieges)):
 		return {"error": "--save-results and --merge need --matrix --magic or --matrix --sieges"}
-	if opts.matrix and opts.sieges and (opts.paths or opts.rulers or opts.magic or opts.fog):
-		return {"error": "--matrix --sieges plays rulers, and paths on and off, itself: leave --paths, --rulers, --magic and --fog out"}
+	if opts.matrix and opts.sieges and (opts.paths and not opts.magic or opts.rulers and not opts.magic or not str(opts.tithe).is_empty()):
+		return {"error": "--matrix --sieges plays rulers, and paths on and off, itself: leave --paths, --rulers and --tithe out (--magic and --fog make it the all-systems run)"}
 	if not str(opts.record_m2).is_empty() and not (opts.matrix and opts.paths):
 		return {"error": "--record-m2 needs --matrix --paths"}
 	if not str(opts.note).is_empty() and str(opts.record_m2).is_empty():
@@ -491,12 +493,24 @@ func _run_path_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
 
 # --- the siege balance matrix (M3c S-7, #105) ----------------------------------------------------------------
 
+## The other systems a siege matrix game plays with (--magic, --fog): the all-systems config of the MVP.
+func _systems(opts: Dictionary) -> Dictionary:
+	var out := {}
+	if opts.magic:
+		out["magic"] = true
+	if opts.fog:
+		out["fog"] = true
+	return out
+
+
 ## The siege balance check (design/M3C_SIEGES.md §11.2): tools/autoplay/siege_matrix.gd. Bands S1-S10 as a pass/miss table,
 ## the sieges-off baseline beside them; exit 0 only when S8 (sieges off is byte-identical) and S9 (integrity) hold.
 func _run_siege_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
 	var started := Time.get_ticks_msec()
 	var fixture := PathMatrix.load_fixture()
 	var cells := SiegeMatrix.plan(opts.scale, opts.seed, fixture)
+	if opts.magic:  # the all-systems run: magic needs paths, so only the paths cells, and no turtle or M2 games
+		cells = cells.filter(func(c): return (str(c.band) == "S" or str(c.band) == "S0") and bool(c.paths))
 	if not str(opts.only).is_empty():
 		cells = cells.filter(func(c): return SiegeMatrix.matches(str(c.id), str(opts.only)))
 	var results := []
@@ -530,7 +544,7 @@ func _run_siege_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
 			for c in again:
 				offsets[c.id] = int(c.games)
 			results.append_array(_play_items(Matrix.work_items(again, offsets), cells, opts, catcher, problems))
-		var want_records: bool = opts.records or (str(opts.only).is_empty() and not opts.no_records)
+		var want_records: bool = opts.records or (str(opts.only).is_empty() and not opts.no_records and not opts.magic)
 		off = SiegeMatrix.replay_off_fixtures() if want_records else {}  # S8's turn-by-turn replays
 		stray = catcher.take()
 		OS.remove_logger(catcher)
@@ -552,7 +566,7 @@ func _run_siege_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
 		md += "\n- **Worker problem:** %s" % e
 	if not stray.is_empty():
 		md += "\n- **Script errors outside games:** %d. First: %s" % [stray.size(), stray[0]]
-	md += "\n- **Run:** `--matrix --sieges%s --seed %d --turn-cap %d --scale %s --jobs %d%s%s`, %d games, %.1f s." % [" --independents" if opts.independents else "",
+	md += "\n- **Run:** `--matrix --sieges%s%s --seed %d --turn-cap %d --scale %s --jobs %d%s%s`, %d games, %.1f s." % [(" --magic" if opts.magic else "") + (" --fog" if opts.fog else ""), " --independents" if opts.independents else "",
 		opts.seed, opts.turn_cap, str(opts.scale), opts.jobs, "" if str(opts.only).is_empty() else " --only " + str(opts.only),
 		"" if str(opts.merge).is_empty() else " --merge " + str(opts.merge), results.size(), seconds]
 	print(md)
@@ -647,7 +661,7 @@ func _play_items(items: Array, cells: Array, opts: Dictionary, catcher: ErrorCat
 	if opts.jobs <= 1:
 		for item in items:
 			if opts.sieges:
-				out.append_array(SiegeMatrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.independents))
+				out.append_array(SiegeMatrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.independents, _systems(opts)))
 			elif opts.magic:
 				out.append_array(MagicMatrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.independents))
 			elif opts.paths:
@@ -672,6 +686,10 @@ func _play_items(items: Array, cells: Array, opts: Dictionary, catcher: ErrorCat
 				"--turn-cap", str(opts.turn_cap), "--out", path]
 			if opts.sieges:
 				args.append("--sieges")
+				if opts.magic:
+					args.append("--magic")
+				if opts.fog:
+					args.append("--fog")
 			elif opts.magic:
 				args.append("--magic")
 			elif opts.paths:
@@ -707,7 +725,7 @@ func _run_worker(opts: Dictionary, catcher: ErrorCatcher) -> void:
 	var results := []
 	if opts.sieges:
 		var siege_cells := SiegeMatrix.plan(1.0, opts.seed, PathMatrix.load_fixture())
-		results = SiegeMatrix.play_item(siege_cells, item, opts.turn_cap, catcher.take, opts.independents)
+		results = SiegeMatrix.play_item(siege_cells, item, opts.turn_cap, catcher.take, opts.independents, _systems(opts))
 	elif opts.magic:
 		var magic_cells := MagicMatrix.plan(1.0, opts.seed, PathMatrix.load_fixture())
 		results = MagicMatrix.play_item(magic_cells, item, opts.turn_cap, catcher.take, opts.independents)

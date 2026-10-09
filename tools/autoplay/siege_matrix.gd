@@ -61,6 +61,8 @@ const S6_MAX := 0.65
 const S7_WIN_MAX := 0.10
 const S7_CAP_MAX := 0.10
 const S10_SHARE := 0.10
+## A stall (the MVP-2 check): this many turns in a row with no battle between the two factions.
+const STALL_TURNS := 8
 
 
 # --- the games --------------------------------------------------------------------------------------
@@ -135,8 +137,10 @@ static func doubles(cell: Dictionary) -> bool:
 ## Plays one work item ({"cell", "from", "count"}) and returns its results (play_game results without "final_state",
 ## each with "cell", "band", "pairing", "paths" and "sieges" added). `independents` (--independents, the balance contract) plays
 ## every game with Free Holds garrisons but band S8's, which are compared with M2 records made without them; the cell decides
-## whether sieges are on.
-static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Callable = Callable(), independents := false) -> Array:
+## whether sieges are on. `systems` ({"magic": true, "fog": true}) plays the other M5 systems too, in every game but band S8's:
+## the all-systems config of the MVP (autoplay.gd --matrix --sieges --magic --fog).
+static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Callable = Callable(), independents := false,
+		systems: Dictionary = {}) -> Array:
 	var cell := find_cell(cells, str(item.cell))
 	var out := []
 	if cell.is_empty():
@@ -146,6 +150,8 @@ static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Call
 		var options := {"rulers": true, "builds": cell.builds.duplicate(), "paths": bool(cell.paths), "branches": [],
 			"replay_check": str(cell.band) == "S" and (game_seed - int(cell.seed)) % REPLAY_EVERY == 0, "record_digest": str(cell.band) == "S8"}
 		options["independents"] = independents and str(cell.band) != "S8"
+		if str(cell.band) != "S8":
+			options.merge(systems)
 		options["sieges"] = bool(cell.sieges)
 		var r := Simulator.play_game(game_seed, cell.seats, cell.policies, int(cell.get("turn_cap", turn_cap)), probe, options)
 		r.erase("final_state")
@@ -489,11 +495,15 @@ static func judge(results: Array, stray_errors: int = 0, fixture: Dictionary = {
 	var tb_w := tb_res.filter(func(r): return Matrix.decisive(r) and str(r.policies[int(r.winner_seat) - 1]) == "turtle").size()
 	var tb_d := _decisive_count(tb_res)
 	var s7_ok := td > 0 and _ratio(tw, td) <= S7_WIN_MAX + 0.000001 and _ratio(tcap, t_res.size()) <= S7_CAP_MAX + 0.000001
-	bands.append({"band": "S7", "what": "turtling loses", "target": "the turtle wins 10% or fewer of decisive games, and at most 10% reach the cap",
-		"result": "the turtle won %d of %d decisive games (%s); %d of %d at the cap (%s). Sieges off: won %d of %d (%s), %d of %d at the cap" % [
-			tw, td, _pct(_ratio(tw, td)), tcap, t_res.size(), _pct(_ratio(tcap, t_res.size())), tb_w, tb_d, _pct(_ratio(tb_w, tb_d)),
-			_capped(tb_res), tb_res.size()],
-		"status": "pass" if s7_ok else "miss", "detail": _turtle_detail(t_res) if not s7_ok else ""})
+	if t_res.is_empty():  # a run of other cells (the all-systems config, or --only) has no turtle games to judge
+		bands.append({"band": "S7", "what": "turtling loses", "target": "the turtle wins 10% or fewer of decisive games, and at most 10% reach the cap",
+			"result": "not played in this run", "status": "report", "detail": ""})
+	else:
+		bands.append({"band": "S7", "what": "turtling loses", "target": "the turtle wins 10% or fewer of decisive games, and at most 10% reach the cap",
+			"result": "the turtle won %d of %d decisive games (%s); %d of %d at the cap (%s). Sieges off: won %d of %d (%s), %d of %d at the cap" % [
+				tw, td, _pct(_ratio(tw, td)), tcap, t_res.size(), _pct(_ratio(tcap, t_res.size())), tb_w, tb_d, _pct(_ratio(tb_w, tb_d)),
+				_capped(tb_res), tb_res.size()],
+			"status": "pass" if s7_ok else "miss", "detail": _turtle_detail(t_res) if not s7_ok else ""})
 
 	# S8: off is identical.
 	var digests: Dictionary = fixture.get("digests", {})
@@ -706,6 +716,52 @@ static func pairing_table(s_res: Array, b_res: Array) -> Array:
 
 # --- the report -------------------------------------------------------------------------------------
 
+## Stalls in one game: {"first" (the turn of its first duel, 0 if it had none), "gap" (the longest run of turns with no duel, from
+## the start of the game or between duels or after the last, to the game's last turn), "late_gap" (the same, leaving out the
+## opening: runs that begin after the first duel, or a game with no duel at all counts whole)}. A duel is a battle between two real
+## factions (Simulator's "duels"), not a fight with a Free Holds garrison.
+static func stall_of(r: Dictionary) -> Dictionary:
+	var duels: Array = r.get("duels", [])
+	var turns := int(r.turns)
+	var prev := 0
+	var gap := 0
+	var late := 0
+	for t in duels:
+		var run := int(t) - prev - 1
+		gap = maxi(gap, run)
+		if prev > 0:
+			late = maxi(late, run)
+		prev = int(t)
+	var tail := turns - prev
+	gap = maxi(gap, tail)
+	if prev > 0 or duels.is_empty():
+		late = maxi(late, tail)
+	return {"first": int(duels[0]) if not duels.is_empty() else 0, "gap": gap, "late_gap": late}
+
+
+## Stalls over `results`: {"games", "with_gap" (a run of STALL_TURNS or more with no duel, the opening included), "stalled" (such a
+## run after the first duel or in a game with none), "no_duel" (games with no duel at all), "capped", "first" (the turn of the
+## first duel, median, over games that had one), "sieges" (siege events per game)}.
+static func stall_counts(results: Array) -> Dictionary:
+	var out := {"games": results.size(), "with_gap": 0, "stalled": 0, "no_duel": 0, "capped": _capped(results), "first": 0.0, "sieges": 0.0}
+	var firsts := []
+	var started := 0
+	for r in results:
+		var st := stall_of(r)
+		if int(st.gap) >= STALL_TURNS:
+			out.with_gap += 1
+		if int(st.late_gap) >= STALL_TURNS:
+			out.stalled += 1
+		if int(st.first) == 0:
+			out.no_duel += 1
+		else:
+			firsts.append(int(st.first))
+		started += r.get("sieges", {}).get("started", []).size()
+	out.first = Simulator.stats_of(firsts).median
+	out.sieges = _ratio(started, results.size())
+	return out
+
+
 ## The report sections for `s_res`, the games played with sieges (also what autoplay.gd --sieges prints after its summary):
 ## siege counts, storms against breaches, forts built, recruits by fort, siege lengths. As markdown lines.
 static func sections(s_res: Array) -> Array:
@@ -857,6 +913,17 @@ static func to_markdown(j: Dictionary, header: String = "") -> String:
 			pr.base_crown_wins, _pct(_ratio(pr.base_crown_wins, pr.base_decisive)), pr.base_capped, Simulator._num(pr.base_median)])
 	var s_res: Array = j.s_results
 	var b_res: Array = j.b_results
+	L.append("")
+	L.append("### Stalls: %d or more turns in a row with no battle between the two factions" % STALL_TURNS)
+	L.append("")
+	L.append("| run | games | with such a run (opening included) | stalled (after the first clash, or never a clash) | never a clash | at the cap | first clash, median turn | sieges started a game |")
+	L.append("|---|---|---|---|---|---|---|---|")
+	for row in [["siege games", s_res], ["sieges off, same seeds", b_res]]:
+		if row[1].is_empty():
+			continue
+		var st := stall_counts(row[1])
+		L.append("| %s | %d | %d (%s) | %d (%s) | %d | %d (%s) | %s | %.1f |" % [row[0], st.games, st.with_gap, _pct(_ratio(st.with_gap, st.games)),
+			st.stalled, _pct(_ratio(st.stalled, st.games)), st.no_duel, st.capped, _pct(_ratio(st.capped, st.games)), Simulator._num(st.first), st.sieges])
 	L.append("")
 	for mode in [[false, "paths off"], [true, "paths on"]]:
 		var mine: Array = s_res.filter(func(r): return bool(r.get("with_paths", false)) == mode[0])

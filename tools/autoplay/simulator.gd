@@ -144,8 +144,10 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 		"research": {"turn_checks": 0, "turn_mismatches": 0, "target_checks": 0, "target_mismatches": 0, "first": ""},
 		# M4-6: recruit orders the session accepted in a game with paths, {faction id: {unit type id: n}}.
 		"recruits": {},
-		# M3c S-7 (#105): what happened at forts, in a game with sieges (see _siege_log_new); {} without.
+		# M3c S-7 (#105): what happened at forts, in a game with sieges (see siege_log_new); {} without.
 		"sieges": {},
+		# M3c S-7: the turns with a duel, a battle between two real factions (not a Free Holds garrison), in order.
+		"duels": [],
 		# M5-11: a game with magic carries its log (MagicLog), a game with fog the snapshot probe's (FogProbe).
 		"magic": {}, "fog": {},
 	}
@@ -305,6 +307,11 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 			if BATTLE_TYPES.has(type):
 				fought = true
 				result.battles.append(_battle_record(turn, e))
+				var real := 0  # M3c S-7: a duel is a battle with two real factions in it, not a Free Holds garrison
+				for fid in e.get("factions", []):
+					real += 0 if IndependentData.is_independent(str(fid)) else 1
+				if real >= 2 and not result.duels.has(turn):
+					result.duels.append(turn)
 			elif type == "captured":
 				result.captures += 1
 			elif type == "order_rejected":
