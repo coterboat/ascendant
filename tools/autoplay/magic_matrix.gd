@@ -53,7 +53,7 @@ const G5_CAP_MAX := 0.15
 const G6_BAND := [8.0, 12.0]
 const G6_BY_TURN := 15
 const G6_SHARE := 0.80
-const G7_BY_TURN := 10
+const G7_BY_TURN := 14  # Alex 10-9 (§20 question 10): a target turn, relaxed from 10 (the transformation lands on turn 10)
 const G7_SHARE := 0.80
 const G7_EACH := 0.10
 const G8_BAND := [0.04, 0.20]
@@ -573,11 +573,11 @@ static func _transform_stats(res: Array) -> Dictionary:
 	return {"stats": Simulator.stats_of(turns), "reached": reached, "both": both, "share": _ratio(both, reached)}
 
 
-## G7: rituals happen. A ritual cast by turn 10 in 80%+ of the games that reach turn 10, and every ritual cast in 10%+ of the games
+## G7: rituals happen. A ritual cast by turn G7_BY_TURN in 80%+ of the games that reach it, and every ritual cast in 10%+ of the games
 ## where its faction knows it (Far Sight, which every faction with a caster knows, is judged in the fog games).
 static func _g7(g: Array, gf: Array, tables: Dictionary) -> Dictionary:
 	var what := "rituals happen"
-	var target := "a ritual cast by turn 10 in 80%+ of games reaching turn 10; every ritual cast in 10%+ of the games where its faction knows it"
+	var target := "a ritual cast by turn %d in 80%%+ of games reaching turn %d; every ritual cast in 10%%+ of the games where its faction knows it" % [G7_BY_TURN, G7_BY_TURN]
 	if g.is_empty():
 		return _none("G7", what, target, "no main games")
 	var reached := g.filter(func(r): return _reached(r, G7_BY_TURN))
@@ -636,7 +636,7 @@ static func _g7(g: Array, gf: Array, tables: Dictionary) -> Dictionary:
 	if not firsts.is_empty():
 		var fs := Simulator.stats_of(firsts)
 		var later := []
-		for by in [12, 14]:
+		for by in [G7_BY_TURN - 2, G7_BY_TURN + 2]:
 			var reaching := g.filter(func(r): return _reached(r, by))
 			var cast_by: int = reaching.filter(func(r): return _mlog(r).get("casts", []).any(func(c): return int(c.turn) <= by)).size()
 			later.append("by turn %d in %s" % [by, _pct_of(cast_by, reaching.size())])
@@ -645,9 +645,9 @@ static func _g7(g: Array, gf: Array, tables: Dictionary) -> Dictionary:
 	if not gf.is_empty():
 		var fog_reached := gf.filter(func(r): return _reached(r, G7_BY_TURN))
 		var fog_early: int = fog_reached.filter(func(r): return _mlog(r).get("casts", []).any(func(c): return int(c.turn) <= G7_BY_TURN)).size()
-		notes.append("in the fog games, where Far Sight needs no research, a ritual by turn 10 in %s" % _pct_of(fog_early, fog_reached.size()))
-	return _band("G7", what, target, "a ritual by turn 10 in %s (Crown %s, Clans %s); %d of %d rituals below 10%% of the games that know them" % [
-		_pct_of(early, reached.size()), _pct(_ratio(per_faction.kingdom, reached.size())), _pct(_ratio(per_faction.beasts, reached.size())),
+		notes.append("in the fog games, where Far Sight needs no research, a ritual by turn %d in %s" % [G7_BY_TURN, _pct_of(fog_early, fog_reached.size())])
+	return _band("G7", what, target, "a ritual by turn %d in %s (Crown %s, Clans %s); %d of %d rituals below 10%% of the games that know them" % [
+		G7_BY_TURN, _pct_of(early, reached.size()), _pct(_ratio(per_faction.kingdom, reached.size())), _pct(_ratio(per_faction.beasts, reached.size())),
 		missing.size(), rows.size()], "pass" if ok else "miss", "; ".join(notes))
 
 
