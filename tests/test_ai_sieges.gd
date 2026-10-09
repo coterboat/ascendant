@@ -107,8 +107,9 @@ func test_a_storm_at_the_threshold_and_not_below() -> void:
 
 func test_a_relief_stepping_back_does_not_draw_the_computer_into_a_losing_siege() -> void:
 	# The Clans' army at Blackwood could besiege Stonegate: it would lose a storm, but it beats the garrison in the
-	# open. A strong Crown army stands 1, 2 or 3 moves away.
+	# open. A strong Crown army stands 1, 2 or 3 moves away; it is a reason not to besiege while it is within REACH moves.
 	for spot in [["westwatch", false], ["crownkeep", false], ["rivermarch", true]]:
+		spot[1] = _dist(F.state([]), spot[0], "stonegate") > AISieges.REACH
 		var s := F.state([
 			["kingdom-1", CROWN, "stonegate", F.units("spearmen", 6) + F.units("crossbowmen", 3) + ["knight_captain"]],
 			["kingdom-2", CROWN, spot[0], F.units("knights", 8) + ["knight_captain"]],
@@ -201,7 +202,7 @@ func test_relief_and_sally_go_together_and_the_ruler_stays_inside() -> void:
 
 
 func test_a_hopeless_keep_is_abandoned_the_turn_before_its_breach() -> void:
-	# The Crown's other army is at Rivermarch, 3 moves from Stonegate: no relief can come within 2 turns.
+	# The Crown's other army is at Rivermarch, 3 moves from Stonegate: no relief can come within REACH turns.
 	var s := F.state([
 		["kingdom-1", CROWN, "stonegate", ["spearmen"]],
 		["kingdom-2", CROWN, "rivermarch", ["spearmen"]],
@@ -214,14 +215,14 @@ func test_a_hopeless_keep_is_abandoned_the_turn_before_its_breach() -> void:
 	p.walls = 2  # 20 troops drop them by 3: breached at the end of this turn
 	assert_true(Forecast.breach_odds(s, CROWN, "stonegate").win_rate < AISieges.ABANDON_ODDS, "hopeless in the open")
 	var orders := _plan(s, CROWN)
-	assert_eq(_dist(s, "rivermarch", "stonegate"), AISieges.REACH + 1)
+	assert_true(_dist(s, "rivermarch", "stonegate") > AISieges.REACH, "out of the relief horizon")
 	var out := _moves_of(orders, "kingdom-1")
 	assert_eq(out.size(), 1, "the garrison leaves")
 	assert_true(_sallies(orders).is_empty())
 	_assert_legal(s, CROWN, orders, "abandon")
-	# With a relief within two moves (Crownkeep, through Westwatch) it holds instead.
-	assert_eq(_dist(s, "crownkeep", "stonegate"), AISieges.REACH)
-	s.find_army("kingdom-2").location = "crownkeep"
+	# With a relief within REACH moves (Westwatch, or Crownkeep through it) it holds instead.
+	var near: String = ["westwatch", "crownkeep"].filter(func(id): return _dist(s, id, "stonegate") == AISieges.REACH)[0]
+	s.find_army("kingdom-2").location = near
 	orders = _plan(s, CROWN)
 	assert_true(_moves_of(orders, "kingdom-1").is_empty(), "a relief could come: hold")
 
