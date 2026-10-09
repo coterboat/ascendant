@@ -44,6 +44,7 @@ var mark_img: Image ## 16 x 1: r a King's Roads destination, g a legal move targ
 var mark_tex: ImageTexture
 var vision_img: Image ## M5-3, 16 x 1 R8 beside the owner wash: 0 never seen, 85 remembered, 170 glimpsed, 255 in clear sight (Vision)
 var vision_tex: ImageTexture
+var prop_fog_on := false ## MVP-3 (#177): the woods, rocks and cottages take the ground's veil (set_vision)
 var fog_on := false ## M5-3: the ground shader veils what the vision texture says (a fog game only; otherwise the ground is untouched)
 var capital_of := {} ## province id -> the faction whose capital it is in the map data (picks the fortress kit)
 var _banner_n := 0
@@ -104,6 +105,7 @@ func setup(p_terrain: RefCounted, p_look: String = "cel") -> void:
 	add_child(buildings)
 	_grow_props()
 	_build_settlements()
+	_wire_prop_fog()
 	set_look(look)
 	apply_rig()
 
@@ -384,6 +386,7 @@ func set_vision(levels: Dictionary) -> void:
 	vision_tex.update(vision_img)
 	fog_on = true
 	gmat.set_shader_parameter("fog_on", 1.0)
+	_set_prop_fog(1.0)
 
 
 ## M5-3: no fog (a game without it, the observer, the 2D map's standing in): the ground is untouched.
@@ -394,6 +397,26 @@ func clear_vision() -> void:
 	vision_tex.update(vision_img)
 	fog_on = false
 	gmat.set_shader_parameter("fog_on", 0.0)
+	_set_prop_fog(0.0)
+
+
+## MVP-3 (#177): the woods, rocks and cottages read the ground's sight (model_common.gdshaderinc, fog_prop): its province
+## texture and its vision texture, from the start; the veil itself goes on and off with the ground's (set_vision).
+func _wire_prop_fog() -> void:
+	for m in _prop_mats:
+		var pm := m as ShaderMaterial
+		pm.set_shader_parameter("prop_data_n", gmat.get_shader_parameter("data_n"))
+		pm.set_shader_parameter("prop_vision", vision_tex)
+		pm.set_shader_parameter("prop_origin", Terrain3D.ORIGIN)
+		pm.set_shader_parameter("prop_extent", Terrain3D.EXTENT)
+	_set_prop_fog(1.0 if fog_on else 0.0)
+
+
+## The woods' veil on (1) or off (0), with the ground's.
+func _set_prop_fog(on: float) -> void:
+	prop_fog_on = on > 0.5
+	for m in _prop_mats:
+		(m as ShaderMaterial).set_shader_parameter("prop_fog", on)
 
 
 ## The vision texture's bytes as the ground reads them (tests, and comparing two boards).

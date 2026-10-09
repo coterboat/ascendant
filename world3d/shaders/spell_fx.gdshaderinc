@@ -171,12 +171,12 @@ void fragment() {
 		// shield: a heater shield with a gold rim and Law's square, translucent (Shield of Law)
 		float d = shield_d(p);
 		float inside = 1.0 - smoothstep(-0.02, 0.02, d);
-		float rim = 1.0 - smoothstep(0.0, 0.07, abs(d + 0.05));
+		float rim = 1.0 - smoothstep(0.0, 0.10, abs(d + 0.06));  // MVP-3 (#177): a thicker rim and a firmer pane, so the shield reads without its label
 		float pul = anim ? 0.75 + 0.25 * sin(TIME * 4.0 + seed * 6.2832) : 0.85;
 		float emblem = step(abs(p.x), 0.20) * step(abs(p.y - 0.05), 0.20);
 		vec3 rimc = vec3(1.0, 0.86, 0.45);
 		col = mix(col * (0.80 + 0.40 * (p.y * 0.5 + 0.5)), rimc, clamp(rim * pul + emblem * 0.7, 0.0, 1.0));
-		a = inside * (0.40 + 0.40 * rim * pul + emblem * 0.30);
+		a = inside * (0.52 + 0.40 * rim * pul + emblem * 0.30);
 	} else if (kind == 16) {
 		// briar: a ball of thorns, dark with a lighter heart
 		float s = pow(0.5 + 0.5 * cos((ang + seed * 6.2832) * 7.0), 5.0);

@@ -69,6 +69,35 @@ vec3 grade_stone(vec3 c) {
 	return mix(c, l2 * stone_grey, neutral * stone_grade);
 }
 
+// MVP-3 (#177), fog of war on the woods: the ground out of sight is desaturated and veiled (ground_common.gdshaderinc), and a bright
+// forest canopy on top of it competed with the veil. prop_fog is 1 on the woods', rocks' and cottages' materials of a fog game
+// (WorldView.set_vision), 0 everywhere else, and then this is one branch and no fetch. The sight level is the province's own
+// vision texel under the instance (the ground's data_n names the province), so the canopy takes the same veil as the ground it
+// stands on, and a little more darkness: a glimpsed wood is 5% dimmer, one out of sight 22%.
+uniform float prop_fog = 0.0;
+uniform sampler2D prop_data_n : filter_nearest, repeat_disable; // the ground's data_n: r province index (255 sea)
+uniform sampler2D prop_vision : filter_nearest, repeat_disable; // the ground's vision_tex: 16x1 R8
+uniform vec2 prop_origin = vec2(-100.0, -100.0);
+uniform vec2 prop_extent = vec2(1200.0, 800.0);
+uniform vec3 prop_veil : source_color = vec3(0.106, 0.133, 0.200);
+
+vec3 fog_prop(vec3 c) {
+	if (prop_fog < 0.5) {
+		return c;
+	}
+	float id = floor(texture(prop_data_n, (v_world.xz - prop_origin) / prop_extent).r * 255.0 + 0.5);
+	if (id > 254.5) {
+		return c;
+	}
+	float v = texture(prop_vision, vec2((id + 0.5) / 16.0, 0.5)).r;
+	float out_of_sight = 1.0 - step(0.5, v);
+	float glimpsed = step(0.5, v) * (1.0 - step(0.84, v));
+	float luma = dot(c, vec3(0.299, 0.587, 0.114));
+	c = mix(c, vec3(luma), 0.70 * out_of_sight + 0.12 * glimpsed);
+	c = mix(c, prop_veil, 0.40 * out_of_sight + 0.13 * glimpsed);
+	return c * (1.0 - 0.22 * out_of_sight - 0.05 * glimpsed);
+}
+
 vec3 model_albedo(vec4 vcol, vec2 uv) {
 	vec3 c = vcol.rgb;
 	if (use_tex) {
@@ -94,5 +123,5 @@ vec3 model_albedo(vec4 vcol, vec2 uv) {
 	c = mix(v_team, c, vcol.a);
 	c = mix(c, vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), desat);
 	c = mix(c, vec3(0.871, 0.144, 0.127), v_hurt * 0.4);
-	return c * tint;
+	return fog_prop(c * tint);
 }

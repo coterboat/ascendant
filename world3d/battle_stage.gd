@@ -1149,7 +1149,10 @@ func _set_caption(lines: Array) -> void:
 	if not lines.is_empty() or siege.is_empty() or _log.is_empty():
 		return
 	var pids: Array = _log.get("provinces", [])
-	var text := Walls.caption_text(siege, BattleBackdrop.province_name(String(pids[0])) if not pids.is_empty() else "the fort")
+	var holder := int(siege.get("holder", -1))  # MVP-3 (#177): a neutral fort's garrison holds the ground
+	var sides: Array = _log.get("sides", [])
+	var text := Walls.caption_text(siege, BattleBackdrop.province_name(String(pids[0])) if not pids.is_empty() else "the fort",
+		String(_log.get("terrain", "")), String(sides[holder].get("name", "")) if holder >= 0 and holder < sides.size() else "")
 	if text.is_empty():
 		return
 	var l: Label = caption_labels[1]
@@ -1643,6 +1646,40 @@ func _spell_words(p: Dictionary) -> void:
 			tag["tag"] = true
 
 
+## MVP-3 (#177): a spell's words stay below this field row: the round banner (y 14 to 54) and the moment toast (54 to 82) are above it.
+const WORDS_TOP := 88.0
+
+
+## The box a floating `text` of `size` takes when its baseline centre is at `at` (draw_number's own placement), with a margin.
+static func _words_rect(font: Font, text: String, size: int, at: Vector2) -> Rect2:
+	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + 6.0
+	return Rect2(at.x - w * 0.5, at.y - float(size) - 2.0, w, float(size) + 6.0)
+
+
+## Where a spell's words go (MVP-3, #177): `rect` moved inside `field` and off every rect in `taken` (the numbers already
+## drawn this frame): up a line at a time while there is room above, and down when the top edge stops it. Pure, so a test can
+## put words in a corner and see them come out whole and apart.
+static func place_words(rect: Rect2, taken: Array, field: Rect2) -> Rect2:
+	var r := Rect2(Vector2(clampf(rect.position.x, field.position.x + 4.0, maxf(field.position.x + 4.0, field.end.x - 4.0 - rect.size.x)),
+		maxf(rect.position.y, field.position.y + 4.0)), rect.size)
+	var step := rect.size.y
+	var dir := -1.0
+	for tries in 8:
+		var hit := false
+		for t in taken:
+			if (t as Rect2).intersects(r):
+				hit = true
+				break
+		if not hit:
+			break
+		var moved := Rect2(r.position + Vector2(0.0, dir * step), r.size)
+		if moved.position.y < field.position.y + 4.0 or moved.end.y > field.end.y - 4.0:
+			dir = -dir  # the edge stops it: the other way
+			moved = Rect2(r.position + Vector2(0.0, dir * step), r.size)
+		r = moved
+	return r
+
+
 ## The Blood Moon's heal beat: green motes rising and its +hp; false for any other heal (the generic rise draws it) or when the
 ## pool is full.
 func _moon_heal(b: Dictionary) -> bool:
@@ -2134,12 +2171,24 @@ func _draw_overlay(ci: CanvasItem) -> void:
 					pts.append(sp2)
 			if pts.size() >= 2:
 				draw_streak(ci, pts, UiPalette.GILT)
-	## numbers last, on top of everything
+	## numbers last, on top of everything. MVP-3 (#177): a spell's words (its name and number over the caster) are kept inside the
+	## field and never printed over another number: a caster in the back row had them clipped at the top edge, and a bolt's
+	## words sat on its own damage number ("-2 hp" under "Briar Snare -2 attack").
+	var placed: Array = []
 	for n in _numbers:
 		var at3 := _proj_overlay(n["at"])
 		if at3.x < -90000.0:
 			continue
-		BattleEffects.draw_number(ci, font, {"pos": at3 + Vector2(0, -12) + (n["nudge"] as Vector2), "text": n["text"], "color": n["color"],
+		var pos: Vector2 = at3 + Vector2(0, -12) + (n["nudge"] as Vector2)
+		var rise := BattleEffects.NUMBER_RISE * clampf(float(n["age"]) / maxf(float(n["life"]), 0.001), 0.0, 1.0)
+		var shown := pos - Vector2(0, rise)
+		var rect := _words_rect(font, String(n["text"]), int(n["size"]), shown)
+		if bool(n.get("tag", false)):
+			rect = place_words(rect, placed, Rect2(Vector2(0.0, WORDS_TOP), Vector2(field_width(), FIELD_H - WORDS_TOP)))
+			shown = Vector2(rect.position.x + rect.size.x * 0.5, rect.end.y - 4.0)
+			pos = shown + Vector2(0, rise)
+		placed.append(rect)
+		BattleEffects.draw_number(ci, font, {"pos": pos, "text": n["text"], "color": n["color"],
 			"size": n["size"], "age": n["age"], "life": n["life"]})
 	## the camera's keys, bottom right of the field
 	draw_camera_hint(ci, font, Vector2((ci as Control).size.x - 12.0, FIELD_H - 10.0), CAMERA_HINT)
