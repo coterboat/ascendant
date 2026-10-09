@@ -99,6 +99,10 @@ func _initialize() -> void:
 	# Without vsync the frame loop never waits on the display, so a window covered by other windows (macOS stops
 	# its display link) still renders at full speed and the walk doesn't stall.
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	# The walk drives the game through its API, never through input: a stray key or click from the real desktop (the window is
+	# always on top) would press Continue on the title, or put a tooltip in a shot. (MVP-3, #177: a 125% walk loaded the
+	# player's own autosave that way.)
+	root.gui_disable_input = true
 	_run()
 
 
