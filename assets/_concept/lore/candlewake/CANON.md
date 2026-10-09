@@ -115,3 +115,69 @@ Entries between the `canon:item` markers are rewritten by the next run; write an
 - **batch:** art_r3d
 - **date:** 2026-10-08
 <!-- /canon:item -->
+
+<!-- canon:item art_r3e/candlewake_hundred_wick file=candlewake_hundred_wick__codex.png files=candlewake_hundred_wick__codex.png,candlewake_hundred_wick__grok.png -->
+## The Hundred-Wick, one fused mass
+
+- **verdict:** Good with changes
+- **kept:** 2 takes (a fusion: the note says what to take from each)
+- **note:** codex is great a is, but the thought of candlebeasts never struck me before - perhaps these come in many forms
+- **batch:** art_r3e
+- **date:** 2026-10-08
+
+### Take 1 (codex)
+
+![The Hundred-Wick, one fused mass, codex](candlewake_hundred_wick__codex.png)
+
+- **image:** `candlewake_hundred_wick__codex.png`
+- **seat:** codex
+- **prompt:** Wide 16:9 strategy-game boss concept: the Hundred-Wick, exactly one hulking asymmetrical monster formed from many hooded Candlewake shells fused into a single continuous dripping mass, never a pile or stack. Two massive planted legs and long fused arms emerge from an avalanche-like ivory-and-soot wax torso. A crown-like organic cluster of many short black wicks burns with small lilac flames. Three to five black hollow hood openings emerge from the same body, each containing only a tiny lilac wick-light. Painterly high-fantasy creature art matching the supplied Candlewake references, readable at strategy scale, centered and fully visible on plain trampled ground. Opaque background, no text. No purple body, glowing wax, faces, eyes, skulls, metal crown, weapons, riders, horses, or pale blades.
+
+### Take 2 (grok)
+
+![The Hundred-Wick, one fused mass, grok](candlewake_hundred_wick__grok.png)
+
+- **image:** `candlewake_hundred_wick__grok.png`
+- **seat:** grok
+- **prompt:** A single hulking Candlewake monster, the Hundred-Wick, stands alone on a plain dusty earth ground. One fused dripping mass of matte ivory candle wax over a soot-black under-body, many hooded hollow shells melted together into one warlike torso with thick wax legs. A crown of dozens of short black wicks burns small lilac flames along the crest, and a few empty eyeless hood-faces stare out of the dripping flanks, each with a tiny lilac light in the hollow. Painterly oil illustration, cream and charcoal wax, dusk light, wordless.
+<!-- /canon:item -->
+
+<!-- canon:item art_r3e/candlewake_march file=candlewake_march__codex.png files=candlewake_march__codex.png,candlewake_march__grok.png -->
+## The host on the march (key art)
+
+- **verdict:** Good with changes
+- **kept:** 2 takes (a fusion: the note says what to take from each)
+- **note:** honestly both are great. grok's is especially haunting.
+- **batch:** art_r3e
+- **date:** 2026-10-08
+
+### Take 1 (codex)
+
+![The host on the march (key art), codex](candlewake_march__codex.png)
+
+- **image:** `candlewake_march__codex.png`
+- **seat:** codex
+- **prompt:** Wide 16:9 painterly high-fantasy key art matching candlewake_tide.png: the Candlewake host marches at dusk beneath the unnaturally fixed low Held Sun, emerging from a half-melted timber-and-stone human town coated in cooled ivory wax. Half-Death leads in the front rank, matching candlewake_ruler1.png: tall and unhooded, one half of the long face smooth pale alabaster with closed eye, the other half an empty lilac outline with darkness showing through, tattered ivory robes, soot-black collar, and a brass lantern with lilac flame on a crook. Behind comes an immense warlike tide of hollow eyeless wax soldiers with shields and spears; every hood surrounds pitch-black emptiness with one lilac wick-light. Wick flames rise taller toward the front ranks and diminish deeper in the host. Warm sunset rim light, mournful and inexorable, ivory and soot bodies with lilac only in lantern and wick-fire. Opaque background, no text, no opposing army, riders, horses, spiked iron crowns, bucket helmets, sci-fi visors, or pale blades.
+
+### Take 2 (grok)
+
+![The host on the march (key art), grok](candlewake_march__grok.png)
+
+- **image:** `candlewake_march__grok.png`
+- **seat:** grok
+- **prompt:** Painterly oil key art of the Candlewake host on the march at dusk under a pale Held Sun. Half-Death leads unhooded in the foreground: a tall gaunt god, one half of the face smooth ivory alabaster with a closed eye, the other a thin dark hollow edged in lilac, tattered ivory robes with a soot-black collar, a simple brass lantern with a plain lilac flame. Behind it a tide of hollow hooded ivory-and-soot wax soldiers pours through a half-melted human town whose thatch and stone drip cream wax. Lilac wick-flames burn only inside the empty hoods and on the wicks, taller on the front ranks. Wordless cinematic landscape.
+<!-- /canon:item -->
+
+<!-- canon:item art_r3e/candlewake_wickwardens file=candlewake_wickwardens.png -->
+## Wickwardens: a squad of five hoods
+
+![Wickwardens: a squad of five hoods](candlewake_wickwardens.png)
+
+- **image:** `candlewake_wickwardens.png`
+- **verdict:** Good
+- **note:** none
+- **prompt:** Wide 16:9 strategy-game unit concept: exactly five full-body Candlewake Wickwardens stand side by side on plain neutral ground, each holding a simple ivory wax shield and wooden spear. They are eyeless, faceless shells of ivory candle wax over soot-black wrappings, with absolute black hollow interiors containing only one small lilac wick-flame. Give each a clearly different hood silhouette—low slumped cowl, tall bent taper, squared crenellated hood, swept asymmetric hood, narrow pointed shroud—and distinct drip patterns. Painterly high-fantasy strategy art matching the supplied Candlewake references, tactile melted wax, readable silhouettes, slightly elevated three-quarter camera. Ivory and soot only; lilac confined to inner wick-light. Opaque background, no text. No purple bodies, faces, skulls, bucket helmets, sci-fi visors, riders, horses, spiked iron crowns, or pale blades.
+- **seat:** codex
+- **batch:** art_r3e
+- **date:** 2026-10-08
+<!-- /canon:item -->
