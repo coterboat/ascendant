@@ -96,8 +96,24 @@ func test_every_unit_type_and_commander_has_all_four_poses() -> void:
 	for tr in _transformations():
 		assert_false(String(tr.new_unit).is_empty(), "%s adds a unit" % tr.transformation)
 		by_faction[tr.faction].append(String(tr.new_unit))
+	## the Free Holds' garrison units (IND-2, #161): their models arrive one by one as Alex accepts them in the Review
+	## Table, so a unit with no models yet is fine, but each installed one must have all four poses
+	var free_ids := []
+	for u in IndependentData.UNIT_TYPES:
+		free_ids.append(String(u.id))
+	free_ids.append(String(IndependentData.COMMANDER.id))
+	var installed_free := []
+	for id in free_ids:
+		if units.has(id):
+			installed_free.append(id)
+	by_faction["independents"] = installed_free
+	var fids := []
 	for f in FactionData.FACTIONS:
-		for id in by_faction[String(f.id)]:
+		fids.append(String(f.id))
+	fids.append("independents")
+	for fid in fids:
+		var f := {"id": fid}
+		for id in by_faction[fid]:
 			count += 1
 			assert_true(units.has(id), "%s has models" % id)
 			if not units.has(id):

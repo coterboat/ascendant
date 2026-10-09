@@ -87,3 +87,31 @@ Entries between the `canon:item` markers are rewritten by the next run; write an
 - **batch:** art_r3c
 - **date:** 2026-10-08
 <!-- /canon:item -->
+
+<!-- canon:item art_r3d/candlewake_host_war file=candlewake_host_war.png -->
+## The host as hollow shells, warlike
+
+![The host as hollow shells, warlike](candlewake_host_war.png)
+
+- **image:** `candlewake_host_war.png`
+- **verdict:** Good
+- **note:** none
+- **prompt:** Use case: stylized-concept. Wide strategy-game character model sheet on a plain warm light-gray ground, matching candlewake_tide.png: bright cel-shaded high fantasy, thick clean dark outlines, flat saturated colors, one hard shadow and highlight, bold readable silhouettes. Exactly eight full-body figures: Half-Death with half-finished alabaster face and lilac lantern; Mother Tallow, the sole living warm-brown-skinned woman, with gold taper; the stern wax Lamplighter with brass-capped wick, pole, and lilac lantern; then five warlike rank-and-file hollow shells—a Wickwarden with dripping wax shield and spear, a Gleaner with crescent harvesting hook, the hulking fused Hundred-Wick, a heavy battlement-helmed mace bearer, and a lean swept-back runner with short hooked blades. Every rank-and-file is pure ivory-and-soot poured wax with a distinct wax hood or helm around a completely empty black face cavity, a small lilac wick-light deep inside, lilac rim light, and drips. Armed and aggressive, not sad. All feet visible, no overlap, generous margins. Ivory, soot, plum, lilac, and restrained brass; Mother Tallow's flame alone is gold. No skulls, bones, eyes, masks, black riders, horses, spiked iron crowns, pale blades, text, labels, logos, UI, border, or watermark.
+- **seat:** codex
+- **batch:** art_r3d
+- **date:** 2026-10-08
+<!-- /canon:item -->
+
+<!-- canon:item art_r3d/candlewake_shells_heads file=candlewake_shells_heads.png -->
+## Hood and helm studies (for 3D)
+
+![Hood and helm studies (for 3D)](candlewake_shells_heads.png)
+
+- **image:** `candlewake_shells_heads.png`
+- **verdict:** Good
+- **note:** none
+- **prompt:** Use case: stylized-concept. Wide wordless head study for 3D modelers, matching candlewake_tide.png: bright cel-shaded high fantasy, thick clean outlines, flat saturated colors, hard-edged shadow and highlight, tactile poured wax. Exactly six equal-scale, separated head-and-shoulder busts in consistent three-quarter view on a plain warm light-gray ground. Each head is a hollow shell—not a person, skull, mask, or face—with a distinct thick ivory-and-soot wax hood or helm around a deep empty black cavity, a small lilac wick-light held inside, visible rim thickness, irregular rim drips, layered cooled folds, soot-dark inner surfaces, pooled wax shoulders, and lilac bounce light. Six silhouettes: low rounded drooping cowl; tall bent taper hood; broad squared soldier helm; squat battlement helm; swept-back runner hood with wax fins; asymmetric crescent-rim reaper hood. No living skin, eyes, mouths, noses, teeth, exterior flames, fabric hoods, metal helmets, black riders, horses, spiked crowns, pale blades, text, labels, annotations, logos, UI, border, or watermark.
+- **seat:** codex
+- **batch:** art_r3d
+- **date:** 2026-10-08
+<!-- /canon:item -->
