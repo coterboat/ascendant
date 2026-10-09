@@ -430,8 +430,8 @@ func test_top_bar_fits_with_the_opponent_tag() -> void:
 			game.map.set_state(s, game.session.current_player())
 			game.end_turn_button.text = "End turn (12 orders)"
 		_refresh_theme(game.map)
-		var row := game.map.back_button.get_parent() as HBoxContainer
-		var bar := row.get_parent() as PanelContainer
+		var row := game.map.bar_row  # MVP-3 (#177): the buttons' row; the hint has the row under it
+		var bar := game.map.get_node("Layout/TopBar") as PanelContainer
 		var style := bar.get_theme_stylebox("panel")
 		var available := WINDOW_WIDTH - style.get_margin(SIDE_LEFT) - style.get_margin(SIDE_RIGHT)
 		var used := 0.0
@@ -441,9 +441,9 @@ func test_top_bar_fits_with_the_opponent_tag() -> void:
 			if control == null or not control.visible:
 				continue
 			shown += 1
-			if control != game.map.hint_label:
-				used += _min_width(control)
-		var hint_width := available - used - row.get_theme_constant("separation") * (shown - 1)
+			used += _min_width(control)
+		assert_true(used + row.get_theme_constant("separation") * (shown - 1) <= available, "%s: the opponent tag and every button fit in one row" % [config])
+		var hint_width := available
 		var lines := _wrapped_lines(game.map.hint_label, hint_width)
 		assert_true(hint_width >= 240.0, "%s: the hint keeps a usable width (%d px)" % [config, hint_width])
 		assert_true(lines <= 2, "%s: the hint fits in two lines at %d px, it needs %d: %s" % [config, hint_width, lines, game.map.hint_label.text])

@@ -26,9 +26,11 @@ extends Control
 ## Hooks for the game screen (#7), which hosts this screen for the player at the controls:
 ##   session                    set it before set_state(): orders then go through GameSession's books
 ##   intercept_back             true: the back button emits back_requested instead of leaving
-##   add_top_bar_control(c)     puts a HUD control in the top bar, just before the back button
-##   set_hint(text, tooltip)    the short help text in the top bar (at most two lines; the tooltip can
-##                              say more)
+##   add_top_bar_control(c, essential)  puts a HUD control in the top bar, just before the back button; one that is not
+##                              `essential` moves down beside the hint when the bar is too narrow for one row
+##   set_hint(text, tooltip)    the short help text in the bar's second row, under the buttons (at most two lines; the
+##                              tooltip can say more)
+##   signal top_bar_changed     the bar's rows or height changed (the game screen hangs its cards under it)
 ##
 ## Sound (GameAudio): an accepted order sounds order_queued, with march after a move and recruit after a
 ## recruit; a sacrifice sounds sacrifice; a cancelled order order_cancelled. A refused order is silent
@@ -66,6 +68,8 @@ signal army_selected(army_id: String)
 signal orders_changed
 ## The back button was pressed while intercept_back is on.
 signal back_requested
+## MVP-3 (#177): the top bar's height or its rows changed (a narrower window, a wider label): whatever hangs under it moves.
+signal top_bar_changed
 ## A number or term linked to the codex was right-clicked (or F1 was pressed over it).
 signal codex_requested(key: String)
 
@@ -131,6 +135,10 @@ var gold_label: Label  # hidden when nobody's gold is shown (game over, spectato
 var turn_label: Label
 var hint_label: Label  # wraps to at most two lines
 var back_button: Button
+var bar_row: HBoxContainer  # the top bar's first row: the faction, gold, turn and the buttons
+var hint_row: HBoxContainer  # its second row: the hint and, in a narrow bar, the optional buttons
+var _bar_items: Array = []  # [control, essential] for each control add_top_bar_control placed, in order
+var _bar_narrow := false
 
 
 func _ready() -> void:
@@ -286,12 +294,16 @@ func clear_preview() -> void:
 		hover_panel.visible = false
 
 
-## Game screen hook: adds a HUD control to the top bar, just before the back button.
-func add_top_bar_control(control: Control) -> void:
+## Game screen hook: adds a HUD control to the top bar, just before the back button. An `essential` control (End turn) stays
+## in the first row whatever the width; the others move down beside the hint when the bar can't hold them all in one row.
+func add_top_bar_control(control: Control, essential: bool = false) -> void:
 	_bind()
-	var row := back_button.get_parent()
-	row.add_child(control)
-	row.move_child(control, back_button.get_index())
+	_bar_items.append([control, essential])
+	bar_row.add_child(control)
+	bar_row.move_child(control, back_button.get_index())
+	_fit_top_bar.call_deferred()
+	control.minimum_size_changed.connect(_fit_top_bar.call_deferred)
+	control.visibility_changed.connect(_fit_top_bar.call_deferred)
 
 
 ## The help text in the top bar. Keep it short: it wraps to at most two lines. `tooltip`, already
@@ -556,6 +568,7 @@ func _bind() -> void:
 	turn_label = %TurnLabel
 	hint_label = get_node("Layout/TopBar/Row/Hint")
 	back_button = %BackButton
+	_build_bar_rows()
 	# The crest: the faction's banner with the seat emblem pinned to its lower right corner.
 	faction_crest = Control.new()
 	faction_crest.name = "FactionCrest"
@@ -577,7 +590,6 @@ func _bind() -> void:
 	faction_label.get_parent().move_child(faction_crest, 0)
 	# A slightly tighter top bar than the scene's, so the banner fits and the hint keeps two full lines
 	# even with the game screen's Ruler button.
-	var bar_row := back_button.get_parent() as HBoxContainer
 	bar_row.add_theme_constant_override("separation", 12)
 	for l: Label in [faction_label, gold_label, turn_label]:
 		l.add_theme_font_size_override("font_size", 19)
@@ -795,6 +807,92 @@ func _open_sea(at: Vector2, links: Array) -> bool:
 
 
 # --- top bar --------------------------------------------------------------------------------------
+
+## MVP-3 (#177): the bar's second row. The hint used to share the first row with every button, and with every system on it
+## was left about 90 px (two clipped lines), and at Settings' 125% interface size (the 1600-wide layout drawn 1280 wide)
+## the row was wider than the window, so End turn and Menu were cut off. Now the hint has a row of its own under the buttons,
+## and when the buttons don't fit in one row the optional ones (everything but End turn and Menu) move down into the hint's
+## row, to its right. The same controls, the same tooltips: only where they sit changes.
+func _build_bar_rows() -> void:
+	bar_row = back_button.get_parent() as HBoxContainer
+	var bar := bar_row.get_parent() as PanelContainer
+	var box := VBoxContainer.new()
+	box.name = "BarRows"
+	box.add_theme_constant_override("separation", 2)
+	bar.add_child(box)
+	bar_row.owner = null  # the scene's own nodes are moved: no "owner inconsistent" warning
+	bar_row.reparent(box, false)
+	hint_row = HBoxContainer.new()
+	hint_row.name = "HintRow"
+	hint_row.add_theme_constant_override("separation", 12)
+	box.add_child(hint_row)
+	hint_label.owner = null
+	hint_label.reparent(hint_row, false)
+	bar.resized.connect(_fit_top_bar)
+	bar.resized.connect(top_bar_changed.emit)
+
+
+## The y the top bar ends at, in this screen's coordinates: cards that hang under it start here.
+func top_bar_bottom() -> float:
+	return (bar_row.get_parent().get_parent() as Control).get_global_rect().end.y - get_global_rect().position.y
+
+
+## Puts the optional buttons in the first row when it holds them all, and beside the hint when it doesn't. The width it
+## needs is worked out from the controls' own minimum sizes, wherever they are now, so the answer never depends on the
+## last answer (no flicker between the two layouts).
+func _fit_top_bar() -> void:
+	if bar_row == null or not is_inside_tree():
+		return
+	var bar := bar_row.get_parent().get_parent() as PanelContainer
+	var style := bar.get_theme_stylebox("panel")
+	var available := bar.size.x - style.get_margin(SIDE_LEFT) - style.get_margin(SIDE_RIGHT)
+	if available <= 0.0:
+		return
+	var need := 0.0
+	var shown := 0
+	for c in bar_row.get_children() + hint_row.get_children():
+		if c is Control and c != hint_label and (c as Control).visible:
+			need += (c as Control).get_combined_minimum_size().x
+			shown += 1
+	need += float(bar_row.get_theme_constant("separation")) * maxi(shown - 1, 0)
+	var narrow := need > available
+	if narrow != _bar_narrow:
+		_bar_narrow = narrow
+		_place_bar_items()
+		top_bar_changed.emit()
+
+
+## True while the optional buttons sit beside the hint (the bar is too narrow for one row).
+func bar_is_narrow() -> bool:
+	return _bar_narrow
+
+
+func _place_bar_items() -> void:
+	if _bar_narrow and _bar_items.all(func(it): return it[0].get_parent() == bar_row):
+		_bar_items.sort_custom(func(a, b): return a[0].get_index() < b[0].get_index())  # remember the one-row order (Research sits before Ruler)
+	for item in _bar_items:
+		var c: Control = item[0]
+		var parent: Control = hint_row if _bar_narrow and not bool(item[1]) else bar_row
+		if c.get_parent() != parent:
+			c.reparent(parent, false)
+	# Back in order: the first row's own labels, then its buttons, Menu last; the hint row's hint, then its buttons.
+	var first: Array = []
+	for c in bar_row.get_children():
+		if not _bar_items.any(func(it): return it[0] == c) and c != back_button:
+			first.append(c)
+	for item in _bar_items:
+		if item[0].get_parent() == bar_row:
+			first.append(item[0])
+	first.append(back_button)
+	for i in first.size():
+		bar_row.move_child(first[i], i)
+	var second: Array = [hint_label]
+	for item in _bar_items:
+		if item[0].get_parent() == hint_row:
+			second.append(item[0])
+	for i in second.size():
+		hint_row.move_child(second[i], i)
+
 
 func _update_top_bar() -> void:
 	var f := state.find_faction(viewing_faction_id)

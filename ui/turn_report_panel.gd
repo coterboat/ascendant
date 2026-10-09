@@ -209,7 +209,8 @@ static func phase_title(phase: String) -> String:
 
 
 ## Fills the "What the computer was thinking" section under the events: one block per computer seat
-## ({"faction_name", "seat", "level", "notes"}, see AISeat.report_notes). An empty list hides it.
+## ({"faction_name", "seat", "level", "notes"}, see AISeat.report_notes). An empty list hides it. Entries that are all
+## "hidden": true (fog: the notes are kept back) show as one quiet line, without the header.
 func show_computer_notes(entries: Array) -> void:
 	_note_labels.clear()
 	for c in notes_body.get_children():
@@ -218,6 +219,25 @@ func show_computer_notes(entries: Array) -> void:
 	notes_section.visible = not entries.is_empty()
 	notes_toggle = notes_section.get_node("ComputerNotesToggle") if not entries.is_empty() else null
 	if entries.is_empty():
+		return
+	# MVP-3 (#177): under fog every note is "hidden while the fog lasts": that is one quiet line, not a header with a count
+	# and a scrolling box (it squeezed the events list on every turn). The line keeps its tooltip and its codex link.
+	var quiet := entries.all(func(en): return bool(en.get("hidden", false)))
+	notes_toggle.visible = not quiet
+	if quiet:
+		var first: Dictionary = entries[0]
+		var line := Label.new()
+		line.text = String((first.get("notes", [""]) as Array)[0])
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		line.add_theme_font_size_override("font_size", 15)
+		line.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
+		line.tooltip_text = TooltipText.plain("What the computer was thinking", "The computer's own reasons for the orders it gave this turn. Under the fog of war they would name its hidden armies and plans, so they are kept back until the game is over. %s" % AISeat.tag_help(
+			String(first.get("faction_name", "The computer")), String(first.get("level", ""))))
+		CodexLink.attach(line, "computer_opponent", codex_requested.emit)
+		notes_body.add_child(line)
+		_note_labels.append(line)
+		notes_scroll.custom_minimum_size = Vector2(0, 28)
+		_refresh_notes_toggle()
 		return
 	var lines := 0  # rough wrapped line count, for the box's height
 	for entry in entries:
@@ -265,7 +285,7 @@ func _refresh_notes_toggle() -> void:
 	var count := _note_labels.size()
 	notes_toggle.text = "What the computer was thinking (%s)  ·  %s" % [TooltipText.count(count, "note"),
 		"click to hide" if computer_notes_open else "click to show"]
-	notes_scroll.visible = computer_notes_open
+	notes_scroll.visible = computer_notes_open or not notes_toggle.visible  # the quiet fog line has no header to fold it
 
 
 ## The seats under the header, each computer faction with its tag. Only for games with a computer seat. `state` is the

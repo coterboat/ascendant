@@ -9,6 +9,11 @@ extends PanelContainer
 ##                                       over the board's playback, and goes)
 ## and a link to the codex's "How to play" entry. In a game with rulers, paths, forts, fog, magic or independents one
 ## more line per system that is on follows, its name a link to that system's codex entry. Hide closes the card.
+## MVP-3 (#177): the fog line stays on the card (it is what the board's "glimpsed" and "never seen" labels mean, and it says
+## so in full, which is why the first fog turn's banner no longer stacks beside this card); the lines of the other systems
+## fold behind one "Also on: ..." row (click to open them), so the card stays short enough to leave the province next to the
+## capital, the natural first move, uncovered. Every explanation is still there: the row's tooltip, each line's tooltip and
+## its codex link. The game screen hangs the card under the top bar (hang_under), whatever height the bar has.
 ## Why top-left: the map's hover forecast bar runs along the bottom, the player's capital (with its armies and queued
 ## orders) is on the left edge from about 45% of the way down, the fog notice sits top centre, and the turn report, the
 ## codex and every other overlay are drawn above the card. Top-left, no taller than about 280 px with every system on,
@@ -42,6 +47,8 @@ const WIDTH := 350.0
 const MARGIN := 12.0
 ## The card hangs from here: under the top bar and the map's board hint line.
 const TOP := 96.0
+## MVP-3 (#177): the same place, as the distance under the top bar's bottom edge (the bar is taller in a narrow window).
+const BELOW_BAR := 34.0
 ## How long the card stays, all three steps ticked, over the board's playback after End turn.
 const LINGER := 3.5
 const HOW_TO_PLAY := "how_to_play"
@@ -57,6 +64,8 @@ const STEPS := [
 		"tip": "End turn locks your orders in. Every player's orders then resolve together, in one fixed order, and the turn report tells you what happened and why.",
 		"entry": "orders"},
 ]
+## The "Also on" row's short names (one line wide), where a system's full name is longer.
+const SHORT_NAMES := {"sieges": "Forts"}
 ## One line for each system that is on, in this order: the linked name, the rest of the line (short enough to stay on
 ## one line) and the codex entry the name opens. The flags are on the game's state (systems_on).
 const SYSTEMS := [
@@ -67,7 +76,7 @@ const SYSTEMS := [
 	{"id": "sieges", "name": "Forts and sieges", "rest": "recruit at any fort", "entry": "fort_levels",
 		"tip": "Forts have levels and walls. You recruit at any fort you own, and an army that marches into an enemy fort with a garrison inside besieges it instead of fighting."},
 	{"id": "fog", "name": "Fog of war", "rest": "you see only near your land", "entry": "fog_of_war",
-		"tip": "You see exactly only where you own land or have an army; next to that, roughly; beyond, only what you saw last. Fog changes what you are shown, never the rules."},
+		"tip": "You see exactly only where you own land or have an army; next to that you glimpse armies roughly (two away from forts, commanders, rulers and scouts); beyond, only what you saw last. That is what \"glimpsed\" and \"never seen\" mean on the map. Fog changes what you are shown, never the rules."},
 	{"id": "magic", "name": "Magic", "rest": "spells, mages and rituals", "entry": "magic",
 		"tip": "You learn spells by research. Mages cast them by themselves in every round of a battle, and rituals are orders you pay for in gold."},
 	{"id": "independents", "name": "Independents", "rest": "garrison the neutral land", "entry": "independents",
@@ -78,7 +87,9 @@ var title_label: Label
 var progress_label: Label
 var hide_button: Button
 var step_checks := {}  # step id -> the tick (a CheckBox that only shows)
-var systems_box: VBoxContainer
+var systems_box: VBoxContainer  # the fog line, the "Also on" row and the other systems' lines
+var systems_toggle: Button  # the "Also on: ..." row: opens and folds the other systems' lines
+var systems_lines_box: VBoxContainer  # the other systems' lines, folded until the row is pressed
 var system_lines := {}  # system id -> the RichTextLabel of its line
 var closing_label: Label
 var how_button: Button
@@ -92,6 +103,8 @@ var _ended := {}  # faction id -> true once that person ended their first turn
 var _lingering := false
 var _linger_until := 0
 var _systems: Array = []  # the SYSTEMS lines on in this game (ids)
+var _systems_open := false  # the "Also on" row is open
+var _fog_explained := false  # the card's fog line told this game's players how fog works: the first fog turn's banner is not needed
 var _seat_title := ""
 
 
@@ -134,6 +147,29 @@ func sync(session: GameSession, view: GameState) -> void:
 		_hide()
 		return
 	_show_for(session, view, fid, turn)
+
+
+## Hangs the card under the top bar, whose bottom edge is `bar_bottom` (this screen's coordinates).
+func hang_under(bar_bottom: float) -> void:
+	offset_top = bar_bottom + BELOW_BAR
+	offset_bottom = offset_top
+
+
+## True when the card's other-systems lines are folded behind the "Also on" row (always, while no other system is on).
+func systems_folded() -> bool:
+	return not _systems_open or not systems_toggle.visible
+
+
+## Opens or folds the other systems' lines (the "Also on" row does it).
+func toggle_systems() -> void:
+	_systems_open = not _systems_open
+	_refresh_systems()
+
+
+## True while the card is up with its fog line, which tells the players how fog works (the game screen then skips the
+## first fog turn's banner: one card at a time).
+func explains_fog() -> bool:
+	return _fog_explained and showing() != ""
 
 
 ## What the card ticks now.
@@ -267,6 +303,8 @@ func _mark_if_everyone_done() -> void:
 		if not _done.has(fid):
 			return
 	GameSettings.mark_hint_seen(GameSettings.HINT_FIRST_GAME)
+	if _fog_explained:
+		GameSettings.mark_hint_seen("fog")  # the card's fog line said it: the banner has nothing left to add
 
 
 func _set_systems(view: GameState) -> void:
@@ -275,6 +313,21 @@ func _set_systems(view: GameState) -> void:
 	for id in system_lines:
 		(system_lines[id] as Control).visible = _systems.has(id)
 	systems_box.visible = not on.is_empty()
+	_fog_explained = _systems.has("fog")
+	_systems_open = false
+	_refresh_systems()
+
+
+## The "Also on" row and the folded lines for the systems that are on (the fog line is never folded).
+func _refresh_systems() -> void:
+	var others := SYSTEMS.filter(func(s): return String(s.id) != "fog" and _systems.has(String(s.id)))
+	systems_toggle.visible = not others.is_empty()
+	systems_lines_box.visible = _systems_open and not others.is_empty()
+	var names := others.map(func(s): return String(SHORT_NAMES.get(String(s.id), s.name)))
+	systems_toggle.text = "%s Also on: %s" % ["\u25BE" if _systems_open else "\u25B8", "" if _systems_open else ", ".join(names)]
+	var tip := others.map(func(s): return "%s: %s" % [String(s.name), String(s.rest)])
+	systems_toggle.tooltip_text = TooltipText.plain("The other systems in this game",
+		"%s.\n\nClick to open or fold one line about each; every name in them opens its codex entry, and hovering a line says more." % "\n".join(tip))
 
 
 # --- nodes ----------------------------------------------------------------------------------------
@@ -333,6 +386,10 @@ func _build() -> void:
 	systems_box.add_theme_constant_override("separation", 1)
 	systems_box.visible = false
 	box.add_child(systems_box)
+	systems_lines_box = VBoxContainer.new()
+	systems_lines_box.name = "SystemLines"
+	systems_lines_box.add_theme_constant_override("separation", 1)
+	systems_lines_box.visible = false
 	for s in SYSTEMS:
 		var line := RichTextLabel.new()
 		line.name = "System_%s" % String(s.id)
@@ -348,8 +405,23 @@ func _build() -> void:
 		line.meta_clicked.connect(func(meta: Variant): codex_requested.emit(String(meta)))
 		line.tooltip_text = CodexLink.with_link(TooltipText.plain(String(s.name), String(s.tip)), String(s.entry))
 		line.visible = false
-		systems_box.add_child(line)
+		(systems_box if String(s.id) == "fog" else systems_lines_box).add_child(line)  # fog's line never folds
 		system_lines[String(s.id)] = line
+	systems_toggle = Button.new()
+	systems_toggle.name = "SystemsToggle"
+	systems_toggle.flat = true
+	systems_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	systems_toggle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	systems_toggle.focus_mode = Control.FOCUS_NONE
+	systems_toggle.custom_minimum_size = Vector2(WIDTH - 16.0, 0)
+	systems_toggle.add_theme_font_size_override("font_size", 13)
+	_tight(systems_toggle)
+	systems_toggle.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
+	systems_toggle.add_theme_color_override("font_hover_color", UiPalette.GILT)
+	systems_toggle.pressed.connect(toggle_systems)
+	systems_toggle.visible = false
+	systems_box.add_child(systems_toggle)
+	systems_box.add_child(systems_lines_box)
 
 	how_button = Button.new()
 	how_button.name = "HowToPlayButton"

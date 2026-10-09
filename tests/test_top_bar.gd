@@ -1,7 +1,8 @@
 extends "res://tests/test_case.gd"
 ## The map's top bar fits the 1600x900 window (project.godot's viewport) with nothing clipped: every
-## label and button gets at least its minimum width, and the hint wraps into at most its two visible
-## lines in the width that is left. After game over the gold label is hidden, so no gap is left.
+## label and button gets at least its minimum width in one row, and the hint, which has the row under
+## them since MVP-3 (#177), wraps into at most its two visible lines across the whole bar. After game
+## over the gold label is hidden, so no gap is left.
 ##
 ## Headless tests run outside the tree, where containers don't lay out and theme overrides don't reach
 ## the controls' theme caches. So each control's theme is refreshed (NOTIFICATION_THEME_CHANGED) and
@@ -89,11 +90,12 @@ func _game(seats: Array) -> GameScreen:
 	return game
 
 
-## Lays the top bar out at WINDOW_WIDTH like its HBoxContainer and checks nothing is clipped.
+## Lays the top bar out at WINDOW_WIDTH like its HBoxContainer and checks nothing is clipped. (A real layout pass at the other
+## widths, 1280 included, is tests/screen_fit_probe.gd's "game" screen: test_screens_fit.gd.)
 func _assert_fits(map: MapScreen, where: String) -> void:
 	_refresh_theme(map)
-	var row := map.back_button.get_parent() as HBoxContainer
-	var bar := row.get_parent() as PanelContainer
+	var row := map.bar_row  # MVP-3 (#177): the buttons' row; the hint has the row under it
+	var bar := map.get_node("Layout/TopBar") as PanelContainer
 	var style := bar.get_theme_stylebox("panel")
 	var available := WINDOW_WIDTH - style.get_margin(SIDE_LEFT) - style.get_margin(SIDE_RIGHT)
 	var separation := row.get_theme_constant("separation")
@@ -104,9 +106,11 @@ func _assert_fits(map: MapScreen, where: String) -> void:
 		if control == null or not control.visible:
 			continue
 		shown += 1
-		if control != map.hint_label:
-			used += _min_width(control)
-	var hint_width := available - used - separation * (shown - 1)
+		used += _min_width(control)
+	assert_true(used + separation * (shown - 1) <= available, "%s: the faction, gold, turn and every button fit in one row (%d of %d px)" % [
+		where, used + separation * (shown - 1), available])
+	assert_eq(map.hint_label.get_parent(), map.hint_row, "%s: the hint has a row of its own" % where)
+	var hint_width := available  # the whole bar's width
 	var hint := map.hint_label
 	var lines := _wrapped_lines(hint, hint_width)
 	assert_true(hint_width >= 300.0, "%s: the hint keeps a usable width (%d px)" % [where, hint_width])

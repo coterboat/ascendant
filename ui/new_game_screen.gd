@@ -82,6 +82,8 @@ extends Control
 
 signal start_requested(config: Dictionary)
 signal back_requested
+## MVP-3 (#177): the computer's paragraph links its codex entry (the title screen opens the codex there).
+signal codex_requested(key: String)
 
 const SEAT_COUNT := 2
 const KINDS := ["human", "computer"]  # the seat kind pickers' items, in order
@@ -125,6 +127,8 @@ var seat_pickers: Array[OptionButton] = []
 var kind_pickers: Array[OptionButton] = []  # Human or Computer, per seat
 var level_pickers: Array[OptionButton] = []  # Easy or Normal, per seat; shown for computer seats only
 var computer_title: Label  # "Playing against the computer": replaces the hotseat title while a seat is the computer
+var computer_head: HBoxContainer  # MVP-3: that title with the link to the codex entry beside it
+var computer_link: Button  # "How it plays": opens the codex entry "computer_opponent"
 var computer_label: Label  # how the computer plays, in place of the hotseat explanation
 var _hotseat_title: Label
 var seat_labels: Array[Label] = []
@@ -601,6 +605,7 @@ func _refresh() -> void:
 			computers += 1
 	computer_label.visible = computers > 0
 	computer_title.visible = computers > 0
+	computer_head.visible = computers > 0
 	# Against the computer, passing the computer around doesn't apply: its explanation takes the place.
 	hotseat_label.visible = computers == 0
 	_hotseat_title.visible = computers == 0
@@ -652,7 +657,7 @@ func _faction(fid: String) -> Faction:
 
 
 func _computer_short() -> String:
-	return "The computer plays by the same rules as you and gives its orders at the same time, without seeing yours. Easy makes more mistakes than Normal."
+	return "Same rules as you, and it never sees your orders. Easy makes more mistakes than Normal."  # MVP-3 (#177): one line
 
 
 ## "Capital Crownkeep, 50 gold to start. Spearmen, Crossbowmen and Knights, led by a Knight Captain."
@@ -770,14 +775,32 @@ func _build() -> void:
 	_tooltip(hotseat_label, TooltipText.plain(String(RulesCodex.entry("handoff").get("title", "")), RulesCodex.text("handoff")))
 	box.add_child(hotseat_label)
 	var computer_entry := RulesCodex.entry("computer_opponent")
+	computer_head = HBoxContainer.new()
+	computer_head.name = "ComputerHead"
+	computer_head.add_theme_constant_override("separation", 16)
+	computer_head.visible = false
+	box.add_child(computer_head)
 	computer_title = _label("ComputerTitle", String(computer_entry.get("title", "")), 20, UiPalette.TEXT_PRIMARY)
 	computer_title.visible = false
-	box.add_child(computer_title)
+	computer_head.add_child(computer_title)
+	computer_link = Button.new()
+	computer_link.name = "ComputerCodexLink"
+	computer_link.text = "How it plays, in the codex"
+	computer_link.flat = true
+	computer_link.focus_mode = Control.FOCUS_NONE
+	computer_link.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	computer_link.add_theme_font_size_override("font_size", 16)
+	computer_link.add_theme_color_override("font_color", UiPalette.LINK)
+	computer_link.add_theme_color_override("font_hover_color", UiPalette.GILT)
+	computer_link.tooltip_text = TooltipText.plain(String(computer_entry.get("title", "")), "The whole of it: what the computer sees, how Easy and Normal differ, and what it does with fog of war and magic. Opens the codex.")
+	computer_link.pressed.connect(func(): codex_requested.emit("computer_opponent"))
+	computer_head.add_child(computer_link)
 	computer_label = _label("ComputerLabel", "", 16, UiPalette.TEXT_SECONDARY)
 	computer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	computer_label.visible = false
 	_tooltip(computer_label, CodexLink.with_link(TooltipText.plain(String(computer_entry.get("title", "")),
 		RulesCodex.text("computer_opponent")), "computer_opponent"))
+	CodexLink.attach(computer_label, "computer_opponent", codex_requested.emit)  # right-click or F1 works here too
 	box.add_child(computer_label)
 
 	var seats_head := HBoxContainer.new()
