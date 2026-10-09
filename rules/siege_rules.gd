@@ -412,6 +412,8 @@ static func check_fortify(state: GameState, faction_id: String, province_id: Str
 	var now := state.find_province(province_id)
 	if now == null or now.owner != faction_id:
 		return _reject("fortify_lost", "You lost %s in this turn's battles, so the fort was not started; no gold is spent." % p.name)
+	if now.fort_level != p.fort_level:  # M3c S-7 (#105): a Bastion ritual raised a fort there before the order was paid
+		return _reject("fortify_raised", "A fort was raised at %s this turn (Bastion), so the order was dropped; no gold is spent." % p.name)
 	return {}
 
 

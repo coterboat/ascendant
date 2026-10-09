@@ -305,7 +305,9 @@ func test_the_wait_after_a_capture_and_the_retake_rule() -> void:
 	var wait := _check(s, CROWN, RecruitOrder.new("spearmen", "stonegate"))
 	assert_eq(String(wait.get("code", "")), "fort_just_taken", "turn 2: not yet")
 	assert_true(String(wait.reason).contains("You took Stonegate on turn 1: it can take recruits from turn %d" % from), wait.reason)
-	s = F.resolve(s, {}).new_state
+	while s.current_turn + 1 < from:  # the turns of the wait (FortData.CAPTURE_WAIT): still refused
+		assert_false(_check(s, CROWN, RecruitOrder.new("spearmen", "stonegate")).is_empty(), "turn %d: still waiting" % (s.current_turn + 1))
+		s = F.resolve(s, {}).new_state
 	assert_eq(_check(s, CROWN, RecruitOrder.new("spearmen", "stonegate")), {}, "turn %d: it takes recruits" % from)
 	# Retaking your own fort within RETAKE_TURNS turns of losing it restores your standing.
 	var lost := F.state([

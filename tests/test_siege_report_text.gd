@@ -116,7 +116,7 @@ func test_a_capture_says_the_fort_came_with_it() -> void:
 	assert_true(line.begins_with("Stonegate fell to Aurel Crown"), "the #55 line: %s" % line)
 	assert_true(line.ends_with(" It came with its keep (walls %d of %d): the Aurel Crown can recruit there from %s." % [int(e.numbers.walls),
 		int(FortData.LEVELS[2].walls), TurnReportText.reader_turn(int(e.numbers.recruit_from), now)]), line)
-	assert_true(line.contains("from next turn (%d)" % (now + 1)), "a capture waits a turn: %s" % line)
+	assert_eq(int(e.numbers.recruit_from), now + FortData.CAPTURE_WAIT, "a capture waits FortData.CAPTURE_WAIT turns: %s" % line)
 	# A fort retaken within the window recruits at once.
 	var s2 := Fx.state([["kingdom-3", CROWN, "westwatch", Fx.units("knights", 2)]], {"westwatch": CROWN, "stonegate": CLANS})
 	s2.current_turn = 2

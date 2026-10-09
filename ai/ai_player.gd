@@ -243,6 +243,10 @@ const RAID_WEIGHT := 0.5
 ## The garrison sallies against the one enemy army next to the capital at STANDOFF_SALLY_WIN instead of
 ## SALLY_WIN during a stand-off.
 const STANDOFF_TURNS := 20.0
+## M3c S-7 (#105): with forts and sieges a stand-off is read sooner. Two computers that each hold their keep or capital against
+## the other's stack would otherwise mass for ever; at 12 turns of income the games that stalled for 24 turns or more
+## are gone and the games at the turn cap halve (design/M3C_SIEGES.md §11.4). Without sieges STANDOFF_TURNS still rules.
+const SIEGE_STANDOFF_TURNS := 12.0
 const STANDOFF_WIN := 0.5
 const STANDOFF_SAFE := 1.0
 const STANDOFF_SALLY_WIN := LIKELY_WIN
@@ -2382,7 +2386,7 @@ static func standoff_info(state: GameState, faction_id: String) -> Dictionary:
 			value += int(prices[u.type.id])
 			units += 1
 	var turns := float(value + maxi(0, f.gold)) / float(maxi(1, income))
-	if turns < STANDOFF_TURNS:
+	if turns < (SIEGE_STANDOFF_TURNS if state.sieges else STANDOFF_TURNS):
 		return {}
 	return {"turns": turns, "value": value, "gold": f.gold, "income": income, "units": units}
 
