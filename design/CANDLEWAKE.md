@@ -363,7 +363,8 @@ The Hundred-Wick's art sparked it: **beasts the Wake has poured over.** The wax 
   - the recruit list shows them in every province, greyed where they can't be poured: "Candlebeasts are poured only where the Wake runs deep. Thornvale is on the Wake-Line: Deep Wake in 3 turns.";
   - the unit tooltip carries the family line ("A candlebeast: poured in Deep Wake") above its trait;
   - a codex page, "Candlebeasts", that lists the forms and grows as new ones ship.
-- **Later forms (parking lot, not in CW):** a form for each faction's dead land (a wax Thornmane where the Clans fell); gilded beasts on the Golden Wake and burning ones on the Red; a form chosen by the province's land instead of by the player (Alex's call, §15 item 6).
+- **The player picks the form** (Alex 10-9, §15 item 6): any form, in any Deep Wake province.
+- **Later forms (parking lot, not in CW):** a form for each faction's dead land (a wax Thornmane where the Clans fell); gilded beasts on the Golden Wake and burning ones on the Red. Forms the land picks belong to a game-wide terrain pass (§13).
 
 ---
 
@@ -590,6 +591,7 @@ Rates are from `studio/ledgers/asc-3d-factions.jsonl`: 3.0 a model, 1.5 a 3-cand
 - Crown and Clans marks (the engine is ready for them);
 - battle fog for battles you didn't fight (M6);
 - Candlewake voice lines.
+- **A game-wide terrain pass** (Alex 10-9): how a province's land shapes what can be recruited there, which units are available and who defends it, for every faction. Candlebeast forms picked by the land would roll up under it.
 
 ## 14. director's calls (review these first)
 1. **Any two of three.** The Crown and the Clans keep their capitals, and the Candlewake take the free one. That is derived, not stored, so old records are untouched. It is the cheapest honest third faction on a 2-player map.
@@ -615,7 +617,7 @@ Rates are from `studio/ledgers/asc-3d-factions.jsonl`: 3.0 a model, 1.5 a 3-cand
 3. **The Golden Wake:** a) keep. Golden lets a player cool down into a defensive, money-making style; Red fuels the fire.
 4. **Eyes:** eyeless, in his art round 6c verdict: "more warlike, empty shells with hoods of wax to give shape" (§10).
 5. **His new idea (§3.6):** as their land is made in their likeness, the dead turn to wax and rise again. The Golden Wake keeps it pumping, and the Red Wake swells the horde through Harvest instead.
-6. **Candlebeasts (§4.5), open:** who picks the form? a) the player picks any form in a Deep Wake province (my pick: three real choices, and it reuses the recruit screen as is); b) the province's land picks it (forest pours stags, hills bears, plains hounds), which gives the map texture but takes away the choice; c) a) now, and b) as a later form family.
+6. **Candlebeasts (§4.5): who picks the form?** c) the player picks now (any form in a Deep Wake province), and the land picks later. "We could think smarter about how terrain ties into recruitment, available units, defenders, etc. in general, and that can roll up under there if and when we decide to go down that route." Land-picked forms wait for a game-wide terrain pass (§13).
 
 **Design notes for every faction:**
 - Asymmetric power spikes are welcome when every faction has its own. The bands are guardrails, not a flattening.
