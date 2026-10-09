@@ -170,13 +170,13 @@ func test_the_bands_are_judged_from_the_games() -> void:
 		assert_eq(_band(j, name).status, "none", "%s was not played" % name)
 	assert_true(j.ok, "G12 and G13 hold")
 	assert_eq(j.bands.map(func(b): return b.band), MagicMatrix.BANDS, "every band is in the table, in order")
-	# G7: the toy games cast on turn 8, so a ritual comes by turn 10 in all of them; one that comes later misses.
+	# G7: the toy games cast on turn 8, so a ritual comes by MagicMatrix.G7_BY_TURN in all of them; one that comes later misses.
 	assert_eq(_band(j, "G7").status, "pass", "%s %s" % [_band(j, "G7").result, _band(j, "G7").detail])
 	var late := games.duplicate(true)
 	for g in late:
 		for c in g.magic.casts:
-			c.turn = 14
-	assert_eq(_band(MagicMatrix.judge(late + _m2_games(fixture), 0, fixture, {"ok": true}), "G7").status, "miss", "no ritual by turn 10")
+			c.turn = MagicMatrix.G7_BY_TURN + 1
+	assert_eq(_band(MagicMatrix.judge(late + _m2_games(fixture), 0, fixture, {"ok": true}), "G7").status, "miss", "no ritual by turn %d" % MagicMatrix.G7_BY_TURN)
 	# G1: a school that is never researched misses.
 	var dull := games.duplicate(true)
 	for g in dull:

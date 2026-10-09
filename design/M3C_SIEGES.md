@@ -1092,6 +1092,12 @@ The build goes ahead on the **default** for each; Alex can change any of them, a
 7. **The stand-off rule with sieges (`SIEGE_STANDOFF_TURNS`, §11.4).** With everything on, two computers can sit a long time, each holding its keep or capital against the other's stack. S-7 made #94's stand-off read at a pile worth 12 turns of income instead of 20 in a game with sieges, which halves the games at the turn cap and removes the 24-turn quiet runs, and costs the storm share a few points.
    - **Default: 12.** The alternatives are 15 (the storm band passes, the long quiet runs come back a little) or 20 (as before).
 
+**Alex's answers to 6 and 7 (2026-10-09), the director's picks:**
+- **6:** `REACH` stays 1.
+- **7:** `SIEGE_STANDOFF_TURNS` stays 12.
+- **S6** (the Regent's Court against the Clan Moot, Clans 73%, mostly the preset): a preset pass later (#183), not a siege fix.
+- **Quiet runs with everything on** (36% of AI games have 8+ turns without a battle between the factions): a human player breaks them. An aggressive AI temperament comes later (#184).
+
 ---
 
 ## appendix A: critic rounds
