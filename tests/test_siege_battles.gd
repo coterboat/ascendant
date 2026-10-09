@@ -266,7 +266,10 @@ func test_the_walls_part_at_every_wall_strength_and_only_in_storms() -> void:
 				assert_false(a.parts.has("cover"), "no cover in a storm")
 				assert_false(a.parts.has("fort"), "the walls replace the old fort bonus")
 			checked += 1
-	assert_eq(checked, 3 + 6 + 9, "every wall strength of every level")
+	var strengths := 0
+	for lv in FortData.LEVELS:
+		strengths += int(lv.walls)
+	assert_eq(checked, strengths, "every wall strength of every level")
 
 
 func test_cover_only_on_fighters_from_inside_in_sallies_and_breaches_and_no_terrain_in_the_open() -> void:

@@ -61,13 +61,16 @@ func test_a_constructed_storm_names_the_walls_as_its_top_why() -> void:
 	var r := F.resolve(s, {CLANS: [SiegeOrder.storm("crownkeep")]}, true)
 	var b: Dictionary = r.events.filter(func(e): return e.type == "battle")[0]
 	var report: Dictionary = b.numbers.report
-	assert_eq(int(b.numbers.siege.walls_defense), FortData.WALLS_DEFENSE_PER_STEP * ceili(float(SiegeRules.walls_max(3)) / FortData.WALL_STEP))
+	var top := SiegeRules.walls_max(3)
+	var defense := FortData.WALLS_DEFENSE_PER_STEP * ceili(float(top) / FortData.WALL_STEP)
+	assert_eq(int(b.numbers.siege.walls_defense), defense)
 	assert_eq(String(report.factors[0].id), "walls", "the walls are the top reason: %s" % report.why)
-	assert_true(String(report.why).begins_with("the walls of Crownkeep (9 of 9) gave the defending Aurel Crown +6 defense"), report.why)
+	assert_true(String(report.why).begins_with("the walls of Crownkeep (%d of %d) gave the defending Aurel Crown +%d defense" % [top, top, defense]), report.why)
 	# And the odds say so too: the garrison's top reason for holding is its walls.
 	var odds := Forecast.storm_odds(s, CLANS, "crownkeep", [], [], CROWN)
 	assert_true(odds.ok, odds.text)
-	assert_true(String(odds.reasons[0]).begins_with("the walls of Crownkeep (9 of 9) give the defending Aurel Crown +6 defense"), str(odds.reasons))
+	assert_true(String(odds.reasons[0]).begins_with("the walls of Crownkeep (%d of %d) give the defending Aurel Crown +%d defense" % [top, top, defense]),
+		str(odds.reasons))
 
 
 func test_single_battle_plans_equal_the_estimate() -> void:
@@ -138,6 +141,7 @@ func test_a_chained_plan_fights_the_chain_on_each_seed() -> void:
 
 
 func test_the_move_forecast_into_an_enemy_fort_says_besiege_and_promises_no_fort_bonus() -> void:
+	var top := SiegeRules.walls_max(2)
 	var s := _state(false, F.units("war_bear", 2))
 	var move := MoveOrder.new("beasts-4", "stonegate")
 	var fc := Forecast.move(s, CLANS, move)
@@ -150,14 +154,14 @@ func test_the_move_forecast_into_an_enemy_fort_says_besiege_and_promises_no_fort
 	# With a storm order queued it says the storm happens, with the walls it meets.
 	fc = Forecast.move(s, CLANS, move, [SiegeOrder.storm("stonegate")])
 	assert_eq(fc.siege_row, "storm")
-	assert_true(String(fc.text).contains("+4 defense"), fc.text)
+	assert_true(String(fc.text).contains("+%d defense" % SiegeRules.walls_defense(top)), fc.text)
 	# An empty fort is taken whole; a breached one is fought at once; your own besieged fort gets a relief.
 	var empty := _state(false, F.units("war_bear", 2))
 	empty.armies = empty.armies.filter(func(a): return not ["kingdom-1", "kingdom-2"].has(a.id))
 	fc = Forecast.move(empty, CLANS, move)
 	assert_eq(fc.siege_row, "empty")
 	assert_true(fc.would_capture)
-	assert_true(String(fc.text).contains("you take the keep at Stonegate unopposed (walls 6 of 6)"), fc.text)
+	assert_true(String(fc.text).contains("you take the keep at Stonegate unopposed (walls %d of %d)" % [top, top]), fc.text)
 	fc = Forecast.move(_state(false, F.units("war_bear", 2), 0), CLANS, move)
 	assert_eq(fc.siege_row, "breach")
 	fc = Forecast.move(_state(true, F.units("war_bear", 2)), CROWN, MoveOrder.new("kingdom-3", "stonegate"))
@@ -165,7 +169,7 @@ func test_the_move_forecast_into_an_enemy_fort_says_besiege_and_promises_no_fort
 	assert_true(String(fc.text).contains("outside the walls as a relief"), fc.text)
 	# The defender's ground at a fort with sieges: its walls, and only in a storm.
 	var ground := Forecast.defender_ground(s.find_province("stonegate"))
-	assert_true(ground.contains("walls (6 of 6) +4 defense, but only if stormed"), ground)
+	assert_true(ground.contains("walls (%d of %d) +%d defense, but only if stormed" % [top, top, SiegeRules.walls_defense(top)]), ground)
 	assert_false(ground.contains("fort gives"), ground)
 	# Without sieges the old words stay.
 	assert_true(Forecast.defender_ground(GameState.new(3).find_province("stonegate")).contains("its fort gives +2 defense"))

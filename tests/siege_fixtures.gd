@@ -51,6 +51,20 @@ static func set_fort(s: GameState, province_id: String, level: int, walls: int =
 	p.walls = SiegeRules.walls_max(level) if walls < 0 else walls
 
 
+## A besieging force [troops, engines] whose siege damage (SiegeRules.siege_damage) takes `walls` to 0 in exactly
+## `turns` turns of siege, so a scenario holds whatever FortData's numbers are: `troops` or more troops (never fewer,
+## so the force stays as strong), and the engine count nearest `engines` (fewer first), at most ARMY_ENGINES_MAX.
+## [] when no force up to 80 troops does it.
+static func force_to_breach(walls: int, turns: int, troops: int, engines: int = 0) -> Array:
+	var counts := range(0, FortData.ARMY_ENGINES_MAX + 1)
+	counts.sort_custom(func(a, b): return absi(a - engines) < absi(b - engines) or (absi(a - engines) == absi(b - engines) and a < b))
+	for t in range(troops, 81):
+		for e in counts:
+			if SiegeRules.turns_to_breach(walls, int(SiegeRules.siege_damage(t, e).total)) == turns:
+				return [t, e]
+	return []
+
+
 ## Resolves one turn (StubBattleResolver unless `real` battles are asked for).
 static func resolve(s: GameState, orders: Dictionary, real: bool = false, turn_seed: int = 7) -> Dictionary:
 	return TurnResolver.resolve(s, orders, turn_seed, AutoBattleResolver.new() if real else StubBattleResolver.new())

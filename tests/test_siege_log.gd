@@ -75,17 +75,18 @@ func test_every_check_passes_on_each_kind_of_battle_at_a_fort() -> void:
 
 
 func test_the_report_names_the_kind_and_the_why_counts_the_walls() -> void:
+	var top := SiegeRules.walls_max(2)
 	var r := F.resolve(_state(), {CLANS: [SiegeOrder.storm("stonegate")]}, true)
 	var b: Dictionary = _battles_at(r.events, "stonegate")[0]
 	var report: Dictionary = b.numbers.report
-	assert_true(String(report.lines[0]).begins_with("The Thornmane Clans stormed the walls of Stonegate (6 of 6: +4 defense) on the third turn of the siege."),
-		report.lines[0])
+	assert_true(String(report.lines[0]).begins_with("The Thornmane Clans stormed the walls of Stonegate (%d of %d: +%d defense) on the third turn of the siege." % [
+		top, top, SiegeRules.walls_defense(top)]), report.lines[0])
 	assert_true(String(report.lines[0]).contains("Aurel Crown (defending the walls)"), report.lines[0])
 	assert_true(String(b.text).begins_with("The Thornmane Clans stormed the walls of Stonegate"), b.text)
 	var walls: Array = report.all_factors.filter(func(f): return f.id == "walls")
 	assert_eq(walls.size(), 1, "the walls are measured as a factor")
 	assert_eq(String(walls[0].faction), CROWN)
-	assert_true(String(walls[0].text).contains("the walls of Stonegate (6 of 6)"), walls[0].text)
+	assert_true(String(walls[0].text).contains("the walls of Stonegate (%d of %d)" % [top, top]), walls[0].text)
 	assert_eq(String(walls[0].get("codex", "")), "battle_walls")
 	assert_eq(BattleExplain.factor_entry("walls"), "battle_walls")
 	# A sally's cover is a factor too, and the hover names both parts in words.
@@ -97,13 +98,13 @@ func test_the_report_names_the_kind_and_the_why_counts_the_walls() -> void:
 	var lg: Dictionary = b.numbers.log
 	assert_eq(BattleExplain.part_name(lg, "cover"), "cover of the walls")
 	var storm_log: Dictionary = _battles_at(F.resolve(_state(), {CLANS: [SiegeOrder.storm("stonegate")]}, true).events, "stonegate")[0].numbers.log
-	assert_eq(BattleExplain.part_name(storm_log, "walls"), "walls (6 of 6)")
+	assert_eq(BattleExplain.part_name(storm_log, "walls"), "walls (%d of %d)" % [top, top])
 	assert_false(BattleExplain._part_note(storm_log, "walls").is_empty())
 	# A won storm's aftermath says the walls were taken, and engines lost with their army are named.
 	r = F.resolve(_state(-1, ["beasts-4"]), {CLANS: [SiegeOrder.storm("stonegate")]}, true)
 	b = _battles_at(r.events, "stonegate")[0]
 	assert_eq(String(b.numbers.winner), CLANS)
-	assert_true(String(b.numbers.report.aftermath).contains("The walls of Stonegate were taken. The Thornmane Clans hold the keep (6 of 6 walls)."),
+	assert_true(String(b.numbers.report.aftermath).contains("The walls of Stonegate were taken. The Thornmane Clans hold the keep (%d of %d walls)." % [top, top]),
 		b.numbers.report.aftermath)
 	r = F.resolve(_state(-1, ["kingdom-1"]), {CROWN: [SiegeOrder.sally("kingdom-1")]}, true)
 	b = _battles_at(r.events, "stonegate")[0]

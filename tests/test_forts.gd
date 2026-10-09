@@ -94,7 +94,7 @@ func test_fortify_legality_table_with_plain_reasons() -> void:
 	_plain(String(second.reason), "", "second order")
 	var busy := s.deep_copy()
 	F.set_fort(busy, "westwatch", 1)
-	busy.find_province("westwatch").works = {"faction": CROWN, "to": 2, "left": 3, "turn": 0}
+	busy.find_province("westwatch").works = {"faction": CROWN, "to": 2, "left": int(FortData.LEVELS[2].turns), "turn": 0}
 	busy.find_province("rivermarch").owner = CROWN
 	var one := _check(busy, CROWN, FortifyOrder.new("rivermarch"))
 	assert_eq(String(one.get("code", "")), "fortify_one_at_a_time")
@@ -302,11 +302,11 @@ func test_the_wait_after_a_capture_and_the_retake_rule() -> void:
 	var captured: Dictionary = F.events_of(r.events, "captured")[0]
 	assert_true(String(captured.text).contains("from turn %d" % from), captured.text)
 	assert_eq(int(captured.numbers.recruit_from), from)
-	var wait := _check(s, CROWN, RecruitOrder.new("spearmen", "stonegate"))
-	assert_eq(String(wait.get("code", "")), "fort_just_taken", "turn 2: not yet")
-	assert_true(String(wait.reason).contains("You took Stonegate on turn 1: it can take recruits from turn %d" % from), wait.reason)
-	while s.current_turn + 1 < from:  # the turns of the wait (FortData.CAPTURE_WAIT): still refused
-		assert_false(_check(s, CROWN, RecruitOrder.new("spearmen", "stonegate")).is_empty(), "turn %d: still waiting" % (s.current_turn + 1))
+	# Every turn of the wait it is refused with its reason, then it takes recruits.
+	while s.current_turn + 1 < from:
+		var wait := _check(s, CROWN, RecruitOrder.new("spearmen", "stonegate"))
+		assert_eq(String(wait.get("code", "")), "fort_just_taken", "turn %d: not yet" % (s.current_turn + 1))
+		assert_true(String(wait.get("reason", "")).contains("You took Stonegate on turn 1: it can take recruits from turn %d" % from), str(wait))
 		s = F.resolve(s, {}).new_state
 	assert_eq(_check(s, CROWN, RecruitOrder.new("spearmen", "stonegate")), {}, "turn %d: it takes recruits" % from)
 	# Retaking your own fort within RETAKE_TURNS turns of losing it restores your standing.
