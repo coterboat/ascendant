@@ -445,6 +445,14 @@ def make_inputs():
 
 
 def run(stage, only, jobs, hours):
+    """F.run behind the gate: a derive stage checks the base of every unit it would touch first, before the inputs,
+    the state or any Ludo call (as asc_3d_grok.run does)."""
+    if stage in DERIVE_STAGES:
+        uids = [r["unit"] for r in rows() if r["stage"] == stage and (not only or _row_matches(r, only))]
+        try:
+            GATE.require_all(uids)
+        except base_gate.BaseNotAccepted as e:
+            sys.exit("refused (the base comes first):\n%s" % e)
     make_inputs()
     state = load_state()
     if state.get("balance_before") is None:
@@ -452,12 +460,6 @@ def run(stage, only, jobs, hours):
         state.setdefault("v", {})
         state.setdefault("picks", {})
         F.save_state(state)
-    if stage in DERIVE_STAGES:
-        uids = [r["unit"] for r in rows() if r["stage"] == stage and (not only or _row_matches(r, only))]
-        try:
-            GATE.require_all(uids)
-        except base_gate.BaseNotAccepted as e:
-            sys.exit("refused (the base comes first):\n%s" % e)
     ludo.KEY = ludo.api_key()
     F.run(stage, only, jobs, hours)
 
