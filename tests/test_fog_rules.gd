@@ -5,7 +5,7 @@ extends "res://tests/test_case.gd"
 ## - round_count for every n from 0 to 200, its ranges checked against brute force;
 ## - sharing out: it sums to the shown total, everyone present gets at least 1, ties go in roster order;
 ## - stand-ins have the fixed shape;
-## - setup_fog, and the Fog of war (M5 preview) box on the new game screen.
+## - setup_fog, and the Fog of war box on the new game screen.
 
 const CROWN := "kingdom"
 const CLANS := "beasts"
@@ -359,12 +359,14 @@ func test_setup_fog_is_a_lens_on_any_game() -> void:
 
 func test_the_new_game_screen_has_the_fog_box() -> void:
 	var screen := load("res://ui/new_game_screen.tscn").instantiate() as NewGameScreen
-	assert_true(screen.fog_toggle != null and screen.fog_toggle.text == "Fog of war (M5 preview)")
-	assert_false(screen.fog_on(), "off by default")
+	assert_true(screen.fog_toggle != null and screen.fog_toggle.text == "Fog of war")
+	assert_true(screen.fog_on(), "on by default (MVP-2)")
+	assert_eq(screen.config().get("fog"), true, "so config() asks for fog")
+	screen.set_all_systems(false)
 	assert_false(screen.config().has("fog"), "no fog key while off")
 	screen.set_fog(true)
 	assert_eq(screen.config().get("fog"), true, "ticked, config() asks for fog")
-	assert_false(screen.paths_on() or screen.sieges_on(), "it ticks no other box")
+	assert_false(screen.paths_on() or screen.sieges_on() or screen.rulers_on(), "it ticks no other box")
 	var tip := String(screen.fog_toggle.tooltip_text)
 	assert_true(NewGameScreen.fog_tooltip().begins_with("You see exactly only where you own land or have an army; next to that, roughly; beyond, only what you saw last. In hotseat, each player sees only their own view."),
 		"§1.3's tooltip")

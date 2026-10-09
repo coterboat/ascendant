@@ -191,7 +191,8 @@ static func restore(save, battle_resolver: BattleResolver = null) -> Dictionary:
 
 
 ## The GameScreen config of a loaded game ({"players", "seed"}, "ai" for computer seats, "rulers" and
-## "builds" in a game with rulers), which is what a rematch (NewGameScreen.prefill) starts from.
+## "builds" in a game with rulers, and "paths", "sieges", "magic", "fog", "independents" for the systems it has), which is
+## what a rematch (NewGameScreen.prefill) starts from.
 static func config_for(session: GameSession, game_seed: int) -> Dictionary:
 	var config := {"players": session.players(), "seed": game_seed}
 	if not session.computer_seats().is_empty():
@@ -203,6 +204,12 @@ static func config_for(session: GameSession, game_seed: int) -> Dictionary:
 		for fid in builds:
 			plain[fid] = {"ruler": builds[fid].get("ruler", ""), "mandates": Array(builds[fid].get("mandates", [])).duplicate()}
 		config["builds"] = plain
+	# MVP-2 (#163): the systems the loaded game has, so a rematch of it starts from the same boxes (a game without
+	# them stays the basic game, whatever the new game screen's defaults are).
+	var state := session.state()
+	for key in ["paths", "sieges", "magic", "fog", "independents"]:
+		if state.get(key) == true:
+			config[key] = true
 	return config
 
 

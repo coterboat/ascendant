@@ -13,9 +13,9 @@ From the repo root, with the local Godot on the Mac, or on the build box:
 /home/box/playtester/godot/godot --path .
 ```
 
-- **Title screen:** **Continue** (only when there is a save) picks up your latest save. **New game** sets up a game: by default you (Player 1) play against the computer at Normal, with **Rulers** on, so Start first opens the build screen where you pick your ruler and mandates. Untick Rulers for the simpler game. **Load game** lists every save. **Quick start** goes straight in: a random faction against the computer, rulers on (your ruler gets its balanced build), a random seed. **Codex**, **Settings** (window or fullscreen, interface size 100% or 125%) and **Quit**. Player 1 is Vermilion with a circle emblem, Player 2 Cobalt with a square, whichever faction they pick.
+- **Title screen:** **Continue** (only when there is a save) picks up your latest save. **New game** sets up a game: by default you (Player 1) play against the computer at Normal, with every game system on (**Rulers**, **Paths**, **Forts & sieges**, **Magic**, **Fog of war** and **Independents**), so Start first opens the build screen where you pick your ruler and mandates. Each system is a tick box with a line of what it adds: untick any to play without it (Paths need Rulers and Magic needs Paths, so they tick and untick together), down to the basic game with none. A settings file from before the defaults changed gets one line saying so, once. **Load game** lists every save; a saved game loads with the systems it was started with. **Quick start** goes straight in: a random faction against the computer, every system on (your ruler gets its balanced build), a random seed. **Codex**, **Settings** (window or fullscreen, interface size 100% or 125%) and **Quit**. Player 1 is Vermilion with a circle emblem, Player 2 Cobalt with a square, whichever faction they pick.
 - **Against the computer:** select an army, then click a neighboring province to move it; select your capital to recruit. Press **End turn**: the computer gives its orders from the same start-of-turn map without seeing yours, everything resolves at once, and the turn report (with what the computer was thinking) opens. Capture the enemy capital to win.
-- **Hotseat:** on the new game screen, set Player 2 to **Human**. Both players share one computer: the map is covered between players until the next one presses **Ready**. **New game** on the victory screen sets up a rematch: same seats, players and rulers, new seed.
+- **Hotseat:** on the new game screen, set Player 2 to **Human**. Both players share one computer: the map is covered between players until the next one presses **Ready**. **New game** on the victory screen sets up a rematch: same seats, players and systems, new seed.
 - **Saving:** the game saves itself at the start of every turn (the last three autosaves are kept). **Menu** in the top bar (or Esc) has **Save game** (name it, or keep the date-and-time name), **Load game**, **Settings** and **Quit to title**. A save is the game as it stood when the turn began: orders you gave during the turn are not saved, and loading starts that turn again. A loaded hotseat game opens on the handoff cover. Saves live in Godot's user folder (`user://saves`, on a Mac `~/Library/Application Support/Godot/app_userdata/Ascendant/saves`); settings in `user://settings.cfg`.
 - **Codex:** every rule in plain words. Open it with the **Codex** button (title screen or top bar), or jump to the rule behind any number: right-click it, or hover it and press **F1**. Esc closes it.
 
@@ -63,8 +63,10 @@ Run it windowed to see the title screen:
 Screenshot walk (look at what a player sees before calling a visual change done): a bot plays one seat against the computer on the real screens and saves a PNG at each step, plus `walk.md` with every order and report line. Windowed only; the options are in the script's header:
 
 ```sh
-/home/box/playtester/godot/godot --path . --resolution 1600x900 -s res://tools/shots/play_shots.gd -- --out=/tmp/walk --paths --sieges --every=4 --battles=3 --fast
+/home/box/playtester/godot/godot --path . --resolution 1600x900 -s res://tools/shots/play_shots.gd -- --out=/tmp/walk --defaults --fresh --every=4 --battles=3 --fast
 ```
+
+`--defaults` plays the game a new player gets (every system on, the new game screen left as it ships) and `--fresh` uses no settings file, so the first-game guide shows; switch single systems on instead with `--rulers`, `--paths`, `--sieges`, `--fog`, `--magic`, `--independents`.
 
 ### layout
 

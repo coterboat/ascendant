@@ -75,7 +75,7 @@ func test_without_magic_nothing_magic_is_saved_listed_or_orderable() -> void:
 			assert_false(RulerRules.available_mandates(f.id, s).has(MagicRules.TITHE_OF_BLOOD), "no Tithe of Blood")
 		var cast := OrderBook.check_order(s, CLANS, CastOrder.new("bloodrot", "beasts-1", "crownkeep"), [])
 		assert_eq(String(cast.get("code", "")), "no_magic", "a cast order is refused")
-		assert_true(String(cast.reason).contains("Magic (M5 preview)"), String(cast.reason))
+		assert_true(String(cast.reason).contains("Tick Magic"), String(cast.reason))
 		var book := OrderBook.check_order(s, CLANS, SpellbookOrder.new(["bloodbolt", "briar_snare"]), [])
 		assert_eq(String(book.get("code", "")), "no_magic", "a spellbook order is refused")
 	# Tithe of Blood: refused by sacrifice and by a build in a game without magic.

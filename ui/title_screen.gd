@@ -6,12 +6,12 @@ extends Control
 ##   Continue     only when there is a save: loads the newest one that can be read (SaveStore.latest)
 ##                and switches to its game screen (SceneFlow.make_loaded_game). A save that turns out
 ##                to be damaged is explained under the buttons instead.
-##   New game     opens the NewGameScreen over the title (you against the computer, rulers on). Start
+##   New game     opens the NewGameScreen over the title (you against the computer, every system on). Start
 ##                hands its config to a new GameScreen (SceneFlow.make_game: start_game(config) runs
 ##                before it enters the tree) and switches to it; Back (or Esc) closes it.
 ##   Load game    opens the LoadScreen over the title: every save, newest first, with delete.
 ##   Quick start  straight into a game: NewGameScreen.quick_start_config() (a random faction against the
-##                computer at Normal, rulers on with the balanced preset, a random seed).
+##                computer at Normal, every system on, rulers on the balanced preset, a random seed).
 ##   Codex        opens the CodexPanel over the title; Close (or Esc) returns here.
 ##   Settings     opens the SettingsPanel (window mode, interface size, sound volumes).
 ##   Quit         closes the game.
@@ -209,7 +209,7 @@ func start_game(config: Dictionary) -> GameScreen:
 	return game
 
 
-## Straight into a game: you against the computer at Normal, a random faction, rulers on, a random seed.
+## Straight into a game: you against the computer at Normal, a random faction, every system on, a random seed.
 func quick_start() -> GameScreen:
 	return start_game(NewGameScreen.quick_start_config())
 

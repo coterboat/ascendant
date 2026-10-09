@@ -12,7 +12,6 @@ class_name MagicView
 ##   spellbook_rows(state, fid, orders)   one row per battle spell, in order: on or off, known or not, and why
 ##   moved(book, spell, step), toggled(book, spell, on)   the spellbook after a change, for a SpellbookOrder
 ##   casters_text(state, fid)             who casts for the faction, and the mage gate
-##   preview_note()                       what this build of the preview is (honest about it)
 ##
 ## M5-8 (#119) on screen: every card says what researching it first costs your transformation (Forecast.arcana_delay), what a
 ## hex or shield is worth against a typical foe (Forecast.spell_worth) and what your mages would cast once it is known, from the
@@ -27,7 +26,6 @@ class_name MagicView
 ##   recruit_note(state, fid, type, at, orders)  the second-rank warning for a recruit, or ""
 ##   lock_in_row(state, fid, nid, orders)    the lock-in preview's magic row for the side `nid` is on
 
-const PREVIEW_NOTE := "Magic is a preview: spells, rituals and the spellbook all work, but their numbers can still change."
 ## Shield of Law's card starts with this (§11.2): the spell does nothing for a defender behind walls, woods or hills.
 const FIELD_LINE := "Field spell: never on units that already have a terrain or fort bonus. It does nothing for defenders in a fort, forest or hills; it helps when you attack and on open plains."
 
@@ -287,10 +285,6 @@ static func casters_text(state: GameState, fid: String) -> String:
 			var refs: Array = rm.schools.map(func(sc): return MagicRules.school_ref(String(sc)))
 			parts.append("%s (%s%s)" % [name, "casts in battle and " if rm.get("battle", false) == true else "casts ", "the rituals of %s" % MagicRules._and_list(refs)])
 	return "Your casters: %s." % "; ".join(parts)
-
-
-static func preview_note() -> String:
-	return PREVIEW_NOTE
 
 
 static func number_words(b: Dictionary) -> String:

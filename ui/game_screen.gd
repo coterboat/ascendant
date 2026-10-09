@@ -51,9 +51,11 @@ extends Control
 ##   start_game(config)   config = {"players": [faction ids in seat order], "seed": int, "ai": {faction id:
 ##                        level}}. "ai" is optional (absent: every seat is human). Missing keys get
 ##                        default_config() values: every faction in data order and a random seed.
-##                        Rulers (M2) are opt-in until battles and succession handle them: config
-##                        "rulers": true, or "builds": {faction id: build or preset id}, or the
-##                        `-- --rulers` command-line switch for playtests (starting_state()).
+##                        A system is in the game only when the config asks for it (MVP-2, #163: the new game screen and
+##                        Quick start ask for all six, NewGameScreen.default_systems; a config without the keys is the
+##                        basic game, byte for byte as before): "rulers": true, or "builds": {faction id: build or preset
+##                        id}, "paths", "sieges", "magic", "fog", "independents", or the `-- --rulers` (and so on)
+##                        command-line switches for playtests (starting_state()).
 ##                        If the screen enters the tree without start_game(), it starts a default game.
 ##   load_game(save)      plays on from a save (SaveGame): "" or why it can't be loaded, in plain words.
 ##                        Used by SceneFlow.make_loaded_game and by Menu > Load game (in place).
@@ -189,7 +191,8 @@ func _ready() -> void:
 	_apply_board_setting()
 
 
-## Every faction in data order, and a random seed.
+## Every faction in data order, and a random seed: the basic game, with no system. It is what a game screen shown with no
+## game starts (the editor's Run Current Scene, tests); a player's defaults live in the new game screen and Quick start.
 static func default_config() -> Dictionary:
 	var players := []
 	for f in FactionData.FACTIONS:

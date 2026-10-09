@@ -452,7 +452,7 @@ func _first_use(mid: String) -> String:
 	return MagicRules.tithe_first_use(_first_use_state, faction_id, game_config.get("fog", false) == true) if _first_use_state != null else ""
 
 
-## M5-5: the game being built for has magic (the new game screen's "Magic (M5 preview)" box).
+## M5-5: the game being built for has magic (the new game screen's "Magic" box).
 func _magic_on() -> bool:
 	return game_config.get("magic", false) == true
 
