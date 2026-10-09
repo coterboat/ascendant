@@ -1,8 +1,10 @@
 {
  "batch": "asc-3d-grok",
  "rid_prefix": "ascgrok",
- "cap": 250.0,
- "note": "Written by tools/ludo/asc_3d_grok.py (which holds the prompts; edit it, not this file). #162: the M4 transformation models re-rolled from Alex's Grok Imagine concept art. cut rows are removeBackground of a crop of his sheet; ready pictures are the cutout laid on grey (Thornthrowers: styled from the Briarwarden); march / strike / fallen are pose edits; model rows read the pick as base64.",
+ "cap": 70.0,
+ "round": "redo-10-8",
+ "batch_cap": 250.0,
+ "note": "Written by tools/ludo/asc_3d_grok.py (which holds the prompts; edit it, not this file). #162: the M4 transformation models re-rolled from Alex's Grok Imagine concept art. cut rows are removeBackground of a crop of his sheet; ready pictures are the cutout laid on grey (Thornthrowers: styled from the Briarwarden); march / strike / fallen are pose edits; model rows read the pick as base64. #179: base rows redo a ready picture into review/m4_redo_base (derive stages need Alex's Good on it), and the poses Alex rejected on 10-8 are redone in the round `round` (cap `cap`, counted from the ledger lines tagged with it; balance_before is a fixed sentinel, the account is shared).",
  "style": {
   "image": "",
   "art_style": "Cel-Shaded",
@@ -12,14 +14,23 @@
   }
  },
  "state": {
-  "balance_before": 5496.6,
+  "balance_before": 1000.0,
   "v": {
    "pic_thornthrowers_ready": 2,
    "model_iron_colossus_ready": 2,
    "model_iron_colossus_strike": 2,
    "model_thornthrowers_strike": 2,
-   "model_bloodsworn_march": 2,
-   "model_briarwardens_march": 2
+   "model_bloodsworn_march": 3,
+   "model_briarwardens_march": 3,
+   "base_sunspears_ready": 2,
+   "pic_bloodsworn_march": 2,
+   "pic_bloodsworn_strike": 3,
+   "model_bloodsworn_strike": 2,
+   "pic_bloodsworn_fallen": 2,
+   "model_bloodsworn_fallen": 2,
+   "pic_briarwardens_march": 2,
+   "pic_thornthrowers_fallen": 2,
+   "model_thornthrowers_fallen": 2
   },
   "picks": {
    "cut_sunspears": 1,
@@ -49,16 +60,16 @@
    "pic_iron_colossus_fallen": 1,
    "pic_thornthrowers_march": 2,
    "pic_thornthrowers_strike": 2,
-   "pic_thornthrowers_fallen": 1,
-   "pic_briarwardens_march": 1,
    "pic_briarwardens_strike": 2,
    "pic_briarwardens_fallen": 2,
    "pic_bloodtuskers_march": 1,
    "pic_bloodtuskers_strike": 2,
    "pic_bloodtuskers_fallen": 1,
+   "pic_thornthrowers_fallen": 2,
+   "pic_briarwardens_march": 1,
    "pic_bloodsworn_march": 1,
-   "pic_bloodsworn_strike": 1,
-   "pic_bloodsworn_fallen": 1
+   "pic_bloodsworn_fallen": 3,
+   "pic_bloodsworn_strike": 1
   },
   "rerolls": {
    "pic_thornthrowers_ready": [
@@ -74,10 +85,41 @@
     "v1: v1: dark brown, none of the green moss (L* 12); picture lifted 1.3"
    ],
    "model_bloodsworn_march": [
-    "v1: v1: near-black (L* 7.5), a gamma 2 lift washes it out; picture lifted 1.35"
+    "v1: v1: near-black (L* 7.5), a gamma 2 lift washes it out; picture lifted 1.35",
+    "redo: same problem, it keeps thinking he's holding the weapons instead of them being attached to his arms"
    ],
    "model_briarwardens_march": [
-    "v1: v1: muddy olive, the moss and the club lost in the colour map"
+    "v1: v1: muddy olive, the moss and the club lost in the colour map",
+    "redo: needs to be holding the club"
+   ],
+   "base_sunspears_ready": [
+    "v1: v1 redrew the armour as plain gold and blue plate: the stained-glass pattern Alex liked was lost"
+   ],
+   "pic_bloodsworn_march": [
+    "redo: same problem, it keeps thinking he's holding the weapons instead of them being attached to his arms"
+   ],
+   "pic_bloodsworn_strike": [
+    "redo: rejected with his edit: slashing with his arm blade raised",
+    "redo: v2 strike: the first takes drew a hilt, a held sword"
+   ],
+   "model_bloodsworn_strike": [
+    "redo: rejected with his edit: slashing with his arm blade raised",
+    "redo: v2 strike: the first takes drew a hilt, a held sword"
+   ],
+   "pic_bloodsworn_fallen": [
+    "redo: his arm blades are dropped as weapons, they should be still attached to him"
+   ],
+   "model_bloodsworn_fallen": [
+    "redo: his arm blades are dropped as weapons, they should be still attached to him"
+   ],
+   "pic_briarwardens_march": [
+    "redo: needs to be holding the club"
+   ],
+   "pic_thornthrowers_fallen": [
+    "redo: scatter the spears"
+   ],
+   "model_thornthrowers_fallen": [
+    "redo: scatter the spears"
    ]
   },
   "lifts": {
@@ -89,18 +131,17 @@
    "iron_knights_march": 1.155,
    "iron_colossus_march": 1.759,
    "thornthrowers_march": 1.29,
-   "bloodsworn_march": 1.56,
-   "thornthrowers_fallen": 1.155,
    "bloodtuskers_fallen": 1.29,
-   "bloodsworn_fallen": 1.565,
-   "briarwardens_march": 1.302
+   "briarwardens_march": 1.255,
+   "bloodsworn_march": 1.22,
+   "bloodsworn_fallen": 1.39
   },
   "pic_lifts": {
    "model_iron_colossus_ready": 1.4,
    "model_iron_colossus_strike": 1.4,
-   "model_thornthrowers_strike": 1.3,
-   "model_bloodsworn_march": 1.35
-  }
+   "model_thornthrowers_strike": 1.3
+  },
+  "balance_before_162": 5496.6
  },
  "assets": [
   {
@@ -299,12 +340,27 @@
    "out": "assets/_concept/candidates/grok/bloodsworn_ready_fix"
   },
   {
+   "id": "base_sunspears_ready",
+   "stage": "base",
+   "kind": "edit",
+   "n": 3,
+   "from_file": "assets/_concept/grok3d/kingdom/sunspears_ready.webp",
+   "prompt": "The same figure exactly as drawn, with the same ornate stained-glass pattern of gold, blue and red panels on every piece of his armour, the same gold helmet and blue plume, the same face and the same inked painted style, with three changes only. First, get rid of the halo behind his helmet. Second, get rid of the random spikes and rays of light coming out of him, so the glow around his chest and shoulders and sides is gone and the edges of his armour are clean. Third, his right hand holds the long golden spear by its low end, just above the butt, so the spearhead rises far above his head. He stands in a relaxed A-pose with his feet apart, the spear at arm's length out to his side with clear space between the spear and his body, his left arm held a little out from his side. Three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "pick_to": "assets/_concept/grok3d/kingdom/sunspears_ready.webp",
+   "group": "pictures",
+   "unit": "sunspears",
+   "pose": "ready",
+   "v": 2,
+   "augment": false,
+   "out": "assets/_concept/candidates/grok/sunspears_ready_base"
+  },
+  {
    "id": "pic_sunspears_march",
    "stage": "poses",
    "kind": "edit",
    "n": 2,
    "from_file": "assets/_concept/grok3d/kingdom/sunspears_ready.webp",
-   "prompt": "The same figure, now marching forward with his left leg striding ahead, the golden spear sloped back over his right shoulder in his right hand, his left arm swinging, the rose-window halo glowing behind his helmet, eyes ahead. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "prompt": "The same figure, now marching forward with his left leg striding ahead, his right hand gripping the golden spear by its low end beside his hip, the spearhead sloping up and back over his right shoulder, his left arm swinging, eyes ahead. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/grok3d/kingdom/sunspears_march.webp",
    "group": "pictures",
    "unit": "sunspears",
@@ -320,7 +376,7 @@
    "kind": "edit",
    "n": 2,
    "from_file": "assets/_concept/grok3d/kingdom/sunspears_ready.webp",
-   "prompt": "The same figure, now lunging forward on his bent left leg, thrusting the golden spear straight ahead at waist height with his right arm fully extended, his left hand open at his side, the rose-window halo glowing behind his helmet, a fierce shout. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "prompt": "The same figure, now lunging forward on his bent left leg, thrusting the golden spear straight ahead at waist height, his right arm fully extended and gripping the spear by its low end, his left hand open at his side, a fierce shout. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/grok3d/kingdom/sunspears_strike.webp",
    "group": "pictures",
    "unit": "sunspears",
@@ -336,7 +392,7 @@
    "kind": "edit",
    "n": 2,
    "from_file": "assets/_concept/grok3d/kingdom/sunspears_ready.webp",
-   "prompt": "The same figure, now fallen in battle, lying flat on his back on the floor with his arms out to the sides, his helmet still on, the golden spear lying on the floor beside him, the rose-window halo lying on the floor behind his head, eyes closed. Same outfit, same colours, same outline style, seen from the side and a little above, the whole figure lying full length, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "prompt": "The same figure, now fallen in battle, lying flat on his back on the floor with his arms out to the sides, his helmet still on, the golden spear lying on the floor beside him, eyes closed. Same outfit, same colours, same outline style, seen from the side and a little above, the whole figure lying full length, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/grok3d/kingdom/sunspears_fallen.webp",
    "group": "pictures",
    "unit": "sunspears",
@@ -526,15 +582,15 @@
    "id": "pic_thornthrowers_fallen",
    "stage": "poses",
    "kind": "edit",
-   "n": 2,
+   "n": 3,
    "from_file": "assets/_concept/grok3d/beasts/thornthrowers_ready.webp",
-   "prompt": "The same figure, now fallen in battle, lying flat on his back on the floor with his arms out to the sides, the thorned wooden javelins lying on the floor beside him, eyes closed. Same outfit, same colours, same outline style, seen from the side and a little above, the whole figure lying full length, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "prompt": "The same figure, now fallen in battle, lying flat on his back on the floor with his arms out to the sides, his hands open and empty, the thorned wooden javelins scattered across the floor around him, one near his head, one by his feet and one far to his side, each pointing a different way, eyes closed. Same outfit, same colours, same outline style, seen from the side and a little above, the whole figure lying full length, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/grok3d/beasts/thornthrowers_fallen.webp",
    "group": "pictures",
    "unit": "thornthrowers",
    "pose": "fallen",
-   "v": 1,
-   "pick": 1,
+   "v": 2,
+   "pick": 2,
    "augment": false,
    "out": "assets/_concept/candidates/grok/thornthrowers_fallen"
   },
@@ -542,14 +598,14 @@
    "id": "pic_briarwardens_march",
    "stage": "poses",
    "kind": "edit",
-   "n": 2,
+   "n": 3,
    "from_file": "assets/_concept/grok3d/beasts/briarwardens_ready.webp",
-   "prompt": "The same figure, now striding forward with its left leg ahead, the spiked tree-trunk club resting on its right shoulder, the thorned bark shield on its left arm, its eyes glowing green ahead. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "prompt": "The same figure, now striding forward with its left leg ahead, its right hand gripping the handle of the spiked tree-trunk club and resting the club on its right shoulder, the thorned bark shield strapped to its left arm, its eyes glowing green ahead. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/grok3d/beasts/briarwardens_march.webp",
    "group": "pictures",
    "unit": "briarwardens",
    "pose": "march",
-   "v": 1,
+   "v": 2,
    "pick": 1,
    "augment": false,
    "out": "assets/_concept/candidates/grok/briarwardens_march"
@@ -638,14 +694,14 @@
    "id": "pic_bloodsworn_march",
    "stage": "poses",
    "kind": "edit",
-   "n": 2,
+   "n": 3,
    "from_file": "assets/_concept/grok3d/beasts/bloodsworn_ready.webp",
-   "prompt": "The same figure, now loping forward with his left leg ahead, the curved bone blade held low in his right hand, his left claws swinging, eyes ahead. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "prompt": "The same figure, now loping forward with his left leg ahead, his arms swinging at his sides, the curved bone blade growing out of his right forearm as part of the arm and the bone spikes along his left forearm, the blades grow from the forearms and swing with the arms, his claws open and empty, eyes ahead. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/grok3d/beasts/bloodsworn_march.webp",
    "group": "pictures",
    "unit": "bloodsworn",
    "pose": "march",
-   "v": 1,
+   "v": 2,
    "pick": 1,
    "augment": false,
    "out": "assets/_concept/candidates/grok/bloodsworn_march"
@@ -654,14 +710,14 @@
    "id": "pic_bloodsworn_strike",
    "stage": "poses",
    "kind": "edit",
-   "n": 2,
+   "n": 3,
    "from_file": "assets/_concept/grok3d/beasts/bloodsworn_ready.webp",
-   "prompt": "The same figure, now leaping forward in a savage lunge, slashing with the curved bone blade raised high in his right hand and his left claws thrust forward, mouth open in a snarl. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "prompt": "The same figure, now leaping forward in a savage lunge, slashing with his arm blade raised high: the curved bone blade grows out of his right forearm as one piece with the arm, running from the elbow past the wrist, his fist closed under the blade, the blades grow from the forearms as part of his arms, and his left claws thrust forward, mouth open in a snarl. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/grok3d/beasts/bloodsworn_strike.webp",
    "group": "pictures",
    "unit": "bloodsworn",
    "pose": "strike",
-   "v": 1,
+   "v": 3,
    "pick": 1,
    "augment": false,
    "out": "assets/_concept/candidates/grok/bloodsworn_strike"
@@ -670,15 +726,15 @@
    "id": "pic_bloodsworn_fallen",
    "stage": "poses",
    "kind": "edit",
-   "n": 2,
+   "n": 3,
    "from_file": "assets/_concept/grok3d/beasts/bloodsworn_ready.webp",
-   "prompt": "The same figure, now fallen in battle, lying flat on his back on the floor with his arms out to the sides, the curved bone blade lying on the floor beside him, eyes closed. Same outfit, same colours, same outline style, seen from the side and a little above, the whole figure lying full length, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "prompt": "The same figure, now fallen in battle, lying flat on his back on the floor with his arms out to the sides, the curved bone blades still growing from his forearms as part of his arms, his claws open and empty, eyes closed. Same outfit, same colours, same outline style, seen from the side and a little above, the whole figure lying full length, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/grok3d/beasts/bloodsworn_fallen.webp",
    "group": "pictures",
    "unit": "bloodsworn",
    "pose": "fallen",
-   "v": 1,
-   "pick": 1,
+   "v": 2,
+   "pick": 3,
    "augment": false,
    "out": "assets/_concept/candidates/grok/bloodsworn_fallen"
   },
@@ -967,7 +1023,7 @@
    "unit": "bloodsworn",
    "pose": "strike",
    "side": "blood_pact",
-   "v": 1,
+   "v": 2,
    "out": "assets/models/candidates/grok/bloodsworn_strike"
   },
   {
@@ -1069,7 +1125,7 @@
    "unit": "briarwardens",
    "pose": "march",
    "side": "thorn_wild",
-   "v": 2,
+   "v": 3,
    "out": "assets/models/candidates/grok/briarwardens_march"
   },
   {
@@ -1103,7 +1159,7 @@
    "unit": "bloodsworn",
    "pose": "march",
    "side": "blood_pact",
-   "v": 2,
+   "v": 3,
    "out": "assets/models/candidates/grok/bloodsworn_march"
   },
   {
@@ -1188,7 +1244,7 @@
    "unit": "thornthrowers",
    "pose": "fallen",
    "side": "thorn_wild",
-   "v": 1,
+   "v": 2,
    "out": "assets/models/candidates/grok/thornthrowers_fallen"
   },
   {
@@ -1239,7 +1295,7 @@
    "unit": "bloodsworn",
    "pose": "fallen",
    "side": "blood_pact",
-   "v": 1,
+   "v": 2,
    "out": "assets/models/candidates/grok/bloodsworn_fallen"
   }
  ]

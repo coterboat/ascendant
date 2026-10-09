@@ -44,12 +44,33 @@ Where things go:
   judges them there, and the batches' install actions put the accepted pictures and models in the game. A Ludo model
   comes with a floor slab (the picture's soft ground shadow fused into a pad under the feet): `trim_floor` cuts it away.
 
-The cap: this batch stops at CAP (under the issue's 120 credits), counted from this batch's own ledger, not from the
-account's balance: another builder spends from the same account at the same time, so a balance delta would charge
-it to this batch. Discipline as asc-3d-factions (studio/ludo-playbook.md): a failed job is free but burns its request
-id, so a retry bumps `v`; candidates and raw GLBs stay in the gitignored candidates/ folders; every input goes to
-Ludo as base64 from a local file. Stdlib plus ffmpeg (the full build, for WebP).
+The cap: this batch stops at CAP, the budget of the round in hand (below), counted from this batch's own ledger (the
+lines tagged with the round), not from the account's balance: another builder spends from the same account at the same
+time, so a balance delta would charge it to this batch. Discipline as asc-3d-factions (studio/ludo-playbook.md): a
+failed job is free but burns its request id, so a retry bumps `v`; candidates and raw GLBs stay in the gitignored
+candidates/ folders; every input goes to Ludo as base64 from a local file. Stdlib plus ffmpeg (the full build, for WebP).
+
+The base-first gate and the Hill Slingers' redo (issue #179, from Alex's 10-8 notes)
+------------------------------------------------------------------------------------
+"The base model has to be nailed down before we build on it": every pose is an edit of a unit's ready picture, so a
+wrong base spreads into all of them. A unit is made in two stages (tools/ludo/base_gate.py):
+
+    python3 tools/ludo/asc_3d_free_holds.py run base --only hill_slingers   # BASE: the ready picture, 3 takes (an edit of the current one)
+    python3 tools/ludo/asc_3d_free_holds.py base-batch                      # review/ind_redo_base/ (a concept batch): Alex marks Good / Good with changes / Bad
+    python3 tools/ludo/asc_3d_free_holds.py base-status                     # every unit's base: accepted, waiting, refused, with why
+    python3 tools/ludo/asc_3d_free_holds.py run poses|models --only hill_slingers   # DERIVE: refused, naming the unit, until its base is accepted
+
+`run poses`, `run models` and `regen` read review/ind_redo_base/review.json before they submit anything (every derived
+row checks again), and a unit whose base is not Good (or Good with changes, after a redo) is refused with a plain
+message; the take Alex kept is copied over the unit's ready pick, so the poses are made from exactly that picture. The
+units Alex accepted before the gate existed (their ready pictures, in review/ind_concept) are GRANDFATHERED below.
+`regen-base` is the batch's "Redo rejected" action; `pick` refuses a base row. The Hill Slingers' base is the one in
+the redo: his notes ("a real sling, not a long rope or a spool: a short cord with a pouch, held doubled"; the strike:
+"right elbow up, fingers toward the sky, twirling the sling overhead, not held like a rifle"; the fallen pose was fine)
+are in the prompts below, the poses wait for the base. The round `ROUND` has its own CAP; JOB_CAP (120) is the redo's
+budget across both batch scripts (asc_3d_grok.py has 70 of it).
 """
+import filecmp
 import json
 import math
 import os
@@ -57,10 +78,12 @@ import shutil
 import struct
 import subprocess
 import sys
+import threading
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import asc_3d_factions as F  # noqa: E402  (the driver, picks, measuring, slimming)
+import base_gate  # noqa: E402  (the base-first gate: derive only from a base Alex accepted, #179)
 import glb_slim  # noqa: E402
 import ludo  # noqa: E402
 
@@ -68,9 +91,11 @@ ROOT = F.ROOT
 BATCH = "asc-3d-free-holds"
 MANIFEST = os.path.join(ROOT, "tools", "ludo", "batches", BATCH + ".json")
 LEDGER = os.path.join(ROOT, "studio", "ledgers", BATCH + ".jsonl")
-## The issue's cap is 120 credits. The driver checks completed spend before each submit and a few jobs run at once
-## (up to 4 credits each), so the stop line sits below it.
-CAP = 111.0
+## #161 (the first round) had a 120-credit cap and spent 88 of it. The redo round of #179 (Alex's 10-8 notes) has 120
+## credits across both batch scripts (JOB_CAP): 50 of them here, 70 in asc_3d_grok.py. The driver checks completed spend
+## before each submit and a few jobs run at once (up to 4 credits each), so the stop line is the round's CAP.
+ROUND = "redo-10-8"
+CAP = 50.0
 JOB_CAP = 120.0
 PIC_CAND = "assets/_concept/candidates/free_holds"
 GLB_CAND = "assets/models/candidates/free_holds"
@@ -80,6 +105,7 @@ FACTION = "independents"
 ## The Review Table batches (review/ is gitignored: the batches are local).
 CONCEPT_BATCH = "ind_concept"
 MODEL_BATCH = "ind_models"
+BASE_BATCH = "ind_redo_base"  ## the concept batch of base pictures (the gate reads its review.json)
 
 # ------------------------------------------------------------------------------------------ style
 ## STYLE_BIBLE §6.1 C-portrait, verbatim (as asc_3d_paths.py).
@@ -118,17 +144,23 @@ UNITS = {
         cls="ranged", body=0.9, faces=5000, tex=512, beast=False, name="Hill Slingers", style="pick:free_spears",
         pstyle="pick:free_spears",
         who="Free Holds hill slinger, a lean local skirmisher of the hill holds",
+        ## Alex 10-8 (ind_concept / ind_models): "The sling is a little too long, it needs to be a real sling not a long
+        ## rope"; "the agent thinks it's a spool of rope not a sling": a real sling is a short cord with a pouch, held
+        ## doubled. Strike: "he's holding it like a rifle, his right elbow should be rotated so that his fingers are towards
+        ## the sky, and he should be twirling the sling". Fallen: "update the sling to whatever the base image comes back
+        ## with, pose is fine". The base is redone first (BASE_REDO); march, strike and fallen wait for it.
         outfit="a pale bone-white wool hood and cowl, a short undyed cream wool tunic with a grey leather chest strap, "
                "grey wool leggings wrapped with brown cord, light brown boots, a leather pouch of round grey stones "
-               "at the hip, and a long leather sling",
-        base="standing in a relaxed A-pose with his feet apart, holding the long leather sling in his right hand with "
-             "its cord hanging straight down at arm's length out to his side with clear space between the sling and "
-             "his body, his left arm held a little out from his side, alert expression, eyes ahead",
-        march="loping forward with his left leg ahead, the sling coiled in his right hand at his side, his left arm "
-              "swinging, eyes ahead",
-        strike="slinging a stone: his right arm swung forward and out at shoulder height with the sling's cord "
-               "stretched straight ahead, his left arm drawn back, his left leg stepping forward, eyes on the target "
-               "ahead",
+               "at the hip, and a real sling, a short leather cord with a small leather pouch in the middle, held doubled",
+        base="standing in a relaxed A-pose with his feet apart, holding the real sling in his right hand, its two cord "
+             "ends gripped together in his fist so the short cord hangs doubled with the small pouch dangling a little "
+             "below his hand, at arm's length out to his side with clear space between the sling and his body, his "
+             "left arm held a little out from his side, alert expression, eyes ahead",
+        march="loping forward with his left leg ahead, the doubled sling gripped in his right hand at his side with its "
+              "small pouch dangling, his left arm swinging, eyes ahead",
+        strike="slinging a stone: his right elbow raised high with his fingers pointing toward the sky, twirling the sling "
+               "in a circle above his head with its pouch whirling at the end of the doubled cord, his left arm "
+               "stretched forward pointing at the target, his left leg stepping forward, eyes on the target ahead",
         fallen="fallen in battle, lying flat on his back on the floor with his arms out to the sides, his hood still "
                "on, the sling and the pouch of stones lying on the floor beside him, eyes closed",
         portrait="A Free Holds hill slinger, a lean sharp-eyed local skirmisher in a pale bone-white wool hood and "
@@ -179,6 +211,32 @@ UNITS = {
 POSES = F.POSES
 LYING = F.LYING
 
+## ------------------------------------------------------------------------------------ the base gate and the redo (#179)
+## The base redo: an edit of the unit's current ready picture, 3 takes, into the concept batch BASE_BATCH. Alex's notes ride
+## in the prompt in his own words (a negative is drawn, so each is said as what to do). The edit keeps the figure he reviewed
+## (ind_concept: good, only the sling wrong) and gives him a real sling.
+BASE_REDO = {
+    "hill_slingers": ("The same figure with the same hood, face, outfit and colours, now holding a real sling in his right "
+                      "hand: a short leather cord with a small leather pouch in the middle, the two ends of the cord "
+                      "gripped together in his fist so the cord hangs doubled with the pouch dangling a little below his "
+                      "hand, the whole sling about as long as his forearm. He stands in a relaxed A-pose with his feet "
+                      "apart, his right arm held out from his side with clear space between the sling and his body, his "
+                      "left arm held a little out from his side, alert expression, eyes ahead. Same outline style, "
+                      "three-quarter view from slightly above, the whole figure with wide empty margin on every side, "
+                      "plain flat light grey background."),
+}
+BASE_TAKES = 3
+## The units whose base Alex accepted before the gate existed: his Good on the ready picture in the batch that judged it
+## (review/ind_concept, 10-8; PR #178 installed them). If that batch's review.json is here and says otherwise, base_gate
+## refuses the unit. The Hill Slingers' ready picture was Good with changes there ("a real sling, not a long rope"): it is
+## redone in BASE_BATCH and derives only from that.
+GRANDFATHERED = {
+    "free_spears": {"batch": "ind_concept", "item": "free_spears_ready", "at": "2026-10-08T18:39:05"},
+    "wildkin": {"batch": "ind_concept", "item": "wildkin_ready", "at": "2026-10-08T18:40:32"},
+    "hold_captain": {"batch": "ind_concept", "item": "hold_captain_ready", "at": "2026-10-08T18:40:37"},
+}
+DERIVE_STAGES = ("poses", "models")  ## made only from an accepted base (the gate)
+
 ## Greyscale style anchors (the bible's leak rule), made from committed pictures into the gitignored inputs folder:
 ## name -> the picture it is a greyscale copy of.
 GREY = {
@@ -226,6 +284,12 @@ def rows():
                     "prompt": "%s Subject: a %s, with %s, %s." % (F.C_MODEL_BEAST if u["beast"] else F.C_MODEL,
                                                                   u["who"], u["outfit"], u["base"]),
                     "pick_to": pick_path(uid + "_ready"), "group": "units", "unit": uid, "pose": "ready"})
+    ## base: the redo of a ready picture, an edit of the current one (stage base: the gate's input, so nothing gates it).
+    ## Its candidates go to the concept batch BASE_BATCH, never to the pick: `pick` refuses a base row.
+    for uid, prompt in BASE_REDO.items():
+        out.append({"id": "base_%s_ready" % uid, "stage": "base", "kind": "edit", "n": BASE_TAKES,
+                    "from_file": pick_path(uid + "_ready"), "prompt": prompt, "pick_to": pick_path(uid + "_ready"),
+                    "group": "units", "unit": uid, "pose": "ready"})
     for uid, u in UNITS.items():
         for pose in POSES[1:]:
             view = F.VIEW_LYING if pose in LYING else F.VIEW
@@ -261,7 +325,7 @@ def write_manifest(state=None):
     state.setdefault("v", {})
     state.setdefault("picks", {})
     man = {
-        "batch": BATCH, "rid_prefix": "ascfh", "cap": CAP, "job_cap": JOB_CAP,
+        "batch": BATCH, "rid_prefix": "ascfh", "cap": CAP, "job_cap": JOB_CAP, "round": ROUND,
         "note": "Written by tools/ludo/asc_3d_free_holds.py (which holds the prompts; edit it, not this file). The "
                 "Free Holds' look (IND-2, #161): Free Spears, Hill Slingers, Wildkin and the Hold Captain, 4 poses "
                 "each, and their portraits. Picture rows roll n candidates in one call; picks are copied to "
@@ -283,7 +347,7 @@ def write_manifest(state=None):
         if a["kind"] == "model3d":
             a["out"] = GLB_CAND + "/" + r["id"][len("model_"):]
         else:
-            suffix = "_portrait" if r["id"].startswith("por_") else ""
+            suffix = "_portrait" if r["id"].startswith("por_") else "_base" if r["id"].startswith("base_") else ""
             a["out"] = PIC_CAND + "/" + r["id"].split("_", 1)[1] + suffix
         man["assets"].append(a)
     os.makedirs(os.path.dirname(MANIFEST), exist_ok=True)
@@ -298,28 +362,31 @@ def manifest_rows():
 
 
 # ------------------------------------------------------------------------------------- the cap
-SENTINEL = 1000.0  ## balance_before: spend is SENTINEL - available, and available is SENTINEL - this ledger's sum
+SENTINEL = 1000.0  ## balance_before: spend is SENTINEL - available, and available is SENTINEL - this round's ledger sum
 
 
-def ledger_spent():
-    """Credits this batch has been charged: the sum of its own ledger."""
+def ledger_spent(round_tag=None):
+    """Credits this batch has been charged: the sum of its own ledger, or only the lines tagged with one round."""
     total = 0.0
     if os.path.exists(LEDGER):
-        for line in open(LEDGER):
-            line = line.strip()
-            if line:
-                total += float(json.loads(line).get("credits_charged") or 0)
+        with open(LEDGER) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    e = json.loads(line)
+                    if round_tag is None or e.get("round") == round_tag:
+                        total += float(e.get("credits_charged") or 0)
     return round(total, 2)
 
 
 def own_balance():
-    return SENTINEL - ledger_spent()
+    return SENTINEL - ledger_spent(ROUND)
 
 
 ## asc_3d_factions' driver, picks and re-rolls read these module globals: point them at this batch. The driver
 ## computes spend as balance_before - account(); account() here is the batch's own, so the shared account's other
 ## spenders (M4-ART runs at the same time) never count against this cap.
-F.BATCH, F.MANIFEST, F.LEDGER, F.CAP, F.RID = BATCH, MANIFEST, LEDGER, CAP, "ascfh"
+F.BATCH, F.MANIFEST, F.LEDGER, F.CAP, F.RID, F.ROUND = BATCH, MANIFEST, LEDGER, CAP, "ascfh", ROUND
 F.PIC_CAND, F.GLB_CAND, F.INPUTS = PIC_CAND, GLB_CAND, INPUTS
 F.SCRATCH = os.environ.get("ASC3D_SCRATCH", os.path.join(ROOT, GLB_CAND, "_review"))
 F.rows = rows
@@ -328,6 +395,41 @@ F.PRICE = dict(F.PRICE, **{"/assets/3d-model": 4.0})
 F.write_manifest = write_manifest
 F.load_state = load_state
 F.account = own_balance
+
+GATE = base_gate.Gate(BASE_BATCH, display=lambda uid: UNITS[uid]["name"], grandfathered=GRANDFATHERED)
+_adopt_lock = threading.Lock()
+
+
+def adopt_base(uid):
+    """The base gate for one unit (base_gate.BaseNotAccepted when Alex has not accepted it), and the take he kept copied
+    over the unit's ready pick when it is not that picture already: the poses and the ready model are made from exactly
+    the picture he accepted. A grandfathered unit keeps the pick it has."""
+    r = GATE.require(uid)
+    if r["file"]:
+        dst = os.path.join(ROOT, pick_path(uid + "_ready"))
+        with _adopt_lock:
+            if not (os.path.exists(dst) and filecmp.cmp(str(r["file"]), dst, shallow=False)):
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                tmp = dst + ".tmp.webp"
+                shutil.copyfile(str(r["file"]), tmp)
+                os.replace(tmp, dst)
+                print("adopted the base Alex accepted for %s: %s -> %s" % (uid, r["file"], pick_path(uid + "_ready")))
+    return r
+
+
+def gate_row(row):
+    """No derived row is submitted for a unit whose base is not accepted, whichever way it was asked for (run, regen: the
+    driver calls this before each row, F.GATE_ROW)."""
+    if row["stage"] in DERIVE_STAGES:
+        adopt_base(row["unit"])
+
+
+F.GATE_ROW = gate_row
+
+
+def _row_matches(r, only):
+    """F.run's --only: a row id, a unit, a pose or a unit inside the id."""
+    return any(r["id"] == o or r["unit"] == o or r["id"].endswith("_" + o) or ("_%s_" % o) in r["id"] for o in only)
 
 
 def make_inputs():
@@ -350,6 +452,12 @@ def run(stage, only, jobs, hours):
         state.setdefault("v", {})
         state.setdefault("picks", {})
         F.save_state(state)
+    if stage in DERIVE_STAGES:
+        uids = [r["unit"] for r in rows() if r["stage"] == stage and (not only or _row_matches(r, only))]
+        try:
+            GATE.require_all(uids)
+        except base_gate.BaseNotAccepted as e:
+            sys.exit("refused (the base comes first):\n%s" % e)
     ludo.KEY = ludo.api_key()
     F.run(stage, only, jobs, hours)
 
@@ -432,8 +540,8 @@ def concept_items():
     state = load_state()
     items = []
     for r in rows():
-        if r["kind"] not in ("styled", "edit"):
-            continue
+        if r["kind"] not in ("styled", "edit") or r["stage"] == "base":
+            continue  ## (a base row's takes are the base batch's, BASE_BATCH)
         a = man[r["id"]]
         cands = F.cand_files(a)
         if not cands:
@@ -664,9 +772,95 @@ def model_batch():
     print("review/%s: %d models" % (MODEL_BATCH, len(items)))
 
 
+BASE_ACTIONS = [
+    {"id": "install", "kind": "install", "label": "Install accepted bases",
+     "help": "Copy the base pictures you marked Good (or Good with changes) over the ready pictures the poses are made "
+             "from (assets/_concept/independents/, review.py apply)",
+     "cmd": ["python3", "tools/review/review.py", "apply", BASE_BATCH],
+     "options": [{"flag": "--dry-run", "label": "Dry run", "type": "bool", "default": False}]},
+    {"id": "regen", "kind": "regen", "label": "Redo rejected",
+     "help": "Redo the rejected base pictures with Ludo (0.5 credit a take, this round's cap); the poses and models of a "
+             "unit wait until its base is Good",
+     "cmd": ["python3", "tools/ludo/asc_3d_free_holds.py", "regen-base"], "spends": True},
+]
+
+
+def base_items():
+    """One item per base row that has candidates: the unit's ready picture, the takes of the redo."""
+    man = manifest_rows()
+    items = []
+    for r in rows():
+        if r["stage"] != "base":
+            continue
+        a = man[r["id"]]
+        cands = F.cand_files(a)
+        if not cands:
+            continue
+        uid = r["unit"]
+        name = UNITS[uid]["name"]
+        items.append({"id": "%s_ready" % uid, "label": "%s ready (the base)" % name, "group": name, "text": r["prompt"],
+                      "target": r["pick_to"], "sources": sorted(cands),
+                      "meta": {"row": r["id"], "unit": uid, "v": a.get("v", 1),
+                               "context": "the base picture every %s pose and model is made from: Good only when it is "
+                                          "right (nothing is built on it before)" % name}})
+    return items
+
+
+def _to_webp(src, dst):
+    subprocess.run([F.FF, "-y", "-loglevel", "error", "-i", src, "-vf",
+                    "scale='min(1024,iw)':'min(1024,ih)':force_original_aspect_ratio=decrease", "-frames:v", "1",
+                    "-c:v", "libwebp", "-quality", "90", dst], check=True)
+
+
+def base_batch(name=BASE_BATCH):
+    """review/<name>: a concept batch of the base pictures (Good / Good with changes / Bad), built from the candidates of
+    the base rows. The gate reads its review.json; Install accepted = review.py apply (the take he kept to the ready pick)."""
+    items = base_items()
+    if not items:
+        sys.exit("no base candidates yet (run `run base --only <unit>`)")
+    n = base_gate.write_base_batch(name, "Free Holds redo: the base pictures (#179), Good before anything is built on them",
+                                   items, [dict(a) for a in BASE_ACTIONS], _to_webp, root=os.path.join(ROOT, "review"))
+    print("review/%s: %d base item(s)" % (name, n))
+
+
+def base_status():
+    """Every unit's base for the gate: accepted (and which take), grandfathered, or refused (and why)."""
+    for uid in UNITS:
+        r = GATE.check(uid)
+        print("%-14s %-20s %s" % (uid, r["state"], ("-> %s" % r["file"]) if r["file"] else r["message"]))
+
+
+def regen_base():
+    """The base batch's Redo rejected: every rejected (or Good with changes) base is rolled again with its prompt as it is
+    now (the notes are printed: edit BASE_REDO with them first), then the batch is rebuilt."""
+    review = _review_module()
+    ludo.KEY = ludo.api_key()
+    review.write_rejected(BASE_BATCH)
+    rj = json.load(open(os.path.join(ROOT, "review", BASE_BATCH, "rejected.json")))
+    todo = []
+    for e in rj:
+        row = (e.get("meta") or {}).get("row")
+        if row:
+            print("rejected %s: %s" % (e["id"], e.get("note") or "(no note)"))
+            todo.append(row)
+    if not todo:
+        print("nothing rejected")
+        return
+    state = load_state()
+    if state.get("balance_before") is None:
+        state["balance_before"] = SENTINEL
+        F.save_state(state)
+    for row in todo:
+        F.reroll(row, "rejected in the Review Table")
+    F.run("base", todo, 2, 2.0)
+    base_batch()
+
+
 def batches():
     concept_batch()
     model_batch()
+    if any(F.cand_files(manifest_rows()[r["id"]]) for r in rows() if r["stage"] == "base"):
+        base_batch()
 
 
 # ------------------------------------------------------------------------------------------ install
@@ -803,7 +997,7 @@ def regen():
     review = _review_module()
     ludo.KEY = ludo.api_key()
     todo = []
-    for name in (CONCEPT_BATCH, MODEL_BATCH):
+    for name in (CONCEPT_BATCH, MODEL_BATCH, BASE_BATCH):
         if not os.path.exists(os.path.join(ROOT, "review", name, "batch.json")):
             continue
         review.write_rejected(name)
@@ -822,7 +1016,7 @@ def regen():
         F.save_state(state)
     for row in todo:
         F.reroll(row, "rejected in the Review Table")
-    for stage in ("bases1", "bases2", "poses", "portraits1", "portraits2", "models"):
+    for stage in ("bases1", "bases2", "base", "poses", "portraits1", "portraits2", "models"):
         F.run(stage, [r for r in todo], 2, 2.0)
     batches()
 
@@ -862,11 +1056,15 @@ def main(argv):
         print("account credits available %.1f (shared); this batch has spent %.2f" % (
             float(ludo.account().get("available", 0.0)), ledger_spent()))
     elif cmd == "spent":
-        print("%.2f of %.0f credits (stop line %.0f)" % (ledger_spent(), JOB_CAP, CAP))
+        print("%.2f of the round %s's %.0f credits (the redo's 120 across both scripts); the batch in all: %.2f" % (
+            ledger_spent(ROUND), ROUND, CAP, ledger_spent()))
     elif cmd == "run":
         only = opt.get("only", "").split(",") if opt.get("only") else []
         run(rest[0], only, int(opt.get("jobs", 2)), float(opt.get("hours", 3)))
     elif cmd == "pick":
+        if rest[0].startswith("base_"):
+            sys.exit("%s is a base picture: Alex picks it in the Review Table (%s), the poses adopt the take he accepted "
+                     "(`base-batch` builds the batch)" % (rest[0], BASE_BATCH))
         F.pick(rest[0], int(rest[1]), rest[2] if len(rest) > 2 else None, bool(opt.get("deshadow")))
     elif cmd == "pick-portrait":
         pick_portrait(rest[0], int(rest[1]), float(opt.get("zoom", 1.0)), float(opt.get("dx", 0.0)),
@@ -877,6 +1075,12 @@ def main(argv):
         F.strip(rest[0])
     elif cmd == "batches":
         batches()
+    elif cmd == "base-batch":
+        base_batch(opt["name"] if isinstance(opt.get("name"), str) else BASE_BATCH)
+    elif cmd == "base-status":
+        base_status()
+    elif cmd == "regen-base":
+        regen_base()
     elif cmd == "install-accepted":
         install_accepted(bool(opt.get("dry-run")))
     elif cmd == "regen":

@@ -110,10 +110,12 @@ class Cap(unittest.TestCase):
         self.assertLessEqual(FH.CAP, FH.JOB_CAP)
         self.assertEqual(FH.JOB_CAP, 120.0)
         self.assertEqual(F.account, FH.own_balance, "the driver reads this batch's balance, not the shared account's")
-        self.assertAlmostEqual(FH.own_balance(), FH.SENTINEL - FH.ledger_spent())
+        self.assertAlmostEqual(FH.own_balance(), FH.SENTINEL - FH.ledger_spent(FH.ROUND))
+        ## #161's first round spent 88 of its 120; the round in hand (#179's redo) counts only its own tagged lines
+        self.assertLessEqual(FH.ledger_spent(FH.ROUND), FH.CAP)
         total = sum(F.PRICE["/assets/3d-model"] if r["kind"] == "model3d" else F.PRICE["/assets/image"] * r.get("n", 1)
                     for r in FH.rows())
-        self.assertLess(total, FH.CAP, "one full pass of the batch fits under the stop line")
+        self.assertLess(total, FH.JOB_CAP, "one full pass of the batch fits under the job's cap")
 
 
 class FloorTrim(unittest.TestCase):

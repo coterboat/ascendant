@@ -56,9 +56,35 @@ The portraits are a second, concept batch, review/m4_portraits (`portraits-batch
 cutouts, the item targets the portraits the game has now, Install accepted = `review.py apply`.
 
 Discipline as the other batches (studio/ludo-playbook.md): the cap is checked before every submit as
-`balance_before - available + planned` (CAP is this batch's 250-credit budget); a failed job is free but burns its
-request id, so a retry bumps `v`; candidates and raw GLBs stay in the gitignored candidates/ folders; every input goes
+`balance_before - available + planned`, where `available` is this batch's own ledger, not the shared account (another
+builder's spend is never charged to it): CAP is the budget of the round in hand (below); a failed job is free but burns
+its request id, so a retry bumps `v`; candidates and raw GLBs stay in the gitignored candidates/ folders; every input goes
 to Ludo as base64 from a local file; no prompt holds a negative (a negative is drawn). Stdlib plus ffmpeg.
+
+The base-first gate and the redo (issue #179, from Alex's 10-8 notes)
+---------------------------------------------------------------------
+"The base model has to be nailed down before we build on it": every pose and every look is an edit of a family's ready
+picture, so a wrong base spreads into all of them. A family is made in two stages (tools/ludo/base_gate.py):
+
+    python3 tools/ludo/asc_3d_grok.py run base --only sunspears   # BASE: the ready picture, 3 takes (an edit of the current one)
+    python3 tools/ludo/asc_3d_grok.py base-batch                  # review/m4_redo_base/ (a concept batch): Alex marks Good / Good with changes / Bad
+    python3 tools/ludo/asc_3d_grok.py base-status                 # every family's base: accepted, waiting, refused, with why
+    python3 tools/ludo/asc_3d_grok.py run poses|models --only sunspears   # DERIVE: refused, naming the family, until its base is accepted
+
+`run poses` and `run models` read review/m4_redo_base/review.json before they submit anything, and so does every row
+they would submit; a family whose base is not Good (or Good with changes, after a redo) is refused with a plain message,
+and the take Alex kept is copied over the family's ready pick, so the poses are made from exactly that picture. The
+families Alex accepted before the gate existed (their ready models, in review/m4_looks) are GRANDFATHERED below, with
+the verdict that stands for each. `regen-base` is the batch's "Redo rejected" action; `pick` refuses a base row (the
+base is picked in the Review Table, never by the script).
+
+The redo round (`ROUND`, its own `CAP`, every ledger line of it tagged `"round"`): the poses Alex rejected on 10-8 are
+made again from the accepted bases, `redo` per `family:pose` (a new request id, the old candidates and the stale pick
+moved away, the colour lifts of the old model forgotten), and their models go to the model batch `review/m4_redo`
+(`batch --name m4_redo --only f:pose,...`), whose item targets are the models the game has now (`0` compares):
+
+    python3 tools/ludo/asc_3d_grok.py redo bloodsworn:march bloodsworn:strike bloodsworn:fallen briarwardens:march thornthrowers:fallen
+    python3 tools/ludo/asc_3d_grok.py run poses --only bloodsworn,briarwardens,thornthrowers   # then look, `pick <row> <k>`, run models
 """
 import filecmp
 import glob
@@ -70,24 +96,33 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE =os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import asc_3d_paths as P  # noqa: E402  (the families' tables, the board rows; it also loads the driver)
 import glb_slim  # noqa: E402
+import base_gate  # noqa: E402  (the base-first gate: derive only from a base Alex accepted, #179)
 
 F = P.F
 ROOT = F.ROOT
 BATCH = "asc-3d-grok"
 MANIFEST = os.path.join(ROOT, "tools", "ludo", "batches", BATCH + ".json")
 LEDGER = os.path.join(ROOT, "studio", "ledgers", BATCH + ".jsonl")
-CAP = 250.0  ## the issue's budget (#162); the batch stops here
+BATCH_CAP = 250.0  ## the budget of #162 (the first round: 185 credits were spent of it)
+## The redo round of #179 (Alex's 10-8 notes): 120 credits across both batch scripts, 70 of them here (asc_3d_free_holds.py
+## has the other 50). Spend is counted from this batch's own ledger, the lines tagged ROUND; CAP is what the driver stops at.
+ROUND = "redo-10-8"
+CAP = 70.0
+SENTINEL = 1000.0  ## balance_before: the driver's spend is SENTINEL - available, and available is SENTINEL - the round's spend
 PIC_CAND = "assets/_concept/candidates/grok"
 GLB_CAND = "assets/models/candidates/grok"
 INPUTS = PIC_CAND + "/_inputs"
 PICKS = "assets/_concept/grok3d"  ## committed picks: <faction>/<family>_<pose>.webp
 LORE = "assets/_concept/lore"
 REVIEW_BATCH = "m4_looks"
+BASE_BATCH = "m4_redo_base"  ## the concept batch of base pictures (the gate reads its review.json)
+REDO_BATCH = "m4_redo"  ## the model batch of the redone poses
 POSES = F.POSES
 LYING = F.LYING
 
@@ -99,17 +134,20 @@ SIDES = {"celestial_host": "Celestial Host", "living_iron": "Living Iron", "thor
 ## figure out of it (the sheet's title text painted over with the ground colour where a crop alone can't avoid
 ## it), the pose lines (C-pose: "The same figure, now ...": positive wording only), and a note on the source.
 FAMILIES = {
+    ## Alex 10-8 (m4_looks): "good but let's get rid of the halo, and the random spikes coming out of him"; "his spear
+    ## should be held by the low end". The halo becomes an effect later, so no pose draws it; the glow around the figure
+    ## (rays at the shoulders and sides) came back from image-to-3D as spikes. The poses below are made only from a base
+    ## Alex has accepted (BASE_REDO has the base's edit): a ready picture with the halo, so these never see it again.
     "sunspears": dict(
         side="celestial_host", art="crown/celestial_transformation_ex1.jpg", crop="crop=560:830:1150:56",
-        note="the right figure of 'Aurel Crown Spearman / Transitional Armour / Celestial Sunspear'",
-        march="marching forward with his left leg striding ahead, the golden spear sloped back over his right shoulder in "
-              "his right hand, his left arm swinging, the rose-window halo glowing behind his helmet, eyes ahead",
-        strike="lunging forward on his bent left leg, thrusting the golden spear straight ahead at waist height with his "
-               "right arm fully extended, his left hand open at his side, the rose-window halo glowing behind his "
-               "helmet, a fierce shout",
+        note="the right figure of 'Aurel Crown Spearman / Transitional Armour / Celestial Sunspear', redone on Alex's 10-8 "
+             "notes (the halo and the spikes taken away, the spear held by its low end)",
+        march="marching forward with his left leg striding ahead, his right hand gripping the golden spear by its low end "
+              "beside his hip, the spearhead sloping up and back over his right shoulder, his left arm swinging, eyes ahead",
+        strike="lunging forward on his bent left leg, thrusting the golden spear straight ahead at waist height, his right "
+               "arm fully extended and gripping the spear by its low end, his left hand open at his side, a fierce shout",
         fallen="fallen in battle, lying flat on his back on the floor with his arms out to the sides, his helmet still on, "
-               "the golden spear lying on the floor beside him, the rose-window halo lying on the floor behind his head, "
-               "eyes closed"),
+               "the golden spear lying on the floor beside him, eyes closed"),
     "seraphs": dict(
         side="celestial_host", art="crown/seraph.jpg",
         crop="drawbox=x=560:y=15:w=600:h=130:color=0x13161f:t=fill,crop=950:830:845:50",
@@ -146,8 +184,10 @@ FAMILIES = {
     "briarwardens": dict(
         side="thorn_wild", art="thornmane/thornmane_transformations.jpg", crop="crop=840:1008:70:0",
         note="the left figure of the Thorn Wild / Blood Pact pair: living bark and moss, red glyphs, spiked club and shield",
-        march="striding forward with its left leg ahead, the spiked tree-trunk club resting on its right shoulder, the "
-              "thorned bark shield on its left arm, its eyes glowing green ahead",
+        ## Alex 10-8: "needs to be holding the club" (v1 drew the club on the shoulder with both hands empty)
+        march="striding forward with its left leg ahead, its right hand gripping the handle of the spiked tree-trunk club "
+              "and resting the club on its right shoulder, the thorned bark shield strapped to its left arm, its eyes "
+              "glowing green ahead",
         strike="smashing down with the spiked tree-trunk club held high over its head in both hands, leaning forward, the "
                "thorned bark shield strapped to its left arm, its eyes glowing bright green",
         fallen="toppled in battle, lying flat on its back on the floor with its arms out to the sides, the spiked "
@@ -165,12 +205,20 @@ FAMILIES = {
     "bloodsworn": dict(
         side="blood_pact", art="thornmane/thornmane_transformations.jpg", crop="crop=830:920:890:80",
         note="the right figure of the Thorn Wild / Blood Pact pair: black-furred wolf, bone spikes, bone scythe blade",
-        march="loping forward with his left leg ahead, the curved bone blade held low in his right hand, his left claws "
-              "swinging, eyes ahead",
-        strike="leaping forward in a savage lunge, slashing with the curved bone blade raised high in his right hand and "
-               "his left claws thrust forward, mouth open in a snarl",
+        ## Alex 10-8: "his arm blades are dropped as weapons, they should be still attached to him" (fallen); "it keeps
+        ## thinking he's holding the weapons instead of them being attached to his arms" (march); his own edit of the
+        ## strike line: "slashing with his arm blade raised". The blades are part of his arms: the ready picture draws
+        ## the curved bone blade growing out of the right forearm and bone spikes along the left.
+        march="loping forward with his left leg ahead, his arms swinging at his sides, the curved bone blade growing out "
+              "of his right forearm as part of the arm and the bone spikes along his left forearm, the blades grow from "
+              "the forearms and swing with the arms, his claws open and empty, eyes ahead",
+        ## v2 of the strike picture: the first three takes all drew a hilt, a separate sword raised in his fist.
+        strike="leaping forward in a savage lunge, slashing with his arm blade raised high: the curved bone blade grows out "
+               "of his right forearm as one piece with the arm, running from the elbow past the wrist, his fist closed "
+               "under the blade, the blades grow from the forearms as part of his arms, and his left claws thrust "
+               "forward, mouth open in a snarl",
         fallen="fallen in battle, lying flat on his back on the floor with his arms out to the sides, the curved bone "
-               "blade lying on the floor beside him, eyes closed"),
+               "blades still growing from his forearms as part of his arms, his claws open and empty, eyes closed"),
 }
 ## The reviewed share of each model's height (a lying figure: of its length) that is the body, READING[(family, pose)]: the
 ## head top against the figure's top, read off a ruler render of the pose's picked picture (`ruler`; the picture's
@@ -185,12 +233,13 @@ READING = {
     ("thornthrowers", "ready"): 0.86, ("thornthrowers", "march"): 0.87, ("thornthrowers", "strike"): 0.89,
     ("briarwardens", "ready"): 0.95, ("briarwardens", "march"): 0.86, ("briarwardens", "strike"): 0.72,
     ("bloodtuskers", "ready"): 0.95, ("bloodtuskers", "march"): 0.75, ("bloodtuskers", "strike"): 0.61,
-    ("bloodsworn", "ready"): 0.90, ("bloodsworn", "march"): 0.83, ("bloodsworn", "strike"): 0.76,
+    ("bloodsworn", "ready"): 0.90, ("bloodsworn", "march"): 0.87, ("bloodsworn", "strike"): 0.72,
     ## fallen: head (or horns) to feet against the figure's longest side, read off the ruler sheet's vertical lines where the
     ## measured share (the bulk of the mesh along that side, asc_3d_factions.measure) takes the arms or a weapon as body;
-    ## the others stand at the measured share (0.78 to 0.90)
+    ## the others stand at the measured share (0.78 to 0.90). The #179 redo's Bloodsworn march / strike / fallen were read off
+## the new pictures' rulers (0.87, 0.72, 0.88); the Briarwarden's march and the Thornthrowers' fallen stand as they were.
     ("iron_colossus", "fallen"): 0.85, ("thornthrowers", "fallen"): 0.85, ("briarwardens", "fallen"): 0.85,
-    ("bloodtuskers", "fallen"): 0.80, ("bloodsworn", "fallen"): 0.85,
+    ("bloodtuskers", "fallen"): 0.80, ("bloodsworn", "fallen"): 0.88,
 }
 ## A cutout of a busy painted ground (a forest, a courtyard) keeps scraps of it (haze, branches, wall, ground) and the
 ## cast shadows of a dark ground; an edit of the ready picture paints those over with the plain grey and keeps the figure.
@@ -199,6 +248,52 @@ CLEAN_LINE = ("The same figure alone on a plain flat light grey background: ever
               "light grey, the figure itself exactly as it is, the whole figure in view with wide empty margin on "
               "every side.")
 CLEAN = ("seraphs", "iron_colossus", "briarwardens", "bloodtuskers", "bloodsworn")
+
+## ------------------------------------------------------------------------------------ the base gate and the redo (#179)
+## The base redo: an edit of the family's current ready picture, 3 takes, into the concept batch BASE_BATCH. Alex's notes
+## ride in the prompt in his own words (a negative is drawn, so each is said as what to do).
+BASE_REDO = {
+    ## m4_looks, the Sunspears' ready model: "good but let's get rid of the halo, and the random spikes coming out of him."
+    ## (the picture's halo and the rays of glow around the figure; image-to-3D made the rays into spikes) and, on the
+    ## strike: "His spear should be held by the low end."
+    ## v1 ("redrawn as a clean game miniature") came back as plain gold-and-blue plate: the stained-glass pattern of his armour,
+    ## the thing Alex liked ("good but ..."), was lost. v2 names what stays and changes only the three things he asked for.
+    "sunspears": ("The same figure exactly as drawn, with the same ornate stained-glass pattern of gold, blue and red "
+                  "panels on every piece of his armour, the same gold helmet and blue plume, the same face and the same "
+                  "inked painted style, with three changes only. First, get rid of the halo behind his helmet. Second, get "
+                  "rid of the random spikes and rays of light coming out of him, so the glow around his chest and "
+                  "shoulders and sides is gone and the edges of his armour are clean. Third, his right hand holds the "
+                  "long golden spear by its low end, just above the butt, so the spearhead rises far above his head. "
+                  "He stands in a relaxed A-pose with his feet apart, the spear at arm's length out to his side with "
+                  "clear space between the spear and his body, his left arm held a little out from his side. Three-quarter "
+                  "view from slightly above, the whole figure with wide empty margin on every side, plain flat light "
+                  "grey background."),
+}
+BASE_TAKES = 3
+## The families whose base Alex accepted before the gate existed: his Good on the ready model in the batch that built it
+## (review/m4_looks, 10-8; PR #178 installed them). The ready picture is the one that model was made from, so the base
+## was seen and accepted. If that batch's review.json is here and says otherwise, base_gate refuses the family.
+GRANDFATHERED = {
+    "seraphs": {"batch": "m4_looks", "item": "celestial_host_seraphs_ready", "at": "2026-10-08T18:49:47"},
+    "iron_knights": {"batch": "m4_looks", "item": "living_iron_iron_knights_ready", "at": "2026-10-08T18:51:02"},
+    "iron_colossus": {"batch": "m4_looks", "item": "living_iron_iron_colossus_ready", "at": "2026-10-08T18:50:56"},
+    "thornthrowers": {"batch": "m4_looks", "item": "thorn_wild_thornthrowers_ready", "at": "2026-10-08T18:51:19"},
+    "briarwardens": {"batch": "m4_looks", "item": "thorn_wild_briarwardens_ready", "at": "2026-10-08T18:51:10"},
+    "bloodtuskers": {"batch": "m4_looks", "item": "blood_pact_bloodtuskers_ready", "at": "2026-10-08T18:49:33"},
+    "bloodsworn": {"batch": "m4_looks", "item": "blood_pact_bloodsworn_ready", "at": "2026-10-08T18:47:55"},
+}
+DERIVE_STAGES = ("poses", "models")  ## made only from an accepted base (the gate)
+## What the redo round makes again: (family, pose) -> Alex's 10-8 note in m4_looks (the models he rejected; their targets
+## are the models the game has now). The Sunspears wait for their base.
+REDO = {
+    ("bloodsworn", "march"): "same problem, it keeps thinking he's holding the weapons instead of them being attached to his arms",
+    ("bloodsworn", "strike"): "rejected with his edit: slashing with his arm blade raised",
+    ("bloodsworn", "fallen"): "his arm blades are dropped as weapons, they should be still attached to him",
+    ("briarwardens", "march"): "needs to be holding the club",
+    ("thornthrowers", "fallen"): "scatter the spears",
+}
+REDO_TAKES = 3  ## pictures per redone pose (0.5 credit each)
+
 ## Thornthrowers' ready picture is generateWithStyle from the Briarwarden's, with the fork's subject (as asc-3d-paths'
 ## new units are); its poses are the base fangthrower's, which the fork's looks already follow.
 ## v1 used F.C_MODEL ("chunky simplified shapes ... matte painted finish"): the three takes came back as soft toy renders
@@ -217,6 +312,11 @@ THORNTHROWERS_SUBJECT = (
     "the javelin and his body, his left arm held a little out from his side, alert expression, eyes ahead")
 for _p in ("march", "strike", "fallen"):
     FAMILIES["thornthrowers"][_p] = F.UNITS["fangthrowers"][_p].replace("the javelin", "the thorned wooden javelin")
+## Alex 10-8: "scatter the spears" (the v1 fallen picture laid three javelins in a tidy bundle beside him)
+FAMILIES["thornthrowers"]["fallen"] = (
+    "fallen in battle, lying flat on his back on the floor with his arms out to the sides, his hands open and empty, "
+    "the thorned wooden javelins scattered across the floor around him, one near his head, one by his feet and one far "
+    "to his side, each pointing a different way, eyes closed")
 
 ## The portrait block: the series' C-portrait framing (STYLE_BIBLE 6.1) in the painted hand of the reference picture.
 PORTRAIT_BLOCK = ("Portrait drawn in the same detailed hand-painted illustration style as the reference picture: head and "
@@ -280,10 +380,17 @@ def rows():
         out.append({"id": "fix_%s_ready" % name, "stage": "fixes", "kind": "edit", "n": 2,
                     "from_file": pick_of(name, "ready"), "prompt": CLEAN_LINE, "pick_to": pick_of(name, "ready"),
                     "group": "pictures", "unit": name, "pose": "ready"})
+    ## base: the redo of a ready picture, 3 takes, an edit of the current one (stage `base`: the gate's input, so nothing
+    ## gates it). Its candidates go to the concept batch BASE_BATCH, never to the pick: `pick` refuses a base row.
+    for name, prompt in BASE_REDO.items():
+        out.append({"id": "base_%s_ready" % name, "stage": "base", "kind": "edit", "n": BASE_TAKES,
+                    "from_file": pick_of(name, "ready"), "prompt": prompt, "pick_to": pick_of(name, "ready"),
+                    "group": "pictures", "unit": name, "pose": "ready"})
     for name, fam in FAMILIES.items():
         for pose in POSES[1:]:
             view = F.VIEW_LYING if pose in LYING else F.VIEW
-            out.append({"id": "pic_%s_%s" % (name, pose), "stage": "poses", "kind": "edit", "n": 2,
+            out.append({"id": "pic_%s_%s" % (name, pose), "stage": "poses", "kind": "edit",
+                        "n": REDO_TAKES if (name, pose) in REDO else 2,
                         "from_file": pick_of(name, "ready"), "prompt": F.C_POSE.format(pose=fam[pose], view=view),
                         "pick_to": pick_of(name, pose), "group": "pictures", "unit": name, "pose": pose})
     ## the Thornthrowers' portrait: no art of Alex's, so styled from the Briarwarden's (his art's head and shoulders)
@@ -321,11 +428,14 @@ def write_manifest(state=None):
     state.setdefault("v", {})
     state.setdefault("picks", {})
     man = {
-        "batch": BATCH, "rid_prefix": "ascgrok", "cap": CAP,
+        "batch": BATCH, "rid_prefix": "ascgrok", "cap": CAP, "round": ROUND, "batch_cap": BATCH_CAP,
         "note": "Written by tools/ludo/asc_3d_grok.py (which holds the prompts; edit it, not this file). #162: the M4 "
                 "transformation models re-rolled from Alex's Grok Imagine concept art. cut rows are removeBackground "
                 "of a crop of his sheet; ready pictures are the cutout laid on grey (Thornthrowers: styled from the "
-                "Briarwarden); march / strike / fallen are pose edits; model rows read the pick as base64.",
+                "Briarwarden); march / strike / fallen are pose edits; model rows read the pick as base64. #179: base "
+                "rows redo a ready picture into review/m4_redo_base (derive stages need Alex's Good on it), and the "
+                "poses Alex rejected on 10-8 are redone in the round `round` (cap `cap`, counted from the ledger lines "
+                "tagged with it; balance_before is a fixed sentinel, the account is shared).",
         "style": {"image": "", "art_style": "Cel-Shaded",
                   "blocks": {"C-model (3D, no base)": F.C_MODEL, "C-pose (no base)": F.C_POSE}},
         "state": state,
@@ -341,7 +451,7 @@ def write_manifest(state=None):
         if a["kind"] == "model3d":
             a["out"] = GLB_CAND + "/" + r["id"][len("model_"):]
         else:
-            suffix = {"cut": "_cut", "fix": "_fix", "por": "_portrait"}.get(r["id"].split("_", 1)[0], "")
+            suffix = {"cut": "_cut", "fix": "_fix", "por": "_portrait", "base": "_base"}.get(r["id"].split("_", 1)[0], "")
             a["out"] = PIC_CAND + "/" + r["id"].split("_", 1)[1] + suffix
         man["assets"].append(a)
     os.makedirs(os.path.dirname(MANIFEST), exist_ok=True)
@@ -376,6 +486,101 @@ def _body_of(row):
 
 
 F.body_of = _body_of
+
+
+# ----------------------------------------------------------------------------------- the round's cap and the gate
+## The driver counts spend as balance_before - account(). The account is shared (another builder spends from it at the same
+## time), so here account() is this batch's own: SENTINEL less what its ledger says this round was charged.
+F.ROUND = ROUND
+
+
+def ledger_spent(round_tag=None):
+    """Credits this batch's ledger says it was charged: every line, or only those tagged with one round."""
+    total = 0.0
+    if os.path.exists(LEDGER):
+        with open(LEDGER) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    e = json.loads(line)
+                    if round_tag is None or e.get("round") == round_tag:
+                        total += float(e.get("credits_charged") or 0)
+    return round(total, 2)
+
+
+def own_balance():
+    return SENTINEL - ledger_spent(ROUND)
+
+
+F.account = own_balance
+
+
+def round_state():
+    """balance_before is the SENTINEL for this round (it was the real account's balance when the first round began); the
+    old value is kept as balance_before_162."""
+    st = load_state()
+    if st.get("balance_before") != SENTINEL:
+        if st.get("balance_before") is not None:
+            st.setdefault("balance_before_162", st["balance_before"])
+        st["balance_before"] = SENTINEL
+        F.save_state(st)
+    return st
+
+
+GATE = base_gate.Gate(BASE_BATCH, display=lambda name: name.replace("_", " ").title(), grandfathered=GRANDFATHERED)
+_adopt_lock = threading.Lock()
+
+
+def adopt_base(name):
+    """The base gate for one family (base_gate.BaseNotAccepted when Alex has not accepted it), and the take he kept
+    copied over the family's ready pick when it is not that picture already: the poses and the ready model are made from
+    exactly the picture he accepted. A grandfathered family keeps the pick it has."""
+    r = GATE.require(name)
+    if r["file"]:
+        dst = os.path.join(ROOT, pick_of(name, "ready"))
+        with _adopt_lock:
+            if not (os.path.exists(dst) and filecmp.cmp(str(r["file"]), dst, shallow=False)):
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                tmp = dst + ".tmp.webp"
+                shutil.copyfile(str(r["file"]), tmp)
+                os.replace(tmp, dst)
+                print("adopted the base Alex accepted for %s: %s -> %s" % (name, r["file"], pick_of(name, "ready")))
+    return r
+
+
+def gate_row(row):
+    """No derived row is submitted for a family whose base is not accepted, whichever way it was asked for (the driver
+    calls this before each row: F.GATE_ROW)."""
+    if row["stage"] in DERIVE_STAGES:
+        adopt_base(row["unit"])
+
+
+F.GATE_ROW = gate_row
+
+
+def _row_matches(r, only):
+    """F.run's --only: a row id, a family, a pose or a family inside the id."""
+    return any(r["id"] == o or r["unit"] == o or r["id"].endswith("_" + o) or ("_%s_" % o) in r["id"] for o in only)
+
+
+def run(stage, only, jobs, hours):
+    """F.run behind the gate: a derive stage first checks the base of every family it would touch, and stops with a plain
+    message (naming each family) before any Ludo call when one is not accepted."""
+    if stage in DERIVE_STAGES:
+        fams = [r["unit"] for r in rows() if r["stage"] == stage and (not only or _row_matches(r, only))]
+        try:
+            GATE.require_all(fams)
+        except base_gate.BaseNotAccepted as e:
+            sys.exit("refused (the base comes first):\n%s" % e)
+    round_state()
+    F.run(stage, only, jobs, hours)
+
+
+def base_status():
+    """Every family's base for the gate: accepted (and which take), grandfathered, or refused (and why)."""
+    for name in FAMILIES:
+        r = GATE.check(name)
+        print("%-14s %-20s %s" % (name, r["state"], ("-> %s" % r["file"]) if r["file"] else r["message"]))
 
 
 # --------------------------------------------------------------------------------------------- pictures
@@ -424,6 +629,9 @@ def ready(name, k=1):
 def pick(row_id, k, clean=False):
     """F.pick (candidate k of a picture row becomes the pick); a fix row first keeps the pick it replaces beside its
     candidates (`<out>_before.webp`), so the cutout it cleaned is never lost."""
+    if row_id.startswith("base_"):
+        sys.exit("%s is a base picture: Alex picks it in the Review Table (%s), the poses adopt the take he accepted "
+                 "(`base-batch` builds the batch)" % (row_id, BASE_BATCH))
     a = manifest_rows()[row_id]
     dst = os.path.join(ROOT, a["pick_to"])
     keep = os.path.join(ROOT, a["out"] + "_before.webp")
@@ -889,17 +1097,21 @@ def pick_text(name, pose):
         if fam["art"]:
             return "Modelled from Alex's art, assets/_concept/lore/%s: %s." % (fam["art"], fam["note"])
         return "No art of Alex's for this one: %s." % fam["note"]
-    return "Ready picture edited to: the same figure, now %s." % fam[pose]
+    text = "Ready picture edited to: the same figure, now %s." % fam[pose]
+    if (name, pose) in REDO:
+        text += " Redone on Alex's 10-8 note: \"%s\"." % REDO[(name, pose)]
+    return text
 
 
-def build_sidecar():
+def build_sidecar(only=None):
     """review.py from-folder's prompts.json for every staged model: group (the side), label, the text (where the
-    picture came from), the target (what the game has now) and the meta Install accepted reads."""
+    picture came from), the target (what the game has now) and the meta Install accepted reads. `only`: a set of
+    (family, pose)."""
     side = {}
     for name in FAMILIES:
         for pose in POSES:
             p = staged_path(name, pose)
-            if not os.path.exists(p):
+            if not os.path.exists(p) or (only is not None and (name, pose) not in only):
                 continue
             rec = load_stage_state()[name][pose]
             rel = "%s/%s_%s.glb" % (FAMILIES[name]["side"], name, pose)
@@ -926,20 +1138,28 @@ ACTIONS = [
 ]
 
 
-def batch(name=REVIEW_BATCH, title="M4 looks: transformation models from Alex's Grok art"):
+def batch(name=REVIEW_BATCH, title="M4 looks: transformation models from Alex's Grok art", only=None):
     """review/<name> from the staged models: review.py from-folder (grouped by side, the item targets the current
     model paths), then the install action added to its batch.json. Run again after more models are staged: new files
     are added, changed files are refreshed in place (their verdicts then ask for another look), verdicts are kept.
-    The `install` action's batch argument is `name`."""
+    The `install` action's batch argument is `name`. `only` (a set of (family, pose)) makes a batch of just those
+    models, from a folder of copies of them (the redo's review/m4_redo)."""
     rv = os.path.join(ROOT, "tools", "review", "review.py")
     bdir = os.path.join(ROOT, "review", name)
-    side = build_sidecar()
+    side = build_sidecar(only)
     if not side:
         sys.exit("nothing staged yet (run `stage <family>`)")
-    sc = os.path.join(stage_dir(), "prompts.json")
+    folder = stage_dir()
+    if only is not None:
+        folder = os.path.join(os.path.dirname(stage_dir()), "_stage_" + name)
+        shutil.rmtree(folder, ignore_errors=True)
+        for rel in side:
+            os.makedirs(os.path.dirname(os.path.join(folder, rel)), exist_ok=True)
+            shutil.copy2(os.path.join(stage_dir(), rel), os.path.join(folder, rel))
+    sc = os.path.join(folder, "prompts.json")
     with open(sc, "w") as f:
         json.dump(side, f, indent=1)
-    cmd = [sys.executable, rv, "from-folder", stage_dir(), name, "--title", title, "--group-by", "folder",
+    cmd = [sys.executable, rv, "from-folder", folder, name, "--title", title, "--group-by", "folder",
            "--recursive", "--sidecar", sc]
     if os.path.exists(os.path.join(bdir, "batch.json")):
         cmd.append("--add")
@@ -949,7 +1169,7 @@ def batch(name=REVIEW_BATCH, title="M4 looks: transformation models from Alex's 
     data = _jload(bj)
     for it in data["items"]:
         rel = it["file"]
-        src = os.path.join(stage_dir(), rel)
+        src = os.path.join(folder, rel)
         dst = os.path.join(bdir, rel)
         if os.path.exists(src) and (not os.path.exists(dst) or not filecmp.cmp(src, dst, shallow=False)):
             shutil.copy2(src, dst)
@@ -967,6 +1187,141 @@ def batch(name=REVIEW_BATCH, title="M4 looks: transformation models from Alex's 
         f.write("\n")
     os.replace(tmp, bj)
     print("batch %s: %d items, actions %s" % (name, len(data["items"]), [a["id"] for a in data["actions"]]))
+
+
+# ------------------------------------------------------------------------------------- the base batch and the redo (#179)
+BASE_ACTIONS = [
+    {"id": "install", "kind": "install", "label": "Install accepted bases",
+     "help": "Copy the base pictures you marked Good (or Good with changes) over the ready pictures the poses are made "
+             "from (assets/_concept/grok3d/, review.py apply)",
+     "cmd": ["python3", "tools/review/review.py", "apply", BASE_BATCH],
+     "options": [{"flag": "--dry-run", "label": "Dry run", "type": "bool", "default": False}]},
+    {"id": "regen", "kind": "regen", "label": "Redo rejected",
+     "help": "Redo the rejected base pictures with Ludo (0.5 credit a take, this round's cap); the poses and models of "
+             "a family wait until its base is Good",
+     "cmd": ["python3", "tools/ludo/asc_3d_grok.py", "regen-base"], "spends": True},
+]
+
+
+def base_items():
+    """One item per base row that has candidates: the family's ready picture, the takes of the redo."""
+    man = manifest_rows()
+    items = []
+    for r in rows():
+        if r["stage"] != "base":
+            continue
+        a = man[r["id"]]
+        cands = F.cand_files(a)
+        if not cands:
+            continue
+        name = r["unit"]
+        title = display_name(name)
+        items.append({"id": "%s_ready" % name, "label": "%s ready (the base)" % title, "group": title,
+                      "text": r["prompt"], "target": r["pick_to"], "sources": sorted(cands),
+                      "meta": {"row": r["id"], "family": name, "v": a.get("v", 1),
+                               "context": "the base picture every %s pose and model is made from: Good only when it is "
+                                          "right (nothing is built on it before)" % title}})
+    return items
+
+
+def _to_webp(src, dst):
+    _ffmpeg("-i", src, "-vf", "scale='min(1024,iw)':'min(1024,ih)':force_original_aspect_ratio=decrease", "-frames:v", "1",
+            "-c:v", "libwebp", "-quality", "90", dst)
+
+
+def base_batch(name=BASE_BATCH):
+    """review/<name>: a concept batch of the base pictures (Good / Good with changes / Bad), built from the candidates of
+    the base rows. The gate reads its review.json; Install accepted = review.py apply (the take he kept to the ready pick)."""
+    items = base_items()
+    if not items:
+        sys.exit("no base candidates yet (run `run base --only <family>`)")
+    n = base_gate.write_base_batch(name, "M4 redo: the base pictures (#179), Good before anything is built on them", items,
+                                   [dict(a, cmd=a["cmd"][:]) for a in BASE_ACTIONS], _to_webp, root=os.path.join(ROOT, "review"))
+    print("review/%s: %d base item(s)" % (name, n))
+
+
+def regen_base():
+    """The base batch's Redo rejected: every rejected (or Good with changes) base is rolled again with its prompt as it is
+    now (the notes are printed: edit BASE_REDO with them first), then the batch is rebuilt."""
+    sys.path.insert(0, os.path.join(ROOT, "tools", "review"))
+    import review as R
+    F.ludo.KEY = F.ludo.api_key()
+    R.write_rejected(BASE_BATCH)
+    rj = _jload(os.path.join(ROOT, "review", BASE_BATCH, "rejected.json"))
+    todo = []
+    for e in rj:
+        row = (e.get("meta") or {}).get("row")
+        if row:
+            print("rejected %s: %s" % (e["id"], e.get("note") or "(no note)"))
+            todo.append(row)
+    if not todo:
+        print("nothing rejected")
+        return
+    round_state()
+    for row in todo:
+        F.reroll(row, "rejected in the Review Table")
+    run("base", todo, 2, 2.0)
+    base_batch()
+
+
+def _ledger_max_v(row_id):
+    """The highest request-id version this batch's ledger has used for a row (0 when never)."""
+    best = 0
+    prefix = "ascgrok-%s-v" % row_id
+    if os.path.exists(LEDGER):
+        with open(LEDGER) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    rid = json.loads(line).get("request_id") or ""
+                    if rid.startswith(prefix) and rid[len(prefix):].isdigit():
+                        best = max(best, int(rid[len(prefix):]))
+    return best
+
+
+def _move_to_old(a):
+    """A row's candidates (and a model's snapshots) into old/ beside them, as F.reroll does."""
+    files = F.cand_files(a) + glob.glob(os.path.join(ROOT, a["out"] + "_snap*"))
+    if files:
+        olddir = os.path.join(ROOT, os.path.dirname(a["out"]), "old")
+        os.makedirs(olddir, exist_ok=True)
+        for f in files:
+            os.replace(f, os.path.join(olddir, "v%d_%s" % (a.get("v", 1), os.path.basename(f))))
+
+
+def redo(pairs, why=None):
+    """Start a pose over: for each (family, pose) the picture row and the model row get a version no request id has used
+    (a new job, not the old one handed back), their candidates and the stale pick go to old/, and what hung on the old
+    model is forgotten (its pick, its colour lifts). The new pictures come from `run poses`, which is gated. Safe to run
+    again: a version already ahead of the ledger stays."""
+    man = manifest_rows()
+    st = load_state()
+    keep_old = os.path.join(ROOT, PIC_CAND, "old")
+    for name, pose in pairs:
+        key = "%s_%s" % (name, pose)
+        for rid in ("pic_%s" % key, "model_%s" % key):
+            a = man[rid]
+            st["v"][rid] = max(st["v"].get(rid, 1), _ledger_max_v(rid) + 1)
+            st["picks"].pop(rid, None)
+            notes = st.setdefault("rerolls", {}).setdefault(rid, [])
+            notes.append("redo: %s" % (why or REDO.get((name, pose), "redone")))
+            _move_to_old(a)
+            if rid.startswith("pic_"):
+                stale = os.path.join(ROOT, a["pick_to"])
+                if os.path.exists(stale):  ## the pick the rejected model came from: kept beside the candidates, not left to be reused
+                    os.makedirs(keep_old, exist_ok=True)
+                    shutil.move(stale, os.path.join(keep_old, "%s_before_redo.webp" % key))
+        st.get("lifts", {}).pop(key, None)
+        st.get("pic_lifts", {}).pop("model_%s" % key, None)
+        print("redo %s %s: picture v%d, model v%d" % (name, pose, st["v"]["pic_" + key], st["v"]["model_" + key]))
+    F.save_state(st)
+    ## F.save_state keeps what is on disk beside what it is given (picks are a union): write the cleared state through
+    disk = load_state()
+    disk["picks"] = {k: v for k, v in disk.get("picks", {}).items() if k in st["picks"]}
+    for k in ("lifts", "pic_lifts"):
+        if k in st:
+            disk[k] = st[k]
+    write_manifest(disk)
 
 
 def ludo_portrait(k):
@@ -1264,7 +1619,8 @@ def cost():
         tot[r["stage"]] = tot.get(r["stage"], 0) + F.PRICE[endpoint] * r.get("n", 1)
     for k, v in tot.items():
         print("%-8s %6.1f credits" % (k, v))
-    print("%-8s %6.1f credits (cap %.0f)" % ("total", sum(tot.values()), CAP))
+    print("%-8s %6.1f credits (a full pass of every row; the round %s stops at %.0f, the batch's #162 budget was %.0f)" % (
+        "total", sum(tot.values()), ROUND, CAP, BATCH_CAP))
 
 
 def _opts(argv):
@@ -1293,7 +1649,10 @@ def main(argv):
         cost()
     elif cmd == "account":
         F.ludo.KEY = F.ludo.api_key()
-        print("credits available %.1f" % F.account())
+        print("account credits available %.1f (shared); this batch has spent %.2f in all, %.2f of the round %s's %.0f" % (
+            float(F.ludo.account().get("available", 0.0)), ledger_spent(), ledger_spent(ROUND), ROUND, CAP))
+    elif cmd == "spent":
+        print("%.2f of the round %s's %.0f credits (the batch in all: %.2f)" % (ledger_spent(ROUND), ROUND, CAP, ledger_spent()))
     elif cmd == "crops":
         crops()
     elif cmd == "ready":
@@ -1302,7 +1661,7 @@ def main(argv):
         if not os.path.exists(MANIFEST):
             write_manifest()
         only = opt.get("only", "").split(",") if opt.get("only") else []
-        F.run(rest[0], only, int(opt.get("jobs", 2)), float(opt.get("hours", 6)))
+        run(rest[0], only, int(opt.get("jobs", 2)), float(opt.get("hours", 6)))
     elif cmd == "pick":
         pick(rest[0], int(rest[1]), bool(opt.get("deshadow")))
     elif cmd == "reroll":
@@ -1343,7 +1702,18 @@ def main(argv):
     elif cmd == "portraits-batch":
         portraits_batch(opt.get("batch", PORTRAIT_BATCH))
     elif cmd == "batch":
-        batch()
+        ## batch [--name N] [--title T] [--only family:pose,...]
+        only = {tuple(x.split(":")) for x in opt["only"].split(",")} if opt.get("only") else None
+        batch(opt.get("name", REVIEW_BATCH), opt.get("title", "M4 looks: transformation models from Alex's Grok art"), only)
+    elif cmd == "base-batch":
+        base_batch(opt.get("name", BASE_BATCH))
+    elif cmd == "base-status":
+        base_status()
+    elif cmd == "regen-base":
+        regen_base()
+    elif cmd == "redo":
+        ## redo family:pose ...  (a pose started over, see redo())
+        redo([tuple(x.split(":")) for x in rest], opt.get("why") if isinstance(opt.get("why"), str) else None)
     elif cmd == "install":
         install(opt.get("batch", REVIEW_BATCH), bool(opt.get("dry-run")),
                 set(opt["only"].split(",")) if opt.get("only") else None)
