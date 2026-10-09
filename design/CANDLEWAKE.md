@@ -1,6 +1,6 @@
 # ASCENDANT: the Candlewake, design spec for the third faction
 
-Status: **DRAFT r3 by the director (Claude session, 2026-10-07/08), for Alex's sign-off.** Two Codex critic rounds are absorbed (appendix A).
+Status: **DRAFT r6 by the director (Claude session, 2026-10-07 to 10-09), for Alex's sign-off.** Two Codex critic rounds are absorbed (appendix A).
 - **10-6:** Alex chose the Candlewake as the extra faction.
 - **10-7:** he set the order (CW1: build it right after the MVP walk, write the spec now) and the pilot (CW2: their mark on the land ships with them, as the first test of the marks system).
 - **Critics:** Codex's hostile round (24 findings, appendix A) rewrote r1.
@@ -47,6 +47,7 @@ The milestone proves three things:
   - **the Hundred-Wick:** a guttered mass, with Flare (burns up to 6 enemies as it falls).
   - **the Lamplighter**, the commander, with Toll (every enemy that falls lifts morale).
   - **Chandler's Apprentices:** mages.
+  - **Candlebeasts** (Alex 10-8): beasts the Wake has poured over, in many forms. They are poured only in Deep Wake, so spreading the Wake grows the menagerie: Wax Hounds, the Tallow Stag and the Guttering Bear first (§4.5).
 - **Rulers:**
   - **Half-Death**, a front-rank god. **Harvest**: once a turn, a win in its province over a player's army raises 1–2 Wickwardens.
   - **Mother Tallow, the Ninth Chandler**, a mortal line in the second rank. **Vigil**: her province holds armies at flame 1–2 or more.
@@ -58,8 +59,8 @@ The milestone proves three things:
   - **Wax:** Wax Skin, Raise the Snuffed, Candlemass.
   - They reuse M5's spell kinds. The new code is one flame effect.
 - **The computer** learns the flame lifecycle: fight for fuel, go home in time, don't cool a hot army.
-- **12 tickets,** CW-0 to CW-11. CW-0 (the engine) and CW-1 (the scaffold) come first.
-- **Art:** about 260 Ludo credits planned, 330 with reserve, every asset through the Review Table.
+- **13 tickets,** CW-0 to CW-12. CW-0 (the engine) and CW-1 (the scaffold) come first.
+- **Art:** about 305 Ludo credits planned, 375 with reserve, every asset through the Review Table.
 
 ---
 
@@ -343,6 +344,27 @@ The six shared mandates, plus:
 | **the Ninth Chandler's Vigil** | Mother Tallow | Kindling, Tallow Levy, Heavy Tithes | 0 |
 | **the Harvest Moot** | Half-Death | Kindling, Iron Discipline | 4 |
 
+### 4.5 candlebeasts (Alex 10-8, CW-12)
+The Hundred-Wick's art sparked it: **beasts the Wake has poured over.** The wax remembers a shape and fills it, so they come in as many forms as the land had beasts. The family is where the Candlewake roster grows after launch; three forms ship first.
+
+- **Poured, not bred:** a candlebeast can be recruited only in a **Deep Wake** province you hold (the capital counts from the start). That is the Wake's second payoff, beside the Risen (§3.6), and it puts the menagerie where the faction has been longest. It is a field on the unit row (`requires_mark_stage: "deep"`), checked by recruitment like any other gate.
+- **Wick as usual:** candlebeasts are regulars, so they fight at flame − 1 and gutter like the rest.
+- **Not Risen:** the Risen and Harvest raise Wickwardens only, so the 10–20% target (W6) stays clean.
+- **No new trait code.** Each form reuses a trait the engine already has:
+
+| form | hp/atk/def/mor | gold | rank | trait (reused) |
+|---|---|---|---|---|
+| **Wax Hounds** | 5/9/4/7 | 6 | front | **Skirmish:** they hunt past the line to the archers |
+| **the Tallow Stag** | 9/11/4/8 | 10 | front | **Charge:** +damage in the first round, more in a forest |
+| **the Guttering Bear** | 14/11/8/9 | 13 | front | **Berserk:** wounded wax burns hotter (+attack below full hp) |
+
+- **The look:** the same pure poured wax as the host (§4.1, §10), animal-shaped, hollow where the eyes would be, a lilac wick burning from the spine. The bear is mid-melt, slumping as it walks.
+- **Explained:**
+  - the recruit list shows them in every province, greyed where they can't be poured: "Candlebeasts are poured only where the Wake runs deep. Thornvale is on the Wake-Line: Deep Wake in 3 turns.";
+  - the unit tooltip carries the family line ("A candlebeast: poured in Deep Wake") above its trait;
+  - a codex page, "Candlebeasts", that lists the forms and grows as new ones ship.
+- **Later forms (parking lot, not in CW):** a form for each faction's dead land (a wax Thornmane where the Clans fell); gilded beasts on the Golden Wake and burning ones on the Red; a form chosen by the province's land instead of by the player (Alex's call, §15 item 6).
+
 ---
 
 ## 5. forts and sieges
@@ -502,11 +524,12 @@ Every asset goes through the Review Table (`review/cw_*`). Models are judged in 
 |---|---|---|
 | unit, commander, mage and ruler model families (4 poses) | 7 | ~105 |
 | path looks and new units | 4 | ~60 |
+| candlebeast families (Wax Hounds, the Tallow Stag, the Guttering Bear; base first, then 4 poses) | 3 | ~45 |
 | portraits | 11 | ~17 |
 | fort kit (3 tiers) and the Long Vigil | 4 | ~20 |
 | building melts (village a/b, mill, watchtower, fort, × 3) | 15 | ~45 |
 | banner, emblem, spell icons, flame VFX | ~10 | ~15 |
-| **total** | | **~260, 330 with reserve** |
+| **total** | | **~305, 375 with reserve** |
 
 Rates are from `studio/ledgers/asc-3d-factions.jsonl`: 3.0 a model, 1.5 a 3-candidate picture call, 0.5 a pose edit.
 
@@ -520,7 +543,7 @@ Rates are from `studio/ledgers/asc-3d-factions.jsonl`: 3.0 a model, 1.5 a 3-cand
 2. Then CW-2, and CW-7 and CW-9 alongside it.
 3. Then CW-3 (the Wake builds on Wick).
 4. Then CW-4, CW-5 and CW-6.
-5. Then CW-8 and CW-10.
+5. Then CW-8, CW-10 and CW-12 (candlebeasts need Deep Wake from CW-3).
 6. CW-11 closes the milestone.
 
 0. **CW-0** `code` `hard` **Three factions in the engine** (§1):
@@ -553,6 +576,7 @@ Rates are from `studio/ledgers/asc-3d-factions.jsonl`: 3.0 a model, 1.5 a 3-cand
 9. **CW-9** `design` **Art lead:** manifest rows from the canon. Eyes are settled: empty hooded shells (§10).
 10. **CW-10** `asset` **Asset builder:** the Ludo batches into the Review Table (§11).
 11. **CW-11** `code` **Balance:** pair-keyed matrices and the W bands (§9).
+12. **CW-12** `code` **Candlebeasts** (§4.5): the three unit rows, the Deep Wake recruit gate with its greyed-out reason, the codex page, and their place in the computer's recruit choice. Their art rides in CW-10, base model approved before any pose.
 
 **Default:** the Candlewake ship behind a "Candlewake (preview)" box until CW-11's bands pass.
 
@@ -591,6 +615,7 @@ Rates are from `studio/ledgers/asc-3d-factions.jsonl`: 3.0 a model, 1.5 a 3-cand
 3. **The Golden Wake:** a) keep. Golden lets a player cool down into a defensive, money-making style; Red fuels the fire.
 4. **Eyes:** eyeless, in his art round 6c verdict: "more warlike, empty shells with hoods of wax to give shape" (§10).
 5. **His new idea (§3.6):** as their land is made in their likeness, the dead turn to wax and rise again. The Golden Wake keeps it pumping, and the Red Wake swells the horde through Harvest instead.
+6. **Candlebeasts (§4.5), open:** who picks the form? a) the player picks any form in a Deep Wake province (my pick: three real choices, and it reuses the recruit screen as is); b) the province's land picks it (forest pours stags, hills bears, plains hounds), which gives the map texture but takes away the choice; c) a) now, and b) as a later form family.
 
 **Design notes for every faction:**
 - Asymmetric power spikes are welcome when every faction has its own. The bands are guardrails, not a flattening.
