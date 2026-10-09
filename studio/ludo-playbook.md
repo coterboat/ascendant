@@ -112,6 +112,7 @@ Where sources disagree, the newer one wins and the conflict is noted. EO7 is Jul
 - Variants: generate base + variants in one run (the 7-day edit window). [C-CAP]
 - Judge consistency **side by side** (contact sheet of all rooms/assets), not one at a time. [E-07]
 - A "gate" that audits palettes (`ludo_palette.py`) catches design drift that geometry checks miss, but it compares to the base, so a drifted base passes. [E-11]
+- **Base first, then derive.** Every pose and every transformation look is an edit of the unit's ready picture, so a wrong base spreads into all of them ("the slinger and the sunspear's base models were off and everything derived from them too", Alex, 10-8). Make the base picture alone (a few takes) into a concept batch `review/<batch>_base/`; `tools/ludo/base_gate.py` makes the batch scripts refuse poses, looks and models until Alex has marked it Good (or Good with changes, after a redo). [issue #179]
 
 ## 7. Audio and voice
 

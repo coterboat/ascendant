@@ -83,12 +83,14 @@ class Rows(unittest.TestCase):
         for r in G.rows():
             F.check_prompt(r.get("prompt"))  ## raises on "no", "not", "without", "never", "negative"
 
-    def test_the_cap_is_the_issues_and_cost_stays_inside_it(self):
-        self.assertEqual(G.CAP, 250.0)
+    def test_the_batch_budget_is_the_first_issues_and_a_full_pass_stays_inside_it(self):
+        ## #162's 250 credits are the whole batch's; CAP is the round in hand's (the #179 redo, test_base_gate.py)
+        self.assertEqual(G.BATCH_CAP, 250.0)
+        self.assertLess(G.CAP, G.BATCH_CAP)
         planned = sum(F.PRICE[{"edit": "/assets/image/edit", "styled": "/assets/image/style", "image": "/assets/image",
                                "model3d": "/assets/3d-model", "cutout": "/assets/image/remove-background"}[r["kind"]]]
                       * r.get("n", 1) for r in G.rows())
-        self.assertLess(planned, G.CAP)
+        self.assertLess(planned, G.BATCH_CAP)
 
     def test_the_install_action_passes_the_review_tables_own_checks(self):
         for a in G.ACTIONS:

@@ -625,7 +625,12 @@ def short(v):
     return v
 
 
+ROUND = None  ## a round of work (a redo of an issue's models): its ledger lines carry this tag, so its spend is counted apart
+
+
 def ledger_line(entry):
+    if ROUND:
+        entry = dict(entry, round=ROUND)
     with _led_lock:
         os.makedirs(os.path.dirname(LEDGER), exist_ok=True)
         with open(LEDGER, "a") as f:
@@ -694,8 +699,13 @@ def cand_files(row):
     return sorted(glob.glob(base + "_c[0-9].*"))
 
 
+GATE_ROW = None  ## a batch script's base-first gate (base_gate.py): called with each row before anything is read or submitted
+
+
 def run_row(row, state, deadline):
     """Submit one row (with retries that bump v), download its results. Returns True on success."""
+    if GATE_ROW is not None:
+        GATE_ROW(row)  ## raises base_gate.BaseNotAccepted: the row is not submitted, nothing is charged
     endpoint, body = body_of(row)
     n = row.get("n", 1)
     planned = PRICE[endpoint] * n

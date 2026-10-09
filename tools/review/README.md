@@ -177,6 +177,23 @@ the table lets you judge the pictures without knowing:
 - `rejected.json` of a concept batch names the take each verdict is about (`file`, `seat`) and lists every candidate in `takes`
   (`[{"file", "seat"}]`), so the next round can have each seat redo its own.
 
+## Base batches: nothing is built on a base before it is Good
+
+In the Ludo model pipeline (`tools/ludo/`) every pose and every transformation look is an edit of a unit's ready picture, the
+**base**, so a wrong base spreads into everything made from it. A unit is made in two stages (`tools/ludo/base_gate.py`, issue #179):
+
+- **base:** the ready picture only, a few takes, into a concept batch `review/<batch>_base/` (`review/m4_redo_base/`,
+  `review/ind_redo_base/`; one item `<family>_ready` per family, its `target` the ready picture the poses are made from).
+- **derive:** the other poses, the looks and the models, made **only from a base you marked Good**, or Good with changes after a
+  redo (the picture was redone, you looked at it again and kept it with a note).
+
+The batch script reads that batch's `review.json` and refuses to submit anything derived from a base that is not accepted, with a
+plain message naming the family: still waiting for your verdict, regenerated after it (look again), Bad, or Good with changes and
+not redone yet. It uses this tool's own status logic, so `Good with changes` on a picture that has not been redone does not
+open the gate, and neither does an accepted picture that was regenerated since. When it passes, the script copies the take you
+kept over the ready picture, so the poses are made from exactly that picture. **Install accepted** (`review.py apply`) does the
+same copy; **Redo rejected** rolls the rejected bases again (the notes are printed for the next prompt edit).
+
 ## Takes, and what the game has now (v1.11)
 
 An item may have been rolled more than once. Its **takes** show as a strip under it: the item's own file first,
