@@ -1,6 +1,6 @@
 # ASCENDANT: ARM-1, splitting, merging and swapping commanders
 
-Status: **DRAFT r4 by the director (Claude session, 2026-10-10), for Alex's sign-off.** r4: Alex chose to build blessings properly now ("b) is genuinely the long-term answer so we might as well build it now"): a blessing stays with its army; units that leave lose it; units that join don't gain it (§2.1). Part of the War Table milestone (`design/UX_WAR_TABLE.md` §3.5); issue #195.
+Status: **DRAFT r5 by the director (Claude session, 2026-10-10), for Alex's sign-off.** r4: Alex chose to build blessings properly now ("b) is genuinely the long-term answer so we might as well build it now"): a blessing stays with its army; units that leave lose it; units that join don't gain it (§2.1). Part of the War Table milestone (`design/UX_WAR_TABLE.md` §3.5); issue #195.
 - Alex (10-10, after his playtest): "we need a much better army merging system, including swapping commanders", and "manage … the troop and army movement/distribution/merging side".
 - **r1** was the issue's draft. Codex's hostile round on it (25 findings, 10 blockers) rewrote it into r2, and a second round on r2 (9 findings, 2 blockers, both about precision) gave r3. Appendix A lists the changes.
 
@@ -69,30 +69,58 @@ MusterOrder {
   - **Names:** "the Crown's 4th". Gaps from disbanded armies stay (names are permanent, `turn_report_text.gd:196-217`), and a merge's target keeps its name.
 
 ### 2.1 blessings: they stay with their army (Alex 10-10)
-Today a blessing is an enchantment that lists army ids (`magic_rules.gd:815-820`). Each blessed army heals a set number of hit points a turn, one at a time across its fighters (`magic_rules.gd:1440-1460`). A side at least half blessed fights with +1 morale (`auto_battle_resolver.gd:1531-1556`). Musters keep both effects honest:
-- **Units that leave a blessed army lose its blessing.** A new army made from them isn't in the blessing's list. A unit that moves to another army is under that army's blessing only if it was already there.
-- **Units that join a blessed army don't gain its blessing.** Each joining unit, and a commander arriving by transfer or swap, is marked **outside** that blessing: a new `Unit.outside_blessing` field holding the enchantment's id.
-  - It is saved only when set, so every existing record and save is byte-identical.
-  - A unit can be outside one blessing at a time, the one on the army it now stands in.
-- **Everywhere a blessing counts its army's fighters, it skips the units outside it:**
-  - the heal (no hit points to them, and the army's heal is not shared with them);
-  - the half-blessed morale count (they count as unblessed fighters);
-  - the fog view's blessed partition (in a rival's view they are plain units, `fog_rules.gd:352-415`).
-- **The marker clears when that enchantment ends** (it ran out, a ward ended it, or it lost its last army), or when the unit leaves the army. **A new blessing cast later on the army covers everyone in it**, since its id is new.
-- **A merge out of a blessed army:** if the blessed army disbands, the blessing loses that army id. If that was its last army, it ends by today's path ("a blessing lost its last army", `turn_resolver.gd:1185`).
-- **Multi-hop:** a unit sent from a blessed A to a plain B loses A's blessing; sent on to a blessed C, it is outside C's. Planning and resolution agree.
-- **The forecast and the report say it:**
-  - forecast: "2 Knights join the Crown's 1st; its Dawn Blessing won't cover them";
-  - report: "Two Knights joined the Crown's 1st at Crownkeep. They aren't under its blessing."
-- **Tests:**
-  - the heal with outside units (none to them, the same budget to the rest);
-  - half-blessed morale with outside units;
-  - the fog partition with outside units (the snapshot probe);
-  - the marker clearing at the blessing's end, by a ward, and by the last army leaving;
-  - a new blessing over everyone;
-  - multi-hop;
-  - save and load with the marker;
-  - byte-identity of every legacy record.
+Today a blessing is an enchantment that lists army ids (`magic_rules.gd:815-820`).
+- Each blessed army heals a set number of hit points a turn, one at a time across its fighters (`enchantment_step`, `_give`, `magic_rules.gd:1459, 1532-1589`).
+- A side at least half blessed fights with +1 morale. Its battle log and report count blessed fighters (`auto_battle_resolver.gd:1539-1556, 2674`).
+- **Every one of these today decides by army id alone.** ARM-1 makes them decide **per fighter**.
+
+**The rule:**
+- **Units that leave a blessed army lose its blessing.** A new army made from them isn't in the blessing's list. A unit that moves on to another army is under that army's blessing only if it was already there.
+- **Units that join a blessed army don't gain its blessing,** however they join:
+  - by a transfer or merge;
+  - a commander by a transfer or swap;
+  - **a recruit** that joins an existing blessed army in the recruitment phase (`_add_recruit`, `turn_resolver.gd:1617-1635`).
+
+  Each is marked **outside** that blessing.
+  - Summons and successors form new armies (`magic_rules.gd:959`, `ruler_rules.gd:456`), so nothing joins there.
+
+**The marker:** `Unit.outside_blessing`, holding the enchantment's id.
+- **Saved only when set,** as `Unit.until` already is (`unit.gd:19, 44`), so every existing record and save is byte-identical.
+- **Valid only** if it names a live blessing of the unit's own faction that lists the army the unit stands in. Validation fails otherwise, with a plain reason.
+- **Tests:** a malformed id, the wrong kind, the wrong owner, the wrong army, a commander, and legacy bytes.
+
+**Where it counts.** Every place that reads a blessing's coverage takes the blessing's id and skips fighters outside it:
+- **healing:** `enchantment_step` passes the blessing id to `_give`, which skips fighters marked outside. The army's full heal goes to the fighters it covers;
+- **battle:** a fighter is blessed only if its army is listed and its unit isn't outside that blessing. This drives the half-blessed morale, `blessed_fighters`, the enchantment log and the battle report's text;
+- **fog**, in both the clear pooling (`pool_now`, `fog_rules.gd:359-376`) and the glimpse counts (`_count_units`, 414-458): a unit is blessed or plain by itself, not by its army. Commanders stay where today's pooling puts them (plain or extra-commander stand-ins, never the blessed partition), and the codex says so;
+- **the computer:** a Dawn Blessing proposal (`ai/ai_magic.gd:511`) values the **covered** fighters, not the army id. A partly covered main army can be worth re-casting on, and a fixture tests it;
+- **words:** the army panel and tooltips (`map_screen.gd:1741`; UX-3's card later), the cast forecast, the brief and healing report sentences (`magic_rules.gd:1183, 1233`), and the battle report use covered and total counts: "blessed: 6 of 8 fighters; 2 joined after it was cast." The blessing's codex entry explains it.
+
+**When the marker clears.** One helper, `MagicRules.clear_outside(enchantment_id)`, is called on every path that ends a blessing:
+- the cast-time replacement of another blessing (`magic_rules.gd:943`);
+- time running out, and the last army leaving (`enchantment_step`, 1509-1518).
+
+The marker also clears when its unit leaves the army.
+
+**Re-casting.** A blessing re-cast over an army restarts it **with the same id** (`ritual_effect` and `_begin`, `magic_rules.gd:941, 983`). So a successful cast or restart **clears the outside markers for that id on the armies it now lists**, and the new casting covers everyone in them. (Wards end rival curses, not blessings, so there is no ward case.)
+
+**Multi-hop:** a unit sent from a blessed A to a plain B loses A's blessing; sent on to a blessed C, it is outside C's. Planning and resolution agree.
+
+**The forecast and the report say it:**
+- forecast: "2 Knights join the Crown's 1st; its Dawn Blessing won't cover them";
+- report: "Two Knights joined the Crown's 1st at Crownkeep. They aren't under its blessing.";
+- recruits: "the new Knights join the Crown's 1st, outside its blessing".
+
+**Tests:**
+- healing with outside units (none to them; the same budget to the rest);
+- half-blessed morale, the battle log and the report with outside regulars and commanders;
+- fog clear and glimpse with outside units (the snapshot probe);
+- a recruit joining a blessed army;
+- the marker clearing at each ending path, and on a re-cast;
+- multi-hop;
+- validation and save and load;
+- the AI fixture;
+- byte-identity of every legacy record.
 
 ## 3. orders that depend on a muster
 Today the order book checks each order against `state_after_orders` (sacrifice effects). ARM-1 adds musters to that function. Musters are **hoisted**: the projection applies every muster first, in order, then checks every non-muster order against the result, wherever it sits in the list. So:
@@ -200,7 +228,19 @@ Today the order book checks each order against `state_after_orders` (sacrifice e
 
 ## appendix A. critic rounds
 
-**r4** (Alex 10-10) replaced "blessed armies can't muster" with blessings that stay with their army (§2.1); a focused round 3 checks it.
+**r4** (Alex 10-10) replaced "blessed armies can't muster" with blessings that stay with their army (§2.1).
+
+### round 3 (Codex, focused on §2.1, 2026-10-10): "the marker approach is sound, but the spec is not implementation-complete". 10 findings, 2 blockers. All taken in r5.
+- **Blockers:**
+  - a re-cast keeps the same id, so it clears the markers;
+  - recruits joining a blessed army are marked too.
+- **Majors:**
+  - one clearing helper for every ending path;
+  - no ward case;
+  - healing, battle, fog clear and glimpse counted per fighter;
+  - marker validation;
+  - the AI values covered fighters.
+- **Minor:** covered and total counts in every player-facing text.
 
 ### round 2 (Codex, hostile, on r2, 2026-10-10): 9 findings, 2 blockers. All taken.
 - **Blockers:**
