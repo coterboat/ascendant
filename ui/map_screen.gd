@@ -438,7 +438,7 @@ func queue_sacrifice(mandate_id: String) -> String:
 	var reason := orders.queue_sacrifice(mandate_id)
 	if reason.is_empty():
 		GameAudio.sfx("sacrifice")
-		status_text = "Sacrifice ordered: %s. It resolves first when the turn ends, so your other orders already count on it; click the cross to cancel." % \
+		status_text = "Sacrifice ordered: %s. It resolves first when the turn ends, so your other orders already count on it; cancel it with the cross in the tray's Orders list." % \
 			RulerRules.mandate_name(mandate_id)
 		status_text += _removed_text(orders.last_removed())
 	else:
@@ -478,7 +478,7 @@ func queue_cast(ritual: String, army_id: String, target: String, pay: String = C
 	var reason := orders.queue_cast(ritual, army_id, target, pay, size)
 	if reason.is_empty():
 		GameAudio.sfx("sacrifice")
-		status_text = "Ritual ordered: %s. It is cast before anyone moves when the turn ends, and the army holds; click the cross to cancel." % \
+		status_text = "Ritual ordered: %s. It is cast before anyone moves when the turn ends, and the army holds; Cancel order on its card, or the cross in the tray's Orders list, takes it back." % \
 			MagicRules.spell_name(ritual)
 		status_text += _removed_text(orders.last_removed())
 	else:
@@ -943,7 +943,7 @@ func _update_ruler_line(f: Faction) -> void:
 ## Queues a move for the viewing faction. Returns "" or the rules' reason (also shown in the panel).
 func queue_move(army_id: String, to_province: String) -> String:
 	var reason := orders.queue_move(army_id, to_province)
-	status_text = reason if not reason.is_empty() else "Move ordered. Armies move when the turn ends; click the cross to cancel."
+	status_text = reason if not reason.is_empty() else "Move ordered. Armies move when the turn ends; Cancel order on the army's card, or the cross in the tray's Orders list, takes it back."
 	if reason.is_empty() and not orders.last_relief.is_empty():  # M3c: the garrison comes out to join the relief
 		var place := state.find_province(to_province).name
 		status_text = "Relief ordered: it marches into %s when the turn ends, and the garrison comes out to join it: %s. Untick them in %s's fort panel to keep them in." % [
@@ -990,7 +990,7 @@ func queue_fortify(province_id: String) -> String:
 	var reason := orders.queue_fortify(province_id)
 	if reason.is_empty():
 		var fc := orders.fortify_preview(province_id)
-		status_text = "Fortify ordered: %s at %s stands at the end of turn %d if no enemy army stands there, and takes recruits from turn %d. Click the cross to cancel." % [
+		status_text = "Fortify ordered: %s at %s stands at the end of turn %d if no enemy army stands there, and takes recruits from turn %d. Cancel it with the cross in the tray's Orders list." % [
 			SiegeRules.fort_phrase(int(fc.level)), state.find_province(province_id).name, int(fc.stands), int(fc.recruit_from)]
 	else:
 		status_text = reason

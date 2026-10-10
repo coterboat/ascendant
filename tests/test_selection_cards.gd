@@ -320,6 +320,40 @@ func test_under_fog_the_army_card_says_how_far_it_sees() -> void:
 	game.free()
 
 
+# --- real input on the live Table ----------------------------------------------------------------------
+
+## The runner's tests run before the scene tree is live, so no click or key is routed in them: tests/card_click_probe.gd is a real
+## (headless) main loop in a child process that pushes real mouse and key events through the viewport at a whole game screen on the
+## 3D board and reports a PASS or FAIL line for each check (the same arrangement as the table probe).
+func test_real_clicks_and_esc_drive_the_cards_on_the_live_table() -> void:
+	var scratch := "user://card_click_probe"
+	var cmd := ["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/card_click_probe.gd"]
+	var output := []
+	var code := OS.execute(OS.get_executable_path(), cmd, output, true)
+	var text := "\n".join(output)
+	var passed := 0
+	var failed := []
+	for line in text.split("\n"):
+		if line.begins_with("PASS "):
+			passed += 1
+		elif line.begins_with("FAIL "):
+			failed.append(line)
+	assert_true(passed >= 14, "the probe ran its checks (exit code %d, %d passed): %s" % [code, passed, text.right(600)])
+	assert_eq(failed, [], "no check of the live Table failed")
+	assert_true(text.contains("CLICK_PROBE OK"), "and it said so")
+	_remove_tree(scratch)
+
+
+static func _remove_tree(path: String) -> void:
+	if not DirAccess.dir_exists_absolute(path):
+		return
+	for sub in DirAccess.get_directories_at(path):
+		_remove_tree(path.path_join(sub))
+	for file in DirAccess.get_files_at(path):
+		DirAccess.remove_absolute(path.path_join(file))
+	DirAccess.remove_absolute(path)
+
+
 # --- the army's actions --------------------------------------------------------------------------------
 
 func test_march_folds_the_card_into_a_strip_and_esc_brings_it_back() -> void:
@@ -350,6 +384,19 @@ func test_march_folds_the_card_into_a_strip_and_esc_brings_it_back() -> void:
 	cards.begin_march()
 	cards.strip_cancel.pressed.emit()
 	assert_false(cards.marching)
+	game.free()
+
+
+func test_a_march_pick_does_not_outlive_its_turn() -> void:
+	var game := _game()
+	var map := game.map
+	map.select_army("kingdom-1")
+	map.cards.begin_march()
+	assert_true(map.cards.marching)
+	game.end_turn()
+	game.close_turn_report()
+	assert_false(map.cards.marching, "the next turn starts with no pick going")
+	assert_false(map.cards.strip.visible, "and no strip")
 	game.free()
 
 

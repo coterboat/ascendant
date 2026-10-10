@@ -63,6 +63,8 @@ var _kind := ""
 var _id := ""
 var _province := ""
 var _march_army := ""
+var _march_turn := -1  # the turn and the seat the pick began in: a new turn or another seat ends it
+var _march_viewer := ""
 var _return_to_selection := false
 var _sections := {}
 var _max_height := 480.0
@@ -276,6 +278,8 @@ func begin_march() -> void:
 		return
 	marching = true
 	_march_army = _id
+	_march_turn = map.state.current_turn
+	_march_viewer = map.viewing_faction_id
 	strip_note.visible = false
 	strip_note.text = ""
 	strip_label.tooltip_text = TooltipText.plain("March", "Click a province next to %s (or, with King's Roads, two away) to order the march: its forecast shows when you hover one. Esc, a right-click on empty board or the cross stops choosing and brings the card back. %s" % [
@@ -318,6 +322,8 @@ func _apply_marching() -> void:
 func _march_is_live() -> bool:
 	if map == null or map.state == null or mode != "army" or _id != _march_army:
 		return false
+	if map.state.current_turn != _march_turn or map.viewing_faction_id != _march_viewer:
+		return false  # the turn ended, or the table passed to another player: the pick is over
 	var a: Army = map.state.find_army(_march_army)
 	if a == null or map.orders == null:
 		return false
