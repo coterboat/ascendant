@@ -190,16 +190,22 @@ static func problem_in_state(state: GameState, army: Army, unit: Unit, status: D
 static func validate(state: GameState, errors = null) -> bool:
 	var ok := true
 	for a in state.armies:
-		var fighters: Array = a.units.duplicate()
+		for u in a.units:
+			if not u.statuses.is_empty():
+				ok = _check_unit(state, a, u, errors) and ok
 		for u in [a.commander, a.ruler]:
-			if u != null:
-				fighters.append(u)
-		for u in fighters:
-			for status in u.statuses:
-				var why := problem_in_state(state, a, u, status)
-				if not why.is_empty():
-					Serial.report(errors, why + ".")
-					ok = false
+			if u != null and not u.statuses.is_empty():
+				ok = _check_unit(state, a, u, errors) and ok
+	return ok
+
+
+static func _check_unit(state: GameState, a: Army, u: Unit, errors) -> bool:
+	var ok := true
+	for status in u.statuses:
+		var why := problem_in_state(state, a, u, status)
+		if not why.is_empty():
+			Serial.report(errors, why + ".")
+			ok = false
 	return ok
 
 

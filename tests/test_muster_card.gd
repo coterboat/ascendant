@@ -6,6 +6,7 @@ extends "res://tests/test_case.gd"
 ## Drops are driven as Godot drives them: the payload a chip's drag starts with is offered to the row (_can_drop_data), then dropped.
 
 const Kit := preload("res://tests/muster_test_kit.gd")
+const FortTest := preload("res://tests/test_fort_panel.gd")
 const MAP_SCENE := "res://ui/map_screen.tscn"
 const CROWN := "kingdom"
 const CLANS := "beasts"
@@ -347,6 +348,60 @@ func test_the_orders_list_shows_the_muster_with_its_sentence_and_a_cancel() -> v
 	(_node(map.details, "CancelButton") as Button).pressed.emit()
 	assert_eq(map.orders.orders(), [])
 	map.free()
+
+
+func test_the_fort_panel_lists_an_army_a_muster_forms_so_it_can_sally() -> void:
+	var s := FortTest.besieged_keep()
+	var map := _map(s)
+	map.select_province("stonegate")
+	assert_eq(map.queue_muster(MusterOrder.transfer("kingdom-3", "", [0, 1, 2, 3])), "", "split the garrison")
+	var fort := _node(map.details, "FortSection")
+	var tick := _node(fort, "SallyTick_kingdom-20") as BaseButton
+	assert_true(tick != null, "the new army has its sally tick")
+	assert_false(tick.disabled, "and it may sally: %s" % tick.tooltip_text)
+	tick.button_pressed = true
+	var sallies := map.orders.orders().filter(func(o): return o is SiegeOrder)
+	assert_eq(sallies.size(), 1)
+	assert_true(sallies[0].is_sally() and sallies[0].army_id == "kingdom-20", "the sally of the Crown's 20th, an army that exists only in the plan")
+	assert_true(String(map.orders.order_text(map.orders.orders().size() - 1)).begins_with("Sally out of Stonegate"), map.orders.order_text(map.orders.orders().size() - 1))
+	# Cancelling the split takes the sally with it.
+	map.cancel_order(0)
+	assert_eq(map.orders.orders(), [], "the sally of an army that no longer exists went too")
+	map.free()
+
+
+func test_the_controllers_projected_board_is_rebuilt_on_every_change_of_the_plan() -> void:
+	var s := Kit.game("rulers")
+	var c := OrdersController.new(s, CROWN)
+	assert_eq(c.view_state(), s, "nothing queued: the state itself")
+	assert_eq(c.queue_muster(MusterOrder.transfer("kingdom-1", "", [0])), "")
+	var one := c.view_state()
+	assert_true(one != s and one.find_army("kingdom-3") != null, "a queued muster projects the board")
+	assert_eq(c.view_state(), one, "unchanged plan: the same board, not rebuilt")
+	assert_eq(c.queue_muster(MusterOrder.transfer("kingdom-1", "", [0])), "")
+	var two := c.view_state()
+	assert_true(two != one and two.find_army("kingdom-4") != null, "another muster: rebuilt")
+	assert_eq(c.queue_move("kingdom-4", "westwatch"), "", "a move for the second new army")
+	assert_eq(c.view_state(), two, "a move changes neither the sacrifice nor the musters: the same board")
+	c.cancel(0)  # the first muster: the second one's new army is now the 3rd, and its move goes
+	var three := c.view_state()
+	assert_true(three != two and three.find_army("kingdom-4") == null and three.find_army("kingdom-3") != null, "a cancel: rebuilt")
+	assert_true(c.last_removed().any(func(t): return String(t).begins_with("Move to Westwatch removed")), "%s" % [c.last_removed()])
+	c.cancel(0)
+	assert_eq(c.view_state(), s, "no muster left: the state itself again")
+	# A sacrifice projects too, and a muster on top of it.
+	var mandate := ""
+	for m in RulerRules.available_mandates(CROWN, s):
+		if RulerRules.sacrifice_check(s, CROWN, String(m)).is_empty():
+			mandate = String(m)
+			break
+	if not mandate.is_empty():
+		assert_eq(c.queue_sacrifice(mandate), "")
+		var sac := c.view_state()
+		assert_true(sac != s)
+		assert_eq(c.queue_muster(MusterOrder.transfer("kingdom-1", "", [0])), "")
+		var both := c.view_state()
+		assert_true(both != sac and both.find_army("kingdom-3") != null and both.find_faction(CROWN).kept_power == sac.find_faction(CROWN).kept_power)
 
 
 func test_cards_read_the_board_the_plan_leaves() -> void:

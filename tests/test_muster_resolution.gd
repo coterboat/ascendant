@@ -42,6 +42,20 @@ func test_the_phase_lists_and_the_codex_phase_order_are_unchanged() -> void:
 			assert_eq(e.phase, "orders")
 
 
+func test_the_codex_explains_splitting_and_merging() -> void:
+	var entry := RulesCodex.entry("muster")
+	assert_eq(entry.title, "Splitting and merging armies")
+	var text := String(entry.text)
+	for part in ["split", "merge", "swap", "ruler travels alone", "at most one commander", "disbanded", "Blessings", "defends the province"]:
+		assert_true(text.contains(part), "the entry says '%s'" % part)
+	assert_true(text.contains("at most %d" % FortData.ARMY_ENGINES_MAX), "and the engine cap, from the data")
+	assert_true(RulesCodex.text("phase_order").contains("Splitting and merging armies"), "the phase order points at it")
+	assert_true(RulesCodex.text("blessing").contains("fighter by fighter"), "and the blessing's entry says what a muster does to it")
+	for t in MusterRules.EVENT_TYPES:
+		assert_true(RulesCodex.ENTRIES.has(MusterRules.CODEX), "the events' codex entry exists")
+	assert_true(RulesCodex.ENTRIES.has(UnitStatus.codex_id(UnitStatus.OUTSIDE_BLESSING)))
+
+
 func test_a_game_where_nobody_musters_resolves_as_before() -> void:
 	var s := Kit.game()
 	var orders := {CROWN: [MoveOrder.new("kingdom-1", "westwatch"), RecruitOrder.new("spearmen")], CLANS: [MoveOrder.new("beasts-1", "ebonpeak")]}

@@ -281,6 +281,9 @@ func _add_actions(a: Army, box: Control) -> void:
 	# Cancel its order.
 	for i in list:
 		var cancel := action_button("CancelButton", "Cancel order", "dismiss", "Cancel this order. Nothing happens until the turn ends, so you can change your mind.")
+		if orders.orders()[i] is MusterOrder:  # ARM-1: say which: an army can have a muster and a move
+			cancel.text = "Cancel muster"
+			cancel.tooltip_text = TooltipText.plain("Cancel muster", "Cancel this split, merge or swap. Orders that rely on it, like a move for the army it formed, go with it, and the status line says which. Nothing happens until the turn ends.")
 		cancel.pressed.connect(map.cancel_order.bind(i))
 		cancel_buttons.append(cancel)
 		actions.add_child(cancel)
