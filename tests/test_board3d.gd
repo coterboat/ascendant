@@ -262,6 +262,47 @@ func test_clicks_on_the_board_select_through_the_map_screen() -> void:
 	game.free()
 
 
+func test_a_trackpad_pinch_or_two_finger_scroll_zooms_like_the_wheel() -> void:
+	## playtest 10-10: on a MacBook, zoom did nothing. macOS sends a trackpad's pinch and two-finger scroll as
+	## gestures, never as wheel clicks, and the board only listened to the wheel.
+	var pinch_out := InputEventMagnifyGesture.new()
+	pinch_out.factor = 1.02
+	var pinch_in := InputEventMagnifyGesture.new()
+	pinch_in.factor = 0.98
+	var scroll_up := InputEventPanGesture.new()
+	scroll_up.delta = Vector2(0, -2)
+	var scroll_down := InputEventPanGesture.new()
+	scroll_down.delta = Vector2(0, 2)
+	var sideways := InputEventPanGesture.new()
+	sideways.delta = Vector2(3, 0)
+	assert_true(Board3D.trackpad_zoom(pinch_out) > 0.0, "spreading the fingers zooms in")
+	assert_true(Board3D.trackpad_zoom(pinch_in) < 0.0, "pinching them together zooms out")
+	assert_true(Board3D.trackpad_zoom(scroll_up) > 0.0, "a two-finger scroll up zooms in, as the wheel up does")
+	assert_true(Board3D.trackpad_zoom(scroll_down) < 0.0, "a scroll down zooms out")
+	assert_eq(Board3D.trackpad_zoom(sideways), 0.0, "a sideways scroll doesn't zoom")
+	var big := InputEventMagnifyGesture.new()
+	big.factor = 3.0
+	assert_true(absf(Board3D.trackpad_zoom(big)) <= 0.07 + 0.000001, "one gesture event zooms at most a wheel click")
+	assert_eq(Board3D.trackpad_zoom(CodexLink.right_click()), 0.0, "other events don't zoom")
+	## through the board's own input, at the middle of the board
+	var game := _game_with_board()
+	var b: Board3D = game.map.board
+	var mid := b.size * 0.5
+	b.zoom = 0.5
+	pinch_out.position = mid
+	b._gui_input(pinch_out)
+	assert_true(b.zoom > 0.5, "a pinch on the board zooms it in (%.3f)" % b.zoom)
+	var z := b.zoom
+	scroll_down.position = mid
+	b._gui_input(scroll_down)
+	assert_true(b.zoom < z, "a two-finger scroll down zooms it out (%.3f)" % b.zoom)
+	z = b.zoom
+	sideways.position = mid
+	b._gui_input(sideways)
+	assert_eq(b.zoom, z, "a sideways scroll leaves the zoom")
+	game.free()
+
+
 # --- state sync -----------------------------------------------------------------------------------
 
 func test_the_board_follows_the_state_owners_armies_and_queued_recruits() -> void:

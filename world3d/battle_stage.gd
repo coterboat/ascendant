@@ -95,7 +95,7 @@ const NUMBER_LIFE := 0.6
 const PLATE_W := 28.0
 const PLATE_H := 5.0
 const MISS_OVERSHOOT := 7.0
-const CAMERA_HINT := "F frames the whole battle · drag with the right button to turn · the wheel zooms"
+const CAMERA_HINT := "F frames the whole battle · drag with the right button to turn · the wheel or a pinch zooms"
 
 var terrain: RefCounted
 var wv: Node3D
@@ -1888,6 +1888,17 @@ func _gui_input(event: InputEvent) -> void:
 			return
 		_set_hover(pick(mm.position))
 		return
+	if (event is InputEventMagnifyGesture or event is InputEventPanGesture) and player != null:
+		## a trackpad pinch or two-finger scroll zooms like the wheel (Board3D.trackpad_zoom; playtest 10-10)
+		var dz := Board3D.trackpad_zoom(event)
+		if dz != 0.0 and not rig.is_empty():
+			_user_rig = true
+			_focus_left = -1.0
+			_move = {}
+			rig["span"] = clampf(float(rig["span"]) * pow(0.88, dz / 0.07), 18.0, 900.0)
+			_apply_rig()
+		accept_event()
+		return
 	var mb := event as InputEventMouseButton
 	if mb == null or player == null:
 		return
@@ -2489,7 +2500,7 @@ static func stage_rows(seat: int = 0) -> Array:
 			"battle_formation", "BattleStage3D.draw_file_badge", func(ci: CanvasItem, r: Rect2):
 				BattleCard.draw_hp_bar(ci, Rect2(r.get_center() + Vector2(-8, -3), Vector2(30, 6)), 14, 24, 0)
 				draw_file_badge(ci, BattleLegend._font(ci), r.get_center() + Vector2(-11, 0), 3)),
-		BattleLegend._row("camera3d", "Camera", "The camera frames the whole battle. F frames it again; drag with the right button to turn it, the wheel zooms. A key-moment jump frames that moment.",
+		BattleLegend._row("camera3d", "Camera", "The camera frames the whole battle. F frames it again; drag with the right button to turn it, the wheel (or a trackpad pinch or two-finger scroll) zooms. A key-moment jump frames that moment.",
 			"battle_playback", "BattleStage3D.draw_camera_hint", func(ci: CanvasItem, r: Rect2):
 				draw_camera_hint(ci, BattleLegend._font(ci), r.end - Vector2(2, 10), "F")),
 	] + BattleSpells.legend_rows(seat) ## M5-9: how to name each spell from what it draws

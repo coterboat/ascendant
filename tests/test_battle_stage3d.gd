@@ -635,6 +635,22 @@ func test_the_camera_frames_every_fighter_in_the_band() -> void:
 	s.free()
 
 
+func test_a_trackpad_pinch_or_scroll_zooms_the_battle_camera() -> void:
+	## playtest 10-10: macOS sends a trackpad's pinch and two-finger scroll as gestures, not wheel clicks
+	var s := _stage(_fixture("king_falls_wins"))
+	var span := float(s.rig.span)
+	var pinch := InputEventMagnifyGesture.new()
+	pinch.factor = 1.04
+	s._gui_input(pinch)
+	assert_true(float(s.rig.span) < span, "spreading the fingers brings the camera closer (%.1f from %.1f)" % [float(s.rig.span), span])
+	span = float(s.rig.span)
+	var scroll := InputEventPanGesture.new()
+	scroll.delta = Vector2(0, 3)
+	s._gui_input(scroll)
+	assert_true(float(s.rig.span) > span, "a two-finger scroll down pulls it back")
+	s.free()
+
+
 func test_f_reframes_and_a_jump_frames_the_moment() -> void:
 	var s := _stage(_fixture("king_falls_wins"))
 	var whole := s.goal.duplicate()

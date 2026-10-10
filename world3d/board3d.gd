@@ -82,6 +82,8 @@ const FOV := 30.0
 const DRAG_START := 6.0 ## pixels before a press becomes a pan
 const LAND := Rect2(-6, -6, 1012, 618) ## what "the whole map" frames (design units)
 const FOCUS_ZOOM := 0.55
+const PINCH_ZOOM := 1.5 ## zoom per unit of a pinch's factor (a 1.05 spread is about one wheel click)
+const SCROLL_ZOOM := 0.02 ## zoom per unit of a two-finger scroll's delta (macOS sends a few units an event)
 const MAX_PX := 2.0 ## the 3D renders at most at 2 physical pixels per screen pixel
 const SEA_VEIL := Color("#244E6E")
 const CLOSE_PITCH := 52.0 ## the fortress close-up's pitch (design 8.1: about 35); the gate side is cut away so the walls never hide the yard
@@ -888,6 +890,17 @@ func _move_goal(v: Vector2) -> void:
 	goal["target"] = Vector3(p.x, h, p.y)
 
 
+## A trackpad's zoom as a zoom step like the wheel's (0.07 a click): a pinch, or a two-finger scroll, which macOS
+## sends as gestures instead of wheel clicks (playtest 10-10: zoom did nothing on a MacBook). Spreading the fingers
+## or scrolling up zooms in. 0.0 for any other event, or a scroll with no vertical part.
+static func trackpad_zoom(event: InputEvent) -> float:
+	if event is InputEventMagnifyGesture:
+		return clampf(((event as InputEventMagnifyGesture).factor - 1.0) * PINCH_ZOOM, -0.07, 0.07)
+	if event is InputEventPanGesture:
+		return clampf(-(event as InputEventPanGesture).delta.y * SCROLL_ZOOM, -0.07, 0.07)
+	return 0.0
+
+
 func zoom_at(local: Vector2, dz: float) -> void:
 	if not closeup.is_empty():
 		## in the close-up the wheel leans in a little; zooming out leaves it
@@ -1091,6 +1104,14 @@ func _draw() -> void:
 
 func _gui_input(event: InputEvent) -> void:
 	if not prepared:
+		return
+	var dz := trackpad_zoom(event)
+	if dz != 0.0:
+		zoom_at((event as InputEventGesture).position, dz)
+		accept_event()
+		return
+	if event is InputEventPanGesture or event is InputEventMagnifyGesture:
+		accept_event()  ## a sideways two-finger scroll: nothing to do, but the board keeps it
 		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
