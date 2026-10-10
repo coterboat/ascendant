@@ -1,6 +1,6 @@
 # ASCENDANT: ARM-1, splitting, merging and swapping commanders
 
-Status: **DRAFT r5 by the director (Claude session, 2026-10-10), for Alex's sign-off.** r4: Alex chose to build blessings properly now ("b) is genuinely the long-term answer so we might as well build it now"): a blessing stays with its army; units that leave lose it; units that join don't gain it (§2.1). Part of the War Table milestone (`design/UX_WAR_TABLE.md` §3.5); issue #195.
+Status: **DRAFT r6 by the director (Claude session, 2026-10-10), for Alex's sign-off.** r4: Alex chose to build blessings properly now ("b) is genuinely the long-term answer so we might as well build it now"): a blessing stays with its army; units that leave lose it; units that join don't gain it (§2.1). Part of the War Table milestone (`design/UX_WAR_TABLE.md` §3.5); issue #195.
 - Alex (10-10, after his playtest): "we need a much better army merging system, including swapping commanders", and "manage … the troop and army movement/distribution/merging side".
 - **r1** was the issue's draft. Codex's hostile round on it (25 findings, 10 blockers) rewrote it into r2, and a second round on r2 (9 findings, 2 blockers, both about precision) gave r3. Appendix A lists the changes.
 
@@ -84,10 +84,28 @@ Today a blessing is an enchantment that lists army ids (`magic_rules.gd:815-820`
   Each is marked **outside** that blessing.
   - Summons and successors form new armies (`magic_rules.gd:959`, `ruler_rules.gd:456`), so nothing joins there.
 
-**The marker:** `Unit.outside_blessing`, holding the enchantment's id.
-- **Saved only when set,** as `Unit.until` already is (`unit.gd:19, 44`), so every existing record and save is byte-identical.
-- **Valid only** if it names a live blessing of the unit's own faction that lists the army the unit stands in. Validation fails otherwise, with a plain reason.
-- **Tests:** a malformed id, the wrong kind, the wrong owner, the wrong army, a commander, and legacy bytes.
+**The marker is the first per-unit status** (Alex 10-10: "that system can then be used to attach any sort of status effect we can conceive of… the more systems thinking the better"). Dominions remembers its afflictions and enchantments on each unit, and so will we.
+- **`Unit.statuses`:** a list of status records, each `{kind, source, ...}`.
+  - ARM-1 ships one kind, **`outside_blessing`**: `{"kind": "outside_blessing", "source": <the blessing's enchantment id>}`.
+  - **Saved only when the list isn't empty,** as `Unit.until` already is (`unit.gd:19, 44`), so every existing record and save is byte-identical.
+- **`UnitStatus`** (new, `rules/unit_status.gd`, pure) is the registry. Each kind registers:
+  - its fields and their types;
+  - its validation;
+  - when it clears (a source enchantment ending, the unit leaving its army, a turn count);
+  - how it reads in a tooltip and the codex;
+  - how it shows in a rival's view (hidden, or seen in clear sight).
+- **Helpers:** `Unit.has_status(kind, source)` and `add_status` / `remove_status`, and `UnitStatus.clear_source(source)`. `MagicRules.clear_outside` below is that last call.
+- **`outside_blessing` is valid only** if its source is a live blessing of the unit's own faction that lists the army the unit stands in. Validation fails otherwise, with a plain reason.
+- **Tests:** a malformed status, an unknown kind, the wrong source kind, owner or army, a commander, legacy bytes, and the registry's own (every kind declares every hook).
+- **What it opens up (parking lot, not ARM-1):**
+  - afflictions and wounds that last (Dominions' afflictions);
+  - veterancy and experience;
+  - fear, poison or burning that outlive a battle;
+  - per-unit curses;
+  - the Candlewake's wax-touched;
+  - blessings themselves moving from army lists to per-unit coverage, once every reader goes through the registry.
+
+  Each is a new kind with its own effect code; the plumbing (save, validate, clear, show, fog) is already there.
 
 **Where it counts.** Every place that reads a blessing's coverage takes the blessing's id and skips fighters outside it:
 - **healing:** `enchantment_step` passes the blessing id to `_give`, which skips fighters marked outside. The army's full heal goes to the fighters it covers;
@@ -96,7 +114,7 @@ Today a blessing is an enchantment that lists army ids (`magic_rules.gd:815-820`
 - **the computer:** a Dawn Blessing proposal (`ai/ai_magic.gd:511`) values the **covered** fighters, not the army id. A partly covered main army can be worth re-casting on, and a fixture tests it;
 - **words:** the army panel and tooltips (`map_screen.gd:1741`; UX-3's card later), the cast forecast, the brief and healing report sentences (`magic_rules.gd:1183, 1233`), and the battle report use covered and total counts: "blessed: 6 of 8 fighters; 2 joined after it was cast." The blessing's codex entry explains it.
 
-**When the marker clears.** One helper, `MagicRules.clear_outside(enchantment_id)`, is called on every path that ends a blessing:
+**When the marker clears.** One helper, `MagicRules.clear_outside(enchantment_id)` (it calls `UnitStatus.clear_source`), is called on every path that ends a blessing:
 - the cast-time replacement of another blessing (`magic_rules.gd:943`);
 - time running out, and the last army leaving (`enchantment_step`, 1509-1518).
 
@@ -227,6 +245,8 @@ Today the order book checks each order against `state_after_orders` (sacrifice e
 ---
 
 ## appendix A. critic rounds
+
+**r6** (Alex 10-10): the marker becomes the first kind in a general per-unit status list (`Unit.statuses`, `UnitStatus`), so any status effect can attach to a unit later.
 
 **r4** (Alex 10-10) replaced "blessed armies can't muster" with blessings that stay with their army (§2.1).
 
