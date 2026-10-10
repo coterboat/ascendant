@@ -375,6 +375,22 @@ class PortraitBatch(unittest.TestCase):
             self.assertGreaterEqual(y, 0)
 
 
+class CompareSheets(unittest.TestCase):
+    def test_a_batch_with_one_model_on_a_side_still_gets_its_sheet(self):
+        """m4_redo2 has one Blood Pact model: xstack needs two inputs, so a side with one shot is passed through."""
+        tmp = tempfile.mkdtemp()
+        try:
+            for stem in ("bloodsworn_strike", "sunspears_ready", "sunspears_march"):
+                subprocess.run([F.FF, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=0x336699:s=1600x800",
+                                "-frames:v", "1", os.path.join(tmp, stem + ".png")], check=True)
+            G.compare_sheets(tmp)
+            self.assertTrue(os.path.exists(os.path.join(tmp, "sheet_blood_pact.png")), "one shot")
+            self.assertTrue(os.path.exists(os.path.join(tmp, "sheet_celestial_host.png")), "two shots")
+            self.assertFalse(os.path.exists(os.path.join(tmp, "sheet_thorn_wild.png")), "no shots, no sheet")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     ## the pipeline modules this drives (asc_3d_factions, glb_slim) leave a few files to the garbage collector
     unittest.main(verbosity=2, warnings="ignore")

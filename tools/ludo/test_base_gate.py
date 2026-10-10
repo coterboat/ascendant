@@ -430,15 +430,61 @@ class TheRedoCarriesAlexsNotes(unittest.TestCase):
         self.assertIn("scattered", line)
         self.assertIn("empty", line)
 
-    def test_the_redone_poses_are_the_issues_five_and_their_models_target_what_the_game_has_now(self):
+    def test_the_redone_poses_are_the_issues_five_and_the_sunspears_four_and_their_models_target_what_the_game_has_now(self):
         self.assertEqual(set(G.REDO), {("bloodsworn", "march"), ("bloodsworn", "strike"), ("bloodsworn", "fallen"),
-                                       ("briarwardens", "march"), ("thornthrowers", "fallen")})
+                                       ("briarwardens", "march"), ("thornthrowers", "fallen"),
+                                       ("sunspears", "ready"), ("sunspears", "march"), ("sunspears", "strike"),
+                                       ("sunspears", "fallen")})
         for (fam, pose), note in G.REDO.items():
             self.assertTrue(note)
             row = next(r for r in G.rows() if r["id"] == "model_%s_%s" % (fam, pose))
             self.assertTrue(os.path.exists(os.path.join(G.ROOT, row["target"])), row["target"])
+            if pose == "ready":  ## its picture is the base: no picture row of its own
+                self.assertFalse(any(r["id"] == "pic_%s_%s" % (fam, pose) for r in G.rows()))
+                continue
             pic = next(r for r in G.rows() if r["id"] == "pic_%s_%s" % (fam, pose))
             self.assertEqual(pic["n"], G.REDO_TAKES)
+
+    def test_the_bloodsworn_strike_names_the_blades_of_both_forearms(self):
+        """Alex 10-9 (m4_redo): "close, but it removed the arm blade on the other arm". March and fallen have both."""
+        line = G.FAMILIES["bloodsworn"]["strike"]
+        self.assertIn("right forearm", line)
+        self.assertIn("left forearm", line)
+        self.assertIn("both forearms", line)
+        self.assertIn("blades growing along his left forearm", line)
+        self.assertNotIn("his left claws thrust forward, mouth", line, "v2's wording, which lost the left blades")
+
+    def test_a_redone_ready_model_gets_a_new_request_id_without_a_picture_row(self):
+        """`redo sunspears:ready` bumps only the model row (the ready picture is the base), so the old job is not handed back."""
+        tmp = tempfile.mkdtemp()
+        old = (G.MANIFEST, F.MANIFEST, G.LEDGER, G.ROOT, F.ROOT)
+        try:
+            G.MANIFEST = F.MANIFEST = os.path.join(tmp, "m.json")
+            G.LEDGER = os.path.join(tmp, "l.jsonl")
+            ## the candidates it moves to old/ are the throwaway folder's, never the repo's: `redo` finds them through
+            ## F.cand_files (F.ROOT) and moves them under G.ROOT, so both are redirected (an earlier version of this
+            ## test redirected only G.ROOT and carried a real candidate GLB away)
+            G.ROOT = F.ROOT = tmp
+            real = os.path.join(old[3], "assets", "models", "candidates", "grok", "sunspears_ready.glb")
+            write(os.path.join(tmp, "assets", "models", "candidates", "grok", "sunspears_ready.glb"), b"glb")
+            with open(G.LEDGER, "w") as f:
+                f.write(json.dumps({"row": "model_sunspears_ready", "request_id": "ascgrok-model_sunspears_ready-v1",
+                                    "credits_charged": 4}) + "\n")
+            G.write_manifest({"balance_before": G.SENTINEL, "v": {}, "picks": {"model_sunspears_ready": 1}})
+            G.redo([("sunspears", "ready")])
+            st = G.load_state()
+            self.assertEqual(st["v"]["model_sunspears_ready"], 2)
+            self.assertNotIn("pic_sunspears_ready", st["v"])
+            self.assertNotIn("model_sunspears_ready", st["picks"])
+            self.assertFalse(os.path.exists(os.path.join(tmp, "assets", "models", "candidates", "grok",
+                                                         "sunspears_ready.glb")), "the old candidate went to old/")
+            self.assertTrue(os.path.exists(os.path.join(tmp, "assets", "models", "candidates", "grok", "old",
+                                                        "v1_sunspears_ready.glb")))
+            if os.path.exists(real):  ## the repo's own candidate is never touched
+                self.assertNotEqual(Path(real).read_bytes(), b"glb")
+        finally:
+            G.MANIFEST, F.MANIFEST, G.LEDGER, G.ROOT, F.ROOT = old
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_hill_slingers_base_is_a_real_sling_and_the_strike_twirls_it_overhead(self):
         p = FH.BASE_REDO["hill_slingers"]
@@ -454,9 +500,41 @@ class TheRedoCarriesAlexsNotes(unittest.TestCase):
         self.assertNotIn("rifle", strike)
         self.assertNotIn("long leather sling", u["outfit"])
 
+    def test_hill_slingers_base_redo_keeps_the_kept_take_and_loses_the_outline(self):
+        """Alex 10-9 on take 3: "This added a cel-shaded outline effect the other models don't have". v1 said "Same outline
+        style"; v2 is an edit of the take he kept, repainted in the soft matte look of the other Free Holds pictures."""
+        p = FH.BASE_REDO["hill_slingers"]
+        self.assertNotIn("outline", p, "the words that drew the outline are gone, and none names it")
+        for word in ("soft matte", "clay miniature", "soft shading", "same sling and pouch", "doubled"):
+            self.assertIn(word, p)
+        row = next(r for r in FH.rows() if r["id"] == "base_hill_slingers_ready")
+        self.assertEqual(row["from_file"], FH.BASE_FROM["hill_slingers"], "an edit of the kept take, not the old ready picture")
+        self.assertNotEqual(row["from_file"], row["pick_to"])
+        self.assertTrue(row["from_file"].startswith("assets/_concept/candidates/"), "gitignored: never committed")
+
+    def test_the_base_redo_input_is_the_take_he_kept_when_he_marked_it_good_with_changes(self):
+        tmp = tempfile.mkdtemp()
+        old = FH.ROOT
+        try:
+            FH.ROOT = tmp
+            write(os.path.join(tmp, "review", FH.BASE_BATCH, "hill_slingers", "hill_slingers_ready_c3.webp"), b"take three")
+            write(os.path.join(tmp, FH.pick_path("hill_slingers_ready")), b"the old ready picture")
+            entry = {"id": "hill_slingers_ready", "verdict": "revise", "file": "hill_slingers/hill_slingers_ready_c3.webp"}
+            dst = FH.prepare_base_input("hill_slingers", entry)
+            self.assertEqual(Path(dst).read_bytes(), b"take three")
+            ## Bad: no kept take, so the edit starts from the current ready picture
+            dst = FH.prepare_base_input("hill_slingers", dict(entry, verdict="reject"))
+            self.assertEqual(Path(dst).read_bytes(), b"the old ready picture")
+            ## a unit with no BASE_FROM is left alone
+            self.assertIsNone(FH.prepare_base_input("wildkin", entry))
+        finally:
+            FH.ROOT = old
+            shutil.rmtree(tmp, ignore_errors=True)
+
     def test_the_pose_prompts_keep_to_the_c_pose_frame(self):
         for fam, pose in G.REDO:
-            self.assertIn("The same figure, now ", self.prompt(fam, pose))
+            if pose != "ready":  ## the ready picture is the base, not a pose edit
+                self.assertIn("The same figure, now ", self.prompt(fam, pose))
 
 
 class BaseBatchActions(unittest.TestCase):
@@ -519,7 +597,9 @@ class RoundBudget(unittest.TestCase):
                                    "image": "/assets/image"}[r["kind"]]] * r.get("n", 1)  # noqa: E731
         grok = sum(price(r) for r in G.rows() if r["stage"] == "base"
                    or (r["id"].split("_", 1)[1] in ["%s_%s" % k for k in G.REDO] and r["stage"] in ("poses", "models")))
-        self.assertLess(grok * 2, G.CAP, "the redo and a full re-roll of it stay inside the round's cap")
+        ## the redo is nine poses now (the Sunspears' four joined the first five): it fits with room for three re-rolled models
+        model = F.PRICE["/assets/3d-model"]
+        self.assertLess(grok + 3 * model, G.CAP, "the redo and three re-rolled models stay inside the round's cap")
         fh = sum(price(r) for r in FH.rows() if r["unit"] == "hill_slingers" and r["stage"] in ("base", "poses", "models"))
         self.assertLess(fh * 2, FH.CAP)
 

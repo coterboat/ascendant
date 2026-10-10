@@ -69,6 +69,14 @@ the redo: his notes ("a real sling, not a long rope or a spool: a short cord wit
 "right elbow up, fingers toward the sky, twirling the sling overhead, not held like a rifle"; the fallen pose was fine)
 are in the prompts below, the poses wait for the base. The round `ROUND` has its own CAP; JOB_CAP (120) is the redo's
 budget across both batch scripts (asc_3d_grok.py has 70 of it).
+
+The Hill Slingers' second base (Alex 10-9): he marked take 3 of the first redo Good with changes: "This added a cel-shaded
+outline effect the other models don't have". The sling and pouch were right; the first prompt's "Same outline style" had
+drawn a thin black outline round the figure, unlike the soft matte clay look of the other Free Holds ready pictures. So
+`regen-base` (the batch's Redo rejected) now edits the take he kept (`BASE_FROM`, copied out of the base batch by
+`prepare_base_input`) with a prompt that keeps its figure, sling and pouch and repaints it as a soft matte hand-painted clay
+miniature; it also rewrites the manifest first, so an edited BASE_REDO reaches the redo. Nothing is derived from it until he
+marks it Good.
 """
 import filecmp
 import json
@@ -215,16 +223,25 @@ LYING = F.LYING
 ## The base redo: an edit of the unit's current ready picture, 3 takes, into the concept batch BASE_BATCH. Alex's notes ride
 ## in the prompt in his own words (a negative is drawn, so each is said as what to do). The edit keeps the figure he reviewed
 ## (ind_concept: good, only the sling wrong) and gives him a real sling.
+## v1 ended "Same outline style" and the takes came back with a thin black cel-shaded outline round the whole figure.
+## Alex 10-9, on take 3 (the sling and pouch he kept): "This added a cel-shaded outline effect the other models don't
+## have". v2 is an edit of that take (BASE_FROM) that keeps its figure, sling and pouch exactly and repaints it in the look
+## of the other Free Holds ready pictures: a soft matte painted clay miniature shaped by soft shading, its edges the colour
+## of the cloth, skin and leather itself.
 BASE_REDO = {
-    "hill_slingers": ("The same figure with the same hood, face, outfit and colours, now holding a real sling in his right "
-                      "hand: a short leather cord with a small leather pouch in the middle, the two ends of the cord "
-                      "gripped together in his fist so the cord hangs doubled with the pouch dangling a little below his "
-                      "hand, the whole sling about as long as his forearm. He stands in a relaxed A-pose with his feet "
-                      "apart, his right arm held out from his side with clear space between the sling and his body, his "
-                      "left arm held a little out from his side, alert expression, eyes ahead. Same outline style, "
-                      "three-quarter view from slightly above, the whole figure with wide empty margin on every side, "
-                      "plain flat light grey background."),
+    "hill_slingers": ("The same figure exactly as drawn, the same hood, face, outfit, colours and pose, with the same sling "
+                      "and pouch: a short leather cord with a small leather pouch in the middle, the two ends of the cord "
+                      "gripped together in his right fist so the cord hangs doubled with the pouch dangling a little below "
+                      "his hand. Repaint the whole figure as a soft matte hand-painted clay miniature, like a studio "
+                      "photograph of a painted figurine: the forms are shaped by soft shading and gentle shadow, every "
+                      "colour meets the next at a soft painted edge, the outer edge of the figure is the colour of the "
+                      "cloth, skin and leather itself, and the wool and leather have a fine matte texture. Three-quarter "
+                      "view from slightly above, the whole figure with wide empty margin on every side, plain flat light "
+                      "grey background."),
 }
+## What a base redo is an edit of, where that is not the unit's current ready picture: the take Alex kept (Good with changes),
+## copied out of the base batch into the gitignored inputs folder by `regen-base`, so the redo keeps exactly what he liked.
+BASE_FROM = {"hill_slingers": "assets/_concept/candidates/_inputs/hill_slingers_base_kept.webp"}
 BASE_TAKES = 3
 ## The units whose base Alex accepted before the gate existed: his Good on the ready picture in the batch that judged it
 ## (review/ind_concept, 10-8; PR #178 installed them). If that batch's review.json is here and says otherwise, base_gate
@@ -288,8 +305,8 @@ def rows():
     ## Its candidates go to the concept batch BASE_BATCH, never to the pick: `pick` refuses a base row.
     for uid, prompt in BASE_REDO.items():
         out.append({"id": "base_%s_ready" % uid, "stage": "base", "kind": "edit", "n": BASE_TAKES,
-                    "from_file": pick_path(uid + "_ready"), "prompt": prompt, "pick_to": pick_path(uid + "_ready"),
-                    "group": "units", "unit": uid, "pose": "ready"})
+                    "from_file": BASE_FROM.get(uid, pick_path(uid + "_ready")), "prompt": prompt,
+                    "pick_to": pick_path(uid + "_ready"), "group": "units", "unit": uid, "pose": "ready"})
     for uid, u in UNITS.items():
         for pose in POSES[1:]:
             view = F.VIEW_LYING if pose in LYING else F.VIEW
@@ -832,11 +849,30 @@ def base_status():
         print("%-14s %-20s %s" % (uid, r["state"], ("-> %s" % r["file"]) if r["file"] else r["message"]))
 
 
+def prepare_base_input(uid, entry):
+    """The picture a base redo is an edit of, where BASE_FROM names one: the take Alex kept when he marked it Good with changes
+    (rejected.json's `file`, relative to the base batch), else the unit's current ready picture. Copied into the gitignored
+    inputs folder, so the redo keeps exactly what he liked and changes only what his note asks."""
+    dst = BASE_FROM.get(uid)
+    if not dst:
+        return None
+    src = os.path.join(ROOT, pick_path(uid + "_ready"))
+    kept = os.path.join(ROOT, "review", BASE_BATCH, entry.get("file") or "")
+    if entry.get("verdict") == "revise" and entry.get("file") and os.path.exists(kept):
+        src = kept
+    dst = os.path.join(ROOT, dst)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    shutil.copyfile(src, dst)
+    print("base input for %s: %s" % (uid, os.path.relpath(src, ROOT)))
+    return dst
+
+
 def regen_base():
     """The base batch's Redo rejected: every rejected (or Good with changes) base is rolled again with its prompt as it is
     now (the notes are printed: edit BASE_REDO with them first), then the batch is rebuilt."""
     review = _review_module()
     ludo.KEY = ludo.api_key()
+    write_manifest()  ## the prompts and inputs as the code holds them now: a BASE_REDO edit reaches the redo
     review.write_rejected(BASE_BATCH)
     rj = json.load(open(os.path.join(ROOT, "review", BASE_BATCH, "rejected.json")))
     todo = []
@@ -844,6 +880,7 @@ def regen_base():
         row = (e.get("meta") or {}).get("row")
         if row:
             print("rejected %s: %s" % (e["id"], e.get("note") or "(no note)"))
+            prepare_base_input((e.get("meta") or {}).get("unit"), e)
             todo.append(row)
     if not todo:
         print("nothing rejected")
