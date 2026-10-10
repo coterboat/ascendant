@@ -17,7 +17,9 @@
  },
  "state": {
   "balance_before": 1000.0,
-  "v": {},
+  "v": {
+   "base_hill_slingers_ready": 2
+  },
   "picks": {
    "pic_free_spears_ready": 3,
    "pic_wildkin_ready": 3,
@@ -77,6 +79,11 @@
      1056
     ]
    }
+  },
+  "rerolls": {
+   "base_hill_slingers_ready": [
+    "v1: rejected in the Review Table"
+   ]
   }
  },
  "assets": [
@@ -149,13 +156,13 @@
    "stage": "base",
    "kind": "edit",
    "n": 3,
-   "from_file": "assets/_concept/independents/hill_slingers_ready.webp",
-   "prompt": "The same figure with the same hood, face, outfit and colours, now holding a real sling in his right hand: a short leather cord with a small leather pouch in the middle, the two ends of the cord gripped together in his fist so the cord hangs doubled with the pouch dangling a little below his hand, the whole sling about as long as his forearm. He stands in a relaxed A-pose with his feet apart, his right arm held out from his side with clear space between the sling and his body, his left arm held a little out from his side, alert expression, eyes ahead. Same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "from_file": "assets/_concept/candidates/_inputs/hill_slingers_base_kept.webp",
+   "prompt": "The same figure exactly as drawn, the same hood, face, outfit, colours and pose, with the same sling and pouch: a short leather cord with a small leather pouch in the middle, the two ends of the cord gripped together in his right fist so the cord hangs doubled with the pouch dangling a little below his hand. Repaint the whole figure as a soft matte hand-painted clay miniature, like a studio photograph of a painted figurine: the forms are shaped by soft shading and gentle shadow, every colour meets the next at a soft painted edge, the outer edge of the figure is the colour of the cloth, skin and leather itself, and the wool and leather have a fine matte texture. Three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/independents/hill_slingers_ready.webp",
    "group": "units",
    "unit": "hill_slingers",
    "pose": "ready",
-   "v": 1,
+   "v": 2,
    "augment": false,
    "out": "assets/_concept/candidates/free_holds/hill_slingers_ready_base"
   },

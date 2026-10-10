@@ -85,6 +85,16 @@ moved away, the colour lifts of the old model forgotten), and their models go to
 
     python3 tools/ludo/asc_3d_grok.py redo bloodsworn:march bloodsworn:strike bloodsworn:fallen briarwardens:march thornthrowers:fallen
     python3 tools/ludo/asc_3d_grok.py run poses --only bloodsworn,briarwardens,thornthrowers   # then look, `pick <row> <k>`, run models
+
+The 10-9 round (ART-PIPE 2): Alex marked the Sunspears' base Good (review/m4_redo_base), so their derive ran behind the
+gate: `redo sunspears:march sunspears:strike sunspears:fallen sunspears:ready` (the ready pose has only a model row: its
+picture is the base), `run poses --only sunspears`, a look at every picture (a halo or rays added back, or the stained
+glass lost, is re-rolled), `pick`, `run models --only sunspears`, `stage`, then `batch --name m4_redo2 --only ...`. His
+verdict on the Bloodsworn strike in m4_redo was Bad ("close, but it removed the arm blade on the other arm"): the strike
+line names the slim blades of the left forearm as well as the big right one, and it is made again the same way
+(`redo bloodsworn:strike`). A row's request id is sticky: a redo must bump the version (`redo` does), and a `run` that
+reaches a row whose old id was already used gets that old job handed back, free but written to the ledger with the
+credits that job once cost (the batch's ledger line then reads 4.0 for a model that cost nothing: check the account).
 """
 import filecmp
 import glob
@@ -212,11 +222,14 @@ FAMILIES = {
         march="loping forward with his left leg ahead, his arms swinging at his sides, the curved bone blade growing out "
               "of his right forearm as part of the arm and the bone spikes along his left forearm, the blades grow from "
               "the forearms and swing with the arms, his claws open and empty, eyes ahead",
-        ## v2 of the strike picture: the first three takes all drew a hilt, a separate sword raised in his fist.
-        strike="leaping forward in a savage lunge, slashing with his arm blade raised high: the curved bone blade grows out "
-               "of his right forearm as one piece with the arm, running from the elbow past the wrist, his fist closed "
-               "under the blade, the blades grow from the forearms as part of his arms, and his left claws thrust "
-               "forward, mouth open in a snarl",
+        ## v2 of the strike picture: the first three takes all drew a hilt, a separate sword raised in his fist. v3 (Alex
+        ## 10-9, "close, but it removed the arm blade on the other arm"): v2 kept the big right blade and lost the slim
+        ## curved blades of the left forearm that march and fallen have, so the left arm is named with its blades.
+        strike="leaping forward in a savage lunge, slashing with his right arm blade raised high: the big curved bone blade "
+               "grows out of his right forearm as one piece with the arm, running from the elbow past the wrist, his fist "
+               "closed under the blade, while his left arm thrusts forward with the slim curved bone blades growing along "
+               "his left forearm as one piece with that arm, his left claws open at the end of it, the blades grow from "
+               "both forearms as part of his arms, mouth open in a snarl",
         fallen="fallen in battle, lying flat on his back on the floor with his arms out to the sides, the curved bone "
                "blades still growing from his forearms as part of his arms, his claws open and empty, eyes closed"),
 }
@@ -226,20 +239,23 @@ FAMILIES = {
 ## measured guess (asc_3d_factions.measure) stands in. A model's yaw is 0 as in asc-3d-paths: Ludo's GLBs face +Z, which
 ## the board's yaw 180 turns to -Z (the game reads only a GLB's first mesh, so a turn baked into a node would be lost).
 READING = {
-    ("sunspears", "ready"): 0.85, ("sunspears", "march"): 0.88, ("sunspears", "strike"): 0.87,
+    ## the Sunspears' three were read again off the 10-9 pictures' rulers (the halo and rays gone; the spear tip or the plume now
+    ## the top of the figure): helmet top at 13% / 14% / 8% of the figure's height
+    ("sunspears", "ready"): 0.87, ("sunspears", "march"): 0.86, ("sunspears", "strike"): 0.91,
     ("seraphs", "ready"): 0.89, ("seraphs", "march"): 0.87, ("seraphs", "strike"): 0.69,
     ("iron_knights", "ready"): 0.92, ("iron_knights", "march"): 0.94, ("iron_knights", "strike"): 0.93,
     ("iron_colossus", "ready"): 0.96, ("iron_colossus", "march"): 0.96, ("iron_colossus", "strike"): 0.93,
     ("thornthrowers", "ready"): 0.86, ("thornthrowers", "march"): 0.87, ("thornthrowers", "strike"): 0.89,
     ("briarwardens", "ready"): 0.95, ("briarwardens", "march"): 0.86, ("briarwardens", "strike"): 0.72,
     ("bloodtuskers", "ready"): 0.95, ("bloodtuskers", "march"): 0.75, ("bloodtuskers", "strike"): 0.61,
-    ("bloodsworn", "ready"): 0.90, ("bloodsworn", "march"): 0.87, ("bloodsworn", "strike"): 0.72,
+    ("bloodsworn", "ready"): 0.90, ("bloodsworn", "march"): 0.87, ("bloodsworn", "strike"): 0.77,  ## strike: re-read 10-9
     ## fallen: head (or horns) to feet against the figure's longest side, read off the ruler sheet's vertical lines where the
     ## measured share (the bulk of the mesh along that side, asc_3d_factions.measure) takes the arms or a weapon as body;
     ## the others stand at the measured share (0.78 to 0.90). The #179 redo's Bloodsworn march / strike / fallen were read off
 ## the new pictures' rulers (0.87, 0.72, 0.88); the Briarwarden's march and the Thornthrowers' fallen stand as they were.
     ("iron_colossus", "fallen"): 0.85, ("thornthrowers", "fallen"): 0.85, ("briarwardens", "fallen"): 0.85,
     ("bloodtuskers", "fallen"): 0.80, ("bloodsworn", "fallen"): 0.88,
+    ("sunspears", "fallen"): 0.93,  ## 10-9: plume tip to the helmet is 6% of the picture's length, helmet to boots 93%
 }
 ## A cutout of a busy painted ground (a forest, a courtyard) keeps scraps of it (haze, branches, wall, ground) and the
 ## cast shadows of a dark ground; an edit of the ready picture paints those over with the plain grey and keeps the figure.
@@ -284,10 +300,17 @@ GRANDFATHERED = {
 }
 DERIVE_STAGES = ("poses", "models")  ## made only from an accepted base (the gate)
 ## What the redo round makes again: (family, pose) -> Alex's 10-8 note in m4_looks (the models he rejected; their targets
-## are the models the game has now). The Sunspears wait for their base.
+## are the models the game has now). The Sunspears waited for their base; Alex marked it Good on 10-9, so their four models
+## (ready included: a model row with no picture row, the base is the picture) are made from it. His 10-9 note on the
+## Bloodsworn strike (m4_redo): "close, but it removed the arm blade on the other arm".
 REDO = {
+    ("sunspears", "ready"): "good but let's get rid of the halo, and the random spikes coming out of him",
+    ("sunspears", "march"): "let's get rid of the halo",
+    ("sunspears", "strike"): "his spear should be held by the low end; there's spikes coming out of his side for some reason",
+    ("sunspears", "fallen"): "rejected, with the others; made again from the new base, free of the halo and the rays",
     ("bloodsworn", "march"): "same problem, it keeps thinking he's holding the weapons instead of them being attached to his arms",
-    ("bloodsworn", "strike"): "rejected with his edit: slashing with his arm blade raised",
+    ("bloodsworn", "strike"): "rejected with his edit: slashing with his arm blade raised; then, on the redo: close, but it "
+                              "removed the arm blade on the other arm",
     ("bloodsworn", "fallen"): "his arm blades are dropped as weapons, they should be still attached to him",
     ("briarwardens", "march"): "needs to be holding the club",
     ("thornthrowers", "fallen"): "scatter the spears",
@@ -1095,11 +1118,15 @@ def pick_text(name, pose):
     fam = FAMILIES[name]
     if pose == "ready":
         if fam["art"]:
-            return "Modelled from Alex's art, assets/_concept/lore/%s: %s." % (fam["art"], fam["note"])
-        return "No art of Alex's for this one: %s." % fam["note"]
+            text = "Modelled from Alex's art, assets/_concept/lore/%s: %s." % (fam["art"], fam["note"])
+        else:
+            text = "No art of Alex's for this one: %s." % fam["note"]
+        if (name, pose) in REDO:  ## a redone base: the model is made from the base picture he marked Good
+            text += " Redone from the base picture he marked Good, on his note: \"%s\"." % REDO[(name, pose)]
+        return text
     text = "Ready picture edited to: the same figure, now %s." % fam[pose]
     if (name, pose) in REDO:
-        text += " Redone on Alex's 10-8 note: \"%s\"." % REDO[(name, pose)]
+        text += " Redone on Alex's note: \"%s\"." % REDO[(name, pose)]
     return text
 
 
@@ -1246,6 +1273,7 @@ def regen_base():
     sys.path.insert(0, os.path.join(ROOT, "tools", "review"))
     import review as R
     F.ludo.KEY = F.ludo.api_key()
+    write_manifest()  ## the prompts as the code holds them now: a BASE_REDO edit reaches the redo
     R.write_rejected(BASE_BATCH)
     rj = _jload(os.path.join(ROOT, "review", BASE_BATCH, "rejected.json"))
     todo = []
@@ -1297,12 +1325,15 @@ def redo(pairs, why=None):
     man = manifest_rows()
     st = load_state()
     keep_old = os.path.join(ROOT, PIC_CAND, "old")
+    cleared = set()  ## the rows whose pick is forgotten
     for name, pose in pairs:
         key = "%s_%s" % (name, pose)
-        for rid in ("pic_%s" % key, "model_%s" % key):
+        ## the ready pose has no picture row: its picture is the base (the redo of that is `regen-base`)
+        for rid in (("model_%s" % key,) if pose == "ready" else ("pic_%s" % key, "model_%s" % key)):
             a = man[rid]
             st["v"][rid] = max(st["v"].get(rid, 1), _ledger_max_v(rid) + 1)
             st["picks"].pop(rid, None)
+            cleared.add(rid)
             notes = st.setdefault("rerolls", {}).setdefault(rid, [])
             notes.append("redo: %s" % (why or REDO.get((name, pose), "redone")))
             _move_to_old(a)
@@ -1313,11 +1344,13 @@ def redo(pairs, why=None):
                     shutil.move(stale, os.path.join(keep_old, "%s_before_redo.webp" % key))
         st.get("lifts", {}).pop(key, None)
         st.get("pic_lifts", {}).pop("model_%s" % key, None)
-        print("redo %s %s: picture v%d, model v%d" % (name, pose, st["v"]["pic_" + key], st["v"]["model_" + key]))
+        print("redo %s %s: %smodel v%d" % (name, pose, "" if pose == "ready" else "picture v%d, " % st["v"]["pic_" + key],
+                                           st["v"]["model_" + key]))
     F.save_state(st)
-    ## F.save_state keeps what is on disk beside what it is given (picks are a union): write the cleared state through
+    ## F.save_state keeps what is on disk beside what it is given (picks are a union, and it adds the disk's back into
+    ## `st`): write the cleared state through
     disk = load_state()
-    disk["picks"] = {k: v for k, v in disk.get("picks", {}).items() if k in st["picks"]}
+    disk["picks"] = {k: v for k, v in disk.get("picks", {}).items() if k not in cleared}
     for k in ("lifts", "pic_lifts"):
         if k in st:
             disk[k] = st[k]
@@ -1604,7 +1637,10 @@ def compare_sheets(shots, outdir=None):
             ins += ["-i", f]
             flt += "[%d]scale=800:400[s%d];" % (i, i)
             layout.append("%d_%d" % ((i % 2) * 800, (i // 2) * 400))
-        flt += "".join("[s%d]" % i for i in range(len(files))) + "xstack=inputs=%d:layout=%s" % (len(files), "|".join(layout))
+        if len(files) == 1:  ## a batch of one model (xstack needs two or more inputs)
+            flt += "[s0]null"
+        else:
+            flt += "".join("[s%d]" % i for i in range(len(files))) + "xstack=inputs=%d:layout=%s" % (len(files), "|".join(layout))
         out = os.path.join(outdir, "sheet_%s.png" % side)
         _ffmpeg(*ins, "-filter_complex", flt, "-frames:v", "1", out)
         print(out)

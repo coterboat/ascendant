@@ -24,13 +24,20 @@
    "model_briarwardens_march": 3,
    "base_sunspears_ready": 2,
    "pic_bloodsworn_march": 2,
-   "pic_bloodsworn_strike": 3,
-   "model_bloodsworn_strike": 2,
+   "pic_bloodsworn_strike": 4,
+   "model_bloodsworn_strike": 3,
    "pic_bloodsworn_fallen": 2,
    "model_bloodsworn_fallen": 2,
    "pic_briarwardens_march": 2,
    "pic_thornthrowers_fallen": 2,
-   "model_thornthrowers_fallen": 2
+   "model_thornthrowers_fallen": 2,
+   "pic_sunspears_march": 2,
+   "model_sunspears_march": 2,
+   "pic_sunspears_strike": 2,
+   "model_sunspears_strike": 2,
+   "pic_sunspears_fallen": 2,
+   "model_sunspears_fallen": 2,
+   "model_sunspears_ready": 2
   },
   "picks": {
    "cut_sunspears": 1,
@@ -46,9 +53,6 @@
    "fix_bloodtuskers_ready": 1,
    "fix_bloodsworn_ready": 1,
    "pic_thornthrowers_ready": 2,
-   "pic_sunspears_march": 1,
-   "pic_sunspears_strike": 2,
-   "pic_sunspears_fallen": 1,
    "pic_seraphs_march": 1,
    "pic_seraphs_strike": 2,
    "pic_seraphs_fallen": 1,
@@ -69,6 +73,9 @@
    "pic_briarwardens_march": 1,
    "pic_bloodsworn_march": 1,
    "pic_bloodsworn_fallen": 3,
+   "pic_sunspears_march": 2,
+   "pic_sunspears_strike": 2,
+   "pic_sunspears_fallen": 3,
    "pic_bloodsworn_strike": 1
   },
   "rerolls": {
@@ -100,11 +107,13 @@
    ],
    "pic_bloodsworn_strike": [
     "redo: rejected with his edit: slashing with his arm blade raised",
-    "redo: v2 strike: the first takes drew a hilt, a held sword"
+    "redo: v2 strike: the first takes drew a hilt, a held sword",
+    "redo: rejected with his edit: slashing with his arm blade raised; then, on the redo: close, but it removed the arm blade on the other arm"
    ],
    "model_bloodsworn_strike": [
     "redo: rejected with his edit: slashing with his arm blade raised",
-    "redo: v2 strike: the first takes drew a hilt, a held sword"
+    "redo: v2 strike: the first takes drew a hilt, a held sword",
+    "redo: rejected with his edit: slashing with his arm blade raised; then, on the redo: close, but it removed the arm blade on the other arm"
    ],
    "pic_bloodsworn_fallen": [
     "redo: his arm blades are dropped as weapons, they should be still attached to him"
@@ -120,6 +129,27 @@
    ],
    "model_thornthrowers_fallen": [
     "redo: scatter the spears"
+   ],
+   "pic_sunspears_march": [
+    "redo: let's get rid of the halo"
+   ],
+   "model_sunspears_march": [
+    "redo: let's get rid of the halo"
+   ],
+   "pic_sunspears_strike": [
+    "redo: his spear should be held by the low end; there's spikes coming out of his side for some reason"
+   ],
+   "model_sunspears_strike": [
+    "redo: his spear should be held by the low end; there's spikes coming out of his side for some reason"
+   ],
+   "pic_sunspears_fallen": [
+    "redo: rejected, with the others; made again from the new base, free of the halo and the rays"
+   ],
+   "model_sunspears_fallen": [
+    "redo: rejected, with the others; made again from the new base, free of the halo and the rays"
+   ],
+   "model_sunspears_ready": [
+    "redo: good but let's get rid of the halo, and the random spikes coming out of him"
    ]
   },
   "lifts": {
@@ -134,7 +164,9 @@
    "bloodtuskers_fallen": 1.29,
    "briarwardens_march": 1.255,
    "bloodsworn_march": 1.22,
-   "bloodsworn_fallen": 1.39
+   "bloodsworn_fallen": 1.39,
+   "bloodsworn_strike": 1.483,
+   "sunspears_fallen": 1.847
   },
   "pic_lifts": {
    "model_iron_colossus_ready": 1.4,
@@ -358,15 +390,15 @@
    "id": "pic_sunspears_march",
    "stage": "poses",
    "kind": "edit",
-   "n": 2,
+   "n": 3,
    "from_file": "assets/_concept/grok3d/kingdom/sunspears_ready.webp",
    "prompt": "The same figure, now marching forward with his left leg striding ahead, his right hand gripping the golden spear by its low end beside his hip, the spearhead sloping up and back over his right shoulder, his left arm swinging, eyes ahead. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/grok3d/kingdom/sunspears_march.webp",
    "group": "pictures",
    "unit": "sunspears",
    "pose": "march",
-   "v": 1,
-   "pick": 1,
+   "v": 2,
+   "pick": 2,
    "augment": false,
    "out": "assets/_concept/candidates/grok/sunspears_march"
   },
@@ -374,14 +406,14 @@
    "id": "pic_sunspears_strike",
    "stage": "poses",
    "kind": "edit",
-   "n": 2,
+   "n": 3,
    "from_file": "assets/_concept/grok3d/kingdom/sunspears_ready.webp",
    "prompt": "The same figure, now lunging forward on his bent left leg, thrusting the golden spear straight ahead at waist height, his right arm fully extended and gripping the spear by its low end, his left hand open at his side, a fierce shout. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/grok3d/kingdom/sunspears_strike.webp",
    "group": "pictures",
    "unit": "sunspears",
    "pose": "strike",
-   "v": 1,
+   "v": 2,
    "pick": 2,
    "augment": false,
    "out": "assets/_concept/candidates/grok/sunspears_strike"
@@ -390,15 +422,15 @@
    "id": "pic_sunspears_fallen",
    "stage": "poses",
    "kind": "edit",
-   "n": 2,
+   "n": 3,
    "from_file": "assets/_concept/grok3d/kingdom/sunspears_ready.webp",
    "prompt": "The same figure, now fallen in battle, lying flat on his back on the floor with his arms out to the sides, his helmet still on, the golden spear lying on the floor beside him, eyes closed. Same outfit, same colours, same outline style, seen from the side and a little above, the whole figure lying full length, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/grok3d/kingdom/sunspears_fallen.webp",
    "group": "pictures",
    "unit": "sunspears",
    "pose": "fallen",
-   "v": 1,
-   "pick": 1,
+   "v": 2,
+   "pick": 3,
    "augment": false,
    "out": "assets/_concept/candidates/grok/sunspears_fallen"
   },
@@ -712,12 +744,12 @@
    "kind": "edit",
    "n": 3,
    "from_file": "assets/_concept/grok3d/beasts/bloodsworn_ready.webp",
-   "prompt": "The same figure, now leaping forward in a savage lunge, slashing with his arm blade raised high: the curved bone blade grows out of his right forearm as one piece with the arm, running from the elbow past the wrist, his fist closed under the blade, the blades grow from the forearms as part of his arms, and his left claws thrust forward, mouth open in a snarl. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "prompt": "The same figure, now leaping forward in a savage lunge, slashing with his right arm blade raised high: the big curved bone blade grows out of his right forearm as one piece with the arm, running from the elbow past the wrist, his fist closed under the blade, while his left arm thrusts forward with the slim curved bone blades growing along his left forearm as one piece with that arm, his left claws open at the end of it, the blades grow from both forearms as part of his arms, mouth open in a snarl. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/grok3d/beasts/bloodsworn_strike.webp",
    "group": "pictures",
    "unit": "bloodsworn",
    "pose": "strike",
-   "v": 3,
+   "v": 4,
    "pick": 1,
    "augment": false,
    "out": "assets/_concept/candidates/grok/bloodsworn_strike"
@@ -768,7 +800,7 @@
    "unit": "sunspears",
    "pose": "ready",
    "side": "celestial_host",
-   "v": 1,
+   "v": 2,
    "out": "assets/models/candidates/grok/sunspears_ready"
   },
   {
@@ -904,7 +936,7 @@
    "unit": "sunspears",
    "pose": "strike",
    "side": "celestial_host",
-   "v": 1,
+   "v": 2,
    "out": "assets/models/candidates/grok/sunspears_strike"
   },
   {
@@ -1023,7 +1055,7 @@
    "unit": "bloodsworn",
    "pose": "strike",
    "side": "blood_pact",
-   "v": 2,
+   "v": 3,
    "out": "assets/models/candidates/grok/bloodsworn_strike"
   },
   {
@@ -1040,7 +1072,7 @@
    "unit": "sunspears",
    "pose": "march",
    "side": "celestial_host",
-   "v": 1,
+   "v": 2,
    "out": "assets/models/candidates/grok/sunspears_march"
   },
   {
@@ -1176,7 +1208,7 @@
    "unit": "sunspears",
    "pose": "fallen",
    "side": "celestial_host",
-   "v": 1,
+   "v": 2,
    "out": "assets/models/candidates/grok/sunspears_fallen"
   },
   {
