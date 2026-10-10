@@ -39,7 +39,8 @@ func test_a_split_lists_both_armies_before_and_after() -> void:
 	assert_eq(s.armies.size(), 2, "nothing in the real state changed")
 	assert_true(String(f.text).begins_with("Split Spearmen and Knights from the Crown's 1st into a new army, the Crown's 2nd, at Crownkeep."), f.text)
 	assert_eq(f.lines.size(), 2)
-	assert_true(String(f.lines[1]).contains("not there yet"), f.lines[1])
+	assert_true(String(f.lines[1]).begins_with("The Crown's 2nd, a new army: Spearmen and Knights"), f.lines[1])
+	assert_true(String(f.lines[0]).contains(" becomes "), f.lines[0])
 
 
 func test_a_merge_swap_and_two_commander_merge() -> void:
@@ -143,7 +144,7 @@ func test_a_muster_that_changes_where_a_recruit_joins_says_so() -> void:
 	var f := MusterForecast.of(s, CROWN, MusterOrder.merge(a.id, b.id), plan)
 	assert_eq(f.recruits[0].army, b.id)
 	assert_eq(f.recruits[0].was, a.id, "it would have joined the 1st without the muster")
-	assert_true(String(f.text).contains("Your new Spearmen joins the Crown's 2nd if it is still at Crownkeep"), f.text)
+	assert_true(String(f.text).contains("Your Spearmen recruit joins the Crown's 2nd if it is still at Crownkeep"), f.text)
 	assert_eq(Kit.events(Kit.resolve(s, {CROWN: [MusterOrder.merge(a.id, b.id), plan[0]]}), "recruited")[0].armies, [b.id])
 	# If every army marched away, the recruit forms a new one.
 	var away := MusterForecast.of(s, CROWN, MusterOrder.transfer(a.id, "", [0]), [MoveOrder.new(a.id, "westwatch"), MoveOrder.new(b.id, "highcrag"),
@@ -178,8 +179,8 @@ func test_fighters_joining_a_blessed_army_are_told_they_are_outside_it() -> void
 	var f := MusterForecast.of(s, CROWN, MusterOrder.transfer(plain.id, a.id, [0, 1]), [])
 	assert_true(f.ok)
 	assert_eq(f.outside.size(), 1)
-	assert_eq(f.outside[0].text, "2 fighters join the Crown's 1st; its Dawn Blessing won't cover them")
-	assert_true(String(f.text).contains("2 fighters join the Crown's 1st; its Dawn Blessing won't cover them."), f.text)
+	assert_eq(f.outside[0].text, "2 Knights join the Crown's 1st; its Dawn Blessing won't cover them", "the issue's own words")
+	assert_true(String(f.text).contains("2 Knights join the Crown's 1st; its Dawn Blessing won't cover them."), f.text)
 	assert_eq(f.armies[1].after.outside, 2, "the card can show 2 outside")
 	assert_eq(f.armies[1].after.covered, 4)
 

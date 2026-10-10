@@ -340,7 +340,7 @@ func _on_close_pressed() -> void:
 func begin_march() -> void:
 	if mode != "army" or map == null or map.state == null:
 		return
-	var a: Army = map.state.find_army(_id)
+	var a: Army = map.board_army(_id)  # ARM-1: an army a queued muster formed can march too
 	if a == null or a.owner != map.viewing_faction_id:
 		return
 	marching = true
@@ -392,7 +392,7 @@ func _march_is_live() -> bool:
 		return false
 	if map.state.current_turn != _march_turn or map.viewing_faction_id != _march_viewer:
 		return false  # the turn ended, or the table passed to another player: the pick is over
-	var a: Army = map.state.find_army(_march_army)
+	var a: Army = map.board_army(_march_army)
 	if a == null or map.orders == null:
 		return false
 	for o in map.orders.orders():

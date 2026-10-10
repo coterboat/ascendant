@@ -110,6 +110,35 @@ func test_the_board_model_folds_a_muster_turn_exactly() -> void:
 	assert_eq(folded.army_owner.size(), after.army_owner.size(), "and each new army has its owner in the sieges model")
 
 
+func test_the_board_sees_an_army_march_the_turn_it_is_formed() -> void:
+	var s := Kit.game("sieges")
+	Kit.army(s, CROWN, "crownkeep", ["spearmen", "spearmen"], "knight_captain", 1)
+	var orders := [MusterOrder.transfer("kingdom-1", "", [0, 2], false), MoveOrder.new("kingdom-4", "westwatch"), MusterOrder.merge("kingdom-3", "kingdom-1")]
+	var r := Kit.resolve(s, {CROWN: orders})
+	assert_eq(Kit.events(r, "order_rejected"), [], "the turn's orders pass: %s" % [r.events.map(func(e): return e.text)])
+	var start := Playback.muster_start(s, r.events)
+	assert_true(start != s, "a turn with musters has its own start")
+	assert_eq(s.find_army("kingdom-4"), null, "the state before is never changed")
+	var planned := RulerRules.state_after_orders(s, CROWN, orders)
+	for army in planned.armies:
+		var seen: Army = start.find_army(army.id)
+		assert_true(seen != null, "%s stands on the board when the marches begin" % army.id)
+		if seen != null:
+			var a_types: Array = Kit.types(army)
+			var s_types: Array = Kit.types(seen)
+			a_types.sort()
+			s_types.sort()
+			assert_eq(s_types, a_types, "%s holds the same fighters (by type)" % army.id)
+			assert_eq([seen.location, seen.engines, seen.commander != null], [army.location, army.engines, army.commander != null])
+	assert_eq(start.armies.size(), planned.armies.size(), "no army more or fewer than the plan's")
+	var plan := Playback.plan(start, r.events, r.new_state)
+	var marches: Array = plan.marches.filter(func(m): return m.army == "kingdom-4")
+	assert_eq(marches.size(), 1, "the new army has a march")
+	assert_eq(marches[0].hops, ["crownkeep", "westwatch"])
+	assert_true(marches[0].survived and marches[0].owner == CROWN)
+	assert_eq(Playback.muster_start(s, []), s, "no muster events: the state itself")
+
+
 func test_a_summon_and_a_successor_take_the_next_number_after_musters() -> void:
 	var s := Kit.game("magic")
 	# The Crown splits its first army (the 3rd, the ruler being the 2nd); the Clans split theirs too.

@@ -71,9 +71,10 @@ static func of(state: GameState, faction_id: String, candidate: MusterOrder, ord
 		var e := MagicRules._enchantment(after_board, String(row.blessing))
 		var ritual := MagicRules.spell_name(String(e.ritual)) if not e.is_empty() else "blessing"
 		var name := TurnReportText.army_name(after_board, String(row.army), faction_id)
+		var who := _counted(after_board, faction_id, Array(row.get("types", [])))
+		var plural := int(row.count) > 1 or TurnReportText._plural_word(who.trim_prefix("1 "))
 		outside.append({"army": String(row.army), "name": name, "count": int(row.count), "ritual": ritual,
-			"text": "%s join%s %s; its %s won't cover %s" % [_count_words(int(row.count), "fighter", "fighters"), "s" if int(row.count) == 1 else "", name, ritual,
-				"it" if int(row.count) == 1 else "them"]})
+			"text": "%s join%s %s; its %s won't cover %s" % [who, "" if plural else "s", name, ritual, "them" if plural else "it"]})
 	var forecast := {"ok": true, "code": "", "reason": "", "armies": armies, "dropped": dropped, "outside": outside, "info": info}
 	forecast["recruits"] = recruit_destinations(state, faction_id, kept, before_board, after_board)
 	forecast["battle"] = _battle_note(state, faction_id, kept, after_board, ids)
@@ -251,6 +252,22 @@ static func _count_words(n: int, one: String, many: String) -> String:
 	return "%d %s" % [n, one if n == 1 else many]
 
 
+## "2 Knights", "1 Knight Captain and 2 Spearmen": the unit type ids counted by type, with digits (a forecast shows numbers).
+static func _counted(state: GameState, faction_id: String, type_ids: Array) -> String:
+	var order := []
+	var counts := {}
+	for id in type_ids:
+		if not counts.has(id):
+			order.append(id)
+			counts[id] = 0
+		counts[id] += 1
+	var parts := []
+	for id in order:
+		var name := MusterRules._type_name(state, faction_id, String(id))
+		parts.append("%d %s" % [counts[id], name if counts[id] == 1 else TurnReportText._plural_name(name)])
+	return RulerRules._and_list(parts) if not parts.is_empty() else "1 fighter"
+
+
 ## One army's make-up in words: "Spearmen and Knights, Knight Captain, 1 Siege Ram".
 static func summary_words(s: Dictionary) -> String:
 	if s.is_empty():
@@ -280,9 +297,14 @@ static func _lines(armies: Array) -> Array:
 	for row in armies:
 		var b: Dictionary = row.before
 		var a: Dictionary = row.after
-		var left := "%s (strength %d, sees %d)" % [summary_words(b), int(b.strength), int(b.sight)] if not b.is_empty() else "not there yet"
-		var right := "%s (strength %d, sees %d)" % [summary_words(a), int(a.strength), int(a.sight)] if not a.is_empty() else "gone"
-		out.append("%s: %s becomes %s" % [RulerRules._cap(String(row.name)), left, right])
+		var left := "%s (strength %d, sees %d)" % [summary_words(b), int(b.strength), int(b.sight)] if not b.is_empty() else ""
+		var right := "%s (strength %d, sees %d)" % [summary_words(a), int(a.strength), int(a.sight)] if not a.is_empty() else ""
+		if b.is_empty():
+			out.append("%s, a new army: %s" % [RulerRules._cap(String(row.name)), right])
+		elif a.is_empty():
+			out.append("%s: %s, merged away and gone" % [RulerRules._cap(String(row.name)), left])
+		else:
+			out.append("%s: %s becomes %s" % [RulerRules._cap(String(row.name)), left, right])
 	return out
 
 
@@ -298,7 +320,7 @@ static func _text(board: GameState, faction_id: String, candidate: MusterOrder, 
 		parts.append(String(d.text))
 	for r in f.recruits:
 		if String(r.was) != String(r.army):
-			parts.append("Your new %s %s." % [r.unit, r.text])
+			parts.append("Your %s recruit %s." % [r.unit, r.text])
 	if not String(f.battle).is_empty():
 		parts.append(String(f.battle))
 	return " ".join(parts)

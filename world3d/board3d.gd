@@ -461,11 +461,14 @@ func plan_of_orders() -> Dictionary:
 func play_turn(before: GameState, events: Array, after: GameState) -> bool:
 	if not prepared or before == null or after == null:
 		return false
-	var plan := Playback.plan(before, events, after)
+	# ARM-1: a muster runs first in the orders phase, before anyone moves, so the turn's marches start from the armies as the
+	# musters left them: an army a split formed is seen marching the same turn (the same state when the turn held no muster)
+	var start := Playback.muster_start(before, events)
+	var plan := Playback.plan(start, events, after)
 	if Playback.is_empty(plan):
 		return false
 	exit_closeup(true)
-	shown = before
+	shown = start
 	_play_after = after
 	seats = map.seat_order() if map != null else UiPalette.seat_order(after)
 	armies.speed = float(GameSettings.load_from().playback_speed)
@@ -476,7 +479,7 @@ func play_turn(before: GameState, events: Array, after: GameState) -> bool:
 	_paint_owners(before)
 	_sync_vision(before) ## M5-3: the veil of the turn's start; the state after's sight takes the ground at the re-form
 	_playing = true
-	armies.play(plan, before, after)
+	armies.play(plan, start, after)
 	decals.begin_play() ## M5-9
 	_frame_action(plan)
 	_sync_marks()

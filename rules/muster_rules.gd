@@ -84,7 +84,7 @@ static func check(state: GameState, faction_id: String, order: MusterOrder) -> D
 ##   "engines"        engines moved
 ##   "disbanded"      army ids that went (the source, when it kept no unit and no commander)
 ##   "commander_left" a merge left the source's commander behind (both armies had one); "commander_stays" is its type id
-##   "outside"        [{"army", "blessing", "count"}]: how many fighters joined an army under a blessing and are outside it
+##   "outside"        [{"army", "blessing", "count", "types"}]: the fighters that joined an army under a blessing and are outside it
 static func apply(state: GameState, faction_id: String, order: MusterOrder) -> Dictionary:
 	var plan := _plan(state, faction_id, order)
 	if not plan.ok:
@@ -160,8 +160,9 @@ static func _join(state: GameState, army: Army, unit: Unit, info: Dictionary) ->
 	for row in info.outside:
 		if row.army == army.id:
 			row.count += 1
+			row.types.append(unit.type.id)
 			return
-	info.outside.append({"army": army.id, "blessing": String(blessing.id), "count": 1})
+	info.outside.append({"army": army.id, "blessing": String(blessing.id), "count": 1, "types": [unit.type.id]})
 
 
 ## What `order` would do, or why not: {"ok", "code", "reason"} and, when ok, "from" and "to" (the Army objects; "to" is null

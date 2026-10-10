@@ -39,7 +39,7 @@ func test_units_that_join_a_blessed_army_by_a_muster_are_marked_outside_it() -> 
 	var r := MusterRules.apply(s, CROWN, MusterOrder.transfer(plain.id, a.id, [0]))
 	assert_true(r.ok)
 	assert_true(a.units.back().has_status(OUT, e1), "a unit that joined the blessed army is outside its blessing")
-	assert_eq(r.info.outside, [{"army": a.id, "blessing": e1, "count": 1}])
+	assert_eq(r.info.outside, [{"army": a.id, "blessing": e1, "count": 1, "types": ["knights"]}])
 	# A commander moved in by a transfer or a swap is marked too.
 	var r2 := MusterRules.apply(s, CROWN, MusterOrder.swap(a.id, b.id))
 	assert_true(r2.ok)
