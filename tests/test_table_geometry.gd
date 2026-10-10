@@ -177,6 +177,35 @@ func test_the_selection_card_is_placed_with_its_first_action_in_view_in_every_st
 	assert_true(cards_seen.n >= 20, "cards were checked in every state at every size on both boards (%d)" % cards_seen.n)
 
 
+## "Placement for provinces on every edge, at the camera's nearest and farthest zoom, at all three sizes" (§3.3, the UX-3 row of §9): the card
+## is docked in the left column, so where the selected province or army is on screen makes no difference. With every province selected, then
+## each army of yours, at the 3D camera's farthest and nearest zoom (the 2D map has one zoom), at every size on both boards, the card keeps
+## the same left edge and width, stays docked at the bottom of the safe area and inside it, and never covers the tray or the plaques.
+func test_the_card_is_docked_the_same_for_every_province_and_army_at_every_zoom_and_size() -> void:
+	var counted := {"n": 0}
+	_each(func(board: String, key: String, scenario: String, m: Dictionary):
+		if scenario != "rest":
+			return
+		var where := _where(board, key, scenario)
+		var safe := Rect2(m.safe[0], m.safe[1], m.safe[2], m.safe[3])
+		var edges: Dictionary = m.get("edges", {})
+		assert_eq(edges.keys().size(), 2 if board == "3d" else 1, "%s: the zoom extremes were measured (%s)" % [where, edges.keys()])
+		for zoom in edges:
+			var rows: Array = edges[zoom]
+			assert_true(rows.size() >= 16, "%s, %s zoom: every province and army was selected (%d)" % [where, zoom, rows.size()])
+			for row in rows:
+				var r := Rect2(row[2], row[3], row[4], row[5])
+				var what := "%s, %s zoom, %s %s" % [where, zoom, row[0], row[1]]
+				assert_true(bool(row[6]), "%s: the card is up" % what)
+				assert_eq(r.position.x, safe.position.x + TableLayout.GAP, "%s: in the left column" % what)
+				assert_true(r.size.x <= TableLayout.CARD_W + 0.5, "%s: no wider than the card slot" % what)
+				assert_true(is_equal_approx(r.end.y, safe.end.y - TableLayout.GAP), "%s: docked at the bottom (%s)" % [what, r])
+				assert_true(safe.grow(0.5).encloses(r), "%s: inside the safe area" % what)
+				counted.n += 1)
+	var expected: int = SIZES.size() * 3 * 16  # three sizes; the 3D board's two zooms and the 2D map's one; at least 16 selections each
+	assert_true(counted.n >= expected, "cards were measured for every province and army (%d of at least %d)" % [counted.n, expected])
+
+
 # --- overlap and the bands --------------------------------------------------------------------------
 
 func test_no_two_hud_pieces_overlap_in_any_state_at_any_size_on_either_board() -> void:

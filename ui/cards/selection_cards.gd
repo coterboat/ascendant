@@ -67,7 +67,6 @@ var _march_turn := -1  # the turn and the seat the pick began in: a new turn or 
 var _march_viewer := ""
 var _return_to_selection := false
 var _sections := {}
-var _max_height := 480.0
 var _want_queued := false
 var _scroll_to := ""
 
@@ -360,7 +359,6 @@ func open_sections() -> Dictionary:
 ## Called by the TableHud before it places the card: the card may be at most `max_height` tall; its scroll gets the
 ## height its content needs up to that.
 func fit(max_height: float) -> void:
-	_max_height = max_height
 	var header_h := _header.get_combined_minimum_size().y + 4.0
 	var style := get_theme_stylebox("panel")
 	var padding := style.get_margin(SIDE_TOP) + style.get_margin(SIDE_BOTTOM)
@@ -403,6 +401,8 @@ func _select(kind: String, id: String, province: String) -> void:
 
 ## The height of the pinned actions and the gap under them.
 func _pinned_height() -> float:
+	if not pinned.visible:
+		return 0.0
 	var h := pinned.get_combined_minimum_size().y
 	return h + (float(details.get_theme_constant("separation")) if h > 0.0 else 0.0)
 
@@ -430,6 +430,7 @@ func _fill() -> void:
 		if card != null:
 			holder.add_child(card)
 			_lift_pinned(card)
+	pinned.visible = pinned.get_child_count() > 0  # an empty slot would still take the gap under it
 	_want_layout()
 	if not _scroll_to.is_empty():
 		var target := _scroll_to

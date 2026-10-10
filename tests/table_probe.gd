@@ -198,6 +198,43 @@ func _measure(scenario: String) -> Dictionary:
 	if scenario == "rest":
 		out["clicks"] = await _clicks(pieces, rects)
 		await _setup("rest")
+		out["edges"] = await _edges()
+		await _setup("rest")
+	return out
+
+
+## UX-3 (design/UX_WAR_TABLE.md §3.3): the card's rect with each province selected, then each army, at the camera's farthest and nearest
+## zoom (the 3D board; the 2D map has one): {zoom key: [[what, id, x, y, w, h, visible], ...]}. The card is docked in the left column, so
+## it must not depend on where the selection is on screen.
+func _edges() -> Dictionary:
+	var map := game.map
+	var out := {}
+	var zooms: Array = ["flat"]
+	if kind == "3d":
+		zooms = ["far", "near"]
+	var centre := root.get_visible_rect().size * 0.5
+	for z in zooms:
+		if kind == "3d":
+			var board: Board3D = map.board
+			board.zoom_at(centre, -1.0 if z == "far" else 1.0)
+			board.zoom_at(centre, -1.0 if z == "far" else 1.0)
+			await _frames(3)
+		var rows := []
+		for p in map.state.provinces:
+			map.selected_army_id = ""
+			map.select_province(p.id)
+			await _frames(5)  # the card's size settles over a few frames: its pinned row wraps once it has a width
+			rows.append(["province", p.id] + _r(map.cards))
+		for a in map.state.armies:
+			if a.owner == "kingdom":
+				map.select_army(a.id)
+				await _frames(5)
+				rows.append(["army", a.id] + _r(map.cards))
+		out[z] = rows
+	if kind == "3d":
+		var board2: Board3D = map.board
+		board2.zoom_at(centre, -1.0)
+		await _frames(3)
 	return out
 
 
