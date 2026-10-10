@@ -1259,7 +1259,7 @@ func hover(local: Vector2) -> void:
 	hover_id = pid
 	if map != null:
 		if pid.is_empty():
-			map.clear_preview()
+			map.leave_preview()  ## UX-3: the forecast stays (dimmer) in the card, so the pointer can travel to its "i"
 		else:
 			map.preview_move(pid)
 		_sync_marks()
@@ -1281,7 +1281,7 @@ func _notification(what: int) -> void:
 		if not hover_id.is_empty():
 			hover_id = ""
 			if map != null:
-				map.clear_preview()
+				map.leave_preview()
 			_sync_marks()
 
 

@@ -36,7 +36,7 @@ extends Control
 
 signal layout_changed
 signal compact_changed(on: bool)
-## The tray's Orders button: show the details card with the orders list (until UX-4's tray tokens).
+## The tray's Orders button: show the orders list in the card's place (until UX-4's tray tokens).
 signal orders_requested
 
 ## The system buttons that carry an icon (UX-0a's UiIcons, white masks tinted with the button's colours); the icon's name is the

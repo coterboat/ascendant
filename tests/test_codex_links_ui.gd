@@ -95,8 +95,16 @@ func test_map_numbers_link_to_the_codex_and_every_key_exists() -> void:
 		assert_true(label.has_meta(CodexLink.META), "the top bar's %s is linked" % label.name)
 	assert_eq(String(map.gold_label.get_meta(CodexLink.META)), "gold")
 	assert_eq(String(map.turn_label.get_meta(CodexLink.META)), "phase_order")
-	var numbers := _assert_numbers_linked(map.details, "side panel")
-	assert_true(numbers >= 5, "income, units, strength, unit counts, gold after recruits, recruit buttons (%d)" % numbers)
+	map.cards.open_section("recruit")  # the Recruit button's section, built open
+	var numbers := _assert_numbers_linked(map.details, "province card")
+	assert_true(numbers >= 4, "income, the army's button, gold after recruits, recruit buttons (%d)" % numbers)
+	map.select_army("kingdom-1")
+	var army_numbers := _assert_numbers_linked(map.details, "army card")
+	assert_true(army_numbers >= 5, "title, units, strength, the move order, unit counts (%d)" % army_numbers)
+	assert_eq(map.details.find_children("OrderLine", "Label", true, false).size(), 1, "the army card has its own order")
+	map.show_orders()
+	var list_numbers := _assert_numbers_linked(map.details, "orders list")
+	assert_true(list_numbers >= 3, "the order lines and gold after recruits (%d)" % list_numbers)
 	for id in map.regions:
 		var region: ProvinceRegion = map.regions[id]
 		assert_eq(String(region.income_label.get_meta(CodexLink.META)), "income", "%s's income badge" % id)
@@ -104,12 +112,14 @@ func test_map_numbers_link_to_the_codex_and_every_key_exists() -> void:
 			assert_eq(String(badge.get_meta(CodexLink.META)), "army", "%s's army badge" % id)
 			assert_false((badge as Button).text.contains("1 units"), "badge plural: %s" % badge.text)
 	# The order lines: a move links to moving, a recruit to recruiting.
+	map.select_province("crownkeep")
+	for b in map.details.find_children("Recruit_*", "Button", true, false):
+		assert_eq(String(b.get_meta(CodexLink.META)), "recruit")
+	map.show_orders()
 	var lines := map.details.find_children("OrderLine", "Label", true, false)
 	assert_eq(lines.size(), 2)
 	assert_eq(String(lines[0].get_meta(CodexLink.META)), "move")
 	assert_eq(String(lines[1].get_meta(CodexLink.META)), "recruit")
-	for b in map.details.find_children("Recruit_*", "Button", true, false):
-		assert_eq(String(b.get_meta(CodexLink.META)), "recruit")
 	# An enemy province with an army: owner, terrain, its army's numbers.
 	map.select_province("fangridge")
 	_assert_links_valid(map, "enemy capital")
@@ -124,11 +134,13 @@ func test_right_click_opens_the_codex_at_the_entry() -> void:
 	_order_some(game)
 	var samples := [game.map.gold_label, game.map.turn_label,
 		game.map.details.find_children("IncomeLabel", "Label", true, false)[0],
-		game.map.details.find_children("StrengthLabel", "Label", true, false)[0],
-		game.map.details.find_children("OrderLine", "Label", true, false)[0],
-		game.map.details.find_children("Recruit_*", "Button", true, false)[0],
+		game.map.details.find_children("Recruit_*", "Button", true, false)[0]]
+	game.map.select_army("kingdom-1")
+	samples.append(game.map.details.find_children("StrengthLabel", "Label", true, false)[0])
+	game.map.show_orders()
+	samples.append_array([game.map.details.find_children("OrderLine", "Label", true, false)[0],
 		game.map.regions["fangridge"].army_box.get_child(0),
-		game.map.regions["crownkeep"].income_label]
+		game.map.regions["crownkeep"].income_label])
 	for c in samples:
 		var key := String(c.get_meta(CodexLink.META))
 		assert_false(game.codex.visible)

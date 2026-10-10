@@ -2,9 +2,9 @@ class_name SelectionHost
 extends RefCounted
 ## UX-1 (design/UX_WAR_TABLE.md §1.1): the selection seam. "Show this army or province" and "selection cleared" go through
 ## here, and whoever shows details for a selection is registered here as the presenter. It replaces MapScreen's
-## `_show_details`: the map screen tells the host what is selected and the host tells the presenter. Until UX-3 the
-## presenter is the temporary details card (ui/details_card.gd); UX-3's army and province cards call set_presenter()
-## instead of editing ui/map_screen.gd.
+## `_show_details`: the map screen tells the host what is selected and the host tells the presenter. The
+## presenter is the selection cards (ui/cards/selection_cards.gd: the army card and the province card, UX-3, #206), registered with
+## set_presenter() instead of editing ui/map_screen.gd.
 ##
 ## A presenter is any object with these methods (each optional but show_*):
 ##   show_province(province_id: String)               a province was selected (or its details changed)

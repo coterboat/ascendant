@@ -209,7 +209,7 @@ func test_fortify_queues_the_order_with_its_preview() -> void:
 	s.find_province("rivermarch").owner = CROWN
 	var map := _map(s, CROWN)
 	map.select_province("rivermarch")
-	var button := _node(_fort(map), "FortifyButton") as Button
+	var button := _node(map.details, "FortifyButton") as Button
 	assert_false(button.disabled, "a palisade can be built at Rivermarch")
 	var fc := Forecast.fortify(s, CROWN, "rivermarch")
 	assert_true(button.text.contains(FortData.LEVELS[1].name.to_lower()) and button.text.contains("%d gold" % int(FortData.LEVELS[1].cost)), button.text)
@@ -226,10 +226,10 @@ func test_fortify_queues_the_order_with_its_preview() -> void:
 	# A second site is refused, with the rules' reason on screen.
 	s.find_province("greenglade").owner = CROWN
 	map.select_province("greenglade")
-	var second := _node(_fort(map), "FortifyButton") as Button
+	var second := _node(map.details, "FortifyButton") as Button
 	assert_true(second.disabled, "one Fortify order a turn")
 	var want := SiegeRules.check_fortify(s, CROWN, "greenglade", null, 1)
-	assert_eq(_node(_fort(map), "FortifyReason").text, String(want.reason), "the reason is the rules' own")
+	assert_eq(_node(map.details, "FortifyReason").text, String(want.reason), "the reason is the rules' own")
 	map.free()
 
 
@@ -242,12 +242,12 @@ func test_fortify_refused_with_the_reason_when_gold_or_the_enemy_say_no() -> voi
 	s.find_faction(CROWN).gold = int(FortData.LEVELS[1].cost) - 1
 	var map := _map(s, CROWN)
 	map.select_province("rivermarch")
-	var fort := _fort(map)
+	var fort: Control = map.details  # the Fortify button is the province card's own action (FortifyControls)
 	assert_true((_node(fort, "FortifyButton") as Button).disabled, "too little gold")
 	assert_eq(_node(fort, "FortifyReason").text, String(Forecast.fortify(s, CROWN, "rivermarch").reason))
 	assert_true(_node(fort, "FortifyReason").text.contains("gold"), _node(fort, "FortifyReason").text)
 	map.select_province("greenglade")
-	fort = _fort(map)
+	fort = map.details
 	assert_true((_node(fort, "FortifyButton") as Button).disabled, "an enemy army stands there")
 	assert_eq(_node(fort, "FortifyReason").text, String(SiegeRules.check_fortify(s, CROWN, "greenglade").reason))
 	# The upgrade button on a palisade names the keep.
@@ -255,7 +255,7 @@ func test_fortify_refused_with_the_reason_when_gold_or_the_enemy_say_no() -> voi
 	s.find_faction(CROWN).gold = 200
 	map.set_state(s, CROWN)
 	map.select_province("rivermarch")
-	var up := _node(_fort(map), "FortifyButton") as Button
+	var up := _node(map.details, "FortifyButton") as Button
 	assert_true(up.text.contains(FortData.LEVELS[2].name.to_lower()), "Upgrade to a keep: %s" % up.text)
 	map.free()
 

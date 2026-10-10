@@ -40,6 +40,9 @@ func test_swapped_seats_swap_colours_on_every_screen() -> void:
 		game.map.select_province("fangridge")
 		var owner := game.map.details.find_children("OwnerLabel", "Label", true, false)[0] as Label
 		assert_eq(owner.get_theme_color("font_color"), colour["beasts"].lightened(0.3), "%s: owner line" % [seats])
+		var listed := game.map.details.find_children("ArmyRow_beasts-1", "PanelContainer", true, false)[0] as PanelContainer
+		assert_eq((listed.get_theme_stylebox("panel") as StyleBoxFlat).border_color, colour["beasts"], "%s: army row border" % [seats])
+		game.map.select_army("beasts-1")
 		var army := game.map.details.find_children("Army_beasts-1", "PanelContainer", true, false)[0] as PanelContainer
 		assert_eq((army.get_theme_stylebox("panel") as StyleBoxFlat).border_color, colour["beasts"], "%s: army border" % [seats])
 		# Battle report: both sides by seat.

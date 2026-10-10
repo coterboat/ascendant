@@ -116,7 +116,7 @@ func test_map_terms_link_to_their_real_entries() -> void:
 		for a in s.armies:
 			map.select_army(a.id)
 			_assert_links_resolve(map, "army %s" % a.id)
-			assert_eq(_key(map, "ArmyHeader"), "army")
+			assert_eq(_key(map, "ArmyTitle"), "army")
 			assert_eq(_key(map, "UnitsLabel"), "army")
 			assert_eq(_key(map, "CommanderLabel"), "commander")
 			assert_eq(_key(map, "StrengthLabel"), "army_strength")

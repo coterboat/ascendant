@@ -3,7 +3,7 @@ extends RefCounted
 ## UX-1 (design/UX_WAR_TABLE.md §1.4): one cancel, in order. Esc, and a right-click on empty board, go through this one
 ## dispatcher, which closes the topmost thing only, in this order:
 ##   1. "modal"      a modal panel or dialog (research, ruler, codex, cast, the report, the menu and its dialogs)
-##   2. "march"      march targeting (UX-3; nothing registers it yet)
+##   2. "march"      march targeting (UX-3: the map screen registers the selection cards' march strip)
 ##   3. "chronicle"  the Chronicle (UX-6; nothing yet)
 ##   4. "card"       the selection card
 ##   5. "lens"       the active lens (UX-7; the LensHost registers its clear)

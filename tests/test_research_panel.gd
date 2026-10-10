@@ -198,8 +198,9 @@ func test_research_this_queues_through_the_session_with_its_forecast() -> void:
 	assert_true(panel.status_label.visible and panel.status_label.text.contains(String(fc.text)), "the forecast is in the status line")
 	assert_true(hud.chip.text.begins_with("Research: Drillyard"), "the chip follows: %s" % hud.chip.text)
 	assert_true(game.end_turn_button.text.contains("1 order"), game.end_turn_button.text)
+	game.map.show_orders()
 	var line := game.map.details.find_child("Order_0", true, false)
-	assert_true(line != null, "the order is in the side panel's orders list")
+	assert_true(line != null, "the order is in the orders list (the tray's Orders button)")
 	if line:
 		var l := line.find_child("OrderLine", true, false) as Label
 		assert_true(l.text.begins_with("Research: Drillyard"), l.text)
