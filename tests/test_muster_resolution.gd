@@ -276,6 +276,104 @@ func test_a_muster_that_fails_is_rejected_and_so_is_everything_that_relied_on_it
 	assert_eq(r.new_state.next_army_ids[CROWN], 2, "and no id was handed out")
 
 
+## The failure cascade, run directly on a FORGED order list (the plan never lets one through, so only the resolver sees it): the first
+## muster is refused at resolution, and then every later muster of the faction is refused too (they were planned on the board it was to
+## leave), every move, cast and siege order that names an army the refused ones touched or were to form is rejected with a reason that
+## names the army, a planned new-army id that never formed can't be moved, and what needs none of them (a recruit, another faction's
+## orders) still resolves.
+func test_a_refused_muster_cascades_through_a_forged_order_list() -> void:
+	var s := AscensionRules.with_nodes(Kit.game("magic_sieges"), CROWN, FORGE)
+	for f in s.factions:
+		f.gold = 200
+	var other := Kit.army(s, CROWN, "crownkeep", ["spearmen", "spearmen"])  # an army the first muster does not name
+	var pair := Kit.army(s, CROWN, "crownkeep", ["crossbowmen"])  # the one a later, valid merge names with it
+	var fresh := Kit.army(s, CROWN, "crownkeep", ["knights"])  # an army no muster names, to sally with a relief that never formed
+	var coming: Array = s.peek_army_ids(CROWN, 2)
+	var first_new := String(coming[0])
+	var second_new := String(coming[1])
+	var fighters_before: int = Kit.crown(s).units.size()
+	var counter_before: int = int(s.next_army_ids[CROWN])
+	var orders := {
+		CROWN: [
+			MusterOrder.transfer("kingdom-1", "", [99]),  # 0: refused at resolution: there is no unit 100 (it was to form first_new)
+			MusterOrder.transfer("kingdom-1", "", [0]),  # 1: nothing wrong with it alone, planned to form second_new: refused, the plan is gone
+			MusterOrder.merge(pair.id, other.id),  # 2: two real armies and nothing wrong with it: refused too
+			MoveOrder.new(first_new, "westwatch"),  # 3: an army that never formed
+			MoveOrder.new(second_new, "highcrag"),  # 4: nor did this one
+			CastOrder.new("sanctum_ward", second_new, "crownkeep"),  # 5: a cast by it
+			SiegeOrder.sally(fresh.id, second_new),  # 6: a sally tied to it
+			SiegeOrder.sally(first_new),  # 7: a sally by it
+			MoveOrder.new("kingdom-1", "rivermarch"),  # 8: the refused muster's own source, ordered on the board the muster was to leave
+			MoveOrder.new(other.id, "westwatch"),  # 9: named by the merge that was refused
+			RecruitOrder.new("spearmen"),  # 10: names no army: resolves
+		],
+		CLANS: [MusterOrder.transfer("beasts-1", "", [0]), MoveOrder.new("beasts-2", "ebonpeak")],  # another faction's cascade is its own
+	}
+	var r := Kit.resolve(s, orders)
+	var rejected := Kit.events(r, "order_rejected")
+	var mine: Array = rejected.filter(func(e): return Array(e.factions).has(CROWN))
+	assert_eq(mine.size(), 10, "all ten of the Crown's orders but the recruit are rejected: %s" % [mine.map(func(e): return "%s: %s" % [e.cause, e.text])])
+	assert_eq(mine[0].cause, "bad_unit", "the first muster fails on its own account")
+	for i in range(1, mine.size()):
+		assert_eq(mine[i].cause, "muster_refused", "order %d falls because of it: %s" % [i, mine[i].text])
+		assert_false(String(mine[i].reason).is_empty(), "and says why")
+		assert_eq(mine[i].phase, "orders")
+	assert_true(String(mine[1].reason).contains("earlier muster"), "a later muster says an earlier one was refused: %s" % mine[1].reason)
+	assert_true(String(mine[2].reason).contains("earlier muster"), mine[2].reason)
+	# An order that names an army says which, as the map does (never an id).
+	var name_first := RulerRules._cap(TurnReportText.army_name(r.new_state, first_new, CROWN))
+	var name_second := RulerRules._cap(TurnReportText.army_name(r.new_state, second_new, CROWN))
+	assert_true(String(mine[3].reason).contains(name_first), "the move of the first planned army names it: %s" % mine[3].reason)
+	assert_true(String(mine[4].reason).contains(name_second), mine[4].reason)
+	assert_true(String(mine[5].reason).contains(name_second), "the cast: %s" % mine[5].reason)
+	assert_true(String(mine[6].reason).contains(name_second), "the tied sally: %s" % mine[6].reason)
+	assert_true(String(mine[7].reason).contains(name_first), "the sally by it: %s" % mine[7].reason)
+	assert_true(String(mine[8].reason).contains("The Crown's 1st"), "the source's own move: %s" % mine[8].reason)
+	assert_true(String(mine[9].reason).contains(RulerRules._cap(TurnReportText.army_name(r.new_state, other.id, CROWN))), "an army the refused merge named: %s" % mine[9].reason)
+	for id in mine.map(func(e): return String(e.reason)):
+		for raw in ["kingdom-", "_"]:
+			assert_false(String(id).contains(raw), "no raw id '%s' in: %s" % [raw, id])
+	# The armies that never formed can't be found, and nothing moved, mustered or was cast.
+	for id in [first_new, second_new]:
+		assert_eq(r.new_state.find_army(id), null, "%s never formed" % id)
+	var crown_events := func(type: String) -> Array: return Kit.events(r, type).filter(func(e): return Array(e.factions).has(CROWN))
+	for type in ["army_split", "units_transferred", "armies_merged", "army_disbanded", "army_moved", "ritual_cast"]:
+		assert_eq(crown_events.call(type), [], "the Crown has no %s event" % type)
+	for id in ["kingdom-1", other.id, pair.id, fresh.id]:
+		assert_eq(r.new_state.find_army(id).location, "crownkeep", "%s stayed" % id)
+	assert_eq(Kit.types(r.new_state.find_army(pair.id)), ["crossbowmen"], "the refused merge moved no one")
+	assert_eq(int(r.new_state.next_army_ids[CROWN]), counter_before, "no army id was handed out")
+	# The recruit resolved: a spearman joined the first army there.
+	assert_eq(r.new_state.find_army("kingdom-1").units.size(), fighters_before + 1, "the recruit still joined the Crown's 1st")
+	assert_eq(crown_events.call("recruited").size(), 1, "and said so")
+	# The beasts' own split and the march of the army it formed went ahead: a cascade belongs to one faction.
+	assert_eq(rejected.filter(func(e): return Array(e.factions).has(CLANS)), [], "nothing of the beasts' was rejected")
+	assert_eq(Kit.events(r, "army_split").filter(func(e): return Array(e.factions).has(CLANS)).size(), 1)
+	assert_eq(r.new_state.find_army("beasts-2").location, "ebonpeak")
+
+
+## Only what relied on the refused muster falls: a muster before it that applied stands, and the army it formed can still be marched.
+func test_musters_before_the_refused_one_stand_and_their_armies_can_move() -> void:
+	var s := Kit.game()
+	var other := Kit.army(s, CROWN, "crownkeep", ["spearmen"])
+	var coming: Array = s.peek_army_ids(CROWN, 2)
+	var orders := {CROWN: [
+		MusterOrder.transfer("kingdom-1", "", [0]),  # applies, forming coming[0]
+		MusterOrder.transfer(other.id, "", [7]),  # refused at resolution (coming[1] was to be its new army)
+		MoveOrder.new(String(coming[0]), "westwatch"),  # the army the first formed: fine
+		MoveOrder.new(String(coming[1]), "highcrag"),  # the one that never formed: rejected
+		MoveOrder.new(other.id, "rivermarch"),  # the refused muster's source: rejected
+	]}
+	var r := Kit.resolve(s, orders)
+	assert_eq(Kit.events(r, "army_split").size(), 1, "the first muster applied")
+	assert_eq(r.new_state.find_army(String(coming[0])).location, "westwatch", "and the army it formed marched")
+	assert_eq(r.new_state.find_army(String(coming[1])), null, "the second never formed")
+	var rejected := Kit.events(r, "order_rejected")
+	assert_eq(rejected.map(func(e): return e.cause), ["bad_unit", "muster_refused", "muster_refused"], "the muster, the move of the army that never formed, the move of its source: %s" % [rejected.map(func(e): return e.text)])
+	assert_eq(r.new_state.find_army(other.id).location, "crownkeep")
+	assert_eq(int(r.new_state.next_army_ids[CROWN]), int(s.next_army_ids[CROWN]) + 1, "one id was handed out: the one that formed")
+
+
 func test_a_ruler_army_muster_is_rejected_in_the_pass() -> void:
 	var s := Kit.game("rulers")
 	var ruler := RulerRules.ruler_army(s, CROWN)
