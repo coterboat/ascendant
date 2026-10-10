@@ -451,6 +451,9 @@ func validate(errors = null) -> bool:
 	# Magic (M5): MagicRules owns those rules; a game without magic carries none of its fields.
 	if not MagicRules.validate(self, errors):
 		ok = false
+	# Per-unit statuses (ARM-1): UnitStatus owns those rules; a game with none costs one pass over its units.
+	if not UnitStatus.validate(self, errors):
+		ok = false
 	if not _validate_views(errors):
 		ok = false
 	return ok

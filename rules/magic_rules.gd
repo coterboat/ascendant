@@ -822,6 +822,20 @@ static func blessing_of(state: GameState, army_id: String) -> Dictionary:
 	return {}
 
 
+## Whether blessing `blessing` (an enchantment) covers `unit`, a fighter of `army`: the blessing lists the army, and the
+## unit is not marked outside it (ARM-1, design/ARM1_SPLIT_MERGE.md §2.1: a unit that joined the army after the casting
+## isn't blessed). Every reader of a blessing's coverage decides through this, per fighter.
+static func covers(blessing: Dictionary, army_id: String, unit: Unit) -> bool:
+	return Array(blessing.get("armies", [])).has(army_id) and not unit.has_status(UnitStatus.OUTSIDE_BLESSING, String(blessing.get("id", "")))
+
+
+## Clears the "outside the blessing" markers of enchantment `enchantment_id` (UnitStatus.clear_source): from every
+## unit, or only from those in `army_ids` when given. The one call every path that ends or restarts a blessing makes
+## (ARM-1 §2.1). Returns how many markers it cleared.
+static func clear_outside(state: GameState, enchantment_id: String, army_ids: Array = []) -> int:
+	return UnitStatus.clear_source(state, enchantment_id, "source_ends", army_ids)
+
+
 ## Far Sight's reading of `faction_id` (§6.2): everything private but its research target, as it stands now.
 ## {"faction", "gold", "mandates", "kept_power", "research_points", "nodes" (researched, in order), "spells", "spellbook"}.
 static func reading(state: GameState, faction_id: String) -> Dictionary:
