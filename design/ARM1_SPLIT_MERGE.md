@@ -1,6 +1,6 @@
 # ASCENDANT: ARM-1, splitting, merging and swapping commanders
 
-Status: **DRAFT r6 by the director (Claude session, 2026-10-10), for Alex's sign-off.** r4: Alex chose to build blessings properly now ("b) is genuinely the long-term answer so we might as well build it now"): a blessing stays with its army; units that leave lose it; units that join don't gain it (§2.1). Part of the War Table milestone (`design/UX_WAR_TABLE.md` §3.5); issue #195.
+Status: **r6 by the director (Claude session, 2026-10-10). Both of Alex's questions answered on 10-10; the doc to build from.** r4: Alex chose to build blessings properly now ("b) is genuinely the long-term answer so we might as well build it now"): a blessing stays with its army; units that leave lose it; units that join don't gain it (§2.1). Part of the War Table milestone (`design/UX_WAR_TABLE.md` §3.5); issue #195.
 - Alex (10-10, after his playtest): "we need a much better army merging system, including swapping commanders", and "manage … the troop and army movement/distribution/merging side".
 - **r1** was the issue's draft. Codex's hostile round on it (25 findings, 10 blockers) rewrote it into r2, and a second round on r2 (9 findings, 2 blockers, both about precision) gave r3. Appendix A lists the changes.
 
@@ -238,9 +238,7 @@ Today the order book checks each order against `state_after_orders` (sacrifice e
 
 ## 12. questions for Alex
 1. ~~Blessed armies~~: **answered 10-10: b),** "genuinely the long-term answer so we might as well build it now" (§2.1).
-2. **Merge all when both armies have commanders:**
-   - a) the source's commander stays behind as its own army (my pick; the forecast says so);
-   - b) refuse until you swap or move one.
+2. ~~Merge all when both armies have commanders~~: **answered 10-10: a),** the source's commander stays behind as its own army, and the forecast says so first.
 
 ---
 
