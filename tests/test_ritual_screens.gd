@@ -81,11 +81,14 @@ func test_an_army_with_a_caster_offers_cast_a_ritual_and_the_dialog_forecasts_it
 	var game := _screen(s)
 	var map := game.map
 	var army_id := _caster(game.session.state())
-	map.select_province("thornvale")
+	map.select_army(army_id)
 	var buttons := map.details.find_children("CastRitual", "Button", true, false)
-	assert_eq(buttons.size(), 1, "one army there holds a caster")
+	assert_eq(buttons.size(), 1, "the army that holds a caster offers it")
+	assert_true((buttons[0] as Button).text.begins_with("Cast a ritual"), "as the card's action")
+	map.select_province("thornvale")
+	assert_eq(map.details.find_children("CastRitual", "Button", true, false).size(), 0, "the province card has no cast button: it is the army's")
 	# The Clans' field army at Fangridge holds no caster: no button there.
-	map.select_province("fangridge")
+	map.select_army(RulerRules.ruler_army(game.session.state(), CLANS).id)
 	var field_has := false
 	for b in map.details.find_children("CastRitual", "Button", true, false):
 		field_has = true
@@ -233,7 +236,8 @@ func test_the_panels_show_blessings_fading_creatures_and_enchantments() -> void:
 	assert_eq(g2.load_game(SaveGame.make(clans, {}, SaveGame.MANUAL, "Pack", 0)), "")
 	if g2.handoff.visible:
 		g2.handoff.ready_button.pressed.emit()
-	g2.map.select_province("thornvale")
+	var pack: Army = after.armies.filter(func(a): return a.owner == CLANS and a.units.any(func(u): return u.until > 0))[0]
+	g2.map.select_army(pack.id)
 	var fades := g2.map.details.find_children("FadesLine", "Label", true, false)
 	assert_eq(fades.size(), 1)
 	assert_true((fades[0] as Label).text.begins_with("Thornwolves fade at the end of turn"), (fades[0] as Label).text)

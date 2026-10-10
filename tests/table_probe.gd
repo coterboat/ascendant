@@ -60,7 +60,7 @@ func _run() -> void:
 
 
 func _scenarios() -> Array:
-	var out := ["rest", "dismissed", "notice", "forecast", "vision"]
+	var out := ["rest", "dismissed", "notice", "forecast", "vision", "army", "recruit", "march", "army_notice"]
 	if kind == "3d":
 		out.append_array(["playback", "closeup"])
 	return out
@@ -143,6 +143,17 @@ func _setup(scenario: String) -> void:
 			map.dismiss_selection_card()
 		"notice":
 			game.show_notice("Game saved", "Saved as \"Saved 2026-10-10 14:03\". %s" % SaveGame.ORDERS_NOTE)
+		"army":  # UX-3: the army card with its order on it
+			map.select_army("kingdom-1")
+			map.select_province("westwatch")
+		"recruit":  # UX-3: the province card with the Recruit section open
+			map.cards.open_section("recruit")
+		"march":  # UX-3: picking a march destination: the card is a slim strip
+			map.select_army("kingdom-1")
+			map.cards.begin_march()
+		"army_notice":  # UX-3: the crowded left column: a notice and the guide above the army card
+			game.show_notice("Game saved", "Saved as \"Saved 2026-10-10 14:03\". %s" % SaveGame.ORDERS_NOTE)
+			map.select_army("kingdom-1")
 		"forecast":
 			map.select_army("kingdom-1")
 			map.preview_move("westwatch")
@@ -181,11 +192,30 @@ func _measure(scenario: String) -> Dictionary:
 	if kind == "2d":
 		var canvas := game.map.map_canvas
 		out["canvas"] = [canvas.global_position.x, canvas.global_position.y, MapLayout.SIZE.x * canvas.scale.x, MapLayout.SIZE.y * canvas.scale.y, canvas.is_visible_in_tree()]
+	out["card_parts"] = _card_parts()
 	out["labels"] = _province_labels()
 	out["sweep"] = await _sweep(pieces, rects)
 	if scenario == "rest":
 		out["clicks"] = await _clicks(pieces, rects)
 		await _setup("rest")
+	return out
+
+
+## UX-3: where the selection card keeps its pinned actions and its scroll, as drawn: [x, y, w, h, visible] for the card's first action
+## (the first button of the first pinned row), the pinned bar and the scroll; only the mode while the card is hidden or is the march strip.
+func _card_parts() -> Dictionary:
+	var cards: SelectionCards = game.map.cards
+	var out := {"marching": cards.marching, "mode": cards.mode}
+	if not cards.visible or cards.marching:
+		return out
+	var first: Control = null
+	for c in cards.pinned.get_children():
+		if c is Control and c.visible:
+			first = c.get_child(0) as Control if c is HFlowContainer and c.get_child_count() > 0 else c as Control
+			break
+	out["first_action"] = _r(first)
+	out["pinned"] = _r(cards.pinned)
+	out["scroll"] = _r(cards.scroll)
 	return out
 
 
@@ -214,7 +244,7 @@ func _province_labels() -> Dictionary:
 func _pieces() -> Dictionary:
 	var hud := game.map.table()
 	var out := {"plaque": hud.plaque, "menu": hud.menu_button, "opponent": hud.opponent_panel, "stack": hud.notification_stack, "tray": hud.tray,
-		"seal": hud.seal, "card": game.map.details_card, "legend": game.map.vision_legend, "hover": game.map.hover_panel,
+		"seal": hud.seal, "card": game.map.cards, "legend": game.map.vision_legend, "hover": game.map.hover_panel,
 		"guide": game.first_game_guide, "notice": game.notice_panel}
 	for id in hud.system_button_ids():
 		out["sys_%s" % id] = hud.system_button(id)

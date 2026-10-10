@@ -20,7 +20,7 @@ const SCRATCH := "user://table_probe"
 const BOARDS := ["3d", "2d"]
 ## The spec's three sizes: key -> the logical size the game lays out for.
 const SIZES := {"1600x900": Vector2(1600, 900), "1600x900@125": Vector2(1280, 720), "1280x720": Vector2(1600, 900)}
-const SCENARIOS := ["rest", "dismissed", "notice", "forecast", "vision"]
+const SCENARIOS := ["rest", "dismissed", "notice", "forecast", "vision", "army", "recruit", "march", "army_notice"]
 const FLOATING := ["card", "legend", "notice", "guide", "hover", "playback", "caption", "closeup"]
 
 static var _report := {}
@@ -127,10 +127,54 @@ func _check_state(board: String, key: String, scenario: String, m: Dictionary) -
 			assert_true(_shown(m, "hover") and _shown(m, "card"), "%s: the move forecast and the card" % where)
 		"vision":
 			assert_true(_shown(m, "legend"), "%s: the Vision legend" % where)
+		"army", "recruit", "army_notice":
+			assert_true(_shown(m, "card") and _shown(m, "guide"), "%s: the card and the guide are up" % where)
+			assert_eq(m.card_parts.mode, "province" if scenario == "recruit" else "army", "%s: the card of what is selected" % where)
+			assert_true(m.card_parts.has("first_action"), "%s: the card has its actions" % where)
+			if scenario == "army_notice":
+				assert_true(_shown(m, "notice"), "%s: with the notice above it" % where)
+		"march":
+			assert_true(_shown(m, "card"), "%s: the strip is up" % where)
+			assert_true(bool(m.card_parts.marching), "%s: it is the march strip" % where)
+			assert_true(_rect(m, "card").size.y < 90.0, "%s: slim (%f px tall)" % [where, _rect(m, "card").size.y])
 		"playback":
 			assert_true(_shown(m, "playback") and _shown(m, "caption"), "%s: the playback bar and its caption" % where)
 		"closeup":
 			assert_true(_shown(m, "closeup"), "%s: the fortress chip" % where)
+
+
+# --- the selection cards (UX-3, design/UX_WAR_TABLE.md §3.3) ---------------------------------------------
+
+## The card sits in the card slot, docked bottom left of the safe area, in every state it has (the army card with an order on it, the
+## province card with its Recruit section open, the army card under a notice and the guide, and the slim march strip), at all three
+## sizes on both boards; its first action is always inside it, in view, whatever the card was squeezed to ("nothing a click needs ever
+## hides"); and while a march destination is picked the card is a slim strip docked in the same place.
+func test_the_selection_card_is_placed_with_its_first_action_in_view_in_every_state() -> void:
+	var cards_seen := {"n": 0}  # a lambda captures a number by value: a dictionary is shared
+	_each(func(board: String, key: String, scenario: String, m: Dictionary):
+		if not scenario in ["rest", "army", "recruit", "march", "army_notice", "forecast", "notice"]:
+			return
+		var where := _where(board, key, scenario)
+		var safe := Rect2(m.safe[0], m.safe[1], m.safe[2], m.safe[3])
+		var card := _rect(m, "card")
+		assert_true(_shown(m, "card"), "%s: the card is up" % where)
+		assert_true(safe.grow(0.5).encloses(card), "%s: inside the safe area (%s in %s)" % [where, card, safe])
+		assert_eq(card.position.x, safe.position.x + TableLayout.GAP, "%s: in the left column" % where)
+		assert_true(is_equal_approx(card.end.y, safe.end.y - TableLayout.GAP), "%s: docked at the bottom" % where)
+		assert_true(card.size.x <= TableLayout.CARD_W + 0.5, "%s: no wider than the card slot" % where)
+		if scenario == "march":
+			assert_true(bool(m.card_parts.marching) and card.size.y < 90.0, "%s: the slim strip (%f px)" % [where, card.size.y])
+			return
+		var first: Array = m.card_parts.get("first_action", [])
+		assert_eq(first.size(), 5, "%s: the card has a first action" % where)
+		if first.size() == 5:
+			var rect := Rect2(first[0], first[1], first[2], first[3])
+			assert_true(bool(first[4]), "%s: it is visible" % where)
+			assert_true(card.grow(0.5).encloses(rect), "%s: and inside the card (%s in %s)" % [where, rect, card])
+			var scroll: Array = m.card_parts.scroll
+			assert_true(rect.end.y <= scroll[1] + 0.5, "%s: above the scroll, so it never scrolls away (%s over %s)" % [where, rect, scroll])
+		cards_seen.n += 1)
+	assert_true(cards_seen.n >= 20, "cards were checked in every state at every size on both boards (%d)" % cards_seen.n)
 
 
 # --- overlap and the bands --------------------------------------------------------------------------

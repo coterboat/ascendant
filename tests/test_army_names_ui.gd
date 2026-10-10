@@ -89,26 +89,34 @@ func test_an_army_title_is_its_report_name_its_fighters_and_its_place() -> void:
 
 # --- the map's army panel -------------------------------------------------------------------------
 
-func test_the_army_panel_names_armies_as_the_turn_report_does() -> void:
+func test_the_army_card_names_armies_as_the_turn_report_does() -> void:
 	var s := GameState.with_rulers(5)
 	var screen := _open(s)
-	screen.select_province("crownkeep")
 	var headers := []
 	for a in s.armies.filter(func(x): return x.location == "crownkeep"):
+		# the province card lists it, its name and place on one button (#125) ...
+		screen.select_province("crownkeep")
+		var row := screen.details.find_child("ArmyRow_%s" % a.id.validate_node_name(), true, false)
+		assert_true(row != null, "the army is listed on the province card")
+		var listed := row.find_child("ArmyButton", true, false) as Button
+		# ... and its own card says the same, with who is in it on the line under
+		screen.select_army(a.id)
 		var panel := screen.details.find_child("Army_%s" % a.id.validate_node_name(), true, false)
-		assert_true(panel != null, "the army is listed")
-		var header := panel.find_child("ArmyHeader", true, false) as Button
-		## #125: the report's name and place on one line, who is in it on the line under it
+		assert_true(panel != null, "the army has its card")
+		var header := panel.find_child("ArmyTitle", true, false) as Label
 		var title := RulerRules._cap(TurnReportText.army_title(s, a))
 		var who := panel.find_child("ArmyMembers", true, false) as Label
 		assert_true(who != null, "the line under the header lists who is in the army")
 		assert_eq("%s (%s) at %s" % [header.text.get_slice(" at ", 0), who.text.substr(0, 1).to_lower() + who.text.substr(1) if a.ruler != null else who.text,
 			header.text.get_slice(" at ", 1)], title, "together they say the turn report's title")
+		assert_eq(listed.text, header.text, "the province card's button reads the same")
 		assert_true(header.text.to_lower().begins_with(_name(s, a).to_lower()), "the header starts with the report's name: %s" % header.text)
 		assert_false(header.text.contains("("), "the header keeps to the name and the place: %s" % header.text)
+		_assert_no_place_names_or_ids(_texts(screen.details), "the army card")
 		headers.append(header.text)
 	assert_eq(headers.size(), 2, "the starting army and the ruler's army")
-	_assert_no_place_names_or_ids(_texts(screen.details), "the side panel")
+	screen.select_province("crownkeep")
+	_assert_no_place_names_or_ids(_texts(screen.details), "the province card")
 	_close(screen)
 
 
@@ -150,6 +158,10 @@ func test_the_orders_list_and_forecasts_name_the_army() -> void:
 	var line := screen.details.find_child("OrderLine", true, false) as Label
 	assert_true(line != null and line.text.begins_with(title), line.text if line else "no order line")
 	_assert_no_place_names_or_ids(_texts(screen.details) + [screen.preview_move("highcrag")], "orders and preview")
+	screen.show_orders()
+	var listed := screen.details.find_child("OrderLine", true, false) as Label
+	assert_true(listed != null and listed.text == line.text, "the orders list words it the same way")
+	_assert_no_place_names_or_ids(_texts(screen.details), "the orders list")
 	_close(screen)
 
 
