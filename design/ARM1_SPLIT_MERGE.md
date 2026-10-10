@@ -1,6 +1,6 @@
 # ASCENDANT: ARM-1, splitting, merging and swapping commanders
 
-Status: **DRAFT r3 by the director (Claude session, 2026-10-10), for Alex's sign-off.** Part of the War Table milestone (`design/UX_WAR_TABLE.md` §3.5); issue #195.
+Status: **DRAFT r4 by the director (Claude session, 2026-10-10), for Alex's sign-off.** r4: Alex chose to build blessings properly now ("b) is genuinely the long-term answer so we might as well build it now"): a blessing stays with its army; units that leave lose it; units that join don't gain it (§2.1). Part of the War Table milestone (`design/UX_WAR_TABLE.md` §3.5); issue #195.
 - Alex (10-10, after his playtest): "we need a much better army merging system, including swapping commanders", and "manage … the troop and army movement/distribution/merging side".
 - **r1** was the issue's draft. Codex's hostile round on it (25 findings, 10 blockers) rewrote it into r2, and a second round on r2 (9 findings, 2 blockers, both about precision) gave r3. Appendix A lists the changes.
 
@@ -26,7 +26,7 @@ Your armies in a province become clay: split them, merge them, swap their comman
   - At resolution, musters run **first in the existing orders phase**, in the same order, so the new armies get **the same real ids** the plan showed.
   - **There are no refs and no new phase.**
 - **A game without a muster resolves exactly as before:** the same phase lists, codex text, events, records and digests.
-- **Blessed armies can't muster** in the MVP, giving or receiving (blessings are the only enchantments that name armies, `magic_rules.gd:815`; curses lie on provinces and touch every army there alike). A ruler's army can't either: a ruler travels alone.
+- **A blessing stays with its army** (Alex 10-10): units that leave it lose the blessing, and units that join it don't gain it (§2.1). Curses lie on provinces and touch every army there alike, so they don't matter to a muster. **A ruler's army can't muster:** a ruler travels alone.
 - **Engines move only when the order says so,** and only to an army that can carry them.
 - **The computer doesn't muster** in ARM-1. It plans from the real state each turn, as now.
 - **A pure `MusterForecast`** shows every army before and after: units, commander, engines, strength, sight, name, which queued orders it breaks, and where this turn's recruits will join.
@@ -59,7 +59,7 @@ MusterOrder {
 ## 2. what may muster
 - **Both armies are yours, in the same province,** at the start of the turn and as the plan stands. That is the projected board's location: an army that moves this turn has moved after musters, so musters see where it starts.
 - **Neither holds a ruler:** neither the source, nor the target, nor a merge's target (`ruler_rules.gd` keeps a ruler alone).
-- **Neither is blessed** (`MagicRules`' blessing on the army, `magic_rules.gd:815`). The forecast says "the Crown's 1st is blessed: it can't take or give troops while the blessing lasts." Inheriting blessings is later. **A curse doesn't stop a muster:** curses lie on the province (`magic_rules.gd:2081`) and touch every army of the faction there before and after alike.
+- **Blessed armies muster like any other.** Their blessings follow §2.1. **A curse doesn't stop a muster:** curses lie on the province (`magic_rules.gd:2081`) and touch every army of the faction there before and after alike.
 - **Indices:** an index past the army's end, or repeated within the order, is refused.
 - **Non-empty results:** a transfer must move at least one unit or the commander.
   - **The source after it:** if it keeps no units and no commander, it **disbands**, and its engines must have moved (a carrier needs a fighter, `siege_rules.gd:332`), or the order is refused.
@@ -67,6 +67,32 @@ MusterOrder {
 - **A new army** gets its id from `next_army_ids`, exactly as `GameState` hands out ids today (`game_state.gd:325`). The projected board allocates it on its copy, and resolution allocates it on the real state in the same order, so the ids match.
   - A refused or cancelled muster allocates nothing: the projection is rebuilt from scratch whenever the plan changes, never edited.
   - **Names:** "the Crown's 4th". Gaps from disbanded armies stay (names are permanent, `turn_report_text.gd:196-217`), and a merge's target keeps its name.
+
+### 2.1 blessings: they stay with their army (Alex 10-10)
+Today a blessing is an enchantment that lists army ids (`magic_rules.gd:815-820`). Each blessed army heals a set number of hit points a turn, one at a time across its fighters (`magic_rules.gd:1440-1460`). A side at least half blessed fights with +1 morale (`auto_battle_resolver.gd:1531-1556`). Musters keep both effects honest:
+- **Units that leave a blessed army lose its blessing.** A new army made from them isn't in the blessing's list. A unit that moves to another army is under that army's blessing only if it was already there.
+- **Units that join a blessed army don't gain its blessing.** Each joining unit, and a commander arriving by transfer or swap, is marked **outside** that blessing: a new `Unit.outside_blessing` field holding the enchantment's id.
+  - It is saved only when set, so every existing record and save is byte-identical.
+  - A unit can be outside one blessing at a time, the one on the army it now stands in.
+- **Everywhere a blessing counts its army's fighters, it skips the units outside it:**
+  - the heal (no hit points to them, and the army's heal is not shared with them);
+  - the half-blessed morale count (they count as unblessed fighters);
+  - the fog view's blessed partition (in a rival's view they are plain units, `fog_rules.gd:352-415`).
+- **The marker clears when that enchantment ends** (it ran out, a ward ended it, or it lost its last army), or when the unit leaves the army. **A new blessing cast later on the army covers everyone in it**, since its id is new.
+- **A merge out of a blessed army:** if the blessed army disbands, the blessing loses that army id. If that was its last army, it ends by today's path ("a blessing lost its last army", `turn_resolver.gd:1185`).
+- **Multi-hop:** a unit sent from a blessed A to a plain B loses A's blessing; sent on to a blessed C, it is outside C's. Planning and resolution agree.
+- **The forecast and the report say it:**
+  - forecast: "2 Knights join the Crown's 1st; its Dawn Blessing won't cover them";
+  - report: "Two Knights joined the Crown's 1st at Crownkeep. They aren't under its blessing."
+- **Tests:**
+  - the heal with outside units (none to them, the same budget to the rest);
+  - half-blessed morale with outside units;
+  - the fog partition with outside units (the snapshot probe);
+  - the marker clearing at the blessing's end, by a ward, and by the last army leaving;
+  - a new blessing over everyone;
+  - multi-hop;
+  - save and load with the marker;
+  - byte-identity of every legacy record.
 
 ## 3. orders that depend on a muster
 Today the order book checks each order against `state_after_orders` (sacrifice effects). ARM-1 adds musters to that function. Musters are **hoisted**: the projection applies every muster first, in order, then checks every non-muster order against the result, wherever it sits in the list. So:
@@ -99,7 +125,7 @@ Today the order book checks each order against `state_after_orders` (sacrifice e
 ## 5. fog
 - **Your own view** shows everything.
 - **A rival's view:** armies are pooled stand-ins per (faction, province), split by blessing and by extra commanders (`fog_rules.gd:352-549`).
-  - Blessed armies can't muster (§2), so a muster never moves a unit across a blessing partition.
+  - **Blessing partitions:** a muster can move units across them. Units that leave a blessed army become plain, and units that join one are plain inside it (§2.1). The rival's view pools by the unit, so what a rival sees in sight is exactly the true blessed and plain counts, no more.
   - **Engines** are pooled and handed out to stand-ins synthetically, not by their real carrier (`fog_rules.gd:428`). Moving engines between your armies may change nothing in a rival's view, or change which stand-in seems to carry them.
   - Commanders can move, so the **extra-commander stand-ins can change**. A rival who has that province in sight sees the new count of commanders there, exactly as they would see any change of composition. A rival who doesn't, sees nothing. This is stated, not hidden: musters are visible like any army in sight.
 - **Muster events** are the owner's only. A rival sees the result through sight at the end of the turn, not the order.
@@ -151,7 +177,6 @@ Today the order book checks each order against `state_after_orders` (sacrifice e
 - **Names:** across split, merge, summon, successor, recruitment, save and replay.
 
 ## 10. out of scope
-- Inheriting or splitting blessings; musters by blessed armies.
 - Musters across provinces, or during a move.
 - The computer mustering (a later AI ticket).
 - Recruit orders naming their destination army (the forecast names it instead).
@@ -159,16 +184,14 @@ Today the order book checks each order against `state_after_orders` (sacrifice e
 
 ## 11. director's calls
 1. **One order, three kinds,** planned on the projected board and resolved first in the orders phase. No refs and no new phase.
-2. **Blessed armies and rulers' armies don't muster** in the MVP. Curses, which lie on provinces, don't stop a muster.
+2. **Blessings stay with their army** (Alex 10-10): leavers lose them, and joiners are marked outside them. **Rulers' armies don't muster.** Curses, which lie on provinces, don't matter.
 3. **Splits are a tactic,** not an exploit: holding with part and marching with part is allowed and explained.
 4. **Engines move only when told,** within the carrier rules.
 5. **Musters are visible like any army in sight;** the orders themselves are private.
 6. **The computer doesn't muster yet;** a human's musters reach it as ordinary armies.
 
 ## 12. questions for Alex
-1. **Blessed armies:**
-   - a) can't muster in the MVP (my pick: simple, safe);
-   - b) a blessing stays with its army id, and units that leave lose it, units that join don't gain it (more to build and test).
+1. ~~Blessed armies~~: **answered 10-10: b),** "genuinely the long-term answer so we might as well build it now" (§2.1).
 2. **Merge all when both armies have commanders:**
    - a) the source's commander stays behind as its own army (my pick; the forecast says so);
    - b) refuse until you swap or move one.
@@ -176,6 +199,8 @@ Today the order book checks each order against `state_after_orders` (sacrifice e
 ---
 
 ## appendix A. critic rounds
+
+**r4** (Alex 10-10) replaced "blessed armies can't muster" with blessings that stay with their army (§2.1); a focused round 3 checks it.
 
 ### round 2 (Codex, hostile, on r2, 2026-10-10): 9 findings, 2 blockers. All taken.
 - **Blockers:**
