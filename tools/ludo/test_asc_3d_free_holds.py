@@ -99,6 +99,23 @@ class Rows(unittest.TestCase):
         for name, src in FH.GREY.items():
             self.assertTrue(os.path.exists(os.path.join(FH.ROOT, src)), "%s: its source picture is committed" % name)
 
+    def test_the_slingers_poses_do_not_say_outline_style_and_keep_the_short_doubled_sling(self):
+        """Alex 10-9: the outline was an effect "the other models don't have". The shared pose line's "same outline style" drew
+        it again on the accepted base (10-10), so the Slingers' pose rows say the soft matte clay instead, and every one of
+        their pose lines keeps the short doubled sling; the other units keep the shared line."""
+        rows = {r["id"]: r for r in FH.rows()}
+        for pose in ("march", "strike", "fallen"):
+            prompt = rows["pic_hill_slingers_%s" % pose]["prompt"]
+            self.assertNotIn("outline", prompt.lower())
+            self.assertIn("soft matte hand-painted clay", prompt)
+            self.assertIn("sling", FH.UNITS["hill_slingers"][pose])
+        self.assertIn("short doubled sling", FH.UNITS["hill_slingers"]["strike"])
+        for uid in FH.UNITS:
+            if uid != "hill_slingers":
+                for pose in ("march", "strike", "fallen"):
+                    self.assertTrue(rows["pic_%s_%s" % (uid, pose)]["prompt"].startswith("The same figure, now %s. Same outfit, "
+                                    "same colours, same outline style" % FH.UNITS[uid][pose]))
+
     def test_shipped_portraits_are_written_only_by_the_install_action(self):
         for r in FH.rows():
             self.assertNotIn("assets/portraits/", r.get("pick_to", ""), "%s picks into a pipeline-input folder" % r["id"])

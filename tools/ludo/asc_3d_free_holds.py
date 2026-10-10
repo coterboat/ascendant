@@ -77,6 +77,13 @@ drawn a thin black outline round the figure, unlike the soft matte clay look of 
 `prepare_base_input`) with a prompt that keeps its figure, sling and pouch and repaints it as a soft matte hand-painted clay
 miniature; it also rewrites the manifest first, so an edited BASE_REDO reaches the redo. Nothing is derived from it until he
 marks it Good.
+
+The Hill Slingers' derive (10-10): Alex accepted take 1 of that base (`base-status` says which), and `run poses|models --only
+hill_slingers` made the poses and models from it. The shared pose line's "same outline style" drew the outline again (both
+march takes, one strike take), so the Slingers' pose rows use POSE_LINE (the soft matte clay finish of the base, said as what
+to do) and a strike line that names the short doubled sling; the other units keep C_POSE. (The fallen pictures, v2, were made
+with the shared line before it changed and came back clean, so they stand; the ledger holds the prompt each call sent.) A row made before the redo has its
+first request id used, so each row is `reroll`ed before it is run again (a used id would hand back the old job).
 """
 import filecmp
 import json
@@ -166,9 +173,10 @@ UNITS = {
              "left arm held a little out from his side, alert expression, eyes ahead",
         march="loping forward with his left leg ahead, the doubled sling gripped in his right hand at his side with its "
               "small pouch dangling, his left arm swinging, eyes ahead",
-        strike="slinging a stone: his right elbow raised high with his fingers pointing toward the sky, twirling the sling "
-               "in a circle above his head with its pouch whirling at the end of the doubled cord, his left arm "
-               "stretched forward pointing at the target, his left leg stepping forward, eyes on the target ahead",
+        strike="slinging a stone: his right elbow raised high with his fingers pointing toward the sky, twirling the short "
+               "doubled sling in a small circle above his head, the two cord ends gripped together in his fist and the "
+               "small pouch swinging at the end of the short doubled cord, his left arm stretched forward pointing at "
+               "the target, his left leg stepping forward, eyes on the target ahead",
         fallen="fallen in battle, lying flat on his back on the floor with his arms out to the sides, his hood still "
                "on, the sling and the pouch of stones lying on the floor beside him, eyes closed",
         portrait="A Free Holds hill slinger, a lean sharp-eyed local skirmisher in a pale bone-white wool hood and "
@@ -243,6 +251,17 @@ BASE_REDO = {
 ## copied out of the base batch into the gitignored inputs folder by `regen-base`, so the redo keeps exactly what he liked.
 BASE_FROM = {"hill_slingers": "assets/_concept/candidates/_inputs/hill_slingers_base_kept.webp"}
 BASE_TAKES = 3
+## The pose rows' shared line (asc_3d_factions.C_POSE) says "same outline style", the wording that drew the outline on the first
+## base. On the accepted base (10-10) it drew it again: a thin black outline round the whole figure in both march takes and one
+## strike take, the effect Alex rejected ("a cel-shaded outline effect the other models don't have"). The Slingers' poses say
+## what the accepted base looks like instead, in the words of BASE_REDO (a negative is drawn, so each is said as what to do).
+POSE_LINE = {
+    "hill_slingers": ("The same figure, now {pose}. Same outfit, same colours, the same soft matte hand-painted clay miniature "
+                      "as the first picture: the forms are shaped by soft shading and gentle shadow, every colour meets the "
+                      "next at a soft painted edge, the outer edge of the figure is the colour of the cloth, skin and "
+                      "leather itself, {view}, the whole figure with wide empty margin on every side, plain flat light "
+                      "grey background."),
+}
 ## The units whose base Alex accepted before the gate existed: his Good on the ready picture in the batch that judged it
 ## (review/ind_concept, 10-8; PR #178 installed them). If that batch's review.json is here and says otherwise, base_gate
 ## refuses the unit. The Hill Slingers' ready picture was Good with changes there ("a real sling, not a long rope"): it is
@@ -311,7 +330,7 @@ def rows():
         for pose in POSES[1:]:
             view = F.VIEW_LYING if pose in LYING else F.VIEW
             out.append({"id": "pic_%s_%s" % (uid, pose), "stage": "poses", "kind": "edit", "n": 2,
-                        "from_file": pick_path(uid + "_ready"), "prompt": F.C_POSE.format(pose=u[pose], view=view),
+                        "from_file": pick_path(uid + "_ready"), "prompt": POSE_LINE.get(uid, F.C_POSE).format(pose=u[pose], view=view),
                         "pick_to": pick_path("%s_%s" % (uid, pose)), "group": "units", "unit": uid, "pose": pose})
     for uid, u in UNITS.items():
         stage = "portraits1" if u["pstyle"].startswith("grey_") else "portraits2"
