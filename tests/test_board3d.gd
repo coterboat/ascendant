@@ -329,7 +329,7 @@ func test_clicks_on_the_board_select_through_the_map_screen() -> void:
 	b.hover(s)
 	assert_eq(b.hover_id, to, "the board knows the province under the mouse")
 	assert_true(map.hover_panel.visible, "hovering a neighbour with your army selected shows the move preview")
-	assert_eq(map.hover_label.text, map.orders.move_preview(army.id, to).text, "the same forecast as the 2D map")
+	assert_eq(map.hover_panel.full_text, map.orders.move_preview(army.id, to).text, "the same forecast as the 2D map")
 	b.click(s)
 	var moves := game.session.current_orders().filter(func(o): return o is MoveOrder)
 	assert_eq(moves.size(), 1, "the second click ordered the move (%s)" % map.status_text)

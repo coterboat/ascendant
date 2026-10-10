@@ -33,6 +33,10 @@ signal marching_changed(on: bool)
 
 ## The least height the scrolling content is squeezed to (the pinned actions above it never are).
 const SCROLL_MIN := 24.0
+## The forecast slot: room for the hover forecast's three short lines, reserved while an army of yours is selected (so the card never
+## jumps as the pointer crosses the map), and the least the scroll must keep beside it for the slot to be worth showing.
+const FORECAST_H := 72.0
+const FORECAST_SCROLL_MIN := 90.0
 
 var map: MapScreen
 ## Under the header: the card's pinned actions, then the scrolling card. map.details: every control of the open card is under it.
@@ -52,12 +56,20 @@ var marching := false
 ## The next selection keeps the open sections (the Recruit picker moves between your forts).
 var carry_sections := false
 
+## The hover forecast (MapScreen.hover_panel, a ForecastGlance) lives in this slot: under an army's actions, or in the march strip. The
+## hint is what the slot says while nothing is hovered.
+var forecast_slot: Control
+var forecast_hint: Label
+var forecast_glance: Control = null
+
 var strip: PanelContainer
 var strip_label: Label
 var strip_note: Label
 var strip_cancel: Button
 
 var _box: VBoxContainer
+var _strip_col: VBoxContainer
+var _wants_forecast := false  # the open card is an army of yours: it shows the hover forecast
 var _header: HBoxContainer
 var _kind := ""
 var _id := ""
@@ -139,7 +151,24 @@ func _init() -> void:
 	scroll.add_child(holder)
 	holder.minimum_size_changed.connect(_want_layout)
 	pinned.minimum_size_changed.connect(_want_layout)
+	forecast_slot = Control.new()
+	forecast_slot.name = "ForecastSlot"
+	forecast_slot.custom_minimum_size = Vector2(0, FORECAST_H)
+	forecast_slot.visible = false
+	forecast_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	details.add_child(forecast_slot)
+	details.move_child(forecast_slot, 1)
+	forecast_hint = Label.new()
+	forecast_hint.name = "ForecastHint"
+	forecast_hint.set_anchors_preset(Control.PRESET_FULL_RECT)
+	forecast_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	forecast_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	forecast_hint.add_theme_font_size_override("font_size", UiPalette.TYPE_SMALL)
+	forecast_hint.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
+	forecast_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	forecast_slot.add_child(forecast_hint)
 	_build_strip()
+	_set_forecast_hint()
 
 
 ## The slim strip shown instead of the card while a march destination is picked.
@@ -152,8 +181,9 @@ func _build_strip() -> void:
 	add_child(strip)
 	var col := VBoxContainer.new()
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_theme_constant_override("separation", 2)
+	col.add_theme_constant_override("separation", 4)
 	strip.add_child(col)
+	_strip_col = col
 	var row := HBoxContainer.new()
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_theme_constant_override("separation", 8)
@@ -193,6 +223,44 @@ func _build_strip() -> void:
 	strip_note.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(strip_note)
 	strip.minimum_size_changed.connect(_want_layout)
+
+
+# --- the hover forecast ---------------------------------------------------------------------------
+
+## The forecast panel (MapScreen.hover_panel) goes in the forecast slot: under an army's actions while its card shows, in the march strip
+## while a destination is picked. It fills the slot, so the card is as tall with a forecast as without one.
+func adopt_forecast(panel: Control) -> void:
+	forecast_glance = panel
+	if panel.get_parent() != null:
+		panel.get_parent().remove_child(panel)
+	forecast_slot.add_child(panel)
+	panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	panel.offset_left = 0
+	panel.offset_top = 0
+	panel.offset_right = 0
+	panel.offset_bottom = 0
+	if not panel.visibility_changed.is_connected(_set_forecast_hint):
+		panel.visibility_changed.connect(_set_forecast_hint)
+	_set_forecast_hint()
+
+
+## What the slot says while nothing is hovered (and nothing at all while a forecast shows).
+func _set_forecast_hint() -> void:
+	forecast_hint.text = "Hover a province to see what marching there would do, then click it." if marching \
+		else "Hover a province next to this army to see what a march there would do."
+	forecast_hint.visible = forecast_glance == null or not forecast_glance.visible
+
+
+## Where the slot sits and whether it shows: in the strip while picking a destination; under the actions of an army of yours otherwise
+## (when the card has the room: fit() decides).
+func _update_forecast_slot(room_ok: bool = true) -> void:
+	var want_parent: Control = _strip_col if marching else details
+	if forecast_slot.get_parent() != want_parent:
+		forecast_slot.get_parent().remove_child(forecast_slot)
+		want_parent.add_child(forecast_slot)
+		want_parent.move_child(forecast_slot, 1)
+	forecast_slot.visible = marching or (_wants_forecast and mode == "army" and room_ok)
+	_set_forecast_hint()
 
 
 # --- the SelectionHost's presenter ----------------------------------------------------------------
@@ -315,6 +383,7 @@ func _end_march(refill: bool) -> void:
 func _apply_marching() -> void:
 	_box.visible = not marching
 	strip.visible = marching
+	_update_forecast_slot()
 	_want_layout()
 
 
@@ -363,6 +432,11 @@ func fit(max_height: float) -> void:
 	var style := get_theme_stylebox("panel")
 	var padding := style.get_margin(SIDE_TOP) + style.get_margin(SIDE_BOTTOM)
 	# However squeezed, the pinned actions stay whole and the scroll keeps a sliver: the card never grows past the rect it was given.
+	if _wants_forecast and not marching:
+		# The forecast slot shows when the scroll keeps a useful height beside it; in a squeezed card the pinned actions win.
+		var sep := float(details.get_theme_constant("separation"))
+		var pinned_h := (pinned.get_combined_minimum_size().y + sep) if pinned.visible else 0.0
+		_update_forecast_slot(max_height - header_h - padding - pinned_h - FORECAST_H - sep >= FORECAST_SCROLL_MIN)
 	var room := maxf(max_height - header_h - padding - _pinned_height(), SCROLL_MIN)
 	var want := clampf(holder.get_combined_minimum_size().y, SCROLL_MIN, room)
 	if not is_equal_approx(scroll.custom_minimum_size.y, want):
@@ -399,12 +473,15 @@ func _select(kind: String, id: String, province: String) -> void:
 	_fill()
 
 
-## The height of the pinned actions and the gap under them.
+## The height of what sits above the scroll: the pinned actions and, when it shows, the forecast slot, each with the gap under it.
 func _pinned_height() -> float:
-	if not pinned.visible:
-		return 0.0
-	var h := pinned.get_combined_minimum_size().y
-	return h + (float(details.get_theme_constant("separation")) if h > 0.0 else 0.0)
+	var sep := float(details.get_theme_constant("separation"))
+	var h := 0.0
+	if pinned.visible:
+		h += pinned.get_combined_minimum_size().y + sep
+	if forecast_slot.visible and forecast_slot.get_parent() == details:
+		h += FORECAST_H + sep
+	return h
 
 
 func _fill() -> void:
@@ -430,7 +507,11 @@ func _fill() -> void:
 		if card != null:
 			holder.add_child(card)
 			_lift_pinned(card)
+		_wants_forecast = card != null and card.wants_forecast
+	else:
+		_wants_forecast = false
 	pinned.visible = pinned.get_child_count() > 0  # an empty slot would still take the gap under it
+	_update_forecast_slot()
 	_want_layout()
 	if not _scroll_to.is_empty():
 		var target := _scroll_to

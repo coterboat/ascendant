@@ -17,6 +17,8 @@ var map: MapScreen
 ## content, under the card's header, so the Table's "nothing a click needs ever hides" holds for the card's first action even when
 ## the card is squeezed (a card built on its own, in a test, keeps them where they were built).
 var pinned_nodes: Array = []
+## True for the card of an army of yours: it shows the hover forecast of a march destination in a slot under its actions (SelectionCards).
+var wants_forecast := false
 
 var state: GameState:
 	get:

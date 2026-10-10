@@ -236,6 +236,7 @@ func _add_actions(a: Army, box: Control) -> void:
 	actions.add_theme_constant_override("v_separation", 6)
 	box.add_child(actions)
 	pinned_nodes.append(actions)
+	wants_forecast = true  # an army of yours: hovering a province shows what a march there would do
 	var list := order_indexes(a)
 	var cards := map.cards
 	# March: MoveOrder through today's targeting; the card collapses to a strip while you pick the province.

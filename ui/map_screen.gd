@@ -104,8 +104,7 @@ var session: GameSession = null  # game screen (#7): when set, orders live in th
 var intercept_back := false  # game screen (#7): the host confirms before leaving
 var status_text := ""  # last order result: the rules' reason when an order was refused
 var arrow_layer: Control  # drawn above the regions: one arrow per queued move
-var hover_panel: PanelContainer  # the move forecast, along the bottom of the board's safe area
-var hover_label: Label
+var hover_panel: ForecastGlance  # the move forecast of the hovered province, compact; it lives in the selection card or the march strip (UX-3)
 var own_codex: CodexPanel = null  # map preview only: opened when no game screen listens for codex_requested
 var ruler_panel: RulerPanel = null  # M2-6: opened by open_ruler_panel(), over the map and the Table
 var sacrifice_dialog: SacrificeDialog = null  # M2-6: opened from the ruler panel
@@ -190,7 +189,7 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 		region.army_pressed.connect(select_army)
 		region.codex_requested.connect(request_codex)
 		region.mouse_entered.connect(preview_move.bind(p.id))
-		region.mouse_exited.connect(clear_preview)
+		region.mouse_exited.connect(leave_preview)
 		map_canvas.add_child(region)
 		regions[p.id] = region
 		if FogView.active(state):
@@ -288,25 +287,34 @@ func select_army(army_id: String) -> void:
 	army_selected.emit(army_id)
 
 
-## Hover preview (#6): with one of your armies selected, shows what clicking `province_id` would
-## order (arrival forecast and battle odds, or the rules' reason it can't be ordered) in a bar over the
-## map, before you click. Returns the text shown, "" when there is nothing to preview.
+## Hover preview (#6): with one of your armies selected, shows what clicking `province_id` would order (arrival forecast and battle
+## odds, or the rules' reason it can't be ordered) before you click: two or three short lines in the army's card (or the march strip),
+## with an "i" whose tooltip is the whole forecast (MoveGlance, ForecastGlance). Returns the full text, "" when there is nothing to preview.
 func preview_move(province_id: String) -> String:
 	_bind()
 	var text := ""
 	var army: Army = state.find_army(selected_army_id) if state else null
 	if orders and army and army.owner == viewing_faction_id and army.location != province_id \
 			and state.find_province(province_id) != null:
-		text = orders.move_preview(army.id, province_id).text
-	hover_label.text = text
-	hover_panel.visible = not text.is_empty()
+		var glance := MoveGlance.build(orders, army.id, province_id)
+		text = String(glance.full)
+		hover_panel.show_glance(glance, request_codex)
+	if text.is_empty():
+		hover_panel.clear()
 	return text
 
 
+## The forecast is gone: hidden at once (a new selection, an order, a new state, a hand-over).
 func clear_preview() -> void:
 	if hover_panel:
-		hover_label.text = ""
-		hover_panel.visible = false
+		hover_panel.clear()
+
+
+## The pointer left the province (or the board): the forecast stays, dimmer, in the card or the strip, until another province is hovered or
+## the selection or the orders change, so the pointer can travel to its "i" and read the whole paragraph.
+func leave_preview() -> void:
+	if hover_panel and hover_panel.visible:
+		hover_panel.set_stale(true)
 
 
 ## The tray's one line of "what to do now" (UX-1: it was the top bar's hint). Keep it short: it wraps to at most two lines.
@@ -632,27 +640,11 @@ func _bind() -> void:
 	arrow_layer.size = MapLayout.SIZE
 	arrow_layer.draw.connect(_draw_order_arrows)
 	map_view.add_child(arrow_layer)
-	# The move forecast: a bar along the bottom of the board's safe area (the Table places it); grows with its text.
-	hover_panel = PanelContainer.new()
-	hover_panel.name = "HoverPreview"
-	hover_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hover_panel.visible = false
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(UiPalette.PANEL_BG, 0.94)
-	style.border_color = UiPalette.GILT
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(6)
-	style.set_content_margin_all(10)
-	hover_panel.add_theme_stylebox_override("panel", style)
-	hud.set_floating("hover", hover_panel)
+	# The move forecast of a hovered destination: two or three short lines and an "i" with the whole paragraph (UX-3). It no longer floats
+	# over the board: the selection cards adopt it, under an army's actions and in the march strip.
+	hover_panel = ForecastGlance.new()
+	cards.adopt_forecast(hover_panel)
 	_build_vision()
-	hover_label = Label.new()
-	hover_label.name = "HoverLabel"
-	hover_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hover_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hover_label.add_theme_font_size_override("font_size", 17)
-	hover_label.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
-	hover_panel.add_child(hover_label)
 	_register_cancel_layers()
 
 
@@ -1242,6 +1234,8 @@ func _announce_selection(force: bool) -> void:
 func dismiss_selection_card() -> void:
 	_bind()
 	cards.dismiss()
+	if not cards.visible:
+		clear_preview()  # the army it was for is unselected: its forecast goes with it
 	if not cards.visible and not selected_army_id.is_empty():
 		selected_army_id = ""
 		_update_road_targets()

@@ -143,23 +143,22 @@ func _setup(scenario: String) -> void:
 			map.dismiss_selection_card()
 		"notice":
 			game.show_notice("Game saved", "Saved as \"Saved 2026-10-10 14:03\". %s" % SaveGame.ORDERS_NOTE)
-		"army":  # UX-3: the army card with its order on it
+		"army":  # UX-3: the army card with its order on it, and the forecast of another destination (refused: it has its move)
 			map.select_army("kingdom-1")
 			map.select_province("westwatch")
+			map.preview_move("highcrag")
 		"recruit":  # UX-3: the province card with the Recruit section open
 			map.cards.open_section("recruit")
 		"march":  # UX-3: picking a march destination: the card is a slim strip
 			map.select_army("kingdom-1")
 			map.cards.begin_march()
+			map.preview_move("westwatch")  # the strip carries the hovered destination's compact forecast
 		"army_notice":  # UX-3: the crowded left column: a notice and the guide above the army card
 			game.show_notice("Game saved", "Saved as \"Saved 2026-10-10 14:03\". %s" % SaveGame.ORDERS_NOTE)
 			map.select_army("kingdom-1")
 		"forecast":
 			map.select_army("kingdom-1")
 			map.preview_move("westwatch")
-			if not map.hover_panel.visible:
-				map.hover_label.text = "March to Westwatch: the forecast of the battle and its odds, long enough to wrap onto a second line of the move forecast bar."
-				map.hover_panel.visible = true
 		"vision":
 			map.set_map_mode("vision")
 		"playback":
@@ -242,7 +241,8 @@ func _edges() -> Dictionary:
 ## (the first button of the first pinned row), the pinned bar and the scroll; only the mode while the card is hidden or is the march strip.
 func _card_parts() -> Dictionary:
 	var cards: SelectionCards = game.map.cards
-	var out := {"marching": cards.marching, "mode": cards.mode}
+	var out := {"marching": cards.marching, "mode": cards.mode, "forecast": _r(game.map.hover_panel), "slot": _r(cards.forecast_slot),
+		"forecast_lines": game.map.hover_panel.lines()}
 	if not cards.visible or cards.marching:
 		return out
 	var first: Control = null
@@ -281,7 +281,7 @@ func _province_labels() -> Dictionary:
 func _pieces() -> Dictionary:
 	var hud := game.map.table()
 	var out := {"plaque": hud.plaque, "menu": hud.menu_button, "opponent": hud.opponent_panel, "stack": hud.notification_stack, "tray": hud.tray,
-		"seal": hud.seal, "card": game.map.cards, "legend": game.map.vision_legend, "hover": game.map.hover_panel,
+		"seal": hud.seal, "card": game.map.cards, "legend": game.map.vision_legend,
 		"guide": game.first_game_guide, "notice": game.notice_panel}
 	for id in hud.system_button_ids():
 		out["sys_%s" % id] = hud.system_button(id)

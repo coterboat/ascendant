@@ -110,7 +110,7 @@ func _run() -> void:
 	await _click(_centre(march))
 	_check(cards.marching, "a real click on March starts the pick")
 	await _frames(6)
-	_check(cards.strip.is_visible_in_tree() and cards.get_global_rect().size.y < 100.0, "the strip is slim: %s" % [cards.get_global_rect()])
+	_check(cards.strip.is_visible_in_tree() and cards.get_global_rect().size.y < 170.0, "the strip is slim: %s" % [cards.get_global_rect()])
 	await _key(KEY_ESCAPE)
 	_check(not cards.marching and cards.visible, "Esc ends the pick and keeps the card")
 	# March, then a real click on Westwatch on the board

@@ -22,6 +22,8 @@ const BOARDS := ["3d", "2d"]
 const SIZES := {"1600x900": Vector2(1600, 900), "1600x900@125": Vector2(1280, 720), "1280x720": Vector2(1600, 900)}
 const SCENARIOS := ["rest", "dismissed", "notice", "forecast", "vision", "army", "recruit", "march", "army_notice"]
 const FLOATING := ["card", "legend", "notice", "guide", "hover", "playback", "caption", "closeup"]
+## The march strip with its three forecast lines grows upward a little, and no more than this: it is a strip, not a card.
+const MARCH_STRIP_MAX_H := 170.0
 
 static var _report := {}
 
@@ -124,7 +126,9 @@ func _check_state(board: String, key: String, scenario: String, m: Dictionary) -
 		"notice":
 			assert_true(_shown(m, "notice") and _shown(m, "guide") and _shown(m, "card"), "%s: the notice, the guide and the card together" % where)
 		"forecast":
-			assert_true(_shown(m, "hover") and _shown(m, "card"), "%s: the move forecast and the card" % where)
+			assert_true(_shown(m, "card"), "%s: the army's card" % where)
+			var fc: Array = m.card_parts.get("forecast", [])
+			assert_true(fc.size() == 5 and bool(fc[4]), "%s: the hovered destination's forecast shows (in the card's forecast slot, not over the board)" % where)
 		"vision":
 			assert_true(_shown(m, "legend"), "%s: the Vision legend" % where)
 		"army", "recruit", "army_notice":
@@ -136,7 +140,7 @@ func _check_state(board: String, key: String, scenario: String, m: Dictionary) -
 		"march":
 			assert_true(_shown(m, "card"), "%s: the strip is up" % where)
 			assert_true(bool(m.card_parts.marching), "%s: it is the march strip" % where)
-			assert_true(_rect(m, "card").size.y < 90.0, "%s: slim (%f px tall)" % [where, _rect(m, "card").size.y])
+			assert_true(_rect(m, "card").size.y < MARCH_STRIP_MAX_H, "%s: slim (%f px tall)" % [where, _rect(m, "card").size.y])
 		"playback":
 			assert_true(_shown(m, "playback") and _shown(m, "caption"), "%s: the playback bar and its caption" % where)
 		"closeup":
@@ -162,8 +166,17 @@ func test_the_selection_card_is_placed_with_its_first_action_in_view_in_every_st
 		assert_eq(card.position.x, safe.position.x + TableLayout.GAP, "%s: in the left column" % where)
 		assert_true(is_equal_approx(card.end.y, safe.end.y - TableLayout.GAP), "%s: docked at the bottom" % where)
 		assert_true(card.size.x <= TableLayout.CARD_W + 0.5, "%s: no wider than the card slot" % where)
+		var framing := Rect2(m.framing[0], m.framing[1], m.framing[2], m.framing[3])
+		assert_false(TableLayout.overlaps(card, framing), "%s: the card never overlaps the framing area where the map is framed (%s over %s)" % [where, card, framing])
+		var forecast: Array = m.card_parts.get("forecast", [])
+		if forecast.size() == 5 and bool(forecast[4]):
+			var f_rect := Rect2(forecast[0], forecast[1], forecast[2], forecast[3])
+			assert_true(card.grow(0.5).encloses(f_rect), "%s: the hover forecast is inside the card (%s in %s), so it never covers the board" % [where, f_rect, card])
+			assert_false(TableLayout.overlaps(f_rect, framing), "%s: and never over the framing area" % where)
 		if scenario == "march":
-			assert_true(bool(m.card_parts.marching) and card.size.y < 90.0, "%s: the slim strip (%f px)" % [where, card.size.y])
+			assert_true(bool(m.card_parts.marching) and card.size.y < MARCH_STRIP_MAX_H, "%s: the strip stays slim (%f px, the forecast lines included)" % [where, card.size.y])
+			assert_true(forecast.size() == 5 and bool(forecast[4]), "%s: the strip carries the hovered destination's forecast" % where)
+			assert_true((m.card_parts.get("forecast_lines", []) as Array).size() >= 2, "%s: in two or three short lines: %s" % [where, m.card_parts.get("forecast_lines", [])])
 			return
 		var first: Array = m.card_parts.get("first_action", [])
 		assert_eq(first.size(), 5, "%s: the card has a first action" % where)

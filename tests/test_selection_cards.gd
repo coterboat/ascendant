@@ -320,7 +320,163 @@ func test_under_fog_the_army_card_says_how_far_it_sees() -> void:
 	game.free()
 
 
-# --- real input on the live Table ----------------------------------------------------------------------
+# --- the hover forecast, compact (the director's review of #208) ------------------------------------------
+
+## The longest a compact line is: they are short lines (the card shows them at about 40 characters), never the paragraph.
+const GLANCE_LINE_MAX := 56
+
+
+func _assert_compact(g: Dictionary, where: String) -> void:
+	assert_true((g.lines as Array).size() >= 2 and (g.lines as Array).size() <= 3, "%s: two or three lines: %s" % [where, g.lines])
+	for i in (g.lines as Array).size():
+		# the first lines are short; a refused destination's second line is the rules' own reason, which wraps to two lines on the card
+		assert_true(String(g.lines[i]).length() <= (90 if i == 1 and not g.ok else GLANCE_LINE_MAX), "%s: a short line: %s" % [where, g.lines[i]])
+	assert_true(String(g.full).length() > 2 * String(g.lines[0]).length(), "%s: the paragraph is the long one" % where)
+
+
+func test_the_compact_forecast_of_a_fight_an_empty_province_and_a_refused_destination() -> void:
+	var s := GameState.new(5)
+	s.find_army("beasts-1").location = "westwatch"
+	var orders := OrdersController.new(s, CROWN)
+	# A fight: where and what, the battle test's own odds, the ground and what a win brings.
+	var fight := MoveGlance.build(orders, "kingdom-1", "westwatch")
+	var odds := Forecast.battle_odds(s, CROWN, ["kingdom-1"], "westwatch")
+	var dest := s.find_province("westwatch")
+	assert_eq(fight.kind, "fight")
+	assert_eq(fight.icon, "battle", "marked with the battle icon")
+	assert_true(fight.ok)
+	_assert_compact(fight, "a fight")
+	assert_eq(fight.lines[0], "Westwatch: fight the Thornmane Clans")
+	assert_eq(fight.lines[1], "odds %d%%, %s" % [roundi(float(odds.win_rate) * 100.0), odds.label], "the odds are the battle test's own")
+	assert_true(String(fight.lines[2]).contains("win: +%d gold a turn" % dest.income), "what a win brings: %s" % fight.lines[2])
+	assert_true(String(fight.lines[2]).contains(dest.terrain), "and the ground it is fought on: %s" % fight.lines[2])
+	assert_eq(fight.full, orders.move_preview("kingdom-1", "westwatch").text, "the paragraph is today's preview, word for word")
+	assert_eq(fight.codex, "battle_odds")
+	# A neutral garrison fought in the open, with the ground's numbers.
+	var game := GameState.with_sieges(5, {}, {"rulers": true})
+	game.setup_independents([])
+	var o2 := OrdersController.new(game, CROWN)
+	var army: Army = game.armies.filter(func(a): return a.owner == CROWN and a.ruler == null)[0]
+	var garrison := MoveGlance.build(o2, army.id, "westwatch")
+	assert_eq(garrison.lines[0], "Westwatch: fight the %s" % IndependentData.FACTION_NAME, "the Free Holds garrison")
+	assert_true(String(garrison.lines[2]).begins_with("%s +%d/+%d" % ["hills", int(AutoBattleResolver.TERRAIN.hills.defense), int(AutoBattleResolver.TERRAIN.hills.attack)]),
+		"hills +1/+1 from the battle's own terrain table: %s" % garrison.lines[2])
+	# An empty province: the capture and its income, and the arrival turn the forecast gives.
+	var empty := MoveGlance.build(OrdersController.new(GameState.new(5), CROWN), "kingdom-1", "westwatch")
+	var f := Forecast.move(GameState.new(5), CROWN, MoveOrder.new("kingdom-1", "westwatch"))
+	assert_eq(empty.kind, "capture")
+	_assert_compact(empty, "an empty province")
+	assert_eq(empty.lines[0], "Westwatch: undefended, capture it")
+	assert_true(String(empty.lines[1]).contains("+%d gold a turn" % GameState.new(5).find_province("westwatch").income), empty.lines[1])
+	assert_eq(empty.lines[2], "there at the start of turn %d" % int(f.arrival_turn), "the forecast's own arrival turn")
+	# A refused destination: the rules' reason, in their words.
+	var far := MoveGlance.build(OrdersController.new(GameState.new(5), CROWN), "kingdom-1", "stonegate")
+	assert_false(far.ok)
+	assert_eq(far.kind, "refused")
+	assert_eq(far.lines[0], "Stonegate: can't be ordered")
+	assert_eq(far.lines[1], TurnResolver.check_move(GameState.new(5), CROWN, MoveOrder.new("kingdom-1", "stonegate")).reason, "in the rules' own words")
+	assert_true(String(far.full).begins_with("This move can't be ordered:"), "and the paragraph is the preview's")
+
+
+func test_the_compact_forecast_of_a_move_into_a_fort_and_under_fog() -> void:
+	# The rows of a move into a fort: relief, besiege, an empty fort, your own.
+	var keep := FortTest.besieged_keep()
+	var relief := MoveGlance.build(OrdersController.new(keep, CROWN), "kingdom-7", "stonegate")
+	assert_eq(relief.kind, "relief")
+	_assert_compact(relief, "a relief")
+	assert_eq(relief.lines[0], "Stonegate: relieve the siege")
+	var fresh := Fx.state([["kingdom-3", CROWN, "stonegate", Fx.units("spearmen", 4)], ["beasts-9", CLANS, "thornvale", Fx.units("tuskers", 6)]],
+		{"stonegate": CROWN, "thornvale": CLANS})
+	var o := OrdersController.new(fresh, CLANS)
+	var besiege := MoveGlance.build(o, "beasts-9", "stonegate")
+	var p := fresh.find_province("stonegate")
+	assert_eq(besiege.kind, "besiege")
+	_assert_compact(besiege, "a siege")
+	assert_eq(besiege.lines[0], "Stonegate: besiege the %s" % SiegeRules.level_name(p.fort_level).to_lower())
+	assert_true(String(besiege.lines[1]).begins_with("walls %d of %d" % [p.walls, SiegeRules.walls_max(p.fort_level)]), "the walls: %s" % besiege.lines[1])
+	assert_eq(besiege.full, o.move_preview("beasts-9", "stonegate").text, "the siege paragraph is kept whole")
+	var empty := Fx.state([["beasts-9", CLANS, "thornvale", Fx.units("tuskers", 6)]], {"stonegate": CROWN, "thornvale": CLANS})
+	assert_eq(MoveGlance.build(OrdersController.new(empty, CLANS), "beasts-9", "stonegate").kind, "empty")
+	var own := Fx.state([["beasts-9", CLANS, "thornvale", Fx.units("tuskers", 6)]], {"stonegate": CLANS, "thornvale": CLANS})
+	assert_eq(MoveGlance.build(OrdersController.new(own, CLANS), "beasts-9", "stonegate").kind, "own_fort")
+	# Under fog the odds are the view's, with their second figure, and a province out of sight says so.
+	var g := GameState.new(5)
+	g.find_army("beasts-1").location = "westwatch"
+	g.setup_fog([])
+	var session := GameSession.new(g, [CROWN, CLANS], 5, StubBattleResolver.new())
+	var view := session.state_for(CROWN)
+	var vo := OrdersController.new(view, CROWN)
+	var seen := MoveGlance.build(vo, "kingdom-1", "westwatch")
+	assert_eq(seen.kind, "fight", "the glimpsed rival is fought")
+	assert_true(String(seen.lines[1]).begins_with("odds "), seen.lines[1])
+	assert_eq(seen.full, vo.move_preview("kingdom-1", "westwatch").text, "the fog paragraph is kept whole")
+	var far_view := session.state_for(CROWN)
+	var unseen := ""
+	for pid in far_view.provinces.map(func(x): return x.id):
+		if String(FogRules.sight(far_view, CROWN).get(pid, FogRules.VEILED)) == FogRules.VEILED and far_view.find_province("crownkeep").neighbors.has(pid):
+			unseen = pid
+	if not unseen.is_empty():
+		assert_eq(MoveGlance.build(vo, "kingdom-1", unseen).kind, "unseen")
+
+
+func test_the_forecast_shows_in_the_card_and_in_the_strip_with_the_whole_paragraph_one_step_away() -> void:
+	var s := GameState.new(5)
+	s.find_army("beasts-1").location = "westwatch"
+	var map := _map(s, CROWN)
+	var cards := map.cards
+	var asked := []
+	map.codex_requested.connect(func(key: String): asked.append(key))
+	assert_eq(map.preview_move("westwatch"), "", "no army selected: nothing to preview")
+	assert_false(map.hover_panel.visible)
+	map.select_army("kingdom-1")
+	var full := map.preview_move("westwatch")
+	var glance := map.hover_panel
+	assert_true(glance.visible, "the forecast shows")
+	assert_eq(glance.full_text, full, "the full text is today's, unchanged")
+	assert_true(glance.lines().size() >= 2 and glance.lines().size() <= 3, "in two or three short lines: %s" % [glance.lines()])
+	assert_true(glance.get_parent() == cards.forecast_slot and cards.details.is_ancestor_of(glance), "inside the army's card, under its actions: not over the board")
+	assert_false(map.table().pieces().has(glance), "not a floating piece of the Table any more")
+	assert_ne(glance.get_parent(), map.table(), "and not a child of the HUD")
+	assert_true(cards.forecast_slot.visible and not cards.forecast_hint.visible, "the slot shows the forecast, not its hint")
+	# The "i": the whole paragraph on hover, linked to its codex entry, right-click or F1.
+	var info: Button = glance.info_button
+	assert_eq(info.text, "ⓘ")
+	assert_true(info.tooltip_text.replace("\n", " ").begins_with(TooltipText.wrap_text(full).replace("\n", " ").left(80)), "its tooltip is the paragraph: %s" % info.tooltip_text)
+	assert_true(info.tooltip_text.replace("\n", " ").contains(full.substr(full.length() - 60).replace("\n", " ")), "to the last words")
+	var key := String(info.get_meta(CodexLink.META))
+	assert_true(RulesCodex.ENTRIES.has(key), "it links %s, which exists" % key)
+	assert_true(info.tooltip_text.replace("\n", " ").ends_with("Codex: %s (right-click or F1 to open)" % RulesCodex.entry(key).title), "and ends with its codex line")
+	info.gui_input.emit(CodexLink.right_click())
+	assert_eq(asked, [key], "a right-click on it asks for the entry")
+	# The pointer leaves its province: the forecast stays, dimmer, so the pointer can reach the "i".
+	map.leave_preview()
+	assert_true(glance.visible and glance.stale and glance.modulate.a < 1.0, "it stays, dimmer")
+	assert_eq(glance.full_text, full)
+	assert_eq(map.preview_move("highcrag") != "", true, "another province replaces it")
+	assert_false(glance.stale, "fresh again")
+	assert_eq(map.preview_move("crownkeep"), "", "the army's own province has no forecast")
+	assert_false(glance.visible)
+	# Picking a march destination: the strip carries it, and it goes back to the card when the pick ends.
+	map.preview_move("westwatch")
+	cards.begin_march()
+	assert_true(glance.visible, "the forecast survives the fold")
+	assert_true(cards.strip.is_ancestor_of(glance) and cards.forecast_slot.visible, "now in the strip")
+	assert_true(cards.desired_height() < 170.0, "the strip with its three lines is still slim: %f" % cards.desired_height())
+	cards.end_march()
+	assert_true(cards.details.is_ancestor_of(glance) and not cards.strip.is_ancestor_of(glance), "and back in the card")
+	# Closing the card unselects the army, and its forecast goes with it (it must not turn up in the next army's card).
+	map.preview_move("westwatch")
+	map.leave_preview()
+	map.dismiss_selection_card()
+	assert_false(glance.visible, "a closed card leaves no forecast behind")
+	# Only your armies preview: a rival's card and a province's have no forecast slot.
+	map.select_army("beasts-1")
+	assert_false(cards.forecast_slot.visible, "a rival's army has no march to forecast")
+	map.select_province("crownkeep")
+	assert_false(cards.forecast_slot.visible, "nor has a province")
+	map.free()
+
+
 
 ## The runner's tests run before the scene tree is live, so no click or key is routed in them: tests/card_click_probe.gd is a real
 ## (headless) main loop in a child process that pushes real mouse and key events through the viewport at a whole game screen on the
@@ -369,7 +525,7 @@ func test_march_folds_the_card_into_a_strip_and_esc_brings_it_back() -> void:
 	assert_true(cards.marching, "March starts picking a destination")
 	assert_true(cards.strip.visible and not cards._box.visible, "the card folds into the strip")
 	assert_eq(cards.strip_label.text, "March: pick a province · Esc to cancel")
-	assert_true(cards.desired_height() < full * 0.5 and cards.desired_height() < 90.0, "a slim strip, docked in the card's place (%f of %f)" % [cards.desired_height(), full])
+	assert_true(cards.desired_height() < full * 0.5 and cards.desired_height() < 170.0, "a slim strip, docked in the card's place (%f of %f)" % [cards.desired_height(), full])
 	assert_eq(map.ui_cancel.topmost(), "march", "UiCancel's march layer is the topmost thing")
 	assert_eq(map.ui_cancel.cancel(), "march", "Esc ends the targeting and only that")
 	assert_false(cards.marching)
