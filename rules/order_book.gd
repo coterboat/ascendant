@@ -132,7 +132,7 @@ static func check_order(state: GameState, faction_id: String, order, existing: A
 	if order is MusterOrder:
 		# ARM-1: a muster acts on the board its predecessors leave, not on the final one: `view`, when a caller gives it, is
 		# that board; otherwise the state with `existing`'s sacrifice and musters applied (all of them come before this one).
-		return MusterRules.check(board, faction_id, order)
+		return MusterForecast.refusal(board, faction_id, order)  # the forecast asks the same question, so its words are these
 	if order is MoveOrder:
 		var pins := MagicRules.pinned_armies(board, faction_id, existing)  # M5-5: {} without casts
 		if pins.has(order.army_id):
