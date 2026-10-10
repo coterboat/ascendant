@@ -212,8 +212,10 @@ func test_the_forecast_equals_what_the_turn_does() -> void:
 	var a := Kit.crown(s)
 	a.engines = 2
 	var b := Kit.army(s, CROWN, "crownkeep", ["spearmen", "spearmen"], "knight_captain", 1)
+	var c := Kit.army(s, CROWN, "crownkeep", [], "knight_captain", 1)  # a commander and an engine, no fighters
+	# (the last two: engines alone to an army that carries them, and a merge whose commander stays behind while its engines go)
 	for order in [MusterOrder.transfer(a.id, "", [0, 1], true, 1), MusterOrder.merge(b.id, a.id), MusterOrder.swap(a.id, b.id),
-			MusterOrder.transfer(b.id, a.id, [1], false, 1)]:
+			MusterOrder.transfer(b.id, a.id, [1], false, 1), MusterOrder.transfer(a.id, b.id, [], false, 1), MusterOrder.merge(c.id, a.id)]:
 		var f := MusterForecast.of(s, CROWN, order, [])
 		assert_true(f.ok, order.describe())
 		var r := Kit.resolve(s, {CROWN: [order]})

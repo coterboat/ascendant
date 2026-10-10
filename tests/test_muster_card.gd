@@ -307,6 +307,51 @@ func test_the_engines_stepper_sends_engines_with_the_next_split() -> void:
 	map.free()
 
 
+## ARM-1 (director's fix round): the stepper can send engines on their own, to the partner army that carries them from then on.
+func test_the_engines_stepper_can_send_engines_alone_to_the_partner_army() -> void:
+	var s := Kit.game("sieges")
+	var a := Kit.crown(s)
+	a.engines = 2
+	var b := Kit.army(s, CROWN, "crownkeep", ["crossbowmen", "crossbowmen"])
+	var map := _map(s)
+	map.select_army(a.id)
+	var board := _board(map)
+	var send := _node(board, "SendEnginesButton") as Button
+	assert_true(send.disabled, "at 0 of 2 there is nothing to send")
+	assert_true(send.tooltip_text.contains("stepper"), "and the tooltip says what to do: %s" % send.tooltip_text)
+	assert_eq(board.button_order("engines"), null)
+	(_node(board, "EnginesMore") as Button).pressed.emit()
+	assert_false(send.disabled, "one engine on the stepper, a partner to carry it: it can be sent")
+	var order: MusterOrder = board.button_order("engines")
+	assert_true(order != null and order.units.is_empty() and not order.commander and order.engines == 1 and order.to_army == b.id, "an engines-only transfer to the partner")
+	send.mouse_entered.emit()
+	var shown := _texts(board.forecast_lines)
+	assert_true(shown.any(func(t): return String(t).contains("If you order this")) and shown.any(func(t): return String(t).contains("2 engines") and String(t).contains("1 engine")),
+		"the forecast shows the engines on both armies while the pointer is over it: %s" % [shown])
+	send.pressed.emit()
+	var ordered: Array = map.orders.orders()
+	assert_eq(ordered.size(), 1)
+	assert_true(ordered[0] is MusterOrder and ordered[0].units.is_empty() and ordered[0].engines == 1, "the order is in the plan")
+	var after := map.board_state()
+	assert_eq([after.find_army(a.id).engines, after.find_army(b.id).engines], [1, 1], "the projected board has the engine on the partner")
+	assert_eq(after.armies.size(), s.armies.size(), "no army was formed")
+	# An army with no partner here can send no engines, and says so.
+	var alone := Kit.game("sieges")
+	Kit.crown(alone).engines = 1
+	var map2 := _map(alone)
+	map2.select_army("kingdom-1")
+	var board2 := _board(map2)
+	(_node(board2, "EnginesMore") as Button).pressed.emit()
+	var send2 := _node(board2, "SendEnginesButton") as Button
+	assert_true(send2.disabled and send2.tooltip_text.contains("no other army"), send2.tooltip_text)
+	# An army with no engines has no such button.
+	var plain := _two_armies("m1")
+	assert_true(_board(plain.map).find_children("SendEnginesButton", "", true, false).is_empty(), "no engines, no button")
+	plain.map.free()
+	map2.free()
+	map.free()
+
+
 # --- the new army is an army --------------------------------------------------------------------------------------------
 
 func test_a_new_army_can_be_selected_marched_and_cancelled() -> void:

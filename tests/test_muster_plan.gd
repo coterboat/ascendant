@@ -239,6 +239,22 @@ func test_engines_in_the_plan_follow_the_carrier_rules() -> void:
 	assert_eq(RulerRules.state_after_orders(s, CROWN, book.orders_for(CROWN)).find_army("kingdom-2").engines, 1)
 
 
+## Engines alone may go to an army that is already there; to a new army they are refused with words (nothing is queued or numbered).
+func test_engines_alone_in_the_plan_go_to_an_army_that_carries_them() -> void:
+	var s := F.state([["kingdom-1", CROWN, "crownkeep", F.units("spearmen", 3), 2], ["kingdom-2", CROWN, "crownkeep", F.units("spearmen", 2), 0]])
+	var book := OrderBook.new()
+	var why := book.submit(s, CROWN, MusterOrder.transfer("kingdom-1", "", [], false, 1))
+	assert_true(why.contains("ride only with a fighter") and why.contains("can't form an army of their own"), why)
+	assert_eq(book.orders_for(CROWN).size(), 0, "nothing was queued")
+	assert_eq(book.submit(s, CROWN, MusterOrder.transfer("kingdom-1", "kingdom-2", [], false, 2)), "", "engines alone to an army that is there")
+	var board := RulerRules.state_after_orders(s, CROWN, book.orders_for(CROWN))
+	assert_eq([board.find_army("kingdom-1").engines, board.find_army("kingdom-2").engines, board.armies.size()], [0, 2, 2], "the projected board: they are carried, no army formed")
+	# Cancelling the muster puts them back on the plan's board, and a later muster that needs them is re-checked.
+	assert_eq(book.submit(s, CROWN, MusterOrder.transfer("kingdom-2", "", [0], false, 1)), "", "the receiver can pass one on, with a fighter")
+	var dropped := book.cancel(s, CROWN, 0)
+	assert_true(dropped.size() >= 1, "the later muster needed the engines the first one moved: %s" % [dropped.map(func(d): return d.text)])
+
+
 # --- recruits see the projected board ------------------------------------------------------------------------
 
 func test_a_recruit_is_priced_and_checked_on_the_projected_board() -> void:

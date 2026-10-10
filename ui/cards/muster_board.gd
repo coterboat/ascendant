@@ -29,6 +29,7 @@ var engines_going := 0
 var split_button: Button = null
 var merge_button: Button = null
 var swap_button: Button = null
+var engines_button: Button = null  # only for an army that carries engines: sends the stepper's engines to the partner army
 var engines_row: HBoxContainer = null
 var engines_label: Label = null
 var forecast_box: PanelContainer = null
@@ -128,7 +129,7 @@ func _add_engines(me: Army) -> void:
 	engines_label = Label.new()
 	engines_label.name = "EnginesLabel"
 	engines_label.add_theme_font_size_override("font_size", 16)
-	engines_label.tooltip_text = TooltipText.plain("Siege engines", "Engines move only when you say so. This many of %s go with the next fighters you drag or split off, to an army with a fighter to carry them (an army carries at most %d). %s" % [
+	engines_label.tooltip_text = TooltipText.plain("Siege engines", "Engines move only when you say so. This many of %s go with the next fighters you drag or split off, or alone to your partner army with Send engines (never to a new army: it has no one to carry them). An army carries at most %d. %s" % [
 		TurnReportText.army_name(_board, me.id, me.owner), FortData.ARMY_ENGINES_MAX, RulesCodex.text("muster")])
 	engines_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	engines_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -173,13 +174,23 @@ func _add_buttons(me: Army) -> void:
 	split_button = _make_button("SplitButton", "Split")
 	merge_button = _make_button("MergeAllButton", "Merge all")
 	swap_button = _make_button("SwapCommandersButton", "Swap commanders")
-	for pair in [[split_button, "split"], [merge_button, "merge"], [swap_button, "swap"]]:
+	if me.engines > 0 and me.ruler == null:
+		engines_button = _make_button("SendEnginesButton", "Send engines")
+	for pair in _button_pairs():
 		var b: Button = pair[0]
 		b.pressed.connect(_press.bind(String(pair[1])))
 		b.mouse_entered.connect(_hover.bind(String(pair[1])))
 		b.mouse_exited.connect(clear_preview)
 		flow.add_child(b)
 	_refresh_buttons()
+
+
+## [[button, kind]] of the buttons this card has.
+func _button_pairs() -> Array:
+	var out := [[split_button, "split"], [merge_button, "merge"], [swap_button, "swap"]]
+	if engines_button != null:
+		out.append([engines_button, "engines"])
+	return out
 
 
 ## An action button in the card's style (CardBase.action_button), linked to the muster codex entry.
@@ -215,12 +226,15 @@ func button_order(kind: String) -> MusterOrder:
 			return MusterOrder.merge(army_id, partner_id) if not partner_id.is_empty() else null
 		"swap":
 			return MusterOrder.swap(army_id, partner_id) if not partner_id.is_empty() else null
+		"engines":
+			# The stepper's engines alone, to the partner army (an engines-only transfer: the partner carries them)
+			return MusterOrder.transfer(army_id, partner_id, [], false, engines_going) if not partner_id.is_empty() and engines_going > 0 else null
 	return null
 
 
 func _refresh_buttons() -> void:
-	var texts := {"split": "Split", "merge": "Merge all", "swap": "Swap commanders"}
-	for pair in [[split_button, "split"], [merge_button, "merge"], [swap_button, "swap"]]:
+	var texts := {"split": "Split", "merge": "Merge all", "swap": "Swap commanders", "engines": "Send engines"}
+	for pair in _button_pairs():
 		var b: Button = pair[0]
 		var kind := String(pair[1])
 		var order := button_order(kind)
@@ -241,6 +255,13 @@ func _refresh_buttons() -> void:
 					TurnReportText.army_name(_board, partner_id, _fid()) if not partner_id.is_empty() else "none yet", RulesCodex.text("muster")]
 				if order == null:
 					why = "You have no other army here to swap commanders with."
+			"engines":
+				body = "Send the engines the stepper says (%d) from this army to your partner army (%s), without any fighters: it carries them from here on. %s" % [
+					engines_going, TurnReportText.army_name(_board, partner_id, _fid()) if not partner_id.is_empty() else "none yet", RulesCodex.text("muster")]
+				if partner_id.is_empty():
+					why = "You have no other army here to carry the engines."
+				elif order == null:
+					why = "Use the engines stepper to say how many engines to send."
 		if order != null:
 			var check := MusterForecast.refusal(_board, _fid(), order)
 			if not check.is_empty():

@@ -219,7 +219,12 @@ static func _plan_transfer(state: GameState, order: MusterOrder, from: Army, to:
 			return _no("duplicate_unit", "Unit number %d of %s is named twice in one order. Each unit goes once." % [i + 1, _name(state, from)])
 		seen[i] = true
 	if order.units.is_empty() and not order.commander:
-		return _no("empty_transfer", "That order moves no one. Choose at least one unit or the commander of %s to move." % _name(state, from))
+		# Engines may move on their own between two armies that stand there (the receiver carries them); a new army has no fighter to
+		# carry them, so an engines-only split is refused in words.
+		if order.engines <= 0:
+			return _no("empty_transfer", "That order moves no one. Choose at least one unit or the commander of %s to move, or some of its siege engines to another army." % _name(state, from))
+		if to == null:
+			return _no("engines_alone", "Siege engines ride only with a fighter, so they can't form an army of their own. Send them to an army of yours here, or split units or the commander off with them.")
 	if order.commander and from.commander == null:
 		return _no("no_commander", "%s has no commander to move." % _cap(_name(state, from)))
 	if order.commander and to != null and to.commander != null:
@@ -250,8 +255,9 @@ static func _plan_transfer(state: GameState, order: MusterOrder, from: Army, to:
 static func _plan_merge(state: GameState, from: Army, to: Army) -> Dictionary:
 	var commander_moves := from.commander != null and to.commander == null
 	var commander_left := from.commander != null and to.commander != null
-	if from.units.is_empty() and not commander_moves:
-		return _no("nothing_to_merge", "Nothing would move: %s has no units, and %s already has a commander, so its commander stays." % [
+	if from.units.is_empty() and not commander_moves and from.engines <= 0:
+		# (with engines to send, the merge still moves them: the commander stays behind as an army of its own)
+		return _no("nothing_to_merge", "Nothing would move: %s has no units or siege engines, and %s already has a commander, so its commander stays." % [
 			_name(state, from), _name(state, to)])
 	if from.engines > 0:
 		var after := to.engines + from.engines

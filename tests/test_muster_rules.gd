@@ -290,6 +290,85 @@ func test_engines_need_a_fighter_to_carry_them_and_stop_at_the_cap() -> void:
 	assert_eq(m.info.engines, 1)
 
 
+## ARM-1 (director's fix round): engines may travel on their own between two armies that stand there, as the receiver carries
+## them; a new army has no fighter yet, so an engines-only split is refused in words.
+func test_engines_alone_go_to_an_army_that_can_carry_them() -> void:
+	var s := Kit.game("sieges")
+	var a := Kit.crown(s)
+	a.engines = 2
+	var b := Kit.army(s, CROWN, "crownkeep", ["spearmen"])
+	var units_before := Kit.types(a)
+	var order := MusterOrder.transfer(a.id, b.id, [], false, 1)
+	_check_ok(s, order, "one engine alone into an army that fights")
+	var r := MusterRules.apply(s, CROWN, order)
+	assert_true(r.ok)
+	assert_eq([a.engines, b.engines], [1, 1], "the engine moved")
+	assert_eq(Kit.types(a), units_before, "no unit moved with it")
+	assert_true(a.commander != null and b.commander == null, "nor did the commander")
+	assert_eq([r.info.units, r.info.commander, r.info.engines, r.info.created, r.info.disbanded], [[], "", 1, false, []])
+	var errors := []
+	assert_true(s.validate(errors), "the state is still valid: %s" % [errors])
+	# All of them, too: the source keeps its fighters, so it isn't stranded.
+	_check_ok(s, MusterOrder.transfer(a.id, b.id, [], false, 1), "the last engine")
+	# A receiver that is only a commander carries them, as it does in a merge.
+	var c := Kit.army(s, CROWN, "crownkeep", [], "knight_captain")
+	_check_ok(s, MusterOrder.transfer(a.id, c.id, [], false, 1), "engines to an army of a commander alone")
+
+
+func test_engines_alone_never_form_an_army_and_keep_the_other_limits() -> void:
+	var s := Kit.game("sieges")
+	var a := Kit.crown(s)
+	a.engines = 2
+	var b := Kit.army(s, CROWN, "crownkeep", ["spearmen"])
+	var next_id: int = int(s.next_army_ids[CROWN])
+	_refused(s, MusterOrder.transfer(a.id, "", [], false, 1), "engines_alone", "engines alone into a new army")
+	assert_eq(int(s.next_army_ids[CROWN]), next_id, "the refusal handed out no army id")
+	assert_true(String(MusterRules.check(s, CROWN, MusterOrder.transfer(a.id, "", [], false, 1)).reason).contains("ride only with a fighter"), "and says why in words")
+	_refused(s, MusterOrder.transfer(a.id, b.id, [], false, 3), "not_enough_engines", "more engines than the source has")
+	_refused(s, MusterOrder.transfer(a.id, b.id, [], false, 0), "empty_transfer", "no one and no engines")
+	b.engines = FortData.ARMY_ENGINES_MAX
+	_refused(s, MusterOrder.transfer(a.id, b.id, [], false, 1), "engine_cap", "engines past the receiver's cap")
+	b.engines = 0
+	var ruler := Kit.army(s, CROWN, "crownkeep", ["spearmen"])
+	ruler.ruler = Unit.new(s.find_faction(CROWN).ruler_unit_type, CROWN)
+	_refused(s, MusterOrder.transfer(a.id, ruler.id, [], false, 1), "ruler_army", "engines to a ruler's army")
+	var other := Kit.army(s, CROWN, "westwatch", ["spearmen"])
+	_refused(s, MusterOrder.transfer(a.id, other.id, [], false, 1), "different_province", "engines to an army elsewhere")
+
+
+## A merge whose source is a commander and engines, into an army that has a commander: the engines go, the commander stays behind
+## as an army of its own (the forecast, the plan and the resolver all say the same).
+func test_a_merge_of_a_commander_with_engines_into_a_commanded_army_moves_the_engines() -> void:
+	var s := Kit.game("sieges")
+	var a := Kit.crown(s)
+	var cap := Kit.army(s, CROWN, "crownkeep", [], "knight_captain", 2)
+	var target := a  # the Crown's 1st has a commander and fighters
+	assert_true(target.commander != null and cap.units.is_empty())
+	var merge := MusterOrder.merge(cap.id, target.id)
+	_check_ok(s, merge, "the merge")
+	var f := MusterForecast.of(s, CROWN, merge, [])
+	assert_true(f.ok, "the forecast agrees")
+	assert_eq([f.armies[0].after.engines, f.armies[0].after.commander, f.armies[0].gone], [0, "knight_captain", false], "the commander stays as an army of its own")
+	assert_eq([f.armies[1].after.engines, f.armies[1].before.engines], [2, 0], "the engines are with the target")
+	var plan := OrderBook.new()
+	assert_eq(plan.submit(s, CROWN, merge), "", "the plan takes it")
+	var r := Kit.resolve(s, {CROWN: [merge]})
+	assert_eq(Kit.events(r, "order_rejected"), [])
+	var left: Army = r.new_state.find_army(cap.id)
+	assert_true(left != null and left.commander != null and left.units.is_empty() and left.engines == 0, "the commander is its own army, with no engines")
+	assert_eq(r.new_state.find_army(target.id).engines, 2, "the target carries the engines")
+	assert_eq(Kit.events(r, "armies_merged").size(), 1)
+	assert_eq(Kit.events(r, "army_disbanded"), [], "no one was disbanded")
+	var sentence := MusterRules.event_sentence(r.new_state, Kit.events(r, "armies_merged")[0])
+	assert_true(sentence.contains("stays behind"), sentence)
+	# The same in the rules, applied: the engines land where the forecast said.
+	var applied := MusterRules.apply(s, CROWN, merge)
+	assert_true(applied.ok and applied.info.commander_left and applied.info.engines == 2)
+	# Without engines it is still nothing to merge.
+	cap.engines = 0
+	_refused(s, MusterOrder.merge(cap.id, target.id), "nothing_to_merge", "a commander alone into a commanded army")
+
+
 func test_a_game_without_sieges_has_no_engines_to_move() -> void:
 	var s := Kit.game()
 	_refused(s, MusterOrder.transfer("kingdom-1", "", [0], false, 1), "not_enough_engines", "an engine in a game without sieges")
