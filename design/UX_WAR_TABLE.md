@@ -474,7 +474,7 @@ Its output is **announcements**, each with:
 
 ## 7. the style kit (UX-0a, UX-0b)
 - **UX-0a (now):**
-  - **the icon set:** 24 px, and 16 px for plates. Simple stroke SVGs drawn in the repo (`assets/ui/icons/`), loaded through `UiIcons.get(name)`.
+  - **the icon set:** 24 px, and 16 px for plates. Simple stroke SVGs drawn in the repo (`assets/ui/icons/`), loaded through `UiIcons.icon(name, size)`.
     - The set: gold, income, walls, garrison, sight, strength, battle, research, magic, ruler, codex, turn, orders, recruit, morale, hp, march, fortify, siege, lens, chronicle, pin, dismiss, needs-you.
     - The canvas's shared-fixes board is the sketch.
     - Today's code-drawn glyphs (`_Glyph`, `_MarchMark`, `SeatEmblem`) stay.
@@ -488,6 +488,7 @@ Its output is **announcements**, each with:
     - The tokens switch over, so nothing else changes.
   - **Styles:** plaque, card, tray, seal, system row, medallion and legend `StyleBox`es; lens palettes in `UiPalette`.
   - **Gate:** the fit tests at all three sizes, run again with the new fonts.
+  - **The type scale's floor:** no size draws below the style bible's 12 px on screen in the smallest supported window (1280×720, a 0.8 scale), so the smallest token is at least 15 logical px. UX-0a's first scale (title 28, name 20, body 16, small 14, number 18) raises `TYPE_SMALL` here.
 
 ## 8. approachability (every ticket)
 - **Everything that moves keeps its explanation:**
