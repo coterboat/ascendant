@@ -335,6 +335,19 @@ func new_army_id(faction_id: String) -> String:
 	return id
 
 
+## The ids new_army_id would hand `faction_id` next, `count` of them in order, without handing them out (ARM-1: the ids a
+## plan's new armies were given).
+func peek_army_ids(faction_id: String, count: int) -> Array:
+	var out := []
+	var n := int(next_army_ids.get(faction_id, 1))
+	while out.size() < count:
+		var id := "%s-%d" % [faction_id, n]
+		n += 1
+		if find_army(id) == null:
+			out.append(id)
+	return out
+
+
 ## For a save from before next_army_ids: each faction's next number, one past the highest number among its
 ## armies' ids ("kingdom-7" -> 8), or 1 when it has none.
 func _next_ids_from_armies() -> Dictionary:

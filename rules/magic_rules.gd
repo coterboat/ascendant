@@ -836,6 +836,14 @@ static func clear_outside(state: GameState, enchantment_id: String, army_ids: Ar
 	return UnitStatus.clear_source(state, enchantment_id, "source_ends", army_ids)
 
 
+## Takes army `army_id` out of every blessing that lists it (a muster disbanded it: ARM-1). A blessing left with no army
+## stays in play, empty, until the enchantments phase ends it ("no army left"), as when its last army is destroyed.
+static func forget_army(state: GameState, army_id: String) -> void:
+	for e in state.enchantments:
+		if String(e.kind) == "blessing" and Array(e.armies).has(army_id):
+			e.armies = Array(e.armies).filter(func(aid): return String(aid) != army_id)
+
+
 ## Far Sight's reading of `faction_id` (§6.2): everything private but its research target, as it stands now.
 ## {"faction", "gold", "mandates", "kept_power", "research_points", "nodes" (researched, in order), "spells", "spellbook"}.
 static func reading(state: GameState, faction_id: String) -> Dictionary:

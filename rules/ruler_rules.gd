@@ -1449,14 +1449,23 @@ static func queued_sacrifice(orders: Array) -> SacrificeOrder:
 	return null
 
 
-## The state `faction_id`'s other orders are checked against (§2.4): `state` itself, or, when `orders`
-## hold a legal Sacrifice order, a copy with it applied, because the sacrifice phase runs first in the
-## turn. OrderBook, Forecast and the orders UI read it; `state` is never changed.
+## The state `faction_id`'s other orders are checked against (§2.4): `state` itself, or a copy with, in the order the
+## turn resolves them, 1. a legal Sacrifice order applied (the sacrifice phase runs first), then 2. the faction's
+## MusterOrders (ARM-1, design/ARM1_SPLIT_MERGE.md §3): HOISTED before every non-muster order wherever they stand in
+## the list, applied one after another on the copy, so a new army has the same real id the resolution will give it and
+## every move, cast, siege order and recruit is checked against the army it will find. A muster that fails there is
+## skipped and allocates nothing. OrderBook, Forecast and the orders UI read it; `state` is never changed.
 static func state_after_orders(state: GameState, faction_id: String, orders: Array) -> GameState:
+	var board := state
 	var sac := queued_sacrifice(orders)
-	if sac == null or not sacrifice_check(state, faction_id, sac.mandate_id).is_empty():
-		return state
-	return with_sacrifice(state, faction_id, sac.mandate_id)
+	if sac != null and sacrifice_check(state, faction_id, sac.mandate_id).is_empty():
+		board = with_sacrifice(state, faction_id, sac.mandate_id)
+	if MusterRules.has_musters(orders):
+		if board == state:
+			board = MusterRules.project(state, faction_id, orders)
+		else:
+			MusterRules.apply_all(board, faction_id, MusterRules.musters_of(orders))  # already a private copy
+	return board
 
 
 ## A copy of `state` with `faction_id`'s sacrifice for `mandate_id` applied, as the sacrifice phase of

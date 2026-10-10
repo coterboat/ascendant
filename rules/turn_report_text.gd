@@ -51,7 +51,8 @@ const BORDER := "border_battle"
 const BATTLE := "battle"
 const ORDINAL_WORDS := ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"]
 ## Event types whose lines name armies (the report's tooltip points at the codex entry on army names).
-const NAMES_ARMIES := ["army_moved", "order_rejected", "border_battle", "battle", "captured", "recruited"]
+const NAMES_ARMIES := ["army_moved", "order_rejected", "border_battle", "battle", "captured", "recruited",
+	"army_split", "units_transferred", "armies_merged", "commanders_swapped", "army_disbanded"]
 ## A one-line explanation of army names for tooltips (RulesCodex "army_names" has the full text).
 const NAMES_HINT := "Every army keeps one name until it is gone: a ruler's army is named after its ruler, and every other army by its number, like the Crown's 3rd."
 
@@ -497,6 +498,8 @@ static func _line_at(i: int, ctx: Dictionary) -> String:
 			text = _captured_line(e, ctx)
 		"recruited":
 			text = _recruited_line(e, ctx)
+		"army_split", "units_transferred", "armies_merged", "commanders_swapped", "army_disbanded":
+			text = MusterRules.event_sentence(ctx.state, e)  # ARM-1: names for life, the owner's report only
 		"siege_started", "walls_damaged", "walls_breached", "siege_lifted", "fort_built":
 			text = _siege_line(e, ctx)  # M3c: the reader's turn words
 	return text if not text.is_empty() else own_text(e, ctx.viewer)

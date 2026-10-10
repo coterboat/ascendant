@@ -111,6 +111,17 @@ static func apply_events(model: Dictionary, events: Array) -> Dictionary:
 			"recruited", "ruler_arrived", "summoned":
 				if not ids.is_empty() and not provs.is_empty():
 					armies[ids[0]] = provs[0]
+			"army_split":
+				## ARM-1: a muster formed a new army (ids: the source, then the new one) where the split happened; it can march
+				## the same turn, and the army_moved event that follows moves it on
+				if ids.size() >= 2 and not provs.is_empty():
+					armies[ids[1]] = provs[0]
+					if model.has("forts"):
+						army_owner[ids[1]] = (e.get("factions", [""]) as Array)[0]
+			"army_disbanded":
+				## ARM-1: an army a muster left with no one in it is gone
+				if not ids.is_empty():
+					armies.erase(ids[0])
 			"summon_faded":
 				## M5-9: a pack that faded and left its army empty takes the army with it
 				if bool((e.get("numbers", {}) as Dictionary).get("removed", false)) and not ids.is_empty():

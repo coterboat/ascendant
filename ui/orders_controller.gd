@@ -39,8 +39,9 @@ var fog_intel := {}
 var book := OrderBook.new()
 var session: GameSession = null
 var _odds_cache := {}  # "army ids>province" -> move_odds() result; the state never changes under us
-var _view: GameState = null  # view_state() for the sacrifice in _view_key
-var _view_key := ""
+var _view: GameState = null  # view_state() for the plan in _view_key
+var _view_key := ""  # plan_key(): the queued sacrifice and musters _view was built for
+var _view_of: GameState = null  # the state _view was built from
 var _removed: Array = []  # texts of the orders the last queue or cancel removed (M2-6)
 ## M3c: the garrison armies the last queue_move sent out to join its relief (tied sallies), by id.
 var last_relief: Array = []
@@ -163,13 +164,50 @@ func queued_sacrifice() -> SacrificeOrder:
 ## queued Sacrifice order applied (RulerRules.state_after_orders), because the sacrifice phase resolves
 ## first. Never changes `state`.
 func view_state() -> GameState:
-	var sac := queued_sacrifice()
-	if sac == null or state == null:
+	if state == null:
 		return state
-	if _view == null or _view_key != sac.mandate_id:
-		_view = RulerRules.state_after_orders(state, faction_id, orders())
-		_view_key = sac.mandate_id
+	var list := orders()
+	var key := plan_key(list)
+	if key.is_empty():
+		return state
+	# ARM-1 (design/ARM1_SPLIT_MERGE.md §3): a queued muster projects the board too, and any change to the sacrifice or the
+	# musters (queue, replace, remove, cancel) gives another key, so the board is rebuilt exactly when the plan changed
+	# (it used to be cached by the sacrifice's mandate alone).
+	if _view == null or _view_key != key or not is_same(_view_of, state):
+		_view = RulerRules.state_after_orders(state, faction_id, list)
+		_view_key = key
+		_view_of = state
 	return _view
+
+
+## Queues a muster (ARM-1): a split, a transfer, a merge or a swap of commanders between two armies of yours in one
+## province. Returns "" when accepted, otherwise the rules' reason. Orders it makes fail are removed: see last_removed().
+func queue_muster(order: MusterOrder) -> String:
+	return _queue(order)
+
+
+## The board the muster at `index` applies to: the state with the queued sacrifice and the musters before it applied (the
+## sacrifice phase runs first, then the musters in the order given).
+func muster_board_before(index: int) -> GameState:
+	var prior := []
+	var list := orders()
+	for i in list.size():
+		if list[i] is SacrificeOrder or (list[i] is MusterOrder and i < index):
+			prior.append(list[i])
+	return RulerRules.state_after_orders(state, faction_id, prior)
+
+
+## What the projected board depends on in `list`: the queued sacrifice and the musters, in order, as text; "" when the list
+## holds neither (the board is then the state itself).
+static func plan_key(list: Array) -> String:
+	var parts := []
+	var sac := RulerRules.queued_sacrifice(list)
+	if sac != null:
+		parts.append(sac.mandate_id)
+	for o in list:
+		if o is MusterOrder:
+			parts.append(JSON.stringify(o.to_dict()))
+	return "|".join(parts)
 
 
 ## Every mandate on this faction's list for the sacrifice dialog (Forecast.sacrifice_options).
@@ -459,6 +497,8 @@ func order_text(index: int) -> String:
 		return "%s %s" % [f.text, move_odds(o.army_id, o.to).line] if f.ok else f.reason
 	if o is SacrificeOrder:
 		return sacrifice_text(o)
+	if o is MusterOrder:  # ARM-1: the sentence, on the board the musters before it leave
+		return MusterRules.order_text(muster_board_before(index), faction_id, o)
 	if o is FortifyOrder:  # M3c
 		return fortify_text(index)
 	if o is SiegeOrder:  # M3c
@@ -511,6 +551,8 @@ func order_breakdown(index: int) -> Dictionary:
 		b.description = "%s %s %s" % [String(RulerRules.mandate_data(o.mandate_id).get("effect", "")),
 			Forecast.mandate_now(view_state(), faction_id, o.mandate_id, orders()), RulesCodex.text("sacrifice")]
 		return b
+	if o is MusterOrder:  # ARM-1: the forecast of the muster, with the rule behind it
+		return _bd("Muster", "%s %s" % [MusterRules.order_text(muster_board_before(index), faction_id, o), RulesCodex.text("muster")], [], "Orders", 1)
 	if o is MoveOrder:
 		var f := _move_forecast_at(index)
 		if not f.ok:
@@ -567,6 +609,8 @@ func order_codex_kind(index: int) -> String:
 	var o = list[index]
 	if o is SacrificeOrder:
 		return "sacrifice"
+	if o is MusterOrder:  # ARM-1
+		return MusterRules.CODEX
 	if o is ResearchOrder:  # M4-4
 		return "research_order"
 	if o is SpellbookOrder:  # M5-5

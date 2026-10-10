@@ -69,6 +69,13 @@ const AUDIENCE := {
 	"raided": {"whole": "actor", "others": "none"},
 	"vassal_joined": {"whole": "actor", "others": "rebuilt"},
 	"vassal_contested": {"whole": "factions", "others": "rebuilt"},
+	# ARM-1 musters (splits, merges, commander swaps): the owner's alone. A rival never sees the order; it sees the result
+	# through its sight at the end of the turn, pooled and rounded like any army (FogRules.pool_now)
+	"army_split": {"whole": "actor", "others": "none"},
+	"units_transferred": {"whole": "actor", "others": "none"},
+	"armies_merged": {"whole": "actor", "others": "none"},
+	"commanders_swapped": {"whole": "actor", "others": "none"},
+	"army_disbanded": {"whole": "actor", "others": "none"},
 	# recruits, gold, research and healing: private (hidden recruits show only as a changed sighting)
 	"recruited": {"whole": "actor", "others": "none"},
 	"income": {"whole": "actor", "others": "none"},

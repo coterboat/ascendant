@@ -1470,7 +1470,60 @@ static func apply_view_events(model: Dictionary, events: Array) -> Dictionary:
 			"ruler_died":
 				if not e.get("armies", []).is_empty():
 					m.erase(String(e.armies[0]))
+			"army_split", "units_transferred", "armies_merged", "commanders_swapped", "army_disbanded":
+				_fold_muster(m, e)  # ARM-1: the viewer's own musters move fighters between its own armies
 	return _sorted_dict(m)
+
+
+## Folds one of the viewer's own muster events into the army model (ARM-1): the fighters it names change armies, a new
+## army appears where its source stands, and a disbanded one goes. The synthetic events then add only what is left over.
+static func _fold_muster(m: Dictionary, e: Dictionary) -> void:
+	var n: Dictionary = e.get("numbers", {})
+	match String(e.get("type", "")):
+		"army_disbanded":
+			m.erase(String(n.get("army", "")))
+		"commanders_swapped":
+			var a: Dictionary = m.get(String(n.get("a", "")), {})
+			var b: Dictionary = m.get(String(n.get("b", "")), {})
+			if a.is_empty() or b.is_empty():
+				return
+			var ac := String(n.get("a_commander", ""))
+			var bc := String(n.get("b_commander", ""))
+			a["counts"] = _counts_with(a.counts, {ac: -1, bc: 1})
+			b["counts"] = _counts_with(b.counts, {bc: -1, ac: 1})
+		_:
+			var from: Dictionary = m.get(String(n.get("from", "")), {})
+			if from.is_empty():
+				return
+			var moved := {}
+			for type_id in n.get("units", []):
+				moved[String(type_id)] = int(moved.get(String(type_id), 0)) + 1
+			var cmd := String(n.get("commander", ""))
+			if not cmd.is_empty():
+				moved[cmd] = int(moved.get(cmd, 0)) + 1
+			var gone := {}
+			for k in moved:
+				gone[k] = -int(moved[k])
+			from["counts"] = _counts_with(from.counts, gone)
+			var to_id := String(n.get("to", ""))
+			if m.has(to_id):
+				m[to_id]["counts"] = _counts_with(m[to_id].counts, moved)
+			else:
+				m[to_id] = {"owner": from.owner, "location": from.location, "level": from.level, "counts": _counts_with({}, moved)}
+
+
+## `counts` ({type id: n}) with `delta` ({type id: change}) added, no zero counts, keys sorted (the model's form).
+static func _counts_with(counts: Dictionary, delta: Dictionary) -> Dictionary:
+	var out := counts.duplicate()
+	for k in delta:
+		if String(k).is_empty():
+			continue
+		var n := int(out.get(k, 0)) + int(delta[k])
+		if n > 0:
+			out[k] = n
+		else:
+			out.erase(k)
+	return _sorted_dict(out)
 
 
 ## The synthetic events (§2.8): exactly what is left over between view_before folded with `shown` and view_after,
