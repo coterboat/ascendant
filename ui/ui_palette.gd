@@ -39,6 +39,18 @@ const NEGATIVE := Color("#F06A64")
 const LINK := Color("#86C1F0")
 const SELECTION := Color("#FFFFFF")
 
+## The type scale (design/UX_WAR_TABLE.md section 7), font sizes in logical pixels at a 1600-wide
+## viewport. The window's content scale does the rest, so the same numbers serve every supported
+## window. Pair each with its font in UiFonts: TYPE_TITLE with title(), TYPE_NAME with name(),
+## TYPE_BODY and TYPE_SMALL with body(), TYPE_NUMBER with number(). New War Table pieces use these;
+## the existing screens still set their own sizes and are not changed to match. The least is
+## TYPE_SMALL, above the bible's 12 px floor (section 2.1).
+const TYPE_TITLE := 28
+const TYPE_NAME := 20
+const TYPE_BODY := 16
+const TYPE_SMALL := 14
+const TYPE_NUMBER := 18
+
 
 ## Colour of a 0-based seat (0 is Player 1). A negative seat (nobody) is slate.
 static func seat_color(seat_index: int) -> Color:
