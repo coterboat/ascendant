@@ -98,13 +98,15 @@ func _add_header(p: Province) -> void:
 
 ## The actions on this province: Recruit, Fortify, the fort panel. Each only where the viewer can use it.
 func _add_actions(p: Province) -> void:
-	var mine := p.owner == viewing_faction_id and orders != null and state.find_faction(viewing_faction_id) != null
+	# Recruit is offered wherever the rules let this faction recruit (its capital, a fort of its own, and the province its ruler stands in
+	# with Warband Muster, which the side panel offered too); Fortify and the fort panel decide for themselves.
+	var can_act := orders != null and state.find_faction(viewing_faction_id) != null
 	var cards := map.cards
 	actions = HFlowContainer.new()
 	actions.name = "ProvinceActions"
 	actions.add_theme_constant_override("h_separation", 6)
 	actions.add_theme_constant_override("v_separation", 6)
-	if mine and RecruitSection.available(map, province_id):
+	if can_act and RecruitSection.available(map, province_id):
 		recruit_button = action_button("RecruitButton", "Recruit", "recruit",
 			TooltipText.plain("Recruit", "Buy units here. They are paid, and join your armies, when the turn ends. Opens the recruit list for %s: every unit with its price, and the gold you have left after your orders. %s" % [
 				p.name, RulesCodex.text("recruit")]), "recruit")
@@ -132,7 +134,7 @@ func _add_actions(p: Province) -> void:
 	if fortify != null:
 		add_child(fortify)
 		pinned_nodes.append(fortify)
-	if mine and RecruitSection.available(map, province_id):
+	if can_act and RecruitSection.available(map, province_id):
 		recruit_section = RecruitSection.make(map, province_id)
 		recruit_section.visible = cards.section_open("recruit")
 		add_child(recruit_section)
