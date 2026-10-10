@@ -18,7 +18,14 @@
  "state": {
   "balance_before": 1000.0,
   "v": {
-   "base_hill_slingers_ready": 2
+   "base_hill_slingers_ready": 2,
+   "pic_hill_slingers_march": 3,
+   "pic_hill_slingers_strike": 3,
+   "pic_hill_slingers_fallen": 2,
+   "model_hill_slingers_ready": 2,
+   "model_hill_slingers_strike": 2,
+   "model_hill_slingers_march": 2,
+   "model_hill_slingers_fallen": 2
   },
   "picks": {
    "pic_free_spears_ready": 3,
@@ -31,16 +38,16 @@
    "pic_wildkin_march": 2,
    "pic_wildkin_strike": 1,
    "pic_wildkin_fallen": 1,
-   "pic_hill_slingers_march": 2,
-   "pic_hill_slingers_strike": 1,
-   "pic_hill_slingers_fallen": 2,
    "pic_hold_captain_march": 1,
    "pic_hold_captain_strike": 2,
    "pic_hold_captain_fallen": 1,
    "por_free_spears": 2,
    "por_wildkin": 2,
    "por_hill_slingers": 2,
-   "por_hold_captain": 2
+   "por_hold_captain": 2,
+   "pic_hill_slingers_fallen": 2,
+   "pic_hill_slingers_march": 2,
+   "pic_hill_slingers_strike": 1
   },
   "portrait_crops": {
    "por_free_spears": {
@@ -83,6 +90,29 @@
   "rerolls": {
    "base_hill_slingers_ready": [
     "v1: rejected in the Review Table"
+   ],
+   "pic_hill_slingers_march": [
+    "v1: base redone (10-10, accepted take 1): the poses are made again from it",
+    "v2: the outline came back with the shared 'same outline style' line (march both takes, strike take 2); strike take 1 drew a long cord"
+   ],
+   "pic_hill_slingers_strike": [
+    "v1: base redone (10-10, accepted take 1): the poses are made again from it",
+    "v2: the outline came back with the shared 'same outline style' line (march both takes, strike take 2); strike take 1 drew a long cord"
+   ],
+   "pic_hill_slingers_fallen": [
+    "v1: base redone (10-10, accepted take 1): the poses are made again from it"
+   ],
+   "model_hill_slingers_ready": [
+    "v1: made again from the accepted base (10-10) and its new pose pictures"
+   ],
+   "model_hill_slingers_strike": [
+    "v1: made again from the accepted base (10-10) and its new pose pictures"
+   ],
+   "model_hill_slingers_march": [
+    "v1: made again from the accepted base (10-10) and its new pose pictures"
+   ],
+   "model_hill_slingers_fallen": [
+    "v1: made again from the accepted base (10-10) and its new pose pictures"
    ]
   }
  },
@@ -220,12 +250,12 @@
    "kind": "edit",
    "n": 2,
    "from_file": "assets/_concept/independents/hill_slingers_ready.webp",
-   "prompt": "The same figure, now loping forward with his left leg ahead, the doubled sling gripped in his right hand at his side with its small pouch dangling, his left arm swinging, eyes ahead. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "prompt": "The same figure, now loping forward with his left leg ahead, the doubled sling gripped in his right hand at his side with its small pouch dangling, his left arm swinging, eyes ahead. Same outfit, same colours, the same soft matte hand-painted clay miniature as the first picture: the forms are shaped by soft shading and gentle shadow, every colour meets the next at a soft painted edge, the outer edge of the figure is the colour of the cloth, skin and leather itself, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/independents/hill_slingers_march.webp",
    "group": "units",
    "unit": "hill_slingers",
    "pose": "march",
-   "v": 1,
+   "v": 3,
    "pick": 2,
    "augment": false,
    "out": "assets/_concept/candidates/free_holds/hill_slingers_march"
@@ -236,12 +266,12 @@
    "kind": "edit",
    "n": 2,
    "from_file": "assets/_concept/independents/hill_slingers_ready.webp",
-   "prompt": "The same figure, now slinging a stone: his right elbow raised high with his fingers pointing toward the sky, twirling the sling in a circle above his head with its pouch whirling at the end of the doubled cord, his left arm stretched forward pointing at the target, his left leg stepping forward, eyes on the target ahead. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "prompt": "The same figure, now slinging a stone: his right elbow raised high with his fingers pointing toward the sky, twirling the short doubled sling in a small circle above his head, the two cord ends gripped together in his fist and the small pouch swinging at the end of the short doubled cord, his left arm stretched forward pointing at the target, his left leg stepping forward, eyes on the target ahead. Same outfit, same colours, the same soft matte hand-painted clay miniature as the first picture: the forms are shaped by soft shading and gentle shadow, every colour meets the next at a soft painted edge, the outer edge of the figure is the colour of the cloth, skin and leather itself, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/independents/hill_slingers_strike.webp",
    "group": "units",
    "unit": "hill_slingers",
    "pose": "strike",
-   "v": 1,
+   "v": 3,
    "pick": 1,
    "augment": false,
    "out": "assets/_concept/candidates/free_holds/hill_slingers_strike"
@@ -252,12 +282,12 @@
    "kind": "edit",
    "n": 2,
    "from_file": "assets/_concept/independents/hill_slingers_ready.webp",
-   "prompt": "The same figure, now fallen in battle, lying flat on his back on the floor with his arms out to the sides, his hood still on, the sling and the pouch of stones lying on the floor beside him, eyes closed. Same outfit, same colours, same outline style, seen from the side and a little above, the whole figure lying full length, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "prompt": "The same figure, now fallen in battle, lying flat on his back on the floor with his arms out to the sides, his hood still on, the sling and the pouch of stones lying on the floor beside him, eyes closed. Same outfit, same colours, the same soft matte hand-painted clay miniature as the first picture: the forms are shaped by soft shading and gentle shadow, every colour meets the next at a soft painted edge, the outer edge of the figure is the colour of the cloth, skin and leather itself, seen from the side and a little above, the whole figure lying full length, the whole figure with wide empty margin on every side, plain flat light grey background.",
    "pick_to": "assets/_concept/independents/hill_slingers_fallen.webp",
    "group": "units",
    "unit": "hill_slingers",
    "pose": "fallen",
-   "v": 1,
+   "v": 2,
    "pick": 2,
    "augment": false,
    "out": "assets/_concept/candidates/free_holds/hill_slingers_fallen"
@@ -457,7 +487,7 @@
    "unit": "hill_slingers",
    "pose": "ready",
    "variant": null,
-   "v": 1,
+   "v": 2,
    "out": "assets/models/candidates/free_holds/hill_slingers_ready"
   },
   {
@@ -525,7 +555,7 @@
    "unit": "hill_slingers",
    "pose": "strike",
    "variant": null,
-   "v": 1,
+   "v": 2,
    "out": "assets/models/candidates/free_holds/hill_slingers_strike"
   },
   {
@@ -593,7 +623,7 @@
    "unit": "hill_slingers",
    "pose": "march",
    "variant": null,
-   "v": 1,
+   "v": 2,
    "out": "assets/models/candidates/free_holds/hill_slingers_march"
   },
   {
@@ -661,7 +691,7 @@
    "unit": "hill_slingers",
    "pose": "fallen",
    "variant": null,
-   "v": 1,
+   "v": 2,
    "out": "assets/models/candidates/free_holds/hill_slingers_fallen"
   },
   {

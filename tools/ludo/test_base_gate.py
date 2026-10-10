@@ -495,7 +495,7 @@ class TheRedoCarriesAlexsNotes(unittest.TestCase):
         u = FH.UNITS["hill_slingers"]
         self.assertIn("doubled", u["base"])
         strike = u["strike"]
-        for word in ("elbow", "fingers pointing toward the sky", "twirling the sling", "above his head"):
+        for word in ("elbow", "fingers pointing toward the sky", "twirling the short doubled sling", "above his head"):
             self.assertIn(word, strike)
         self.assertNotIn("rifle", strike)
         self.assertNotIn("long leather sling", u["outfit"])
