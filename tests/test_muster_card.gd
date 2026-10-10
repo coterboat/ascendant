@@ -359,6 +359,7 @@ func test_a_new_army_can_be_selected_marched_and_cancelled() -> void:
 	var map: MapScreen = f.map
 	var board := _board(map)
 	board.new_zone._drop_data(Vector2.ZERO, _grab(_card(map).strip.chips()[1]))
+	assert_true(String(map.status_text).contains("Cancel muster"), "the status line names the card's button: %s" % map.status_text)
 	var new_id := "kingdom-3"
 	(_board(map).rows[new_id] as MusterBoard.Row).name_button.pressed.emit()
 	assert_eq(map.selected_army_id, new_id, "the new army is selected by its real id")
@@ -372,6 +373,9 @@ func test_a_new_army_can_be_selected_marched_and_cancelled() -> void:
 	assert_true(String(map.orders.order_text(1)).contains("Westwatch"), map.orders.order_text(1))
 	# The card of the new army lists the muster that formed it, with a cancel.
 	assert_eq(_card(map).order_indexes(map.board_army(new_id)), [0, 1], "its own orders include the split that formed it and its march")
+	# The card says which cancel is which: one for the muster, one for the march.
+	var cancels: Array = _card(map).cancel_buttons.map(func(b): return String(b.text))
+	assert_eq(cancels, ["Cancel muster", "Cancel order"], "two cancels, told apart")
 	# Cancelling the split takes the move with it, with the reason on the status line.
 	map.cancel_order(0)
 	assert_eq(map.orders.orders(), [], "the move of the army that no longer exists went too")

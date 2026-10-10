@@ -966,7 +966,7 @@ func queue_move(army_id: String, to_province: String) -> String:
 func queue_muster(order: MusterOrder) -> String:
 	var reason := orders.queue_muster(order)
 	if reason.is_empty():
-		status_text = "%s Armies muster first when the turn ends, before anything moves, so a new army can be given a move now. Cancel order undoes it.%s" % [
+		status_text = "%s Armies muster first when the turn ends, before anything moves, so a new army can be given a move now. Cancel muster on the army's card, or the cross in the tray's Orders list, undoes it.%s" % [
 			orders.order_text(orders.orders().size() - 1), _removed_text(orders.last_removed())]
 	else:
 		status_text = reason
