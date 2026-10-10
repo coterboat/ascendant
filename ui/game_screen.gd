@@ -1676,26 +1676,29 @@ func _build_notice() -> void:
 	notice_panel.add_theme_stylebox_override("panel", style)
 	layer.add_child(notice_panel)
 	map.table().hang("notice", notice_panel)  # UX-1: under the realm plaque, inside the board's safe area (TableHud)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 16)
-	notice_panel.add_child(row)
-	var text := VBoxContainer.new()
-	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(text)
+	# The title and OK share a row and the text has the whole width under them: the notice lives in the Table's left column (400 px),
+	# and a shorter notice leaves the selection card more room under it.
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 2)
+	notice_panel.add_child(column)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
+	column.add_child(head)
 	notice_title = _label("NoticeTitle", 20, UiPalette.GILT)
-	text.add_child(notice_title)
-	notice_label = _label("NoticeText", 17, UiPalette.TEXT_PRIMARY)
-	text.add_child(notice_label)
+	notice_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(notice_title)
 	var ok := Button.new()
 	ok.name = "NoticeOkButton"
 	ok.text = "OK"
-	ok.custom_minimum_size = Vector2(80, 40)
+	ok.custom_minimum_size = Vector2(64, 32)
 	ok.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	ok.add_theme_font_size_override("font_size", 18)
+	ok.add_theme_font_size_override("font_size", 16)
 	ok.tooltip_text = "Hide this notice."
 	ok.pressed.connect(_on_notice_ok)
-	row.add_child(ok)
+	head.add_child(ok)
 	notice_ok = ok
+	notice_label = _label("NoticeText", 17, UiPalette.TEXT_PRIMARY)
+	column.add_child(notice_label)
 
 
 ## The turn report panel in a modal frame with a footer: a hint and a Close button.

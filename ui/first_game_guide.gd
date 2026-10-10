@@ -13,8 +13,9 @@ extends PanelContainer
 ## so in full, which is why the first fog turn's banner no longer stacks beside this card); the lines of the other systems
 ## fold behind one "Also on: ..." row (click to open them), so the card stays short enough to leave the province next to the
 ## capital, the natural first move, uncovered. Every explanation is still there: the row's tooltip, each line's tooltip and
-## its codex link. UX-1: the Table (TableHud.hang) places the card under the realm plaque, in the board's safe area, and moves it
-## clear of a selection card or a playback bar that is in its way.
+## its codex link. UX-1: the Table (TableHud.hang) places the card at the top of the left column under the realm plaque, in the
+## board's safe area, with the selection card docked under it, so the board frames the map to the right of both and the card
+## never covers it; a playback bar that is in its way moves it down.
 ## Why top-left: the map's hover forecast bar runs along the bottom, the player's capital (with its armies and queued
 ## orders) is on the left edge from about 45% of the way down, the fog notice sits top centre, and the turn report, the
 ## codex and every other overlay are drawn above the card. Top-left, no taller than about 280 px with every system on,

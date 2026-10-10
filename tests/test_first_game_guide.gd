@@ -237,6 +237,7 @@ func test_the_card_never_blocks_the_map() -> void:
 	hud.relayout()
 	assert_true(hud.placed().has("guide"), "the Table places the card")
 	assert_true(TableLayout.safe_area(hud.viewport_size()).encloses(hud.placed()["guide"]), "inside the safe area, under the realm plaque and right of the notification stack")
+	assert_true((hud.placed()["guide"] as Rect2).end.x <= hud.framing_area().position.x, "and left of the area the map is framed in: it never covers the map")
 	assert_eq(guide.offset_top, (hud.placed()["guide"] as Rect2).position.y, "its offsets are the Table's")
 	game.free()
 	_unseen()

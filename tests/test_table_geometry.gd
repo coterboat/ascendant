@@ -180,18 +180,54 @@ func test_every_piece_stays_in_its_band_and_every_floating_piece_in_the_safe_are
 				assert_true(safe.grow(0.5).encloses(_rect(m, name)), "%s: %s is inside the safe area (%s in %s)" % [where, name, _rect(m, name), safe]))
 
 
-func test_the_guide_and_the_card_give_way_in_the_specs_order() -> void:
+func test_the_left_column_holds_the_notice_the_guide_and_the_card_in_that_order() -> void:
 	_each(func(board: String, key: String, scenario: String, m: Dictionary):
 		var where := _where(board, key, scenario)
 		var safe := Rect2(m.safe[0], m.safe[1], m.safe[2], m.safe[3])
+		var framing := Rect2(m.framing[0], m.framing[1], m.framing[2], m.framing[3])
+		if scenario in ["playback", "closeup"]:
+			return  # a board's own transient bar may push the guide down: no order to hold
+		var column := []
+		for name in ["notice", "guide", "card"]:
+			if _shown(m, name):
+				var r := _rect(m, name)
+				column.append(r)
+				assert_eq(r.position.x, safe.position.x + TableLayout.GAP, "%s: the %s is in the left column" % [where, name])
+				assert_true(r.end.x <= framing.position.x, "%s: and ends left of the framing area (%d against %d)" % [where, r.end.x, framing.position.x])
+		for i in range(1, column.size()):
+			assert_true((column[i] as Rect2).position.y >= (column[i - 1] as Rect2).end.y, "%s: each is under the one above it" % where)
 		if _shown(m, "card"):
-			var card := _rect(m, "card")
-			assert_eq(card.position.x, safe.position.x + TableLayout.GAP, "%s: the card is docked at the left of the safe area" % where)
-			assert_true(is_equal_approx(card.end.y, safe.end.y - TableLayout.GAP) or card.end.y <= safe.end.y, "%s: and at its bottom" % where)
-		if _shown(m, "guide") and _shown(m, "card"):
-			assert_false(TableLayout.overlaps(_rect(m, "guide"), _rect(m, "card")), "%s: the guide never covers the card" % where)
-		if _shown(m, "notice") and _shown(m, "guide"):
-			assert_false(TableLayout.overlaps(_rect(m, "guide"), _rect(m, "notice")), "%s: the guide and the notice never cover each other" % where))
+			assert_true(is_equal_approx(_rect(m, "card").end.y, safe.end.y - TableLayout.GAP), "%s: the card is docked at the bottom" % where)
+		if _shown(m, "guide"):
+			assert_eq(_rect(m, "guide").position.y, _rect(m, "notice").end.y + TableLayout.GAP if _shown(m, "notice") else safe.position.y + TableLayout.GAP, "%s: the guide hangs under the realm plaque (or the notice)" % where))
+
+
+## The review's regression: at 125% the first-game guide hung over the north of the map and covered Westwatch, the capital's
+## neighbour and turn 1's first move. On turn 1 with the guide up, the name labels of the capital and of every neighbour are inside
+## the framing area as drawn, and clear of every HUD piece (the guide, the card, the plaques, the system row, the tray and the seal
+## counted), at all three sizes and on both boards, with the card open, closed and with a notice up.
+func test_the_capital_and_its_neighbours_labels_are_framed_clear_of_every_hud_piece() -> void:
+	var checked := [0]  # a lambda captures an int by value: count in an array
+	_each(func(board: String, key: String, scenario: String, m: Dictionary):
+		if not scenario in ["rest", "dismissed", "notice"]:
+			return
+		var where := _where(board, key, scenario)
+		assert_true(_shown(m, "guide"), "%s: the guide is up (turn 1 of a first game)" % where)
+		var framing := Rect2(m.framing[0], m.framing[1], m.framing[2], m.framing[3])
+		var labels: Dictionary = m.labels
+		var ids: Array = labels.rects.keys()
+		assert_true(ids.has(labels.capital) and ids.size() >= 4, "%s: the capital and its neighbours were found (%s)" % [where, ids])
+		for id in ids:
+			var r: Array = labels.rects[id]
+			var rect := Rect2(r[0], r[1], r[2], r[3])
+			assert_true(bool(r[4]), "%s: %s's label is showing" % [where, id])
+			assert_true(framing.has_point(rect.get_center()), "%s: %s's label projects inside the framing area (%s in %s)" % [where, id, rect.get_center(), framing])
+			assert_true(framing.grow(2.0).encloses(rect), "%s: and all of it does (%s in %s)" % [where, rect, framing])
+			for name in m.pieces.keys():
+				if _shown(m, name):
+					assert_false(TableLayout.overlaps(rect, _rect(m, name)), "%s: %s's label (%s) is covered by %s (%s)" % [where, id, rect, name, _rect(m, name)])
+			checked[0] += 1)
+	assert_true(checked[0] >= 3 * 2 * 3 * 4, "every label at every size, board and state was checked (%d)" % checked[0])
 
 
 func test_the_2d_map_fits_the_framing_area() -> void:

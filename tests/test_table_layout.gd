@@ -8,14 +8,14 @@ extends "res://tests/test_case.gd"
 const SIZES := [Vector2(1600, 900), Vector2(1280, 720)]
 ## The biggest each floating piece ever asks for: a tall card (every section open), the guide with its fog line, a notice that
 ## wraps to four lines, the vision legend, the move forecast, the playback bar and its caption, the close-up chip.
-const BIGGEST := {"card": Vector2(400, 900), "legend": Vector2(280, 210), "notice": Vector2(480, 120), "guide": Vector2(350, 170),
+const BIGGEST := {"card": Vector2(400, 900), "legend": Vector2(280, 210), "notice": Vector2(400, 130), "guide": Vector2(350, 170),
 	"hover": Vector2(760, 110), "playback": Vector2(830, 62), "caption": Vector2(420, 84), "closeup": Vector2(520, 48)}
-## What is on screen together: the table at rest (with the vision legend), a turn playing out (the guide lingers over it) and the
-## fortress close-up. The playback bar and the close-up chip never show at once.
+## What is on screen together: the table at rest (with the vision legend, a notice and the guide), a turn playing out (the guide
+## lingers over it) and the fortress close-up. The playback bar and the close-up chip never show at once.
 const SCENES := {
 	"at rest": ["card", "legend", "notice", "guide", "hover"],
 	"playing": ["card", "playback", "caption", "guide"],
-	"close-up": ["card", "closeup", "notice", "guide", "hover"],
+	"close-up": ["card", "closeup", "guide", "hover"],
 }
 
 
@@ -63,7 +63,7 @@ func test_the_framing_area_is_the_safe_area_right_of_the_docked_card() -> void:
 		var safe := TableLayout.safe_area(viewport)
 		var frame := TableLayout.framing_area(viewport)
 		assert_true(safe.encloses(frame), "inside the safe area at %s" % viewport)
-		assert_eq(frame.position.x, safe.position.x + TableLayout.CARD_W + TableLayout.GAP, "right of the card column at %s" % viewport)
+		assert_eq(frame.position.x, safe.position.x + TableLayout.CARD_W + 2.0 * TableLayout.GAP, "right of the left column (the card's width and a gap each side) at %s" % viewport)
 		assert_eq(frame.end, safe.end)
 		assert_true(frame.size.x >= 480.0, "wide enough to frame a map in at %s (%d px)" % [viewport, frame.size.x])
 	assert_eq(TableLayout.framing_area(Vector2(700, 500)).size.x, 480.0, "a window too small for the card column and a map gives the map 480 px")
@@ -119,18 +119,35 @@ func test_the_card_docks_bottom_left_and_shrinks_only_for_a_piece_above_it() -> 
 		assert_eq((with_bar["card"] as Rect2).end.y, tall.end.y, "its bottom does not move")
 
 
-func test_the_guide_hangs_at_the_top_left_and_goes_right_of_a_card_in_its_way() -> void:
+func test_the_guide_leads_the_left_column_and_the_card_docks_under_it() -> void:
 	for viewport: Vector2 in SIZES:
 		var safe := TableLayout.safe_area(viewport)
 		var top_left := safe.position + Vector2(TableLayout.GAP, TableLayout.GAP)
+		var alone: Dictionary = TableLayout.arrange(viewport, {"guide": Vector2(350, 160)}).rects
+		assert_eq((alone["guide"] as Rect2).position, top_left, "the guide hangs under the realm plaque at %s" % viewport)
+		var both: Dictionary = TableLayout.arrange(viewport, {"card": Vector2(400, 900), "guide": Vector2(350, 160)}).rects
+		var guide := both["guide"] as Rect2
+		var card := both["card"] as Rect2
+		assert_eq(guide.position, top_left, "with a tall card the guide stays at the top left (the card gives it the room) at %s" % viewport)
+		assert_eq(card.position.x, guide.position.x, "the card is in the same column")
+		assert_eq(card.position.y, guide.end.y + TableLayout.GAP, "right under the guide")
+		assert_eq(card.end.y, safe.end.y - TableLayout.GAP, "still docked at the bottom")
+		assert_true(card.size.y >= TableLayout.CARD_MIN_H, "and tall enough to scroll in (%d px)" % card.size.y)
 		var short: Dictionary = TableLayout.arrange(viewport, {"card": Vector2(400, 120), "guide": Vector2(350, 160)}).rects
-		assert_eq((short["guide"] as Rect2).position, top_left, "with a short card the guide hangs under the realm plaque at %s" % viewport)
-		var tall: Dictionary = TableLayout.arrange(viewport, {"card": Vector2(400, 900), "guide": Vector2(350, 160)}).rects
-		assert_eq((tall["guide"] as Rect2).position.y, top_left.y, "with a tall card it stays at the top")
-		assert_eq((tall["guide"] as Rect2).position.x, (tall["card"] as Rect2).end.x + TableLayout.GAP, "and moves right of the card at %s" % viewport)
-		var with_notice: Dictionary = TableLayout.arrange(viewport, {"notice": Vector2(480, 100), "guide": Vector2(350, 160)}).rects
+		assert_eq((short["card"] as Rect2).end.y, safe.end.y - TableLayout.GAP, "a short card stays at the bottom, with the room between")
+		var with_notice: Dictionary = TableLayout.arrange(viewport, {"notice": Vector2(400, 100), "guide": Vector2(350, 160), "card": Vector2(400, 900)}).rects
 		assert_eq((with_notice["notice"] as Rect2).position, top_left, "a notice takes the top left")
 		assert_eq((with_notice["guide"] as Rect2).position, Vector2(top_left.x, (with_notice["notice"] as Rect2).end.y + TableLayout.GAP), "the guide hangs under it")
+		assert_eq((with_notice["card"] as Rect2).position.y, (with_notice["guide"] as Rect2).end.y + TableLayout.GAP, "and the card under both")
+		assert_true(TableLayout.arrange(viewport, {"notice": Vector2(400, 130), "guide": Vector2(350, 170), "card": Vector2(400, 900)}).overflow.is_empty(), "the biggest notice, guide and card share the column at %s" % viewport)
+
+
+func test_nothing_in_the_left_column_reaches_the_framing_area() -> void:
+	for viewport: Vector2 in SIZES:
+		var frame := TableLayout.framing_area(viewport)
+		var rects: Dictionary = TableLayout.arrange(viewport, {"notice": Vector2(400, 130), "guide": Vector2(350, 280), "card": Vector2(400, 900)}).rects
+		for name in ["notice", "guide", "card"]:
+			assert_true((rects[name] as Rect2).end.x <= frame.position.x - TableLayout.GAP + 0.01, "%s ends left of the framing area at %s (%d against %d)" % [name, viewport, (rects[name] as Rect2).end.x, frame.position.x])
 
 
 func test_the_forecast_runs_along_the_bottom_right_of_the_card_and_the_legend_sits_top_right() -> void:

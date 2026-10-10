@@ -142,7 +142,7 @@ func _setup(scenario: String) -> void:
 		"dismissed":
 			map.dismiss_selection_card()
 		"notice":
-			game.show_notice("Game saved", "Saved as \"A long name to make the notice wrap\". Orders you have given this turn are not saved: when you load it, turn 1 starts again from the beginning, so give them again.")
+			game.show_notice("Game saved", "Saved as \"Saved 2026-10-10 14:03\". %s" % SaveGame.ORDERS_NOTE)
 		"forecast":
 			map.select_army("kingdom-1")
 			map.preview_move("westwatch")
@@ -181,10 +181,32 @@ func _measure(scenario: String) -> Dictionary:
 	if kind == "2d":
 		var canvas := game.map.map_canvas
 		out["canvas"] = [canvas.global_position.x, canvas.global_position.y, MapLayout.SIZE.x * canvas.scale.x, MapLayout.SIZE.y * canvas.scale.y, canvas.is_visible_in_tree()]
+	out["labels"] = _province_labels()
 	out["sweep"] = await _sweep(pieces, rects)
 	if scenario == "rest":
 		out["clicks"] = await _clicks(pieces, rects)
 		await _setup("rest")
+	return out
+
+
+## The name labels of the capital and of its neighbours as drawn (the first move of turn 1 is one of these), keyed by province id, with
+## the capital's id under "capital": [x, y, w, h, visible] through each label's own transform (the 2D map scales its regions).
+func _province_labels() -> Dictionary:
+	var map := game.map
+	var capital: String = map.state.find_faction("kingdom").capital
+	var ids: Array = [capital]
+	ids.append_array(map.state.find_province(capital).neighbors)
+	var out := {"capital": capital, "rects": {}}
+	for id in ids:
+		var label: Control = null
+		if kind == "3d":
+			var plate: Dictionary = map.board.overlay._plates.get(id, {})
+			label = plate.get("name", null)
+		else:
+			label = (map.regions[id] as ProvinceRegion).name_label
+		if label != null:
+			var r: Rect2 = label.get_global_transform() * Rect2(Vector2.ZERO, label.size)
+			out.rects[id] = [r.position.x, r.position.y, r.size.x, r.size.y, label.is_visible_in_tree()]
 	return out
 
 

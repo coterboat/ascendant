@@ -904,6 +904,9 @@ func _compute_fit() -> void:
 	if not prepared or size.x < 8 or size.y < 8:
 		return
 	var area := _fit_area()
+	## the margin the land's corners keep from the framing area: 8 px for the whole board, 20 px when the Table frames the map, so
+	## the name plates of the provinces at the edge (about 50 px either side of their centres) stay inside the area too
+	var m := 8.0 if _fit_rect.size.x < 64.0 else 20.0
 	var lo := 200.0
 	var hi := 3000.0
 	var keep: Dictionary = wv.rig.duplicate()
@@ -916,7 +919,7 @@ func _compute_fit() -> void:
 		var ok := true
 		for c in [LAND.position, Vector2(LAND.end.x, LAND.position.y), Vector2(LAND.position.x, LAND.end.y), LAND.end]:
 			var s: Vector2 = wv.project3(Vector3(c.x, 0.0, c.y)) / _scale()
-			if s.x < area.position.x + 8.0 or s.y < area.position.y + 8.0 or s.x > area.end.x - 8.0 or s.y > area.end.y - 8.0:
+			if s.x < area.position.x + m or s.y < area.position.y + m or s.x > area.end.x - m or s.y > area.end.y - m:
 				ok = false
 				break
 		if ok:

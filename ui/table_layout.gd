@@ -27,14 +27,18 @@ const CHRONICLE_W_NARROW := 360.0
 const WIDE_FROM := 1600.0
 ## The widths of the pieces that float inside the safe area.
 const CARD_W := 400.0
-const NOTICE_W := 480.0
+## The notice is as wide as the card: the guide, the notice and the card share the left column, so the board frames to their right.
+const NOTICE_W := CARD_W
 const LEGEND_W := 280.0
 const HOVER_MAX_W := 760.0
-## The pieces arrange() places, in the order they give way (the first never moves). The playback bar, its caption and the
-## close-up chip are the board's own transient pieces, hung by the Table so nothing covers their buttons.
-const FLOATING := ["playback", "closeup", "caption", "card", "legend", "notice", "guide", "hover"]
+## The pieces arrange() places, in the order they take their spots (the first never moves). The playback bar, its caption and the
+## close-up chip are the board's own transient pieces, hung by the Table so nothing covers their buttons. The notice and the guide
+## take the top of the left column before the card, which docks under them and shrinks (it scrolls): the whole left column is the
+## card's, the guide's and the notice's, and the board frames the map to the right of it (framing_area), so the guide never covers
+## the map (UX-1 review: at 125% it covered Westwatch, the capital's neighbour and turn 1's first move).
+const FLOATING := ["playback", "closeup", "caption", "notice", "guide", "card", "legend", "hover"]
 ## The shortest a selection card is squeezed to (it scrolls) when a piece above it needs its room.
-const CARD_MIN_H := 160.0
+const CARD_MIN_H := 120.0
 
 
 ## True below 1600 logical width: the compact Table.
@@ -71,11 +75,12 @@ static func safe_area(viewport: Vector2, chronicle_open: bool = false) -> Rect2:
 
 
 ## Where a board frames the whole map at its first look (the 3D board's whole-map camera, the 2D map's fit): the safe area to
-## the right of the docked details card, so the map is not drawn under the card, the plaques or the tray. Until UX-3 puts the
-## selection cards beside their plates the card is a fixed column on the left (CARD_W and a gap).
+## the right of the left column (the notice, the guide and the docked details card, CARD_W wide, with a gap each side), so the
+## map is not drawn under any of them, the plaques or the tray. Until UX-3 puts the selection cards beside their plates the
+## column is fixed.
 static func framing_area(viewport: Vector2, chronicle_open: bool = false) -> Rect2:
 	var safe := safe_area(viewport, chronicle_open)
-	var left := minf(CARD_W + GAP, maxf(safe.size.x - 480.0, 0.0))
+	var left := minf(CARD_W + 2.0 * GAP, maxf(safe.size.x - 480.0, 0.0))
 	return Rect2(safe.position.x + left, safe.position.y, safe.size.x - left, safe.size.y)
 
 
@@ -123,15 +128,17 @@ static func find_spot(size: Vector2, preferred: Vector2, safe: Rect2, blockers: 
 ## is not showing. Returns {"rects": {name: Rect2}, "overflow": [names that found no free spot]}: an overflowing piece is
 ## still given a rect (at its preferred spot, squeezed into the safe area) so something is drawn, and the caller reports it.
 ## The give-way order is FLOATING's: each piece takes its spot first and the later ones go around it.
-##   playback, closeup  the board's playback bar and the fortress chip, top centre of the safe area
+##   playback, closeup  the board's playback bar and the fortress chip, top centre of the framing area (clamped into the safe area)
 ##   caption            the playback's phase caption, centred under the bar
-##   card               docked bottom left of the safe area, as tall as it needs; it shrinks (and scrolls) for a piece above
+##   notice             top left of the safe area, hanging under the realm plaque, as wide as the card
+##   guide              under the notice (or at the top left); below a playback bar that is in its way
+##   card               docked bottom left of the safe area, as tall as it needs; it shrinks (and scrolls) for the notice, the guide or
+##                      a playback bar above it
 ##   legend             the lens legend, top right of the safe area
-##   notice             top left of the safe area, hanging under the realm plaque
-##   guide              under the notice (or at the top left), moving right of a card, or below a bar, that is in its way
 ##   hover              the move forecast, along the bottom of the safe area to the right of the card
 static func arrange(viewport: Vector2, pieces: Dictionary, chronicle_open: bool = false) -> Dictionary:
 	var safe := safe_area(viewport, chronicle_open)
+	var frame := framing_area(viewport, chronicle_open)
 	var rects := {}
 	var overflow := []
 	var blockers: Array = []
@@ -143,10 +150,11 @@ static func arrange(viewport: Vector2, pieces: Dictionary, chronicle_open: bool 
 		var preferred := safe.position + Vector2(GAP, GAP)
 		match name:
 			"playback", "closeup":
-				preferred = Vector2(safe.get_center().x - size.x * 0.5, safe.position.y + GAP)
+				preferred = Vector2(_centred_x(frame.get_center().x, size.x, safe), safe.position.y + GAP)
 			"caption":
 				var top: float = (rects["playback"] as Rect2).end.y + GAP if rects.has("playback") else safe.position.y + GAP
-				preferred = Vector2(safe.get_center().x - size.x * 0.5, top)
+				var middle: float = (rects["playback"] as Rect2).get_center().x if rects.has("playback") else frame.get_center().x
+				preferred = Vector2(_centred_x(middle, size.x, safe), top)
 			"card":
 				preferred = Vector2(safe.position.x + GAP, safe.end.y - GAP - size.y)
 			"legend":
@@ -163,6 +171,10 @@ static func arrange(viewport: Vector2, pieces: Dictionary, chronicle_open: bool 
 			var squeezed := _squeeze_card(Rect2(preferred, size), blockers)
 			at = squeezed.position
 			size = squeezed.size
+			for b: Rect2 in blockers:
+				if overlaps(squeezed, b):
+					overflow.append("card")  # no room even squeezed to CARD_MIN_H: the caller reports it
+					break
 		elif name not in ["playback", "closeup", "caption"]:
 			at = find_spot(size, preferred, safe, blockers)
 			if at.x == INF:
@@ -172,6 +184,11 @@ static func arrange(viewport: Vector2, pieces: Dictionary, chronicle_open: bool 
 		rects[name] = r
 		blockers.append(r)
 	return {"rects": rects, "overflow": overflow}
+
+
+## The left edge of a piece `width` wide centred on `middle`, kept inside the safe area.
+static func _centred_x(middle: float, width: float, safe: Rect2) -> float:
+	return clampf(middle - width * 0.5, safe.position.x + GAP, maxf(safe.end.x - GAP - width, safe.position.x + GAP))
 
 
 ## A card that would overlap a piece above it gives up height from its top, down to CARD_MIN_H, and scrolls.

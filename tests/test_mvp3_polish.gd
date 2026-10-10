@@ -3,8 +3,9 @@ extends "res://tests/test_case.gd"
 ## test_neutral_fort_text.gd). Headless, through the real screens. What each test pins:
 ##   1  the first-game guide folds the other systems' lines behind one row (every explanation still reachable), keeps its fog
 ##      line, and the first fog turn's banner waits for it instead of stacking beside it;
-##   12 (the second walk's) the card stays short and hangs under the realm plaque, in the Table's safe area, and moves clear of a
-##      selection card (UX-1; it hung under the top bar, whatever height the bar had);
+##   12 (the second walk's) the card stays short and hangs under the realm plaque at the top of the Table's left column, with the
+##      selection card docked under it and the map framed to their right (UX-1; it hung under the top bar, whatever height the bar
+##      had; the review found it covering Westwatch at 125% when it was placed right of the card);
 ##   3  the new game screen's computer paragraph is one short line with a link to its codex entry;
 ##   5, 4 the system row holds every button and shows icons only under 1600 logical width; the hint has the tray (UX-1; the old
 ##      top bar gave the hint a row of its own and the optional buttons a second row when the first was too narrow). The real
@@ -114,7 +115,7 @@ func test_the_card_is_short_with_every_system_on() -> void:
 	_unseen()
 
 
-func test_the_guide_hangs_in_the_safe_area_and_moves_clear_of_a_card() -> void:
+func test_the_guide_leads_the_left_column_with_the_card_docked_under_it() -> void:
 	var g := FirstGameGuide.new()
 	assert_eq(g.offset_top, FirstGameGuide.TOP, "by itself it hangs where it starts")
 	assert_eq(FirstGameGuide.TOP, TableLayout.TOP_LEFT_H + TableLayout.GAP, "which is the top left of the board's safe area, under the realm plaque")
@@ -130,7 +131,9 @@ func test_the_guide_hangs_in_the_safe_area_and_moves_clear_of_a_card() -> void:
 		var rect: Rect2 = hud.placed()["guide"]
 		var card: Rect2 = hud.placed()["card"]
 		assert_true(safe.encloses(rect), "the guide stays inside the safe area at %s (%s in %s)" % [viewport, rect, safe])
-		assert_false(TableLayout.overlaps(rect, card), "and clear of the selection card at %s (%s, %s)" % [viewport, rect, card])
+		assert_eq(rect.position, safe.position + Vector2(TableLayout.GAP, TableLayout.GAP), "at the top of the left column, under the realm plaque at %s" % viewport)
+		assert_false(TableLayout.overlaps(rect, card), "with the selection card docked under it, not over it at %s (%s, %s)" % [viewport, rect, card])
+		assert_true(rect.end.x <= TableLayout.framing_area(viewport).position.x, "and left of the area the board frames the map in, so it never covers the map at %s" % viewport)
 		assert_true(hud.overflowed().is_empty(), "nothing found no room at %s: %s" % [viewport, hud.overflowed()])
 	game.free()
 	_unseen()
