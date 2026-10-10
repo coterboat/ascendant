@@ -1538,8 +1538,11 @@ static func _setup_enchantments(s: Dictionary, state: GameState, pid: String) ->
 			var hit := false
 			for f in s.fighters:
 				if Array(e.armies).has(f.army):
-					blessed[f.ord] = true
-					hit = true
+					hit = true  # the side has an army under the blessing
+					# ARM-1 (design/ARM1_SPLIT_MERGE.md §2.1): a fighter is blessed only if its army is listed AND it is not
+					# marked outside this blessing (it joined the army after the casting): MagicRules.covers, per fighter
+					if MagicRules.covers(e, String(f.army), f.unit):
+						blessed[f.ord] = true
 			if hit:
 				blessings.append(e)
 		elif ritual == "blood_moon":

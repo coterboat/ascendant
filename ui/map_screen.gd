@@ -254,7 +254,7 @@ func _select_province(province_id: String, keep_army: bool) -> void:
 			cast_dialog.nudge("%s is out of this ritual's reach. Pick a lit province, or cancel." % state.find_province(province_id).name)
 		return
 	# Two-click move: with one of your armies selected, clicking another province orders it there.
-	var mover := state.find_army(selected_army_id)
+	var mover := board_army(selected_army_id)  # ARM-1: an army a queued muster forms can be given its move too
 	if mover and orders and mover.owner == viewing_faction_id and mover.location != province_id:
 		var refused := queue_move(mover.id, province_id)
 		if refused.is_empty():
@@ -267,7 +267,7 @@ func _select_province(province_id: String, keep_army: bool) -> void:
 		status_text = ""
 	clear_preview()
 	selected_province_id = province_id
-	var army := state.find_army(selected_army_id)
+	var army := board_army(selected_army_id)
 	if army == null or army.location != province_id or not keep_army:
 		selected_army_id = ""
 	for id in regions:
@@ -278,8 +278,22 @@ func _select_province(province_id: String, keep_army: bool) -> void:
 	province_selected.emit(province_id)
 
 
+## The state the cards and the orders read (ARM-1, design/ARM1_SPLIT_MERGE.md §3): `state`, or, when a muster is queued, the board
+## those musters leave (OrdersController.view_state), where the armies they form already stand with their real ids.
+func board_state() -> GameState:
+	if state == null or orders == null or not MusterRules.has_musters(orders.orders()):
+		return state
+	return orders.view_state()
+
+
+## Army `army_id` on that board: a real army, or one a queued muster forms (null when it is neither).
+func board_army(army_id: String) -> Army:
+	var board := board_state()
+	return board.find_army(army_id) if board != null else null
+
+
 func select_army(army_id: String) -> void:
-	var army: Army = state.find_army(army_id) if state else null
+	var army: Army = board_army(army_id)
 	if army == null:
 		return
 	selected_army_id = army_id
@@ -293,7 +307,7 @@ func select_army(army_id: String) -> void:
 func preview_move(province_id: String) -> String:
 	_bind()
 	var text := ""
-	var army: Army = state.find_army(selected_army_id) if state else null
+	var army: Army = board_army(selected_army_id) if state else null
 	if orders and army and army.owner == viewing_faction_id and army.location != province_id \
 			and state.find_province(province_id) != null:
 		var glance := MoveGlance.build(orders, army.id, province_id)
@@ -947,6 +961,20 @@ func queue_move(army_id: String, to_province: String) -> String:
 	return reason
 
 
+## ARM-1: queues a muster (a split, a transfer, a merge or a swap of commanders between your armies in one province). Returns ""
+## or the rules' reason, which is the forecast's own (MusterForecast.refusal), also shown on the card.
+func queue_muster(order: MusterOrder) -> String:
+	var reason := orders.queue_muster(order)
+	if reason.is_empty():
+		status_text = "%s Armies muster first when the turn ends, before anything moves, so a new army can be given a move now. Cancel muster on the army's card, or the cross in the tray's Orders list, undoes it.%s" % [
+			orders.order_text(orders.orders().size() - 1), _removed_text(orders.last_removed())]
+	else:
+		status_text = reason
+	_order_sound(reason, "")
+	_orders_changed()
+	return reason
+
+
 ## Queues one recruit at the capital. Returns "" or the rules' reason (also shown in the panel).
 func queue_recruit(unit_type_id: String) -> String:
 	var reason := orders.queue_recruit(unit_type_id)
@@ -1083,7 +1111,7 @@ func _update_road_targets() -> void:
 	if state == null or orders == null:
 		return
 	var targets := {}
-	var army := state.find_army(selected_army_id)
+	var army := board_army(selected_army_id)
 	if army != null and army.owner == viewing_faction_id:
 		targets = orders.road_destinations(army.id)
 	for id in regions:
@@ -1152,7 +1180,7 @@ func _draw_order_arrows() -> void:
 	for o in orders.orders():
 		if not (o is MoveOrder):
 			continue
-		var army := state.find_army(o.army_id)
+		var army := board_army(o.army_id)  # ARM-1: the arrow of a new army starts where its split happened
 		if army == null or not MapLayout.has_position(army.location) or not MapLayout.has_position(o.to):
 			continue
 		var a := MapLayout.position_of(army.location)
@@ -1208,7 +1236,7 @@ func show_orders() -> void:
 ## Tells the selection host what is selected. `force` is a click: the card opens even if it was closed, and even for the same
 ## selection again. Without it (a new state) a closed card stays closed.
 func _announce_selection(force: bool) -> void:
-	var army: Army = state.find_army(selected_army_id) if state != null else null
+	var army: Army = board_army(selected_army_id) if state != null else null
 	var province: Province = state.find_province(selected_province_id) if state != null else null
 	var kind := ""
 	var id := ""

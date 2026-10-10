@@ -33,6 +33,7 @@ var cancel_buttons: Array = []
 var siege_panel: FortPanel = null
 var others_box: VBoxContainer = null
 var strip: UnitStrip = null
+var muster_board: MusterBoard = null  # ARM-1: the card's Armies here (it is also others_box)
 
 
 static func make(host: MapScreen, id: String) -> ArmyCard:
@@ -72,6 +73,8 @@ func order_indexes(a: Army) -> Array:
 			out.append(i)
 		elif o is SiegeOrder and o.is_sally() and o.army_id == a.id:
 			out.append(i)
+		elif o is MusterOrder and (o.from_army == a.id or o.to_army == a.id or orders.muster_forms(i) == a.id):
+			out.append(i)  # ARM-1: the muster that formed, merged or changed this army
 	return out
 
 
@@ -88,7 +91,8 @@ func _build() -> void:
 	_build_panel(a, mine)
 	if mine:
 		_add_siege_section(a)
-		_add_other_armies(a)
+		if a.ruler != null:
+			_add_other_armies(a, self)  # a ruler's card lists the others at its foot; an army's own has Armies here under its portraits
 
 
 # --- your army or a rival's, seen exactly -------------------------------------------------------------
@@ -132,6 +136,8 @@ func _build_panel(a: Army, mine: bool) -> void:
 
 	if a.ruler == null:
 		_add_stats(a, box)
+		if mine:
+			_add_other_armies(a, box)  # ARM-1: Armies here, right under the portraits, so a drag never has to scroll
 	elif FogView.active(state):
 		_add_sight_line(a, box)
 	if a.ruler != null:
@@ -275,6 +281,9 @@ func _add_actions(a: Army, box: Control) -> void:
 	# Cancel its order.
 	for i in list:
 		var cancel := action_button("CancelButton", "Cancel order", "dismiss", "Cancel this order. Nothing happens until the turn ends, so you can change your mind.")
+		if orders.orders()[i] is MusterOrder:  # ARM-1: say which: an army can have a muster and a move
+			cancel.text = "Cancel muster"
+			cancel.tooltip_text = TooltipText.plain("Cancel muster", "Cancel this split, merge or swap. Orders that rely on it, like a move for the army it formed, go with it, and the status line says which. Nothing happens until the turn ends.")
 		cancel.pressed.connect(map.cancel_order.bind(i))
 		cancel_buttons.append(cancel)
 		actions.add_child(cancel)
@@ -341,9 +350,16 @@ func _add_magic_lines(a: Army, box: Control) -> void:
 	var blessing := MagicRules.blessing_of(state, a.id)
 	if not blessing.is_empty():
 		var heal := int(MagicRules.spell_numbers(String(blessing.ritual), int(blessing.bonus)).value)
-		var line := add_text("Blessed: %s, through turn %d" % [MagicRules.spell_name(String(blessing.ritual)), int(blessing.until_turn)],
-			TooltipText.plain("Blessed", "This army heals %d hit points at the end of every turn through turn %d, one at a time to its most wounded fighter, wherever it goes, and a side at least half blessed fights with +1 morale. %s" % [
-				heal, int(blessing.until_turn), RulesCodex.text("blessing")]), UiPalette.GILT, box)
+		# ARM-1 (§2.1): the blessing covers fighters one by one; the ones that joined the army after it was cast are outside it
+		var cov := MagicRules.blessing_coverage(state, a)
+		var counts := ""
+		var counts_tip := ""
+		if int(cov.outside) > 0:
+			counts = " (%s)" % MagicRules.coverage_words(cov)
+			counts_tip = " It blesses %s. The others joined the army after it was cast, by a muster or as recruits, so it neither heals them nor counts them for morale; casting it again covers everyone in the army." % MagicRules.coverage_words(cov)
+		var line := add_text("Blessed: %s, through turn %d%s" % [MagicRules.spell_name(String(blessing.ritual)), int(blessing.until_turn), counts],
+			TooltipText.plain("Blessed", "This army heals %d hit points at the end of every turn through turn %d, one at a time to its most wounded fighter, wherever it goes, and a side at least half blessed fights with +1 morale.%s %s" % [
+				heal, int(blessing.until_turn), counts_tip, RulesCodex.text("blessing")]), UiPalette.GILT, box)
 		line.name = "BlessedLine"
 		CodexLink.attach(line, "blessing", map.request_codex)
 	var fading := {}
@@ -404,20 +420,32 @@ func _add_sight_line(a: Army, box: Control) -> void:
 	link(l, "army_sight")
 
 
-# --- your other armies here (ARM-1's place) -------------------------------------------------------------
+# --- your armies here (ARM-1) --------------------------------------------------------------------------
 
-## Your other armies in this province, each on its own row of portraits, in the order the province lists them. ARM-1
-## (design/ARM1_SPLIT_MERGE.md §8) gives these rows drag, Split, Merge all and Swap commanders; until then a row selects its army.
-func _add_other_armies(a: Army) -> void:
+## Your armies in this province (design/ARM1_SPLIT_MERGE.md §8, UX_WAR_TABLE §3.5): the MusterBoard, where portraits are dragged between
+## them or to a new army and Split, Merge all and Swap commanders reshape them, with the forecast before anything is ordered. It is
+## shown for an army that has another of yours beside it, or more than one fighter to split. A ruler's army only lists the others,
+## each a row that selects its army: a ruler travels alone.
+func _add_other_armies(a: Army, parent: Control) -> void:
 	var others := state.armies.filter(func(o): return o.location == a.location and o.id != a.id and o.owner == viewing_faction_id \
 		and not FogView.is_stand_in(o))
+	if a.ruler == null and (not others.is_empty() or a.units.size() + (1 if a.commander != null else 0) >= 2):
+		muster_board = MusterBoard.make(map, a)
+		parent.add_child(muster_board)
+		others_box = muster_board
+		if strip != null:
+			muster_board.adopt_strip(strip)  # this army's own portraits are ticked and dragged from the top of the card
+		return
 	if others.is_empty():
 		return
-	add_heading("Your other armies here", 18)
+	add_heading("Your other armies here", 18, parent)
 	others_box = VBoxContainer.new()
 	others_box.name = "ArmiesHere"
 	others_box.add_theme_constant_override("separation", 6)
-	add_child(others_box)
+	parent.add_child(others_box)
+	var note := add_text("A ruler travels alone: its army can't be split, merged or swapped.", TooltipText.plain("Rulers travel alone", RulesCodex.text("ruler_army")),
+		UiPalette.TEXT_SECONDARY, others_box)
+	note.name = "RulerAlone"
 	for o in others:
 		others_box.add_child(ArmyRow.make(map, o, true))
 

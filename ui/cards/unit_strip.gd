@@ -83,6 +83,9 @@ func _ruler_chip(state: GameState, army: Army, request_codex: Callable) -> Chip:
 
 
 ## One fighter: its portrait and, under it, its hit-point bar. Takes the mouse so its tooltip shows.
+## ARM-1 (design/ARM1_SPLIT_MERGE.md §8): a chip can be picked (a click ticks it for the next Split or drag) and dragged to another
+## army of yours. `pick_toggle` is called with the chip on a click and `drag_data` with the chip when a drag starts (returning the
+## payload, or null for none); MusterBoard sets both on the chips of your armies, and no other strip does.
 class Chip extends Control:
 	var unit_ref: Unit = null
 	var army_id := ""
@@ -91,10 +94,49 @@ class Chip extends Control:
 	var hp := 0
 	var max_hp := 0
 	var bar_h := 0.0
+	var picked := false
+	var pick_toggle: Callable = Callable()
+	var drag_data: Callable = Callable()
+	var drag_label: Callable = Callable()
 	var _portrait: Control
 
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
+
+	func _gui_input(event: InputEvent) -> void:
+		if pick_toggle.is_valid() and event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			pick_toggle.call(self)
+			accept_event()
+
+	func _get_drag_data(_at_position: Vector2) -> Variant:
+		if not drag_data.is_valid():
+			return null
+		var data = drag_data.call(self)
+		if data == null:
+			return null
+		var preview := Label.new()
+		preview.text = String(drag_label.call(data)) if drag_label.is_valid() else "1 fighter"
+		preview.add_theme_font_size_override("font_size", 17)
+		preview.add_theme_color_override("font_color", UiPalette.GILT)
+		var box := PanelContainer.new()
+		box.add_theme_stylebox_override("panel", CardBase.raised_style(UiPalette.GILT, 2))
+		box.add_child(preview)
+		set_drag_preview(box)
+		return data
+
+	func set_picked(on: bool) -> void:
+		picked = on
+		queue_redraw()
+
+	## A chip takes the mouse (its tooltip, its click), so a drop on it would stop here: it hands the drop to its army's row.
+	var drop_row: Control = null
+
+	func _can_drop_data(at_position: Vector2, data: Variant) -> bool:
+		return drop_row != null and is_instance_valid(drop_row) and drop_row._can_drop_data(at_position, data)
+
+	func _drop_data(at_position: Vector2, data: Variant) -> void:
+		if drop_row != null and is_instance_valid(drop_row):
+			drop_row._drop_data(at_position, data)
 
 	func setup(card: Control, current_hp: int, max_hit_points: int, with_bar: bool) -> void:
 		_portrait = card
@@ -113,6 +155,9 @@ class Chip extends Control:
 		return bar_h > 0.0
 
 	func _draw() -> void:
+		if picked and _portrait != null:
+			# ARM-1: ticked for the next Split or drag: a gilt frame, thick enough to read without colour
+			draw_rect(Rect2(Vector2.ZERO, _portrait.custom_minimum_size).grow(2.0), UiPalette.GILT, false, 3.0)
 		if bar_h <= 0.0 or _portrait == null:
 			return
 		var f := fraction()

@@ -22,7 +22,7 @@ var wants_forecast := false
 
 var state: GameState:
 	get:
-		return map.state
+		return map.board_state()  # ARM-1: the board a queued muster leaves (the state itself when none is queued)
 var orders: OrdersController:
 	get:
 		return map.orders

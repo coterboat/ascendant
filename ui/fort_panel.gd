@@ -35,7 +35,7 @@ var expanded := true
 ## and nothing the viewer could build there). `with_fortify` false leaves the Fortify controls out (the province card shows them
 ## as its own action, FortifyControls). `open` false shows only the SUMMARY lines until set_expanded(true).
 static func make(host: MapScreen, pid: String, with_fortify_controls: bool = true, open: bool = true) -> FortPanel:
-	var s := host.state
+	var s := host.board_state()
 	var p := s.find_province(pid) if s != null else null
 	if p == null or not s.sieges:
 		return null
@@ -57,7 +57,7 @@ static func make(host: MapScreen, pid: String, with_fortify_controls: bool = tru
 ## "sally" (their own fort is besieged with walls left: Sally, or hold) or "". The panel's choices and the army card's siege
 ## action follow the same rule.
 static func siege_choice(host: MapScreen, pid: String) -> String:
-	var s := host.state
+	var s := host.board_state()
 	var p := s.find_province(pid) if s != null else null
 	if p == null or not s.sieges or host.orders == null or s.find_faction(host.viewing_faction_id) == null:
 		return ""
@@ -90,7 +90,7 @@ func _init() -> void:
 
 
 func _build() -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var p := s.find_province(province_id)
 	var viewer := map.viewing_faction_id
 	var stands := p.fort_level > 0 and SiegeRules.siege_stands(s, province_id)
@@ -126,7 +126,7 @@ func _build() -> void:
 # --- what the fort is ----------------------------------------------------------------------------------
 
 func _add_status(p: Province, stands: bool) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	if stands:
 		var who := FortView.besieger_name(s, province_id)
 		var n := SiegeRules.turn_of_siege(s, province_id)
@@ -142,7 +142,7 @@ func _add_status(p: Province, stands: bool) -> void:
 
 
 func _add_walls(p: Province) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var walls := Breakdown.walls(s, province_id)
 	var bar := WallsBar.new(p.walls, SiegeRules.walls_max(p.fort_level), 14.0, 1.0)
 	bar.name = "WallsBar"
@@ -164,7 +164,7 @@ func _add_walls(p: Province) -> void:
 
 
 func _add_recruits(p: Province, viewer: String) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var mine := p.owner == viewer and map.orders != null
 	var b := Breakdown.recruit_limit(s, province_id, viewer if mine else p.owner, map.orders.orders() if mine else [])
 	var text := "Recruits: %d a turn (%s)" % [int(b.total), SiegeRules.level_word(p.fort_level)]
@@ -178,7 +178,7 @@ func _add_recruits(p: Province, viewer: String) -> void:
 # --- the siege -----------------------------------------------------------------------------------------
 
 func _add_siege(p: Province, viewer: String) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var inside := SiegeRules.garrison(s, province_id)
 	var outside := SiegeRules.besiegers(s, province_id)
 	_number("InsideLabel", "Inside the walls: %s (%s)" % [_names(inside), _count(SiegeRules.troops(inside), "troop")],
@@ -205,7 +205,7 @@ func _add_siege(p: Province, viewer: String) -> void:
 
 
 func _add_cut_off(p: Province) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var info := SiegeRules.cut_off_info(s, province_id)
 	var b := Breakdown.cut_off(s, province_id)
 	var who := FortView.besieger_name(s, province_id)
@@ -224,7 +224,7 @@ func _add_cut_off(p: Province) -> void:
 # --- the viewer's choices ------------------------------------------------------------------------------
 
 func _add_sally(p: Province, viewer: String) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var o := map.orders
 	_add_garrison_odds(p, viewer)
 	_heading("SallyHeading", "Sally: come out and fight", "sally")
@@ -286,7 +286,7 @@ func _add_sally(p: Province, viewer: String) -> void:
 ## The garrison's odds lines (S-2, §9.2), before its choices: holding a storm, a sally with every army but the
 ## ruler's, and a relief with that sally.
 func _add_garrison_odds(p: Province, viewer: String) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var fc := FortView.siege_forecast(s, viewer, province_id, map.orders.orders())
 	if not fc.has("storm_odds") and not fc.has("sally_odds"):
 		return
@@ -310,7 +310,7 @@ func _odds_line(node_name: String, text: String, odds: Dictionary, title: String
 
 
 func _add_storm(p: Province, viewer: String) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var o := map.orders
 	_heading("StormHeading", "Storm or wait", "storm")
 	var toggle := CheckButton.new()
@@ -413,7 +413,7 @@ func _label(node_name: String, text: String, colour: Color, parent: Control = nu
 
 ## "the Crown's 3rd and King Corvane I" for armies.
 func _names(armies: Array) -> String:
-	return RulerRules._and_list(armies.map(func(a): return TurnReportText.army_name(map.state, a.id, a.owner)))
+	return RulerRules._and_list(armies.map(func(a): return TurnReportText.army_name(map.board_state(), a.id, a.owner)))
 
 
 static func _count(n: int, singular: String, plural: String = "") -> String:

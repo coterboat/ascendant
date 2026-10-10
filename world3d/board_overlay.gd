@@ -590,6 +590,9 @@ func army_tooltip(aid: String, with_link: bool = true) -> String:
 	var st: GameState = map.state
 	var a: Army = st.find_army(aid)
 	if a == null:
+		st = map.board_state()  # ARM-1: an army only a queued muster forms is on the board the plan leaves
+		a = st.find_army(aid) if st != null else null
+	if a == null:
 		return ""
 	var key: String = "ruler_army" if a.ruler != null else TooltipText.codex_for("army_units", Breakdown.army_units(st, a.id))
 	var text := ""
@@ -621,6 +624,9 @@ func standing_note(aid: String) -> String:
 	var map: Control = board.map
 	var st: GameState = map.state
 	var a: Army = st.find_army(aid)
+	if a == null:
+		st = map.board_state()  # ARM-1: an army only a queued muster forms is on the board the plan leaves
+		a = st.find_army(aid) if st != null else null
 	if a == null:
 		return ""
 	var gathered: Dictionary = board.armies.gathered
@@ -738,23 +744,8 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	if board == null or not board.prepared or board.map == null:
 		return
-	var map: Control = board.map
-	if not _playing and map.orders != null and map.state != null:
-		for o in map.orders.orders():
-			if o is MoveOrder:
-				_draw_move(o.army_id, o.to, o.via if o.is_road_move() else "", false)
-		## the hover preview: the move a click would order, dashed
-		var army: Army = map.state.find_army(map.selected_army_id)
-		var hov: String = board.hover_id
-		if army != null and army.owner == map.viewing_faction_id and not hov.is_empty() and hov != army.location \
-				and map.hover_panel.visible:
-			var via := ""
-			var dest: Dictionary = map.orders.road_destinations(army.id)
-			if dest.has(hov) and not (dest[hov] as Array).is_empty():
-				via = dest[hov][0]
-			var here: Province = map.state.find_province(army.location)
-			if (here != null and here.neighbors.has(hov)) or not via.is_empty():
-				_draw_move(army.id, hov, via, true)
+	for arrow in arrow_plan():
+		_draw_move(String(arrow.army), String(arrow.to), String(arrow.via), bool(arrow.preview))
 	if _playing:
 		for c in board.armies.clashes_now():
 			_draw_clash(board.project3(c["at"] + Vector3(0, 10, 0)), float(c["k"]), String(c["label"]))
@@ -764,13 +755,40 @@ func _draw() -> void:
 		_draw_compass(Vector2(size.x - 44.0, size.y - 52.0), deg_to_rad(yaw))
 
 
+## The move arrows the board shows now: [{"army", "to", "via", "preview"}], one per queued move of the viewing faction and, with
+## one of your armies selected and a province hovered, the dashed preview of the move a click would order. None while a turn plays.
+## ARM-1: an army is looked up on the board the plan leaves (MapScreen.board_army), so an army a queued muster forms has its arrow
+## and its preview from where it was split off, though its formation stands on the real board only once the turn resolves.
+func arrow_plan() -> Array:
+	var out := []
+	var map: Control = board.map if board != null else null
+	if _playing or map == null or map.orders == null or map.state == null:
+		return out
+	for o in map.orders.orders():
+		if o is MoveOrder:
+			out.append({"army": o.army_id, "to": o.to, "via": o.via if o.is_road_move() else "", "preview": false})
+	var army: Army = map.board_army(map.selected_army_id)
+	var hov: String = board.hover_id
+	if army != null and army.owner == map.viewing_faction_id and not hov.is_empty() and hov != army.location and map.hover_panel.visible:
+		var via := ""
+		var dest: Dictionary = map.orders.road_destinations(army.id)
+		if dest.has(hov) and not (dest[hov] as Array).is_empty():
+			via = dest[hov][0]
+		var here: Province = map.state.find_province(army.location)
+		if (here != null and here.neighbors.has(hov)) or not via.is_empty():
+			out.append({"army": army.id, "to": hov, "via": via, "preview": true})
+	return out
+
+
 ## A move along the roads: [army's province, (the way through), destination], each hop centre to the
 ## border crossing to the next centre, projected point by point so it lies along the land.
-func _draw_move(army_id: String, to: String, via: String, preview: bool) -> void:
+## The screen points of a move's road: [army's province, (the way through), destination] as projected, empty when the army is not on
+## the board the plan leaves, a hop has no road or a point is off the view.
+func move_points(army_id: String, to: String, via: String) -> PackedVector2Array:
 	var map: Control = board.map
-	var army: Army = map.state.find_army(army_id)
+	var army: Army = map.board_army(army_id)  # ARM-1: an army a queued muster forms has its arrow from where it was split off
 	if army == null:
-		return
+		return PackedVector2Array()
 	var t = board.wv.terrain
 	var hops: Array = [army.location]
 	if not via.is_empty():
@@ -779,7 +797,7 @@ func _draw_move(army_id: String, to: String, via: String, preview: bool) -> void
 	var pts := PackedVector2Array()
 	for k in range(hops.size() - 1):
 		if t.index_of(hops[k]) < 0 or t.index_of(hops[k + 1]) < 0:
-			return
+			return PackedVector2Array()
 		var path: PackedVector2Array = t.road_path(hops[k], hops[k + 1])
 		for q in range(path.size()):
 			if k > 0 and q == 0:
@@ -791,10 +809,15 @@ func _draw_move(army_id: String, to: String, via: String, preview: bool) -> void
 	var world := _trim(pts, start_r, end_r)
 	var screen := PackedVector2Array()
 	for p in _resample(world, 5.0):
-		var s: Vector2 = board.project(p, 1.5)
-		if s.x < -9999:
-			return
-		screen.append(s)
+		var sp: Vector2 = board.project(p, 1.5)
+		if sp.x < -9999:
+			return PackedVector2Array()
+		screen.append(sp)
+	return screen
+
+
+func _draw_move(army_id: String, to: String, via: String, preview: bool) -> void:
+	var screen := move_points(army_id, to, via)
 	if screen.size() < 2:
 		return
 	var tip: Vector2 = screen[screen.size() - 1]
@@ -815,6 +838,7 @@ func _draw_move(army_id: String, to: String, via: String, preview: bool) -> void
 	draw_colored_polygon(PackedVector2Array([tip + dir * 3.0, base + side * 15.0, base - side * 15.0]), ARROW_HALO)
 	draw_colored_polygon(PackedVector2Array([tip, base + side * 11.0, base - side * 11.0]), ARROW)
 	if not via.is_empty():
+		var t = board.wv.terrain
 		var vs: Vector2 = board.project(t.centre_of(via), 1.5)
 		draw_circle(vs, 11.0, UiPalette.KEYLINE_HALO)
 		draw_circle(vs, 8.0, UiPalette.KEYLINE_INK)

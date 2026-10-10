@@ -26,6 +26,13 @@ class_name TurnResolver
 ##                is paid for (AscensionRules; _research_phase). Research orders set the target in orders.
 ##   rulers       (games with rulers, M2) Mending Light heals, rulers heal, due successors arrive.
 ##
+## Musters (ARM-1, design/ARM1_SPLIT_MERGE.md §4; rules in MusterRules): there is no phase of their own. The orders phase
+## begins with the muster pass: each faction in id order, its MusterOrders (split, merge, swap commanders) apply in the order
+## given, checked again on the real board, BEFORE MagicRules.pinned_armies and before any move, cast or siege order is
+## checked, so a new army can be given a move the same turn and holds the id the plan showed. A game where nobody musters
+## resolves exactly as before. Events (structured; the owner's report only, FogData.AUDIENCE): army_split, units_transferred,
+## armies_merged, commanders_swapped, army_disbanded.
+##
 ## Forts and sieges (M3c, design/M3C_SIEGES.md §6; rules in SiegeRules; only in a game with sieges, so every
 ## other game resolves exactly as before; phases(state) gives a game's list):
 ##   orders       Fortify orders are checked (and paid in recruitment); storm and sally orders are checked and
@@ -128,12 +135,13 @@ static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: 
 	var events: Array = []
 
 	_sacrifice_phase(s, orders_by_faction, events)  # M2-6: first, so every other order sees the new mandates
+	var tainted := _muster_phase(s, orders_by_faction, events)  # ARM-1: first in the orders phase, before any order is checked
 
 	var moves: Array = []  # of {"army_id", "faction", "from", "to"}, one per army
 	var recruits := {}  # faction id -> Array of orders, in given order (recruits and, M3c, Fortify orders)
 	var siege_orders := {"storms": {}, "sallies": {}}  # M3c: the storms and sallies that passed their checks
 	var casts := {}  # M5-6: faction id -> its cast orders that passed their checks, in the order given
-	_collect_orders(s, orders_by_faction, moves, recruits, events, siege_orders, casts)
+	_collect_orders(s, orders_by_faction, moves, recruits, events, siege_orders, casts, tainted)
 	_rituals_phase(s, casts, events)  # M5-6: games with magic only, before anyone moves
 
 	var moved := {}  # army ids that left their province this turn (they are not holding)
@@ -590,12 +598,109 @@ static func _sacrifice_phase(s: GameState, orders_by_faction: Dictionary, events
 				RulerRules.sacrifice_text(s, fid, result), "sacrifice"))
 
 
+## ARM-1: the muster pass, first in the orders phase (design/ARM1_SPLIT_MERGE.md §4). For each faction in id order, its
+## MusterOrders apply in the order given (MusterRules.apply), checked again on the real board, before anything else in the
+## phase looks at an army: MagicRules.pinned_armies, check_move, check_cast and check_siege_order all read what the musters
+## left. The plan passed the same checks on the same board (RulerRules.state_after_orders), so a muster fails here only in a
+## state the plan never saw; it is then rejected with an order_rejected event, and so is every later muster of its faction
+## (they were planned on the board it was to leave, and a new army would not get the id the plan showed). Returns
+## {faction id: {army id: true}} for the armies those musters named, so the faction's moves, casts and sieges that name
+## them are rejected too (_collect_orders), each with its reason. Events (codex "muster"; the owner's report only):
+##   army_split           a part of an army formed a new army         {from, to, units, commander, engines}
+##   units_transferred    units, a commander or engines changed army  {from, to, units, commander, engines}
+##   armies_merged        one army merged into another                {from, to, units, commander, engines, commander_left}
+##   commanders_swapped   two armies exchanged commanders             {a, b, a_commander, b_commander}
+##   army_disbanded       an army with no one left is gone            {army}
+## and, when fighters joined an army under a blessing, "outside": [{"army", "blessing", "count"}] on the first four.
+static func _muster_phase(s: GameState, orders_by_faction: Dictionary, events: Array) -> Dictionary:
+	var tainted := {}
+	for fid in _faction_ids(s):
+		var list = orders_by_faction.get(fid, [])
+		if not (list is Array) or not MusterRules.has_musters(list):
+			continue
+		var broken := false  # a muster of this faction was refused: the plan the rest were made under is gone
+		var lost := {}
+		var splits := 0  # how many of its musters form a new army: the plan gave each the next id, in order
+		for o in MusterRules.musters_of(list):
+			if o.kind == MusterOrder.TRANSFER and o.to_army.is_empty():
+				splits += 1
+		var coming: Array = s.peek_army_ids(fid, splits)
+		var next_new := 0
+		for order in list:
+			if not (order is MusterOrder):
+				continue
+			var is_split: bool = order.kind == MusterOrder.TRANSFER and order.to_army.is_empty()
+			var result := {"ok": false, "code": "muster_refused",
+				"reason": "An earlier muster of yours this turn was refused, so this one, planned on the board it was to leave, can't go ahead."}
+			if not broken:
+				result = MusterRules.apply(s, fid, order)
+			if result.ok:
+				_muster_events(s, fid, result.info, events)
+				if is_split:
+					next_new += 1
+				continue
+			broken = true
+			events.append(_rejected_event(s, fid, order, result, "orders"))
+			for id in [order.from_army, order.to_army]:
+				if not String(id).is_empty():
+					lost[String(id)] = true
+			if is_split and next_new < coming.size():
+				lost[String(coming[next_new])] = true
+				next_new += 1
+		if broken:
+			for id in coming.slice(next_new):
+				lost[String(id)] = true
+			tainted[fid] = lost
+	return tainted
+
+
+## The army a non-muster order names that a refused muster left unreal, or "" (a recruit names none).
+static func _tainted_army(order, lost: Dictionary) -> String:
+	var ids := []
+	if order is MoveOrder or order is CastOrder:
+		ids = [order.army_id]
+	elif order is SiegeOrder:
+		ids = [order.army_id, order.with_army]
+	for id in ids:
+		if lost.has(String(id)):
+			return String(id)
+	return ""
+
+
+## The events of one applied muster (MusterRules.apply's info), in order: the main event, then the disbanded army's.
+static func _muster_events(s: GameState, fid: String, info: Dictionary, events: Array) -> void:
+	var province := [String(info.province)]
+	var armies := [String(info.from), String(info.to)]
+	var numbers := {}
+	var type := ""
+	match String(info.kind):
+		MusterOrder.SWAP:
+			type = "commanders_swapped"
+			numbers = {"a": info.from, "b": info.to, "a_commander": info.commander, "b_commander": info.get("commander_b", "")}
+		MusterOrder.MERGE:
+			type = "armies_merged"
+			numbers = {"from": info.from, "to": info.to, "units": info.units.duplicate(), "commander": info.commander,
+				"engines": info.engines, "commander_left": info.commander_left, "commander_stays": info.get("commander_stays", "")}
+		_:
+			type = "army_split" if bool(info.created) else "units_transferred"
+			numbers = {"from": info.from, "to": info.to, "units": info.units.duplicate(), "commander": info.commander, "engines": info.engines}
+	if not info.outside.is_empty():
+		numbers["outside"] = info.outside.duplicate(true)
+	var e := _event(type, "orders", province, [fid], armies, "order", numbers, "", MusterRules.CODEX)
+	e["text"] = MusterRules.event_sentence(s, e)
+	events.append(e)
+	for id in info.disbanded:
+		var d := _event("army_disbanded", "orders", province, [fid], [String(id)], "order", {"army": String(id)}, "", MusterRules.CODEX)
+		d["text"] = MusterRules.event_sentence(s, d)
+		events.append(d)
+
+
 ## M3c: Fortify orders are checked here (SiegeRules.check_fortify) and join `recruits` to be paid in recruitment;
 ## storm and sally orders are checked after every move order of their faction, against all of its valid moves,
 ## and the ones that pass are recorded in `siege_orders` ({"storms": {province id: {faction id: true}},
 ## "sallies": {army id: {"faction", "with"}}}) for the battles phase.
 static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: Array, recruits: Dictionary, events: Array,
-		siege_orders: Dictionary = {}, casts: Dictionary = {}) -> void:
+		siege_orders: Dictionary = {}, casts: Dictionary = {}, tainted: Dictionary = {}) -> void:
 	var known := _faction_ids(s)
 	var unknown: Array = []
 	for key in orders_by_faction.keys():
@@ -623,9 +728,19 @@ static func _collect_orders(s: GameState, orders_by_faction: Dictionary, moves: 
 		var pins := MagicRules.pinned_armies(s, fid, list)
 		var before := []  # every order before this one but the casts that failed, as pinned_armies counts them
 		recruits[fid] = []
+		var lost: Dictionary = tainted.get(fid, {})  # ARM-1: armies a refused muster of this faction leaves the plan wrong about
 		for order in list:
 			if not (order is CastOrder):
 				before.append(order)
+			if not lost.is_empty():
+				var named := _tainted_army(order, lost)
+				if not named.is_empty():
+					events.append(_rejected_event(s, fid, order, _reject("muster_refused",
+						"%s was part of a muster that was refused this turn, so the plan this order was made under no longer holds." % RulerRules._cap(
+							TurnReportText.army_name(s, named, fid))), "orders"))
+					continue
+			if order is MusterOrder:
+				continue  # ARM-1: resolved in the muster pass, first in this phase
 			if order is MoveOrder and pins.has(order.army_id):
 				events.append(_rejected_event(s, fid, order, _reject("pinned", "%s It can't move this turn." % MagicRules.pinned_reason(
 					s, order.army_id, String(pins[order.army_id]))), "orders"))
@@ -1564,6 +1679,11 @@ static func _recruitment(s: GameState, recruits: Dictionary, events: Array, star
 				numbers["max_hp"] = placed.max_hp
 				numbers["blood_levy"] = AscensionRules.blood_levy_divisor(s, fid)
 				text += " " + AscensionRules.arrival_text(ut, int(placed.hp), int(placed.max_hp), int(numbers.blood_levy))
+			if not placed.outside.is_empty():
+				# ARM-1 (§2.1): only a recruit that joined an army under a blessing carries these, so every other event is unchanged.
+				numbers["outside_blessing"] = String(placed.outside.id)
+				numbers["outside_ritual"] = String(placed.outside.ritual)
+				text += " They aren't under its %s." % MagicRules.spell_name(String(placed.outside.ritual))
 			events.append(_event("recruited", "recruitment", [r.province], [fid], [army.id], "with_ruler" if with_ruler else "order",
 				numbers, text, "field_recruit" if with_ruler else "recruit"))
 
@@ -1633,7 +1753,16 @@ static func _add_recruit(s: GameState, faction: Faction, ut: UnitType, location:
 		max_hp = RulerRules.unit_max_hp(s, unit)
 		unit.current_hp = AscensionRules.arrival_hp(s, faction.id, ut, max_hp)  # M2-2: the maximum; M4-2: Blood Levy
 		army.units.append(unit)
-	return {"army": army, "created": created, "hp": unit.current_hp, "max_hp": max_hp}
+	# ARM-1 (design/ARM1_SPLIT_MERGE.md §2.1): a recruit that joins an army under a blessing doesn't gain it: it is marked
+	# outside it. A recruit that forms a new army joins nothing.
+	var outside := {}
+	if not created:
+		outside = MagicRules.blessing_of(s, army.id)
+		if not outside.is_empty() and String(outside.faction) == faction.id:
+			unit.add_status(UnitStatus.OUTSIDE_BLESSING, String(outside.id))
+		else:
+			outside = {}
+	return {"army": army, "created": created, "hp": unit.current_hp, "max_hp": max_hp, "outside": outside}
 
 
 static func _income(s: GameState, events: Array) -> void:
@@ -1939,6 +2068,17 @@ static func _rejected_event(s: GameState, fid: String, order, check: Dictionary,
 			armies = [order.army_id]
 		order_dict = order.to_dict()
 		codex = "cast_order"
+	elif order is MusterOrder:
+		# ARM-1: "Split 2 units from the Crown's 1st", placed where that army stands.
+		desc = MusterRules.short_text(s, fid, order)
+		var from_army := s.find_army(order.from_army)
+		if from_army != null:
+			provinces = [from_army.location]
+		armies = [order.from_army]
+		if not order.to_army.is_empty():
+			armies.append(order.to_army)
+		order_dict = order.to_dict()
+		codex = MusterRules.CODEX
 	elif order is SacrificeOrder:
 		# M2-6: name the mandate (or quote an unknown id) and put the event where the ruler stands.
 		var mandate := RulerRules.mandate_name(order.mandate_id) if not RulerRules.mandate_data(order.mandate_id).is_empty() \

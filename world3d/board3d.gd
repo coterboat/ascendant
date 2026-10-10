@@ -356,7 +356,7 @@ func _sync_marks() -> void:
 		if map.regions[id].road_target:
 			road[id] = true
 	var st: GameState = map.state
-	var army: Army = st.find_army(map.selected_army_id) if st != null else null
+	var army: Army = map.board_army(map.selected_army_id) if st != null else null  # ARM-1: it may be one a queued muster forms
 	if army != null and army.owner == map.viewing_faction_id and map.orders != null and not _playing:
 		var here := st.find_province(army.location)
 		if here != null:
@@ -413,7 +413,7 @@ func plan_of_orders() -> Dictionary:
 	var fortify := {}
 	for o in map.orders.orders():
 		if o is MoveOrder:
-			var a := st.find_army(o.army_id)
+			var a: Army = map.board_army(o.army_id)  # ARM-1: an army a queued muster forms departs too (it has no formation to gather yet)
 			if a != null and a.owner == fid:
 				departing[o.army_id] = {"to": o.to, "via": o.via if o.is_road_move() else ""}
 			continue
@@ -461,11 +461,14 @@ func plan_of_orders() -> Dictionary:
 func play_turn(before: GameState, events: Array, after: GameState) -> bool:
 	if not prepared or before == null or after == null:
 		return false
-	var plan := Playback.plan(before, events, after)
+	# ARM-1: a muster runs first in the orders phase, before anyone moves, so the turn's marches start from the armies as the
+	# musters left them: an army a split formed is seen marching the same turn (the same state when the turn held no muster)
+	var start := Playback.muster_start(before, events)
+	var plan := Playback.plan(start, events, after)
 	if Playback.is_empty(plan):
 		return false
 	exit_closeup(true)
-	shown = before
+	shown = start
 	_play_after = after
 	seats = map.seat_order() if map != null else UiPalette.seat_order(after)
 	armies.speed = float(GameSettings.load_from().playback_speed)
@@ -476,7 +479,7 @@ func play_turn(before: GameState, events: Array, after: GameState) -> bool:
 	_paint_owners(before)
 	_sync_vision(before) ## M5-3: the veil of the turn's start; the state after's sight takes the ground at the re-form
 	_playing = true
-	armies.play(plan, before, after)
+	armies.play(plan, start, after)
 	decals.begin_play() ## M5-9
 	_frame_action(plan)
 	_sync_marks()
@@ -1238,10 +1241,12 @@ func click(local: Vector2) -> void:
 func click_army(aid: String) -> void:
 	if map == null or map.state == null:
 		return
-	var army: Army = map.state.find_army(aid)
+	var army: Army = map.state.find_army(aid)  # the formation clicked stands on the real board
+	if army == null:
+		army = map.board_army(aid)
 	if army == null:
 		return
-	var mover: Army = map.state.find_army(map.selected_army_id)
+	var mover: Army = map.board_army(map.selected_army_id)  # ARM-1: the selected army may be one a queued muster forms
 	if mover != null and mover.owner == map.viewing_faction_id and mover.location != army.location:
 		map.select_province(army.location) ## your army is selected: this orders the move there
 	else:

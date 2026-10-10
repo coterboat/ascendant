@@ -39,8 +39,11 @@ var fog_intel := {}
 var book := OrderBook.new()
 var session: GameSession = null
 var _odds_cache := {}  # "army ids>province" -> move_odds() result; the state never changes under us
-var _view: GameState = null  # view_state() for the sacrifice in _view_key
-var _view_key := ""
+var _view: GameState = null  # view_state() for the plan in _view_key
+var _view_key := ""  # plan_key(): the queued sacrifice and musters _view was built for
+var _view_of: GameState = null  # the state _view was built from
+## ARM-1: the partner Merge all and Swap commanders work with, per army ({army id: partner id}), kept for the card's rebuilds.
+var muster_partners := {}
 var _removed: Array = []  # texts of the orders the last queue or cancel removed (M2-6)
 ## M3c: the garrison armies the last queue_move sent out to join its relief (tied sallies), by id.
 var last_relief: Array = []
@@ -163,13 +166,59 @@ func queued_sacrifice() -> SacrificeOrder:
 ## queued Sacrifice order applied (RulerRules.state_after_orders), because the sacrifice phase resolves
 ## first. Never changes `state`.
 func view_state() -> GameState:
-	var sac := queued_sacrifice()
-	if sac == null or state == null:
+	if state == null:
 		return state
-	if _view == null or _view_key != sac.mandate_id:
-		_view = RulerRules.state_after_orders(state, faction_id, orders())
-		_view_key = sac.mandate_id
+	var list := orders()
+	var key := plan_key(list)
+	if key.is_empty():
+		return state
+	# ARM-1 (design/ARM1_SPLIT_MERGE.md §3): a queued muster projects the board too, and any change to the sacrifice or the
+	# musters (queue, replace, remove, cancel) gives another key, so the board is rebuilt exactly when the plan changed
+	# (it used to be cached by the sacrifice's mandate alone).
+	if _view == null or _view_key != key or not is_same(_view_of, state):
+		_view = RulerRules.state_after_orders(state, faction_id, list)
+		_view_key = key
+		_view_of = state
 	return _view
+
+
+## Queues a muster (ARM-1): a split, a transfer, a merge or a swap of commanders between two armies of yours in one
+## province. Returns "" when accepted, otherwise the rules' reason. Orders it makes fail are removed: see last_removed().
+func queue_muster(order: MusterOrder) -> String:
+	return _queue(order)
+
+
+## The board the muster at `index` applies to: the state with the queued sacrifice and the musters before it applied (the
+## sacrifice phase runs first, then the musters in the order given).
+func muster_board_before(index: int) -> GameState:
+	var prior := []
+	var list := orders()
+	for i in list.size():
+		if list[i] is SacrificeOrder or (list[i] is MusterOrder and i < index):
+			prior.append(list[i])
+	return RulerRules.state_after_orders(state, faction_id, prior)
+
+
+## The id of the army the muster at `index` forms (a split into a new army), or "". The order itself names none: the next number
+## the faction hands out on the board before it.
+func muster_forms(index: int) -> String:
+	var list := orders()
+	if index < 0 or index >= list.size() or not (list[index] is MusterOrder) or not list[index].is_new_army():
+		return ""
+	return String(muster_board_before(index).peek_army_ids(faction_id, 1)[0])
+
+
+## What the projected board depends on in `list`: the queued sacrifice and the musters, in order, as text; "" when the list
+## holds neither (the board is then the state itself).
+static func plan_key(list: Array) -> String:
+	var parts := []
+	var sac := RulerRules.queued_sacrifice(list)
+	if sac != null:
+		parts.append(sac.mandate_id)
+	for o in list:
+		if o is MusterOrder:
+			parts.append(JSON.stringify(o.to_dict()))
+	return "|".join(parts)
 
 
 ## Every mandate on this faction's list for the sacrifice dialog (Forecast.sacrifice_options).
@@ -193,7 +242,7 @@ func last_removed() -> Array:
 ## away, a road move through the first legal province by id when King's Roads allow one (§2.3).
 ## Anything else stays a one-step move, which the rules then refuse with their reason.
 func move_order_for(army_id: String, to: String) -> MoveOrder:
-	var army: Army = state.find_army(army_id) if state else null
+	var army: Army = view_state().find_army(army_id) if state else null  # ARM-1: an army a queued muster forms is on the view
 	var here: Province = state.find_province(army.location) if army else null
 	if here != null and not here.neighbors.has(to):
 		var vias := RulerRules.road_vias(view_state(), faction_id, army_id, to)
@@ -206,7 +255,7 @@ func move_order_for(army_id: String, to: String) -> MoveOrder:
 ## [legal vias, sorted]}: the map draws them as road destinations. Empty when the army is not yours,
 ## already has a move, or your faction has no King's Roads.
 func road_destinations(army_id: String) -> Dictionary:
-	var army: Army = state.find_army(army_id) if state else null
+	var army: Army = view_state().find_army(army_id) if state else null
 	if army == null or army.owner != faction_id:
 		return {}
 	for o in orders():
@@ -459,6 +508,8 @@ func order_text(index: int) -> String:
 		return "%s %s" % [f.text, move_odds(o.army_id, o.to).line] if f.ok else f.reason
 	if o is SacrificeOrder:
 		return sacrifice_text(o)
+	if o is MusterOrder:  # ARM-1: the sentence, on the board the musters before it leave
+		return MusterRules.order_text(muster_board_before(index), faction_id, o)
 	if o is FortifyOrder:  # M3c
 		return fortify_text(index)
 	if o is SiegeOrder:  # M3c
@@ -469,7 +520,7 @@ func order_text(index: int) -> String:
 	if o is SpellbookOrder:  # M5-5: the battle spellbook, kept until changed
 		return "Battle spellbook: %s. Your casters try the spells in this order each round, from this turn's battles on; it is kept until you change it." % MagicRules.spellbook_text(o.order, o.off)
 	if o is CastOrder:  # M5-5; M5-6: with what it will do (its forecast; the tooltip has the rest)
-		var army := state.find_army(o.army_id)
+		var army := view_state().find_army(o.army_id)  # ARM-1: it may be an army a queued muster forms
 		var paid := "paid in blood" if o.pay == CastOrder.BLOOD else "%d gold" % int(MagicRules.price(view_state(), faction_id, o.ritual, o.size).gold)
 		var at := "at" if String(MagicRules.spell_data(o.ritual).get("kind", "")) == "summon" else "on"
 		var text := "Cast %s%s from your army at %s (%s). That army holds this turn." % [MagicRules.spell_name(o.ritual),
@@ -511,6 +562,14 @@ func order_breakdown(index: int) -> Dictionary:
 		b.description = "%s %s %s" % [String(RulerRules.mandate_data(o.mandate_id).get("effect", "")),
 			Forecast.mandate_now(view_state(), faction_id, o.mandate_id, orders()), RulesCodex.text("sacrifice")]
 		return b
+	if o is MusterOrder:  # ARM-1: the muster as the forecast says it (each army before and after), with the rule behind it
+		var plan := orders()
+		plan.remove_at(index)
+		var fc := MusterForecast.of(state, faction_id, o, plan)
+		var lines := []
+		for row in fc.get("armies", []):
+			lines.append(_line("Strength of %s after" % row.name, int(row.after.get("strength", 0)) if not row.after.is_empty() else 0, "was %d before" % int(row.before.get("strength", 0)) if not row.before.is_empty() else "it is a new army"))
+		return _bd("Muster", "%s %s" % [String(fc.get("text", "")), RulesCodex.text("muster")], lines, "Armies you change", fc.get("armies", []).size())
 	if o is MoveOrder:
 		var f := _move_forecast_at(index)
 		if not f.ok:
@@ -567,6 +626,8 @@ func order_codex_kind(index: int) -> String:
 	var o = list[index]
 	if o is SacrificeOrder:
 		return "sacrifice"
+	if o is MusterOrder:  # ARM-1
+		return MusterRules.CODEX
 	if o is ResearchOrder:  # M4-4
 		return "research_order"
 	if o is SpellbookOrder:  # M5-5
@@ -810,7 +871,7 @@ func storm_check(province_id: String) -> Dictionary:
 func sally_check(army_id: String) -> Dictionary:
 	if sally_index(army_id) >= 0:
 		return {}
-	var a := state.find_army(army_id)
+	var a := view_state().find_army(army_id)
 	var relief := relief_into(a.location) if a != null else ""
 	return OrderBook.check_order(state, faction_id, SiegeOrder.sally(army_id, relief), orders())
 
@@ -829,7 +890,7 @@ func set_storm(province_id: String, on: bool) -> String:
 func set_sally(army_id: String, on: bool) -> String:
 	var i := sally_index(army_id)
 	if on and i < 0:
-		var a := state.find_army(army_id)
+		var a := view_state().find_army(army_id)
 		return _queue(SiegeOrder.sally(army_id, relief_into(a.location) if a != null else ""))
 	if not on and i >= 0:
 		return cancel(i)
@@ -907,14 +968,14 @@ func siege_order_text(o: SiegeOrder) -> String:
 		return "Storm the walls of %s with %s: the garrison defends behind %d of %d walls (+%d defense) and its %s. To keep an army out, move it away.%s" % [
 			p.name, RulerRules._and_list(who) if not who.is_empty() else "every army of yours there", p.walls, SiegeRules.walls_max(p.fort_level),
 			SiegeRules.walls_defense(p.walls), p.terrain, " Odds: %s." % odds if not odds.is_empty() else ""]
-	var a := state.find_army(o.army_id)
+	var a := view_state().find_army(o.army_id)
 	if a == null:
 		return "Sally out with an army that is not on the map."
 	var where := _province_name(a.location)
 	var text := "Sally out of %s with %s: it fights the siege lines in the open, keeping +%d cover from the walls. If it loses, it is destroyed." % [
 		where, TurnReportText.army_name(state, a.id, a.owner), FortData.COVER_DEFENSE]
 	if not o.with_army.is_empty():
-		var relief := state.find_army(o.with_army)
+		var relief := view_state().find_army(o.with_army)
 		text += " It goes out together with the relief from %s, and stays inside if that relief doesn't arrive." % (_province_name(relief.location) if relief else "an army that is not on the map")
 	var odds2 := FortView.odds_text(FortView.siege_odds("sally", state, faction_id, a.location, orders()))
 	return text + (" Odds: %s." % odds2 if not odds2.is_empty() else "")
@@ -926,7 +987,7 @@ func siege_order_breakdown(o: SiegeOrder) -> Dictionary:
 		b.description = "%s %s" % [siege_order_text(o), RulesCodex.text("storm")]
 		b["codex"] = "storm"
 		return b
-	var a := state.find_army(o.army_id)
+	var a := view_state().find_army(o.army_id)
 	var t := FortView.troops_breakdown(state, [a] if a != null else [], "Sallying out", "sally")
 	t.description = "%s %s" % [siege_order_text(o), RulesCodex.text("sally")]
 	return t

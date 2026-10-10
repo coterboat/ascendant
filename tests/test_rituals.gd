@@ -307,9 +307,12 @@ func test_dawn_blessing_heals_its_armies_follows_them_and_their_recruits() -> vo
 	assert_eq(blessed, ids, "every army of the Crown there as it resolves")
 	assert_eq(int(blessing[0].until_turn), t + _duration("dawn_blessing", bonus))
 	assert_eq(int(blessing[0].until_turn), t + 2)
-	# The recruit joined the first army at the capital, a blessed one: it is blessed with it.
+	# The recruit joined the first army at the capital, a blessed one. Since ARM-1 (§2.1) a blessing stays with its army fighter by
+	# fighter: the army is still listed, but the recruit is marked outside the blessing (the muster tests cover it in full).
 	var recruit_army := String(_one(r, "recruited").armies[0])
-	assert_true(blessed.has(recruit_army), "recruits who join a blessed army are blessed")
+	assert_true(blessed.has(recruit_army), "the army the recruit joined is still the blessed army")
+	var joined: Unit = r.new_state.find_army(recruit_army).units[r.new_state.find_army(recruit_army).units.size() - 1]
+	assert_true(joined.has_status(UnitStatus.OUTSIDE_BLESSING, String(blessing[0].id)), "but the recruit is outside its blessing")
 	# Each blessed army heals its budget, one hit point at a time to its wounded fighter with the fewest left.
 	for army in [field, other]:
 		var now := _fighters(r.new_state.find_army(army.id))
