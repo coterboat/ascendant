@@ -21,6 +21,18 @@
 ## (world3d/choreo.gd). A pose with no model of its own shares the ready pose's mesh, so the armies draw
 ## one MultiMesh per distinct pose mesh only.
 ##
+## Attachments (ART-PIPE 3, #196): a row may carry "attachments", a list of fixtures drawn on its pose models, for the parts
+## image-to-3D loses (thin blades, spikes, wings, a held weapon): {"mesh": "res://<its GLB>", "pivot": [x, y, z], "poses":
+## {"<pose>": {"pos": [x, y, z], "rot": [x, y, z], "scale": 1.0}}}. The mesh is a model of its own (a picture of the part alone,
+## then image-to-3D), and a pose draws it only where the entry has a transform for that pose. The transform is in the pose
+## model's own space (the GLB's coordinates before the figure is sized and turned: Y up, facing +Z, no skeleton): `pos` is where
+## the mesh's `pivot` (a point of the attachment's own coordinates, default its origin) lands, `rot` is degrees in Godot's
+## Euler order (a node's rotation_degrees), `scale` a number or [x, y, z]. A figure is one mesh with one colour map, drawn by one
+## MultiMesh per pose, so the attachments are baked into the pose's mesh and their colour maps stacked under the body's in one
+## texture (the body's own pixels and sizing are untouched: the figure is sized from the body's AABB alone). A row without
+## "attachments" (or with none for a pose) builds exactly as it always did. A variant carries its own list (the row's are placed on
+## the row's models and do not follow it); an army extra draws none. tools/fixtures/ places them and bakes the same merge to a GLB.
+##
 ## Pure lookups (no nodes); the meshes are built once and cached per run.
 extends RefCounted
 
@@ -62,6 +74,7 @@ static func figure_row(type_id: String, variant: String = "") -> Dictionary:
 		return row
 	var out := row.duplicate()
 	out.erase("variants")
+	out.erase("attachments") ## a look has its own models, so the row's attachments (placed on the row's) do not follow it
 	for key in (v as Dictionary).keys():
 		out[key] = (v as Dictionary)[key]
 	return out
@@ -204,6 +217,7 @@ static func figure_mesh(type_id: String, prefer_model: bool = true, pose: String
 			var erow := row.duplicate()
 			erow["height"] = float((row.get("model_height", {}) as Dictionary).get(faction, row.get("height", 1.0)))
 			erow.erase("pose_size")
+			erow.erase("attachments") ## an extra wears another model than the row's poses: nothing is placed on it
 			erow["tint"] = float((row.get("model_tint", {}) as Dictionary).get(faction, 1.0))
 			var got := _glb_figure(extra, type_id, erow, "ready")
 			if got.is_empty():
@@ -343,6 +357,9 @@ static func problems() -> Array:
 				var pp := _pose_entry_path((poses as Dictionary)[pose])
 				if not pp.is_empty() and not ResourceLoader.exists(pp):
 					out.append("figure %s: its %s pose %s is missing" % [id, pose, pp])
+		out.append_array(attachment_problems("figure %s" % id, row.get("attachments")))
+		for vid in (row.get("variants", {}) as Dictionary).keys():
+			out.append_array(attachment_problems("figure %s variant %s" % [id, vid], ((row["variants"] as Dictionary)[vid] as Dictionary).get("attachments")))
 		if float(row.get("height", 1.0)) <= 0.0:
 			out.append("figure %s: its height must be above 0" % id)
 	var blds: Dictionary = table().get("buildings", {})
@@ -405,6 +422,14 @@ static func _glb_figure(path: String, type_id: String, row: Dictionary, pose: St
 	var xf := Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * s), Vector3.ZERO) * Transform3D(Basis(), Vector3(-c.x, -aabb.position.y, -c.z))
 	xf.origin += Vector3(0, 0.36, 0)
 	var arr: Array = mesh.surface_get_arrays(0)
+	var out_tex: Texture2D = src["tex"]
+	## ART-PIPE 3: the pose's attachments are added to the body's arrays (after it, before the base), the body's size stays its own
+	var atts := attachments_of(row, pose)
+	if not atts.is_empty():
+		var merged := _with_attachments(arr, out_tex, atts)
+		if not merged.is_empty():
+			arr = merged["arrays"]
+			out_tex = merged["tex"]
 	var b := Kit.Builder.new()
 	var pv: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 	var pn: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
@@ -422,7 +447,222 @@ static func _glb_figure(path: String, type_id: String, row: Dictionary, pose: St
 		for k in pv.size():
 			b.idx.append(k)
 	Kit._base(b, String(row.get("fallback", type_id)), bool(row.get("ruler", false)))
-	return {"mesh": with_lods(b.mesh()), "tex": src["tex"], "source": "model"}
+	return {"mesh": with_lods(b.mesh()), "tex": out_tex, "source": "model"}
+
+
+# ------------------------------------------------------------------ attachments (ART-PIPE 3)
+
+## The attachments of `pose` that a row draws: [{"mesh": path, "xf": Transform3D}], in the row's order. An entry counts only when its
+## mesh is on disk and it has a transform for `pose`. `xf` takes the attachment's own coordinates to the pose model's space.
+static func attachments_of(row: Dictionary, pose: String) -> Array:
+	var out: Array = []
+	var list: Variant = row.get("attachments")
+	if not (list is Array):
+		return out
+	for e in (list as Array):
+		if not (e is Dictionary):
+			continue
+		var p := String((e as Dictionary).get("mesh", ""))
+		var t: Variant = ((e as Dictionary).get("poses", {}) as Dictionary).get(pose)
+		if p.is_empty() or not (t is Dictionary) or not ResourceLoader.exists(p):
+			continue
+		out.append({"mesh": p, "xf": attachment_transform(t as Dictionary, _vec3((e as Dictionary).get("pivot"), Vector3.ZERO))})
+	return out
+
+
+## A figure's attachments for a pose, by unit type (and variant): attachments_of on its row.
+static func figure_attachments(type_id: String, pose: String, variant: String = "") -> Array:
+	return attachments_of(figure_row(type_id, variant), pose)
+
+
+## One attachment transform of a row ({"pos", "rot", "scale"}, all optional) as a Transform3D: the attachment's `pivot` goes to `pos`,
+## turned by `rot` (degrees, Godot's Euler order) and scaled by `scale` (a number or [x, y, z]) about the pivot.
+static func attachment_transform(t: Dictionary, pivot: Vector3 = Vector3.ZERO) -> Transform3D:
+	var sc: Variant = t.get("scale", 1.0)
+	var scale: Vector3 = _vec3(sc, Vector3.ONE) if sc is Array else Vector3.ONE * float(sc)
+	var rot: Vector3 = _vec3(t.get("rot"), Vector3.ZERO) * (PI / 180.0)
+	var basis := Basis.from_euler(rot) * Basis.from_scale(scale)
+	return Transform3D(basis, _vec3(t.get("pos"), Vector3.ZERO)) * Transform3D(Basis(), -pivot)
+
+
+static func _vec3(v: Variant, fallback: Vector3) -> Vector3:
+	if v is Array and (v as Array).size() >= 3:
+		return Vector3(float(v[0]), float(v[1]), float(v[2]))
+	return fallback
+
+
+## The body's surface arrays with the attachments' added, and the colour maps stacked into one texture: {"arrays": Array (vertex,
+## normal, uv and index, in the body's space), "tex": Texture2D}, or {} when nothing could be added (the body has no colour map, or
+## no attachment loaded). The body's rows of the stack keep their pixels and their u; their v is squeezed into the stack's top.
+## Each distinct attachment mesh is loaded once and its colour map stacked once, scaled to the body map's width, however many
+## entries use it. An attachment with no colour map is left out (it would draw in a stray colour).
+static func _with_attachments(body: Array, body_tex: Texture2D, atts: Array) -> Dictionary:
+	if body_tex == null:
+		push_warning("An attachment needs the body's colour map to stack its own under; the body has none.")
+		return {}
+	var body_img := _rgba_image(body_tex)
+	if body_img == null:
+		return {}
+	var loaded := {} ## path -> {"arr": Array, "off": int (the map's first row in the stack), "h": int, "img": Image}
+	var imgs: Array = [body_img]
+	var total_h := body_img.get_height()
+	var w := body_img.get_width()
+	var parts: Array = [] ## the attachments that loaded: {"p": path, "xf": Transform3D}
+	for a in atts:
+		var p := String(a["mesh"])
+		if not loaded.has(p):
+			var src := _load_first_mesh(p)
+			var img: Image = _rgba_image(src["tex"]) if not src.is_empty() and src["tex"] != null else null
+			if img == null:
+				push_warning("Attachment %s has no mesh or no colour map; it is left out." % p)
+				loaded[p] = {}
+				continue
+			var arr: Array = (src["mesh"] as Mesh).surface_get_arrays(0)
+			if arr[Mesh.ARRAY_VERTEX] == null:
+				loaded[p] = {}
+				continue
+			var ah := maxi(1, int(round(float(img.get_height()) * float(w) / float(img.get_width()))))
+			if img.get_width() != w or img.get_height() != ah:
+				img.resize(w, ah, Image.INTERPOLATE_LANCZOS)
+			loaded[p] = {"arr": arr, "off": total_h, "h": ah}
+			imgs.append(img)
+			total_h += ah
+		if not (loaded[p] as Dictionary).is_empty():
+			parts.append({"p": p, "xf": a["xf"]})
+	if parts.is_empty():
+		return {}
+	var atlas := Image.create(w, total_h, false, Image.FORMAT_RGBA8)
+	var y := 0
+	for img in imgs:
+		atlas.blit_rect(img, Rect2i(0, 0, (img as Image).get_width(), (img as Image).get_height()), Vector2i(0, y))
+		y += (img as Image).get_height()
+	atlas.generate_mipmaps()
+	var pv: PackedVector3Array = (body[Mesh.ARRAY_VERTEX] as PackedVector3Array).duplicate()
+	var pn := PackedVector3Array()
+	if body[Mesh.ARRAY_NORMAL] != null:
+		pn = (body[Mesh.ARRAY_NORMAL] as PackedVector3Array).duplicate()
+	var pu := PackedVector2Array()
+	if body[Mesh.ARRAY_TEX_UV] != null:
+		pu = (body[Mesh.ARRAY_TEX_UV] as PackedVector2Array).duplicate()
+	var n_body := pv.size()
+	pn.resize(n_body)
+	pu.resize(n_body)
+	var bscale := float(body_img.get_height()) / float(total_h)
+	for k in n_body:
+		pu[k] = Vector2(pu[k].x, pu[k].y * bscale)
+	var pi := PackedInt32Array()
+	if body[Mesh.ARRAY_INDEX] != null and (body[Mesh.ARRAY_INDEX] as PackedInt32Array).size() > 0:
+		pi = (body[Mesh.ARRAY_INDEX] as PackedInt32Array).duplicate()
+	else:
+		for k in n_body:
+			pi.append(k)
+	for part in parts:
+		var L: Dictionary = loaded[part["p"]]
+		var arr: Array = L["arr"]
+		var xf: Transform3D = part["xf"]
+		var av: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var an: Variant = arr[Mesh.ARRAY_NORMAL]
+		var au: Variant = arr[Mesh.ARRAY_TEX_UV]
+		var nb := xf.basis.inverse().transposed() ## normals follow the inverse transpose, so a stretched blade stays lit right
+		var base := pv.size()
+		for k in av.size():
+			pv.append(xf * av[k])
+			pn.append((nb * (an as PackedVector3Array)[k]).normalized() if an != null and k < (an as PackedVector3Array).size() else Vector3.UP)
+			var uv: Vector2 = (au as PackedVector2Array)[k] if au != null and k < (au as PackedVector2Array).size() else Vector2.ZERO
+			pu.append(Vector2(clampf(uv.x, 0.0, 1.0), (float(L["off"]) + clampf(uv.y, 0.0, 1.0) * float(L["h"])) / float(total_h)))
+		var ai: Variant = arr[Mesh.ARRAY_INDEX]
+		if ai != null and (ai as PackedInt32Array).size() > 0:
+			for k in (ai as PackedInt32Array):
+				pi.append(base + k)
+		else:
+			for k in av.size():
+				pi.append(base + k)
+	var out: Array = []
+	out.resize(Mesh.ARRAY_MAX)
+	out[Mesh.ARRAY_VERTEX] = pv
+	out[Mesh.ARRAY_NORMAL] = pn
+	out[Mesh.ARRAY_TEX_UV] = pu
+	out[Mesh.ARRAY_INDEX] = pi
+	return {"arrays": out, "tex": ImageTexture.create_from_image(atlas)}
+
+
+## What is wrong with a row's "attachments" (null or [] has nothing to check), in plain words: an entry that is no object, a mesh
+## that is missing, a pose no figure has, a transform that is not numbers (pos and rot three of them, scale one or three, not 0).
+static func attachment_problems(where: String, list: Variant) -> Array:
+	var out: Array = []
+	if list == null:
+		return out
+	if not (list is Array):
+		out.append("%s: its attachments must be a list" % where)
+		return out
+	for i in (list as Array).size():
+		var e: Variant = (list as Array)[i]
+		var at := "%s attachment %d" % [where, i]
+		if not (e is Dictionary):
+			out.append("%s: must be an object {mesh, poses}" % at)
+			continue
+		var p := String((e as Dictionary).get("mesh", ""))
+		if p.is_empty() or not ResourceLoader.exists(p):
+			out.append("%s: its mesh '%s' is missing" % [at, p])
+		if (e as Dictionary).has("pivot") and _vec3((e as Dictionary)["pivot"], Vector3(INF, 0, 0)).x == INF:
+			out.append("%s: its pivot must be [x, y, z]" % at)
+		var poses: Variant = (e as Dictionary).get("poses")
+		if not (poses is Dictionary) or (poses as Dictionary).is_empty():
+			out.append("%s: its poses must be an object of pose -> {pos, rot, scale}" % at)
+			continue
+		for pose in (poses as Dictionary).keys():
+			var t: Variant = (poses as Dictionary)[pose]
+			if not POSES.has(String(pose)):
+				out.append("%s: '%s' is no pose (%s)" % [at, pose, ", ".join(POSES)])
+			if not (t is Dictionary):
+				out.append("%s: its %s transform must be an object {pos, rot, scale}" % [at, pose])
+				continue
+			for key in ["pos", "rot"]:
+				if (t as Dictionary).has(key) and _vec3((t as Dictionary)[key], Vector3(INF, 0, 0)).x == INF:
+					out.append("%s: its %s %s must be [x, y, z]" % [at, pose, key])
+			if (t as Dictionary).has("scale"):
+				var sc: Variant = (t as Dictionary)["scale"]
+				var s3 := _vec3(sc, Vector3(INF, 0, 0)) if sc is Array else Vector3.ONE * (float(sc) if (sc is float or sc is int) else INF)
+				if not is_finite(s3.x) or s3.x == 0.0 or s3.y == 0.0 or s3.z == 0.0:
+					out.append("%s: its %s scale must be a number or [x, y, z], and not 0" % [at, pose])
+	return out
+
+
+## A texture's pixels as an RGBA8 image (a GPU-compressed colour map is decompressed first), or null.
+static func _rgba_image(tex: Texture2D) -> Image:
+	var img: Image = tex.get_image() if tex != null else null
+	if img == null or img.is_empty():
+		return null
+	img = img.duplicate()
+	if img.has_mipmaps():
+		img.clear_mipmaps()
+	if img.is_compressed():
+		img.decompress()
+	if img.get_format() != Image.FORMAT_RGBA8:
+		img.convert(Image.FORMAT_RGBA8)
+	return img
+
+
+## A pose model with its attachments baked in, in the model's own space (no sizing, turn or base): {"mesh": ArrayMesh, "tex":
+## Texture2D}, or {} when `path` is no model. With no attachment for `pose` it is the model's mesh and map as they are. What
+## tools/fixtures/bake.gd writes to a GLB (one mesh, one colour map, so the game and the Review Table read it like any model).
+static func baked_model(path: String, row: Dictionary, pose: String) -> Dictionary:
+	if path.is_empty() or not ResourceLoader.exists(path):
+		return {}
+	var src := _load_first_mesh(path)
+	if src.is_empty():
+		return {}
+	var arr: Array = (src["mesh"] as Mesh).surface_get_arrays(0)
+	var tex: Texture2D = src["tex"]
+	var atts := attachments_of(row, pose)
+	if not atts.is_empty():
+		var merged := _with_attachments(arr, tex, atts)
+		if not merged.is_empty():
+			arr = merged["arrays"]
+			tex = merged["tex"]
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return {"mesh": am, "tex": tex}
 
 
 static func _load_first_mesh(path: String) -> Dictionary:

@@ -210,6 +210,38 @@ fails on a unit type without a row or a row whose model is missing).
   `max` (the direction doc proposes one figure per two units; the table ships one per unit, at least 2,
   so an early army of 3 units reads as an army). The plate carries the exact count.
 
+#### Attachments: fixtures that are models of their own (ART-PIPE 3, #196)
+
+Image-to-3D keeps a figure's body and loses its thin parts (the Bloodsworn's forearm blades came back as a held sword, twice). A
+row may therefore carry the part as a model of its own and name where it goes on each pose:
+
+    "bloodsworn": {
+      ...,
+      "attachments": [
+        {"mesh": "res://assets/models/units/beasts/bloodsworn_blade.glb",   // a model of the part alone (a picture of it, then image-to-3D)
+         "pivot": [0, -0.42, 0],        // optional: the point of the mesh's own coordinates that lands on "pos" (its root)
+         "poses": {"strike": {"pos": [-0.30, 0.31, 0.0], "rot": [0, 25, -50], "scale": 0.34}}}   // per pose; "rot" in degrees, "scale" a number or [x, y, z]
+      ]
+    }
+
+- **Space.** `pos`, `rot` and `scale` are in the pose model's own coordinates (the GLB before the figure is sized and turned: Y up,
+  facing +Z; the models have no skeleton, so a part is placed per pose, by eye). `rot` is Godot's Euler order (a node's
+  `rotation_degrees`); scale and rotation turn about the pivot. An entry draws on a pose only where it has a transform for that pose.
+- **One mesh, one texture.** A figure is one mesh with one colour map, drawn by one MultiMesh per pose, so `Models._glb_figure` bakes
+  the attachments into the pose's mesh (after the body's vertices, before the team base) and stacks their colour maps under the body's
+  in one texture (scaled to the body map's width; one copy for a mesh used twice). The body's pixels, UVs and sizing are untouched: the
+  figure is sized from the body's box alone. So the board, the armies, the trays and the battle stage all get them with no code of their
+  own, one draw call per pose as before. A row without `attachments` (or with none for a pose) builds exactly as it did (a test pins the
+  vertices; all 156 installed figure meshes were hashed before and after this change and are identical).
+- **Looks and extras.** A variant (a transformation's look) carries its own `attachments` or none: the row's are placed on the row's
+  models and do not follow it. An army extra (bearer, musician) wears another model than the poses, so it draws none.
+- **Cost.** Every figure that wears them draws their triangles again: order the part at about 1000 faces. `Models.problems()` checks
+  the entries (mesh on disk, a pose that exists, numbers).
+- **Placing and baking.** `tools/fixtures/sheet.gd` draws a pose model with its attachments (windowed): in the model's own space on a
+  graph paper of 0.1, or as the board draws figures; `tools/fixtures/bake.gd` writes the same merge to one GLB (so a part can also be
+  baked in for good). `tools/ludo/asc_3d_fixtures.py place|bake|compare` drive them for the Bloodsworn strike (the numbers loop: edit
+  the row's numbers, `place`, look). Nothing installed uses attachments yet; `tests/test_model_attachments.gd` covers the loader.
+
 ### Tests
 
 `tests/test_board3d.gd`: the model table; project/unproject round trips and a click on every province and
