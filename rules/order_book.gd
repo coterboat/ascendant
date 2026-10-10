@@ -250,6 +250,22 @@ static func short_text(state: GameState, faction_id: String, order) -> String:
 	return "An unknown order"
 
 
+## The plain reasons of the malformed musters in `orders` ({faction id: [orders]}), in faction id order: [] when there are
+## none. A record holding one fails to load (GameSession.replay and from_record), never skips it (ARM-1 §1).
+static func malformed_musters(orders: Dictionary) -> Array:
+	var out := []
+	var fids: Array = orders.keys()
+	fids.sort()
+	for fid in fids:
+		var list = orders[fid]
+		if not (list is Array):
+			continue
+		for i in list.size():
+			if list[i] is MusterOrder and not list[i].malformed.is_empty():
+				out.append("Order %d for '%s' is a malformed muster order: %s." % [i + 1, fid, list[i].malformed])
+	return out
+
+
 ## Serializable form of all orders, for saved replays.
 func to_dict() -> Dictionary:
 	var out := {}
@@ -281,7 +297,9 @@ static func orders_from_dict(data: Dictionary, errors = null) -> Dictionary:
 
 
 ## Old records without "via" or "at" load as M1 orders (design/M2_RULER.md §9). A sacrifice is
-## {"type": "sacrifice", "mandate": id} (M2-6), a research order {"type": "research", "node": id} (M4-1).
+## {"type": "sacrifice", "mandate": id} (M2-6), a research order {"type": "research", "node": id} (M4-1). A muster
+## (ARM-1) is read STRICTLY (MusterOrder.parse): one that is malformed is reported and returned as a MusterOrder with
+## `malformed` set, so orders_from_dict keeps it and a loader can fail on it (has_malformed_muster).
 static func order_from_dict(data: Dictionary, errors = null):
 	match str(data.get("type", "")):
 		"move":
@@ -303,6 +321,16 @@ static func order_from_dict(data: Dictionary, errors = null):
 				str(data.get("pay", CastOrder.GOLD)), Serial.to_int(data.get("size", 0)))
 		"spellbook":  # M5-5
 			return SpellbookOrder.new(Serial.to_string_array(data.get("order", [])), Serial.to_string_array(data.get("off", [])))
+		"muster":  # ARM-1 (design/ARM1_SPLIT_MERGE.md §1): STRICT, unlike the lenient parsers above
+			var parsed := MusterOrder.parse(data)
+			if not String(parsed.problem).is_empty():
+				# Never skipped: the malformed order comes back (MusterOrder.malformed) so the load can fail on it.
+				var why := "A muster order is malformed: %s." % parsed.problem
+				if errors is Array:
+					errors.append(why)
+				else:
+					push_error(why)
+			return parsed.order
 	var msg := "Unknown order type '%s'. Orders are 'move', 'recruit', 'sacrifice' and 'research'." % str(data.get("type", ""))
 	if errors is Array:
 		errors.append(msg)

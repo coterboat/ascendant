@@ -602,6 +602,11 @@ static func replay(game_record, battle_resolver: BattleResolver = null, up_to_tu
 		var orders := OrderBook.orders_from_dict(orders_data, order_errors)
 		for e in order_errors:
 			errors.append("Turn %d: %s" % [i + 1, e])
+		# ARM-1 (§1): a malformed muster is an error that stops the replay, never an order skipped.
+		var bad_musters := OrderBook.malformed_musters(orders)
+		if not bad_musters.is_empty():
+			errors.append_array(bad_musters.map(func(m): return "Turn %d: %s" % [i + 1, m]))
+			return {"state": null, "events": [], "errors": errors}
 		var result := TurnResolver.resolve(state, orders, Serial.to_int(entry.get("seed", 0)), battle_resolver)
 		if result.new_state == null:
 			errors.append_array(result.get("errors", []))
