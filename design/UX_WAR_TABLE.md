@@ -1,6 +1,13 @@
 # ASCENDANT: the War Table, a UI/UX spec
 
-Status: **DRAFT r2 by the director (Claude session, 2026-10-10), for Alex's sign-off.**
+Status: **DRAFT r3 by the director (Claude session, 2026-10-10), with Alex's answers of 10-10 (§12), for his sign-off.**
+- **r3 (Alex 10-10):**
+  - the layout follows his Rome: Total War Remastered reference;
+  - notifications get an image each;
+  - a province and an army are two distinct sides, the army side with distribution and merging (ARM-1, the one rules ticket);
+  - Making replaces the Forts lens (forts must read from the map itself);
+  - Sight is kept provisionally;
+  - new players see the seal highlighted.
 - **Direction:** Alex picked it on 10-10 from the UI directions canvas: **A's War Table, with C's Chronicle and D's lenses.** "I love having all of the data available for the nerds who want to see it visually while keeping them entirely optional for the player who just wants to do war stuff."
 - **Why now:** the MVP walk's biggest complaint, by far, is the UI.
 - **The look waits for Alex's art-direction notes (10-10).** This spec fixes the structure: what is where, what it shows, and how it opens and closes. The look of the plaques, cards, seal and fonts follows his notes (UX-0b, §7). Until then builders use the current theme.
@@ -26,16 +33,22 @@ The milestone proves three things:
 - **Depth is opt-in.** Every number the game has is one key away, and none of it is in the way.
 
 ## the short version
-- **The Table (A).** The board fills the window. On top of it sit:
-  - a **realm plaque** and an **opponent plaque** with **Menu**;
-  - a **rail** down the left edge (Research, Magic, Ruler, Chronicle, Lenses, Codex, ?);
-  - a **selection card** beside whatever you clicked;
+- **The Table (A)**, laid out like Alex's Rome: Total War Remastered reference. The board fills the window. On top of it sit:
+  - a **realm plaque** (top left), with the **system row** under it (Research, Magic, Ruler, Chronicle, Lenses, Codex, ?);
+  - a **notification stack** down the left edge: one image medallion per announcement;
+  - an **opponent plaque** with **Menu** (top right);
+  - the **selection card**, with two distinct sides:
+    - the **province side** manages the land (fort, recruitment);
+    - the **army side** manages troops (movement, distribution, merging);
   - your **orders**, drawn on the board and listed in a **tray**;
-  - the **End turn seal**.
-- **The Chronicle (C)**, a column on the right that you open and close:
-  - **Read:** the start-of-turn announcements;
-  - **Plan:** your orders as sentences with their forecasts, and the seal.
-- **The Lenses (D):** six optional map views, **Owner, Income, Forts, Threat, Magic and Sight**, each with its own overlay, palette and feel. Off by default; one at a time.
+  - the **End turn seal**, highlighted for new players.
+- **The Chronicle (C)** improves on Dominions' notices:
+  - the medallions on the left;
+  - a column on the right that you open and close, with **Read** (the announcements, sorted, filtered, pinned, dismissed) and **Plan** (your orders as sentences with their forecasts, and the seal).
+- **The Lenses (D):** six optional map views, **Owner, Income, Threat, Magic, Making and Sight**, each with its own overlay, palette and feel. Off by default; one at a time.
+  - **Making** shows how far each faction has made the land its own: candles, as in Dominions.
+  - **Sight** is kept for now, until spying gives it more to show (or it goes).
+  - **Forts need no lens:** fort level and walls read from the board itself (§2.3).
 - **Sight speaks for itself.** Four veil looks on the land, each different in lightness and in texture, so it reads without colour or words. The words stay in the plate's hover and in the codex.
 - **What goes away:**
   - the top bar and the hint row;
@@ -48,11 +61,11 @@ The milestone proves three things:
   - every explanation (breakdown tooltips, the ?, codex links);
   - every forecast;
   - every order flow (only their entry points move);
-  - today's Research, Ruler and Codex panels (opened from the rail);
+  - today's Research, Ruler and Codex panels (opened from the system row);
   - the 2D map setting, at full parity except the lens blend effects;
   - hotseat.
-- **No rules change.** Game records, digests and fixtures stay byte-identical. Nothing the Chronicle remembers goes into a save's game state.
-- **11 tickets:** UX-0a, UX-0b and UX-1 to UX-9 (§9).
+- **One rules change only: ARM-1** (§3.5) adds one order type, for moving units between your armies in a province. A game that doesn't use it stays byte-identical, as do all existing records, digests and fixtures. Nothing the Chronicle remembers goes into a save's game state.
+- **13 tickets:** UX-0a, UX-0b, UX-1 to UX-9, UX-ART (the notification images) and ARM-1 (§9).
 
 ---
 
@@ -60,13 +73,13 @@ The milestone proves three things:
 
 ### 1.1 the layout and the host seams
 Today `MapScreen.Layout` is a VBox: `TopBar` over `Body`, and `Body` is `MapView` beside the 400 px `SidePanel` (`ui/map_screen.tscn`).
-- **The new layout:** `MapView` fills the screen. A new **`TableHud`** sits over `MapView`, under the `Overlays` layer, and holds the plaques, rail, tray and seal.
+- **The new layout:** `MapView` fills the screen. A new **`TableHud`** sits over `MapView`, under the `Overlays` layer, and holds the plaques, system row, notification stack, tray and seal.
 - **`TopBar`, `HintRow` and `SidePanel` are removed.**
-  - `MapScreen.add_top_bar_control` (`ui/map_screen.gd:299`) and its callers in `GameScreen._build_hud` (`ui/game_screen.gd:1134-1154`) give way to `TableHud.add_rail_button` and `add_plaque_item`.
-  - `ResearchHud` puts its chips on the rail.
+  - `MapScreen.add_top_bar_control` (`ui/map_screen.gd:299`) and its callers in `GameScreen._build_hud` (`ui/game_screen.gd:1134-1154`) give way to `TableHud.add_system_button` and `add_plaque_item`.
+  - `ResearchHud` puts its chips in the system row.
   - `_hang_under_top_bar` hangs the guide and the notice under the realm plaque.
 - **The host seams come first.** Several later tickets need `map_screen.gd` and `game_screen.gd`, so UX-1 lands four small host APIs there. Later tickets plug into these instead of editing the two files (§9):
-  - **`TableHud`:** the plaques, rail, tray and seal slots, and the safe areas (§1.3).
+  - **`TableHud`:** the plaques, system row, notification stack, tray and seal slots, and the safe areas (§1.3).
   - **`SelectionHost`:** "show this army or province" and "selection cleared". It replaces `_show_details`. UX-3's cards register with it.
   - **`ReportHost`:** the report lifecycle (a turn resolved, a report is ready, a report was opened or closed). It replaces the modal report's call sites. UX-6's Chronicle registers with it.
   - **`LensHost`:** the active lens, its keys and its texture feed to the board. UX-7 registers with it.
@@ -81,17 +94,18 @@ Today `MapScreen.Layout` is a VBox: `TopBar` over `Body`, and `Body` is `MapView
 | piece | where | shows | opens |
 |---|---|---|---|
 | **realm plaque** | top left | banner, faction name, gold with income (breakdown tooltip as today), turn, the ruler and kept power (with rulers) | the Ruler panel from the ruler line |
+| **system row** | under the realm plaque | icon buttons: Research (progress badge), Magic (spells and mages), Ruler, Chronicle (unread badge), Lenses (the active one), Codex, ? (controls) | **today's panels, as they are**: modal, with their dimmers and `PanelFit` |
+| **notification stack** | left edge, under the system row | one round image medallion per announcement (§5.2), newest on top. Hover shows its headline; click opens its card in the Chronicle; right-click dismisses | the Chronicle at that card |
 | **opponent plaque** | top right | each rival: banner, name, Computer and its level or Player, "last seen turn N" under fog | its codex entry |
 | **Menu** | top right | — | today's menu |
-| **rail** | left edge | Research (progress badge), Magic (spells and mages), Ruler, Chronicle (unread badge), Lenses (the active one), Codex, ? (controls) | **today's panels, as they are**: modal, with their dimmers and `PanelFit` |
 | **selection card** | beside the selection (§3) | army or province | its actions |
 | **tray** | bottom centre | your orders (§3.4), gold after orders | an order's card |
 | **End turn seal** | bottom right of the tray | the order count | today's end-turn flow; the Plan review if on (§5.3) |
 
 - **The sizes we support:** a 1600×900 window at 100%, a 1600×900 window at 125% (1280×720 logical; `content_scale_factor`, `settings_store.gd:177-187`), and a 1280×720 window at 100%. Every acceptance shot and fit test runs all three.
 - **The safe areas:**
-  - rail: 72 px on the left;
-  - plaques: 72 px along the top;
+  - the notification stack: 80 px on the left;
+  - the plaques and the system row: 112 px along the top on the left, 72 px on the right;
   - tray and seal: 120 px along the bottom;
   - the Chronicle, when open: 420 px on the right (360 px below 1600 logical).
 
@@ -99,7 +113,8 @@ Today `MapScreen.Layout` is a VBox: `TopBar` over `Body`, and `Body` is `MapView
 - **Who gives way, highest first:** modal panels, then the Chronicle, the selection card, the guide and notices, the tray, and the plaques. A lower piece moves or shrinks before it overlaps a higher one.
 - **Tests:** overlap assertions for every pair, at all three sizes. Today's tests only check that nothing is clipped by the viewport.
 - **Below 1600 logical:**
-  - rail labels hide (icon only, tooltip kept);
+  - the system row is icons only (it is always icons; tooltips name them);
+  - the notification stack shows at most six medallions, then "+N";
   - tray tokens show their number or icon, with the text in the tooltip;
   - the opponent plaque's "last seen" line moves to its tooltip.
 - **Nothing a click needs ever hides:** End turn, Menu and the selection card's first action.
@@ -173,7 +188,17 @@ Today's shader treats veiled and never-seen land almost alike (`ground_common.gd
 - **The Vision map mode is retired.** That is the 2D swap behind the `VisionButton` (`map_screen.gd:215-234`, 643-712). Its legend and its "why do I see this" job move to the Sight lens (§4.6).
 - **Acceptance:** before and after shots at full-map zoom, in all three sizes, on both boards.
 
+### 2.3 forts read from the board (no lens; Alex 10-10)
+"Forts and their level should be self-evident from the map itself." The board already builds each fort from the kit by level (palisade, keep, citadel; `world3d/kit.gd`), and S-5 shows wall damage on the stage. UX-2 makes this read at **full-map zoom**:
+- the three levels are told apart by silhouette and size alone;
+- a damaged wall shows as a broken outline;
+- a besieged fort carries the besieger's chevrons (the style bible's besieged mark);
+- works under construction show scaffolding.
+- **The numbers** (walls n/max, recruit cap) are on the plate's hover and the province card.
+- **Acceptance:** a full-map shot where palisade, keep and citadel, and whole and damaged walls, can be named without hovering. If the kit's silhouettes don't separate at that zoom, UX-2 scales the fort models by level before reaching for icons.
+
 ## 3. selection cards and orders (UX-3, UX-4)
+Following Alex's reference (Rome: Total War Remastered), **a province and an army are two distinct sides**. Click land, and you manage the land: its fort and its recruitment. Click an army, and you manage troops: where they go, how they are split up, and which armies join.
 
 ### 3.1 the army card (UX-3)
 Click an army (yours, or one you can see). A card opens beside its plate:
@@ -232,6 +257,25 @@ Click land:
 - **The seal:** "End turn" and the order count. It runs today's end-turn flow and warnings, unchanged.
 - **Tests:** add, replace, cancel and change-via for every order class, with the numbers and tokens checked after each.
 
+### 3.5 the army side: distribution and merging (ARM-1, the one rules ticket)
+Today armies never split or merge. Recruits join an army or form a new one, and two of your armies in one province stay two (there is no such order; `rules/*_order.gd`). Alex wants the army side to manage "troop and army movement, distribution, merging" (10-10). That needs one new order, so it is a rules ticket with its own tests.
+- **`TransferOrder`:** `{from_army, to_army or a new army, units}`. It moves the chosen units between two of your armies standing in the **same province**, or splits them off into a new army there.
+  - **Merging** is a transfer of every unit; the emptied army disbands.
+  - A commander or the ruler moves like any unit, and an army without a commander follows today's rules.
+- **When:** transfers resolve **first**, before movement. So an army split off this turn can march this turn.
+  - Its move order names a planned id that the rules resolve deterministically: the from-army and an index.
+  - ARM-1's issue pins the exact id scheme and its validation (an empty army, a unit already sent, two transfers taking the same unit).
+- **Fog:** rivals see armies pooled per province already (`fog_rules.gd:352-389`), so a transfer shows them nothing new.
+- **The computer** doesn't use transfers in ARM-1. Teaching it to split and merge is a later AI ticket.
+- **Records:** a game without a transfer is byte-identical. The new order has its own record fields, and replays of old records don't change.
+- **The army card (UX-3, after ARM-1):**
+  - the portrait rows of your armies in the province, side by side;
+  - drag units between them, or to "New army";
+  - **Split** and **Merge all** buttons;
+  - the tray shows the transfer as a placed order, and its forecast says the strength of each army after it.
+- **Explained:** a codex entry, "Splitting and merging armies"; the card's tooltips; the Plan sentence ("Split 2 Knights from the Crown's 1st into a new army at Crownkeep.").
+- **Tests:** the rules (validation, order of resolution, determinism, records) and the card.
+
 ## 4. the lenses (UX-7)
 
 ### 4.0 the frame
@@ -262,7 +306,7 @@ Click land:
 - **A legend card** (bottom left, in the safe area): the lens's question, its scale and its totals.
 - **Turning lenses on and off:**
   - keys 1–6 turn a lens on; the same key, Esc (§1.4) or ` turns it off;
-  - the rail's Lenses button opens a picker for the mouse;
+  - the system row's Lenses button opens a picker for the mouse;
   - one lens at a time;
   - every session starts with lenses off.
 - **Accessibility:** every lens scale runs in lightness (light to dark), never hue alone.
@@ -273,10 +317,22 @@ Click land:
 |---|---|---|---|---|---|---|
 | 1 | **Owner** | Who holds what? | **wash**: seat colours at full strength over muted terrain; thick borders; capitals crowned; neutral slate | a heraldic political map | the owner | owners are public (`fog_rules.gd` view fields) |
 | 2 | **Income** | What is it worth? | **glow**: dark umber (poor) to bright gilt (rich) | a treasury, warm metal | **base** income, as a coin badge | base income is public. The legend's totals are **base income only, and say so**. A rival's actual income (modifiers, cut-off) is never derived |
-| 3 | **Forts** | Where can armies be raised and held? | **wash**: cool slate stone; a ring per fort with its level glyph and walls pips; besieged forts a red cracked ring; works dotted | masonry, cold grey-blue | level, walls n/max, recruit cap | level and walls are **public** (as the rules have them); works where seen; a siege where the view holds both sides' armies |
-| 4 | **Threat** | What could hit me next turn? | **hatch**: red ink, denser for more seen or remembered enemy strength one province away; provinces your armies can also reach pulse amber | a war-room map, red pencil | "≈ strength" and "as of turn N" | **an estimate from sightings only** (below) |
-| 5 | **Magic** | Where is magic at work? | **glow**: ink-violet sigils per visible enchantment (blessing, curse, ward, Bastion) | arcane, candle-dark | the enchantments | only the enchantments `FogView` shows |
-| 6 | **Sight** | Why do I see what I see? | **ring**: warm lantern rings from each sight source, by its range in provinces; Far Sight as a target marker | lantern light over a dark map | the source and its range | your own sources only |
+| 3 | **Threat** | What could hit me next turn? | **hatch**: red ink, denser for more seen or remembered enemy strength one province away; provinces your armies can also reach pulse amber | a war-room map, red pencil | "≈ strength" and "as of turn N" | **an estimate from sightings only** (below) |
+| 4 | **Magic** | Where is magic at work? | **glow**: ink-violet sigils per visible enchantment (blessing, curse, ward, Bastion) | arcane, candle-dark | the enchantments | only the enchantments `FogView` shows |
+| 5 | **Making** | How far has each faction made the land its own? | **candles**: a row of up to four flames in the owner's colour on each province, over a soft owner glow that deepens with them (Dominions' dominion candles) | a cathedral of candles | "3 candles" and why | owners and tenure are public; a rival's path effects only when its path is known to you (intel) |
+| 6 | **Sight** *(provisional)* | Why do I see what I see? | **ring**: warm lantern rings from each sight source, by its range in provinces; Far Sight as a target marker | lantern light over a dark map | the source and its range | your own sources only |
+
+- **Making** (Alex 10-10: "a Making layer showing how much each faction extends its dominion").
+  - **Its first version** counts what the game already has. A province you own has:
+    - 1 candle;
+    - +1 after 3 turns held, and +1 after 6 (`owned_since`);
+    - +1 where the owner's path shapes the land: Hallowed Land, the Forges at a fort, Dread Lands, or a Wild Spreads forest (`rules/ascension_rules.gd:819-827`).
+
+    A capital always has 4.
+  - **It has no rules effect of its own yet.** The legend says so: "How deeply each faction holds its land. What it will do comes later."
+  - It is the **display seam for the marks system.** The Candlewake's Wake (Sitting Up, the Wake-Line, Deep Wake; `design/CANDLEWAKE.md` §3) is its first real feed, and making a rival's land your own through magic and faction mechanics, beyond holding it, builds on it (Alex 10-10).
+  - **The candles** are plate marks (`board_overlay.gd`), the glow is the shader's glow mode, and `MapLens` gives both.
+- **Sight is provisional** (Alex 10-10: "ideally the in-game UI should show that sight cleanly enough that you wouldn't need a separate layer"). The veil (§2.2) does the everyday job. The lens stays to show sight sources and next turn's sight, and **it earns its place when espionage and spying give it more to show, or it goes**.
 
 - **Threat is an estimate,** never the rules' move legality.
   - Rival armies in the view are pooled stand-ins with view ids, and their mandates and divisions are hidden (`fog_rules.gd:352-389`). So Threat counts each seen or remembered stand-in's strength against its province's **neighbours**.
@@ -298,7 +354,7 @@ Click land:
 ### 5.1 the column
 - A right-hand column: 420 px at 1600 logical width, 360 px below.
 - It lies over the board's right edge, in its safe area (§1.3). The camera's focus point shifts left while it is open.
-- The rail's Chronicle button opens and closes it. It shows an **unread badge**.
+- The system row's Chronicle button, or any medallion in the notification stack, opens it. It shows an **unread badge**.
 - Two tabs: **Read** and **Plan**.
 
 ### 5.2 Read: the start-of-turn announcements (UX-6)
@@ -330,14 +386,29 @@ Its output is **announcements**, each with:
 | kind | from | icon |
 |---|---|---|
 | **Needs you** | `order_rejected` events, and the current-state needs | ! |
-| **Battles** | `battle`, `border_battle`, storms, sallies | swords |
+| **Battles** | `battle`, `border_battle`, storms, sallies, an army destroyed | swords |
 | **Land** | `captured`, losses, fealty, razing | flag |
 | **Rulers** | `ruler_died`, sacrifices, returns | crown |
 | **Magic** | `ritual_cast`, spells learned, curses, wards | sparkle |
 | **Realm** | `income`, `recruited`, `research_done`, `transformed` | coin |
 | **Seen abroad** | rivals' moves and captures you saw | eye |
 
-- **The order:** importance by default: Needs you, then battles you fought, your land, rivals' land seen, rulers, magic, realm, seen abroad. Or sort by place, or by kind.
+- **An image for every notice** (Alex 10-10: "each one of these should have its own image associated with it"). Each announcement **type** has its own round painted medallion: it shows in the notification stack (§1.3) and heads its card. The types:
+  - a battle won and a battle lost;
+  - **an army lost**;
+  - a province taken and a province lost;
+  - fealty sworn (to you, or to a rival);
+  - a siege begun and walls breached;
+  - a ruler fallen and a ruler returned;
+  - research done, a spell learned, a ritual cast;
+  - recruits raised;
+  - the treasury;
+  - needs you;
+  - (later) **special events**.
+
+  The art is UX-ART (§9): standard for every faction in the MVP (§10 parks faction flavour). Until it lands, the medallion is the kind's icon on a coloured disc.
+- **Not reinventing the wheel:** this is Dominions' message list, made visual and sortable, with Total War's medallions (Alex 10-10).
+- **The order:** importance by default: Needs you, then battles you fought, an army lost, your land, rivals' land seen, rulers, magic, realm, seen abroad. Or sort by place, or by kind.
 - **Show and hide:**
   - one filter chip per kind;
   - a hidden kind still counts ("3 hidden");
@@ -354,9 +425,9 @@ Its output is **announcements**, each with:
 - **The summary line** heads the column: chips such as "1 battle won", "+1 province", "+2 Knights" and "Clans +2 provinces", and gold "5 → 23, +18 a turn".
 - **Auto-open** at the start of a turn, a setting:
   - when something needs you;
-  - when anything important happened (Needs you, your battles, your land): **the default**;
+  - **when anything important happened: the default** (Alex 10-10). That means a battle you fought (it opens at that battle's card, with its report a click away), an army lost, land won or lost, anything that needs you, and (later) a special event;
   - always;
-  - never (the badge only).
+  - never (the medallions and the badge only).
 - **Full report:** a link at the foot opens today's `TurnReportPanel`, unchanged.
 - **Fog:** "what the computer was thinking" stays as today: one quiet line under fog, the notes after the game.
 
@@ -376,7 +447,8 @@ Its output is **announcements**, each with:
 - **Checks as cards:** today's end-turn warnings, as Needs-you cards.
 - **The foot:** gold after orders, and **Seal the orders · End turn**.
 - **Review before sealing** (a setting): when on, the seal opens Plan first, and the column's seal ends the turn.
-  - **The default:** on for a player's first game, off after.
+  - **The default:** on for a player's first game, off after (Alex 10-10: "yes").
+  - **For new players the seal is highlighted** (a slow gilt pulse) once they have queued an order and until they've ended a turn or two. Then it rests.
 
 ## 6. the battle viewer (UX-8)
 **`BattleControls` stays the one controls component** (`ui/battle/battle_controls.gd`): playback state, shortcuts, the saved Why and Legend settings. `BattleSimpleView._build_controls` (`battle_simple_view.gd:1451`) still builds it, and `BattleStage3D` still inherits it (`world3d/battle_stage.gd:2`). UX-8 changes its layout and the stage's HUD, not its ownership.
@@ -402,8 +474,11 @@ Its output is **announcements**, each with:
     - Today every node sets its own size (`add_theme_font_size_override`). The new HUD pieces use the tokens from the start.
   - **Gate:** today's fit tests pass.
 - **UX-0b (after Alex's art notes):** the look.
-  - **Fonts.** Proposed: Spectral SC for names and titles, Alegreya Sans for everything read, tabular figures. Both are SIL OFL, and their licence files ship beside them. The tokens switch over, so nothing else changes.
-  - **Styles:** plaque, card, tray, seal, rail and legend `StyleBox`es; lens palettes in `UiPalette`.
+  - **Fonts:** the director's call, to Alex's bar (10-10): "whatever looks best and is readable without looking like something you'd read on a marketing page."
+    - **The pick:** Spectral SC for names and titles, Alegreya Sans for everything read, tabular figures. Both are SIL OFL, and their licence files ship beside them.
+    - It is judged in the game at the three sizes against today's font, and the director's shots go to Alex.
+    - The tokens switch over, so nothing else changes.
+  - **Styles:** plaque, card, tray, seal, system row, medallion and legend `StyleBox`es; lens palettes in `UiPalette`.
   - **Gate:** the fit tests at all three sizes, run again with the new fonts.
 
 ## 8. approachability (every ticket)
@@ -425,20 +500,22 @@ Its output is **announcements**, each with:
 5. UX-6 after UX-1.
 6. UX-7 after UX-2.
 7. UX-0b when Alex's art notes are in.
-8. UX-9 last.
+8. **ARM-1** (rules) any time; its army-card part after UX-3.
+9. **UX-ART** any time; it goes through the Review Table, and UX-6 uses placeholders until it lands.
+10. UX-9 last.
 
 **Ownership:**
 - UX-1 owns `map_screen.gd`, `game_screen.gd`, `table_hud.gd` and the host seams.
 - Later tickets work through the seams.
 - A ticket that still must touch `map_screen.gd` or `game_screen.gd` says so in its PR, and **those merges go one at a time**: the director merges them in order and re-verifies the next against the new main.
-- UX-2 owns `board_overlay.gd` and the ground shaders; UX-3 owns `ui/cards/`; UX-6 owns the Chronicle's files; UX-7 owns `map_lens.gd` and `set_lens`; UX-8 owns `ui/battle/`.
+- UX-2 owns `board_overlay.gd` and the ground shaders; UX-3 owns `ui/cards/`; UX-6 owns the Chronicle's files and the notification stack; UX-7 owns `map_lens.gd` and `set_lens`; UX-8 owns `ui/battle/`; ARM-1 owns `rules/transfer_order.gd` and its resolver step; UX-ART owns its review batch and `assets/ui/notices/`.
 - At most three builders at once.
 
 **The tickets:**
 - **UX-0a** `code` **Icons and type tokens** (§7).
 - **UX-0b** `code` **The look** (§7), after Alex's notes.
 - **UX-1** `code` `hard` **The Table:**
-  - the host seams, `TableHud`, the plaques, the rail (opening today's panels), the tray and seal skeleton;
+  - the host seams, `TableHud`, the plaques, the system row (opening today's panels), the notification stack's slot, the tray and seal skeleton;
   - the safe areas and give-way order;
   - the input contract (§1.2) and `UiCancel` (§1.4);
   - the top bar, hint row and side panel removed;
@@ -451,6 +528,8 @@ Its output is **announcements**, each with:
 - **UX-7** `code` **Lenses:** `MapLens`, `lens_tex` and the one width constant, compositing, the six lenses, legends, keys, the codex, fog safety, 2D washes.
 - **UX-8** `code` **Battle viewer** (§6).
 - **UX-9** `code` **Walk and guide:** the first-game guide, How to play, the director's walk at three sizes on both boards, and the fixes it finds.
+- **ARM-1** `code` **Splitting and merging armies** (§3.5): `TransferOrder`, resolved before movement, with its validation, records and codex entry; then the army card's drag, Split and Merge all (with UX-3). The one rules change, with its own Codex critic round on the issue before building.
+- **UX-ART** `asset` **The notice medallions** (§5.2): one painted round image per announcement type, from the art seats (Grok and Codex) into a Review Table batch for Alex. Concept art, judged directly; standard for every faction in the MVP.
 
 **Tests each ticket updates or adds** (in its PR, listed):
 
@@ -464,19 +543,26 @@ Its output is **announcements**, each with:
 | UX-6 | `test_turn_report_text` (wording stays pinned), `test_turn_report_codex_links`, `test_fog_report`, `test_watch_entry_ui`, `test_codex_links_ui` | `ChronicleModel` templates for every event type; grouping fixtures; store privacy; pinned-card fog perturbation |
 | UX-7 | `test_fog_ui` (the Vision legend's job) | texture bytes; compositing shots; a fog leak test per lens; Threat indistinguishability |
 | UX-8 | `test_battle_controls`, `test_battle_simple_view`, `test_battle_stage3d`, `test_battle_host` | moment markers; shortcuts and settings kept |
+| ARM-1 | the order and resolver suites it touches, and the record fixtures (unchanged) | validation, resolution order, determinism, records with and without transfers; the card's drag and buttons |
 
 **Every ticket:**
 - before and after shots at the three sizes, of a fresh default game's first three turns (`tools/shots/play_shots.gd --defaults --fresh`, with `--ui-scale=125` for the second);
 - the compile check, the full suite, and boots with every flag;
-- **no rules change:** records, digests and fixtures byte-identical.
+- **no rules change** (ARM-1 aside, and it too leaves every existing record, digest and fixture byte-identical).
 
 ## 10. out of scope
-- Rules, AI and new mechanics.
+- Rules, AI and new mechanics, ARM-1 aside. The computer learning to split and merge is a later AI ticket.
 - New art beyond the icon set and fonts. Art for the plaques, seal or cards (Ludo) is for Alex's art notes.
-- **Re-homing the Research, Ruler and Codex panels as edge drawers.** They open from the rail as today's modals. A drawer shell (no full-screen dimmer, scroll instead of `PanelFit`) is in the parking lot.
+- **Re-homing the Research, Ruler and Codex panels as edge drawers.** They open from the system row as today's modals. A drawer shell (no full-screen dimmer, scroll instead of `PanelFit`) is in the parking lot.
 - Replaying the turn on the board as animation (the canvas's "Replay the turn" button).
 - Controller, touch and mobile.
 - Maps over 16 provinces. The width constant (§4.0) makes that one change when M6 needs it.
+- **The parking lot (Alex 10-10):**
+  - **Each faction its own UI flavour.** The Candlewake all candles and wax, the Crown standard and regal, and so on. The MVP is one standard look; this is talked through as the factions grow, before anything is built.
+  - **Special events** and their notices.
+  - **The Sight lens's future:** useful once espionage and spying have something for it to show, or removed.
+  - **Making's future:** marks on the land (the Candlewake's Wake first), and making a rival's land your own through magic and faction mechanics, not just holding it.
+  - **Fixtures on 3D models** (blades, wings, spikes) that image-to-3D drops or turns into held weapons. This is an art-pipeline question for ART-PIPE, not this milestone.
 
 ## 11. director's calls (review these first)
 1. **The hybrid** (Alex 10-10): A's table, C's chronicle, D's lenses.
@@ -491,33 +577,37 @@ Its output is **announcements**, each with:
 5. **Threat is an honest estimate** from what you've seen, one step out. It never pretends to know a rival's roads or mandates.
 6. **Only placed orders get numbers,** and they are list positions (no new order ids). Realm orders are icon tokens.
 7. **The Chronicle remembers outside the game.** Pins and dismissals live in a UI sidecar, never in records. A pinned card keeps the text it was shown with.
-8. **The rail opens today's panels as they are.** No drawer rewrite in this milestone.
+8. **The system row opens today's panels as they are.** No drawer rewrite in this milestone.
 9. **Structure before style.** UX-0a's tokens come now; UX-0b's look comes from Alex's notes.
 10. **Both boards, every test.** The 2D map gets everything except the lens blend effects, and the legend says so.
+11. **The layout follows Alex's Rome: Total War Remastered reference:** the system row under the realm plaque, the notice medallions down the left, the plaques in the corners, and the orders and seal along the bottom.
+12. **A province and an army are two sides.** The land side is the fort and recruitment; the troop side is movement, splitting and merging. ARM-1 is the milestone's one rules change, and it leaves every existing record byte-identical.
+13. **Making's first count uses only what the game has** (tenure, path land effects) and has no rules effect yet. It is the display seam the marks system will feed.
+14. **Forts read from the board.** No lens; level, walls and sieges must be readable at full-map zoom.
 
-## 12. questions for Alex
-1. **Chronicle auto-open at the start of a turn:**
-   - a) when something important happened (my pick: Needs you, your battles, your land);
-   - b) always, as in Total War;
-   - c) never (the badge only).
-2. **Review before sealing** (the seal opens Plan first):
-   - a) on for a player's first game, then off, as a setting (my pick);
-   - b) always;
-   - c) never (the tray only).
-3. **The Sight lens:**
-   - a) keep it: your sight sources and next turn's sight (my pick);
-   - b) drop it; the veil says enough.
-4. **End turn:**
-   - a) the wax seal (my pick; its art from your notes);
-   - b) a plain gilt button.
-5. **Fonts:**
-   - a) Spectral SC and Alegreya Sans (my pick);
-   - b) your art notes decide.
-6. **The lens set:** Owner, Income, Forts, Threat, Magic and Sight. Add or cut any? (Default: these six.)
+## 12. Alex's answers (2026-10-10)
+1. **Chronicle auto-open:** "yes when something important like there was a battle (with its report), a special event happened (we'll wire these in post MVP), lost an army, etc." Not reinventing the wheel, just improving on Dominions' notifications, and **each one with its own image**. His reference is Rome: Total War Remastered (§1.3, §5.2, UX-ART).
+2. **Review before sealing:** yes, "or at the very least highlight the button for new players" (§5.3: both).
+3. **Sight:** ideally the UI shows sight cleanly enough to need no layer. Keep the lens for now, and make it useful with espionage and spying or remove it (§4, §10).
+4. **The wax seal:** yes. Each faction having its own UI flavour (the Candlewake candles and wax, the Crown regal) is parked; the MVP is standard (§10).
+5. **Fonts:** "whatever looks best and is readable without looking like something you'd read on a marketing page" (§7: the director's call, judged in the game).
+6. **The lens set:** no Forts lens, because forts and their level should be self-evident from the map (§2.3). Add **Making**, how much each faction extends its dominion, as Dominions' candles, to grow later into making other nations' land your own through magic and faction mechanics (§4).
+- **And:** "distinctly click on a province and manage the building/recruitment side and the troop and army movement/distribution/merging side" (§3, §3.5, ARM-1).
+
+### still open
+1. **Making's first count** (§4):
+   - a) 1 candle owned, +1 at 3 turns held, +1 at 6, +1 where the owner's path shapes the land, a capital 4 (my pick);
+   - b) tenure only;
+   - c) wait for the marks system.
+2. **ARM-1's timing:**
+   - a) in this milestone, its rules any time and its card with UX-3 (my pick);
+   - b) after the UX milestone.
 
 ---
 
 ## appendix A. critic rounds
+**r3** (Alex's answers, 10-10) adds ARM-1, Making, UX-ART and the layout changes with no new critic round. ARM-1 gets its own Codex round on its issue before anyone builds it.
+
 
 ### round 1 (Codex, hostile, on r1, 2026-10-10): 30 findings, 7 blockers. All taken; r2 is the result.
 - **Blockers:**
