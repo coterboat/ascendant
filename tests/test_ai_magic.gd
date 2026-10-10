@@ -623,6 +623,41 @@ func test_dawn_blessing_is_valued_by_the_fighters_it_covers() -> void:
 	_assert_legal(blessed, CROWN, [again], "the second blessing")
 
 
+## ARM-1: the trigger is the covered share of the main group, nothing else. A group of a big blessed army and a small plain one has
+## most of its fighters covered, so nothing is cast; a small blessed army with a big plain one is mostly uncovered, so it is.
+func test_a_mixed_main_group_is_blessed_by_the_share_of_fighters_covered() -> void:
+	var specs := [
+		["kingdom-m", CROWN, "highcrag", ["knights", "knights", "knights", "spearmen", "spearmen", "knight_captain"]],  # six fighters
+		["kingdom-s", CROWN, "highcrag", ["spearmen"]],  # one
+		["kingdom-g", CROWN, "crownkeep", ["spearmen", "adepts"]],
+		["beasts-e", CLANS, "thornvale", ["tuskers", "tuskers"]],
+	]
+	var s := _board(specs, {CROWN: CROWN_FORGE}, {"highcrag": CROWN})
+	var moves := {"kingdom-m": "thornvale", "kingdom-s": "thornvale"}
+	var none := _with_cast(s, CROWN, CastOrder.new("dawn_blessing", "kingdom-g", "highcrag"))
+	assert_true(none.enchantments.filter(func(x): return x.kind == "blessing")[0].armies.size() == 2, "the cast blessed both armies there")
+	# 1. The big army is blessed, the small one is not: 6 of 7 covered, no cast.
+	var big := none.deep_copy()
+	big.enchantments.filter(func(x): return x.kind == "blessing")[0].armies = ["kingdom-m"]
+	assert_true(_cast_of(_rituals(big, CROWN, moves).casts, "dawn_blessing") == null, "6 of 7 fighters covered: nothing to cast, though one army is plain")
+	# 2. The small army is blessed, the big one is not: 1 of 7 covered, a cast.
+	var small := none.deep_copy()
+	small.enchantments.filter(func(x): return x.kind == "blessing")[0].armies = ["kingdom-s"]
+	var cast = _cast_of(_rituals(small, CROWN, moves).casts, "dawn_blessing")
+	assert_true(cast != null, "1 of 7 fighters covered: it is worth blessing again")
+	assert_eq(cast.target, "highcrag")
+	# 3. Nothing blessed: covered 0 casts, as it always did.
+	assert_true(_cast_of(_rituals(s, CROWN, moves).casts, "dawn_blessing") != null, "covered 0 casts")
+	# 4. Exactly half covered (3 of 6) is not under half: no cast.
+	var half := _board([specs[0], specs[2], specs[3]], {CROWN: CROWN_FORGE}, {"highcrag": CROWN})
+	var blessed := _with_cast(half, CROWN, CastOrder.new("dawn_blessing", "kingdom-g", "highcrag"))
+	var fighters: Array = UnitStatus.army_fighters(blessed.find_army("kingdom-m"))
+	var e := String(blessed.enchantments.filter(func(x): return x.kind == "blessing")[0].id)
+	for i in 3:
+		fighters[i].add_status(UnitStatus.OUTSIDE_BLESSING, e)
+	assert_true(_cast_of(_rituals(blessed, CROWN, {"kingdom-m": "thornvale"}).casts, "dawn_blessing") == null, "3 of 6 covered is half: the morale holds")
+
+
 func test_wake_the_greenwrath_where_a_caster_stands_in_a_forest() -> void:
 	var s := _board([["beasts-s", CLANS, "greenglade", ["shamans", "tuskers"]]], {CLANS: CLANS_GROVE}, {"greenglade": CLANS})
 	var r := _rituals(s, CLANS)

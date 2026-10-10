@@ -500,7 +500,8 @@ func _read_by_far_sight(pid: String) -> bool:
 	return false
 
 
-## 2. Dawn Blessing: the main army stands in an own province, will attack this turn or next, and isn't blessed.
+## 2. Dawn Blessing: the main army stands in an own province, will attack this turn or next, and the blessing covers fewer than half
+## its fighters.
 func _blessing_proposals() -> Array:
 	var g := _main_group()
 	if g.is_empty():
@@ -508,20 +509,17 @@ func _blessing_proposals() -> Array:
 	var p: Province = ai._state.find_province(String(g.loc))
 	if p == null or p.owner != ai._fid:
 		return []
-	# ARM-1 (design/ARM1_SPLIT_MERGE.md §2.1): a blessing is valued by the fighters it COVERS, not by the army ids it lists. An
-	# army with no blessing is worth blessing (as before); a blessed army is worth blessing again (the cast restarts it and
-	# covers everyone) once the fighters it covers are fewer than half the group, because the fighters that joined it later
-	# (a muster, recruits) are outside it, and that is where the half-blessed morale is lost.
-	var unblessed := false
+	# ARM-1 (design/ARM1_SPLIT_MERGE.md §2.1): a blessing is valued by the fighters it COVERS, not by the army ids it lists. The
+	# group is worth blessing (or blessing again: the cast restarts a blessing and covers everyone in the armies it lists) when the
+	# fighters it covers are fewer than half of the group's, however they came to be outside: an army with no blessing, or fighters
+	# that joined a blessed one later (a muster, recruits). That is where the half-blessed morale is lost. Covered 0 casts.
 	var fighters := 0
 	var covered := 0
 	for a in g.armies:
 		var cov := MagicRules.blessing_coverage(ai._state, a)
 		fighters += int(cov.total)
 		covered += int(cov.covered)
-		if cov.blessing.is_empty():
-			unblessed = true
-	if not unblessed and covered * 2 >= fighters:
+	if covered * 2 >= fighters:
 		return []
 	var when := _attacks(g)
 	if when.is_empty():
