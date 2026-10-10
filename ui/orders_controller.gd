@@ -42,6 +42,8 @@ var _odds_cache := {}  # "army ids>province" -> move_odds() result; the state ne
 var _view: GameState = null  # view_state() for the plan in _view_key
 var _view_key := ""  # plan_key(): the queued sacrifice and musters _view was built for
 var _view_of: GameState = null  # the state _view was built from
+## ARM-1: the partner Merge all and Swap commanders work with, per army ({army id: partner id}), kept for the card's rebuilds.
+var muster_partners := {}
 var _removed: Array = []  # texts of the orders the last queue or cancel removed (M2-6)
 ## M3c: the garrison armies the last queue_move sent out to join its relief (tied sallies), by id.
 var last_relief: Array = []

@@ -16,8 +16,8 @@ const PORTRAIT := Vector2(32, 32)
 const RESERVED_H := 96.0  # the forecast box keeps this much height, so the card does not jump as the pointer crosses the rows
 const HINT := "Drag fighters between your armies, or onto New army. Click a portrait to tick it first to move several. Hover a button or cross an army to see what each army becomes before you order anything."
 
-## The partner each army last had (the army Merge all and Swap commanders work with), kept across the card's rebuilds.
-static var _partners := {}
+## The partner each army last had (the army Merge all and Swap commanders work with) is kept across the card's rebuilds in the
+## orders controller (OrdersController.muster_partners), so it lasts as long as the plan does and no longer.
 
 var map: MapScreen
 var army_id := ""
@@ -72,7 +72,7 @@ func _build() -> void:
 		var o: Army = _board.find_army(String(id))
 		if String(id) != army_id and o.ruler == null:
 			candidates.append(String(id))
-	partner_id = String(_partners.get(army_id, ""))
+	partner_id = String(map.orders.muster_partners.get(army_id, ""))
 	if not candidates.has(partner_id):
 		partner_id = String(candidates[0]) if not candidates.is_empty() else ""
 	# The forecast sits right under the heading, where the pointer travelling from the card's portraits to a row passes it.
@@ -351,7 +351,7 @@ func drop(data: Variant, to_id: String) -> void:
 
 
 func _give(order: MusterOrder) -> void:
-	_partners[army_id] = partner_id
+	map.orders.muster_partners[army_id] = partner_id
 	var reason := map.queue_muster(order)
 	if not reason.is_empty() and is_instance_valid(message):
 		message.text = reason
@@ -363,7 +363,7 @@ func set_partner(id: String) -> void:
 	if not rows.has(id) or id == army_id:
 		return
 	partner_id = id
-	_partners[army_id] = id
+	map.orders.muster_partners[army_id] = id
 	for rid in rows:
 		rows[rid].show_partner(rid == partner_id)
 	_refresh_buttons()
