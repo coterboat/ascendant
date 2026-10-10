@@ -1,8 +1,8 @@
 # ASCENDANT: ARM-1, splitting, merging and swapping commanders
 
-Status: **DRAFT r2 by the director (Claude session, 2026-10-10), for Alex's sign-off.** Part of the War Table milestone (`design/UX_WAR_TABLE.md` §3.5); issue #195.
+Status: **DRAFT r3 by the director (Claude session, 2026-10-10), for Alex's sign-off.** Part of the War Table milestone (`design/UX_WAR_TABLE.md` §3.5); issue #195.
 - Alex (10-10, after his playtest): "we need a much better army merging system, including swapping commanders", and "manage … the troop and army movement/distribution/merging side".
-- **r1** was the issue's draft. Codex's hostile round on it (25 findings, 10 blockers) rewrote it into this r2; appendix A lists the changes.
+- **r1** was the issue's draft. Codex's hostile round on it (25 findings, 10 blockers) rewrote it into r2, and a second round on r2 (9 findings, 2 blockers, both about precision) gave r3. Appendix A lists the changes.
 
 Built on:
 - `rules/army.gd` (units, one commander, engines; a ruler travels alone);
@@ -21,11 +21,12 @@ Your armies in a province become clay: split them, merge them, swap their comman
 ## the short version
 - **One new order type, `MusterOrder`,** with three kinds: **transfer** (units, a commander and engines from one army to another, or to a new army), **merge** (all of one army into another), and **swap** (two armies exchange commanders).
 - **Planned, then resolved first.**
-  - The order book applies your musters, in the order given, to the projected board (`state_after_orders`). Every later order you give is checked against that board: moves, casts, sieges, recruits.
+  - **All of a faction's musters come before all its other orders, whatever their place in the list.** Among themselves they apply in the order given.
+  - The order book applies them to the projected board (`state_after_orders`), and every non-muster order is checked against that board: moves, casts, sieges, recruits.
   - At resolution, musters run **first in the existing orders phase**, in the same order, so the new armies get **the same real ids** the plan showed.
   - **There are no refs and no new phase.**
 - **A game without a muster resolves exactly as before:** the same phase lists, codex text, events, records and digests.
-- **Armies under an enchantment can't muster** in the MVP (blessed or cursed, giving or receiving). A ruler's army can't either: a ruler travels alone.
+- **Blessed armies can't muster** in the MVP, giving or receiving (blessings are the only enchantments that name armies, `magic_rules.gd:815`; curses lie on provinces and touch every army there alike). A ruler's army can't either: a ruler travels alone.
 - **Engines move only when the order says so,** and only to an army that can carry them.
 - **The computer doesn't muster** in ARM-1. It plans from the real state each turn, as now.
 - **A pure `MusterForecast`** shows every army before and after: units, commander, engines, strength, sight, name, which queued orders it breaks, and where this turn's recruits will join.
@@ -43,16 +44,23 @@ MusterOrder {
 ```
 - **Indices** refer to the board the order applies to: the start of the turn, plus this faction's earlier musters, in order.
   - That board is deterministic, so a plan and its resolution see the same units.
-  - Changing or cancelling an earlier muster re-checks every later one, and every order that depends on it (§3).
+  - **Multi-hop is allowed:** units sent from A to B can go on from B to C in a later muster. Each muster acts on the board as it stands; the end state is the same in planning and resolution.
+  - Within one order, an index may appear only once.
+  - **Adding, changing or cancelling any muster re-checks every later muster and every non-muster order** (§3).
 - **Merge** moves every unit, and the commander if the target has none. If both have one, the source's commander stays behind as a commander-only army, which today's rules allow; the forecast says so before you commit. Engines go too, if the target can carry them; if not, the merge is refused with its reason.
 - **Swap** exchanges the two commanders in one step, so neither army is ever leaderless or holds two.
-- **Serialized** like every order (`to_dict` / `OrderBook.order_from_dict`), with strict field and type checks. A malformed one is rejected with a reason, never skipped. Records replay through `GameSession.replay` and `from_record`.
+- **Serialized** as `{"type": "muster", ...}` through `to_dict` and `OrderBook.order_from_dict`, with a **strict parser.** Unlike the older lenient parsers, which coerce, default and ignore extra keys (`order_book.gd:285-301`):
+  - **transfer:** requires `kind`, `from`, `to` (a String; "" for a new army), `units` (an Array of unique non-negative ints), `commander` (bool) and `engines` (a non-negative int).
+  - **merge:** requires `kind`, `from`, `to`.
+  - **swap:** requires `kind`, `from`, `to`.
+  - Any other key, a missing key, or a wrong type makes the dictionary malformed.
+- **A malformed muster in a record is an error:** the record fails to load with a plain reason, never silently skipped (`OrderBook.orders_from_dict` today drops what it can't parse, `order_book.gd:264-276`; a muster isn't dropped). Our own writer never produces one; the case is a corrupt or hand-edited file. Records replay through `GameSession.replay` and `from_record`.
 
 ## 2. what may muster
 - **Both armies are yours, in the same province,** at the start of the turn and as the plan stands. That is the projected board's location: an army that moves this turn has moved after musters, so musters see where it starts.
 - **Neither holds a ruler:** neither the source, nor the target, nor a merge's target (`ruler_rules.gd` keeps a ruler alone).
-- **Neither is under an enchantment** (a blessing or a curse). The MVP keeps this simple: the forecast says "the Crown's 1st is blessed: it can't take or give troops while the blessing lasts." Inheriting blessings is later.
-- **No duplicate claims:** a unit leaves once; an index past the army's end is refused.
+- **Neither is blessed** (`MagicRules`' blessing on the army, `magic_rules.gd:815`). The forecast says "the Crown's 1st is blessed: it can't take or give troops while the blessing lasts." Inheriting blessings is later. **A curse doesn't stop a muster:** curses lie on the province (`magic_rules.gd:2081`) and touch every army of the faction there before and after alike.
+- **Indices:** an index past the army's end, or repeated within the order, is refused.
 - **Non-empty results:** a transfer must move at least one unit or the commander.
   - **The source after it:** if it keeps no units and no commander, it **disbands**, and its engines must have moved (a carrier needs a fighter, `siege_rules.gd:332`), or the order is refused.
   - **The target after it:** at most one commander, and engines within the cap (`FortData.ARMY_ENGINES_MAX`).
@@ -61,14 +69,19 @@ MusterOrder {
   - **Names:** "the Crown's 4th". Gaps from disbanded armies stay (names are permanent, `turn_report_text.gd:196-217`), and a merge's target keeps its name.
 
 ## 3. orders that depend on a muster
-Today the order book checks each order against `state_after_orders` (sacrifice effects). ARM-1 adds musters to that function, and the rest follows:
+Today the order book checks each order against `state_after_orders` (sacrifice effects). ARM-1 adds musters to that function. Musters are **hoisted**: the projection applies every muster first, in order, then checks every non-muster order against the result, wherever it sits in the list. So:
 - **Moves, casts, sieges (sallies and relief), recruits and fortify orders** are all checked against the board after your musters. A new army can march, cast or sally the same turn.
 - **Changing or cancelling a muster** rebuilds the projection and re-checks every later order. An order that no longer holds (its army gone, its caster moved away) is **dropped with a plain reason**, as a sacrifice or cast change drops orders today (`OrderBook` `_last_dropped`).
 - **A pin (a casting army can't move)** follows the army id the cast names, on the projected board.
-- **Recruitment** joins the first eligible army **as the board stands after musters** (`turn_resolver.gd:1587-1608`). The forecast names that army for each queued recruit, so a split can't silently redirect them.
+- **Recruitment** joins the first eligible army by id at the recruitment phase (`turn_resolver.gd:1587-1617`), after movement and battles.
+  - The forecast names the army a recruit **would join if the armies still stand there at recruitment**, and says so ("joins the Crown's 4th if it is still at Crownkeep").
+  - Ids sort as text: "kingdom-10" comes before "kingdom-2". The forecast uses the same sort, and a test covers it.
+- **The planning UI's projected board:** `OrdersController.view_state()` caches the projected board only when a sacrifice is queued, keyed by its mandate (`ui/orders_controller.gd:165-169`). ARM-1 changes it to always project when a muster or sacrifice is queued, and to rebuild after every queue, replacement, removal and cancellation. Cards, roads, casts, sieges and forecasts read that board.
 
 ## 4. resolution
-- **In the orders phase, first:** for each faction in id order, its musters apply in the order given, checked again on the real board. They can't fail where the plan passed, since no other faction acts on your armies before this. A muster that does fail (a malformed record) is rejected with an `order_rejected` event, and the orders that depended on it are rejected after it.
+- **A muster pass, first in the orders phase:** for each faction in id order, its musters apply in the order given, checked again on the real board.
+  - **It mutates the resolver's working copy before anything else in the phase,** before `MagicRules.pinned_armies` and before any `check_move`, `check_cast` or `check_siege_order` (`turn_resolver.gd:621-696`). Those checks run on the real copy, not on `state_after_orders`, so the pass has to come first; a test pins it.
+  - A muster can't fail there when the plan passed, since no other faction acts on your armies before it. If one does (a state the plan never saw), it is rejected with an `order_rejected` event, and the non-muster orders naming its armies are rejected after it, each with a reason.
 - **The phase lists don't change.** No `muster` phase; `PHASES`, `PATH_PHASES` and `MAGIC_PHASES` and the codex's phase order stay byte-for-byte. The codex gains one sentence under the orders phase.
 - **Events**, typed and structured, in the orders phase:
   - `army_split` `{from, to (new), units: [type ids], commander, engines}`
@@ -87,10 +100,11 @@ Today the order book checks each order against `state_after_orders` (sacrifice e
 - **Your own view** shows everything.
 - **A rival's view:** armies are pooled stand-ins per (faction, province), split by blessing and by extra commanders (`fog_rules.gd:352-549`).
   - Blessed armies can't muster (§2), so a muster never moves a unit across a blessing partition.
+  - **Engines** are pooled and handed out to stand-ins synthetically, not by their real carrier (`fog_rules.gd:428`). Moving engines between your armies may change nothing in a rival's view, or change which stand-in seems to carry them.
   - Commanders can move, so the **extra-commander stand-ins can change**. A rival who has that province in sight sees the new count of commanders there, exactly as they would see any change of composition. A rival who doesn't, sees nothing. This is stated, not hidden: musters are visible like any army in sight.
 - **Muster events** are the owner's only. A rival sees the result through sight at the end of the turn, not the order.
 - **Memory continuity:** a remembered stand-in keeps its view id and note until it is seen again, as today.
-- **Tests:** the snapshot probe (`tests/fog_test_kit.gd`). A rival's view after a muster equals the view of the same composition reached without one.
+- **Tests:** the snapshot probe (`tests/fog_test_kit.gd`). A rival's view after a muster equals the view of the same composition reached without one, in clear, glimpse and memory views, including transfers, merges and disbands that move engines.
 
 ## 6. the computer
 - **It never orders a muster** in ARM-1.
@@ -137,7 +151,7 @@ Today the order book checks each order against `state_after_orders` (sacrifice e
 - **Names:** across split, merge, summon, successor, recruitment, save and replay.
 
 ## 10. out of scope
-- Inheriting or splitting blessings and curses; musters by enchanted armies.
+- Inheriting or splitting blessings; musters by blessed armies.
 - Musters across provinces, or during a move.
 - The computer mustering (a later AI ticket).
 - Recruit orders naming their destination army (the forecast names it instead).
@@ -145,14 +159,14 @@ Today the order book checks each order against `state_after_orders` (sacrifice e
 
 ## 11. director's calls
 1. **One order, three kinds,** planned on the projected board and resolved first in the orders phase. No refs and no new phase.
-2. **Enchanted armies and rulers' armies don't muster** in the MVP.
+2. **Blessed armies and rulers' armies don't muster** in the MVP. Curses, which lie on provinces, don't stop a muster.
 3. **Splits are a tactic,** not an exploit: holding with part and marching with part is allowed and explained.
 4. **Engines move only when told,** within the carrier rules.
 5. **Musters are visible like any army in sight;** the orders themselves are private.
 6. **The computer doesn't muster yet;** a human's musters reach it as ordinary armies.
 
 ## 12. questions for Alex
-1. **Enchanted armies:**
+1. **Blessed armies:**
    - a) can't muster in the MVP (my pick: simple, safe);
    - b) a blessing stays with its army id, and units that leave lose it, units that join don't gain it (more to build and test).
 2. **Merge all when both armies have commanders:**
@@ -162,6 +176,19 @@ Today the order book checks each order against `state_after_orders` (sacrifice e
 ---
 
 ## appendix A. critic rounds
+
+### round 2 (Codex, hostile, on r2, 2026-10-10): 9 findings, 2 blockers. All taken.
+- **Blockers:**
+  - musters are hoisted before all non-muster orders, and any muster change re-checks them all (§3, the short version);
+  - a malformed muster fails the record's load instead of being skipped (§1).
+- **Majors:**
+  - the planning UI's projected-board cache rebuilds on every change (§3);
+  - the muster pass mutates the resolver's copy before pins and checks (§4);
+  - multi-hop transfers are allowed, and "leaves once" dropped (§1);
+  - the strict parser's exact keys and types (§1);
+  - curses lie on provinces, so only blessings exclude (§2);
+  - the recruit forecast is conditional, and ids sort as text (§3).
+- **Minor:** rival engine pooling stated and probed (§5).
 
 ### round 1 (Codex, hostile, on the issue's draft, 2026-10-10): 25 findings, 10 blockers. All taken.
 - **Blockers:**
