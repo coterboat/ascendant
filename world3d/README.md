@@ -9,7 +9,8 @@ resolver's events.
 ## The board in the game (M3a.1)
 
     GameScreen (ui/game_screen.gd)
-      Map (MapScreen, ui/map_screen.gd): top bar, side panel, orders, hover preview: unchanged 2D
+      Map (MapScreen, ui/map_screen.gd): the Table (UX-1: realm plaque, system row, tray and seal, the details card,
+                                         the move forecast; ui/table_hud.gd) over a full-bleed map view
         MapView
           Board3D (world3d/board3d.gd, a Control under everything else in the map view)
             World (SubViewport, own World3D, at the screen's physical pixels; renders only while live)
@@ -17,7 +18,10 @@ resolver's events.
                 Armies (armies.gd): formations, ghost recruits, turn playback
             BoardOverlay (board_overlay.gd): names, incomes, count plates, ghost plates, order arrows,
                                             clash markers, the playback bar, the legend: 2D, projected
-          MapCanvas (the 2D regions: hidden, but kept for their tooltips and marks), HoverPreview
+          MapCanvas (the 2D regions: hidden, but kept for their tooltips and marks)
+        TableHud (over MapView, under the Overlays layer: the playback bar, its caption and the close-up chip are
+                  placed by it inside the board's safe area, ui/table_layout.gd; the board frames the whole map in
+                  the part of the safe area right of the details card, set_fit_rect)
 
 - **Who knows the game:** the map screen. The board picks what is under the mouse (the territory id of
   the land at the unprojected point; an army whose figures' screen box holds the point) and calls the

@@ -120,6 +120,8 @@ var fps_samples: Array = [] ## (perf probes) recent frame times
 var _vp: SubViewport
 var _px := 1.0
 var _span_fit := 600.0
+var _fit_rect := Rect2() ## UX-1: where the whole-map framing goes, in this board's pixels (empty: the whole board)
+var _fit_target := Vector2.ZERO ## the ground point the whole-map camera looks at (the land's centre, slid so it lands in _fit_rect)
 var _fit_size := Vector2.ZERO
 var _press := false
 var _drag := false
@@ -762,7 +764,7 @@ func fit_whole(instant: bool = false) -> void:
 		closeup = ""
 		closeup_changed.emit("")
 	zoom = 0.0
-	goal = rig_for(LAND.get_center(), 0.0)
+	goal = rig_for(_fit_target, 0.0)
 	if instant:
 		_snap_rig()
 
@@ -795,6 +797,11 @@ func _snap_rig() -> void:
 
 
 # ------------------------------------------------------------------ the fortress close-up (M3a.2)
+
+## True while the fortress close-up is on.
+func in_closeup() -> bool:
+	return not closeup.is_empty()
+
 
 ## True when `province_id` has a fortress yard the close-up can show.
 func can_closeup(province_id: String) -> bool:
@@ -856,22 +863,60 @@ func closeup_rig(province_id: String) -> Dictionary:
 	return {"target": Vector3(c.x, y, c.y), "pitch": CLOSE_PITCH, "yaw": rad_to_deg(atan2(facing.x, facing.y)), "fov": FOV, "span": CLOSE_SPAN}
 
 
-## The span that fits the whole land in the board at the far pitch.
+## UX-1 (§1.3): the part of the board the whole-map framing fits the land into: the Table's safe area right of its details card
+## (TableHud.framing_area), in this board's pixels. The board itself stays full-bleed under the plaques; only where the land first
+## sits changes. An empty rect frames the whole board, as before.
+func set_fit_rect(r: Rect2) -> void:
+	if r == _fit_rect:
+		return
+	_fit_rect = r
+	if not prepared:
+		return
+	_compute_fit()
+	if zoom <= 0.001 and closeup.is_empty() and not _playing:
+		fit_whole(true)
+
+
+func _fit_area() -> Rect2:
+	var whole := Rect2(Vector2.ZERO, size)
+	if _fit_rect.size.x < 64.0 or _fit_rect.size.y < 64.0:
+		return whole
+	var area := _fit_rect.intersection(whole)
+	return area if area.size.x >= 64.0 and area.size.y >= 64.0 else whole
+
+
+## The ground point to look at so the whole land's centre lands on the centre of `area` (the camera's rig at the whole-land
+## framing is set; the target slides a few times, the projection being nearly flat at the far pitch).
+func _centred_target(area: Rect2) -> Vector2:
+	var c := LAND.get_center()
+	if area.get_center().distance_to(size * 0.5) < 0.5:
+		return c
+	var t := c
+	for i in 4:
+		wv.rig = rig_for(t, 0.0)
+		wv.apply_rig()
+		t += c - unproject(area.get_center())
+	return t
+
+
+## The span that fits the whole land in the framing area at the far pitch.
 func _compute_fit() -> void:
 	if not prepared or size.x < 8 or size.y < 8:
 		return
+	var area := _fit_area()
 	var lo := 200.0
 	var hi := 3000.0
 	var keep: Dictionary = wv.rig.duplicate()
 	for i in 22:
 		var mid: float = (lo + hi) * 0.5
 		_span_fit = mid
-		wv.rig = rig_for(LAND.get_center(), 0.0)
+		var look := _centred_target(area)
+		wv.rig = rig_for(look, 0.0)
 		wv.apply_rig()
 		var ok := true
 		for c in [LAND.position, Vector2(LAND.end.x, LAND.position.y), Vector2(LAND.position.x, LAND.end.y), LAND.end]:
 			var s: Vector2 = wv.project3(Vector3(c.x, 0.0, c.y)) / _scale()
-			if s.x < 8.0 or s.y < 8.0 or s.x > size.x - 8.0 or s.y > size.y - 8.0:
+			if s.x < area.position.x + 8.0 or s.y < area.position.y + 8.0 or s.x > area.end.x - 8.0 or s.y > area.end.y - 8.0:
 				ok = false
 				break
 		if ok:
@@ -879,6 +924,7 @@ func _compute_fit() -> void:
 		else:
 			lo = mid
 	_span_fit = hi
+	_fit_target = _centred_target(area)
 	wv.rig = keep
 	wv.apply_rig()
 
@@ -1150,6 +1196,8 @@ func _gui_input(event: InputEvent) -> void:
 			var key := codex_key_at(mb.position)
 			if not key.is_empty() and map != null:
 				map.request_codex(key)
+			elif map != null and map.get("ui_cancel") != null:
+				map.ui_cancel.cancel(true)  ## UX-1 (§1.4): a right-click on empty board closes the topmost thing, like Esc
 			accept_event()
 	elif event is InputEventMouseMotion:
 		var mm := event as InputEventMouseMotion
@@ -1254,9 +1302,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 	match k.keycode:
 		KEY_ESCAPE:
-			if not closeup.is_empty():
-				exit_closeup()
-				get_viewport().set_input_as_handled()
+			## UX-1 (§1.4): Esc is the map screen's one cancel: it closes the topmost thing (a card, a lens) before the
+			## close-up. The screen's own handler gets the key; nothing is decided here.
+			pass
 		KEY_SPACE:
 			if _playing:
 				skip_playback()

@@ -216,7 +216,7 @@ func setup_fog(state: GameState, viewer: String, memory: Dictionary, before: Gam
 				+ "\n\n" + b.tooltip_text
 		else:
 			b.text = FogView.badge_text(state, a)
-			b.tooltip_text = TooltipText.from_breakdown(FogView.army_breakdown(state, viewer, a, before)) + "\n\n" + TooltipText.wrap_text("Click to see it in the side panel.")
+			b.tooltip_text = TooltipText.from_breakdown(FogView.army_breakdown(state, viewer, a, before)) + "\n\n" + TooltipText.wrap_text("Click to see it on the card.")
 			CodexLink.attach(b, "last_seen" if level == FogData.MEMORY else "estimates", codex_requested.emit)
 		if level == FogData.MEMORY:
 			b.modulate = Color(0.78, 0.78, 0.82, 0.7)  # a grey ghost: remembered, not seen

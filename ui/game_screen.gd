@@ -1,8 +1,9 @@
 class_name GameScreen
 extends Control
 ## The one main screen of a hotseat game (#6, #7, #8). It hosts the MapScreen for the player at the
-## controls and adds a HUD to its top bar (Results, Turn report, Codex, End turn, Menu). On
-## top of the map it shows the turn report at the start of each player's turn, the battle report
+## controls and fills the Table over it (UX-1, #194; design/UX_WAR_TABLE.md §1): the system row's Research, Magic, Ruler,
+## Chronicle, Turn report, Lenses, Codex and ? buttons, the opponent plaque and Menu, the End turn seal (Results takes its place
+## at the end of a game). On top of the map it shows the turn report at the start of each player's turn, the battle report
 ## viewer, the codex, the victory screen and the handoff cover between players.
 ## Everything goes through GameSession: this screen reads the session and calls its API. It never
 ## changes rules state itself and holds no rules math. The map's orders are backed by the session's
@@ -14,13 +15,13 @@ extends Control
 ##             quit confirmation, the game menu, the save dialog, the load screen and settings. Each opens
 ##             on top of whatever is already open (_raise), so the codex opened from a report's "?" sits
 ##             above the report, and closing it shows the report again.
-##   NoticeLayer (CanvasLayer 15): a small notice under the top bar ("Game saved", "Game loaded"). It
+##   NoticeLayer (CanvasLayer 15): a small notice under the realm plaque ("Game saved", "Game loaded"). It
 ##             never blocks the map, and it sits under the handoff cover.
 ##   HandoffLayer (CanvasLayer 20): the handoff cover, above everything, so nothing leaks between players.
 ##
 ## Saving (SaveGame, SaveStore): the game saves itself at the start of every turn, once the last turn
 ## has resolved and before any computer seat plans the new one (and at the start of turn 1); the store
-## keeps the last three autosaves. Menu (the top bar, or Esc) has Save game (name it, or keep the
+## keeps the last three autosaves. Menu (top right, or Esc) has Save game (name it, or keep the
 ## timestamped default), Load game, Settings and Quit to title. A save is always the game as it stood at
 ## the start of the turn, with the computer's dice from that moment, so orders queued during a turn are
 ## not saved: the save dialog, the quit question and the load notice all say so. Loading (load_game)
@@ -37,7 +38,7 @@ extends Control
 ## handoff at all: the human ends the turn, the computer gives its orders from the start-of-turn state
 ## (never seeing the human's), the turn resolves and the human gets the turn report, with the
 ## computer's notes for that turn in a collapsible section. A computer in seat 1 plays at the start of
-## each turn, before the human, from the same start-of-turn state. The top bar names the computer
+## each turn, before the human, from the same start-of-turn state. The opponent plaque (top right) names the computer
 ## faction with its "Computer (Normal)" tag. Two humans play exactly as before. With no human seat at
 ## all (watch mode), End turn becomes Next turn and plays one whole turn per press.
 ##
@@ -64,13 +65,20 @@ extends Control
 ##   end_turn()           the End turn button: hands off to the next player, or resolves the turn. With
 ##                        computer seats, the computer then plays at once. In watch mode: next_turn().
 ##   next_turn()          watch mode only: both computers give their orders and the turn resolves.
-##   open_turn_report()   the Turn report button: the last resolved turn's report.
+##   open_turn_report()   the Turn report button: the last resolved turn's report, through the ReportHost (the modal
+##                        report until UX-6's Chronicle registers as the presenter).
+##   open_controls_help() the ? button: every key and mouse binding (ControlsHelp).
+##   report_host          the report seam (UX-1): turn resolved, report ready, opened, closed (ReportHost).
 ##   watch_battles(events, start = 0) -> String   M3-5: plays battle events (report order) in the battle
 ##                        host, from events[start]; "" or why not (no game, behind the handoff cover).
 ##   watch_battle(event) -> String   M3-5: one battle, with the report's other battles as its queue.
 ##   open_codex(key)      the Codex button, a report's "?", a right-click on a linked number.
 ##   show_results()       the Results button once the game is over: the victory screen again.
 ##   open_ruler_panel()   the Ruler button (M2-6, games with rulers only): the map's ruler panel.
+##   seal_nudging()       true while the End turn seal pulses: a new player (fewer than two turns ended in this
+##                        installation) with an order queued.
+## Esc (and a right-click on empty board) go through the map's one dispatcher, map.ui_cancel (UiCancel, §1.4); this screen
+## registers its overlays as the "modal" layer and the menu as the last step.
 ##   session              the GameSession being played. Read it; act through the API above.
 ##   computer             the AISeat playing the computer seats (it has none in a hotseat game).
 ##   save_store           where saves go (SaveStore, user://saves unless set before the game starts).
@@ -98,7 +106,7 @@ extends Control
 ##
 ## Fog of war (M5-2, #113; design/M5_MAGIC_FOG.md §2.1, §2.8, §2.9, §12.1): every screen reads the session through
 ## viewer() and the per-viewer accessors (state_for, turn_report_for, view_before, memory, intel): the map, its panels and
-## tooltips, the top bar, the turn report (with its fog header and "what you didn't see"), the battle screens (only
+## tooltips, the Table, the turn report (with its fog header and "what you didn't see"), the battle screens (only
 ## battles you fought), the board's playback (from view_before, through your own report) and the report's sound. The
 ## truth is read only on the observer paths: viewer() picks the observer in watch mode and once the game is over (the
 ## fog lifts), the victory screen, saving and loading, and rebuilding the log of a battle you fought (tests/test_fog_ui.gd
@@ -114,9 +122,7 @@ const TURN_START_DELAY := 0.45
 const REPORT_CUE_DELAY := 1.1
 ## M3-5: the z_index of an overlay opened over the battle screen (above its result card and legend).
 const OVER_BATTLE_Z := BattleHost.OVER_Z
-## MVP-3 (#177): the notice hangs this far under the top bar (it was 84 under a 62 px bar).
-const NOTICE_GAP := 22.0
-## MVP-3 (#177): how dark the turn report's backdrop is (it was 0.45, which left the side panel's text half readable).
+## MVP-3 (#177): how dark the turn report's backdrop is (it was 0.45, which left the card's text half readable).
 const REPORT_DIM := 0.82
 ## The Ruler button's help (without fog).
 const RULER_HELP := "Your ruler and the enemy ruler, every number explained, with the mandates each side has and how succession works. Builds are public. Your living ruler can sacrifice power for a new mandate here."
@@ -133,10 +139,13 @@ var loaded_header := {}  # the header of the save this game was loaded from ({} 
 var map: MapScreen
 var overlays: CanvasLayer  # every modal above the map; the last one opened is on top
 var handoff: HandoffScreen  # on its own CanvasLayer above everything else
-var end_turn_button: Button
-var report_button: Button
+var end_turn_button: Button  # the seal: "End turn" and the order count
+var report_button: Button  # the system row's Turn report, until UX-6's Chronicle
 var codex_button: Button
-var results_button: Button  # only once the game is over
+var help_button: Button  # the system row's ?: every key and mouse binding
+var chronicle_button: Button  # a placeholder for UX-6: the Chronicle
+var lenses_button: Button  # a placeholder for UX-7: the lenses
+var results_button: Button  # only once the game is over: it takes the seal's place
 var ruler_button: Button  # M2-6: opens the ruler panel; only in a game with rulers
 var research_hud: ResearchHud  # M4-4: the research chip, the research panel and the lock-in preview
 var first_game_guide: FirstGameGuide  # MVP-1 (#141): the card with the first turn's three steps (turn 1 of a first game)
@@ -150,7 +159,9 @@ var error_overlay: Control
 var error_title: Label
 var error_label: Label
 var quit_overlay: Control
-var opponent_box: HBoxContainer  # top bar: the computer seats, each with its tag (#35)
+var opponent_box: HBoxContainer  # the opponent plaque (top right): each rival with its banner, name and tag (#35)
+var report_host := ReportHost.new()  # UX-1: the report lifecycle seam; this screen's modal report is its default presenter
+var help_overlay: Control  # the ? panel: every key and mouse binding
 var menu_overlay: Control  # Menu: Resume, Save game, Load game, Settings, Quit to title
 var menu_text: Label
 var menu_save_button: Button
@@ -172,6 +183,7 @@ var _last_autosave_turn := 0  # the turn the last autosave was made at the start
 var _audio_turn := 0  # the turn turn_start last sounded for
 var _battle_audio := false  # the battle report viewer's music is on
 var _bound := false
+var _opponents_key := ""  # the viewer and turn the opponent plaque was built for
 var _turn_from := -1  # M3a.1: current_turn when the turn being resolved started (M5-2: its state is view_before)
 var _played_for := {}  # M3a.1: faction id -> the report turn already played out on the board for them
 var _replay := {}  # M3a.2: {"turn"}: the last resolved turn, played for every seat and by "Watch this turn again"
@@ -331,6 +343,8 @@ func _check_turn_start() -> void:
 	_turn_start_turns = session.turns_played()
 	_snapshot = SaveGame.computer_snapshot(computer, session)
 	_sync_chronicle()
+	if _turn_start_turns > 0:
+		report_host.notify_resolved(_turn_start_turns)  # UX-1: the report seam hears that a turn resolved
 	if autosave_enabled and not session.is_over():
 		var why := autosave()
 		if not why.is_empty():
@@ -423,6 +437,7 @@ func end_turn() -> String:
 		map.set_hint(why)
 		return why
 	GameAudio.sfx("end_turn")
+	_note_turn_ended()
 	_check_turn_start()  # the last seat's End turn resolved the turn: autosave before a computer plans
 	_close_overlays()
 	notice_panel.visible = false
@@ -453,11 +468,19 @@ func is_watching() -> bool:
 	return session != null and session.human_seats() == 0 and session.is_computer_turn()
 
 
-## Shows the last resolved turn's report on top. Does nothing before the first turn is resolved.
+## Shows the last resolved turn's report on top. Does nothing before the first turn is resolved. UX-1: through the ReportHost,
+## whose presenter is this screen's modal report until UX-6's Chronicle registers (the Turn report button, the victory screen's
+## Final turn report and every call site come here).
 func open_turn_report() -> void:
 	_bind()
+	report_host.open()
+
+
+## The ReportHost's presenter (the modal report): opens the last resolved turn's report. True when it opened.
+func open_report() -> bool:
+	_bind()
 	if session == null or _report_turn() == 0:
-		return
+		return false
 	# The computer's notes are those of the turn the report shows, which has resolved (AISeat.report_notes).
 	_sync_chronicle()
 	report_panel.chronicle = chronicle  # M3c S-3: the first-siege sentences
@@ -466,6 +489,31 @@ func open_turn_report() -> void:
 	report_panel.set_watch_again(can_watch_again())
 	_report_seen = maxi(_report_seen, _report_turn())
 	_raise(report_overlay)
+	report_host.notify_opened(_report_turn())
+	return true
+
+
+func close_report() -> void:
+	_hide_report_overlay()
+
+
+func is_report_open() -> bool:
+	return report_overlay != null and report_overlay.visible
+
+
+## The ReportHost's "the report is ready": the modal opens at once, sounds its headline cues and starts the battles the person
+## fought when Settings ask (UX-6's Chronicle decides for itself what ready means: a medallion, an auto-open for a battle).
+func on_report_ready(_turn: int, context: Dictionary) -> void:
+	open_report()
+	_cue_report(float(context.get("cue_delay", 0.2)))
+	auto_watch()
+
+
+## Hides the modal report (and tells the report host it closed, once).
+func _hide_report_overlay() -> void:
+	if report_overlay != null and report_overlay.visible:
+		report_overlay.visible = false
+		report_host.notify_closed(_report_turn())
 
 
 ## The computer's notes for the report (AISeat.report_notes). M5-2: under fog they name its hidden armies and plans, so
@@ -529,7 +577,8 @@ func _hotseat_fog() -> bool:
 
 
 func close_turn_report() -> void:
-	report_overlay.visible = false
+	_bind()
+	report_host.close()
 
 
 ## Opens the codex on top of everything open, at `key` when given. Closing it shows what was under it.
@@ -784,7 +833,7 @@ func open_settings() -> void:
 	settings_panel.open()
 
 
-## A small notice under the top bar that never blocks the map. OK hides it, and so does End turn.
+## A small notice under the realm plaque that never blocks the map. OK hides it, and so does End turn.
 func show_notice(title: String, text: String) -> void:
 	_bind()
 	notice_title.text = title
@@ -818,7 +867,7 @@ func _switch(next: Node) -> void:
 
 
 func _close_overlays() -> void:
-	report_overlay.visible = false
+	_hide_report_overlay()
 	battle_host.close()
 	battle_viewer.visible = false
 	_set_battle_audio(false)
@@ -827,6 +876,7 @@ func _close_overlays() -> void:
 	save_overlay.visible = false
 	load_screen.visible = false
 	settings_panel.visible = false
+	help_overlay.visible = false
 	if codex.visible:
 		codex.close()
 
@@ -878,21 +928,56 @@ func _top_overlay() -> Control:
 	return null
 
 
-## Esc closes the topmost plain overlay (the report, the quit question, the menu, the save dialog), or
-## opens the menu when nothing is open. The battle report viewer, the codex, the load screen and the
-## settings close themselves, the victory screen stays, and under the handoff cover Esc does nothing.
+## Esc: the map's one dispatcher (UiCancel, §1.4) closes the topmost thing, one per press: a modal (the overlays here, the map's
+## ruler panel and dialogs), march targeting, the Chronicle, the selection card, a lens, the board's close-up, and with
+## nothing left it opens the menu. Panels with an Esc handler of their own (research, settings, the load screen, the battle
+## screens) still close themselves first when they are on top; the codex asks the dispatcher. Under the handoff cover Esc does nothing.
 func _unhandled_input(event: InputEvent) -> void:
-	if not event.is_action_pressed("ui_cancel") or handoff.visible:
+	if not event.is_action_pressed("ui_cancel") or handoff.visible or session == null:
 		return
+	if not map.ui_cancel.cancel().is_empty() and is_inside_tree():
+		get_viewport().set_input_as_handled()
+
+
+## The "modal" layer's provider: something on the Overlays layer is open.
+func _modal_open() -> bool:
+	return overlays != null and _top_overlay() != null
+
+
+## Closes the topmost overlay. The victory screen and the setup error stay (they have their own buttons): they take the Esc and
+## nothing closes.
+func _close_top_modal() -> void:
 	var top := _top_overlay()
-	if top != null and top in [quit_overlay, report_overlay, menu_overlay, save_overlay]:
-		top.visible = false
-		if is_inside_tree():
-			get_viewport().set_input_as_handled()
-	elif top == null and session != null:
-		open_menu()
-		if is_inside_tree():
-			get_viewport().set_input_as_handled()
+	if top == null or top == victory_screen or top == error_overlay:
+		return
+	if top == codex:
+		codex.close()
+	elif top == settings_panel:
+		settings_panel.close()
+	elif top == load_screen:
+		if load_screen.confirm_overlay.visible:
+			load_screen.cancel_delete()
+		else:
+			load_screen.back()
+	elif top == battle_host:
+		battle_host.close()
+	elif top == battle_viewer:
+		battle_viewer.close()
+	elif top == report_overlay:
+		close_turn_report()
+	elif research_hud != null and top == research_hud.preview:
+		research_hud.preview.visible = false
+	elif research_hud != null and top == research_hud.panel:
+		research_hud.panel.close()
+	else:
+		top.visible = false  # the quit question, the menu, the save dialog, the ? panel
+
+
+## This screen's layers in the map's UiCancel: its overlays (above the map's own panels) and the menu as the last step.
+func _register_cancel_layers() -> void:
+	map.ui_cancel.register("modal", _modal_open, _close_top_modal, 100)
+	map.ui_cancel.set_menu_opener(func(): if session != null: open_menu())
+	codex.cancel_router = func(): map.ui_cancel.cancel()
 
 
 # --- the real screens (#7, #8) ----------------------------------------------------------------------
@@ -987,21 +1072,27 @@ func _update_hud() -> void:
 	var watching := is_watching()
 	var playing: bool = session != null and session.phase() == GameSession.Phase.ORDERS and not watching
 	var n: int = session.current_orders().size() if playing else 0
+	var over: bool = session != null and session.is_over()
+	var hud := map.table()
+	# The seal: "End turn" and the order count (UX-1; it was the top bar's "End turn (2 orders)"). Results takes its place at the
+	# end of a game.
 	end_turn_button.disabled = not (playing or watching)
-	end_turn_button.text = "End turn (%s)" % _count(n, "order") if playing else "End turn"
+	end_turn_button.text = "End turn\n%s" % _count(n, "order") if playing else "End turn"
 	end_turn_button.tooltip_text = _end_turn_tooltip(n)
 	if watching:
 		end_turn_button.text = "Next turn"
 		end_turn_button.tooltip_text = TooltipText.plain("Next turn", "Each computer gives its orders from the map as it stands now, without seeing the other's, and the turn resolves. The turn report then shows what happened and what each computer was thinking.")
-	opponent_box.visible = opponent_box.get_child_count() > 0 and session != null and not session.is_over() \
-		and session.phase() != GameSession.Phase.INVALID
+	end_turn_button.visible = not over
+	results_button.visible = over
+	hud.set_seal_pulse(playing and n > 0 and not _seal_learned())  # a new player: a gentle nudge once an order is queued
+	hud.orders_button.text = "Orders (%d)" % n if n > 0 else "Orders"
+	_refresh_opponents()
 	var has_report: bool = session != null and _report_turn() > 0
 	report_button.disabled = not has_report
 	var report_help := "Read again what happened last turn. Click a line to see it on the map."
 	if not has_report:
 		report_help = "Nothing has happened yet. The report of each turn appears here once every player has ended the turn."
 	report_button.tooltip_text = TooltipText.plain("Turn report", report_help)
-	results_button.visible = session != null and session.is_over()
 	ruler_button.visible = session != null and map.state != null and RulerRules.has_rulers(map.state) \
 		and session.phase() != GameSession.Phase.INVALID
 	if ruler_button.visible:  # M5-2: under fog, builds are learned, not public
@@ -1012,24 +1103,56 @@ func _update_hud() -> void:
 	map.turn_label.text = "Turn %d" % session.turn_number()
 	map.turn_label.tooltip_text = _turn_tooltip()
 	CodexLink.attach(map.turn_label, TooltipText.codex_for("turn"), open_codex)
-	# The hint wraps to at most two lines at 1600 px (tests/test_top_bar.gd); the tooltip says the rest.
+	# The tray's one line of "what to do now" (two lines at most); the tooltip says the rest. The ? panel has all of it.
 	if watching:
 		map.set_hint("Watching the computer play both sides. Press Next turn to play a turn.",
 			TooltipText.plain("Watching", "Nobody but the computer plays in this game. Next turn plays one turn; the turn report shows what each computer was thinking. Hover any number to see where it comes from."))
 	elif playing and session.human_seats() == 1:
-		# Against the computer the seat count means nothing to the player, and the opponent tag needs the room.
-		map.set_hint("Move: select an army, then a neighbor. Recruit: select your capital.", _orders_help())
+		# Against the computer the seat count means nothing to the player, and the opponent plaque needs the room.
+		map.set_hint(ControlsHelp.QUICK, _orders_help())
 	elif playing:
-		map.set_hint("Player %d of %d: select an army, then click a neighboring province to move it. Select your capital to recruit." % [
+		map.set_hint("Player %d of %d: select an army, then click a neighboring province to move it there. Select your capital to recruit." % [
 			session.current_seat(), session.players().size()], _orders_help())
-	elif session.is_over():
+	elif over:
 		map.set_hint("The game is over. Results shows the summary; Turn report shows the last turn.",
 			TooltipText.plain("Game over", "Results shows who won and the game in numbers. Turn report shows how the last turn went. The map shows the final positions; hover any number to see where it comes from."))
 
 
-## The top bar hint's tooltip during orders: the whole how-to, which doesn't fit in the bar.
+## UX-1: the End turn seal pulses for a new player: someone who has ended fewer than two turns in this installation.
+const SEAL_HINTS := ["seal_turn_1", "seal_turn_2"]
+var _seal_turns := -1  # turns a person has ended, from the settings' hints (-1: not read yet)
+
+
+## True while the seal pulses (a person gives orders, one is queued, and they are still new to the game).
+func seal_nudging() -> bool:
+	return _bind_ok() and map.table().seal_pulsing()
+
+
+func _bind_ok() -> bool:
+	_bind()
+	return map != null
+
+
+func _seal_learned() -> bool:
+	if _seal_turns < 0:
+		_seal_turns = 0
+		for h in SEAL_HINTS:
+			if GameSettings.hint_seen(h):
+				_seal_turns += 1
+	return _seal_turns >= SEAL_HINTS.size()
+
+
+## A person ended a turn with the seal: after two the pulse is learned for good (remembered in the settings' hints).
+func _note_turn_ended() -> void:
+	if _seal_learned():
+		return
+	GameSettings.mark_hint_seen(SEAL_HINTS[_seal_turns])
+	_seal_turns += 1
+
+
+## The tray hint's tooltip during orders: the whole how-to, which doesn't fit in the tray (the ? panel has it too).
 func _orders_help() -> String:
-	var how := "Select one of your armies, then click a neighboring province to move it there; hover a province first to see the forecast and battle odds. Select your capital to recruit. Each order is listed in the side panel, where you can cancel it. Hover any number to see where it comes from; right-click it, or press F1, to open its codex entry. End turn when you are done."
+	var how := ControlsHelp.HOW_TO_ORDER
 	if session.human_seats() == 1 and not session.computer_seats().is_empty():
 		return TooltipText.plain("You give orders as %s" % session.current_player_name(), how)
 	return TooltipText.plain("Player %d of %d: %s gives orders" % [session.current_seat(), session.players().size(), session.current_player_name()], how)
@@ -1108,87 +1231,117 @@ func _bind() -> void:
 	map.back_requested.connect(open_menu)
 	map.orders_changed.connect(_update_hud)
 	map.codex_requested.connect(open_codex)
+	report_host.set_presenter(self)  # UX-1: the modal report is the report host's presenter until UX-6
 	_build_hud()
 	_build_overlays()
+	_register_cancel_layers()
 	first_game_guide = FirstGameGuide.new()  # over the map, under every overlay layer
 	first_game_guide.codex_requested.connect(open_codex)
 	add_child(first_game_guide)
-	map.top_bar_changed.connect(_hang_under_top_bar)
-	_hang_under_top_bar()
-
-
-## MVP-3 (#177): what hangs under the top bar (the first-game guide, the notice) follows the bar's height, which is more
-## than one row in a narrow window (Settings' 125% interface size) and has the hint's row under the buttons.
-func _hang_under_top_bar() -> void:
-	if map == null or not is_inside_tree():
-		return
-	var bottom := map.top_bar_bottom()
-	if bottom <= 0.0:
-		return
-	if first_game_guide != null:
-		first_game_guide.hang_under(bottom)
-	if notice_panel != null:
-		notice_panel.offset_top = bottom + NOTICE_GAP
+	map.table().hang("guide", first_game_guide)  # the Table places it under the realm plaque, inside the safe area
 
 
 func _build_hud() -> void:
+	var hud := map.table()
+	# The seal (bottom right of the tray): End turn with the order count, and Results in its place at the end of a game.
 	results_button = _hud_button("ResultsButton", "Results", show_results)
 	results_button.tooltip_text = TooltipText.plain("Results", "The game is over: see who won, the turns played, the battles and the provinces each side held.")
 	results_button.add_theme_color_override("font_color", UiPalette.GILT)
+	results_button.add_theme_font_size_override("font_size", 18)
+	results_button.custom_minimum_size = Vector2(TableHud.SEAL_W, 58)
 	results_button.visible = false
-	map.add_top_bar_control(results_button)
+	hud.add_seal_item(results_button)
+	end_turn_button = _hud_button("EndTurnButton", "End turn", end_turn)
+	end_turn_button.custom_minimum_size = Vector2(TableHud.SEAL_W, 58)
+	end_turn_button.add_theme_font_size_override("font_size", 18)
+	end_turn_button.add_theme_color_override("font_color", UiPalette.GILT)
+	hud.add_seal_item(end_turn_button)
+	# The system row, under the realm plaque: today's panels as they are (modal, with their dimmers), as icon buttons (UiIcons),
+	# icons only below 1600 logical width; the tooltips name them.
 	ruler_button = _hud_button("RulerButton", "Ruler", open_ruler_panel)
 	ruler_button.tooltip_text = TooltipText.plain("Ruler", RULER_HELP)
 	ruler_button.visible = false
 	CodexLink.attach(ruler_button, "ruler", open_codex)
-	map.add_top_bar_control(ruler_button)
+	hud.add_system_button("ruler", ruler_button)
+	chronicle_button = hud.make_system_button("chronicle", "Chronicle", TooltipText.plain("Chronicle",
+		"The turn's announcements and your plan for it, in one column you open and close. It arrives in a later update; until then Turn report has what happened last turn."), Callable())
+	chronicle_button.disabled = true  # UX-6 fills it
 	report_button = _hud_button("TurnReportButton", "Turn report", open_turn_report)
-	map.add_top_bar_control(report_button)
+	hud.add_system_button("report", report_button)
+	lenses_button = hud.make_system_button("lenses", "Lenses", TooltipText.plain("Lenses",
+		"Optional map views, each with its own overlay: who owns what, income, threat, magic, how far each faction has made the land its own, and sight. They arrive in a later update."), Callable())
+	lenses_button.disabled = true  # UX-7 fills it
 	codex_button = _hud_button("CodexButton", "Codex", open_codex.bind(""))
 	codex_button.tooltip_text = TooltipText.plain("Codex", "Every rule of the game in plain language, searchable. Right-click a number, or hover it and press F1, to open the codex at the rule behind it.")
-	map.add_top_bar_control(codex_button)
-	end_turn_button = _hud_button("EndTurnButton", "End turn", end_turn)
-	end_turn_button.custom_minimum_size = Vector2(210, 0)
-	end_turn_button.add_theme_font_size_override("font_size", 18)
-	end_turn_button.add_theme_color_override("font_color", UiPalette.GILT)
-	map.add_top_bar_control(end_turn_button, true)  # MVP-3 (#177): End turn and Menu never leave the bar's first row
+	hud.add_system_button("codex", codex_button)
+	help_button = hud.make_system_button("help", "?", TooltipText.plain("Keys and mouse", "Every key and mouse binding, and how to give orders."), open_controls_help)
+	help_button.custom_minimum_size.x = 34
+	for b in [ruler_button, report_button, codex_button]:
+		b.add_theme_font_size_override("font_size", 15)
 	map.back_button.text = "Menu"
 	map.back_button.tooltip_text = TooltipText.plain("Menu",
 		"Save the game, load another, change the settings or quit to the title screen (Esc). The game also saves itself at the start of every turn.")
-	# The computer seats sit right after the player's own name, in its group (#35); filled per game.
+	hud.orders_button.tooltip_text = TooltipText.plain("Orders",
+		"Your orders this turn, each with its forecast and a cancel button, on the card at the bottom left. Click to open it, whatever is selected.")
+	# The rivals, top right: each with its banner, name and tag (#35); filled per game and per viewer (_refresh_opponents).
 	opponent_box = HBoxContainer.new()
 	opponent_box.name = "OpponentTag"
-	opponent_box.add_theme_constant_override("separation", 5)
+	opponent_box.add_theme_constant_override("separation", 10)
+	opponent_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	opponent_box.visible = false
-	map.faction_label.get_parent().add_child(opponent_box)
+	hud.opponent_slot.add_child(opponent_box)
+	hud.compact_changed.connect(func(_on): _refresh_opponent_labels())
 	research_hud = ResearchHud.new(self)  # M4-4: the research chip (paths games only)
 
 
-## The top bar's opponent tag: every computer seat as "vs", its emblem and its name, with the
-## "Computer (Normal)" chip under them: two compact lines, so the hint keeps its room. Empty in a
-## hotseat game.
+## The opponent plaque (top right, §1.3): every rival with its banner, emblem and name, a tag under them ("Computer (Normal)" for the
+## computer, "Player 2" for a person in a hotseat game) and, in a fog game, a "last seen" line (in the name's tooltip when the
+## window is under 1600 logical wide). A click-through to its codex entry is the right-click on any of it. Rebuilt whenever
+## the viewer or the turn changes (a hotseat handoff shows the next player's rivals).
 func _build_opponent_tag() -> void:
+	_opponents_key = ""
+	_refresh_opponents()
+
+
+func _refresh_opponents() -> void:
+	var hud := map.table()
+	var key := ""
+	if session != null and session.phase() != GameSession.Phase.INVALID and not session.is_over():
+		key = "%d|%s|%d|%s" % [session.get_instance_id(), viewer(), session.turn_number(), str(map.state != null and FogView.active(map.state))]
+	if key == _opponents_key:
+		_refresh_opponent_labels()
+		return
+	_opponents_key = key
 	for c in opponent_box.get_children():
 		opponent_box.remove_child(c)
 		c.queue_free()
 	opponent_box.visible = false
-	if session == null or session.phase() == GameSession.Phase.INVALID:
+	hud.opponent_panel.visible = false
+	if key.is_empty():
 		return
-	var state := session.state_for(viewer())  # names only, which are public
+	var eyes := viewer()
+	var state := session.state_for(eyes)  # names only, which are public
 	if state == null:
 		return
 	var players := session.players()
+	var any_computer := false
 	for i in players.size():
 		var fid := String(players[i])
-		if not session.is_computer(fid):
+		if fid == eyes:
 			continue
+		var f := state.find_faction(fid)
+		var faction_name := f.faction_name if f else "An unknown faction"
+		var computer_seat := session.is_computer(fid)
+		any_computer = any_computer or computer_seat
 		var stack := VBoxContainer.new()
 		stack.name = "Seat%d" % (i + 1)
+		stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		stack.add_theme_constant_override("separation", 1)
 		stack.alignment = BoxContainer.ALIGNMENT_CENTER
 		opponent_box.add_child(stack)
 		var line := HBoxContainer.new()
 		line.name = "Line"
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		line.add_theme_constant_override("separation", 4)
 		stack.add_child(line)
 		if opponent_box.get_child_count() > 1 or session.human_seats() > 0:
@@ -1200,25 +1353,103 @@ func _build_opponent_tag() -> void:
 			vs.add_theme_font_size_override("font_size", 14)
 			vs.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 			line.add_child(vs)
+		var banner := Art.banner_card(fid, 30.0)
+		banner.name = "RivalBanner"
+		line.add_child(banner)
 		var emblem := SeatEmblem.new(i, SeatEmblem.Look.TOKEN, 16.0)
 		emblem.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		line.add_child(emblem)
-		var f := state.find_faction(fid)
-		var faction_name := f.faction_name if f else "An unknown faction"
 		var name_label := Label.new()
 		name_label.name = "OpponentName"
 		name_label.text = faction_name
+		name_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		name_label.add_theme_font_size_override("font_size", 14)
 		name_label.add_theme_color_override("font_color", UiPalette.seat_color(i).lightened(0.3))
-		name_label.tooltip_text = TooltipText.plain("%s is played by the computer" % faction_name, AISeat.tag_help(faction_name, session.computer_level(fid)))
-		CodexLink.attach(name_label, "computer_opponent", open_codex)
+		name_label.set_meta("seat_help", TooltipText.plain("%s is played by the computer" % faction_name, AISeat.tag_help(faction_name, session.computer_level(fid)))
+			if computer_seat else TooltipText.plain("%s is played by a person" % faction_name,
+				"Player %d, at the same screen: orders stay hidden between turns behind the cover. %s" % [i + 1, RulesCodex.text("hotseat")]))
+		name_label.tooltip_text = String(name_label.get_meta("seat_help"))
+		CodexLink.attach(name_label, "computer_opponent" if computer_seat else "hotseat", open_codex)
 		line.add_child(name_label)
-		var tag := VictoryScreen.computer_tag(faction_name, session.computer_level(fid), open_codex)
+		var tag: Label
+		if computer_seat:
+			tag = VictoryScreen.computer_tag(faction_name, session.computer_level(fid), open_codex)
+		else:
+			tag = _player_tag(i, faction_name)
 		tag.add_theme_font_size_override("font_size", 11)
-		tag.size_flags_horizontal = Control.SIZE_SHRINK_END
 		(tag.get_theme_stylebox("normal") as StyleBoxFlat).content_margin_top = 0
 		(tag.get_theme_stylebox("normal") as StyleBoxFlat).content_margin_bottom = 1
-		stack.add_child(tag)
+		# The tag and, in a fog game, the "last seen" line share the row under the name (the plaque is 72 px tall at most).
+		var under := HBoxContainer.new()
+		under.name = "Under"
+		under.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		under.add_theme_constant_override("separation", 8)
+		stack.add_child(under)
+		under.add_child(tag)
+		var seen := Label.new()
+		seen.name = "LastSeen"
+		seen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		seen.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		seen.add_theme_font_size_override("font_size", 12)
+		seen.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
+		seen.set_meta("rival", fid)
+		under.add_child(seen)
+	opponent_box.visible = opponent_box.get_child_count() > 0
+	hud.opponent_panel.visible = opponent_box.visible
+	CodexLink.attach(hud.opponent_panel, "computer_opponent" if any_computer else "hotseat", open_codex)
+	_refresh_opponent_labels()
+
+
+## A person's tag under a rival's name in a hotseat game: "Player 2", in the computer tag's chip.
+func _player_tag(seat_index: int, faction_name: String) -> Label:
+	var tag := VictoryScreen.computer_tag(faction_name, "normal")
+	tag.name = "PlayerTag"
+	tag.text = "Player %d" % (seat_index + 1)
+	tag.tooltip_text = TooltipText.plain(tag.text, "%s is played by a person at this screen. %s" % [faction_name, RulesCodex.text("hotseat")])
+	CodexLink.attach(tag, "hotseat", open_codex)
+	return tag
+
+
+## Every rival's "last seen" line (fog games): shown under the name at 1600 logical width and over, in the name's tooltip below.
+func _refresh_opponent_labels() -> void:
+	var hud := map.table()
+	for stack in opponent_box.get_children():
+		var seen := stack.find_child("LastSeen", true, false) as Label
+		var name_label := stack.find_child("OpponentName", true, false) as Label
+		if seen == null or name_label == null:
+			continue
+		var text := last_seen_text(map.state, viewer(), String(seen.get_meta("rival")), map.fog_memory)
+		seen.text = text
+		seen.visible = not text.is_empty() and not hud.compact
+		var tip := String(name_label.get_meta("seat_help", ""))
+		if not text.is_empty():
+			tip = "%s\n\n%s" % [tip, TooltipText.wrap_text("%s: %s. Under fog of war you see only what your armies and land can see." % [name_label.text, text])]
+		name_label.tooltip_text = tip
+		CodexLink.attach(name_label, "computer_opponent" if session != null and session.is_computer(String(seen.get_meta("rival"))) else "hotseat", open_codex)
+
+
+## What `viewer` knows of when rival `fid` was last seen (a fog game; "" without fog): "in sight now" while any of their armies
+## or land is in clear sight or glimpsed, "last seen turn 6" (the end of turn 6) from the latest sighting remembered, and "not
+## seen yet". It reads the viewer's own view and memory, never the truth.
+static func last_seen_text(view: GameState, viewer_id: String, rival: String, memory: Dictionary) -> String:
+	if view == null or not FogView.active(view) or view.find_faction(rival) == null:
+		return ""
+	var latest := 0
+	for a in view.armies:
+		if a.owner != rival:
+			continue
+		var level := String(a.seen.get("level", FogRules.CLEAR)) if FogView.is_stand_in(a) else FogRules.CLEAR
+		if level == FogRules.CLEAR or level == FogRules.GLIMPSE:
+			return "in sight now"
+		latest = maxi(latest, int(a.seen.get("turn", 0)))
+	for p in view.provinces:
+		if p.owner != rival:
+			continue
+		var level := FogView.vision_level(view, viewer_id, p.id, memory)
+		if level == FogRules.CLEAR or level == FogRules.GLIMPSE:
+			return "in sight now"
+		latest = maxi(latest, int(memory.get("provinces", {}).get(p.id, {}).get("seen_turn", 0)))
+	return "last seen turn %d" % latest if latest > 0 else "not seen yet"
 
 
 func _hud_button(node_name: String, text: String, action: Callable) -> Button:
@@ -1241,7 +1472,7 @@ func _build_overlays() -> void:
 	victory_screen.add_action("FinalReportButton", "Final turn report",
 		"Read the report of the last turn, which ended the game.").pressed.connect(open_turn_report)
 	victory_screen.add_action("ViewMapButton", "View the map",
-		"Close this and look at the final map. Results in the top bar brings this back.").pressed.connect(
+		"Close this and look at the final map. Results (where End turn was) brings this back.").pressed.connect(
 			func(): victory_screen.visible = false)
 	overlays.add_child(victory_screen)
 
@@ -1294,6 +1525,7 @@ func _build_overlays() -> void:
 
 	_build_menu()
 	_build_save_dialog()
+	_build_help()
 
 	load_screen = LoadScreen.new()
 	load_screen.load_requested.connect(_on_load_requested)
@@ -1322,6 +1554,75 @@ func _build_menu() -> void:
 	_menu_button(m[1], "LoadGameButton", "Load game", open_load_screen, "Play on from a saved game instead of this one.")
 	_menu_button(m[1], "SettingsButton", "Settings", open_settings, "Window or fullscreen, how big the interface is drawn, and the sound volumes.")
 	_menu_button(m[1], "QuitToTitleButton", "Quit to title", _on_quit_requested, "Leave this game for the title screen. You are asked to confirm first.")
+
+
+## The ? panel (UX-1, §1.3): every key and mouse binding and today's hint text in full, from ControlsHelp (and, on the 3D board,
+## the board's own legend text). Filled each time it opens, so a lens key or a game's own lines are there.
+func _build_help() -> void:
+	var h := _overlay("ControlsHelp", Vector2(860, 0))
+	help_overlay = h[0]
+	var title := _label("HelpTitle", 30, UiPalette.GILT)
+	title.text = "Keys and mouse"
+	h[1].add_child(title)
+	var scroll := ScrollContainer.new()
+	scroll.name = "HelpScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size = Vector2(0, 430)
+	h[1].add_child(scroll)
+	var body := VBoxContainer.new()
+	body.name = "HelpBody"
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 6)
+	scroll.add_child(body)
+	_overlay_button(_button_row(h[1]), "CloseHelpButton", "Close", func(): help_overlay.visible = false, "Close this list (Esc).")
+
+
+## Opens the ? panel: every key and mouse binding, the how-to, and the board's legend.
+func open_controls_help() -> void:
+	_bind()
+	var body := help_overlay.find_child("HelpBody", true, false) as VBoxContainer
+	for c in body.get_children():
+		body.remove_child(c)
+		c.queue_free()
+	var lens_keys := []
+	for id in map.lens_host.ids():
+		lens_keys.append([OS.get_keycode_string(map.lens_host.key_of(id)), map.lens_host.title_of(id)])
+	for section in ControlsHelp.sections(lens_keys):
+		var head := _label("HelpHeading", 20, UiPalette.GILT)
+		head.text = String(section.title)
+		body.add_child(head)
+		var grid := GridContainer.new()
+		grid.columns = 2
+		grid.add_theme_constant_override("h_separation", 18)
+		grid.add_theme_constant_override("v_separation", 4)
+		body.add_child(grid)
+		for row in section.rows:
+			var keys := _label("HelpKeys", 16, UiPalette.TEXT_PRIMARY)
+			keys.text = String(row.keys)
+			keys.custom_minimum_size = Vector2(250, 0)
+			keys.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+			grid.add_child(keys)
+			var what := _label("HelpText", 16, UiPalette.TEXT_SECONDARY)
+			what.text = String(row.text)
+			what.custom_minimum_size = Vector2(500, 0)
+			what.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			grid.add_child(what)
+	var legend := _board_legend()
+	if not legend.is_empty():
+		var head := _label("HelpHeading", 20, UiPalette.GILT)
+		head.text = "What the 3D board shows"
+		body.add_child(head)
+		var text := _label("HelpLegend", 15, UiPalette.TEXT_SECONDARY)
+		text.text = legend
+		body.add_child(text)
+	_raise(help_overlay)
+
+
+## The 3D board's own legend (what its colours, figures and marks mean), when the board is up; "" on the 2D map.
+func _board_legend() -> String:
+	if map.board == null or map.board.get("overlay") == null:
+		return ""
+	return String(map.board.overlay.legend_text())
 
 
 func _menu_button(box: VBoxContainer, node_name: String, text: String, action: Callable, tooltip: String) -> Button:
@@ -1361,7 +1662,7 @@ func _build_save_dialog() -> void:
 	_overlay_button(row, "ConfirmSaveButton", "Save", func(): confirm_save(), "Save the game under this name.")
 
 
-## The NoticeLayer's notice: a title, a line and OK, under the top bar.
+## The NoticeLayer's notice: a title, a line and OK, under the realm plaque.
 func _build_notice() -> void:
 	var layer := CanvasLayer.new()
 	layer.name = "NoticeLayer"
@@ -1370,16 +1671,11 @@ func _build_notice() -> void:
 	notice_panel = PanelContainer.new()
 	notice_panel.name = "Notice"
 	notice_panel.visible = false
-	notice_panel.anchor_left = 0.5
-	notice_panel.anchor_right = 0.5
-	notice_panel.offset_left = -400
-	notice_panel.offset_right = 400
-	notice_panel.offset_top = 84
-	notice_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	var style := UiPalette.panel_style(16)
 	style.border_color = UiPalette.GILT
 	notice_panel.add_theme_stylebox_override("panel", style)
 	layer.add_child(notice_panel)
+	map.table().hang("notice", notice_panel)  # UX-1: under the realm plaque, inside the board's safe area (TableHud)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
 	notice_panel.add_child(row)
@@ -1404,7 +1700,7 @@ func _build_notice() -> void:
 
 ## The turn report panel in a modal frame with a footer: a hint and a Close button.
 func _report_overlay() -> Control:
-	# MVP-3 (#177): dim enough that what the box doesn't cover (the side panel's half-cut lines down its right edge) stays quiet.
+	# MVP-3 (#177): dim enough that what the box doesn't cover (the card's half-cut lines down its edge) stays quiet.
 	var overlay := _overlay_base("ReportOverlay", REPORT_DIM)
 	var center := CenterContainer.new()
 	center.name = "Center"
@@ -1442,7 +1738,7 @@ func _report_overlay() -> Control:
 	row.add_theme_constant_override("separation", 16)
 	footer.add_child(row)
 	var hint := _label("ReportHint", 16, UiPalette.TEXT_SECONDARY)
-	hint.text = "Click a line to see it on the map. Battles have a full report, and ? explains the rule behind a line. Reopen this from Turn report in the top bar."
+	hint.text = "Click a line to see it on the map. Battles have a full report, and ? explains the rule behind a line. Reopen this from Turn report in the system row."
 	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	row.add_child(hint)
@@ -1610,19 +1906,16 @@ func watch_turn_again() -> bool:
 	return true
 
 
-## Opens the turn report (with its headline cues after `cue_delay` seconds), after the board's playback
-## when one is running; then auto-watch (M3-5) when the setting is on.
+## The turn's report is ready to show (with its headline cues after `cue_delay` seconds), after the board's playback when one
+## is running: the report host tells its presenter (the modal report opens, then the player's battles auto-watch when Settings
+## ask, M3-5).
 func _open_report_when_played(cue_delay: float) -> void:
 	if map.board != null and map.board.is_playing():
 		map.board.playback_finished.connect(func():
 			if session != null and _report_turn() > 0:
-				open_turn_report()
-				_cue_report(0.2)
-				auto_watch(), CONNECT_ONE_SHOT)
+				report_host.notify_ready(_report_turn(), {"cue_delay": 0.2}), CONNECT_ONE_SHOT)
 		return
-	open_turn_report()
-	_cue_report(cue_delay)
-	auto_watch()
+	report_host.notify_ready(_report_turn(), {"cue_delay": cue_delay})
 
 
 # --- watching battles (M3-5) ----------------------------------------------------------------------

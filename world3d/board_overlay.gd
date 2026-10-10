@@ -63,10 +63,30 @@ var _last_view := Transform3D() ## the camera when the plates were last placed
 var _dirty := true ## something changed: place the plates and redraw this frame
 
 
+## UX-1 (design/UX_WAR_TABLE.md §1.3): the Table (TableHud) places the playback bar, its caption and the close-up chip inside
+## the board's safe area, clear of the plaques and the tray, so it positions them (hang) and this overlay leaves them alone.
+## The one-line board legend at the top left is gone from the board: its hint and its whole tooltip are in the ? panel of the
+## system row (legend_text() is still the text).
+var hung := false
+
+
+func play_bar() -> Control:
+	return _play_bar
+
+
+func caption_panel() -> Control:
+	return _caption
+
+
+func closeup_chip() -> Control:
+	return _closeup_chip
+
+
 func _init() -> void:
 	name = "BoardOverlay"
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_legend()
+	_legend.visible = false  # UX-1: the ? panel has it
 	_build_play_bar()
 	_build_caption()
 	_build_closeup_chip()
@@ -153,7 +173,7 @@ func _build_ghost_plates(ghosts: Array) -> void:
 		pc.add_child(lb)
 		pc.mouse_filter = Control.MOUSE_FILTER_PASS
 		pc.tooltip_text = TooltipText.plain("Queued recruits: %s" % ", ".join(parts),
-			"They are paid when the turn ends and join your armies at %s. The translucent figures stand in the yard slot each will take (beside the army it joins, or a slot of its own; in the war camp outside the walls when the yard is full). Only you see them, and cancelling the order in the side panel removes them.%s" % [where,
+			"They are paid when the turn ends and join your armies at %s. The translucent figures stand in the yard slot each will take (beside the army it joins, or a slot of its own; in the war camp outside the walls when the yard is full). Only you see them, and cancelling the order on the card removes them.%s" % [where,
 				(" After them you have %d gold left." % gold_left) if gold_left >= 0 else ""])
 		CodexLink.attach(pc, TooltipText.codex_for("recruit"), map.request_codex)
 		add_child(pc)
@@ -927,7 +947,8 @@ func _update_caption() -> void:
 		help = "%s\n\n%s" % [String(now["line"]), help] ## the turn report's own words for this battle
 	_caption.tooltip_text = TooltipText.plain(String(now["caption"]), help)
 	_caption.reset_size()
-	_caption.position = Vector2(round((size.x - _caption.size.x) * 0.5), _play_bar.position.y + _play_bar.size.y + 10.0)
+	if not hung:
+		_caption.position = Vector2(round((size.x - _caption.size.x) * 0.5), _play_bar.position.y + _play_bar.size.y + 10.0)
 
 
 ## The phase the caption shows now ({} between phases, or when nothing plays).
@@ -1007,7 +1028,7 @@ func _build_closeup_chip() -> void:
 	leave.pressed.connect(func(): board.exit_closeup())
 	row.add_child(leave)
 	_closeup_chip.tooltip_text = TooltipText.plain("Fortress view",
-		"A close look at this fortress's muster yard: every army stands a block to a slot, facing the gate, and an army the yard can't hold musters in the war camp outside. Each recruit you queue in the side panel appears at once as a translucent figure in the slot it will take; armies you ordered to march wait in a column at the gate. Esc or zooming out goes back to the map.")
+		"A close look at this fortress's muster yard: every army stands a block to a slot, facing the gate, and an army the yard can't hold musters in the war camp outside. Each recruit you queue on the card appears at once as a translucent figure in the slot it will take; armies you ordered to march wait in a column at the gate. Esc or zooming out goes back to the map.")
 	add_child(_closeup_chip)
 
 

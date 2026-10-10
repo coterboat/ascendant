@@ -7,7 +7,7 @@ extends "res://tests/test_case.gd"
 
 const GAME_SCENE := "res://ui/game_screen.tscn"
 const MAP_SCENE := "res://ui/map_screen.tscn"
-const TopBar := preload("res://tests/test_top_bar.gd")
+const TopBar := preload("res://tests/test_table_hud.gd")
 ## Ids that must never reach player-facing text (case-sensitive: display names are capitalised).
 const RAW_IDS := ["kingdom", "beasts", "crownkeep", "fangridge", "westwatch", "stonegate", "highcrag", "rivermarch",
 	"aurel_king", "ever_regent", "thornmane_avatar", "fang_chieftain", "royal_court", "mending_light", "warband_muster",

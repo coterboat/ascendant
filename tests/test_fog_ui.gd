@@ -743,12 +743,12 @@ func test_hotseat_seat_2_panels_are_identical_under_perturb_hidden() -> void:
 	game.free()
 
 
-## Everything seat 2 can read: the top bar, every region and its badges, the side panel of every province, the
+## Everything seat 2 can read: the Table (the realm plaque, the system row, the opponent plaque, the tray), every region and its badges, the side panel of every province, the
 ## ruler panel, the enemy's path and the turn report.
 func _dump(game: GameScreen) -> String:
 	var map := game.map
 	game._show_current_player()
-	var out := PackedStringArray([_texts(map.get_node("Layout/TopBar"))])
+	var out := PackedStringArray([_texts(map.table())])
 	var ids: Array = map.regions.keys()
 	ids.sort()
 	for pid in ids:

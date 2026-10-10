@@ -3,10 +3,12 @@ extends "res://tests/test_case.gd"
 ## test_neutral_fort_text.gd). Headless, through the real screens. What each test pins:
 ##   1  the first-game guide folds the other systems' lines behind one row (every explanation still reachable), keeps its fog
 ##      line, and the first fog turn's banner waits for it instead of stacking beside it;
-##   12 (the second walk's) the card stays short and hangs under the top bar, whatever height the bar has;
+##   12 (the second walk's) the card stays short and hangs under the realm plaque, in the Table's safe area, and moves clear of a
+##      selection card (UX-1; it hung under the top bar, whatever height the bar had);
 ##   3  the new game screen's computer paragraph is one short line with a link to its codex entry;
-##   5, 4 the top bar gives the hint a row of its own and the optional buttons a second row when the first is too narrow
-##      (the real layout pass is tests/screen_fit_probe.gd's "game" screen, checked in test_screens_fit.gd);
+##   5, 4 the system row holds every button and shows icons only under 1600 logical width; the hint has the tray (UX-1; the old
+##      top bar gave the hint a row of its own and the optional buttons a second row when the first was too narrow). The real
+##      layout pass is tests/screen_fit_probe.gd's "game" screen and tests/table_probe.gd (test_screens_fit, test_table_geometry);
 ##   6  the big centred panels shrink to fit a smaller viewport (PanelFit);
 ##   7  under fog the computer's notes are one quiet line, not a header with a scrolling box;
 ##   8  a greater working's card says what it needs once;
@@ -112,15 +114,26 @@ func test_the_card_is_short_with_every_system_on() -> void:
 	_unseen()
 
 
-func test_the_card_hangs_under_the_top_bar_whatever_height_the_bar_has() -> void:
+func test_the_guide_hangs_in_the_safe_area_and_moves_clear_of_a_card() -> void:
 	var g := FirstGameGuide.new()
-	assert_eq(g.offset_top, FirstGameGuide.TOP, "by itself it hangs where it always did")
-	g.hang_under(62.0)
-	assert_eq(g.offset_top, 62.0 + FirstGameGuide.BELOW_BAR)
-	assert_eq(g.offset_top, FirstGameGuide.TOP, "under the old 62 px bar that is the same place")
-	g.hang_under(105.0)
-	assert_eq(g.offset_top, 105.0 + FirstGameGuide.BELOW_BAR, "under a taller bar it moves down with it")
+	assert_eq(g.offset_top, FirstGameGuide.TOP, "by itself it hangs where it starts")
+	assert_eq(FirstGameGuide.TOP, TableLayout.TOP_LEFT_H + TableLayout.GAP, "which is the top left of the board's safe area, under the realm plaque")
 	g.free()
+	# In the game the Table places it: at the top left of the safe area, and right of a card that is in its way.
+	_unseen()
+	var game := _game(_all_on())
+	var hud := game.map.table()
+	for viewport in [Vector2(1600, 900), Vector2(1280, 720)]:
+		hud.viewport_override = viewport
+		hud.relayout()
+		var safe := TableLayout.safe_area(viewport)
+		var rect: Rect2 = hud.placed()["guide"]
+		var card: Rect2 = hud.placed()["card"]
+		assert_true(safe.encloses(rect), "the guide stays inside the safe area at %s (%s in %s)" % [viewport, rect, safe])
+		assert_false(TableLayout.overlaps(rect, card), "and clear of the selection card at %s (%s, %s)" % [viewport, rect, card])
+		assert_true(hud.overflowed().is_empty(), "nothing found no room at %s: %s" % [viewport, hud.overflowed()])
+	game.free()
+	_unseen()
 
 
 func test_the_first_fog_banner_waits_for_the_guide_and_the_guide_says_the_same() -> void:
@@ -185,35 +198,49 @@ func test_the_computer_paragraph_is_one_short_line_with_a_codex_link() -> void:
 	ng.free()
 
 
-# --- items 4 and 5: the top bar rows --------------------------------------------------------------------------
+# --- items 4 and 5: the system row and the tray ---------------------------------------------------------------
 
-func test_the_hint_has_a_row_of_its_own_and_the_optional_buttons_can_join_it() -> void:
+func test_the_system_row_holds_every_button_and_the_seal_and_menu_stay_out_of_it() -> void:
 	var game := _game(_all_on())
 	var map := game.map
-	assert_eq(map.hint_label.get_parent(), map.hint_row, "the hint sits in the second row")
-	assert_eq(map.hint_row.get_parent(), map.bar_row.get_parent(), "under the buttons' row")
+	var hud := map.table()
+	var row_order := hud.system_row.get_children().map(func(c): return c.name)
 	for button in [game.end_turn_button, map.back_button]:
-		assert_eq(button.get_parent(), map.bar_row, "%s is in the first row" % button.text)
-	# Narrow: every optional button moves down beside the hint, End turn and Menu stay; wide: they come back, in order.
+		assert_false(button.get_parent() == hud.system_row, "%s is not in the system row: it never hides or moves into it" % button.name)
 	var chips := [game.research_hud.chip, game.research_hud.magic_chip, game.ruler_button, game.report_button, game.codex_button]
-	var order_before := map.bar_row.get_children().map(func(c): return c.name)
-	map._bar_narrow = true
-	map._place_bar_items()
 	for c in chips:
-		assert_eq(c.get_parent(), map.hint_row, "%s moved beside the hint" % c.name)
-	assert_eq(game.end_turn_button.get_parent(), map.bar_row)
-	assert_eq(map.back_button.get_parent(), map.bar_row)
-	assert_eq(map.hint_row.get_child(0), map.hint_label, "the hint stays first in its row, expanding")
-	assert_eq(map.bar_row.get_child(map.bar_row.get_child_count() - 1), map.back_button, "Menu stays last")
-	map._bar_narrow = false
-	map._place_bar_items()
-	assert_eq(map.bar_row.get_children().map(func(c): return c.name), order_before, "wide again: the same buttons in the same order")
-	assert_eq(map.hint_row.get_child_count(), 1, "and only the hint in the second row")
+		assert_eq(c.get_parent(), hud.system_row, "%s is in the system row" % c.name)
+	# The row's order is the table's: Research, Magic, Ruler, Chronicle, Turn report, Lenses, Vision, Codex, ?.
+	var ids := []
+	for c in hud.system_row.get_children():
+		for id in hud.system_button_ids():
+			if hud.system_button(id) == c:
+				ids.append(id)
+	var wanted := TableHud.SYSTEM_ORDER.filter(func(id): return ids.has(id))
+	assert_eq(ids, wanted, "in SYSTEM_ORDER's order")
+	# Wide, the buttons carry their names beside their icons; under 1600 logical they are icons only, and the chips keep their
+	# progress text. Nothing is lost: each button's tooltip names it.
+	hud.viewport_override = Vector2(1600, 900)
+	hud.relayout()
+	assert_eq(game.ruler_button.text, "Ruler")
+	assert_true(game.ruler_button.icon != null, "with its icon")
+	hud.viewport_override = Vector2(1280, 720)
+	hud.relayout()
+	assert_true(hud.compact)
+	for b in [game.ruler_button, game.report_button, game.codex_button, game.chronicle_button, game.lenses_button]:
+		assert_eq(b.text, "", "%s is icons only under 1600 logical width" % b.name)
+		assert_false(b.tooltip_text.is_empty(), "and its tooltip names it")
+	assert_false(game.research_hud.chip.text.is_empty(), "the research chip keeps its progress")
+	hud.viewport_override = Vector2(1600, 900)
+	hud.relayout()
+	assert_eq(game.ruler_button.text, "Ruler", "wide again: the names come back")
+	assert_eq(hud.system_row.get_children().map(func(c): return c.name), row_order, "in the same order")
 	game.free()
 
 
 func test_the_hint_and_its_whole_help_are_unchanged() -> void:
 	var game := _game(_all_on())
+	assert_eq(game.map.hint_label, game.map.table().hint_label, "the hint is the tray's line")
 	assert_true(game.map.hint_label.text.begins_with("Move: select an army"), game.map.hint_label.text)
 	assert_true(game.map.hint_label.tooltip_text.replace("\n", " ").contains("neighboring province"), "the tooltip keeps the whole how-to")
 	game.free()

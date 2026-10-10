@@ -207,6 +207,93 @@ func test_a_click_on_every_army_picks_that_army() -> void:
 	game.free()
 
 
+# --- the Table over the board (UX-1, #194) ---------------------------------------------------------
+
+func test_the_whole_map_is_framed_in_the_tables_framing_area() -> void:
+	var game := _game_with_board()
+	var b: Board3D = game.map.board
+	var t = b.wv.terrain
+	var window := Vector2(1600, 900)
+	b.size = window
+	b.set_fit_rect(Rect2())
+	b.fit_whole(true)
+	b._compute_fit()
+	b.fit_whole(true)
+	var whole := Rect2(Vector2.ZERO, window)
+	for id in t.ids:
+		assert_true(whole.has_point(b.project(t.centre_of(id))), "%s is on the board with the whole board to frame in" % id)
+	var area := TableLayout.framing_area(window)
+	b.set_fit_rect(area)
+	assert_eq(b.goal["span"] > 0.0, true)
+	for id in t.ids:
+		var s := b.project(t.centre_of(id))
+		assert_true(area.has_point(s), "%s's centre (%s) is inside the framing area (%s): clear of the card, the plaques and the tray" % [id, s, area])
+	# The land's own corners fit it too: the whole map, not just the centres.
+	for c in [Board3D.LAND.position, Vector2(Board3D.LAND.end.x, Board3D.LAND.position.y), Vector2(Board3D.LAND.position.x, Board3D.LAND.end.y), Board3D.LAND.end]:
+		var s2 := b.project(c)
+		assert_true(area.grow(1.0).has_point(s2), "the land's corner %s (%s) is inside the framing area" % [c, s2])
+	# And the map is centred in it, not in the window.
+	var lo := Vector2(1.0e9, 1.0e9)
+	var hi := Vector2(-1.0e9, -1.0e9)
+	for id in t.ids:
+		var s3 := b.project(t.centre_of(id))
+		lo = lo.min(s3)
+		hi = hi.max(s3)
+	assert_true(absf((lo.x + hi.x) * 0.5 - area.get_center().x) < area.size.x * 0.1, "centred left to right in the area")
+	game.free()
+
+
+func test_a_click_on_every_province_still_picks_it_with_the_map_framed_in_the_tables_area() -> void:
+	var game := _game_with_board()
+	var b: Board3D = game.map.board
+	var t = b.wv.terrain
+	b.size = Vector2(1600, 900)
+	b.set_fit_rect(TableLayout.framing_area(Vector2(1600, 900)))
+	b.fit_whole(true)
+	for id in t.ids:
+		var p: Vector2 = t.centre_of(id) + Vector2(0, t.stage_r[t.index_of(id)] * 1.4)
+		if t.province_at(p) != id:
+			p = t.centre_of(id)
+		var s := b.project(p)
+		assert_true(_on_screen(b, s), "%s is on the board" % id)
+		assert_eq(b.province_at(s), id, "a click on %s picks it with the map framed in the Table's area" % id)
+	game.free()
+
+
+func test_the_board_takes_the_mouse_and_the_table_over_it_lets_empty_space_through() -> void:
+	var game := _game_with_board()
+	var b: Board3D = game.map.board
+	assert_eq(b.mouse_filter, Control.MOUSE_FILTER_STOP, "the board keeps its own picking (_gui_input)")
+	var hud := game.map.table()
+	assert_eq(hud.mouse_filter, Control.MOUSE_FILTER_IGNORE, "the Table's root ignores the mouse, so a click on empty HUD space reaches the board")
+	assert_true(hud.get_index() > game.map.map_view.get_index(), "the Table is drawn over the map view and the board in it")
+	game.free()
+
+
+func test_the_boards_playback_bar_caption_and_chip_are_placed_by_the_table() -> void:
+	var game := _game_with_board()
+	var b: Board3D = game.map.board
+	var hud := game.map.table()
+	assert_true(b.overlay.hung, "the overlay leaves their places to the Table")
+	assert_false(b.overlay.get("_legend").visible, "the one-line board legend is in the ? panel now")
+	assert_true(game.help_overlay != null)
+	game.open_controls_help()
+	var text := ""
+	for l in game.help_overlay.find_children("HelpLegend", "Label", true, false):
+		text += (l as Label).text
+	assert_eq(text, b.overlay.legend_text(), "the ? panel has the board's whole legend")
+	b.overlay.play_bar().visible = true
+	b.overlay.caption_panel().visible = true
+	hud.viewport_override = Vector2(1600, 900)
+	hud.relayout()
+	var safe := TableLayout.safe_area(Vector2(1600, 900))
+	for kind in ["playback", "caption"]:
+		assert_true(hud.placed().has(kind), "the Table placed the %s" % kind)
+		assert_true(safe.encloses(hud.placed()[kind]), "inside the safe area")
+	assert_false(TableLayout.overlaps(hud.placed()["playback"], hud.placed()["guide"]) if hud.placed().has("guide") else false)
+	game.free()
+
+
 # --- selection through the board drives the map screen ---------------------------------------------
 
 func test_clicks_on_the_board_select_through_the_map_screen() -> void:

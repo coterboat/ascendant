@@ -1,7 +1,9 @@
 class_name MapScreen
 extends Control
-## The main map screen (issue #5): the M1 map drawn from a GameState, a top bar with the viewing
-## player's gold and the turn, and a side panel with the selected province's details.
+## The main map screen (issue #5): the M1 map drawn from a GameState, full-bleed, with the Table over it (UX-1, #194,
+## design/UX_WAR_TABLE.md §1): the realm plaque with the viewing player's gold and the turn, the system row, the
+## opponent plaque and Menu, the tray and the seal (TableHud), and a temporary details card with the selected province's
+## details (DetailsCard, until UX-3's cards).
 ## Reads the GameState only and never changes it. Every number on screen has a tooltip with its
 ## breakdown (rules/breakdown.gd) and a plain-language description, ending with the codex entry that
 ## explains it: right-click (or F1 while hovering) asks for that entry with codex_requested (#8). In the
@@ -10,7 +12,7 @@ extends Control
 ##
 ## API for the orders UI and turn flow:
 ##   set_state(state, viewing_faction_id)  show a state (rebuilds the map; keeps the selection if it still exists)
-##   select_province(id)                   select a province and fill the side panel
+##   select_province(id)                   select a province and show it on the details card
 ##   select_army(id)                       select an army (and its province)
 ##   focus_province(id)                    select a province and flash it to draw the eye
 ##   preview_move(id)                      hover preview: what clicking `id` would order for the selected army
@@ -25,12 +27,16 @@ extends Control
 ##
 ## Hooks for the game screen (#7), which hosts this screen for the player at the controls:
 ##   session                    set it before set_state(): orders then go through GameSession's books
-##   intercept_back             true: the back button emits back_requested instead of leaving
-##   add_top_bar_control(c, essential)  puts a HUD control in the top bar, just before the back button; one that is not
-##                              `essential` moves down beside the hint when the bar is too narrow for one row
-##   set_hint(text, tooltip)    the short help text in the bar's second row, under the buttons (at most two lines; the
-##                              tooltip can say more)
-##   signal top_bar_changed     the bar's rows or height changed (the game screen hangs its cards under it)
+##   intercept_back             true: the Menu button emits back_requested instead of leaving
+##   hud                        the TableHud: add_system_button, add_plaque_item, add_seal_item (it replaces the old
+##                              add_top_bar_control), the notification and tray slots, the safe area
+##   set_hint(text, tooltip)    the one line of "what to do now" in the tray (at most two lines; the tooltip can say more)
+##
+## The host seams (UX-1, §1.1): later tickets plug into these instead of editing this file.
+##   selection_host (SelectionHost)  "show this army or province" and "selection cleared"; the details card is its presenter
+##   lens_host (LensHost)            the active lens id, its keys, and the feed to the board (no lens yet)
+##   ui_cancel (UiCancel)            Esc and a right-click on empty board close the topmost thing, one per press (§1.4)
+##   (the game screen has the fourth, report_host: ReportHost)
 ##
 ## Sound (GameAudio): an accepted order sounds order_queued, with march after a move and recruit after a
 ## recruit; a sacrifice sounds sacrifice; a cancelled order order_cancelled. A refused order is silent
@@ -68,12 +74,9 @@ signal army_selected(army_id: String)
 signal orders_changed
 ## The back button was pressed while intercept_back is on.
 signal back_requested
-## MVP-3 (#177): the top bar's height or its rows changed (a narrower window, a wider label): whatever hangs under it moves.
-signal top_bar_changed
 ## A number or term linked to the codex was right-clicked (or F1 was pressed over it).
 signal codex_requested(key: String)
 
-const SIDE_PANEL_WIDTH := 400
 ## The board under the provinces (STYLE_BIBLE.md 1.2: sea, deep sea, map ink; fog veil for the roads).
 const SEA_DEEP := Color("#244E6E")
 const SEA := Color("#2F7A93")
@@ -86,7 +89,7 @@ const LAND_BRIDGE := 58.0
 ## The land between provinces: the plains tile, dimmed and greyed so the provinces stand out on it.
 const LAND_TINT := Color(0.5, 0.55, 0.43)
 const LAND_TILE := 260.0
-## Portrait sizes in the side panel: army rows and recruit buttons.
+## Portrait sizes in the details card: army rows and recruit buttons.
 const ROW_PORTRAIT := Vector2(44, 44)
 const TITLE_SCENE := "res://ui/title_screen.tscn"
 const CODEX_SCENE := "res://ui/codex_panel.tscn"
@@ -103,10 +106,10 @@ var session: GameSession = null  # game screen (#7): when set, orders live in th
 var intercept_back := false  # game screen (#7): the host confirms before leaving
 var status_text := ""  # last order result: the rules' reason when an order was refused
 var arrow_layer: Control  # drawn above the regions: one arrow per queued move
-var hover_panel: PanelContainer  # hover preview bar at the bottom of the map
+var hover_panel: PanelContainer  # the move forecast, along the bottom of the board's safe area
 var hover_label: Label
 var own_codex: CodexPanel = null  # map preview only: opened when no game screen listens for codex_requested
-var ruler_panel: RulerPanel = null  # M2-6: opened by open_ruler_panel(), over the map and the side panel
+var ruler_panel: RulerPanel = null  # M2-6: opened by open_ruler_panel(), over the map and the Table
 var sacrifice_dialog: SacrificeDialog = null  # M2-6: opened from the ruler panel
 var cast_dialog: CastDialog = null  # M5-6: opened from an army of yours that holds a caster
 ## M3a.1: the 3D board (Board3D) drawn in the map view instead of the 2D regions, or null for the 2D map.
@@ -126,19 +129,22 @@ var vision_legend: PanelContainer
 # the tree (tests build it headless, and callers may set_state() before adding it).
 var map_view: Control
 var map_canvas: Control
-var details: VBoxContainer
-var faction_label: Label
+## UX-1: the Table over the map (plaques, system row, tray, seal) and the four host seams (the fourth, ReportHost, is the game screen's).
+var hud: TableHud
+var selection_host := SelectionHost.new()
+var lens_host := LensHost.new()
+var ui_cancel := UiCancel.new()
+var details_card: DetailsCard  # the temporary details card (until UX-3), the selection host's presenter
+var details: VBoxContainer  # its content: today's side panel builders fill it
+var faction_label: Label  # the realm plaque's name (the HUD's own nodes)
 var faction_emblem: SeatEmblem  # the viewing player's seat emblem, on their banner left of their name
 var faction_crest: Control  # the viewing faction's banner (Art) with the seat emblem on it
 var faction_banner: Art.BannerCard
 var gold_label: Label  # hidden when nobody's gold is shown (game over, spectator)
 var turn_label: Label
-var hint_label: Label  # wraps to at most two lines
-var back_button: Button
-var bar_row: HBoxContainer  # the top bar's first row: the faction, gold, turn and the buttons
-var hint_row: HBoxContainer  # its second row: the hint and, in a narrow bar, the optional buttons
-var _bar_items: Array = []  # [control, essential] for each control add_top_bar_control placed, in order
-var _bar_narrow := false
+var ruler_line: Button  # the realm plaque's ruler and kept power (games with rulers); a click opens the Ruler panel
+var hint_label: Label  # the tray's one line of "what to do now": wraps to at most two lines
+var back_button: Button  # Menu (top right); "Back to title" in the map preview
 
 
 func _ready() -> void:
@@ -194,13 +200,13 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 	map_canvas.queue_redraw()
 	arrow_layer.queue_redraw()
 	clear_preview()
-	_update_top_bar()
+	_update_realm_plaque()
 	if state.find_province(selected_province_id) == null:
 		selected_province_id = ""
 	if state.find_army(selected_army_id) == null:
 		selected_army_id = ""
 	_update_map_marks()
-	_show_details()
+	_announce_selection(false)
 	_follow_ruler_panel()
 	vision_button.visible = FogView.active(state)
 	if not FogView.active(state):
@@ -227,7 +233,7 @@ func _apply_map_mode() -> void:
 	if vision:
 		_fill_vision_legend()
 	vision_button.set_pressed_no_signal(vision)
-	vision_button.text = "Vision: on" if vision else "Vision"
+	hud.set_system_label("vision", "Vision: on" if vision else "Vision")
 	if board != null:
 		board.visible = not vision
 		map_canvas.visible = vision
@@ -259,7 +265,7 @@ func select_province(province_id: String) -> void:
 	for id in regions:
 		regions[id].selected = id == province_id
 	_update_road_targets()
-	_show_details()
+	_announce_selection(true)
 	_sync_board()
 	province_selected.emit(province_id)
 
@@ -294,24 +300,17 @@ func clear_preview() -> void:
 		hover_panel.visible = false
 
 
-## Game screen hook: adds a HUD control to the top bar, just before the back button. An `essential` control (End turn) stays
-## in the first row whatever the width; the others move down beside the hint when the bar can't hold them all in one row.
-func add_top_bar_control(control: Control, essential: bool = false) -> void:
-	_bind()
-	_bar_items.append([control, essential])
-	bar_row.add_child(control)
-	bar_row.move_child(control, back_button.get_index())
-	_fit_top_bar.call_deferred()
-	control.minimum_size_changed.connect(_fit_top_bar.call_deferred)
-	control.visibility_changed.connect(_fit_top_bar.call_deferred)
-
-
-## The help text in the top bar. Keep it short: it wraps to at most two lines. `tooltip`, already
-## formatted (TooltipText.plain), is shown on hover for help that doesn't fit; empty shows the text.
+## The tray's one line of "what to do now" (UX-1: it was the top bar's hint). Keep it short: it wraps to at most two lines.
+## `tooltip`, already formatted (TooltipText.plain), is shown on hover for help that doesn't fit; empty shows the text.
 func set_hint(text: String, tooltip: String = "") -> void:
 	_bind()
-	hint_label.text = text
-	hint_label.tooltip_text = tooltip if not tooltip.is_empty() else TooltipText.wrap_text(text)
+	hud.set_hint(text, tooltip)
+
+
+## The Table over the map (TableHud): built on first use, like the rest of this screen.
+func table() -> TableHud:
+	_bind()
+	return hud
 
 
 ## Faction ids in seat order, which pick the player colours: the session's players, or without a
@@ -334,6 +333,7 @@ func request_codex(key: String) -> void:
 		var bg := own_codex.get_node_or_null("Background") as PanelContainer
 		if bg:
 			bg.add_theme_stylebox_override("panel", UiPalette.panel_style())
+		own_codex.cancel_router = func(): ui_cancel.cancel()  # UX-1: Esc goes through the one dispatcher
 		add_child(own_codex)
 	move_child(own_codex, get_child_count() - 1)
 	own_codex.open(key)
@@ -348,6 +348,34 @@ func _input(event: InputEvent) -> void:
 	if not key.is_empty():
 		get_viewport().set_input_as_handled()
 		request_codex(key)
+
+
+## Esc in the map preview, where no game screen owns it: the one dispatcher (UiCancel). In a game the game screen calls it, so
+## nothing here runs twice. Lens keys (1 to 6, UX-7) turn a lens on or off while no modal panel is open.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel") and not intercept_back:
+		if not ui_cancel.cancel().is_empty() and is_inside_tree():
+			get_viewport().set_input_as_handled()
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	var k := event as InputEventKey
+	if k == null or not k.pressed or k.echo or ui_cancel.is_open("modal"):
+		return
+	var lens := lens_host.id_for_key(k.keycode)
+	if not lens.is_empty():
+		lens_host.toggle(lens)
+		if is_inside_tree():
+			get_viewport().set_input_as_handled()
+
+
+## A right-click on the 2D map's empty sea closes the topmost thing, like Esc (the 3D board does the same from its own
+## input; a province or an army under the click has its codex entry instead).
+func _on_map_view_input(event: InputEvent) -> void:
+	var mb := event as InputEventMouseButton
+	if mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT:
+		ui_cancel.cancel(true)
+		accept_event()
 
 
 # --- the ruler panel and the sacrifice dialog (M2-6, #34) -----------------------------------------
@@ -545,60 +573,48 @@ func set_board(new_board: Control) -> void:
 		board.map = self
 		if board.has_signal("closeup_changed"):
 			board.closeup_changed.connect(func(_pid): _show_details())
+		if board.has_signal("ready_to_show"):
+			board.ready_to_show.connect(_hang_board_pieces)
 		_apply_map_mode()
+		_on_table_layout()
 		_sync_board()
+		if board.get("prepared") == true:
+			_hang_board_pieces()
+
+
+## The 3D board's overlay exists (its land is built): the Table places its playback bar, its caption and its close-up chip in the
+## board's safe area, so nothing covers their buttons (UX-1, §1.3).
+func _hang_board_pieces() -> void:
+	if board == null or board.get("overlay") == null:
+		return
+	var overlay: Control = board.overlay
+	overlay.hung = true
+	hud.hang("playback", overlay.play_bar())
+	hud.hang("caption", overlay.caption_panel())
+	hud.hang("closeup", overlay.closeup_chip())
 
 
 func _sync_board() -> void:
 	if board != null:
+		lens_host.feed_board(board)  # UX-1: the active lens (none yet) feeds the board before it syncs
 		board.sync()
 
 
 # --- layout ---------------------------------------------------------------------------------------
 
-## Finds the scene's nodes and wires their signals, once.
+## Finds the scene's nodes, builds the Table over them and wires their signals, once.
 func _bind() -> void:
 	if map_view != null:
 		return
 	map_view = %MapView
 	map_canvas = %MapCanvas
-	details = %Details
-	faction_label = %FactionLabel
-	gold_label = %GoldLabel
-	turn_label = %TurnLabel
-	hint_label = get_node("Layout/TopBar/Row/Hint")
-	back_button = %BackButton
-	_build_bar_rows()
-	# The crest: the faction's banner with the seat emblem pinned to its lower right corner.
-	faction_crest = Control.new()
-	faction_crest.name = "FactionCrest"
-	faction_crest.custom_minimum_size = Vector2(46, 46)
-	faction_crest.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	faction_crest.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	faction_crest.visible = false
-	faction_banner = Art.banner_card("", 46.0)
-	faction_banner.name = "FactionBanner"
-	faction_banner.position = Vector2(-2, 0)
-	faction_banner.size = Vector2(31, 46)
-	faction_crest.add_child(faction_banner)
-	faction_emblem = SeatEmblem.new(-1, SeatEmblem.Look.TOKEN, 22.0)
-	faction_emblem.name = "FactionEmblem"
-	faction_emblem.visible = false
-	faction_emblem.position = Vector2(24, 23)
-	faction_crest.add_child(faction_emblem)
-	faction_label.get_parent().add_child(faction_crest)
-	faction_label.get_parent().move_child(faction_crest, 0)
-	# A slightly tighter top bar than the scene's, so the banner fits and the hint keeps two full lines
-	# even with the game screen's Ruler button.
-	bar_row.add_theme_constant_override("separation", 12)
-	for l: Label in [faction_label, gold_label, turn_label]:
-		l.add_theme_font_size_override("font_size", 19)
-		l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_build_table()
 	map_view.resized.connect(_fit_map)
 	(map_view as ColorRect).color = SEA_DEEP
 	map_canvas.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	map_canvas.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	map_canvas.draw.connect(_draw_links)
+	map_view.gui_input.connect(_on_map_view_input)
 	back_button.pressed.connect(_on_back_pressed)
 	# Order arrows sit above the map canvas (same transform, see _fit_map) so regions don't hide them.
 	arrow_layer = Control.new()
@@ -607,7 +623,7 @@ func _bind() -> void:
 	arrow_layer.size = MapLayout.SIZE
 	arrow_layer.draw.connect(_draw_order_arrows)
 	map_view.add_child(arrow_layer)
-	# Hover preview bar along the bottom of the map; grows upwards with its text.
+	# The move forecast: a bar along the bottom of the board's safe area (the Table places it); grows with its text.
 	hover_panel = PanelContainer.new()
 	hover_panel.name = "HoverPreview"
 	hover_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -619,16 +635,7 @@ func _bind() -> void:
 	style.set_corner_radius_all(6)
 	style.set_content_margin_all(10)
 	hover_panel.add_theme_stylebox_override("panel", style)
-	hover_panel.anchor_left = 0.0
-	hover_panel.anchor_right = 1.0
-	hover_panel.anchor_top = 1.0
-	hover_panel.anchor_bottom = 1.0
-	hover_panel.offset_left = 16
-	hover_panel.offset_right = -16
-	hover_panel.offset_top = -16
-	hover_panel.offset_bottom = -16
-	hover_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	map_view.add_child(hover_panel)
+	hud.set_floating("hover", hover_panel)
 	_build_vision()
 	hover_label = Label.new()
 	hover_label.name = "HoverLabel"
@@ -637,9 +644,68 @@ func _bind() -> void:
 	hover_label.add_theme_font_size_override("font_size", 17)
 	hover_label.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
 	hover_panel.add_child(hover_label)
+	_register_cancel_layers()
 
 
-## M5-2: the Vision button at the map's upper right (fog games only) and the legend it opens under it.
+## UX-1: the Table. The HUD sits over the map view; the details card is its first floating piece and the selection host's
+## presenter; the realm plaque's labels are the ones the old top bar had (the same names, tooltips and codex links).
+func _build_table() -> void:
+	hud = TableHud.new()
+	add_child(hud)
+	faction_label = hud.faction_label
+	gold_label = hud.gold_label
+	turn_label = hud.turn_label
+	faction_crest = hud.faction_crest
+	faction_banner = hud.faction_banner
+	faction_emblem = hud.faction_emblem
+	hint_label = hud.hint_label
+	back_button = hud.menu_button
+	back_button.text = "Back to title"
+	back_button.tooltip_text = TooltipText.plain("Back to title", "Leave the map preview for the title screen.")
+	ruler_line = Button.new()
+	ruler_line.name = "RulerLine"
+	ruler_line.flat = true
+	ruler_line.focus_mode = Control.FOCUS_NONE
+	ruler_line.visible = false
+	ruler_line.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	ruler_line.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	ruler_line.add_theme_font_size_override("font_size", UiPalette.TYPE_SMALL)
+	for state_name in ["normal", "hover", "pressed", "disabled", "focus"]:
+		var bare := StyleBoxEmpty.new()  # a line of text, not a button: no padding, so the plaque stays two lines tall
+		bare.content_margin_left = 0
+		bare.content_margin_right = 0
+		bare.content_margin_top = 0
+		bare.content_margin_bottom = 0
+		ruler_line.add_theme_stylebox_override(state_name, bare)
+	ruler_line.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
+	ruler_line.add_theme_color_override("font_hover_color", UiPalette.GILT)
+	ruler_line.pressed.connect(open_ruler_panel)
+	hud.add_plaque_item(ruler_line)
+	details_card = DetailsCard.new()
+	details_card.fill = _fill_details
+	details = details_card.details
+	hud.set_floating("card", details_card)
+	selection_host.set_presenter(details_card)
+	hud.orders_requested.connect(details_card.open_orders)
+	hud.layout_changed.connect(_on_table_layout)
+
+
+## The Table's layers in the one cancel dispatcher (§1.4): the map screen's own modals, the selection card, the lens and the
+## board's close-up. The game screen adds its overlays and the menu.
+func _register_cancel_layers() -> void:
+	# Modals the map screen owns: the codex of the map preview over the sacrifice dialog over the ruler panel; the cast dialog.
+	ui_cancel.register("modal", func(): return own_codex != null and own_codex.visible, func(): own_codex.close(), 40)
+	ui_cancel.register("modal", func(): return sacrifice_dialog != null and sacrifice_dialog.visible, close_sacrifice_dialog, 30)
+	ui_cancel.register("modal", func(): return cast_dialog != null and cast_dialog.visible, close_cast_dialog, 30)
+	ui_cancel.register("modal", func(): return ruler_panel != null and ruler_panel.visible, close_ruler_panel, 20)
+	ui_cancel.register("card", func(): return details_card.visible, dismiss_selection_card)
+	ui_cancel.register("lens", func(): return not lens_host.active_id().is_empty(), lens_host.clear)
+	ui_cancel.register("closeup", func(): return board != null and String(board.closeup) != "", func(): board.exit_closeup())
+	lens_host.active_changed.connect(func(_id): _sync_board())
+
+
+## M5-2: the Vision button (fog games only; in the system row) and the legend it opens (a floating piece of the Table).
+## UX-2 and UX-7 retire the Vision map mode for the Sight lens; until then it works as it did.
 func _build_vision() -> void:
 	vision_button = Button.new()
 	vision_button.name = "VisionButton"
@@ -647,22 +713,15 @@ func _build_vision() -> void:
 	vision_button.toggle_mode = true
 	vision_button.focus_mode = Control.FOCUS_NONE
 	vision_button.visible = false
-	vision_button.add_theme_font_size_override("font_size", 16)
-	vision_button.anchor_left = 1.0
-	vision_button.anchor_right = 1.0
-	vision_button.offset_left = -150
-	vision_button.offset_right = -12
-	vision_button.offset_top = 10
-	vision_button.offset_bottom = 46
-	vision_button.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	vision_button.add_theme_font_size_override("font_size", 15)
 	vision_button.tooltip_text = TooltipText.plain("Vision", "Show what you can see: every province in clear sight, glimpsed, out of sight or never seen, with what each mark means. Hover a province for why you see it, or what you remember of it. Click again to go back to the map.")
 	vision_button.toggled.connect(func(on: bool): set_map_mode("vision" if on else ""))
 	CodexLink.attach(vision_button, "sight", request_codex)
-	map_view.add_child(vision_button)
+	hud.add_system_button("vision", vision_button)
 	vision_legend = PanelContainer.new()
 	vision_legend.name = "VisionLegend"
 	vision_legend.visible = false
-	vision_legend.mouse_filter = Control.MOUSE_FILTER_PASS
+	vision_legend.mouse_filter = Control.MOUSE_FILTER_STOP
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(UiPalette.PANEL_BG, 0.94)
 	style.border_color = UiPalette.PANEL_BORDER
@@ -670,13 +729,7 @@ func _build_vision() -> void:
 	style.set_corner_radius_all(6)
 	style.set_content_margin_all(10)
 	vision_legend.add_theme_stylebox_override("panel", style)
-	vision_legend.anchor_left = 1.0
-	vision_legend.anchor_right = 1.0
-	vision_legend.offset_left = -282
-	vision_legend.offset_right = -12
-	vision_legend.offset_top = 54
-	vision_legend.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	map_view.add_child(vision_legend)
+	hud.set_floating("legend", vision_legend)
 	var box := VBoxContainer.new()
 	box.name = "Rows"
 	box.add_theme_constant_override("separation", 6)
@@ -712,16 +765,25 @@ func _fill_vision_legend() -> void:
 		line.add_child(l)
 
 
-## Scales the design-space canvas to fit the map view, centred, keeping its aspect ratio.
+## Scales the design-space canvas to fit the board's framing area (the safe area right of the details card), centred, keeping
+## its aspect ratio: every province of the 2D map stays in view and clear of the plaques, the card and the tray.
 func _fit_map() -> void:
-	var avail := map_view.size
-	if avail.x <= 0 or avail.y <= 0:
+	if map_view.size.x <= 0 or map_view.size.y <= 0 or arrow_layer == null:
 		return
-	var s: float = min(avail.x / MapLayout.SIZE.x, avail.y / MapLayout.SIZE.y)
+	var avail := hud.framing_area()
+	var s: float = min(avail.size.x / MapLayout.SIZE.x, avail.size.y / MapLayout.SIZE.y)
 	map_canvas.scale = Vector2(s, s)
-	map_canvas.position = (avail - MapLayout.SIZE * s) / 2.0
+	map_canvas.position = avail.position + (avail.size - MapLayout.SIZE * s) / 2.0
 	arrow_layer.scale = map_canvas.scale
 	arrow_layer.position = map_canvas.position
+
+
+## The Table moved (a new window size, the Chronicle opening): the 2D map and the 3D board's whole-map framing follow the framing
+## area, and the board's playback bar, caption and close-up chip are hung in the Table's layout.
+func _on_table_layout() -> void:
+	_fit_map()
+	if board != null and board.has_method("set_fit_rect") and hud.has_layout():
+		board.call("set_fit_rect", hud.framing_area())
 
 
 ## The board under the regions: sea and shallows, the landmass with its inked coast and land bridges,
@@ -806,95 +868,11 @@ func _open_sea(at: Vector2, links: Array) -> bool:
 	return true
 
 
-# --- top bar --------------------------------------------------------------------------------------
+# --- the realm plaque -----------------------------------------------------------------------------
 
-## MVP-3 (#177): the bar's second row. The hint used to share the first row with every button, and with every system on it
-## was left about 90 px (two clipped lines), and at Settings' 125% interface size (the 1600-wide layout drawn 1280 wide)
-## the row was wider than the window, so End turn and Menu were cut off. Now the hint has a row of its own under the buttons,
-## and when the buttons don't fit in one row the optional ones (everything but End turn and Menu) move down into the hint's
-## row, to its right. The same controls, the same tooltips: only where they sit changes.
-func _build_bar_rows() -> void:
-	bar_row = back_button.get_parent() as HBoxContainer
-	var bar := bar_row.get_parent() as PanelContainer
-	var box := VBoxContainer.new()
-	box.name = "BarRows"
-	box.add_theme_constant_override("separation", 2)
-	bar.add_child(box)
-	bar_row.owner = null  # the scene's own nodes are moved: no "owner inconsistent" warning
-	bar_row.reparent(box, false)
-	hint_row = HBoxContainer.new()
-	hint_row.name = "HintRow"
-	hint_row.add_theme_constant_override("separation", 12)
-	box.add_child(hint_row)
-	hint_label.owner = null
-	hint_label.reparent(hint_row, false)
-	bar.resized.connect(_fit_top_bar)
-	bar.resized.connect(top_bar_changed.emit)
-
-
-## The y the top bar ends at, in this screen's coordinates: cards that hang under it start here.
-func top_bar_bottom() -> float:
-	return (bar_row.get_parent().get_parent() as Control).get_global_rect().end.y - get_global_rect().position.y
-
-
-## Puts the optional buttons in the first row when it holds them all, and beside the hint when it doesn't. The width it
-## needs is worked out from the controls' own minimum sizes, wherever they are now, so the answer never depends on the
-## last answer (no flicker between the two layouts).
-func _fit_top_bar() -> void:
-	if bar_row == null or not is_inside_tree():
-		return
-	var bar := bar_row.get_parent().get_parent() as PanelContainer
-	var style := bar.get_theme_stylebox("panel")
-	var available := bar.size.x - style.get_margin(SIDE_LEFT) - style.get_margin(SIDE_RIGHT)
-	if available <= 0.0:
-		return
-	var need := 0.0
-	var shown := 0
-	for c in bar_row.get_children() + hint_row.get_children():
-		if c is Control and c != hint_label and (c as Control).visible:
-			need += (c as Control).get_combined_minimum_size().x
-			shown += 1
-	need += float(bar_row.get_theme_constant("separation")) * maxi(shown - 1, 0)
-	var narrow := need > available
-	if narrow != _bar_narrow:
-		_bar_narrow = narrow
-		_place_bar_items()
-		top_bar_changed.emit()
-
-
-## True while the optional buttons sit beside the hint (the bar is too narrow for one row).
-func bar_is_narrow() -> bool:
-	return _bar_narrow
-
-
-func _place_bar_items() -> void:
-	if _bar_narrow and _bar_items.all(func(it): return it[0].get_parent() == bar_row):
-		_bar_items.sort_custom(func(a, b): return a[0].get_index() < b[0].get_index())  # remember the one-row order (Research sits before Ruler)
-	for item in _bar_items:
-		var c: Control = item[0]
-		var parent: Control = hint_row if _bar_narrow and not bool(item[1]) else bar_row
-		if c.get_parent() != parent:
-			c.reparent(parent, false)
-	# Back in order: the first row's own labels, then its buttons, Menu last; the hint row's hint, then its buttons.
-	var first: Array = []
-	for c in bar_row.get_children():
-		if not _bar_items.any(func(it): return it[0] == c) and c != back_button:
-			first.append(c)
-	for item in _bar_items:
-		if item[0].get_parent() == bar_row:
-			first.append(item[0])
-	first.append(back_button)
-	for i in first.size():
-		bar_row.move_child(first[i], i)
-	var second: Array = [hint_label]
-	for item in _bar_items:
-		if item[0].get_parent() == hint_row:
-			second.append(item[0])
-	for i in second.size():
-		hint_row.move_child(second[i], i)
-
-
-func _update_top_bar() -> void:
+## The realm plaque (top left): the viewing faction's banner and name, its gold with the income, the turn and, in a game with
+## rulers, the ruler and its kept power. Every number keeps its breakdown tooltip and its codex link.
+func _update_realm_plaque() -> void:
 	var f := state.find_faction(viewing_faction_id)
 	var seats := seat_order()
 	var seat := seats.find(viewing_faction_id)
@@ -914,7 +892,7 @@ func _update_top_bar() -> void:
 		faction_label.tooltip_text = TooltipText.plain("You are playing %s" % faction_label.text,
 			"The map, gold and forecasts are shown from this faction's point of view.%s%s" % [colour, fog_line])
 		CodexLink.attach(faction_label, TooltipText.codex_for("faction"), request_codex)
-	# Without a faction (game over, spectator) the gold label is hidden, so the bar has no empty gap.
+	# Without a faction (game over, spectator) the gold label is hidden, so the plaque has no empty gap.
 	gold_label.visible = f != null
 	if f:
 		var g := Breakdown.gold(state, viewing_faction_id)
@@ -931,9 +909,24 @@ func _update_top_bar() -> void:
 	turn_label.text = String(t.title)
 	turn_label.tooltip_text = TooltipText.from_breakdown(t)
 	CodexLink.attach(turn_label, TooltipText.codex_for("turn", t), request_codex)
+	_update_ruler_line(f)
 
 
-# --- side panel -----------------------------------------------------------------------------------
+## The ruler line of the realm plaque: "King Corvane I · 6 kept" with the kept power's breakdown, and a click opens the Ruler
+## panel. Only in a game with rulers, for a faction that has a ruler (a spectator's plaque has none).
+func _update_ruler_line(f: Faction) -> void:
+	var has := f != null and RulerRules.has_rulers(state) and f.has_ruler()
+	ruler_line.visible = has
+	CodexLink.detach(ruler_line)
+	if not has:
+		ruler_line.text = ""
+		ruler_line.tooltip_text = ""
+		return
+	var kept := Breakdown.kept_power(state, viewing_faction_id)
+	ruler_line.text = "%s · %d kept" % [RulerRules.current_name(state, viewing_faction_id), RulerRules.kept_power(state, viewing_faction_id)]
+	ruler_line.tooltip_text = "%s\n\n%s" % [TooltipText.from_breakdown(kept), TooltipText.wrap_text("Click to open the Ruler panel: every number of your ruler and the enemy's, and the mandates each side has.")]
+	CodexLink.attach(ruler_line, "ruler", request_codex)
+
 
 # --- orders (issue #6) ----------------------------------------------------------------------------
 
@@ -1490,9 +1483,53 @@ func _storm_now_toggle(province_id: String) -> CheckBox:
 	return t
 
 
+## What the selection shows changed (an order, a new state, the close-up): the selection host's presenter rebuilds. A card the
+## player closed stays closed.
 func _show_details() -> void:
+	_bind()
+	selection_host.refresh()
+
+
+## Tells the selection host what is selected. `force` is a click: the card opens even if it was closed, and even for the same
+## selection again. Without it (a new state) a closed card stays closed.
+func _announce_selection(force: bool) -> void:
+	var army: Army = state.find_army(selected_army_id) if state != null else null
+	var province: Province = state.find_province(selected_province_id) if state != null else null
+	var kind := ""
+	var id := ""
+	if province != null:
+		kind = "province"
+		id = province.id
+		if army != null and army.location == province.id:
+			kind = "army"
+			id = army.id
+	if kind.is_empty():
+		selection_host.clear()
+	elif not force and kind == selection_host.kind() and id == selection_host.id():
+		selection_host.refresh()
+	elif kind == "army":
+		selection_host.show_army(id, selected_province_id)
+	else:
+		selection_host.show_province(id)
+
+
+## The details card's content: today's side panel, built by the same functions (province facts, armies here, your orders with
+## their cancel buttons, recruiting). The selection host's presenter calls it whenever the card has to be rebuilt.
+func _fill_details() -> void:
 	_show_province_details()
 	_add_orders_section()
+
+
+## UiCancel's "card" step, the card's close button: hides the card and puts your army back to unselected, so a click on a
+## neighbouring province can never give an order from a card that is not there. The province stays selected (the close-up
+## depends on it).
+func dismiss_selection_card() -> void:
+	_bind()
+	details_card.dismiss()
+	if not selected_army_id.is_empty():
+		selected_army_id = ""
+		_update_road_targets()
+		_sync_board()
 
 
 func _show_province_details() -> void:
