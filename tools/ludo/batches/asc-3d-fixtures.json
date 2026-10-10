@@ -1,0 +1,143 @@
+{
+ "batch": "asc-3d-fixtures",
+ "rid_prefix": "ascfx",
+ "cap": 35.0,
+ "round": "redo-10-8",
+ "note": "Written by tools/ludo/asc_3d_fixtures.py (which holds the prompts; edit it, not this file). #196: the Bloodsworn strike's forearm blades, as an attachment (a picture of the blade alone, then its model) and as thick fused blades in the strike picture. balance_before is a fixed sentinel: the account is shared, the spend is counted from this batch's ledger lines tagged with the round.",
+ "style": {
+  "image": "",
+  "art_style": "Cel-Shaded",
+  "blocks": {
+   "C-pose (no base)": "The same figure, now {pose}. Same outfit, same colours, same outline style, {view}, the whole figure with wide empty margin on every side, plain flat light grey background."
+  }
+ },
+ "state": {
+  "balance_before": 1000.0,
+  "v": {
+   "pic_strike_fused": 2,
+   "model_blade": 2
+  },
+  "picks": {
+   "pic_strike_fused": 2,
+   "pic_blade_edit:bloodsworn_blade": 2,
+   "pic_strike_body": 1
+  },
+  "rerolls": {
+   "pic_strike_fused": [
+    "v1: v1 thin crescents; v2 asks for a slab as thick as the forearm"
+   ],
+   "model_blade": [
+    "v1: v1 at 3000 faces doubled the strike figure's triangles with two blades; v2 at 1200"
+   ]
+  }
+ },
+ "assets": [
+  {
+   "id": "pic_blade",
+   "stage": "pictures",
+   "kind": "styled",
+   "n": 3,
+   "style_file": "assets/_concept/grok3d/beasts/bloodsworn_ready.webp",
+   "prompt": "Concept picture of one game prop for a 3D model, drawn in the same detailed hand-painted inked illustration style as the reference picture, with thick dark ink outlines and the same bone-white colour with thin dark red veins and blood streaks. Subject: a single curved arm blade of a werewolf warrior, a long thick blade of bone with a saw-toothed notched back edge, a broad rounded bony base at its lower end where it grows out of an arm, the blade sweeping up from the base in one long smooth curve to a sharp point, standing upright on its own in the middle of the picture, seen from three-quarter view slightly from above so its flat face and its thick edge both show, the whole blade in view with wide empty margin on every side, plain flat light grey background.",
+   "pick_to": "assets/_concept/candidates/fixtures/picks/bloodsworn_blade.webp",
+   "group": "pictures",
+   "unit": "bloodsworn",
+   "pose": "blade",
+   "v": 1,
+   "augment": false,
+   "out": "assets/_concept/candidates/fixtures/blade"
+  },
+  {
+   "id": "pic_blade_edit",
+   "stage": "pictures",
+   "kind": "edit",
+   "n": 3,
+   "from_file": "assets/_concept/grok3d/beasts/bloodsworn_ready.webp",
+   "prompt": "Only the big curved bone-white blade of this figure's arm, enlarged to fill the picture, the same saw-toothed bone blade with the same dark red veins and blood streaks exactly as drawn, standing upright on its own with its broad bony base at the bottom and its point at the top, seen from three-quarter view slightly from above, the whole blade in view with wide empty margin on every side, plain flat light grey background.",
+   "pick_to": "assets/_concept/candidates/fixtures/picks/bloodsworn_blade_edit.webp",
+   "group": "pictures",
+   "unit": "bloodsworn",
+   "pose": "blade",
+   "v": 1,
+   "augment": false,
+   "out": "assets/_concept/candidates/fixtures/blade_edit"
+  },
+  {
+   "id": "pic_strike_body",
+   "stage": "pictures",
+   "kind": "edit",
+   "n": 3,
+   "from_file": "assets/_concept/grok3d/beasts/bloodsworn_ready.webp",
+   "prompt": "The same figure, now leaping forward in a savage lunge with both arms thrown wide and both hands open, the claws spread and empty, a spiked bone bracer wrapped round each forearm with short bone spikes along it and the forearms otherwise bare, his right arm swung up and back, his left arm thrusting forward, mouth open in a snarl. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "pick_to": "assets/_concept/candidates/fixtures/picks/bloodsworn_strike_body.webp",
+   "group": "pictures",
+   "unit": "bloodsworn",
+   "pose": "strike",
+   "v": 1,
+   "pick": 1,
+   "augment": false,
+   "out": "assets/_concept/candidates/fixtures/strike_body"
+  },
+  {
+   "id": "pic_strike_fused",
+   "stage": "pictures",
+   "kind": "edit",
+   "n": 3,
+   "from_file": "assets/_concept/grok3d/beasts/bloodsworn_ready.webp",
+   "prompt": "The same figure, now leaping forward in a savage lunge with both arms thrown wide and both hands open, the claws spread and empty, and from each forearm grows one heavy thick curved bone-white blade with a saw-toothed back and dark red veins, a broad solid slab of bone as thick and as wide as the forearm itself along most of its length, grown out of the forearm's own bone as one piece with the arm so that the forearm is the root of the blade, running on past the wrist beside the open hand in one long curve to a sharp point, each blade swings with its arm, his right arm swung up and back with its blade high over his head, his left arm thrusting forward with its blade pointing ahead, mouth open in a snarl. Same outfit, same colours, same outline style, three-quarter view from slightly above, the whole figure with wide empty margin on every side, plain flat light grey background.",
+   "pick_to": "assets/_concept/candidates/fixtures/picks/bloodsworn_strike_fused.webp",
+   "group": "pictures",
+   "unit": "bloodsworn",
+   "pose": "strike",
+   "v": 2,
+   "pick": 2,
+   "augment": false,
+   "out": "assets/_concept/candidates/fixtures/strike_fused"
+  },
+  {
+   "id": "model_blade",
+   "stage": "models",
+   "kind": "model3d",
+   "from_file": "assets/_concept/candidates/fixtures/picks/bloodsworn_blade.webp",
+   "faces": 1200,
+   "texture_size": 1024,
+   "texture_type": "pbr",
+   "slim_max": 512,
+   "group": "models",
+   "unit": "bloodsworn",
+   "pose": "blade",
+   "v": 2,
+   "out": "assets/models/candidates/fixtures/blade"
+  },
+  {
+   "id": "model_strike_body",
+   "stage": "models",
+   "kind": "model3d",
+   "from_file": "assets/_concept/candidates/fixtures/picks/bloodsworn_strike_body.webp",
+   "faces": 5000,
+   "texture_size": 1024,
+   "texture_type": "pbr",
+   "slim_max": 512,
+   "group": "models",
+   "unit": "bloodsworn",
+   "pose": "strike",
+   "v": 1,
+   "out": "assets/models/candidates/fixtures/strike_body"
+  },
+  {
+   "id": "model_strike_fused",
+   "stage": "models",
+   "kind": "model3d",
+   "from_file": "assets/_concept/candidates/fixtures/picks/bloodsworn_strike_fused.webp",
+   "faces": 5000,
+   "texture_size": 1024,
+   "texture_type": "pbr",
+   "slim_max": 512,
+   "group": "models",
+   "unit": "bloodsworn",
+   "pose": "strike",
+   "v": 1,
+   "out": "assets/models/candidates/fixtures/strike_fused"
+  }
+ ]
+}
