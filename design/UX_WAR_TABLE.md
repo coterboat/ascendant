@@ -1,6 +1,10 @@
 # ASCENDANT: the War Table, a UI/UX spec
 
-Status: **DRAFT r3 by the director (Claude session, 2026-10-10), with Alex's answers of 10-10 (§12), for his sign-off.**
+Status: **r4 by the director (Claude session, 2026-10-10). Alex 10-10: "reading through the ux_war_table doc and it looks pretty solid". Building from it starts with UX-0a, UX-1 and ARM-1's critic round.**
+- **r4 (Alex 10-10, after his playtest):**
+  - a **much better army merging system, including swapping commanders** (ARM-1 grows to cover it);
+  - **Making** shows each faction's own making as markers, not literal candles. The faction-specific look joins the faction UI flavour in the parking lot, and the first count stands, to see how it plays;
+  - ARM-1 lands in this milestone with UX-3.
 - **r3 (Alex 10-10):**
   - the layout follows his Rome: Total War Remastered reference;
   - notifications get an image each;
@@ -46,7 +50,7 @@ The milestone proves three things:
   - the medallions on the left;
   - a column on the right that you open and close, with **Read** (the announcements, sorted, filtered, pinned, dismissed) and **Plan** (your orders as sentences with their forecasts, and the seal).
 - **The Lenses (D):** six optional map views, **Owner, Income, Threat, Magic, Making and Sight**, each with its own overlay, palette and feel. Off by default; one at a time.
-  - **Making** shows how far each faction has made the land its own: candles, as in Dominions.
+  - **Making** shows how far each faction has made the land its own, as Dominions' dominion does, with markers in each faction's own style later.
   - **Sight** is kept for now, until spying gives it more to show (or it goes).
   - **Forts need no lens:** fort level and walls read from the board itself (§2.3).
 - **Sight speaks for itself.** Four veil looks on the land, each different in lightness and in texture, so it reads without colour or words. The words stay in the plate's hover and in the codex.
@@ -258,10 +262,13 @@ Click land:
 - **Tests:** add, replace, cancel and change-via for every order class, with the numbers and tokens checked after each.
 
 ### 3.5 the army side: distribution and merging (ARM-1, the one rules ticket)
-Today armies never split or merge. Recruits join an army or form a new one, and two of your armies in one province stay two (there is no such order; `rules/*_order.gd`). Alex wants the army side to manage "troop and army movement, distribution, merging" (10-10). That needs one new order, so it is a rules ticket with its own tests.
+Today armies never split or merge. Recruits join an army or form a new one, and two of your armies in one province stay two (there is no such order; `rules/*_order.gd`). Alex wants the army side to manage "troop and army movement, distribution, merging", and after his playtest **"a much better army merging system, including swapping commanders"** (10-10). That needs one new order, so it is a rules ticket with its own tests.
 - **`TransferOrder`:** `{from_army, to_army or a new army, units}`. It moves the chosen units between two of your armies standing in the **same province**, or splits them off into a new army there.
   - **Merging** is a transfer of every unit; the emptied army disbands.
-  - A commander or the ruler moves like any unit, and an army without a commander follows today's rules.
+  - **Commanders move too.** A commander or the ruler can go to another army in the province.
+    - **Swapping commanders** is two transfers in one order, so the swap never leaves an army leaderless in between.
+    - An army keeps at most one commander, as today's rules have it. A transfer that would give one two is refused, with the reason.
+    - An army without a commander follows today's rules.
 - **When:** transfers resolve **first**, before movement. So an army split off this turn can march this turn.
   - Its move order names a planned id that the rules resolve deterministically: the from-army and an index.
   - ARM-1's issue pins the exact id scheme and its validation (an empty army, a unit already sent, two transfers taking the same unit).
@@ -270,8 +277,9 @@ Today armies never split or merge. Recruits join an army or form a new one, and 
 - **Records:** a game without a transfer is byte-identical. The new order has its own record fields, and replays of old records don't change.
 - **The army card (UX-3, after ARM-1):**
   - the portrait rows of your armies in the province, side by side;
-  - drag units between them, or to "New army";
-  - **Split** and **Merge all** buttons;
+  - drag units, and **commanders**, between them, or to "New army";
+  - **Split**, **Merge all** and **Swap commanders** buttons;
+  - the card shows each army's strength, sight and commander update as you drag, before anything is ordered;
   - the tray shows the transfer as a placed order, and its forecast says the strength of each army after it.
 - **Explained:** a codex entry, "Splitting and merging armies"; the card's tooltips; the Plan sentence ("Split 2 Knights from the Crown's 1st into a new army at Crownkeep.").
 - **Tests:** the rules (validation, order of resolution, determinism, records) and the card.
@@ -319,19 +327,19 @@ Today armies never split or merge. Recruits join an army or form a new one, and 
 | 2 | **Income** | What is it worth? | **glow**: dark umber (poor) to bright gilt (rich) | a treasury, warm metal | **base** income, as a coin badge | base income is public. The legend's totals are **base income only, and say so**. A rival's actual income (modifiers, cut-off) is never derived |
 | 3 | **Threat** | What could hit me next turn? | **hatch**: red ink, denser for more seen or remembered enemy strength one province away; provinces your armies can also reach pulse amber | a war-room map, red pencil | "≈ strength" and "as of turn N" | **an estimate from sightings only** (below) |
 | 4 | **Magic** | Where is magic at work? | **glow**: ink-violet sigils per visible enchantment (blessing, curse, ward, Bastion) | arcane, candle-dark | the enchantments | only the enchantments `FogView` shows |
-| 5 | **Making** | How far has each faction made the land its own? | **candles**: a row of up to four flames in the owner's colour on each province, over a soft owner glow that deepens with them (Dominions' dominion candles) | a cathedral of candles | "3 candles" and why | owners and tenure are public; a rival's path effects only when its path is known to you (intel) |
+| 5 | **Making** | How far has each faction made the land its own? | **marks**: up to four making markers on each province in the owner's colour, over a soft owner glow that deepens with them. In the MVP the marker is one standard pip; later each faction's own (the Crown's sun, the Clans' thorn, the Candlewake's wax), with the faction UI flavour (§10) | a faction's hold on the land | "making 3 of 4" and why | owners and tenure are public; a rival's path effects only when its path is known to you (intel) |
 | 6 | **Sight** *(provisional)* | Why do I see what I see? | **ring**: warm lantern rings from each sight source, by its range in provinces; Far Sight as a target marker | lantern light over a dark map | the source and its range | your own sources only |
 
 - **Making** (Alex 10-10: "a Making layer showing how much each faction extends its dominion").
-  - **Its first version** counts what the game already has. A province you own has:
-    - 1 candle;
+  - **Its first version** counts what the game already has (Alex 10-10: start here, see how it plays, then adjust; other ways to calculate it are open). A province you own has:
+    - 1 mark;
     - +1 after 3 turns held, and +1 after 6 (`owned_since`);
     - +1 where the owner's path shapes the land: Hallowed Land, the Forges at a fort, Dread Lands, or a Wild Spreads forest (`rules/ascension_rules.gd:819-827`).
 
     A capital always has 4.
   - **It has no rules effect of its own yet.** The legend says so: "How deeply each faction holds its land. What it will do comes later."
   - It is the **display seam for the marks system.** The Candlewake's Wake (Sitting Up, the Wake-Line, Deep Wake; `design/CANDLEWAKE.md` §3) is its first real feed, and making a rival's land your own through magic and faction mechanics, beyond holding it, builds on it (Alex 10-10).
-  - **The candles** are plate marks (`board_overlay.gd`), the glow is the shader's glow mode, and `MapLens` gives both.
+  - **The markers** are plate marks (`board_overlay.gd`), the glow is the shader's glow mode, and `MapLens` gives both.
 - **Sight is provisional** (Alex 10-10: "ideally the in-game UI should show that sight cleanly enough that you wouldn't need a separate layer"). The veil (§2.2) does the everyday job. The lens stays to show sight sources and next turn's sight, and **it earns its place when espionage and spying give it more to show, or it goes**.
 
 - **Threat is an estimate,** never the rules' move legality.
@@ -558,7 +566,7 @@ Its output is **announcements**, each with:
 - Controller, touch and mobile.
 - Maps over 16 provinces. The width constant (§4.0) makes that one change when M6 needs it.
 - **The parking lot (Alex 10-10):**
-  - **Each faction its own UI flavour.** The Candlewake all candles and wax, the Crown standard and regal, and so on. The MVP is one standard look; this is talked through as the factions grow, before anything is built.
+  - **Each faction its own UI flavour.** The Candlewake all candles and wax, the Crown standard and regal, and so on. The MVP is one standard look; this is talked through as the factions grow, before anything is built. **It includes each faction's own making markers** on the Making lens (Alex 10-10).
   - **Special events** and their notices.
   - **The Sight lens's future:** useful once espionage and spying have something for it to show, or removed.
   - **Making's future:** marks on the land (the Candlewake's Wake first), and making a rival's land your own through magic and faction mechanics, not just holding it.
@@ -599,9 +607,9 @@ Its output is **announcements**, each with:
    - a) 1 candle owned, +1 at 3 turns held, +1 at 6, +1 where the owner's path shapes the land, a capital 4 (my pick);
    - b) tenure only;
    - c) wait for the marks system.
-2. **ARM-1's timing:**
-   - a) in this milestone, its rules any time and its card with UX-3 (my pick);
-   - b) after the UX milestone.
+2. ~~ARM-1's timing~~: **answered 10-10:** in this milestone, with UX-3.
+
+(Making's first count: **answered 10-10:** start with it and see how it plays.)
 
 ---
 
