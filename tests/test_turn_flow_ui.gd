@@ -243,3 +243,48 @@ func test_game_over_event_is_shown_on_top_and_highlighted() -> void:
 	assert_eq(panel.event_rows().size(), 0)
 	assert_eq(panel.header_label.text, "No turns have been resolved yet.")
 	panel.free()
+
+
+# --- the turn flow through the Table (UX-1, #194) ---------------------------------------------------
+
+## The whole turn through the real game screen: orders on the card, the seal, the handoff, the report through the ReportHost, and a
+## report line that focuses its province on the card and closes the report.
+func test_a_whole_turn_through_the_table_report_lines_focus_provinces_on_the_card() -> void:
+	var game := load("res://ui/game_screen.tscn").instantiate() as GameScreen
+	game.autosave_enabled = false
+	game.start_game({"players": ["kingdom", "beasts"], "seed": 7})
+	var opened := []
+	var closed := []
+	game.report_host.report_opened.connect(func(t: int): opened.append(t))
+	game.report_host.report_closed.connect(func(t: int): closed.append(t))
+	assert_true(game.report_button.disabled, "nothing to report yet")
+	assert_eq(game.map.table().seal.is_ancestor_of(game.end_turn_button), true, "the seal holds End turn")
+	game.map.select_army("kingdom-1")
+	game.map.select_province("westwatch")
+	game.end_turn_button.pressed.emit()
+	assert_true(game.handoff.visible, "the cover is up between the players")
+	game.handoff.ready_button.pressed.emit()
+	game.session.queue_move("beasts-1", "ebonpeak")
+	game.end_turn_button.pressed.emit()
+	game.handoff.ready_button.pressed.emit()
+	assert_eq(opened, [1], "the report opened once, through the host")
+	assert_true(game.report_overlay.visible and game.report_host.is_open())
+	var rows := game.report_panel.event_rows()
+	var row: Button = null
+	for r in rows:
+		var event: Dictionary = r.get_meta("event")
+		if not event.provinces.is_empty():
+			row = r
+			break
+	assert_true(row != null, "a line that points at a province")
+	var pid: String = (row.get_meta("event") as Dictionary).provinces[0]
+	row.pressed.emit()
+	assert_false(game.report_overlay.visible, "a line closes the report")
+	assert_eq(closed, [1], "and the host heard it close")
+	assert_eq(game.map.selected_province_id, pid, "it shows the province")
+	assert_true(game.map.details_card.visible, "on the details card")
+	var name_label := game.map.details.find_child("ProvinceName", true, false) as Label
+	assert_true(name_label != null and name_label.text == game.map.state.find_province(pid).name, "with its name")
+	game.report_button.pressed.emit()
+	assert_eq(opened, [1, 1], "Turn report opens it again")
+	game.free()

@@ -26,7 +26,7 @@ const ENTRIES := {
 			+ "4. Resolve: everyone gives orders at the same time, without seeing anyone else's, and then all of them resolve together in one fixed order (see How a turn resolves). Nobody gets to react to what you chose this turn.\n"
 			+ "5. Watch: battles play out on the land and you can watch the ones you care about, or skim the rest from their reports. Then read the next report and plan again.\n"
 			+ "You win by capturing the enemy capital.\n"
-			+ "No rule is hidden. Hover any number to see where it comes from, and right-click it (or press F1 while hovering) to open its codex entry. The Codex button in the top bar opens this book at any time.",
+			+ "No rule is hidden. Hover any number to see where it comes from, and right-click it (or press F1 while hovering) to open its codex entry. The Codex button in the row under your realm's name opens this book at any time, and the ? beside it lists every key and mouse binding.",
 	},
 	# --- MVP-2 (#163): the six boxes on the new game screen, all ticked by default. Plain text, no links: the codex panel links
 	# the other entries' titles by itself. Each line says what the system adds; its own entry has the rules.
@@ -211,7 +211,7 @@ const ENTRIES := {
 	},
 	"gold": {
 		"title": "Gold",
-		"text": "Your treasury, shown in the top bar with your income per turn. You spend gold to recruit units at your capital, and you earn more at the end of every turn from the provinces you own. Recruits are paid when the turn resolves, from the gold you had before that turn's income. Gold never goes below zero: a recruit you can't afford is cancelled, and the turn report says why.",
+		"text": "Your treasury, shown on your realm's plaque (top left) with your income per turn. You spend gold to recruit units at your capital, and you earn more at the end of every turn from the provinces you own. Recruits are paid when the turn resolves, from the gold you had before that turn's income. Gold never goes below zero: a recruit you can't afford is cancelled, and the turn report says why.",
 	},
 	"army": {
 		"title": "Army",
@@ -486,7 +486,7 @@ const ENTRIES := {
 	},
 	"income": {
 		"title": "Income",
-		"text": "At the end of the turn, each faction earns the income of every province it owns, after this turn's captures and recruits. In a game with rulers, two things can add to it. With Heavy Tithes every province you own earns more gold, the capital included. And King Corvane's Royal Court adds gold to the province he is in at the end of the turn, if you own it, as long as he lives. The income shown for each province and in the top bar already includes both; hover it to see each part. In a game with forts and sieges, a fort cut off by a siege pays its owner nothing, and its base income goes to the besiegers instead.",
+		"text": "At the end of the turn, each faction earns the income of every province it owns, after this turn's captures and recruits. In a game with rulers, two things can add to it. With Heavy Tithes every province you own earns more gold, the capital included. And King Corvane's Royal Court adds gold to the province he is in at the end of the turn, if you own it, as long as he lives. The income shown for each province and on your realm's plaque already includes both; hover it to see each part. In a game with forts and sieges, a fort cut off by a siege pays its owner nothing, and its base income goes to the besiegers instead.",
 	},
 	# --- game flow and winning (#7, #8): GameSession and VictoryCheck ---
 	"hotseat": {

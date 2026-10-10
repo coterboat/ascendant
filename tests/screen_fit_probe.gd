@@ -84,6 +84,10 @@ func _r(c: Control) -> Array:
 
 
 ## A rect as drawn: through the control's own transform, so a panel PanelFit has scaled reports the size it shows.
+func _r_rect(r: Rect2) -> Array:
+	return [r.position.x, r.position.y, r.size.x, r.size.y, true]
+
+
 func _rt(c: Control) -> Array:
 	if c == null:
 		return []
@@ -99,10 +103,15 @@ func _rects(screen: Control) -> Dictionary:
 		var research: Control = null
 		if screen.research_hud != null and screen.research_hud.panel != null:
 			research = screen.research_hud.panel.get_node("Center/Panel")
-		rects = {"bar": _r(map.get_node("Layout/TopBar")), "end_turn": _r(screen.end_turn_button), "menu": _r(map.back_button),
+		# UX-1: the Table. The top bar, the hint row and the side panel are gone; the plaques, the system row, the tray and the seal
+		# sit over a full-bleed map view. (tests/table_probe.gd measures every piece in every state, and the mouse; this is the fit.)
+		var hud := map.table()
+		rects = {"plaque": _r(hud.plaque), "system_row": _r(hud.system_row), "opponent": _r(hud.opponent_panel), "tray": _r(hud.tray), "seal": _r(hud.seal),
+			"end_turn": _r(screen.end_turn_button), "menu": _r(map.back_button),
 			"hint": _r(map.hint_label), "research": _r(screen.research_hud.chip), "magic": _r(screen.research_hud.magic_chip),
-			"ruler": _r(screen.ruler_button), "report": _r(screen.report_button), "codex": _r(screen.codex_button),
-			"narrow": [1.0 if map.bar_is_narrow() else 0.0, 0.0, 0.0, 0.0, true], "side": _r(map.details.get_parent()),
+			"ruler": _r(screen.ruler_button), "report": _r(screen.report_button), "codex": _r(screen.codex_button), "help": _r(screen.help_button),
+			"chronicle": _r(screen.chronicle_button), "lenses": _r(screen.lenses_button),
+			"compact": [1.0 if hud.compact else 0.0, 0.0, 0.0, 0.0, true], "card": _r(map.details_card), "safe": _r_rect(hud.safe_area()),
 			"guide": _r(screen.first_game_guide), "map": _r(map.map_view),
 			"research_panel": _rt(research), "research_close": _r(screen.research_hud.panel.close_button) if research != null else [],
 			"report_box": _rt(report_box), "report_close": _r(screen.report_overlay.find_child("CloseReportButton", true, false))}
@@ -251,7 +260,7 @@ func _load() -> Control:
 
 
 ## A game with every system on at turn 1, orders phase, the first-game card up (the 2D map: the 3D board's land bake needs a
-## renderer, and the top bar, the cards and the panels are the same either way).
+## renderer, and the Table, the cards and the panels are the same either way; tests/table_probe.gd has the 3D board).
 func _game() -> Control:
 	var gs := GameSettings.new(SCRATCH.path_join("settings.cfg"))
 	gs.set_board("2d")

@@ -312,7 +312,7 @@ static func needs_you(state: GameState, fid: String) -> String:
 		return ""
 	if not AscensionRules.research_target(state, fid).is_empty() or AscensionRules.all_complete(state, fid):
 		return ""
-	return "Choose what to research: %d research is waiting, and you gain %d a turn. Open the research panel from the top bar." % [
+	return "Choose what to research: %d research is waiting, and you gain %d a turn. Open the research panel from the system row, under your realm's name." % [
 		AscensionRules.research_points(state, fid), int(AscensionRules.research_rate(state, fid).rate)]
 
 

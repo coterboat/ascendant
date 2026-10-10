@@ -7,7 +7,8 @@ extends RefCounted
 ## order book like any other and is checked by the same rules.
 ##
 ## The chip ("Research: Arbalests / 12/15 · this turn", or "Research: choose / 14 waiting" in the attention
-## colour) shows only in a game with paths, while a person gives orders; a click opens the panel. The panel
+## colour) shows only in a game with paths, while a person gives orders; a click opens the panel. UX-1 (#194): the chips
+## are the system row's Research and Magic buttons (TableHud.add_system_button), the progress badge being the chip's second line. The panel
 ## and the preview sit on the game's Overlays layer, so the codex opens above them. They follow the seat:
 ## refresh() closes them on the handoff cover, at game over, on a new turn or when another player is at the
 ## controls, so nothing of one player's research is left on screen for the next (hotseat).
@@ -29,10 +30,7 @@ func _init(p_game: GameScreen) -> void:
 	chip.add_theme_font_size_override("font_size", 13)
 	chip.add_theme_constant_override("line_spacing", -3)
 	chip.pressed.connect(open_panel)
-	game.map.add_top_bar_control(chip)
-	var row := chip.get_parent()
-	if game.ruler_button != null and game.ruler_button.get_parent() == row:
-		row.move_child(chip, game.ruler_button.get_index())
+	game.map.table().add_system_button("research", chip)
 	magic_chip = Button.new()  # M5-8
 	magic_chip.name = "MagicChip"
 	magic_chip.focus_mode = Control.FOCUS_NONE
@@ -41,8 +39,7 @@ func _init(p_game: GameScreen) -> void:
 	magic_chip.add_theme_font_size_override("font_size", 13)
 	magic_chip.add_theme_constant_override("line_spacing", -3)
 	magic_chip.pressed.connect(open_magic)
-	game.map.add_top_bar_control(magic_chip)
-	row.move_child(magic_chip, chip.get_index() + 1)
+	game.map.table().add_system_button("magic", magic_chip)
 
 
 ## The viewing player's faction while a person gives orders in a game with paths; "" otherwise.

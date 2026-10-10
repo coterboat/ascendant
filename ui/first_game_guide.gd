@@ -13,7 +13,9 @@ extends PanelContainer
 ## so in full, which is why the first fog turn's banner no longer stacks beside this card); the lines of the other systems
 ## fold behind one "Also on: ..." row (click to open them), so the card stays short enough to leave the province next to the
 ## capital, the natural first move, uncovered. Every explanation is still there: the row's tooltip, each line's tooltip and
-## its codex link. The game screen hangs the card under the top bar (hang_under), whatever height the bar has.
+## its codex link. UX-1: the Table (TableHud.hang) places the card at the top of the left column under the realm plaque, in the
+## board's safe area, with the selection card docked under it, so the board frames the map to the right of both and the card
+## never covers it; a playback bar that is in its way moves it down.
 ## Why top-left: the map's hover forecast bar runs along the bottom, the player's capital (with its armies and queued
 ## orders) is on the left edge from about 45% of the way down, the fog notice sits top centre, and the turn report, the
 ## codex and every other overlay are drawn above the card. Top-left, no taller than about 280 px with every system on,
@@ -45,10 +47,8 @@ signal codex_requested(key: String)
 
 const WIDTH := 350.0
 const MARGIN := 12.0
-## The card hangs from here: under the top bar and the map's board hint line.
-const TOP := 96.0
-## MVP-3 (#177): the same place, as the distance under the top bar's bottom edge (the bar is taller in a narrow window).
-const BELOW_BAR := 34.0
+## Where the card starts before the Table has placed it: the top left of the board's safe area (TableLayout).
+const TOP := 120.0
 ## How long the card stays, all three steps ticked, over the board's playback after End turn.
 const LINGER := 3.5
 const HOW_TO_PLAY := "how_to_play"
@@ -57,10 +57,10 @@ const STEPS := [
 	{"id": "move", "title": "Move an army: click it, then a neighbor",
 		"tip": "Click one of your armies, then a province next to it. The move is listed under Your orders this turn, with its forecast, and nothing happens until every player has ended the turn. An army you don't move holds where it is.",
 		"entry": "move"},
-	{"id": "recruit", "title": "Recruit at your capital (side panel)",
-		"tip": "Your capital is selected: press a Recruit button in the side panel. The price is paid, and the unit joins you, when the turn resolves.",
+	{"id": "recruit", "title": "Recruit at your capital (the card)",
+		"tip": "Your capital is selected: press a Recruit button on the card at the bottom left. The price is paid, and the unit joins you, when the turn resolves.",
 		"entry": "recruit"},
-	{"id": "end_turn", "title": "End your turn (button, top right)",
+	{"id": "end_turn", "title": "End your turn (the seal, bottom right)",
 		"tip": "End turn locks your orders in. Every player's orders then resolve together, in one fixed order, and the turn report tells you what happened and why.",
 		"entry": "orders"},
 ]
@@ -70,7 +70,7 @@ const SHORT_NAMES := {"sieges": "Forts"}
 ## one line) and the codex entry the name opens. The flags are on the game's state (systems_on).
 const SYSTEMS := [
 	{"id": "rulers", "name": "Rulers", "rest": "turn power into mandates", "entry": "ruler",
-		"tip": "Every faction is led by a ruler. The power it keeps makes it strong in person; the power it spends buys mandates for the whole nation. Builds are public, and the Ruler button in the top bar explains every number."},
+		"tip": "Every faction is led by a ruler. The power it keeps makes it strong in person; the power it spends buys mandates for the whole nation. Builds are public, and the Ruler button in the system row explains every number."},
 	{"id": "paths", "name": "Paths", "rest": "research upgrades that lock in", "entry": "path",
 		"tip": "Your faction researches a path with research points from its land. Most nodes are ordinary upgrades; a few forks lock you in for the rest of the game."},
 	{"id": "sieges", "name": "Forts and sieges", "rest": "recruit at any fort", "entry": "fort_levels",
@@ -147,12 +147,6 @@ func sync(session: GameSession, view: GameState) -> void:
 		_hide()
 		return
 	_show_for(session, view, fid, turn)
-
-
-## Hangs the card under the top bar, whose bottom edge is `bar_bottom` (this screen's coordinates).
-func hang_under(bar_bottom: float) -> void:
-	offset_top = bar_bottom + BELOW_BAR
-	offset_bottom = offset_top
 
 
 ## True when the card's other-systems lines are folded behind the "Also on" row (always, while no other system is on).

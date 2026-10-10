@@ -2,7 +2,7 @@ extends "res://tests/test_case.gd"
 ## Computer seats (#35) through the real screens, headless: the new game screen's Human / Computer and
 ## Easy / Normal choices and their config, a scripted human against the computer through GameScreen
 ## (no handoff, the computer's orders resolve, the report shows its notes only after resolution), the
-## computer in seat 1, the "Computer (Normal)" tag in the top bar, the report header and the victory
+## computer in seat 1, the "Computer (Normal)" tag on the opponent plaque, the report header and the victory
 ## screen, the rematch keeping the seat kinds, watch mode, and no raw ids anywhere.
 
 const GAME_SCENE := "res://ui/game_screen.tscn"
@@ -12,7 +12,6 @@ const VS_COMPUTER := {"players": ["kingdom", "beasts"], "seed": SEED, "ai": {"be
 const RAW_IDS := ["kingdom", "beasts", "crownkeep", "fangridge", "westwatch", "ebonpeak", "stonegate",
 	"blackwood", "highcrag", "ironspike", "rivermarch", "bloodfen", "thornvale", "wildmoor", "greenglade",
 	"deepwood", "knight_captain", "warchief", "war_bear", "spearmen", "tuskers", "codex:", "computer_opponent"]
-const WINDOW_WIDTH := 1600.0
 
 
 func _game(config: Dictionary) -> GameScreen:
@@ -163,10 +162,10 @@ func test_a_human_plays_the_computer_through_the_game_screen_with_no_handoff() -
 	assert_false(game.report_overlay.visible, "no report before the first turn")
 	assert_true(game.report_button.disabled)
 
-	# The top bar names the computer faction with its tag, linked to the codex.
-	assert_true(game.opponent_box.visible, "the top bar shows the opponent")
-	assert_eq(game.opponent_box.get_parent(), game.map.faction_label.get_parent(), "in the player's own name group")
-	assert_eq(game.opponent_box.get_index(), game.map.faction_label.get_index() + 1, "right after the player's own name")
+	# The opponent plaque (top right) names the computer faction with its tag, linked to the codex.
+	assert_true(game.opponent_box.visible, "the opponent plaque shows the opponent")
+	assert_true(game.map.table().opponent_slot.is_ancestor_of(game.opponent_box), "in the opponent plaque, top right")
+	assert_true(game.map.table().right_column.is_ancestor_of(game.map.back_button), "beside Menu")
 	var bar_text := _visible_text(game.opponent_box)
 	assert_true(bar_text.contains("Thornmane Clans"), bar_text)
 	var tags := game.opponent_box.find_children("ComputerTag", "Label", true, false)
@@ -316,7 +315,9 @@ func test_a_hotseat_game_has_no_computer_anything() -> void:
 	var game := _game({"players": ["kingdom", "beasts"], "seed": SEED})
 	assert_eq(game.config, {"players": ["kingdom", "beasts"], "seed": SEED}, "no ai key")
 	assert_eq(game.computer.factions(), [])
-	assert_false(game.opponent_box.visible, "no opponent tag in the top bar")
+	assert_true(game.opponent_box.visible, "the other seat is the rival on the opponent plaque")
+	assert_eq(game.opponent_box.find_children("ComputerTag", "Label", true, false).size(), 0, "but it is a person, not a computer")
+	assert_eq((game.opponent_box.find_children("PlayerTag", "Label", true, false)[0] as Label).text, "Player 2")
 	game.end_turn_button.pressed.emit()
 	assert_true(game.handoff.visible, "two humans still hand off")
 	game.handoff.ready_button.pressed.emit()
@@ -401,7 +402,7 @@ func test_watch_mode_plays_one_turn_per_next_turn() -> void:
 	assert_eq(game.end_turn_button.text, "Next turn")
 	assert_false(game.end_turn_button.disabled)
 	assert_eq(game.map.faction_label.text, "Watching")
-	assert_eq(game.opponent_box.find_children("ComputerTag", "Label", true, false).size(), 2, "both computers tagged in the top bar")
+	assert_eq(game.opponent_box.find_children("ComputerTag", "Label", true, false).size(), 2, "both computers tagged on the opponent plaque")
 	for t in 3:
 		game.end_turn_button.pressed.emit()
 		if session.is_over():
@@ -416,11 +417,12 @@ func test_watch_mode_plays_one_turn_per_next_turn() -> void:
 	game.free()
 
 
-# --- the top bar ----------------------------------------------------------------------------------
+# --- the opponent plaque --------------------------------------------------------------------------
 
-## The opponent tag fits the 1600 px top bar next to everything else, and the hint still wraps into its
-## two lines (measured like tests/test_top_bar.gd).
-func test_top_bar_fits_with_the_opponent_tag() -> void:
+## The opponent plaque fits next to everything else at a logical 1600 and 1280, whoever the computer is (the old top bar's fit
+## test with its tag; the check is tests/test_table_hud.gd's).
+func test_the_table_fits_with_the_opponent_plaque() -> void:
+	var table_test := preload("res://tests/test_table_hud.gd").new()
 	for config in [VS_COMPUTER, {"players": ["beasts", "kingdom"], "seed": SEED, "ai": {"kingdom": "normal"}},
 			{"players": ["kingdom", "beasts"], "seed": SEED, "ai": {"kingdom": "normal", "beasts": "normal"}}]:
 		var game := _game(config)
@@ -428,58 +430,10 @@ func test_top_bar_fits_with_the_opponent_tag() -> void:
 			var s := game.session.state()
 			s.find_faction(game.session.current_player()).gold = 9999
 			game.map.set_state(s, game.session.current_player())
-			game.end_turn_button.text = "End turn (12 orders)"
-		_refresh_theme(game.map)
-		var row := game.map.bar_row  # MVP-3 (#177): the buttons' row; the hint has the row under it
-		var bar := game.map.get_node("Layout/TopBar") as PanelContainer
-		var style := bar.get_theme_stylebox("panel")
-		var available := WINDOW_WIDTH - style.get_margin(SIDE_LEFT) - style.get_margin(SIDE_RIGHT)
-		var used := 0.0
-		var shown := 0
-		for c in row.get_children():
-			var control := c as Control
-			if control == null or not control.visible:
-				continue
-			shown += 1
-			used += _min_width(control)
-		assert_true(used + row.get_theme_constant("separation") * (shown - 1) <= available, "%s: the opponent tag and every button fit in one row" % [config])
-		var hint_width := available
-		var lines := _wrapped_lines(game.map.hint_label, hint_width)
-		assert_true(hint_width >= 240.0, "%s: the hint keeps a usable width (%d px)" % [config, hint_width])
-		assert_true(lines <= 2, "%s: the hint fits in two lines at %d px, it needs %d: %s" % [config, hint_width, lines, game.map.hint_label.text])
+		table_test._assert_fits(game.map, "%s" % [config])
 		game.free()
-
-
-func _min_width(c: Control) -> float:
-	if c is BoxContainer:
-		var total := 0.0
-		var n := 0
-		for k in c.get_children():
-			if k is Control and (k as Control).visible:
-				total += _min_width(k) if not (c is VBoxContainer) else 0.0
-				n += 1
-		if c is VBoxContainer:
-			for k in c.get_children():
-				if k is Control and (k as Control).visible:
-					total = maxf(total, _min_width(k))
-			return maxf(c.custom_minimum_size.x, total)
-		return maxf(c.custom_minimum_size.x, total + c.get_theme_constant("separation") * maxi(n - 1, 0))
-	return maxf(c.custom_minimum_size.x, c.get_minimum_size().x)
-
-
-func _wrapped_lines(label: Label, width: float) -> int:
-	var paragraph := TextParagraph.new()
-	paragraph.add_string(label.text, label.get_theme_font("font"), label.get_theme_font_size("font_size"))
-	paragraph.width = width
-	paragraph.break_flags = TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND | TextServer.BREAK_ADAPTIVE
-	return paragraph.get_line_count()
-
-
-func _refresh_theme(n: Node) -> void:
-	if n is Control:
-		n.notification(Control.NOTIFICATION_THEME_CHANGED)
-	for c in n.get_children():
-		_refresh_theme(c)
+	for f in table_test.get_failures():
+		fail(f)
 
 
 # --- the codex ------------------------------------------------------------------------------------

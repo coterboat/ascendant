@@ -13,6 +13,9 @@ signal closed
 
 const LINK_PREFIX := "codex:"
 
+## UX-1 (§1.4): inside a game, Esc on the codex calls the game's one cancel dispatcher (UiCancel.cancel) instead of closing
+## the panel itself, so a stack of panels closes one layer a press. Unset (the new game and build screens): it closes itself.
+var cancel_router := Callable()
 var _shown_keys: Array[String] = []
 var _current := ""
 var _bound := false
@@ -57,13 +60,20 @@ func _input(event: InputEvent) -> void:
 
 
 ## Closes the panel for Esc (ui_cancel) while it is open and on top. Returns whether it did.
+## UX-1 (§1.4): inside a game the Esc goes through the screen's one dispatcher (UiCancel) instead, which closes this panel as
+## the topmost modal; `cancel_router` is that dispatcher's cancel(). Without one (the new game and build screens) the panel closes itself.
 func handle_cancel(event: InputEvent) -> bool:
 	var shown := is_visible_in_tree() if is_inside_tree() else visible
 	if not shown or not event.is_action_pressed("ui_cancel") or not is_on_top():
 		return false
 	if is_inside_tree():
 		get_viewport().set_input_as_handled()
-	close()
+	if cancel_router.is_valid():
+		cancel_router.call()
+		if visible:
+			close()  # the router closed something else (it should not): this one was on top, and Esc was pressed
+	else:
+		close()
 	return true
 
 

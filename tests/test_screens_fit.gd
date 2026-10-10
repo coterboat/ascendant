@@ -6,7 +6,9 @@ extends "res://tests/test_case.gd"
 ## The headless runner's tests run before the scene tree is live, so no Control gets a layout pass here. The layout is
 ## measured by tests/screen_fit_probe.gd instead, a real (headless) main loop in a child Godot process that puts each
 ## screen in a SubViewport of the size and prints where everything ended up. One probe run serves the whole file.
-## The live check of the same screens, with pictures, is tools/shots/play_shots.gd (windowed).
+## The live check of the same screens, with pictures, is tools/shots/play_shots.gd (windowed). UX-1 (#194): the game screen's Table
+## (plaques, system row, tray, seal, a full-bleed map view) is measured here at the two logical sizes; every piece of it in every state, on
+## both boards and at all three of the spec's sizes, and the mouse, are tests/table_probe.gd's (test_table_geometry.gd).
 
 const PROBE := "res://tests/screen_fit_probe.gd"
 const SCRATCH := "user://screen_fit_probe"  # the probe's own settings and saves (tests/screen_fit_probe.gd)
@@ -213,7 +215,7 @@ func test_the_first_game_card_is_small_and_in_the_corner_at_both_sizes() -> void
 		var card := _rect(_screen(key, "guide"), "card")
 		assert_true(_shown(_screen(key, "guide"), "card"), "the card shows at %s" % key)
 		assert_true(_inside(card, viewport), "the card, with every system on, is inside the viewport at %s (%s)" % [key, card])
-		assert_true(card.position.x <= 16.0 and card.position.y <= 110.0, "in the top-left corner, under the top bar, at %s (%s)" % [key, card])
+		assert_true(card.position.x <= 16.0 and card.position.y <= FirstGameGuide.TOP + 0.5, "in the top-left corner, where the Table's safe area starts, at %s (%s)" % [key, card])
 		assert_true(card.end.y <= 360.0, "and ends above where the player's capital and its order tags start at 1600x900 (%d px)" % card.end.y)
 		assert_true(card.size.x <= 360.0, "narrow (%d px)" % card.size.x)
 		# The player's capital starts about 45% of the way down the map's left edge: with every system on the card ends above it.
@@ -222,24 +224,41 @@ func test_the_first_game_card_is_small_and_in_the_corner_at_both_sizes() -> void
 
 # --- the game screen with every system on (MVP-3, #177) ---------------------------------------------------------
 
-func test_the_top_bar_shows_every_button_at_both_sizes() -> void:
+func test_the_table_shows_every_button_at_both_sizes() -> void:
 	_each_size(func(key: String, viewport: Vector2):
 		var g := _screen(key, "game")
 		var where := "the game screen at %s" % key
-		assert_true(_inside(_rect(g, "bar"), viewport), "%s: the top bar is inside the window (%s)" % [where, _rect(g, "bar")])
+		assert_true(_shown(g, "plaque") and _inside(_rect(g, "plaque"), viewport), "%s: the realm plaque is inside the window (%s)" % [where, _rect(g, "plaque")])
 		assert_true(_shown(g, "end_turn") and _inside(_rect(g, "end_turn"), viewport), "%s: End turn is on screen (%s)" % [where, _rect(g, "end_turn")])
 		assert_true(_shown(g, "menu") and _inside(_rect(g, "menu"), viewport), "%s: Menu is on screen (%s)" % [where, _rect(g, "menu")])
-		assert_true(_shown(g, "hint") and _inside(_rect(g, "hint"), viewport), "%s: the hint is on screen (%s)" % [where, _rect(g, "hint")])
+		assert_true(_shown(g, "hint") and _inside(_rect(g, "hint"), viewport), "%s: the tray's hint is on screen (%s)" % [where, _rect(g, "hint")])
 		assert_true(_rect(g, "hint").size.x >= 300.0, "%s: the hint has room (%d px)" % [where, _rect(g, "hint").size.x])
-		for button in ["research", "magic", "ruler", "report", "codex"]:
+		for button in ["research", "magic", "ruler", "chronicle", "report", "lenses", "codex", "help"]:
 			assert_true(_shown(g, button) and _inside(_rect(g, button), viewport), "%s: %s is on screen (%s)" % [where, button, _rect(g, button)])
-		assert_true(_rect(g, "bar").end.y <= _rect(g, "map").position.y + 0.5, "%s: the map starts under the bar" % where)
-		assert_true(_rect(g, "side").end.x <= viewport.x + 0.5, "%s: the side panel is inside the window" % where))
-	# The narrow window needs the second row, the wide one does not: both come from the layout, not from this file.
+		# The board fills the window: no bar over it, no panel beside it.
+		assert_eq(_rect(g, "map"), Rect2(Vector2.ZERO, viewport), "%s: the map view is full-bleed" % where)
+		# The plaque with the system row (top left) keeps clear of the opponent plaque and Menu (top right), and stays in its band.
+		var left := _rect(g, "plaque").merge(_rect(g, "system_row"))
+		var right := _rect(g, "menu")
+		if _shown(g, "opponent"):
+			right = right.merge(_rect(g, "opponent"))
+		assert_true(left.end.y <= TableLayout.TOP_LEFT_H + 0.5, "%s: the plaque and the system row end inside the 112 px band (%d)" % [where, left.end.y])
+		assert_true(right.end.y <= TableLayout.TOP_RIGHT_H + 0.5, "%s: the opponent plaque and Menu end inside the 72 px band (%d)" % [where, right.end.y])
+		assert_true(left.end.x + TableLayout.GAP <= right.position.x, "%s: the two top clusters do not meet (%d against %d)" % [where, left.end.x, right.position.x])
+		# The tray and the seal sit in the bottom band, side by side.
+		var tray := _rect(g, "tray")
+		var seal := _rect(g, "seal")
+		assert_true(_inside(tray, viewport) and _inside(seal, viewport), "%s: the tray and the seal are inside the window" % where)
+		assert_true(tray.position.y >= viewport.y - TableLayout.BOTTOM_H - 0.5 and seal.position.y >= viewport.y - TableLayout.BOTTOM_H - 0.5, "%s: both in the bottom band" % where)
+		assert_false(TableLayout.overlaps(tray, seal), "%s: the seal is beside the tray" % where)
+		assert_true(_rect(g, "card").end.x <= viewport.x + 0.5, "%s: the details card is inside the window" % where))
+	# Below 1600 logical width the system row is icons only: the buttons shrink, the names are in their tooltips.
 	var wide := _screen("1600x900", "game")
 	var narrow := _screen("1280x720", "game")
-	assert_true(float(narrow.rects.narrow[0]) > 0.5, "at 1280x720 (125%) the optional buttons wrap beside the hint")
-	assert_false(float(wide.rects.narrow[0]) > 0.5, "at 1600x900 they all fit in one row")
+	assert_true(float(narrow.rects.compact[0]) > 0.5, "at 1280x720 (125%) the Table is compact")
+	assert_false(float(wide.rects.compact[0]) > 0.5, "at 1600x900 it is not")
+	assert_true(_rect(narrow, "ruler").size.x < _rect(wide, "ruler").size.x, "the Ruler button is icon-only when compact (%d against %d px)" % [
+		_rect(narrow, "ruler").size.x, _rect(wide, "ruler").size.x])
 
 
 func test_the_first_game_cards_title_is_not_trimmed_by_its_head_row() -> void:
@@ -251,15 +270,19 @@ func test_the_first_game_cards_title_is_not_trimmed_by_its_head_row() -> void:
 			key, title.size.x, g.rects.title_need[0]]))
 
 
-func test_the_first_game_card_hangs_under_the_bar_and_leaves_the_capitals_neighbor() -> void:
+func test_the_first_game_card_hangs_under_the_plaque_in_the_safe_area_clear_of_the_card() -> void:
 	_each_size(func(key: String, viewport: Vector2):
 		var g := _screen(key, "game")
 		var card := _rect(g, "guide")
-		assert_true(_shown(g, "guide"), "the card is up at %s" % key)
-		assert_true(card.position.y >= _rect(g, "bar").end.y, "at %s it hangs under the top bar (%s under %s)" % [key, card, _rect(g, "bar")])
+		var safe := _rect(g, "safe")
+		assert_true(_shown(g, "guide"), "the guide is up at %s" % key)
+		assert_true(card.position.y >= _rect(g, "system_row").end.y, "at %s it hangs under the realm plaque and its system row (%s under %s)" % [key, card, _rect(g, "system_row")])
+		assert_true(safe.grow(0.5).encloses(card), "and inside the board's safe area at %s (%s in %s)" % [key, card, safe])
 		assert_true(_inside(card, viewport), "and inside the window at %s" % key)
+		if _shown(g, "card"):
+			assert_false(TableLayout.overlaps(card, _rect(g, "card")), "and clear of the selection card at %s" % key)
 		# The card folds its other systems and keeps How to play in its head row: 160 px, where it was 265 with every system's line
-		# open. At 125% (the 1280x720 layout) that ends above the capital's neighbor's name plate.
+		# open.
 		assert_true(card.size.y <= 170.0, "folded, the card is short at %s (%d px)" % [key, card.size.y]))
 
 

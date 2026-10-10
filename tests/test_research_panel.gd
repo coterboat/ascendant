@@ -426,7 +426,7 @@ func test_the_chip_appears_only_in_games_with_paths_and_fits_the_top_bar() -> vo
 	assert_eq(chip.text, String(c.text))
 	assert_true(chip.tooltip_text.begins_with(TooltipText.from_breakdown(Breakdown.research_progress(game.map.state, CROWN))), "the chip's tooltip is the research breakdown")
 	assert_eq(String(chip.get_meta(CodexLink.META)), "research_order")
-	var top := preload("res://tests/test_top_bar.gd").new()
+	var top := preload("res://tests/test_table_hud.gd").new()
 	top._assert_fits(game.map, "paths game with the research chip")
 	for f in top.get_failures():
 		fail(f)

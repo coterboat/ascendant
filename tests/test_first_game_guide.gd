@@ -159,6 +159,10 @@ func test_each_step_explains_itself_and_links_its_entry() -> void:
 		assert_eq(check.text, step.title)
 		assert_true(check.tooltip_text.contains(String(step.tip).substr(0, 24)), "%s has its tooltip" % step.id)
 		assert_eq(CodexLink.key_at(check), step.entry, "%s: right-click or F1 opens %s" % [step.id, step.entry])
+	# UX-1: the steps point at the Table (the card at the bottom left, the seal at the bottom right), not at the old bars.
+	assert_true(FirstGameGuide.STEPS[1].title.contains("card") and FirstGameGuide.STEPS[2].title.contains("seal"), "the steps name the card and the seal")
+	for step in FirstGameGuide.STEPS:
+		assert_false(String(step.title).contains("side panel") or String(step.title).contains("top right"), "%s names a place that is gone" % step.id)
 	game.free()
 
 
@@ -228,6 +232,13 @@ func test_the_card_never_blocks_the_map() -> void:
 	assert_eq(guide.mouse_filter, Control.MOUSE_FILTER_STOP, "only the card itself takes clicks")
 	assert_true(guide.custom_minimum_size.x <= 400.0, "and it is small")
 	assert_eq([guide.anchor_left, guide.anchor_top], [0.0, 0.0], "in the top-left corner: clear of the hover forecast along the bottom and of the capital")
+	# UX-1: the Table hangs it under the realm plaque, inside the board's safe area (the hang point moved with the top bar).
+	var hud := game.map.table()
+	hud.relayout()
+	assert_true(hud.placed().has("guide"), "the Table places the card")
+	assert_true(TableLayout.safe_area(hud.viewport_size()).encloses(hud.placed()["guide"]), "inside the safe area, under the realm plaque and right of the notification stack")
+	assert_true((hud.placed()["guide"] as Rect2).end.x <= hud.framing_area().position.x, "and left of the area the map is framed in: it never covers the map")
+	assert_eq(guide.offset_top, (hud.placed()["guide"] as Rect2).position.y, "its offsets are the Table's")
 	game.free()
 	_unseen()
 

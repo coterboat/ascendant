@@ -162,13 +162,14 @@ func test_every_province_region_is_painted_with_its_terrain() -> void:
 	screen.free()
 
 
-func test_top_bar_flies_the_viewing_factions_banner() -> void:
+func test_realm_plaque_flies_the_viewing_factions_banner() -> void:
 	var screen := _map()
 	assert_true(screen.faction_crest.visible, "the crest shows for a player's view")
 	assert_true(screen.faction_banner.texture == Art.banner("kingdom"), "the Aurel Crown's banner")
 	assert_true(screen.faction_emblem.get_parent() == screen.faction_crest, "the seat emblem is pinned on the banner")
-	assert_eq(screen.faction_crest.get_index(), 0, "first in the name group")
-	assert_eq(screen.faction_label.get_index(), screen.faction_label.get_parent().get_child_count() - 1, "the name stays last in its group")
+	assert_eq(screen.faction_crest.get_index(), 0, "first in the realm plaque's row")
+	assert_eq(screen.faction_crest.get_parent(), screen.table().plaque_row, "the banner stands in the realm plaque")
+	assert_true(screen.table().plaque.is_ancestor_of(screen.faction_label), "with the name")
 	screen.set_state(screen.state, "beasts")
 	assert_true(screen.faction_banner.texture == Art.banner("beasts"), "follows the viewing faction")
 	screen.free()
