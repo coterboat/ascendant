@@ -11,7 +11,8 @@ extends "res://tests/test_case.gd"
 ##   * stand-ins draw from the shown counts under a "≈" plate; memory ghosts have their own material and fade a step every
 ##     2 turns (the ghost-recruit count stays exact); a rival column marching out of sight walks to the border and fades
 ##   * rituals from hidden casters start at the target; sound only for what the viewer sees
-##   * the legend, the plates and the tooltips name clear / glimpsed / out of sight and how old a ghost is
+##   * the legend, the plates' hovers and the tooltips name clear / glimpsed / out of sight and how old a ghost is (UX-2: no sight words
+##     are printed on the plates; each level wears its own look, Vision.look)
 ##   * a hotseat handoff leaves nothing of the last seat on the board
 ##   * with fog off the board is unchanged (every older board test holds as it was)
 ## Expected values come from the data and the states, never hardcoded.
@@ -77,10 +78,10 @@ func _model(b: Board3D) -> Dictionary:
 		for l in pc.find_children("*", "Label", true, false):
 			texts.append((l as Label).text)
 		plates[id] = {"texts": texts, "tip": pc.tooltip_text, "modulate": pc.modulate}
-	var tags := {}
+	var tags := {} ## UX-2: what a plate says of sight is its hover, its codex link and its garrison stat (no line under it any more)
 	for pid in b.overlay._plates:
-		var l: Label = b.overlay._plates[pid].get("sight")
-		tags[pid] = [l.visible, l.text, l.tooltip_text] if l != null else []
+		var pl: Dictionary = b.overlay._plates[pid]
+		tags[pid] = [(pl.root as Control).get_tooltip(Vector2.ZERO), String((pl.root as Control).get_meta(CodexLink.META, "")), pl.get("garrison_facts", {})]
 	var camps := {}
 	for pid in b.armies.camps:
 		var tents := []
@@ -956,23 +957,17 @@ func test_the_legend_plates_and_tooltips_name_the_levels_and_the_age_of_a_ghost(
 					var level: String = b.vision_levels[pid]
 					levels_seen[level] = true
 					var pl: Dictionary = b.overlay._plates[pid]
-					var sight: Label = pl.get("sight")
-					if level == "clear":
-						assert_true(sight == null or not sight.visible, "%s: %s in clear sight has no line under its plate" % [label, pid])
-						continue
-					assert_true(sight != null and sight.visible, "%s: %s has a line under its plate" % [label, pid])
-					var seen_turn := int(t.memory_after[v].provinces.get(pid, {}).get("seen_turn", -1))
-					assert_eq(sight.text, Vision.tag_for(view, level, seen_turn), "%s: %s's line" % [label, pid])
-					match level:
-						"glimpse":
-							assert_eq(sight.text, "glimpsed")
-						"veiled":
-							assert_true(sight.text.begins_with("out of sight\nseen ") and (sight.text.ends_with("ago") or sight.text.ends_with("start")), "%s: %s (%s)" % [label, pid, sight.text])
-						"never":
-							assert_eq(sight.text, "never seen")
-					assert_false(String(sight.tooltip_text).is_empty(), "%s: the line explains itself" % label)
-					assert_true(_flat(sight.tooltip_text).contains(Vision.words(level).substr(0, 24)), "%s: and names the level" % label)
+					var plate: Control = pl.root
+					# UX-2: sight speaks through the ground's veil and the plate's hover; nothing is printed under a plate
+					assert_true(plate.find_child("SightLabel", true, false) == null, "%s: %s has no sight line under its plate" % [label, pid])
+					var look := Vision.look(level)
+					assert_eq(String(look.level), level, "%s: %s's ground wears its level's look" % [label, pid])
+					var tip: String = plate.get_tooltip(Vector2.ZERO)
+					assert_false(tip.is_empty(), "%s: the plate explains itself" % label)
+					assert_true(_flat(tip).contains(_flat(Vision.words(level))), "%s: and names its level and how the ground shows it" % label)
 					assert_true(_flat(b.overlay.province_tooltip(pid)).contains(_flat(Vision.words(level))), "%s: %s's tooltip says how the ground shows it" % [label, pid])
+					var want_key: String = TooltipText.codex_for("province") if level == "clear" else String(FogView.LEVEL_CODEX[level])
+					assert_eq(String(plate.get_meta(CodexLink.META)), want_key, "%s: the plate links its level's codex entry" % label)
 					tips_checked += 1
 				for a in view.armies:
 					if a.owner == v:
@@ -1012,8 +1007,9 @@ func test_with_fog_off_the_board_is_unchanged() -> void:
 		assert_eq(b.overlay.plate_text(st, a), "Ruler" if a.ruler != null else str(a.units.size()), "%s's plate is its exact count" % a.id)
 		assert_eq(b.overlay.army_tooltip(a.id).contains("the plate has the exact number"), a.ruler == null, "%s's tooltip is the old one" % a.id)
 	for pid in b.overlay._plates:
-		var l: Label = b.overlay._plates[pid].get("sight")
-		assert_true(l == null or not l.visible, "%s has no sight line" % pid)
+		var plate: Control = b.overlay._plates[pid].root
+		assert_true(plate.find_child("SightLabel", true, false) == null, "%s has no sight line" % pid)
+		assert_false(plate.get_tooltip(Vector2.ZERO).contains("sight"), "%s: no sight words on a plate without fog" % pid)
 	# a fog game's observer (the truth, as watch mode and the victory screen read it) is a plain board too
 	var fog_state := GameState.new(21)
 	fog_state.setup_fog([])

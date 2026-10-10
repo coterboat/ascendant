@@ -64,9 +64,9 @@ extends Control
 ## memory, its intel and its view at the start of the last resolved turn), never the truth. Province tooltips say why a
 ## province is seen or what is remembered of it; a rival's army shows as its sighting ("≈20", "≈10 · 2 turns ago"),
 ## with every type's range, last turn's sighting and how to see it exactly in the side panel; your armies say how far
-## they see and scouts say so; the forecasts are Forecast's fog forecasts. The Vision map mode (set_map_mode("vision"),
-## the Vision button over the map) draws every province's sight level on the 2D map, with its legend; out of it, the
-## 2D map still veils what you can't see.
+## they see and scouts say so; the forecasts are Forecast's fog forecasts. The 2D map veils what you can't see; the 3D board
+## gives each sight level its own look (Vision.look). UX-2 retired the Vision map mode (its button and the 2D swap): the plate's
+## hover names a province's level, and FogView.legend_rows keeps the legend's text for the Sight lens.
 
 signal province_selected(province_id: String)
 signal army_selected(army_id: String)
@@ -120,10 +120,6 @@ var board: Control = null
 var fog_memory := {}
 var fog_intel := {}
 var fog_before: GameState = null
-## M5-2: "" (the map) or "vision" (the Vision map mode: sight levels on the 2D map, with the legend).
-var map_mode := ""
-var vision_button: Button
-var vision_legend: PanelContainer
 
 # Scene nodes, looked up by _bind() rather than @onready so the screen also works before it is in
 # the tree (tests build it headless, and callers may set_state() before adding it).
@@ -208,36 +204,7 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 	_update_map_marks()
 	_announce_selection(false)
 	_follow_ruler_panel()
-	vision_button.visible = FogView.active(state)
-	if not FogView.active(state):
-		map_mode = ""
-	_apply_map_mode()
 	_sync_board()
-
-
-## M5-2: the map mode: "" for the map, "vision" for the Vision map mode (fog games only): every province drawn at its
-## sight level on the 2D map (in clear sight, glimpsed, out of sight, never seen), with the legend; on the 3D board the
-## 2D map stands in while it is on.
-func set_map_mode(mode: String) -> void:
-	_bind()
-	map_mode = mode if mode == "vision" and FogView.active(state) else ""
-	_apply_map_mode()
-
-
-func _apply_map_mode() -> void:
-	var vision := map_mode == "vision"
-	for id in regions:
-		regions[id].vision_mode = vision
-		regions[id].queue_redraw()
-	vision_legend.visible = vision
-	if vision:
-		_fill_vision_legend()
-	vision_button.set_pressed_no_signal(vision)
-	hud.set_system_label("vision", "Vision: on" if vision else "Vision")
-	if board != null:
-		board.visible = not vision
-		map_canvas.visible = vision
-		arrow_layer.visible = vision
 
 
 func select_province(province_id: String) -> void:
@@ -575,7 +542,6 @@ func set_board(new_board: Control) -> void:
 			board.closeup_changed.connect(func(_pid): _show_details())
 		if board.has_signal("ready_to_show"):
 			board.ready_to_show.connect(_hang_board_pieces)
-		_apply_map_mode()
 		_on_table_layout()
 		_sync_board()
 		if board.get("prepared") == true:
@@ -636,7 +602,6 @@ func _bind() -> void:
 	style.set_content_margin_all(10)
 	hover_panel.add_theme_stylebox_override("panel", style)
 	hud.set_floating("hover", hover_panel)
-	_build_vision()
 	hover_label = Label.new()
 	hover_label.name = "HoverLabel"
 	hover_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -702,67 +667,6 @@ func _register_cancel_layers() -> void:
 	ui_cancel.register("lens", func(): return not lens_host.active_id().is_empty(), lens_host.clear)
 	ui_cancel.register("closeup", func(): return board != null and String(board.closeup) != "", func(): board.exit_closeup())
 	lens_host.active_changed.connect(func(_id): _sync_board())
-
-
-## M5-2: the Vision button (fog games only; in the system row) and the legend it opens (a floating piece of the Table).
-## UX-2 and UX-7 retire the Vision map mode for the Sight lens; until then it works as it did.
-func _build_vision() -> void:
-	vision_button = Button.new()
-	vision_button.name = "VisionButton"
-	vision_button.text = "Vision"
-	vision_button.toggle_mode = true
-	vision_button.focus_mode = Control.FOCUS_NONE
-	vision_button.visible = false
-	vision_button.add_theme_font_size_override("font_size", 15)
-	vision_button.tooltip_text = TooltipText.plain("Vision", "Show what you can see: every province in clear sight, glimpsed, out of sight or never seen, with what each mark means. Hover a province for why you see it, or what you remember of it. Click again to go back to the map.")
-	vision_button.toggled.connect(func(on: bool): set_map_mode("vision" if on else ""))
-	CodexLink.attach(vision_button, "sight", request_codex)
-	hud.add_system_button("vision", vision_button)
-	vision_legend = PanelContainer.new()
-	vision_legend.name = "VisionLegend"
-	vision_legend.visible = false
-	vision_legend.mouse_filter = Control.MOUSE_FILTER_STOP
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(UiPalette.PANEL_BG, 0.94)
-	style.border_color = UiPalette.PANEL_BORDER
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(6)
-	style.set_content_margin_all(10)
-	vision_legend.add_theme_stylebox_override("panel", style)
-	hud.set_floating("legend", vision_legend)
-	var box := VBoxContainer.new()
-	box.name = "Rows"
-	box.add_theme_constant_override("separation", 6)
-	vision_legend.add_child(box)
-
-
-## M5-2: the Vision legend's rows (FogView.legend_rows), each with its swatch: the veil as the 2D map draws it.
-func _fill_vision_legend() -> void:
-	var box := vision_legend.get_node("Rows") as VBoxContainer
-	for c in box.get_children():
-		box.remove_child(c)
-		c.queue_free()
-	var title := Label.new()
-	title.text = "Vision: what you can see"
-	title.add_theme_font_size_override("font_size", 17)
-	title.add_theme_color_override("font_color", UiPalette.GILT)
-	box.add_child(title)
-	for row in FogView.legend_rows(state):
-		var line := HBoxContainer.new()
-		line.name = "Row_%s" % String(row.key)
-		line.add_theme_constant_override("separation", 8)
-		line.mouse_filter = Control.MOUSE_FILTER_PASS
-		box.add_child(line)
-		var swatch := ProvinceRegion.legend_swatch(String(row.key))
-		line.add_child(swatch)
-		var l := Label.new()
-		l.text = "%s: %s" % [String(row.title), String(row.short)]
-		l.add_theme_font_size_override("font_size", 15)
-		l.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
-		l.mouse_filter = Control.MOUSE_FILTER_PASS
-		l.tooltip_text = TooltipText.plain(String(row.title), "%s %s" % [String(row.text), RulesCodex.text(String(row.codex))])
-		CodexLink.attach(l, String(row.codex), request_codex)
-		line.add_child(l)
 
 
 ## Scales the design-space canvas to fit the board's framing area (the safe area right of the details card), centred, keeping

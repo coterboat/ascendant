@@ -33,6 +33,7 @@ extends RefCounted
 
 const Formation := preload("res://world3d/battle_formation.gd")
 const Models := preload("res://world3d/models.gd")
+const Kit := preload("res://world3d/kit.gd")
 
 const STORM_GAP := 5.0 ## from a wall's outer edge to the stormers' front line (the ladders lean in between)
 const RAM_GAP := 9.0 ## the same with the trunk before the gate
@@ -110,8 +111,12 @@ const SPECS := {
 ## The walls spec of a fort `kind` ("palisade", "fort" or "fortress", the model table's kinds) in `kit` (the faction whose
 ## kit it wears) at `radius` (half its side): SPECS, under the model row's own "walls" group. A fort whose model is not
 ## on disk (drawn from code) is a round palisade of its size.
+## UX-2: the measurements are of the model as the kit made it; the board draws each level Kit.fort_scale(kind) bigger, so a spec of a
+## model (or of the code palisade) is scaled by it, every length of it, and the stand-in for a missing model (already of the drawn
+## radius) is not.
 static func spec_of(kind: String, kit: String, radius: float = 13.5) -> Dictionary:
 	var spec: Dictionary
+	var in_model_units := kind == "palisade" or not Models.building_model(kind, kit).is_empty()
 	if kind == "palisade" or Models.building_model(kind, kit).is_empty():
 		spec = (SPECS["palisade"] as Dictionary).duplicate(true)
 		if kind != "palisade":
@@ -128,7 +133,24 @@ static func spec_of(kind: String, kit: String, radius: float = 13.5) -> Dictiona
 	if over is Dictionary:
 		for key in (over as Dictionary).keys():
 			spec[key] = (over as Dictionary)[key]
+	var k := Kit.fort_scale(kind)
+	if in_model_units and not is_equal_approx(k, 1.0):
+		spec = _scaled(spec, k) as Dictionary
 	return spec
+
+
+## `v` (a spec, or part of one) with every number multiplied by `k`: a spec is lengths all through (positions, heights, widths).
+static func _scaled(v: Variant, k: float) -> Variant:
+	if v is Dictionary:
+		var out := {}
+		for key in (v as Dictionary).keys():
+			out[key] = _scaled((v as Dictionary)[key], k)
+		return out
+	if v is Array:
+		return (v as Array).map(func(e): return _scaled(e, k))
+	if v is float or v is int:
+		return float(v) * k
+	return v
 
 
 ## What the planner needs of a fort the stage drew: `frame` its Transform3D (gate on local -Z), `kind` and `kit`, `look`

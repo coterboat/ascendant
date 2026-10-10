@@ -40,16 +40,16 @@ signal compact_changed(on: bool)
 signal orders_requested
 
 ## The system buttons that carry an icon (UX-0a's UiIcons, white masks tinted with the button's colours); the icon's name is the
-## button's id except for the three in ICON_OF. A button without one (the ?) keeps its text. Below 1600 logical width the row
+## button's id except for the two in ICON_OF. A button without one (the ?) keeps its text. Below 1600 logical width the row
 ## shows the icons only (the tooltips name them): a button's label is kept in its "label" meta and put back when the window is
 ## wide. The research and magic chips keep their progress text.
-const ICON_IDS := ["research", "magic", "ruler", "chronicle", "report", "lenses", "vision", "codex"]
-const ICON_OF := {"report": "turn", "lenses": "lens", "vision": "sight"}
+const ICON_IDS := ["research", "magic", "ruler", "chronicle", "report", "lenses", "codex"]
+const ICON_OF := {"report": "turn", "lenses": "lens"}
 const ICON_PX := 20
 const KEEP_TEXT := ["research", "magic"]
 
 ## The system row's order, left to right. An id not listed goes just before the Codex.
-const SYSTEM_ORDER := ["research", "magic", "ruler", "chronicle", "report", "lenses", "vision", "codex", "help"]
+const SYSTEM_ORDER := ["research", "magic", "ruler", "chronicle", "report", "lenses", "codex", "help"]
 const PLAQUE_MARGIN := Vector2(8.0, 6.0)
 const SEAL_W := 190.0
 ## The window's size when this node is not in a tree yet (tests): the project's own.
@@ -199,7 +199,7 @@ func _fit_label(id: String, button: Button) -> void:
 	button.text = "" if compact else String(button.get_meta("label"))
 
 
-## Changes a system button's label (the vision toggle's "Vision: on"); in the compact Table the icon alone shows.
+## Changes a system button's label (a toggle's "...: on"); in the compact Table the icon alone shows.
 func set_system_label(id: String, text: String) -> void:
 	var b: Button = _system.get(id, null)
 	if b == null:

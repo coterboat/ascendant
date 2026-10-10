@@ -137,6 +137,8 @@ func test_every_number_on_screen_has_a_breakdown_tooltip() -> void:
 	var s := GameState.new()
 	s.find_province("thornvale").owner = "kingdom"  # an owned non-capital too
 	var screen := _open(s)
+	for region in screen.regions.values():
+		(region as ProvinceRegion).always_detail = true ## UX-2: a plate's gold shows on hover or selection; a lens keeps every plate's open
 	var checked := _assert_numbers_explained(screen, "nothing selected")
 	assert_true(checked >= s.provinces.size() + 2, "region incomes, gold and turn were checked (%d)" % checked)
 	for p in s.provinces:

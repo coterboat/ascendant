@@ -25,7 +25,7 @@ const FORTRESS_SIDE := 76.0
 const SWEEP_TIME := 1.2 ## a capture's colour sweep, seconds at 1x
 const SWEEP_REACH := 170.0 ## how far the sweep's front runs from the arriving column
 const BUILDING_GRADE := 1.0 ## pale stone pulled to a warm grey on every building (a row's "grade" overrides)
-const FOG_STILL_RUNG := 3 ## M5-3: from this quality rung the clouds over a never-seen province stand still
+const FOG_STILL_RUNG := 3 ## M5-3: from this quality rung the mist over glimpsed land stands still (UX-2)
 
 var terrain: RefCounted
 var look := "cel"
@@ -132,6 +132,9 @@ func _build_ground() -> void:
 	gmat.set_shader_parameter("vision_tex", vision_tex)
 	gmat.set_shader_parameter("fog_on", 0.0)
 	gmat.set_shader_parameter("fog_drift", 1.0 if quality < FOG_STILL_RUNG else 0.0)
+	var looks: Dictionary = Vision.look_arrays() ## UX-2: the four looks of the ground, one per sight level
+	for k in looks:
+		gmat.set_shader_parameter(k, looks[k])
 	for t in ["plains", "forest", "hills"]:
 		var tex: Texture2D = load("res://assets/terrain/%s.webp" % t)
 		gmat.set_shader_parameter("tile_" + t, tex)
@@ -258,7 +261,7 @@ func set_look(p_look: String) -> void:
 func set_quality(q: int) -> void:
 	quality = clampi(q, 0, 3)
 	if gmat != null:
-		gmat.set_shader_parameter("fog_drift", 1.0 if quality < FOG_STILL_RUNG else 0.0) ## M5-3: the clouds stand still from rung 3
+		gmat.set_shader_parameter("fog_drift", 1.0 if quality < FOG_STILL_RUNG else 0.0) ## M5-3: the mist stands still from rung 3
 	env.ssao_enabled = quality < 1 and look == "painted"
 	env.ssao_radius = 4.0
 	env.ssao_intensity = 1.4
@@ -403,12 +406,15 @@ func clear_vision() -> void:
 ## MVP-3 (#177): the woods, rocks and cottages read the ground's sight (model_common.gdshaderinc, fog_prop): its province
 ## texture and its vision texture, from the start; the veil itself goes on and off with the ground's (set_vision).
 func _wire_prop_fog() -> void:
+	var looks: Dictionary = Vision.look_arrays()
 	for m in _prop_mats:
 		var pm := m as ShaderMaterial
 		pm.set_shader_parameter("prop_data_n", gmat.get_shader_parameter("data_n"))
 		pm.set_shader_parameter("prop_vision", vision_tex)
 		pm.set_shader_parameter("prop_origin", Terrain3D.ORIGIN)
 		pm.set_shader_parameter("prop_extent", Terrain3D.EXTENT)
+		pm.set_shader_parameter("prop_look_tone", looks["look_tone"]) ## UX-2: the props wear the ground's looks
+		pm.set_shader_parameter("prop_look_lift", looks["look_lift"])
 	_set_prop_fog(1.0 if fog_on else 0.0)
 
 
@@ -1383,9 +1389,10 @@ func _fort_piece(kind: String, kit: String) -> Dictionary:
 	var mi := MeshInstance3D.new()
 	var mat: ShaderMaterial
 	var h := 10.0
+	var k := Kit.fort_scale(kind) ## UX-2: the level's size on the board (the geometry, fort_geom, takes the same)
 	if not glb.is_empty():
 		var aabb: AABB = glb["aabb"]
-		var side: float = float(row.get("side", 26.0))
+		var side: float = float(row.get("side", 26.0)) * k
 		var s: float = side / maxf(aabb.size.x, aabb.size.z)
 		mi.mesh = glb["mesh"]
 		mi.scale = Vector3.ONE * s
@@ -1399,8 +1406,9 @@ func _fort_piece(kind: String, kit: String) -> Dictionary:
 		h = aabb.size.y * s
 	else:
 		mi.mesh = Models.building_primitive(kind, kit)
+		mi.scale = Vector3.ONE * k
 		mat = model_mat(Color.WHITE, null, -1.0, false, 0.9, Color.WHITE, BUILDING_GRADE)
-		h = mi.mesh.get_aabb().size.y
+		h = mi.mesh.get_aabb().size.y * k
 	_give_own_outline(mat)
 	mi.material_override = mat
 	return {"mi": mi, "mat": mat, "h": h}
@@ -1427,8 +1435,10 @@ func fort_geom(pid: String, kind: String, kit: String) -> Dictionary:
 	if gz.size() != 2:
 		gz = prim["gate_z"]
 	var side: float = float(row.get("side", prim["side"])) if has_model else float(prim["side"])
+	var k := Kit.fort_scale(kind) ## UX-2: a level's size on the board: the yard, the gate and the walls scale with the model
+	side *= k
 	var out := {"pid": pid, "kind": kind, "kit": kit, "capital": false, "frame": frame,
-		"court": Rect2(Vector2(cr[0], cr[1]), Vector2(cr[2], cr[3])), "gate_z": Vector2(gz[0], gz[1]),
+		"court": Rect2(Vector2(cr[0], cr[1]) * k, Vector2(cr[2], cr[3]) * k), "gate_z": Vector2(gz[0], gz[1]) * k,
 		"gate_dir": gate, "yaw": atan2(-gate.x, -gate.y), "floor_y": frame.origin.y + float(row.get("floor", 0.3)),
 		"centre": at, "radius": side * 0.5}
 	out["gate"] = _gates_in(frame, out["gate_z"])
@@ -1616,7 +1626,7 @@ func _show_villages(pid: String, show: bool) -> void:
 		return
 	var at: Vector2 = fort_spot(terrain, i)[0]
 	for v in _village_at.get(pid, []):
-		var near: bool = (v["pos"] as Vector2).distance_to(at) < float(v["r"]) + Kit.PALISADE_R + 12.0
+		var near: bool = (v["pos"] as Vector2).distance_to(at) < float(v["r"]) + Kit.PALISADE_R * Kit.fort_scale("palisade") + 12.0
 		var xf: Transform3D = v["xf"]
 		(v["mm"] as MultiMesh).set_instance_transform(int(v["k"]), xf if (show or not near) else Transform3D(Basis().scaled(Vector3.ONE * 0.001), xf.origin))
 

@@ -846,6 +846,7 @@ func test_enchantment_badges_show_what_the_state_shows() -> void:
 	# The map shows them on the 2D plates and mirrors them on the board's.
 	var game := _screen(s, [CLANS, CROWN])
 	var region: ProvinceRegion = game.map.regions["crownkeep"]
+	region.always_detail = true ## UX-2: a 2D plate shows its badges on hover or selection (or where a lens keeps them open); this is the lens
 	assert_true(region.enchantment_badges != null, "the region has its badges")
 	assert_eq(region.enchantment_badges.get_child_count(), 2)
 	var first := region.enchantment_badges.get_child(0) as Control

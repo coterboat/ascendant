@@ -31,11 +31,19 @@ uniform int select_id = -1;
 uniform vec4 sweep_a[4];
 uniform vec4 sweep_old[4];
 // M5-3 fog of war (design/M5_MAGIC_FOG.md 12.1). fog_on is 0 in a game without fog, and then the ground is untouched:
-// one uniform branch, no fetch. fog_drift moves the clouds over a never-seen province (the quality ladder stops it
-// from rung 3: the clouds stand still).
+// one uniform branch, no fetch. fog_drift moves the glimpsed land's mist (the quality ladder stops it from rung 3: the mist
+// stands still).
+// UX-2 (design/UX_WAR_TABLE.md 2.2): the four looks, one per sight level, indexed by the vision texel / 85 (0 never seen, 1 out of
+// sight, 2 glimpsed, 3 clear, which is never veiled). Vision.look_arrays() fills them (WorldView):
+//   look_tone: rgb the veil's tint, a how far the colour is pulled to it
+//   look_lift: x the look's lightness (the ground's luminance scaled by it), y the colour drained, z the terrain detail kept
+//              (0: a flat parchment), w the paper grain on a flat parchment
+//   look_tex:  x the mist (glimpsed land: a thin drifting mist), y the hatch (out of sight: static old-map lines)
 uniform float fog_on = 0.0;
 uniform float fog_drift = 1.0;
-uniform vec3 fog_veil : source_color = vec3(0.106, 0.133, 0.200); // the cool veil, the 2D map's too (#1B2233)
+uniform vec4 look_tone[4];
+uniform vec4 look_lift[4];
+uniform vec4 look_tex[4];
 
 varying vec2 mp;
 varying float wy;
@@ -118,21 +126,41 @@ Ground paint_ground() {
 	col = mix(col, vec3(0.90, 0.82, 0.60), beach * (1.0 - rocky));
 	float sand = smoothstep(-1.0, 1.0, g.coast);
 	col = mix(mix(vec3(0.72, 0.66, 0.48), vec3(0.20, 0.34, 0.38), smoothstep(0.0, 16.0, -g.coast)), col, sand);
-	// fog of war: the terrain out of sight is desaturated 70% under a cool veil at 40%, a glimpsed province has a faint
-	// veil (13%, 12% drained: the spec's 10% did not read against a clear province at the whole-map zoom), a never-seen
-	// one adds slow clouds. The owner's wash goes on after it and stays true (owners are public); the edges are hard, on
-	// the province border, because the lookup is the province's own texel.
-	float fog_out = 0.0;
+	// fog of war (UX-2): each sight level is its own look, different in lightness and in texture, so it reads without colour or a
+	// word. A glimpsed province is a step darker under a thin drifting mist; one out of sight is two steps darker, washed toward
+	// sepia (the hatch lines go on after the owner's wash, below); a never-seen one is flat dark parchment with no terrain on it.
+	// The relief of the terrain survives a look by scaling the pixel's own luminance (Vision.lit does the same sum); the owner's
+	// wash goes on after and stays true (owners are public). The edges are hard, on the province border, because the lookup is
+	// the province's own texel.
+	float look_hatch = 0.0;
 	if (fog_on > 0.5 && g.id < 255) {
 		float v = texture(vision_tex, vec2((float(g.id) + 0.5) / 16.0, 0.5)).r;
-		fog_out = 1.0 - step(0.5, v);
-		float never = 1.0 - step(0.17, v);
-		float glimpsed = step(0.5, v) * (1.0 - step(0.84, v));
-		float luma = dot(col, vec3(0.299, 0.587, 0.114));
-		col = mix(col, vec3(luma), (0.70 * fog_out + 0.12 * glimpsed) * sand);
-		col = mix(col, fog_veil, (0.40 * fog_out + 0.13 * glimpsed) * sand);
-		float cl = texture(grain_tex, mp / 64.0 + vec2(TIME * 0.011, TIME * 0.005) * fog_drift).g;
-		col = mix(col, vec3(0.80, 0.84, 0.92), smoothstep(0.5, 0.85, cl) * 0.22 * never * sand);
+		int li = int(floor(v * 3.0 + 0.5));
+		if (li < 3) {
+			vec4 tone = look_tone[li];
+			vec4 lift = look_lift[li];
+			vec4 tx = look_tex[li];
+			float luma0 = dot(col, vec3(0.299, 0.587, 0.114));
+			vec3 lc = mix(col, vec3(luma0), lift.y);
+			lc = mix(lc, tone.rgb, tone.a);
+			lc *= luma0 * lift.x / max(dot(lc, vec3(0.299, 0.587, 0.114)), 0.02);
+			// flat parchment: the tint itself, with a faint paper grain, as the terrain's detail goes to nothing
+			float paper = texture(grain_tex, mp / 9.0).r - 0.5;
+			vec3 flat_col = tone.rgb * (1.0 + paper * lift.w * 2.0);
+			lc = mix(flat_col, lc, lift.z);
+			// the mist: thin streaks stretched along their drift, two layers sliding past each other
+			if (tx.x > 0.0) {
+				float t = TIME * 0.018 * fog_drift;
+				float m1 = texture(grain_tex, mp / vec2(150.0, 52.0) + vec2(t, t * 0.35)).g;
+				float m2 = texture(grain_tex, mp / vec2(95.0, 34.0) + vec2(-t * 0.7, t * 0.25) + vec2(0.37, 0.61)).g;
+				float mist = smoothstep(0.42, 0.74, m1 * 0.6 + m2 * 0.4);
+				lc = mix(lc, vec3(0.83, 0.88, 0.95), mist * tx.x * 0.55);
+			}
+			col = mix(col, clamp(lc, 0.0, 1.0), sand);
+			look_hatch = tx.y * sand;
+			// a look with less detail also loses the terrain's relief in the light
+			g.n = normalize(mix(g.n, vec3(0.0, 1.0, 0.0), (1.0 - lift.z) * sand));
+		}
 	}
 	// owners: a wash of the owner's colour inside the province's edge
 	vec4 st = texture(owner_tex, vec2((float(g.id) + 0.5) / 16.0, 0.5));
@@ -163,13 +191,14 @@ Ground paint_ground() {
 		col = mix(col, st.rgb * 1.05, band * 0.85 * k);
 		col = mix(col, vec3(0.102, 0.086, 0.071), keyl * 0.55 * k);
 	}
-	// fog of war, out of sight: fine 45 degree hatching at a constant screen size, kept off the owner's inner band
-	if (fog_out > 0.5) {
+	// fog of war, out of sight (UX-2): static hatch lines at 45 degrees and a constant screen size, like an old map's, kept off the
+	// owner's inner band
+	if (look_hatch > 0.0) {
 		float pxh = max(length(fwidth(mp)), 0.05);
-		float hh = fract((mp.x + mp.y) / (pxh * 12.0));
-		float hline = smoothstep(0.0, 0.07, hh) * (1.0 - smoothstep(0.15, 0.23, hh));
+		float hh = fract((mp.x + mp.y) / (pxh * 11.0));
+		float hline = smoothstep(0.0, 0.08, hh) * (1.0 - smoothstep(0.20, 0.30, hh));
 		float hed = min(g.bdist, max(g.coast, 0.0));
-		col = mix(col, vec3(0.102, 0.086, 0.071), hline * 0.42 * smoothstep(pxh * 5.5, pxh * 8.0, hed) * sand);
+		col = mix(col, vec3(0.102, 0.086, 0.071), hline * look_hatch * smoothstep(pxh * 5.5, pxh * 8.0, hed));
 	}
 	// a capture's sweep front: a gilt edge running out from the arriving column
 	col = mix(col, vec3(1.0, 0.86, 0.45), sweep_edge * 0.75 * sand);

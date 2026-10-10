@@ -1,9 +1,10 @@
 ## The 2D over the 3D board (design/3D_DIRECTION.md 3.3, "text is never in 3D"): small Controls and
 ## drawings projected from the world every frame, at native resolution, through the board's project().
 ## Kept minimal, because the 3D armies are the markers (the critic's warning):
-##   * each province's plate: its name (a crown on a capital, a tower on a fort) and its income, with
-##     the income's breakdown and codex link on hover; a Sworn Vassals pennant and an heir countdown
-##     badge when the map has them (their tooltips are the map's own);
+##   * each province's plate (UX-2's label diet, see _build_province_plates): its name, its owner's emblem and a crown on a
+##     capital, always, with the marks that warn (cut off, besieged, an heir countdown, a Sworn Vassals pennant); its gold,
+##     garrison and walls (an icon and a number each) and its enchantments on hover, keyboard focus or selection. The plate
+##     itself carries the province's tooltip, with its sight level in words, and the codex link;
 ##   * each army's count plate above its formation: the seat emblem and the unit count, the 2D badge's
 ##     tooltip and codex link, a click selects the army (a ruler's plate wears the gilt ring);
 ##   * the order arrows: every queued move drawn as a ribbon along the roads it marches (a King's Roads
@@ -32,14 +33,22 @@ const Vision := preload("res://world3d/vision.gd")
 const EnchantDecals := preload("res://world3d/enchant_decals.gd")
 const ARROW := Color("#FFFFFF")
 const ARROW_HALO := Color(0.102, 0.086, 0.071, 0.85)
-const LEGEND := "The 3D board, what you see:\n- A province's colour wash and inner border: its owner, in their player colour.\n- A white band inside a province: the one you selected. A cream band: the one under the mouse.\n- A soft gilt glow at the edges: where your selected army can march this turn.\n- A dashed gilt band: a King's Roads destination two provinces away.\n- Figures: each army as blocks of its units (a block per unit type, %s), its commander and banner bearer at the back. The plate above gives the exact count.\n- In the woods every block stands on a tray in its owner's colour (a gilt ring for a ruler's army), so woods-green figures never pass for trees.\n- Zoomed far out, each army becomes a stand: a base in its owner's colour (a gilt ring for a ruler's army), its banner, and one figure for each of its three most numerous unit types, under its count plate. Zoom in and the blocks come back.\n- A fortress's muster yard: its armies stand a block to a slot (a capital holds 6 blocks), facing the gate. An army the yard can't hold musters in the war camp outside the walls: tents, a fire and its smoke. A big camp means a big muster: war is coming.\n- Translucent figures in a yard: the recruits you queued, in the slot each will take. Only you see them.\n- An army in a column at its gate (or the edge of its province), facing a road, with a gilt arrow on its plate: one you ordered to march. It leaves when the turn ends. Only you see it gathered.\n- White arrows along the roads: your queued moves.\n- During a turn's playback the captions follow the turn report's phases: Movement, Battles, Captures, Recruits. Crossed swords mark a battle: the lines trade blows and the fallen lie where they fell. A capture's colour sweeps out from the arriving column.\n- View fortress (in the recruit panel) or a double-click on a fortress: a close-up of its yard. Esc or zooming out leaves it.%s\n\nDrag or WASD to pan, the wheel (or a pinch or two-finger scroll on a trackpad) to zoom, double-click to glide to a province, C your capital, F the whole map, L Look A or B. Settings can switch to the 2D map."
+const LEGEND := "The 3D board, what you see:\n- A province's colour wash and inner border: its owner, in their player colour. Its plate (name, owner's emblem, a crown on a capital) shows what warns (cut off, besieged, an heir countdown) and, on hover, Tab focus or selection, its gold, garrison and walls.\n- A white band inside a province: the one you selected. A cream band: the one under the mouse.\n- A soft gilt glow at the edges: where your selected army can march this turn.\n- A dashed gilt band: a King's Roads destination two provinces away.\n- Figures: each army as blocks of its units (a block per unit type, %s), its commander and banner bearer at the back. The plate above gives the exact count.\n- In the woods every block stands on a tray in its owner's colour (a gilt ring for a ruler's army), so woods-green figures never pass for trees.\n- Zoomed far out, each army becomes a stand: a base in its owner's colour (a gilt ring for a ruler's army), its banner, and one figure for each of its three most numerous unit types, under its count plate. Zoom in and the blocks come back.\n- A fortress's muster yard: its armies stand a block to a slot (a capital holds 6 blocks), facing the gate. An army the yard can't hold musters in the war camp outside the walls: tents, a fire and its smoke. A big camp means a big muster: war is coming.\n- Translucent figures in a yard: the recruits you queued, in the slot each will take. Only you see them.\n- An army in a column at its gate (or the edge of its province), facing a road, with a gilt arrow on its plate: one you ordered to march. It leaves when the turn ends. Only you see it gathered.\n- White arrows along the roads: your queued moves.\n- During a turn's playback the captions follow the turn report's phases: Movement, Battles, Captures, Recruits. Crossed swords mark a battle: the lines trade blows and the fallen lie where they fell. A capture's colour sweeps out from the arriving column.\n- View fortress (in the recruit panel) or a double-click on a fortress: a close-up of its yard. Esc or zooming out leaves it.%s\n\nDrag or WASD to pan, the wheel (or a pinch or two-finger scroll on a trackpad) to zoom, double-click to glide to a province, C your capital, F the whole map, L Look A or B. Settings can switch to the 2D map."
 
 var board: Control ## board3d.gd
-var _plates := {} ## province id -> {"root": Control, "name": Label, "income": Label, "glyph": Control, "pennant": Control, "badge": Label, "chip": FortChip or null}
+var _plates := {} ## province id -> {"root": _Plate, "name": Label, "dot": SeatEmblem, "glyph": Control, "pennant": Control, "badge": Label, "chip": FortChip or null (only while it warns),
+## "cut": the cut-off mark or null, "marks": the row of always-on marks or null, "detail": the hover box, "parts": {part: Control}, "garrison": the garrison stat}
 ## M3c S-4: the forts and sieges part of the legend (a game with sieges), between the close-up line and the keys.
-const SIEGE_LEGEND := "\n\nForts and sieges (M3c preview):\n- A fort's kit shows its level: a palisade (a ring of stakes round a small yard), a keep (a walled fort), a citadel (a capital's fortress). A fort someone built wears its builder's kit; a captured fort keeps its look and flies its new owner's colours. The chip on its plate gives the level and the exact walls.\n- Damaged walls: one step of 3 wall strength lost knocks a corner of the gate-side wall down; two steps (battered) knock it lower, with smoke, fire and rubble at its foot; at 0 the whole gate side is down to its footing, rubble in the gap: breached. The look changes exactly where a storm's defense does.\n- Scaffolding round a fort: a level being built. The new walls rise inside it as the work is done (solid up to the turns of work done, faint above). Translucent scaffolding is a Fortify you queued: only you see it.\n- A besieged fort: the besiegers camp in a ring round its walls (a tent and a fire behind each army, facing the walls), their siege works stand before the gate (ladders and mantlets, or a mound, stakes and logs), the siege engines they carry stand at the walls, and chevron banners in their colour are planted round the walls. The garrison stands packed inside, tighter the bigger it is; what doesn't fit packs at the gate.\n- During a turn's playback, Sieges: the camps go up, the camp and engines strike the walls in a burst of dust and the damage look changes; a breach collapses the gate side and shakes the camera; a lifted siege folds its camps. In the Battles, a sally's garrison files out of the gate two abreast, a storm meets at the walls, a breach battle in the gap. Recruits at any fort march in through its gate."
+const SIEGE_LEGEND := "\n\nForts and sieges (M3c preview):\n- A fort's kit shows its level: a palisade (a ring of stakes round a small yard), a keep (a walled fort), a citadel (a capital's fortress). Each level is drawn bigger than the one below, so from the whole-map view the palisade is the smallest, the keep in the middle and the citadel the biggest. A fort someone built wears its builder's kit; a captured fort keeps its look and flies its new owner's colours. Its plate gives the exact walls (and the level, with the besieger's chevrons, while it is besieged, breached or being built) on hover.\n- Damaged walls: one step of 3 wall strength lost knocks a corner of the gate-side wall down; two steps (battered) knock it lower, with smoke, fire and rubble at its foot; at 0 the whole gate side is down to its footing, rubble in the gap: breached. The look changes exactly where a storm's defense does.\n- Scaffolding round a fort: a level being built. The new walls rise inside it as the work is done (solid up to the turns of work done, faint above). Translucent scaffolding is a Fortify you queued: only you see it.\n- A besieged fort: the besiegers camp in a ring round its walls (a tent and a fire behind each army, facing the walls), their siege works stand before the gate (ladders and mantlets, or a mound, stakes and logs), the siege engines they carry stand at the walls, and chevron banners in their colour are planted round the walls. The garrison stands packed inside, tighter the bigger it is; what doesn't fit packs at the gate.\n- During a turn's playback, Sieges: the camps go up, the camp and engines strike the walls in a burst of dust and the damage look changes; a breach collapses the gate side and shakes the camera; a lifted siege folds its camps. In the Battles, a sally's garrison files out of the gate two abreast, a storm meets at the walls, a breach battle in the gap. Recruits at any fort march in through its gate."
 ## IND-2 (#161): the Free Holds' part of the legend (a game with independents), between the siege lines and the keys.
 const INDEPENDENTS_LEGEND := "\n\nThe Free Holds (independents):\n- A neutral province's garrison: plain local militia in undyed wool and grey (spearmen, slingers, the grey badger Wildkin of the deep woods, a grey-bearded Hold Captain at the back), on slate bases under a slate banner with a heater shield. They answer to no ruler, never move or heal, and everyone knows their strength even through fog (the plate gives the exact count). Take the province by beating them."
+## UX-2: what makes a plate show its detail (hover, keyboard focus, selection, a lens), and the focus tip.
+var _plate_hover := "" ## the province whose plate the mouse is over
+var _plate_focus := "" ## the province whose plate has the keyboard focus
+var _detail_sig := ""
+var _always := {} ## part -> true: a lens shows that part of every plate (set_always)
+var _focus_tip: PanelContainer = null
+var _focus_label: Label = null
 var _army_plates := {} ## army id -> PanelContainer
 var _built_for: GameState = null
 var _army_sig := ""
@@ -227,22 +236,51 @@ func _unit_name(st: GameState, faction_id: String, type_id: String) -> String:
 	return ut.name if ut != null else "recruits"
 
 
+## UX-2 (design/UX_WAR_TABLE.md 2.1, the label diet): a province plate shows what changes or warns, always, and what is static on
+## hover, keyboard focus or selection.
+##   always:  the name, the owner's emblem, a capital's crown, a Sworn Vassals pennant, an heir countdown, and the cut-off,
+##            besieged, breached and under-construction marks
+##   on hover, focus or select (the "Detail" box): gold, garrison and walls (an icon and a number each), and the enchantments
+## The plate itself carries the province's tooltip (its level of sight in words, why, and the province's own) and its codex
+## link (right-click, or F1 while it has the keyboard focus): they were the sight line's (SightLabel), which is gone. A lens
+## that wants a part always on (UX-7: Income gold, Magic enchantments) calls set_always(part, true).
 func _build_province_plates() -> void:
 	for p in _plates.values():
 		(p["root"] as Node).queue_free()
 	_plates.clear()
+	if _focus_tip != null:
+		_focus_tip.visible = false
+	_plate_hover = ""
+	_plate_focus = ""
+	_detail_sig = ""
 	var map: Control = board.map
 	var st: GameState = map.state
+	var seats: Array = map.seat_order()
 	for p in st.provinces:
 		if board.wv.terrain.index_of(p.id) < 0:
 			continue
-		var root := VBoxContainer.new()
+		var pid: String = p.id
+		var root := _Plate.new()
 		root.name = "Plate_%s" % p.id
-		root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		root.overlay = self
+		root.province_id = pid
+		root.mouse_filter = Control.MOUSE_FILTER_PASS ## the plate carries the tooltip and the codex link; the wheel and drags go on to the board
+		root.focus_mode = Control.FOCUS_ALL ## Tab reaches a plate: its detail opens and its tooltip shows (the focus tip)
+		for side in ["left", "right", "top", "bottom"]:
+			root.set("focus_neighbor_" + side, NodePath(".")) ## the arrow keys keep panning the board, not hopping between plates
+		root.tooltip_text = " " ## the real text comes from _Plate._get_tooltip (plate_tooltip)
 		root.add_theme_constant_override("separation", -2)
 		root.alignment = BoxContainer.ALIGNMENT_CENTER
+		root.mouse_entered.connect(func(): _plate_hover = pid)
+		root.mouse_exited.connect(func():
+			if _plate_hover == pid:
+				_plate_hover = "")
+		root.focus_entered.connect(func(): _on_plate_focus(pid, true))
+		root.focus_exited.connect(func(): _on_plate_focus(pid, false))
+		root.gui_input.connect(_on_plate_input.bind(pid, root))
 		add_child(root)
 		var row := HBoxContainer.new()
+		row.name = "Row"
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
 		row.add_theme_constant_override("separation", 3)
@@ -255,6 +293,11 @@ func _build_province_plates() -> void:
 			glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			row.add_child(glyph)
+		## the owner's emblem (its colour and its shape, so it never rests on colour alone): the seat's, or the slate shield of nobody
+		var seat: int = UiPalette.seat_index(st, p.owner, seats)
+		var dot := SeatEmblem.new(seat, SeatEmblem.Look.TOKEN, 14.0)
+		dot.name = "OwnerDot"
+		row.add_child(dot)
 		var name_label := Label.new()
 		name_label.name = "NameLabel"
 		name_label.text = p.name
@@ -271,94 +314,358 @@ func _build_province_plates() -> void:
 		plaque.content_margin_bottom = 1
 		name_label.add_theme_stylebox_override("normal", plaque)
 		row.add_child(name_label)
-		var income := Breakdown.province_income(st, p.id)
-		var inc := Label.new()
-		inc.name = "IncomeLabel"
-		inc.text = "%d gold" % int(income.total)
-		inc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		inc.add_theme_font_size_override("font_size", 13)
-		inc.add_theme_color_override("font_color", UiPalette.GILT)
-		inc.add_theme_color_override("font_outline_color", UiPalette.KEYLINE_INK)
-		inc.add_theme_constant_override("outline_size", 5)
-		inc.mouse_filter = Control.MOUSE_FILTER_PASS
-		inc.tooltip_text = TooltipText.from_breakdown(income)
-		CodexLink.attach(inc, TooltipText.codex_for("province_income", income), map.request_codex)
-		var pid: String = p.id
-		inc.gui_input.connect(func(e: InputEvent):
-			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-				board.map.select_province(pid)
-				inc.accept_event())
-		var cut_mark: Control = null
+		var pl := {"root": root, "name": name_label, "dot": dot, "glyph": glyph, "pennant": null, "badge": null, "sprout": null, "chip": null, "cut": null,
+			"marks": null, "detail": null, "parts": {}, "garrison": null}
+		_plates[p.id] = pl
+		## the marks that warn, always: cut off (a siege mark and the arrow to the besieger's colour), and the fort chip while it
+		## is besieged, breached or being built (its level, its walls and its chevrons; a quiet fort's walls are on hover)
 		if st.sieges and SiegeRules.is_cut_off(st, p.id):
-			## M3c S-4 (§10.1, the cut-off): the income with a siege mark, an arrow to the besieger's colour
-			var inc_row := HBoxContainer.new()
-			inc_row.alignment = BoxContainer.ALIGNMENT_CENTER
-			inc_row.add_theme_constant_override("separation", 2)
-			inc_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			root.add_child(inc_row)
-			inc_row.add_child(inc)
 			var mark := _CutMark.new()
 			mark.name = "CutMark"
-			mark.colour = UiPalette.owner_color(st, SiegeRules.besieging_faction(st, p.id), map.seat_order())
+			mark.colour = UiPalette.owner_color(st, SiegeRules.besieging_faction(st, p.id), seats)
 			mark.custom_minimum_size = Vector2(26, 14)
 			mark.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			mark.mouse_filter = Control.MOUSE_FILTER_PASS
 			mark.tooltip_text = TooltipText.plain("Cut off", "%s is besieged and cut off: its %d gold a turn goes to the %s (the arrow, in their colour), and nobody can recruit there until the siege is lifted." % [
 				p.name, p.income, FortView.besieger_name(st, p.id)])
 			CodexLink.attach(mark, "cut_off", map.request_codex)
-			inc_row.add_child(mark)
-			cut_mark = mark
-		else:
-			root.add_child(inc)
-		## M3c S-4: the fort chip (S-3's FortChip, the same on the 2D map and here): level, walls bar, chevrons, site
-		var chip: FortChip = FortChip.make(st, p.id, map.seat_order(), map.request_codex)
-		if chip != null:
+			_marks_row(pl).add_child(mark)
+			pl["cut"] = mark
+		var chip: FortChip = FortChip.make(st, p.id, seats, map.request_codex)
+		if chip != null and FortView.state_of(st, p.id) in ["besieged", "breached", "building"]:
 			chip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-			root.add_child(chip)
+			_marks_row(pl).add_child(chip)
+			pl["chip"] = chip
+		elif chip != null:
+			chip.free() ## a quiet fort's level is its model's, and its walls are the detail's: no chip until it warns
+		## the detail: icon and number for the gold, the garrison and the walls, then the enchantments
+		var detail := VBoxContainer.new()
+		detail.name = "Detail"
+		detail.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		detail.add_theme_constant_override("separation", -1)
+		detail.alignment = BoxContainer.ALIGNMENT_CENTER
+		root.add_child(detail)
+		pl["detail"] = detail
+		var stats := PanelContainer.new()
+		stats.name = "Stats"
+		stats.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		stats.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(UiPalette.KEYLINE_INK, 0.7)
+		sb.set_corner_radius_all(6)
+		sb.content_margin_left = 6
+		sb.content_margin_right = 6
+		sb.content_margin_top = 1
+		sb.content_margin_bottom = 1
+		stats.add_theme_stylebox_override("panel", sb)
+		detail.add_child(stats)
+		var stat_row := HBoxContainer.new()
+		stat_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		stat_row.add_theme_constant_override("separation", 8)
+		stats.add_child(stat_row)
+		var income := Breakdown.province_income(st, p.id)
+		var gold := _stat("gold", "gold", UiPalette.GILT, "%d" % int(income.total), TooltipText.from_breakdown(income),
+			TooltipText.codex_for("province_income", income), map)
+		gold.get_child(1).name = "IncomeLabel"
+		gold.gui_input.connect(func(e: InputEvent):
+			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+				board.map.select_province(pid)
+				gold.accept_event())
+		stat_row.add_child(gold)
+		pl["parts"]["gold"] = gold
+		var gar := _stat("garrison", "garrison", UiPalette.TEXT_PRIMARY, "", "", "defended", map)
+		stat_row.add_child(gar)
+		pl["parts"]["garrison"] = gar
+		pl["garrison"] = gar
+		if st.sieges and p.fort_level > 0:
+			var walls := _stat("walls", "walls", UiPalette.TEXT_SECONDARY, "%d/%d" % [p.walls, SiegeRules.walls_max(p.fort_level)], FortChip.tooltip_for(st, p.id),
+				FortChip.codex_for(st, p.id), map)
+			if p.walls <= 0:
+				(walls.get_child(1) as Label).add_theme_color_override("font_color", UiPalette.NEGATIVE.lightened(0.2))
+			stat_row.add_child(walls)
+			pl["parts"]["walls"] = walls
+		stats.visible = stat_row.get_child_count() > 0
 		## M5-8: the enchantment badges (wards, curses, Far Sight), the same as on the 2D map's plate
 		var ench := EnchantmentBadges.make(st, p.id, map.viewing_faction_id, map.request_codex)
 		if ench != null:
-			root.add_child(ench)
-		_plates[p.id] = {"root": root, "name": name_label, "income": inc, "glyph": glyph, "pennant": null, "badge": null, "sprout": null, "chip": chip, "cut": cut_mark,
-			"sight": null}
+			ench.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+			detail.add_child(ench)
+			pl["parts"]["enchantments"] = ench
 	update_sight()
 
 
-## M5-3: the short lines under each province plate that is not in clear sight ("glimpsed"; "out of sight" over "seen 3 turns ago";
-## "never seen"), with the level's words and the province's fog paragraph on hover. Words as well as the ground's veil, so a level
-## never rests on colour alone. Called when the plates are built and whenever the ground's sight changes (Board3D._sync_vision).
+## One stat of the detail: a 16 px icon (tinted by `colour`, as UiIcons are masks) and its number, with a hover and a codex link.
+func _stat(part: String, icon: String, colour: Color, text: String, tip: String, codex: String, map: Control) -> HBoxContainer:
+	var box := HBoxContainer.new()
+	box.name = "Stat_%s" % part
+	box.add_theme_constant_override("separation", 2)
+	box.mouse_filter = Control.MOUSE_FILTER_PASS
+	var tr := TextureRect.new()
+	tr.name = "Icon"
+	tr.texture = UiIcons.icon(icon, UiIcons.SIZE_SMALL)
+	tr.modulate = colour
+	tr.custom_minimum_size = Vector2(UiIcons.SIZE_SMALL, UiIcons.SIZE_SMALL)
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(tr)
+	var lb := Label.new()
+	lb.name = "Number"
+	lb.text = text
+	lb.add_theme_font_override("font", UiFonts.number())
+	lb.add_theme_font_size_override("font_size", UiPalette.TYPE_SMALL)
+	lb.add_theme_color_override("font_color", colour)
+	lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(lb)
+	box.tooltip_text = tip
+	CodexLink.attach(box, codex, map.request_codex)
+	return box
+
+
+## The row of marks that warn, under the name; made when the first mark comes.
+func _marks_row(pl: Dictionary) -> HBoxContainer:
+	var marks: HBoxContainer = pl.get("marks")
+	if marks == null:
+		marks = HBoxContainer.new()
+		marks.name = "Marks"
+		marks.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		marks.alignment = BoxContainer.ALIGNMENT_CENTER
+		marks.add_theme_constant_override("separation", 3)
+		(pl["root"] as Node).add_child(marks)
+		(pl["root"] as Node).move_child(marks, 1) ## right under the name
+		pl["marks"] = marks
+	return marks
+
+
+# ------------------------------------------------------------------ the plate's hover, focus and tooltip
+
+## The plate that is a province's: a column of labels that carries the province's tooltip and codex link itself (so every plate
+## says its sight and its facts on hover, and by keyboard focus in the focus tip), and draws a ring while it has the focus.
+class _Plate extends VBoxContainer:
+	var overlay: Control = null ## the BoardOverlay
+	var province_id := ""
+
+	func _get_tooltip(_at_position: Vector2) -> String:
+		return overlay.plate_tooltip(province_id) if overlay != null else ""
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_FOCUS_ENTER or what == NOTIFICATION_FOCUS_EXIT:
+			queue_redraw()
+
+	func _draw() -> void:
+		if has_focus():
+			draw_rect(Rect2(Vector2.ZERO, size).grow(3.0), UiPalette.SELECTION, false, 2.0)
+
+
+## What the plate of `pid` says on hover: the province's own tooltip (with the sight level in words and why, from Vision.words and
+## FogView.province_text) and the codex link: the level's own entry when the province is not in clear sight (what the sight line's
+## was), else Province's.
+func plate_tooltip(pid: String) -> String:
+	return province_tooltip(pid, plate_codex(pid))
+
+
+## The codex key the plate links: the sight level's (vision_*, last_seen) for a glimpsed, out-of-sight or never-seen province, else
+## Province's.
+func plate_codex(pid: String) -> String:
+	var level := String(board.vision_levels.get(pid, "")) if board != null else ""
+	if level.is_empty() or level == FogRules.CLEAR:
+		return TooltipText.codex_for("province")
+	return String(FogView.LEVEL_CODEX.get(level, "sight"))
+
+
+## A plate got or lost the keyboard focus: its detail opens, and the focus tip (a keyboard player's tooltip) follows.
+func _on_plate_focus(pid: String, on: bool) -> void:
+	if on:
+		_plate_focus = pid
+	elif _plate_focus == pid:
+		_plate_focus = ""
+	_poll_detail()
+	_update_focus_tip()
+
+
+## A plate's input: a right-click or F1 (with the focus on it) opens its codex entry; Enter or Space (with the focus) selects its
+## province; a left click selects it too, as a click on the land under it does, and gives the keyboard focus back.
+func _on_plate_input(event: InputEvent, pid: String, plate: Control) -> void:
+	if board == null or board.map == null:
+		return
+	if CodexLink.is_open_click(event) or (CodexLink.is_open_key(event) and _plate_focus == pid):
+		var key := String(plate.get_meta(CodexLink.META, ""))
+		if not key.is_empty():
+			plate.accept_event()
+			board.map.request_codex(key)
+		return
+	if event.is_action_pressed("ui_accept") and _plate_focus == pid and not _playing:
+		plate.accept_event()
+		board.map.select_province(pid)
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		plate.release_focus.call_deferred() ## a click is the mouse's: the keyboard focus (and its tip) stays out of it
+
+
+## Part `part` ("gold", "garrison", "walls" or "enchantments") on every plate, or not (UX-7's lenses: Income shows the gold,
+## Magic the enchantments). "all" is every part. The plate's own hover, focus and selection still show them all.
+func set_always(part: String, on: bool) -> void:
+	if on:
+		_always[part] = true
+	else:
+		_always.erase(part)
+	_detail_sig = ""
+	_poll_detail()
+
+
+## Whether `part` of `pid`'s plate is drawn now: always for a lens that wants it, else while the province is under the mouse, its
+## plate is, it has the keyboard focus, or it is the selected province.
+func shows_part(pid: String, part: String) -> bool:
+	if _always.has("all") or _always.has(part):
+		return true
+	return plate_active(pid)
+
+
+## True while a plate is hovered (its province under the mouse, or its plate), focused or selected: the plate of a province
+## the player is looking at shows its detail.
+func plate_active(pid: String) -> bool:
+	if board == null or board.map == null:
+		return false
+	return pid == board.hover_id or pid == _plate_hover or pid == _plate_focus or pid == String(board.map.selected_province_id)
+
+
+## Looks at what makes a plate show its detail (the province under the mouse, its plate, the focus, the selection) and shows or
+## hides it when that changed. Called every frame (a few string compares), and when the focus or a lens changes.
+func _poll_detail() -> void:
+	if board == null or board.map == null or _plates.is_empty():
+		return
+	var sig := "%s|%s|%s|%s|%s" % [board.hover_id, _plate_hover, _plate_focus, board.map.selected_province_id, _always.keys()]
+	if sig == _detail_sig:
+		return
+	_detail_sig = sig
+	for id in _plates.keys():
+		var pl: Dictionary = _plates[id]
+		var any := false
+		var parts: Dictionary = pl["parts"]
+		for part in parts.keys():
+			var on := shows_part(String(id), String(part))
+			(parts[part] as Control).visible = on
+			any = any or on
+		var detail: Control = pl["detail"]
+		detail.visible = any
+		var stats: Control = detail.get_node_or_null("Stats")
+		if stats != null:
+			stats.visible = (parts.has("gold") and (parts["gold"] as Control).visible) or (parts.has("garrison") and (parts["garrison"] as Control).visible) \
+				or (parts.has("walls") and (parts["walls"] as Control).visible)
+		(pl["root"] as Control).reset_size()
+	_dirty = true
+
+
+## The focus tip: the focused plate's tooltip drawn on the board, because a keyboard player has no hover. One panel under the plate.
+func _update_focus_tip() -> void:
+	if _plate_focus.is_empty() or not _plates.has(_plate_focus):
+		if _focus_tip != null:
+			_focus_tip.visible = false
+		return
+	if _focus_tip == null:
+		_focus_tip = PanelContainer.new()
+		_focus_tip.name = "FocusTip"
+		_focus_tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(UiPalette.PANEL_BG, 0.96)
+		sb.border_color = UiPalette.SELECTION
+		sb.set_border_width_all(2)
+		sb.set_corner_radius_all(6)
+		sb.set_content_margin_all(8)
+		_focus_tip.add_theme_stylebox_override("panel", sb)
+		_focus_label = Label.new()
+		_focus_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_focus_label.custom_minimum_size = Vector2(380, 0)
+		_focus_label.add_theme_font_size_override("font_size", UiPalette.TYPE_SMALL)
+		_focus_label.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
+		_focus_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_focus_tip.add_child(_focus_label)
+		add_child(_focus_tip)
+	_focus_label.text = plate_tooltip(_plate_focus)
+	_focus_tip.visible = true
+	_focus_tip.reset_size()
+	move_child(_focus_tip, get_child_count() - 1)
+	_dirty = true
+
+
+## The focus tip under its plate, kept inside the board (the plate moves with the camera).
+func _place_focus_tip() -> void:
+	if _focus_tip == null or not _focus_tip.visible or not _plates.has(_plate_focus):
+		return
+	var root: Control = _plates[_plate_focus]["root"]
+	if _focus_tip.size.x <= 1.0:
+		_focus_tip.reset_size()
+	var at := Vector2(root.position.x + root.size.x * 0.5 - _focus_tip.size.x * 0.5, root.position.y + root.size.y + 6.0)
+	at.x = clampf(at.x, 8.0, maxf(8.0, size.x - _focus_tip.size.x - 8.0))
+	if at.y + _focus_tip.size.y > size.y - 8.0: ## no room below: above the plate
+		at.y = maxf(8.0, root.position.y - _focus_tip.size.y - 6.0)
+	_focus_tip.position = at.round()
+
+
+## The garrison of `pid` as the viewer may state it: {"count", "approx", "known", "text", "armies"}. The armies standing in the province
+## that are its owner's (a neutral province's: the Free Holds' garrison), read from the state the board shows, which in a fog game is the
+## viewer's view: a rival's garrison in clear sight is exact, glimpsed it is the plate's "≈" estimate, and out of sight it is not known
+## ("?"), never what is really there.
+func garrison_of(st: GameState, pid: String, level: String) -> Dictionary:
+	var out := {"count": 0, "approx": false, "known": true, "text": "0", "armies": 0}
+	var p := st.find_province(pid)
+	if p == null:
+		return out
+	if level == FogRules.VEILED or level == FogView.NEVER:
+		out.known = false
+		out.text = "?"
+		return out
+	var owner_id: String = p.owner if not p.owner.is_empty() else IndependentData.FACTION_ID
+	for a in st.armies:
+		if a.location != pid or a.owner != owner_id or Vision.is_memory(a):
+			continue
+		out.armies += 1
+		if Vision.is_stand_in(a) and String(a.seen.get("level", "")) == FogRules.GLIMPSE:
+			out.approx = true
+			out.count += int((a.seen.get("total", {}) as Dictionary).get("shown", a.units.size()))
+		else:
+			out.count += a.units.size()
+	out.text = ("≈%d" if out.approx else "%d") % out.count
+	return out
+
+
+## The words of the garrison stat's hover: how many units stand there, how sure the viewer is, what it is for.
+func garrison_tooltip(st: GameState, pid: String, g: Dictionary) -> String:
+	var p := st.find_province(pid)
+	var where: String = p.name if p != null else "the province"
+	if not bool(g.known):
+		return TooltipText.plain("Garrison: not known", "You can't see %s now, so you can't say who stands in it. A rival's armies out of sight show only as grey ghosts of what you last saw. Land in clear sight shows its garrison exactly." % where)
+	var body := "%s units stand in %s, in %s, defending it." % [("About %d" % int(g.count)) if bool(g.approx) else str(int(g.count)), where,
+		TooltipText.count(int(g.armies), "army", "armies")]
+	if int(g.armies) == 0:
+		body = "No army stands in %s: an enemy that marches in takes it without a battle." % where
+	elif bool(g.approx):
+		body += " You glimpse them, so the number is rounded."
+	return TooltipText.plain("Garrison: %s" % String(g.text), body)
+
+
+## The plates follow the ground's sight (Board3D._sync_vision): the garrison stat's number and words are the viewer's, level by level.
+## Nothing is printed under a plate any more: the ground's four looks tell the levels apart, and the plate's hover names them.
 func update_sight() -> void:
 	if board == null or board.map == null or board.map.state == null:
 		return
 	var st: GameState = board.map.state
-	var memory: Dictionary = board.map.fog_memory
 	for id in _plates.keys():
 		var pl: Dictionary = _plates[id]
 		var level := String(board.vision_levels.get(id, ""))
-		var l: Label = pl.get("sight")
-		if level.is_empty() or level == FogRules.CLEAR:
-			if l != null:
-				l.visible = false
-			continue
-		var seen_turn := int(((memory.get("provinces", {}) as Dictionary).get(id, {}) as Dictionary).get("seen_turn", -1))
-		if l == null:
-			l = Label.new()
-			l.name = "SightLabel"
-			l.add_theme_font_size_override("font_size", 12)
-			l.add_theme_color_override("font_color", Color(0.80, 0.85, 0.95))
-			l.add_theme_color_override("font_outline_color", UiPalette.KEYLINE_INK)
-			l.add_theme_constant_override("outline_size", 5)
-			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			l.mouse_filter = Control.MOUSE_FILTER_PASS
-			l.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-			(pl["root"] as Control).add_child(l)
-			pl["sight"] = l
-		l.visible = true
-		l.text = Vision.tag_for(st, level, seen_turn)
-		l.tooltip_text = TooltipText.plain(String(FogView.LEVEL_TITLES.get(level, level)), "%s %s %s" % [Vision.words(level),
-			FogView.province_text(st, st.view_of, id, memory), RulesCodex.text(String(FogView.LEVEL_CODEX.get(level, "sight")))])
-		CodexLink.attach(l, String(FogView.LEVEL_CODEX.get(level, "sight")), board.map.request_codex)
+		var gar: Control = pl.get("garrison")
+		if gar != null:
+			var g := garrison_of(st, String(id), level)
+			(gar.get_node("Number") as Label).text = String(g.text)
+			gar.tooltip_text = garrison_tooltip(st, String(id), g)
+			CodexLink.attach(gar, "defended", board.map.request_codex)
+			pl["garrison_facts"] = g
+		(pl["root"] as Control).set_meta(CodexLink.META, plate_codex(String(id)))
 		(pl["root"] as Control).reset_size()
+	_detail_sig = ""
+	_poll_detail()
+	_update_focus_tip()
 	_dirty = true
 
 
@@ -423,7 +730,7 @@ func _update_province_marks() -> void:
 			b.add_theme_stylebox_override("normal", style)
 			b.mouse_filter = Control.MOUSE_FILTER_PASS
 			b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-			(pl["root"] as Control).add_child(b)
+			_marks_row(pl).add_child(b) ## UX-2: the heir countdown is one of the marks that are always on
 			pl["badge"] = b
 		if pl["badge"] != null:
 			var b2: Label = pl["badge"]
@@ -529,7 +836,7 @@ func fog_note(a: Army) -> String:
 ## A province's tooltip on the 3D board: its 2D region's own tooltip (name, terrain and how it grew,
 ## owner, the King's Roads or Forest Stride note when it is a road destination, its codex link), with the
 ## 2D marks replaced by the 3D board's in words, plus its income's breakdown lines.
-func province_tooltip(pid: String) -> String:
+func province_tooltip(pid: String, link_key: String = "") -> String:
 	var map: Control = board.map
 	var st: GameState = map.state
 	var p := st.find_province(pid)
@@ -563,7 +870,7 @@ func province_tooltip(pid: String) -> String:
 	var sight_words := Vision.words(String(board.vision_levels.get(pid, ""))) ## M5-3: how the ground shows its sight level
 	if not sight_words.is_empty():
 		text += "\n\n" + TooltipText.wrap_text("On the board: " + sight_words)
-	return CodexLink.with_link(text, TooltipText.codex_for("province"))
+	return CodexLink.with_link(text, link_key if not link_key.is_empty() else TooltipText.codex_for("province"))
 
 
 ## M3c S-4: whether `pid`'s plate carries the fort chip (tests).
@@ -655,6 +962,7 @@ func standing_note(aid: String) -> String:
 func _process(_delta: float) -> void:
 	if board == null or not board.prepared or board.map == null or not is_visible_in_tree():
 		return
+	_poll_detail() ## UX-2: a plate's detail follows the mouse, the focus and the selection
 	## only when the camera moved, a turn is playing, or the map changed: an idle board costs nothing here
 	var view: Transform3D = board.wv.cam_xform
 	if not _dirty and not _playing and view.is_equal_approx(_last_view):
@@ -675,6 +983,7 @@ func _process(_delta: float) -> void:
 			root.reset_size()
 		root.position = (s - Vector2(root.size.x * 0.5, 0.0)).round()
 		root.visible = s.x > -200 and s.x < vp.x + 200 and s.y > -60 and s.y < vp.y + 60
+	_place_focus_tip()
 	var placed: Array = []
 	for id in _army_plates.keys():
 		var pc: PanelContainer = _army_plates[id]

@@ -1068,15 +1068,15 @@ const ENTRIES := {
 	},
 	"vision_clear": {
 		"title": "In clear sight",
-		"text": "A province you own or have an army in. You see exactly what stands there: every rival fighter with its hit points, its commanders and its ruler. Rival armies are shown pooled per faction, so you see what they have there, not how it is split into armies.",
+		"text": "A province you own or have an army in. You see exactly what stands there: every rival fighter with its hit points, its commanders and its ruler. Rival armies are shown pooled per faction, so you see what they have there, not how it is split into armies. On the board the ground is untouched.",
 	},
 	"vision_glimpsed": {
 		"title": "Glimpsed",
-		"text": "A province within range of your land, forts or armies, but not one you own or stand in. You see rival armies there roughly: the number of fighters rounded (see Estimates), shared out over their unit types, their commanders and ruler exactly, but not their wounds or how many armies they are. Forecasts assume the shown numbers, and also the top of the range.",
+		"text": "A province within range of your land, forts or armies, but not one you own or stand in. You see rival armies there roughly: the number of fighters rounded (see Estimates), shared out over their unit types, their commanders and ruler exactly, but not their wounds or how many armies they are. Forecasts assume the shown numbers, and also the top of the range. On the board the land is a step darker, with a thin mist drifting over it.",
 	},
 	"vision_out_of_sight": {
 		"title": "Out of sight",
-		"text": "A province none of your land, forts or armies can see. You see the province's owner, terrain and fort, which are public, but not the armies in it: the map shows what you saw there last, if anything (see Last seen). A forecast against a province out of sight gives no odds: any army there will be a surprise.",
+		"text": "A province none of your land, forts or armies can see. You see the province's owner, terrain and fort, which are public, but not the armies in it: the map shows what you saw there last, if anything (see Last seen). A forecast against a province out of sight gives no odds: any army there will be a surprise. On the board the land is two steps darker, washed toward sepia and ruled with fine hatch lines, like an old map.",
 	},
 	"estimates": {
 		"title": "Estimates",
@@ -1087,7 +1087,7 @@ const ENTRIES := {
 	},
 	"last_seen": {
 		"title": "Last seen",
-		"text": "What you remember of a province out of sight: the last rival armies you saw there and the turn you saw them, drawn as grey ghosts that fade as they age. An army seen marching away is remembered where it was heading. After a battle, the enemy's survivors are remembered exactly. A rival ruler is remembered once, where you saw it last, until its death is heralded. A province you have never seen says so. Forecasts against a remembered army say \"if it is still there\". Memory is never saved: it is rebuilt from the game itself when a save loads.",
+		"text": "What you remember of a province out of sight: the last rival armies you saw there and the turn you saw them, drawn as grey ghosts that fade as they age. An army seen marching away is remembered where it was heading. After a battle, the enemy's survivors are remembered exactly. A rival ruler is remembered once, where you saw it last, until its death is heralded. A province you have never seen says so, and the board shows it as flat dark parchment with no terrain drawn on it. Forecasts against a remembered army say \"if it is still there\". Memory is never saved: it is rebuilt from the game itself when a save loads.",
 	},
 	"scouts": {
 		"title": "Scouts",

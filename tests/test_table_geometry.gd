@@ -12,7 +12,7 @@ extends "res://tests/test_case.gd"
 ##   * the input contract: the sweep finds no empty HUD area that takes the mouse, and no piece that lets it through;
 ##   * a click on empty HUD space over land picks the province under it (both boards); each piece eats a click on its own padding
 ##     and the board never sees it (the selection, the army and the turn are unchanged);
-##   * the states themselves: the card, the guide, a notice, the forecast, the Vision legend, the playback bar and its caption and the
+##   * the states themselves: the card, the guide, a notice, the forecast, the playback bar and its caption and the
 ##     fortress chip each show where they should, and the 2D map fits the framing area.
 
 const PROBE := "res://tests/table_probe.gd"
@@ -20,8 +20,8 @@ const SCRATCH := "user://table_probe"
 const BOARDS := ["3d", "2d"]
 ## The spec's three sizes: key -> the logical size the game lays out for.
 const SIZES := {"1600x900": Vector2(1600, 900), "1600x900@125": Vector2(1280, 720), "1280x720": Vector2(1600, 900)}
-const SCENARIOS := ["rest", "dismissed", "notice", "forecast", "vision"]
-const FLOATING := ["card", "legend", "notice", "guide", "hover", "playback", "caption", "closeup"]
+const SCENARIOS := ["rest", "dismissed", "notice", "forecast"]
+const FLOATING := ["card", "notice", "guide", "hover", "playback", "caption", "closeup"]
 
 static var _report := {}
 
@@ -117,7 +117,7 @@ func _check_state(board: String, key: String, scenario: String, m: Dictionary) -
 	match scenario:
 		"rest":
 			assert_true(_shown(m, "card") and _shown(m, "guide"), "%s: the card and the guide are up" % where)
-			assert_false(_shown(m, "notice") or _shown(m, "legend") or _shown(m, "hover"), "%s: no notice, legend or forecast" % where)
+			assert_false(_shown(m, "notice") or _shown(m, "hover"), "%s: no notice or forecast" % where)
 		"dismissed":
 			assert_false(_shown(m, "card"), "%s: the closed card is gone" % where)
 			assert_true(_shown(m, "guide"), "%s: the guide stays" % where)
@@ -125,8 +125,6 @@ func _check_state(board: String, key: String, scenario: String, m: Dictionary) -
 			assert_true(_shown(m, "notice") and _shown(m, "guide") and _shown(m, "card"), "%s: the notice, the guide and the card together" % where)
 		"forecast":
 			assert_true(_shown(m, "hover") and _shown(m, "card"), "%s: the move forecast and the card" % where)
-		"vision":
-			assert_true(_shown(m, "legend"), "%s: the Vision legend" % where)
 		"playback":
 			assert_true(_shown(m, "playback") and _shown(m, "caption"), "%s: the playback bar and its caption" % where)
 		"closeup":
