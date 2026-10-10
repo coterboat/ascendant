@@ -341,9 +341,16 @@ func _add_magic_lines(a: Army, box: Control) -> void:
 	var blessing := MagicRules.blessing_of(state, a.id)
 	if not blessing.is_empty():
 		var heal := int(MagicRules.spell_numbers(String(blessing.ritual), int(blessing.bonus)).value)
-		var line := add_text("Blessed: %s, through turn %d" % [MagicRules.spell_name(String(blessing.ritual)), int(blessing.until_turn)],
-			TooltipText.plain("Blessed", "This army heals %d hit points at the end of every turn through turn %d, one at a time to its most wounded fighter, wherever it goes, and a side at least half blessed fights with +1 morale. %s" % [
-				heal, int(blessing.until_turn), RulesCodex.text("blessing")]), UiPalette.GILT, box)
+		# ARM-1 (§2.1): the blessing covers fighters one by one; the ones that joined the army after it was cast are outside it
+		var cov := MagicRules.blessing_coverage(state, a)
+		var counts := ""
+		var counts_tip := ""
+		if int(cov.outside) > 0:
+			counts = " (%s)" % MagicRules.coverage_words(cov)
+			counts_tip = " It blesses %s. The others joined the army after it was cast, by a muster or as recruits, so it neither heals them nor counts them for morale; casting it again covers everyone in the army." % MagicRules.coverage_words(cov)
+		var line := add_text("Blessed: %s, through turn %d%s" % [MagicRules.spell_name(String(blessing.ritual)), int(blessing.until_turn), counts],
+			TooltipText.plain("Blessed", "This army heals %d hit points at the end of every turn through turn %d, one at a time to its most wounded fighter, wherever it goes, and a side at least half blessed fights with +1 morale.%s %s" % [
+				heal, int(blessing.until_turn), counts_tip, RulesCodex.text("blessing")]), UiPalette.GILT, box)
 		line.name = "BlessedLine"
 		CodexLink.attach(line, "blessing", map.request_codex)
 	var fading := {}

@@ -1,7 +1,8 @@
 extends RefCounted
 ## ARM-1: shared fixtures for the muster tests (tests/test_muster_*.gd). Not a test file itself (no "test_" prefix).
 ##
-##   game(kind)                       "m1" | "rulers" | "paths" | "sieges" | "magic" | "magic_sieges" | "fog": a seeded game
+##   game(kind)                       "m1" | "rulers" | "paths" | "sieges" | "magic" | "magic_sieges" | "fog" (magic) |
+##                                    "fog_sieges": a seeded game
 ##   army(s, fid, at, types, cmd, n)  a new army of `fid` at `at` holding `types` (unit type ids), a commander type id
 ##                                    ("" for none) and `n` engines, appended to `s` with the next real id
 ##   crown(s)                         the Crown's starting army (kingdom-1, Crownkeep: spearmen, crossbowmen, knights, captain)
@@ -32,6 +33,9 @@ static func game(kind: String = "m1") -> GameState:
 			s.setup_sieges()
 		"fog":
 			s = GameState.with_magic(SEED, builds)
+			s.setup_fog([])
+		"fog_sieges":
+			s = GameState.with_sieges(SEED, {}, {"rulers": true})
 			s.setup_fog([])
 		_:
 			s = GameState.new(SEED)

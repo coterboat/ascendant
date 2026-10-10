@@ -368,9 +368,13 @@ static func pool_now(state: GameState, fid: String, armies: Array, level: String
 		if a.ruler != null:
 			ruler = {"hp": a.ruler.current_hp, "from": [a.id]}
 			continue
-		var into: Array = blessed if blessed_ids.has(a.id) else plain
-		var from: Dictionary = blessed_from if blessed_ids.has(a.id) else plain_from
 		for u in a.units:
+			# ARM-1 (design/ARM1_SPLIT_MERGE.md §2.1): a unit is blessed or plain by itself, not by its army: its army is
+			# under a blessing and the unit isn't marked outside it. What a rival sees in sight is the true blessed and plain
+			# counts and no more. Commanders stay where they were: plain, or an extra-commander stand-in, never the blessed one.
+			var is_blessed: bool = blessed_ids.has(a.id) and not u.has_status(UnitStatus.OUTSIDE_BLESSING, String(blessed_ids[a.id]))
+			var into: Array = blessed if is_blessed else plain
+			var from: Dictionary = blessed_from if is_blessed else plain_from
 			into.append([u.type.id, u.current_hp])
 			from[a.id] = true
 		if a.commander != null:
@@ -390,6 +394,7 @@ static func pool_now(state: GameState, fid: String, armies: Array, level: String
 	var counts := {}
 	var total := {}
 	var blessed_shown := 0
+	var unit_count := plain.size() + blessed.size()  # every regular unit, before a glimpse rounds the two groups
 	if level == CLEAR:
 		var n := {}
 		for u in plain + blessed:
@@ -411,7 +416,7 @@ static func pool_now(state: GameState, fid: String, armies: Array, level: String
 			var b: Dictionary = gb.counts.get(k, {"shown": 0, "low": 0, "high": 0})
 			var shown := int(a.shown) + int(b.shown)
 			counts[k] = {"shown": shown, "low": int(a.low) + int(b.low), "high": int(a.high) + int(b.high), "text": "about %d" % shown}
-		total = round_count(_count_units(armies, blessed_ids, false) + _count_units(armies, blessed_ids, true))
+		total = round_count(unit_count)
 		blessed_shown = int(gb.total.shown)
 	var stand_ins := []
 	if not plain.is_empty() or not commanders.is_empty():
@@ -455,14 +460,6 @@ static func sighting(state: GameState, fid: String, armies: Array, level: String
 		"commanders": commanders, "ruler": ruler}
 
 
-static func _count_units(armies: Array, blessed_ids: Dictionary, blessed: bool) -> int:
-	var n := 0
-	for a in armies:
-		if a.ruler == null and blessed_ids.has(a.id) == blessed:
-			n += a.units.size()
-	return n
-
-
 static func _weights(units: Array, order: Dictionary) -> Array:
 	var n := {}
 	for u in units:
@@ -499,13 +496,15 @@ static func _ordered_keys(d: Dictionary, order: Dictionary) -> Array:
 	return keys
 
 
-## The ids of `fid`'s armies a blessing of its own covers (magic, §6.4): a blessing's glow is visible.
+## The armies of `fid` a blessing of its own lists (magic, §6.4): {army id: the blessing's id}. A blessing's glow is
+## visible; which of an army's units it covers (ARM-1: not those marked outside it) is decided per unit in pool_now.
 static func _blessed_armies(state: GameState, fid: String) -> Dictionary:
 	var out := {}
 	for e in state.enchantments:
 		if String(e.get("faction", "")) == fid and String(e.get("kind", "")) == "blessing":
 			for aid in e.get("armies", []):
-				out[String(aid)] = true
+				if not out.has(String(aid)):
+					out[String(aid)] = String(e.get("id", ""))
 	return out
 
 
@@ -1489,8 +1488,14 @@ static func _fold_muster(m: Dictionary, e: Dictionary) -> void:
 				return
 			var ac := String(n.get("a_commander", ""))
 			var bc := String(n.get("b_commander", ""))
-			a["counts"] = _counts_with(a.counts, {ac: -1, bc: 1})
-			b["counts"] = _counts_with(b.counts, {bc: -1, ac: 1})
+			var to_a := {}  # what a gains (its own commander out, the other's in); two commanders of one type net to nothing
+			to_a[ac] = int(to_a.get(ac, 0)) - 1
+			to_a[bc] = int(to_a.get(bc, 0)) + 1
+			var to_b := {}
+			for k in to_a:
+				to_b[k] = -int(to_a[k])
+			a["counts"] = _counts_with(a.counts, to_a)
+			b["counts"] = _counts_with(b.counts, to_b)
 		_:
 			var from: Dictionary = m.get(String(n.get("from", "")), {})
 			if from.is_empty():

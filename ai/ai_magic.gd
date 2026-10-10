@@ -508,11 +508,20 @@ func _blessing_proposals() -> Array:
 	var p: Province = ai._state.find_province(String(g.loc))
 	if p == null or p.owner != ai._fid:
 		return []
+	# ARM-1 (design/ARM1_SPLIT_MERGE.md §2.1): a blessing is valued by the fighters it COVERS, not by the army ids it lists. An
+	# army with no blessing is worth blessing (as before); a blessed army is worth blessing again (the cast restarts it and
+	# covers everyone) once the fighters it covers are fewer than half the group, because the fighters that joined it later
+	# (a muster, recruits) are outside it, and that is where the half-blessed morale is lost.
 	var unblessed := false
+	var fighters := 0
+	var covered := 0
 	for a in g.armies:
-		if MagicRules.blessing_of(ai._state, a.id).is_empty():
+		var cov := MagicRules.blessing_coverage(ai._state, a)
+		fighters += int(cov.total)
+		covered += int(cov.covered)
+		if cov.blessing.is_empty():
 			unblessed = true
-	if not unblessed:
+	if not unblessed and covered * 2 >= fighters:
 		return []
 	var when := _attacks(g)
 	if when.is_empty():

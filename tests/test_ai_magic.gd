@@ -592,6 +592,37 @@ func test_dawn_blessing_for_the_main_army_that_will_attack() -> void:
 	assert_true(_cast_of(none.casts, "dawn_blessing") == null, "an army ordered to attack casts nothing: %s" % [_rituals_in(none.casts)])
 
 
+## ARM-1 (design/ARM1_SPLIT_MERGE.md §2.1): a Dawn Blessing proposal values the fighters a blessing COVERS, not the army ids it
+## lists. A partly covered main army (recruits and musters joined it after the cast) is worth blessing again once fewer than half
+## of its fighters are covered, because that is where the half-blessed morale is lost; a mostly covered one is left alone.
+func test_dawn_blessing_is_valued_by_the_fighters_it_covers() -> void:
+	var specs := [
+		["kingdom-m", CROWN, "highcrag", ["knights", "knights", "knights", "spearmen", "spearmen", "knight_captain"]],  # six fighters
+		["kingdom-g", CROWN, "crownkeep", ["spearmen", "adepts"]],
+		["beasts-e", CLANS, "thornvale", ["tuskers", "tuskers"]],
+	]
+	var s := _board(specs, {CROWN: CROWN_FORGE}, {"highcrag": CROWN})
+	var blessed := _with_cast(s, CROWN, CastOrder.new("dawn_blessing", "kingdom-g", "highcrag"))
+	var e: Dictionary = blessed.enchantments.filter(func(x): return x.kind == "blessing")[0]
+	assert_eq(e.armies, ["kingdom-m"], "the blessing lists the main army")
+	var main := blessed.find_army("kingdom-m")
+	var fighters: Array = UnitStatus.army_fighters(main)
+	assert_eq(fighters.size(), 6)
+	assert_true(_cast_of(_rituals(blessed, CROWN, {"kingdom-m": "thornvale"}).casts, "dawn_blessing") == null, "all six covered: nothing to bless again")
+	for i in 3:
+		fighters[i].add_status(UnitStatus.OUTSIDE_BLESSING, String(e.id))
+	assert_true(_cast_of(_rituals(blessed, CROWN, {"kingdom-m": "thornvale"}).casts, "dawn_blessing") == null,
+		"three of six still covered: that is half, the morale holds, no new cast")
+	fighters[3].add_status(UnitStatus.OUTSIDE_BLESSING, String(e.id))
+	var again = _cast_of(_rituals(blessed, CROWN, {"kingdom-m": "thornvale"}).casts, "dawn_blessing")
+	assert_true(again != null, "two of six covered: fewer than half, so the army is worth blessing again")
+	assert_eq(again.target, "highcrag")
+	var notes := " ".join(_rituals(blessed, CROWN, {"kingdom-m": "thornvale"}).notes)
+	assert_true(notes.contains("the main army at Highcrag will attack this turn"), notes)
+	# A recast that comes back legal: the cast is checked against this very state, and restarts the same blessing.
+	_assert_legal(blessed, CROWN, [again], "the second blessing")
+
+
 func test_wake_the_greenwrath_where_a_caster_stands_in_a_forest() -> void:
 	var s := _board([["beasts-s", CLANS, "greenglade", ["shamans", "tuskers"]]], {CLANS: CLANS_GROVE}, {"greenglade": CLANS})
 	var r := _rituals(s, CLANS)

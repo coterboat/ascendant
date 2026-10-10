@@ -77,9 +77,10 @@ static func fog_rule(kind: String) -> String:
 	return String(KINDS.get(kind, {}).get("fog", FOG_HIDDEN))
 
 
-## Whether a rival whose sight of the unit is `level` ("clear", "glimpse" or "memory") sees a status of `kind`.
+## Whether a rival whose sight of the unit is `level` ("clear", "glimpse" or "memory") sees a status of `kind`. (The fog rules
+## themselves decide what a view holds; this is the registry's answer for them.)
 static func shown_to_rival(kind: String, level: String) -> bool:
-	return fog_rule(kind) == FOG_CLEAR and level == FogRules.CLEAR
+	return fog_rule(kind) == FOG_CLEAR and level == "clear"
 
 
 ## One short line for a status on a unit, for tooltips: what it is and why it is there. `state` names the source.

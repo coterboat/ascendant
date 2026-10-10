@@ -319,7 +319,7 @@ static func units_words(state: GameState, fid: String, type_ids: Array) -> Strin
 		counts[id] += 1
 	var parts := []
 	for id in order:
-		var name := FogRules.type_name(state, fid, String(id))
+		var name := _type_name(state, fid, String(id))
 		var n: int = counts[id]
 		parts.append(("a " + name) if n == 1 and not TurnReportText._plural_word(name) else (name if n == 1 else "%s %s" % [count_word(n), TurnReportText._plural_name(name)]))
 	return RulerRules._and_list(parts)
@@ -347,17 +347,34 @@ static func event_sentence(state: GameState, e: Dictionary) -> String:
 			var moved := _moved_words(state, fid, n)
 			line += ": %s joined it." % moved if moved != "no one" else " (no one moved)."
 			if bool(n.get("commander_left", false)):
-				line += " Both had a commander, so %s stays behind: %s goes on as an army of its own." % [
-					"the " + FogRules.type_name(state, fid, String(n.get("commander_stays", ""))) if not String(n.get("commander_stays", "")).is_empty() else "its commander",
-					_cap(_army(state, fid, n.from))]
+				line += " Both had a commander, so %s stays behind, and %s goes on as an army of its own." % [
+					"the " + _type_name(state, fid, String(n.get("commander_stays", ""))) if not String(n.get("commander_stays", "")).is_empty() else "its commander",
+					_army(state, fid, n.from)]
 			return line + _outside_words(state, n)
 		"commanders_swapped":
-			return "%s and %s swapped commanders at %s: the %s now leads %s, and the %s leads %s.%s" % [_cap(_army(state, fid, n.a)),
-				_army(state, fid, n.b), where, FogRules.type_name(state, fid, String(n.get("a_commander", ""))), _army(state, fid, n.b),
-				FogRules.type_name(state, fid, String(n.get("b_commander", ""))), _army(state, fid, n.a), _outside_words(state, n)]
+			var ca := _type_name(state, fid, String(n.get("a_commander", "")))
+			var cb := _type_name(state, fid, String(n.get("b_commander", "")))
+			var head := "%s and %s swapped commanders at %s" % [_cap(_army(state, fid, n.a)), _army(state, fid, n.b), where]
+			if ca == cb:
+				return "%s (both are %s).%s" % [head, TurnReportText._plural_name(ca), _outside_words(state, n)]
+			return "%s: the %s now leads %s, and the %s leads %s.%s" % [head, ca, _army(state, fid, n.b), cb, _army(state, fid, n.a), _outside_words(state, n)]
 		"army_disbanded":
 			return "%s had no one left and was disbanded." % _cap(_army(state, fid, n.army))
 	return String(e.get("text", ""))
+
+
+## A unit type's name for players, from `fid`'s roster, commander or ruler (renamed by a transformation, if so).
+static func _type_name(state: GameState, fid: String, type_id: String) -> String:
+	var f := state.find_faction(fid)
+	if f != null:
+		for ut in f.unit_types:
+			if ut.id == type_id:
+				return ut.name
+		if f.commander_type != null and f.commander_type.id == type_id:
+			return f.commander_type.name
+		if f.ruler_unit_type != null and f.ruler_unit_type.id == type_id:
+			return f.ruler_unit_type.name
+	return TurnResolver._unit_type_name(state, type_id)
 
 
 static func _army(state: GameState, fid: String, army_id) -> String:
@@ -372,7 +389,7 @@ static func _moved_words(state: GameState, fid: String, n: Dictionary) -> String
 		parts.append(units_words(state, fid, units))
 	var cmd := String(n.get("commander", ""))
 	if not cmd.is_empty():
-		parts.append("the " + FogRules.type_name(state, fid, cmd))
+		parts.append("the " + _type_name(state, fid, cmd))
 	var engines := int(n.get("engines", 0))
 	if engines > 0:
 		parts.append(SiegeRules.engines_text(fid, engines) if engines > 1 else "a " + SiegeRules.engines_text(fid, 1).trim_prefix("1 "))

@@ -116,6 +116,8 @@ static func _merged_recruits(group: Array) -> Dictionary:
 		cost += int(e.numbers.cost)
 		new_army = new_army or bool(e.numbers.get("new_army", false))
 		texts.append(String(e.get("text", "")))
+		if e.numbers.has("outside_ritual"):
+			numbers["outside_ritual"] = e.numbers.outside_ritual  # ARM-1: a folded line says it once
 	numbers["cost"] = cost
 	numbers["new_army"] = new_army
 	numbers["gold_after"] = int(group[-1].numbers.get("gold_after", 0))
@@ -1293,6 +1295,8 @@ static func _recruited_line(e: Dictionary, ctx: Dictionary) -> String:
 		text += " The %s now leads %s." % [unit, _name(id, ctx)]
 	else:
 		text += " %s joined %s." % ["They" if plural else "It", _name(id, ctx)]
+	if numbers.has("outside_ritual"):  # ARM-1 (§2.1): it joined an army under a blessing, and isn't covered by it
+		text += " %s under its %s." % ["They aren't" if plural else "It isn't", MagicRules.spell_name(String(numbers.outside_ritual))]
 	if numbers.has("hp") and numbers.has("max_hp") and many.size() <= 1:
 		var ut := _unit_type_by_name(s, fid, unit)
 		var wounded := AscensionRules.arrival_text(ut, int(numbers.hp), int(numbers.max_hp), int(numbers.get("blood_levy", 4)))

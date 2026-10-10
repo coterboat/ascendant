@@ -1679,6 +1679,11 @@ static func _recruitment(s: GameState, recruits: Dictionary, events: Array, star
 				numbers["max_hp"] = placed.max_hp
 				numbers["blood_levy"] = AscensionRules.blood_levy_divisor(s, fid)
 				text += " " + AscensionRules.arrival_text(ut, int(placed.hp), int(placed.max_hp), int(numbers.blood_levy))
+			if not placed.outside.is_empty():
+				# ARM-1 (§2.1): only a recruit that joined an army under a blessing carries these, so every other event is unchanged.
+				numbers["outside_blessing"] = String(placed.outside.id)
+				numbers["outside_ritual"] = String(placed.outside.ritual)
+				text += " They aren't under its %s." % MagicRules.spell_name(String(placed.outside.ritual))
 			events.append(_event("recruited", "recruitment", [r.province], [fid], [army.id], "with_ruler" if with_ruler else "order",
 				numbers, text, "field_recruit" if with_ruler else "recruit"))
 
@@ -1748,7 +1753,16 @@ static func _add_recruit(s: GameState, faction: Faction, ut: UnitType, location:
 		max_hp = RulerRules.unit_max_hp(s, unit)
 		unit.current_hp = AscensionRules.arrival_hp(s, faction.id, ut, max_hp)  # M2-2: the maximum; M4-2: Blood Levy
 		army.units.append(unit)
-	return {"army": army, "created": created, "hp": unit.current_hp, "max_hp": max_hp}
+	# ARM-1 (design/ARM1_SPLIT_MERGE.md §2.1): a recruit that joins an army under a blessing doesn't gain it: it is marked
+	# outside it. A recruit that forms a new army joins nothing.
+	var outside := {}
+	if not created:
+		outside = MagicRules.blessing_of(s, army.id)
+		if not outside.is_empty() and String(outside.faction) == faction.id:
+			unit.add_status(UnitStatus.OUTSIDE_BLESSING, String(outside.id))
+		else:
+			outside = {}
+	return {"army": army, "created": created, "hp": unit.current_hp, "max_hp": max_hp, "outside": outside}
 
 
 static func _income(s: GameState, events: Array) -> void:

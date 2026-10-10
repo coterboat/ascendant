@@ -938,7 +938,7 @@ const ENTRIES := {
 	},
 	"blessing": {
 		"title": "Blessings",
-		"text": "Dawn Blessing blesses the armies of yours standing in its province as it resolves, and the blessing goes with them wherever they march. A side gets +1 morale for a whole battle when at least half its fighters are in blessed armies at the start, and each blessed army heals its budget of hit points in the enchantments phase. A destroyed army loses it; recruits who join a blessed army are blessed.",
+		"text": "Dawn Blessing blesses the armies of yours standing in its province as it resolves, and the blessing goes with them wherever they march. A side gets +1 morale for a whole battle when at least half its fighters are blessed at the start, and each blessed army heals its budget of hit points in the enchantments phase. A destroyed army loses it. The blessing stays with its army, fighter by fighter: fighters that leave a blessed army (a split) lose it, and fighters that join one later, by a muster, as a commander or as a recruit, are outside it, so it neither heals them nor counts them for morale. The army card says how many it covers, like \"6 of 8 fighters; 2 joined after it was cast\". Casting Dawn Blessing again over the same armies restarts it and covers everyone in them.",
 	},
 	"ward": {
 		"title": "Wards",
