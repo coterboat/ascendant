@@ -22,6 +22,7 @@ const Formation := preload("res://world3d/battle_formation.gd")
 const Cam := preload("res://world3d/battle_camera.gd")
 const Figures := preload("res://world3d/battle_figures.gd")
 const Models := preload("res://world3d/models.gd")
+const WorldKit := preload("res://world3d/kit.gd")
 const Fx := preload("res://tests/battle_playback_fixtures.gd")
 const STEP := 1.0 / 60.0
 const NEW_FILES := ["res://world3d/battle_walls.gd", "res://world3d/battle_scenery.gd"]
@@ -310,11 +311,11 @@ func _model_top(kind: String, kit: String, x: float, z: float) -> float:
 		return -1.0
 	var row: Dictionary = Models.building_row(kind, kit)
 	var aabb: AABB = glb["aabb"]
-	var sc := float(row.get("side", 26.0)) / maxf(aabb.size.x, aabb.size.z)
+	var sc := float(row.get("side", 26.0)) * WorldKit.fort_scale(kind) / maxf(aabb.size.x, aabb.size.z) ## UX-2: each level is drawn Kit.fort_scale bigger
 	var basis := Basis(Vector3.UP, deg_to_rad(float(row.get("yaw", 180.0))))
 	var c := aabb.get_center()
 	var off: Vector3 = (basis * Vector3(-c.x, -aabb.position.y, -c.z)) * sc
-	off.y -= float(row.get("sink", 0.0))
+	off.y -= float(row.get("sink", 0.0)) ## (the sink is of the model as the table has it: it is not scaled)
 	var faces: PackedVector3Array = (glb["mesh"] as Mesh).get_faces()
 	var best := -1.0
 	var p := Vector2(x, z)
@@ -500,7 +501,9 @@ func test_a_fighter_on_a_wall_strikes_where_it_stands_and_fades_when_it_routs() 
 		var ends: Array = s.figures.ends_at(i, t)
 		lowest = minf(lowest, (ends[0] as Vector3).y)
 	assert_true(far_most <= Figures.LUNGE_MAX * 0.25 + 0.01, "the lunge stays at the parapet (%.2f)" % far_most)
-	assert_true(lowest >= float(s.figures.figs[i].y) - 1.0, "and on the wall: the feet never drop to the ground (%.2f of %.2f)" % [lowest, float(s.figures.figs[i].y)])
+	## (a lunge sags in proportion to the wall it is on, and UX-2 draws each fort level bigger: so the slack scales with the kit's size)
+	var slack := 1.0 * WorldKit.fort_scale(String(info.kind))
+	assert_true(lowest >= float(s.figures.figs[i].y) - slack, "and on the wall: the feet never drop to the ground (%.2f of %.2f)" % [lowest, float(s.figures.figs[i].y)])
 	var yl := float(s.figures.figs[i].y) - float(info.base_y)
 	assert_true(yl > 5.0, "the wall is well above the ground (%.1f)" % yl)
 	## a rout fades it where it stands instead of running it through the wall

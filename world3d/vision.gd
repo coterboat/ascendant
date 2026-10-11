@@ -10,11 +10,15 @@
 ##                                    0 never seen, 85 remembered, 170 glimpsed, 255 in clear sight
 ##   age_of(state, army)              how many turns ago a remembered army was last seen (0 for any other army)
 ##   ghost_step(age), ghost_alpha(step)   a memory ghost fades a step for every 2 turns of age, down to the last step
-##   tag_for(state, level, seen_turn) the short lines under a province's name plate on the board ("glimpsed", "out of sight" /
-##                                    "seen 3 turns ago", "never seen"); "" in clear sight
-##   words(level)                     what a level looks like on the ground and means, for tooltips and the legend
+##   look(level)                      UX-2 (design/UX_WAR_TABLE.md 2.2): the ground's look at a level, the shader's parameters: how light
+##                                    it is, how drained, the veil's tint, and the texture that tells it apart without colour (clear:
+##                                    none; glimpse: a thin drifting mist; veiled: a static old-map hatch; never: flat dark parchment)
+##   look_arrays()                    the four looks packed for the shaders' uniform arrays, indexed by the vision texel / 85
+##   ago_text(state, turn)            "3 turns ago": a sighting's age in FogView's words (UX-2: no sight words are printed under a plate any
+##                                    more, since sight speaks through the veil; a ghost's plate and the hovers keep the age)
+##   words(level)                     what a level looks like on the ground and means, for the plate's tooltip and the legend
 ##   legend_lines(state)              the board legend's fog section
-## The ground shader reads the texture (world3d/shaders/ground_common.gdshaderinc: the veil, hatching and clouds); the
+## The ground shader reads the texture (world3d/shaders/ground_common.gdshaderinc: the veil, mist, hatching and parchment); the
 ## armies draw stand-ins from the view's own armies and memory ghosts in their own material (armies.gd).
 extends RefCounted
 
@@ -25,6 +29,35 @@ const TEXEL := {"never": 0, "veiled": 85, "glimpse": 170, "clear": 255}
 ## A memory ghost's opacity by step (§12.1: "they fade a step every 2 turns"); the last step stays.
 const GHOST_ALPHA := [0.74, 0.62, 0.52, 0.43, 0.35, 0.28]
 const GHOST_STEP_TURNS := 2
+
+## UX-2 (§2.2): the four looks of the ground, one per sight level, different in lightness AND in texture, so sight reads without
+## colour vision and without a word. The keys of a look (the shader's copy of the arithmetic is paint_ground in
+## ground_common.gdshaderinc):
+##   level      the sight level
+##   texture    the non-colour channel: "none" | "mist" | "hatch" | "parchment"
+##   lightness  the ground's luminance against clear ground (clear 1.0): the shader scales each pixel's luminance by it, so the relief
+##              of the terrain survives; a flat parchment (detail 0) has no relief, and its tone IS that lightness of REF_LUMA
+##   drain      how much of the terrain's colour is drained to grey (0 none, 1 all)
+##   tint       the veil's colour, and tint_k how far the colour is pulled to it
+##   detail     how much of the terrain's painted detail and relief is kept (1 all, 0 none: flat parchment)
+##   mist       the strength of the drifting mist (animated and slow: it stands still at the quality ladder's low rungs)
+##   hatch      the strength of the static hatch lines (ink, at a constant screen size)
+##   grain      a faint paper grain over the flat parchment
+## The steps: clear 1.0, a step down (0.84), two steps (0.68) toward sepia, and the darkest (0.30). A test pins the least step.
+const REF_LUMA := 0.55 ## a mean clear ground's luminance (sRGB), for the flat parchment's tone
+const LIGHTNESS_STEP := 0.16
+const LOOKS := {
+	"clear": {"level": "clear", "texture": "none", "lightness": 1.0, "drain": 0.0, "tint": Color(1.0, 1.0, 1.0), "tint_k": 0.0,
+		"detail": 1.0, "mist": 0.0, "hatch": 0.0, "grain": 0.0},
+	"glimpse": {"level": "glimpse", "texture": "mist", "lightness": 0.84, "drain": 0.12, "tint": Color(0.40, 0.50, 0.66), "tint_k": 0.14,
+		"detail": 1.0, "mist": 0.7, "hatch": 0.0, "grain": 0.0},
+	"veiled": {"level": "veiled", "texture": "hatch", "lightness": 0.68, "drain": 0.55, "tint": Color(0.52, 0.38, 0.22), "tint_k": 0.42,
+		"detail": 0.75, "mist": 0.0, "hatch": 0.85, "grain": 0.0},
+	"never": {"level": "never", "texture": "parchment", "lightness": 0.30, "drain": 1.0, "tint": Color(0.19, 0.145, 0.095), "tint_k": 1.0,
+		"detail": 0.0, "mist": 0.0, "hatch": 0.0, "grain": 0.07},
+}
+## The shaders index the looks by the vision texel / 85: 0 never seen, 1 remembered, 2 glimpsed, 3 in clear sight.
+const LOOK_ORDER := ["never", "veiled", "glimpse", "clear"]
 
 
 static func active(state: GameState) -> bool:
@@ -84,21 +117,38 @@ static func is_memory(army: Army) -> bool:
 	return army != null and String(army.seen.get("level", "")) == FogData.MEMORY
 
 
+# --- the looks (UX-2) ------------------------------------------------------------------------------
+
+## The ground's look at `level` ("clear", "glimpse", "veiled" or "never"): a copy of its parameters (see LOOKS). An unknown level, or ""
+## (no fog), is the clear look: nothing drawn.
+static func look(level: String) -> Dictionary:
+	return (LOOKS.get(level, LOOKS["clear"]) as Dictionary).duplicate()
+
+
+## The luminance a look leaves on a ground of luminance `luma` (0 to 1), as the shader works it out: the ground's own luminance scaled by
+## the look's lightness, or, as its detail goes to nothing, the flat tone of its tint. For tests and swatches; the shader does the same sum.
+static func lit(level: String, luma: float = REF_LUMA) -> float:
+	var lk := look(level)
+	var scaled := luma * float(lk["lightness"])
+	return lerpf((lk["tint"] as Color).get_luminance(), scaled, float(lk["detail"]))
+
+
+## The four looks packed for the ground's uniform arrays, in LOOK_ORDER (index = texel / 85):
+## {"look_tone": rgb tint + tint_k, "look_lift": lightness, drain, detail, grain, "look_tex": mist, hatch, 0, 0}.
+static func look_arrays() -> Dictionary:
+	var tone := PackedVector4Array()
+	var lift := PackedVector4Array()
+	var tex := PackedVector4Array()
+	for level in LOOK_ORDER:
+		var lk := look(level)
+		var c: Color = lk["tint"]
+		tone.append(Vector4(c.r, c.g, c.b, float(lk["tint_k"])))
+		lift.append(Vector4(float(lk["lightness"]), float(lk["drain"]), float(lk["detail"]), float(lk["grain"])))
+		tex.append(Vector4(float(lk["mist"]), float(lk["hatch"]), 0.0, 0.0))
+	return {"look_tone": tone, "look_lift": lift, "look_tex": tex}
+
+
 # --- words -----------------------------------------------------------------------------------------
-
-## The short lines under a province's name plate on the board, or "" in clear sight (no line, no clutter): "glimpsed",
-## "out of sight" over "seen 3 turns ago" (two lines, so neighbouring plates never run into each other), "never seen". It is
-## words, so a level never rests on colour alone.
-static func tag_for(state: GameState, level: String, seen_turn: int) -> String:
-	match level:
-		FogRules.GLIMPSE:
-			return "glimpsed"
-		FogRules.VEILED:
-			return "out of sight\nseen %s" % ago_text(state, seen_turn)
-		FogView.NEVER:
-			return "never seen"
-	return ""
-
 
 ## "3 turns ago", "1 turn ago" or "at the start": a sighting of turn `turn`, in FogView's words (the turn being played, less the
 ## sighting's).
@@ -109,22 +159,23 @@ static func ago_text(state: GameState, turn: int) -> String:
 	return "1 turn ago" if ago == 1 else "%d turns ago" % ago
 
 
-## What a level looks like on the ground and means (the board's tooltips and legend), one sentence each.
+## What a level looks like on the ground and means (the plate's tooltip and the legend), one sentence each. The looks are LOOKS':
+## a thin drifting mist, an old map's hatch lines in sepia, flat dark parchment.
 static func words(level: String) -> String:
 	match level:
 		FogRules.CLEAR:
 			return "In clear sight: the ground is untouched. You see every army there exactly."
 		FogRules.GLIMPSE:
-			return "Glimpsed: a faint cool veil. You see rival armies there roughly, under a plate that reads ≈ and a rounded number."
+			return "Glimpsed: a step darker, with a thin mist drifting over the land. You see rival armies there roughly, under a plate that reads ≈ and a rounded number."
 		FogRules.VEILED:
-			return "Out of sight: a dark veil with fine diagonal hatching and the colours drained. Terrain, owners and forts stay true; rival armies show only as grey ghosts of what you last saw."
+			return "Out of sight: two steps darker and washed toward sepia, ruled with fine hatch lines like an old map. Terrain, owners and forts stay true; rival armies show only as grey ghosts of what you last saw."
 		FogView.NEVER:
-			return "Never seen: the darkest veil, hatched, with slow clouds drifting over it. You know nothing of the armies there."
+			return "Never seen: the darkest, flat parchment with no terrain drawn on it. You know nothing of the armies there."
 	return ""
 
 
 ## The board legend's fog section (appended to the legend's tooltip in a fog game): one line per sight level and for
-## the stand-ins and ghosts, in the words of the Vision map mode (FogView.legend_rows).
+## the stand-ins and ghosts, in the words of the legend the retired Vision map mode had (FogView.legend_rows, kept for the Sight lens).
 static func legend_lines(state: GameState) -> String:
 	if not active(state):
 		return ""
@@ -134,5 +185,5 @@ static func legend_lines(state: GameState) -> String:
 	lines.append("- A rival army you glimpse stands as blocks drawn from the rounded number on its plate (≈20): the real army may be a little bigger or smaller, and there may be more you can't see.")
 	lines.append("- A grey translucent ghost, with a plate like \"≈10 · 3 turns ago\": an army you saw there once. It fades a step every %d turns, and it may have moved on. A rival yard under the veil stands empty, or shows only its ghosts." % GHOST_STEP_TURNS)
 	lines.append("- A rival column marching out of your sight walks to the border and fades. A ritual cast from a caster you can't see arrives at its target with no direction.")
-	lines.append("- Under the plate of each province: \"glimpsed\", or \"out of sight, seen 3 turns ago\", or \"never seen\".")
+	lines.append("- The four looks tell the levels apart without words or colour: nothing on the land, a drifting mist, hatch lines, flat parchment. Hover a province's plate for its level and why.")
 	return "\n".join(lines)

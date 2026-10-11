@@ -662,36 +662,30 @@ func test_scout_lines() -> void:
 	map.free()
 
 
-# --- the Vision map mode and the legend (§11.1) ---------------------------------------------------------
+# --- the Vision map mode is retired (UX-2); the legend's words stay (§11.1) -------------------------------------------
 
-func test_the_vision_map_mode_and_its_legend() -> void:
+func test_the_vision_map_mode_is_retired_and_its_legend_text_is_kept() -> void:
 	var g: Dictionary = _kinds()[0]
 	var t: Dictionary = g.turns.back()
 	var view: GameState = t.view_after[CROWN]
 	var map := _map(view, CROWN, t.memory_after[CROWN], t.intel_after[CROWN], t.view_before[CROWN])
-	assert_true(map.vision_button.visible, "fog games have the Vision map mode")
-	map.set_map_mode("vision")
-	assert_eq(map.map_mode, "vision")
-	assert_true(map.vision_legend.visible, "with its legend")
+	assert_true(map.find_child("VisionButton", true, false) == null, "no Vision button")
+	assert_true(map.find_child("VisionLegend", true, false) == null, "no Vision legend")
+	assert_false(map.has_method("set_map_mode"), "no Vision map mode to switch to")
+	# the 2D map still knows every province's level (its veil, the plate's hover) and the card's Vision line is as it was
 	var sight := FogRules.sight(view, CROWN)
 	var memory: Dictionary = t.memory_after[CROWN]
 	for pid in sight:
 		var want: String = sight[pid]
 		if want == FogRules.VEILED and int(memory.provinces.get(pid, {}).get("seen_turn", -1)) < 0:
 			want = "never"
-		assert_eq(map.regions[pid].vision_level, want, "%s is drawn as %s" % [pid, want])
-	var legend := _flat(_texts(map.vision_legend))
-	for row in FogView.legend_rows(view):
-		assert_true(legend.contains(String(row.title)), "the legend has %s: %s" % [row.title, legend])
+		assert_eq(map.regions[pid].vision_level, want, "%s is veiled as %s" % [pid, want])
+	# the legend's text stays in FogView for UX-7's Sight lens: a row per level with its words, and the plate and the ghost
+	var rows := FogView.legend_rows(view)
+	var text := _flat(" ".join(rows.map(func(r): return "%s %s %s" % [r.title, r.short, r.text])))
 	for word in ["In clear sight", "Glimpsed", "Out of sight", "Never seen", "≈", "remembered"]:
-		assert_true(legend.contains(word), "the legend explains %s: %s" % [word, legend])
-	map.set_map_mode("")
-	assert_false(map.vision_legend.visible)
+		assert_true(text.contains(word), "the kept legend explains %s: %s" % [word, text])
 	map.free()
-	var plain := load(MAP_SCENE).instantiate() as MapScreen
-	plain.set_state(GameState.new(5), CROWN)
-	assert_false(plain.vision_button.visible, "no Vision mode without fog")
-	plain.free()
 
 
 # --- panels: the rival ruler and research (§11.1) ------------------------------------------------------
