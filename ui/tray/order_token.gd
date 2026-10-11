@@ -177,11 +177,11 @@ func _on_gui_input(event: InputEvent) -> void:
 	if mb == null or not mb.pressed:
 		return
 	if mb.button_index == MOUSE_BUTTON_LEFT:
+		accept_event()  # first: the order's change rebuilds the tokens, and this one goes with them
 		pressed.emit(index)
-		accept_event()
 	elif mb.button_index == MOUSE_BUTTON_RIGHT:
-		cancel_requested.emit(index)
 		accept_event()
+		cancel_requested.emit(index)
 
 
 func _style(hover: bool) -> StyleBoxFlat:

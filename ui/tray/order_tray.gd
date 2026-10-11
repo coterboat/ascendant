@@ -41,6 +41,7 @@ var _controller: OrdersController = null
 var _tokens: Array = []
 var _last_count := 0
 var _divider: Control = null
+var _fit_queued := false
 
 
 func _init() -> void:
@@ -58,6 +59,7 @@ func _init() -> void:
 	strip.name = "Tokens"
 	strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	strip.add_theme_constant_override("separation", GAP)
+	strip.minimum_size_changed.connect(_queue_fit)  # the tokens' real sizes are known once the tray is in the tree: fit again then
 	scroll.add_child(strip)
 	gold_box = HBoxContainer.new()
 	gold_box.name = "GoldAfter"
@@ -191,7 +193,7 @@ func _fit() -> void:
 	for child in strip.get_children():
 		if child == _divider:
 			if shown < VISIBLE_TOKENS:
-				width += GAP + 6.0
+				width += GAP + (child as Control).get_combined_minimum_size().x
 			continue
 		if shown >= VISIBLE_TOKENS:
 			break
@@ -201,6 +203,19 @@ func _fit() -> void:
 	var scrolling := _tokens.size() > VISIBLE_TOKENS
 	scroll.custom_minimum_size = Vector2(ceilf(width), ceilf(height) + (SCROLL_BAR_H if scrolling else 0.0))
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO if scrolling else ScrollContainer.SCROLL_MODE_DISABLED
+
+
+func _queue_fit() -> void:
+	if _fit_queued:
+		return
+	_fit_queued = true
+	_run_fit.call_deferred()
+
+
+func _run_fit() -> void:
+	_fit_queued = false
+	if is_instance_valid(scroll):
+		_fit()
 
 
 func _show_newest() -> void:

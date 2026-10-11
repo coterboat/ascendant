@@ -307,11 +307,6 @@ func open_order(order) -> void:
 	_fill()
 
 
-## The order whose card is open ("" mode: null).
-func open_order_ref():
-	return _order if mode == "order" else null
-
-
 ## The close button, Esc, a right-click on empty board: an order's card goes back to the card under it when there is one, and
 ## otherwise the card hides until something is selected again.
 func dismiss() -> void:
