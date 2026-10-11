@@ -1,5 +1,5 @@
 class_name UiIcons
-## The War Table's icon set (design/UX_WAR_TABLE.md section 7, UX-0a): 24 hand-written stroke SVGs in
+## The War Table's icon set (design/UX_WAR_TABLE.md section 7, UX-0a): 25 hand-written stroke SVGs in
 ## assets/ui/icons/, one file per name in NAMES, drawn on a 24-unit grid with a 1.7 stroke, round caps
 ## and joins, and no fills except the dots of "orders" and "needs-you".
 ##
@@ -28,7 +28,7 @@ const DIR := "res://assets/ui/icons/"
 const NAMES: Array[String] = [
 	"gold", "income", "walls", "garrison", "sight", "strength", "battle", "research",
 	"magic", "ruler", "codex", "turn", "orders", "recruit", "morale", "hp",
-	"march", "fortify", "siege", "lens", "chronicle", "pin", "dismiss", "needs-you",
+	"march", "fortify", "siege", "lens", "chronicle", "pin", "dismiss", "needs-you", "muster",
 ]
 
 ## The size the icons are drawn at, and the small size for plates.

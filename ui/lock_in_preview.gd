@@ -95,7 +95,7 @@ func _fill(state: GameState, fid: String) -> void:
 	confirm_button.visible = true
 	confirm_button.disabled = not data.can_confirm
 	confirm_button.tooltip_text = TooltipText.plain(String(data.confirm_text), "%s %s" % [
-		"Queues the research order. Nothing is closed until the Oath is done, and you can cancel the order in your orders list until you end the turn." if gain_mode
+		"Queues the research order. Nothing is closed until the Oath is done, and you can cancel the order from its token in the tray until you end the turn." if gain_mode
 			else "Queues the research order for the transformation.", RulesCodex.text("lock_in")])
 	CodexLink.attach(confirm_button, "lock_in", codex_requested.emit)
 	reason_label.text = String(data.reason)

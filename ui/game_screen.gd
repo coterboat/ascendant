@@ -1085,7 +1085,6 @@ func _update_hud() -> void:
 	end_turn_button.visible = not over
 	results_button.visible = over
 	hud.set_seal_pulse(playing and n > 0 and not _seal_learned())  # a new player: a gentle nudge once an order is queued
-	hud.orders_button.text = "Orders (%d)" % n if n > 0 else "Orders"
 	_refresh_opponents()
 	var has_report: bool = session != null and _report_turn() > 0
 	report_button.disabled = not has_report
@@ -1281,8 +1280,6 @@ func _build_hud() -> void:
 	map.back_button.text = "Menu"
 	map.back_button.tooltip_text = TooltipText.plain("Menu",
 		"Save the game, load another, change the settings or quit to the title screen (Esc). The game also saves itself at the start of every turn.")
-	hud.orders_button.tooltip_text = TooltipText.plain("Orders",
-		"Your orders this turn, each with its forecast and a cancel button, on the card at the bottom left. Click to open it, whatever is selected.")
 	# The rivals, top right: each with its banner, name and tag (#35); filled per game and per viewer (_refresh_opponents).
 	opponent_box = HBoxContainer.new()
 	opponent_box.name = "OpponentTag"

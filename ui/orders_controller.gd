@@ -315,6 +315,62 @@ func recruit_orders() -> Array:
 	return out
 
 
+# --- numbering (UX-4, design/UX_WAR_TABLE.md §3.4) --------------------------------------------------------------
+# The placed orders (march, recruit, fortify, storm or siege, ritual, and ARM-1's musters) are numbered on the board and in the
+# tray; the realm orders (research, spellbook, mandate) are not. A number is no id: it is the order's place among the placed
+# orders as orders() lists them, plus one, so it re-flows when an order is cancelled and when change_via sends a road move to the
+# end of the list. Nothing here is saved, and nothing here changes an order.
+
+## Whether `order` is a placed order: it has a place on the board and a number. The realm orders (one per turn, no place) are not.
+static func is_placed(order) -> bool:
+	return order is MoveOrder or order is RecruitOrder or order is FortifyOrder or order is SiegeOrder \
+		or order is CastOrder or order is MusterOrder
+
+
+## The indexes (into `list`) of the placed orders, in list order: the number of the order at placed_in(list)[k] is k + 1.
+static func placed_in(list: Array) -> Array:
+	var out := []
+	for i in list.size():
+		if is_placed(list[i]):
+			out.append(i)
+	return out
+
+
+## The indexes (into `list`) of the realm orders, in list order.
+static func realm_in(list: Array) -> Array:
+	var out := []
+	for i in list.size():
+		if not is_placed(list[i]):
+			out.append(i)
+	return out
+
+
+## The indexes (into orders()) of the placed orders, in order: number k + 1 is at placed_indices()[k].
+func placed_indices() -> Array:
+	return placed_in(orders())
+
+
+## The indexes (into orders()) of the realm orders.
+func realm_indices() -> Array:
+	return realm_in(orders())
+
+
+## How many placed orders are queued (the highest number on the board).
+func placed_count() -> int:
+	return placed_indices().size()
+
+
+## The number of the order at `index` (1 for the first placed order), or 0 for a realm order or an index that is no order.
+func number_of(index: int) -> int:
+	return placed_indices().find(index) + 1
+
+
+## The index (into orders()) of the order numbered `number`, or -1 when there is none.
+func index_of_number(number: int) -> int:
+	var placed := placed_indices()
+	return int(placed[number - 1]) if number >= 1 and number <= placed.size() else -1
+
+
 ## The orders paid from gold in the recruitment phase, in the order given: recruits and (M3c) Fortify orders.
 func paid_orders() -> Array:
 	return orders().filter(func(o): return o is RecruitOrder or o is FortifyOrder)

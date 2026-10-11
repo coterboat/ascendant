@@ -9,15 +9,15 @@ extends PanelContainer
 ## What it holds, one at a time:
 ##   "province"   the province card for the selected province
 ##   "army"       the army card for the selected army
-##   "orders"     the orders list (OrdersCard), opened by the tray's Orders button: today's "Your orders this turn" with its cancel
-##                buttons, until UX-4 moves orders onto the board. Picking something else shows that card instead.
+##   "order"      one queued order (OrderCard, UX-4), opened by a click on its token in the tray or on the board: its number, its
+##                sentence and forecast, and its Change and Cancel. Picking something else shows that card instead.
 ## and, over any of them while you choose where an army marches, the march strip: "March: pick a province · Esc to cancel", a slim
 ## strip docked in the card's place (§3.3: no card covers the board while targeting, so there is nothing to dodge). The map screen
 ## registers it with UiCancel as the "march" layer, so Esc and a right-click on empty board end the targeting and bring the card back.
 ##
 ## It is closable: the close button, Esc and a right-click on empty board (UiCancel's "card" step) hide it and put your army back to
 ## unselected, so a click on a neighbour never gives an order you can't see. The province stays selected: the board's close-up
-## depends on it. The tray's Orders button shows the orders list again.
+## depends on it. A tray token shows its order's card again.
 ##
 ## Sections a card opens (Recruit, the fort panel, an army's siege panel) are remembered here by name (section_open /
 ## open_section), so an order that rebuilds the card keeps them open; they close when another province or army is selected,
@@ -47,7 +47,7 @@ var holder: VBoxContainer  # the open card, in the scroll
 var close_button: Button
 var back_button: Button
 var title_label: Label
-## "province", "army", "orders" or "" (nothing shown).
+## "province", "army", "order" or "" (nothing shown).
 var mode := ""
 ## Hidden by the player (the close button or UiCancel) until something else is selected.
 var dismissed := false
@@ -79,6 +79,7 @@ var _march_turn := -1  # the turn and the seat the pick began in: a new turn or 
 var _march_viewer := ""
 var _return_to_selection := false
 var _sections := {}
+var _order = null  # the order the order card shows (the card follows the object, so a new number moves with it)
 var _want_queued := false
 var _scroll_to := ""
 
@@ -127,7 +128,7 @@ func _init() -> void:
 	close_button.text = "✕"
 	close_button.flat = true
 	close_button.focus_mode = Control.FOCUS_NONE
-	close_button.tooltip_text = "Close this card (Esc). Click the land or an army again to bring it back, or press Orders to see your orders."
+	close_button.tooltip_text = "Close this card (Esc). Click the land or an army again to bring it back, or click an order in the tray to see it."
 	close_button.pressed.connect(_on_close_pressed)
 	_header.add_child(close_button)
 	details = VBoxContainer.new()
@@ -278,7 +279,7 @@ func clear_selection() -> void:
 	_id = ""
 	_province = ""
 	_end_march(false)
-	if mode != "orders":
+	if mode != "order":
 		mode = ""
 		visible = false
 	_fill()
@@ -292,27 +293,32 @@ func refresh_selection() -> void:
 	_fill()
 
 
-## The tray's Orders button: the orders list in the card's place, whatever is selected.
-func open_orders() -> void:
-	_return_to_selection = visible and not dismissed and (mode == "province" or mode == "army")
-	_end_march(false)
-	if mode != "orders":
+## A tray token, or an order's mark on the board: the card of that order, in the card's place, whatever is selected. Its Back button
+## (and Esc) goes back to the card under it when there is one.
+func open_order(order) -> void:
+	if mode != "order":
+		_return_to_selection = visible and not dismissed and (mode == "province" or mode == "army")
 		scroll.scroll_vertical = 0
-	mode = "orders"
+	_end_march(false)
+	_order = order
+	mode = "order"
 	dismissed = false
 	visible = true
 	_fill()
 
 
-## The close button, Esc, a right-click on empty board: the orders list goes back to the card under it when there is one, and
+## The order whose card is open ("" mode: null).
+func open_order_ref():
+	return _order if mode == "order" else null
+
+
+## The close button, Esc, a right-click on empty board: an order's card goes back to the card under it when there is one, and
 ## otherwise the card hides until something is selected again.
 func dismiss() -> void:
 	if not visible:
 		return
-	if mode == "orders" and _return_to_selection and not _kind.is_empty():
-		mode = _kind
-		_return_to_selection = false
-		_fill()
+	if mode == "order" and _return_to_selection and not _kind.is_empty():
+		_leave_order()
 		return
 	dismissed = true
 	mode = ""
@@ -324,6 +330,19 @@ func dismiss() -> void:
 
 func is_showing() -> bool:
 	return visible
+
+
+## An order's card closes (its order is gone, or Back): the card under it comes back, or nothing shows.
+func _leave_order() -> void:
+	_order = null
+	if _return_to_selection and not _kind.is_empty():
+		mode = _kind
+	else:
+		mode = ""
+		visible = false
+		dismissed = true
+	_return_to_selection = false
+	_fill()
 
 
 ## The close button is Esc's "card" step: the map screen closes the card and puts your army back to unselected.
@@ -491,13 +510,17 @@ func _fill() -> void:
 	for child in pinned.get_children():
 		pinned.remove_child(child)
 		child.queue_free()
-	back_button.visible = mode == "orders" and _return_to_selection
+	back_button.visible = mode == "order" and _return_to_selection
 	if map != null and map.state != null:
 		var card: CardBase = null
 		match mode:
-			"orders":
-				card = OrdersCard.make(map)
-				title_label.text = "Orders"
+			"order":
+				card = OrderCard.make(map, _order)
+				title_label.text = "Order"
+				if not (card as OrderCard).found:  # cancelled, or a new turn: back to the card it came from
+					card.free()
+					_leave_order()
+					return
 			"army":
 				card = ArmyCard.make(map, _id)
 				title_label.text = "Army"
