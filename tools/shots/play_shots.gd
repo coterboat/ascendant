@@ -453,6 +453,12 @@ func _chronicle_shot(game: GameScreen, turn: int) -> void:
 			await _shot("t%02d_chronicle" % turn, "Turn %d: the Chronicle opened from its button. Headlines: %s" % [turn, " | ".join(hud.items().map(func(it): return String(it.headline)).slice(0, 8))])
 		else:
 			walk.append("  headlines: %s" % " | ".join(hud.items().map(func(it): return String(it.headline)).slice(0, 8)))
+		if turn == split_turn:  # ARM-1's muster entry: the column scrolled to the split's own card
+			var musters := hud.items().filter(func(it): return ["army_split", "units_transferred", "armies_merged"].has(String(it.type)))
+			if not musters.is_empty():
+				hud.open(String(musters[0].id))
+				await _frames(10)
+				await _shot("t%02d_split" % turn, "Turn %d: the split's own card in the Chronicle: %s | %s" % [turn, musters[0].headline, musters[0].detail])
 		hud.close()
 
 

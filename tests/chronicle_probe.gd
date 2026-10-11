@@ -237,6 +237,15 @@ func _drive(tag: String) -> Dictionary:
 	out["card_present"] = hud.column.card(id) != null
 	out["unread_after_open"] = hud.unread_count()
 	out["markers"] = hud.markers.marker_ids().size()
+	# Every card shows its detail: a laid-out card's detail line has a height (a wrapping label can collapse to a hair).
+	var shortest := 9999.0
+	var tallest := 0.0
+	for c in hud.column.cards:
+		shortest = minf(shortest, c.detail_label.size.y)
+		tallest = maxf(tallest, c.size.y)
+	out["detail_height_min"] = shortest
+	out["card_height_max"] = tallest
+	out["cards_shown"] = hud.column.cards.size()
 	# Pin: a click on the card's pin button; the pin is in the store, the game's record is untouched.
 	var card := hud.column.card(id)
 	if card != null:

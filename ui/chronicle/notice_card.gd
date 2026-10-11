@@ -114,8 +114,7 @@ func _build() -> void:
 	detail_label.name = "Detail"
 	detail_label.text = String(item.detail)
 	detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	detail_label.max_lines_visible = -1 if expanded else 2
-	detail_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	detail_label.max_lines_visible = -1 if expanded else 2  # (no trimming mode: with one, a wrapping label's minimum height collapses to a line's hair)
 	detail_label.add_theme_font_size_override("font_size", UiPalette.TYPE_SMALL)
 	detail_label.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 	detail_label.mouse_filter = Control.MOUSE_FILTER_STOP
