@@ -65,8 +65,12 @@ extends Control
 ##   end_turn()           the End turn button: hands off to the next player, or resolves the turn. With
 ##                        computer seats, the computer then plays at once. In watch mode: next_turn().
 ##   next_turn()          watch mode only: both computers give their orders and the turn resolves.
-##   open_turn_report()   the Turn report button: the last resolved turn's report, through the ReportHost (the modal
-##                        report until UX-6's Chronicle registers as the presenter).
+##   open_turn_report()   the Turn report button and the Chronicle's Full report: the last resolved turn's report, through the
+##                        ReportHost, as today's modal (the Chronicle is the presenter and hands it back: open_report()).
+##   chronicle_hud        UX-6 (§5.2): the Chronicle's Read side (ChronicleHud): the notification medallions, the right-hand column, pins
+##                        and dismissals outside the game, the unread badge on the Chronicle button. When a turn's report is ready it
+##                        calls report_ready_effects(context) (the cues, the player's battles, the turn marked seen) instead of the
+##                        modal opening; open_battle_report(event) is the card's Battle report.
 ##   open_controls_help() the ? button: every key and mouse binding (ControlsHelp).
 ##   report_host          the report seam (UX-1): turn resolved, report ready, opened, closed (ReportHost).
 ##   watch_battles(events, start = 0) -> String   M3-5: plays battle events (report order) in the battle
@@ -140,10 +144,11 @@ var map: MapScreen
 var overlays: CanvasLayer  # every modal above the map; the last one opened is on top
 var handoff: HandoffScreen  # on its own CanvasLayer above everything else
 var end_turn_button: Button  # the seal: "End turn" and the order count
-var report_button: Button  # the system row's Turn report, until UX-6's Chronicle
+var report_button: Button  # the system row's Turn report: today's modal report (the Chronicle's Full report opens it too)
 var codex_button: Button
 var help_button: Button  # the system row's ?: every key and mouse binding
-var chronicle_button: Button  # a placeholder for UX-6: the Chronicle
+var chronicle_button: Button  # the system row's Chronicle (UX-6): it opens the column
+var chronicle_hud: ChronicleHud  # UX-6 (§5.2): the Chronicle's Read side: medallions, the column, pins; the ReportHost's presenter
 var lenses_button: Button  # a placeholder for UX-7: the lenses
 var results_button: Button  # only once the game is over: it takes the seal's place
 var ruler_button: Button  # M2-6: opens the ruler panel; only in a game with rulers
@@ -501,10 +506,18 @@ func is_report_open() -> bool:
 	return report_overlay != null and report_overlay.visible
 
 
-## The ReportHost's "the report is ready": the modal opens at once, sounds its headline cues and starts the battles the person
-## fought when Settings ask (UX-6's Chronicle decides for itself what ready means: a medallion, an auto-open for a battle).
+## The ReportHost's "the report is ready", for a presenter that is this screen: the modal opens at once, sounds its headline cues and starts
+## the battles the person fought when Settings ask. The Chronicle (UX-6) is the presenter in a game with someone playing, and decides for
+## itself what ready means (a medallion, an auto-open for a battle); it calls this for watch mode and for the "full report" setting.
 func on_report_ready(_turn: int, context: Dictionary) -> void:
 	open_report()
+	report_ready_effects(context)
+
+
+## What a ready report does besides showing itself: the turn counts as seen, its headline cues sound, and the player's battles start when
+## Settings ask (auto_watch). The Chronicle calls this when it presents the report instead of the modal.
+func report_ready_effects(context: Dictionary) -> void:
+	_report_seen = maxi(_report_seen, _report_turn())
 	_cue_report(float(context.get("cue_delay", 0.2)))
 	auto_watch()
 
@@ -982,6 +995,11 @@ func _register_cancel_layers() -> void:
 
 # --- the real screens (#7, #8) ----------------------------------------------------------------------
 
+## The battle report viewer over whatever is open (the turn report, the Chronicle), for a battle event of the viewer's report.
+func open_battle_report(event: Dictionary) -> void:
+	_show_battle_report(event)
+
+
 ## The battle report viewer on top of the turn report, coloured by seat.
 func _show_battle_report(event: Dictionary) -> void:
 	_bind()
@@ -1067,6 +1085,8 @@ func _show_setup_errors(errors: Array) -> void:
 func _update_hud() -> void:
 	if research_hud:
 		research_hud.refresh()  # M4-4: the chip, and the research panel follows the seat
+	if chronicle_hud:
+		chronicle_hud.refresh()  # UX-6: the Chronicle follows the seat (a hotseat handoff clears it) and the needs
 	if first_game_guide:
 		first_game_guide.sync(session, map.state)  # MVP-1: ticks from the viewer's own orders; hidden behind the cover
 	var watching := is_watching()
@@ -1263,9 +1283,8 @@ func _build_hud() -> void:
 	ruler_button.visible = false
 	CodexLink.attach(ruler_button, "ruler", open_codex)
 	hud.add_system_button("ruler", ruler_button)
-	chronicle_button = hud.make_system_button("chronicle", "Chronicle", TooltipText.plain("Chronicle",
-		"The turn's announcements and your plan for it, in one column you open and close. It arrives in a later update; until then Turn report has what happened last turn."), Callable())
-	chronicle_button.disabled = true  # UX-6 fills it
+	chronicle_hud = ChronicleHud.new(self)  # UX-6: the Chronicle button, the medallion stack and the column; it becomes the report host's presenter
+	chronicle_button = chronicle_hud.button
 	report_button = _hud_button("TurnReportButton", "Turn report", open_turn_report)
 	hud.add_system_button("report", report_button)
 	lenses_button = hud.make_system_button("lenses", "Lenses", TooltipText.plain("Lenses",

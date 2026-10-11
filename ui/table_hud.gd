@@ -18,7 +18,9 @@ extends Control
 ##   system_button(id) -> Button      the row's button (null when none): the Chronicle and Lenses placeholders are here
 ##   add_plaque_item(control)         a control at the end of the realm plaque's second line
 ##   add_seal_item(control)           a control in the seal's slot (End turn, and Results at the end of a game)
-##   notification_slot() -> Control   the empty column on the left edge (UX-6 fills it with medallions)
+##   notification_slot() -> Control   the column on the left edge: UX-6's NoticeStack fills it with medallions, and takes the mouse only where it draws
+##   register_piece(control)          a control of someone else's that takes the mouse by design (the medallion stack, the Chronicle column):
+##                                    pieces() lists it, so the input contract's test holds it and what is inside it to the rule
 ##   tray_slot() -> Control           the tray's order slot (UX-4 fills it with tokens)
 ##   opponent_slot -> HBoxContainer   where the rivals' plaques go
 ##   set_system_label(id, text)       a system button's label (shown beside its icon when wide, hidden when compact)
@@ -85,6 +87,7 @@ var left_column: VBoxContainer  # the realm plaque with the system row under it
 var right_column: HBoxContainer  # the opponent plaque and Menu
 var bottom_row: HBoxContainer  # the tray and the seal
 var _system := {}  # id -> Button
+var _extra_pieces: Array = []  # register_piece: UX-6's medallion stack and Chronicle column
 var _floating := {}  # kind -> Control
 var _layout_queued := false
 var _last_rects := {}
@@ -242,6 +245,14 @@ func tray_slot() -> Control:
 	return tray_tokens
 
 
+## UX-6: a control that takes the mouse by design and lives in this Table (the medallion stack in the notification slot, the Chronicle
+## column on the right edge). pieces() lists it. It must be MOUSE_FILTER_STOP, and sized to what it draws: an empty area of it would
+## swallow the board's clicks.
+func register_piece(control: Control) -> void:
+	if not _extra_pieces.has(control):
+		_extra_pieces.append(control)
+
+
 ## A floating piece the Table positions inside the safe area: "card", "legend" or "hover". It becomes a child of this node.
 func set_floating(kind: String, control: Control) -> void:
 	_register_floating(kind, control)
@@ -271,6 +282,9 @@ func pieces() -> Array:
 	for kind in ["card", "legend"]:
 		if _piece(kind) != null:
 			out.append(_piece(kind))
+	for c in _extra_pieces:
+		if is_instance_valid(c):
+			out.append(c)
 	return out
 
 
@@ -332,6 +346,13 @@ func relayout() -> void:
 		for id in _system:
 			_fit_label(id, _system[id])
 		compact_changed.emit(compact)
+	# The open Chronicle takes its column on the right (§1.3), so the opponent plaque and Menu keep to the board's side of it.
+	var taken := TableLayout.chronicle_width(vp) if chronicle_open else 0.0
+	right_column.offset_right = -(PLAQUE_MARGIN.x + taken)
+	# The tray and the seal centre on what is left of the window (the bottom band narrows with the column).
+	var middle := (vp.x - taken) * 0.5 / maxf(vp.x, 1.0)
+	bottom_row.anchor_left = middle
+	bottom_row.anchor_right = middle
 	var card := _piece("card")
 	if card != null and is_instance_valid(card) and card.has_method("fit"):
 		card.call("fit", TableLayout.card_max_height(vp, chronicle_open))

@@ -33,6 +33,10 @@ extends SceneTree
 ##   --stage            UX-2: on the last turn, after its orders shot, stage the VIEW the map shows (never the game) so every level of sight and every
 ##                      fort level is on the whole-map shot: one province you never saw is remembered, a palisade stands and another is
 ##                      being raised in your land, and a keep's walls are knocked down a step. Shot as tNN_fullmap_staged (needs --fullmap)
+##   --split=N          UX-6: on turn N (after turn 1's recruits) the person's seat splits its biggest army in two before its other orders, so that
+##                      turn's Chronicle shows ARM-1's muster entry (default: none)
+##   --chronicle=MODE   UX-6: when the Chronicle opens by itself, whatever the player's settings say: important (the default), needs_you, always,
+##                      never (the medallions only, to see them lit and unread) or report (today's modal report)
 ##   --fullmap          UX-2: after each orders shot, frame the whole map (the F key) and shoot it again as tNN_fullmap, then put the
 ##                      camera back, so the four veil looks and the three fort levels can be named without hovering
 ## Windowed only: headless has no renderer, so the shots would be blank. walk.md lists every shot with the
@@ -53,6 +57,8 @@ var fast := false
 var fullmap := false
 var stage := false
 var board_kind := "3d"
+var split_turn := -1
+var chronicle_mode := ""
 var fresh := false
 var defaults := false
 var ui_scale := 100
@@ -80,6 +86,8 @@ func _initialize() -> void:
 			"fullmap": fullmap = true
 			"stage": stage = true
 			"board": board_kind = kv[1]
+			"split": split_turn = int(kv[1])
+			"chronicle": chronicle_mode = kv[1]
 			"fresh": fresh = true
 			"defaults": defaults = true
 			"ui-scale": ui_scale = int(kv[1])
@@ -162,6 +170,8 @@ func _run() -> void:
 	await _frames(2)
 	if menus:
 		await _menus()
+	if ChronicleModel.AUTO_OPEN.has(chronicle_mode):
+		ChronicleSettings.default_auto_open = chronicle_mode
 	var game: GameScreen = load("res://ui/game_screen.tscn").instantiate()
 	game.autosave_enabled = false
 	game.save_store = SaveStore.new(out.path_join("saves"))
@@ -185,6 +195,8 @@ func _run() -> void:
 		var magic_shot := false
 		if flags.magic:
 			magic_shot = await _magic_steps(game, turn)
+		if turn == split_turn:
+			_queue_split(game)
 		var orders: Array = brain.plan_orders(game.session.state(), human, rng, "normal")
 		var refused := []
 		for o in orders:
@@ -208,6 +220,7 @@ func _run() -> void:
 		game.end_turn()
 		await _settle(game, fast and not (turn % every == 0 or turn + 1 == max_turns))
 		print("turn %d: settled" % turn)
+		await _chronicle_shot(game, turn)
 		var report := game.session.turn_report_for(human)
 		var mine := BattleHost.battles_of(game.session.battle_events(), human)
 		var lines := _headlines(report)
@@ -403,11 +416,11 @@ func _menus() -> void:
 	await _frames(2)
 
 
-## Waits for the board's playback after End turn: the game screen opens the turn report once the playback
-## has finished (or at once without one), so the report showing is the signal. Gives up after 90 s.
+## Waits for the board's playback after End turn: the report host hears the turn's report is ready once the playback has finished (or
+## at once without one) (UX-6: the Chronicle presents it; the modal opens only on request). Gives up after 90 s.
 func _settle(game: GameScreen, skip: bool = false) -> void:
 	var start := Time.get_ticks_msec()
-	while not game.report_overlay.visible and not game.session.is_over() and Time.get_ticks_msec() - start < 90000:
+	while game.report_host.last_ready < game.session.turns_played() and not game.session.is_over() and Time.get_ticks_msec() - start < 90000:
 		if skip and game.map.board != null and game.map.board.has_method("skip_playback") and game.map.board.is_playing():
 			game.map.board.skip_playback()
 		await process_frame
@@ -415,11 +428,49 @@ func _settle(game: GameScreen, skip: bool = false) -> void:
 
 
 func _close_overlays(game: GameScreen) -> void:
+	if game.chronicle_hud != null:
+		game.chronicle_hud.close()
 	if game.battle_host.visible:
 		game.battle_host.close()
 	if game.report_overlay.visible:
 		game.close_turn_report()
 	await _frames(2)
+
+
+## UX-6: the Chronicle at the start of a turn: how it came up by itself (a shot of the table as the player finds it), then, with a map
+## shot every few turns or whenever something important happened, the column open at its first card.
+func _chronicle_shot(game: GameScreen, turn: int) -> void:
+	var hud := game.chronicle_hud
+	if hud == null or game.session.is_over():
+		return
+	var important := hud.announcements.filter(func(it): return it.important)
+	var note := "Turn %d begins: %d announcements (%d notable, %d important); the column %s by itself; %d unread." % [turn, hud.announcements.size(),
+		ChronicleModel.notable(hud.items()).size(), important.size(), "opened" if hud.is_open() else "stayed shut", hud.unread_count()]
+	if turn == 1 or turn % every == 0 or not important.is_empty() or turn == split_turn:
+		await _shot("t%02d_start" % turn, note)
+		if not hud.is_open():
+			hud.open()
+			await _shot("t%02d_chronicle" % turn, "Turn %d: the Chronicle opened from its button. Headlines: %s" % [turn, " | ".join(hud.items().map(func(it): return String(it.headline)).slice(0, 8))])
+		else:
+			walk.append("  headlines: %s" % " | ".join(hud.items().map(func(it): return String(it.headline)).slice(0, 8)))
+		hud.close()
+
+
+## --split: the person's seat splits its biggest army (the units after the first half form a new one).
+func _queue_split(game: GameScreen) -> void:
+	var st := game.session.state()
+	var best: Army = null
+	for a in st.armies:
+		if a.owner == human and a.ruler == null and a.units.size() >= 2 and (best == null or a.units.size() > best.units.size()):
+			best = a
+	if best == null:
+		walk.append("- turn %d: nothing to split" % split_turn)
+		return
+	var indices := []
+	for i in range(best.units.size() / 2, best.units.size()):
+		indices.append(i)
+	var why: String = game.session.queue_order(MusterOrder.transfer(best.id, "", indices))
+	walk.append("- turn %d: split %s%s" % [split_turn, best.id, (" REFUSED: " + why) if why != "" else ""])
 
 
 ## The report's first few lines, flattened to one string for walk.md.
