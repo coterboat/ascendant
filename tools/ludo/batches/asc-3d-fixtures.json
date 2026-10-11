@@ -1,7 +1,7 @@
 {
  "batch": "asc-3d-fixtures",
  "rid_prefix": "ascfx",
- "cap": 35.0,
+ "cap": 55.0,
  "round": "redo-10-8",
  "note": "Written by tools/ludo/asc_3d_fixtures.py (which holds the prompts; edit it, not this file). #196: the Bloodsworn strike's forearm blades, as an attachment (a picture of the blade alone, then its model) and as thick fused blades in the strike picture. balance_before is a fixed sentinel: the account is shared, the spend is counted from this batch's ledger lines tagged with the round.",
  "style": {
@@ -20,7 +20,10 @@
   "picks": {
    "pic_strike_fused": 2,
    "pic_blade_edit:bloodsworn_blade": 2,
-   "pic_strike_body": 1
+   "pic_strike_body": 1,
+   "pic_cuff_r3:bloodsworn_cuff_a": 1,
+   "pic_cuff_r3:bloodsworn_cuff_b": 2,
+   "pic_cuff_r3:bloodsworn_cuff_c": 3
   },
   "rerolls": {
    "pic_strike_fused": [
@@ -93,6 +96,96 @@
    "pick": 2,
    "augment": false,
    "out": "assets/_concept/candidates/fixtures/strike_fused"
+  },
+  {
+   "id": "pic_cuff_r1",
+   "stage": "pictures",
+   "kind": "edit",
+   "n": 3,
+   "from_file": "assets/_concept/grok3d/beasts/bloodsworn_ready.webp",
+   "prompt": "Only the bone bracer and the big curved bone-white blade of this figure's arm, enlarged to fill the picture: the bracer is a thick short cuff of bone like a wide tube lying on its side at the bottom with its round opening toward the viewer, ridged with short bone spikes and laced round with dark strips of sinew, and out of the top of the cuff grows one thick curved blade as one solid piece of bone with it, a wedge-shaped section with a raised ridge down its middle and a saw-toothed back, the same dark red veins and blood streaks as drawn, standing upright on its own, seen from three-quarter view slightly from above, the whole piece in view with wide empty margin on every side, plain flat light grey background.",
+   "pick_to": "assets/_concept/candidates/fixtures/picks/bloodsworn_cuff_r1.webp",
+   "group": "pictures",
+   "unit": "bloodsworn",
+   "pose": "cuff",
+   "v": 1,
+   "augment": false,
+   "out": "assets/_concept/candidates/fixtures/cuff_r1"
+  },
+  {
+   "id": "pic_cuff_r2",
+   "stage": "pictures",
+   "kind": "edit",
+   "n": 3,
+   "from_file": "assets/_concept/grok3d/beasts/bloodsworn_ready.webp",
+   "prompt": "Only the bone bracer and the big curved bone-white blade of this figure's arm, enlarged to fill the picture: the bracer is a small thick cuff of bone like a short tube lying on its side at the bottom with its round opening toward the viewer, ridged with short bone spikes and laced round with dark strips of sinew, and out of the top of the cuff grows one very long thick blade as one solid piece of bone with it, three times as long as the cuff is wide, sweeping up and over in one big curve like a scythe, a wedge-shaped section with a raised ridge down its middle and a saw-toothed back, the same dark red veins and blood streaks as drawn, standing upright on its own, seen from three-quarter view slightly from above, the whole piece in view with wide empty margin on every side, plain flat light grey background.",
+   "pick_to": "assets/_concept/candidates/fixtures/picks/bloodsworn_cuff_r2.webp",
+   "group": "pictures",
+   "unit": "bloodsworn",
+   "pose": "cuff",
+   "v": 1,
+   "augment": false,
+   "out": "assets/_concept/candidates/fixtures/cuff_r2"
+  },
+  {
+   "id": "pic_cuff_r3",
+   "stage": "pictures",
+   "kind": "edit",
+   "n": 3,
+   "from_file": "assets/_concept/grok3d/beasts/bloodsworn_ready.webp",
+   "prompt": "Only the bone bracer and the big curved bone-white blade of this figure's arm, enlarged to fill the picture: the bracer is a small thick cuff of bone like a short tube lying on its side at the bottom with its round opening toward the viewer, ridged with short bone spikes and laced round with dark strips of sinew, and the blade grows out of the top of the cuff as one solid piece of bone with it, broad where it leaves the cuff, as wide as the cuff itself, then tapering along one long curve to its point, about four times as long as the cuff is wide, a wedge-shaped section with a raised ridge down its middle and a saw-toothed back, the same dark red veins and blood streaks as drawn, standing upright on its own, seen from three-quarter view slightly from above, the whole piece in view with wide empty margin on every side, plain flat light grey background.",
+   "pick_to": "assets/_concept/candidates/fixtures/picks/bloodsworn_cuff_r3.webp",
+   "group": "pictures",
+   "unit": "bloodsworn",
+   "pose": "cuff",
+   "v": 1,
+   "augment": false,
+   "out": "assets/_concept/candidates/fixtures/cuff_r3"
+  },
+  {
+   "id": "model_cuff_a",
+   "stage": "models",
+   "kind": "model3d",
+   "from_file": "assets/_concept/candidates/fixtures/picks/bloodsworn_cuff_a.webp",
+   "faces": 2000,
+   "texture_size": 1024,
+   "texture_type": "pbr",
+   "slim_max": 512,
+   "group": "models",
+   "unit": "bloodsworn",
+   "pose": "cuff",
+   "v": 1,
+   "out": "assets/models/candidates/fixtures/cuff_a"
+  },
+  {
+   "id": "model_cuff_b",
+   "stage": "models",
+   "kind": "model3d",
+   "from_file": "assets/_concept/candidates/fixtures/picks/bloodsworn_cuff_b.webp",
+   "faces": 2000,
+   "texture_size": 1024,
+   "texture_type": "pbr",
+   "slim_max": 512,
+   "group": "models",
+   "unit": "bloodsworn",
+   "pose": "cuff",
+   "v": 1,
+   "out": "assets/models/candidates/fixtures/cuff_b"
+  },
+  {
+   "id": "model_cuff_c",
+   "stage": "models",
+   "kind": "model3d",
+   "from_file": "assets/_concept/candidates/fixtures/picks/bloodsworn_cuff_c.webp",
+   "faces": 2000,
+   "texture_size": 1024,
+   "texture_type": "pbr",
+   "slim_max": 512,
+   "group": "models",
+   "unit": "bloodsworn",
+   "pose": "cuff",
+   "v": 1,
+   "out": "assets/models/candidates/fixtures/cuff_c"
   },
   {
    "id": "model_blade",

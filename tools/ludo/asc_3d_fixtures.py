@@ -47,6 +47,7 @@ no gap, no hilt" is said as what the blade IS: a slab of bone as broad as the fo
 import filecmp
 import glob
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -64,7 +65,14 @@ BATCH = "asc-3d-fixtures"
 MANIFEST = os.path.join(ROOT, "tools", "ludo", "batches", BATCH + ".json")
 LEDGER = os.path.join(ROOT, "studio", "ledgers", BATCH + ".jsonl")
 ROUND = G.ROUND  ## "redo-10-8": the same round's tag as asc_3d_grok.py, so the round's spend can be added up
-CAP = 35.0  ## the brief's stop line (about 25 credits planned)
+## The first round (#196, PR #203) had a cap of 35 and spent 23.5. The cuff round (10-10, Alex's direction through the director: "we were
+## close with the attachment, give it a few more takes") has up to 20 more credits and the cap is raised by exactly that, 35 to 55. The
+## round's spend counted from this ledger was 23.5 before it, so the driver stops at 23.5 + 20 = 43.5: the cap is the allowance, STOP the
+## line the cuff round does not pass.
+CAP = 55.0
+PRIOR_SPEND = 23.5
+CUFF_BUDGET = 20.0
+STOP = PRIOR_SPEND + CUFF_BUDGET
 SENTINEL = G.SENTINEL
 RID = "ascfx"
 PIC_CAND = "assets/_concept/candidates/fixtures"
@@ -125,6 +133,43 @@ BLADE_EDIT = ("Only the big curved bone-white blade of this figure's arm, enlarg
               "above, the whole blade in view with wide empty margin on every side, plain flat light grey background.")
 
 
+## a) round 2, the cuff (10-10, Alex: "try also adding the attaching pieces directly into the blade itself so that there is an obvious
+## fusion point"): the part is the blade AND its mount in one piece, a bone cuff that wraps the forearm laced on with sinew, the blade
+## growing out of the cuff. An edit of the ready picture (the same palette as the body and the accepted blade), and a blade of real
+## thickness, a wedge section with a raised ridge, so it does not read as a line from the side (the first blade was a flat plate).
+FACES_CUFF = 2000  ## between the 3000 of the first blade (doubled the figure) and the 1200 (brighter palette): two of them near the body's 5500
+CUFF_R1 = ("Only the bone bracer and the big curved bone-white blade of this figure's arm, enlarged to fill the picture: the bracer "
+           "is a thick short cuff of bone like a wide tube lying on its side at the bottom with its round opening toward the "
+           "viewer, ridged with short bone spikes and laced round with dark strips of sinew, and out of the top of the cuff "
+           "grows one thick curved blade as one solid piece of bone with it, a wedge-shaped section with a raised ridge down "
+           "its middle and a saw-toothed back, the same dark red veins and blood streaks as drawn, standing upright on its "
+           "own, seen from three-quarter view slightly from above, the whole piece in view with wide empty margin on every "
+           "side, plain flat light grey background.")
+## Round 1 (3 takes) drew exactly the part: a hollow bone tube laced with sinew and spiked, a blade growing out of its top as one piece, in
+## the body's palette (take 2 closest to the accepted blade, take 1 a straight dagger, take 3 a curved blade with a knob). But the cuff
+## came out as big as the blade is long: a cuff that fits a forearm (0.08 of the body) would leave a blade of 0.2. Round 2 asks for a
+## small cuff and a blade three times as long as it, sweeping over like the accepted scythe.
+CUFF_R2 = ("Only the bone bracer and the big curved bone-white blade of this figure's arm, enlarged to fill the picture: the bracer "
+           "is a small thick cuff of bone like a short tube lying on its side at the bottom with its round opening toward the "
+           "viewer, ridged with short bone spikes and laced round with dark strips of sinew, and out of the top of the cuff "
+           "grows one very long thick blade as one solid piece of bone with it, three times as long as the cuff is wide, "
+           "sweeping up and over in one big curve like a scythe, a wedge-shaped section with a raised ridge down its middle and "
+           "a saw-toothed back, the same dark red veins and blood streaks as drawn, standing upright on its own, seen from "
+           "three-quarter view slightly from above, the whole piece in view with wide empty margin on every side, plain flat "
+           "light grey background.")
+## Round 2 (3 takes) gave long sweeping blades on small cuffs, but each blade left its cuff on a thin stem, so it read as a sickle on a
+## bone grip: the very thing Alex does not want. Round 3 keeps the length and says how the blade leaves the cuff: broad as the cuff itself.
+CUFF_R3 = ("Only the bone bracer and the big curved bone-white blade of this figure's arm, enlarged to fill the picture: the bracer "
+           "is a small thick cuff of bone like a short tube lying on its side at the bottom with its round opening toward the "
+           "viewer, ridged with short bone spikes and laced round with dark strips of sinew, and the blade grows out of the top "
+           "of the cuff as one solid piece of bone with it, broad where it leaves the cuff, as wide as the cuff itself, then "
+           "tapering along one long curve to its point, about four times as long as the cuff is wide, a wedge-shaped section "
+           "with a raised ridge down its middle and a saw-toothed back, the same dark red veins and blood streaks as drawn, "
+           "standing upright on its own, seen from three-quarter view slightly from above, the whole piece in view with wide "
+           "empty margin on every side, plain flat light grey background.")
+CUFF_PROMPTS = {"r1": CUFF_R1, "r2": CUFF_R2, "r3": CUFF_R3}
+
+
 def pick_path(name):
     return "%s/bloodsworn_%s.webp" % (PICKS, name)
 
@@ -147,6 +192,15 @@ def rows():
         {"id": "pic_strike_fused", "stage": "pictures", "kind": "edit", "n": 3, "from_file": ready,
          "prompt": F.C_POSE.format(pose=STRIKE_FUSED, view=F.VIEW), "pick_to": pick_path("strike_fused"),
          "group": "pictures", "unit": FAMILY, "pose": STRIKE},
+    ] + [
+        {"id": "pic_cuff_%s" % rnd, "stage": "pictures", "kind": "edit", "n": 3, "from_file": ready, "prompt": text,
+         "pick_to": pick_path("cuff_" + rnd), "group": "pictures", "unit": FAMILY, "pose": "cuff"}
+        for rnd, text in CUFF_PROMPTS.items()
+    ] + [
+        {"id": "model_cuff_%s" % k, "stage": "models", "kind": "model3d", "from_file": pick_path("cuff_" + k), "faces": FACES_CUFF,
+         "texture_size": 1024, "texture_type": "pbr", "slim_max": TEX_BLADE, "group": "models", "unit": FAMILY, "pose": "cuff"}
+        for k in ("a", "b", "c")
+    ] + [
         {"id": "model_blade", "stage": "models", "kind": "model3d", "from_file": pick_path("blade"), "faces": FACES_BLADE,
          "texture_size": 1024, "texture_type": "pbr", "slim_max": TEX_BLADE, "group": "models", "unit": FAMILY,
          "pose": "blade"},
@@ -209,7 +263,7 @@ def manifest_rows():
 
 # ---------------------------------------------------------------------------------- the driver, pointed at this batch
 ## asc_3d_grok.py set the driver's module globals for its own batch when it was imported; point them at this one.
-F.BATCH, F.MANIFEST, F.LEDGER, F.CAP, F.RID, F.ROUND = BATCH, MANIFEST, LEDGER, CAP, RID, ROUND
+F.BATCH, F.MANIFEST, F.LEDGER, F.CAP, F.RID, F.ROUND = BATCH, MANIFEST, LEDGER, STOP, RID, ROUND
 F.SCRATCH = os.path.join(ROOT, GLB_CAND, "_review")
 F.rows = rows
 F.write_manifest = write_manifest
@@ -335,22 +389,86 @@ def _run_godot(args, windowed=False, timeout=900):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
 
-def bake(row_file=None):
+## a) round 2 (the cuff): the candidates placed on the strike body, each a row file of its own (assets/models/candidates/fixtures/
+## strike_attachments_<key>.json), each baked into its own GLB for the Review Table. key: the model row's name (model_<key>).
+## Alex judged a) on 10-10 ("close, but the blades need to run parallel and on the outside of the backarm/backhands, think like
+## Wolverine's blades but extending from further up on the arm"), so a2 is placed that way: the cuff on the back of the forearm near
+## the elbow, the blade lying along the back of the forearm and past the hand, parallel to it. a3, the hook, is the other placement of a
+## cuff part (a tube across the blade's root): kept to show what a blade rising from its cuff looks like.
+CUFF_CANDIDATES = (
+    {"key": "cuff_a", "item": "a2", "short": "along the back of the forearm",
+     "label": "Bloodsworn · strike · a2) cuff blades along the back of the forearms",
+     "how": "the cuff sits on the back of the forearm near the elbow and the blade lies along the back of the forearm, parallel to it, "
+            "running on past the hand (Alex's note on a): like Wolverine's blades, rooted further up the arm"},
+    {"key": "cuff_c", "item": "a3", "short": "hooking over the forearm",
+     "label": "Bloodsworn · strike · a3) cuff blades, hooking over the forearms",
+     "how": "the cuff is a tube round the forearm and its blade rises out of the cuff's end and sweeps back over it (not parallel: "
+            "the other way a cuff part can sit)"},
+)
+
+
+def cuff_row_path(key):
+    return os.path.join(ROOT, GLB_CAND, "strike_attachments_%s.json" % key)
+
+
+def cuff_params_path(key):
+    """The placement of a cuff part in terms a person thinks in (see cuff_row): the numbers the row's pos/rot/scale come from."""
+    return os.path.join(ROOT, GLB_CAND, "strike_placement_%s.json" % key)
+
+
+# A part that is a tube with a blade (a cuff on a forearm) is placed by where its cuff sits, which way its long axis points in the
+# strike pose's x-y plane and how far it is rolled about that axis: that is a rotation about the part's own axis, then one about Z,
+# and Godot's `rot` is Euler angles in the order Y, X, Z (a node's rotation_degrees), so the two are solved into those angles here.
+def _rot(axis, a):
+    c, s = math.cos(a), math.sin(a)
+    return {"x": [[1, 0, 0], [0, c, -s], [0, s, c]], "y": [[c, 0, s], [0, 1, 0], [-s, 0, c]], "z": [[c, -s, 0], [s, c, 0], [0, 0, 1]]}[axis]
+
+
+def _mul(a, b):
+    return [[sum(a[i][k] * b[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
+
+
+def euler_yxz(m):
+    """Godot's Basis.get_euler(EULER_ORDER_YXZ) of a 3x3 rotation, in radians: (x, y, z)."""
+    x = math.asin(-max(-1.0, min(1.0, m[1][2])))
+    if abs(m[1][2]) < 0.99999:
+        return x, math.atan2(m[0][2], m[2][2]), math.atan2(m[1][0], m[1][1])
+    return x, math.atan2(-m[2][0], m[0][0]), 0.0
+
+
+def rot_for(axis, theta, roll=0.0, yaw_extra=0.0):
+    """The row's `rot` (degrees) for a part whose long axis is its local `axis` ("x" or "y"): rolled `roll` degrees about that axis,
+    then turned `theta` about world Z, then `yaw_extra` about world Y."""
+    m = _mul(_rot("y", math.radians(yaw_extra)), _mul(_rot("z", math.radians(theta)), _rot(axis, math.radians(roll))))
+    return [round(math.degrees(v), 2) for v in euler_yxz(m)]
+
+
+def cuff_row(key, params):
+    """The row of a cuff candidate from its placement: {"axis": "x"|"y" (the part's long axis), "pivot": [x, y, z] (the cuff's centre in
+    the part's coordinates), "arms": [{"pos": [x, y, z] (where the cuff sits on the body), "scale", "theta", "roll", "yaw_extra"}, ...]}."""
+    return {"attachments": [
+        {"mesh": STAGE_RES + key + ".glb", "pivot": params["pivot"],
+         "poses": {STRIKE: {"pos": arm["pos"], "rot": rot_for(params["axis"], arm["theta"], arm.get("roll", 0.0), arm.get("yaw_extra", 0.0)),
+                            "scale": arm["scale"]}}} for arm in params["arms"]]}
+
+
+def bake(row_file=None, name="strike_attach"):
     """The combined strike model of a): the strike body and the attachments of the row file baked into one mesh and one colour map
     (tools/fixtures/bake.gd, headless), slimmed to a GLB the Review Table shows and the game loads like any model. Its size in
-    men is the body's (the blades add to the box, so it is taller than the body's: men_for)."""
+    men is the body's (the blades add to the box, so it is taller than the body's: men_for). `name`: what the model is called in
+    the staging folder (strike_attach: the first blade; strike_attach_cuff_c ...)."""
     row_file = row_file or attachments_path()
-    raw = os.path.join(ROOT, GLB_CAND, "baked", "strike_attach_raw.glb")
+    raw = os.path.join(ROOT, GLB_CAND, "baked", name + "_raw.glb")
     os.makedirs(os.path.dirname(raw), exist_ok=True)
     r = _run_godot(["-s", "res://tools/fixtures/bake.gd", "--", "--body=" + STAGE_RES + "strike_body.glb", "--pose=strike",
                     "--row=" + os.path.abspath(row_file), "--out=" + raw])
     if not os.path.exists(raw) or "baked " not in r.stdout:
         sys.exit("bake failed:\n%s%s" % (r.stdout[-1500:], r.stderr[-800:]))
-    dst = staged_path("model_strike_attach")
+    dst = staged_path("model_" + name)
     before, after = glb_slim.slim(raw, dst, 3, 1024, True)  ## the stack is two maps tall: 1024 keeps both at 512
     m = F.measure(dst)
     rec = {"men": men_for("strike_body", m["size"][1]), "axis": "height", "faces": m["faces"], "bytes": after, "extent": m["size"]}
-    save_records("strike_attach", rec)
+    save_records(name, rec)
     print("bake %s: %.2f -> %.2f MB, %d faces, extent %s, %.3f men" % (os.path.relpath(dst, ROOT), before / 1e6, after / 1e6,
                                                                        m["faces"], m["size"], rec["men"]))
     return rec
@@ -459,34 +577,54 @@ def place(row_file=None, out=None, body="strike_body"):
 CAMERAS = (("near", 22, 42), ("side", 75, 30), ("back", 165, 42), ("low", 20, 12))  ## name, the figures' turn, the camera's pitch
 
 
-def compare_plan(att, baked_men):
-    """The shots of the board comparison: four figures as the board draws them, from each camera. The first is what the game has now
-    (its row exactly as world3d/models.json holds it); a) the strike body with `att` (the row's attachments: the loader) and the same
-    baked into one GLB (sized `baked_men`); b) the fused-blades model. Pure: rows are built in memory, the table is never written."""
-    items = [
-        {"label": "in the game now", "path": "res://" + GAME_STRIKE, "type": FAMILY, "pose": STRIKE, "row": _unit_row(), "faction": "beasts"},
-        {"label": "a) attachments (loader)", "path": STAGE_RES + "strike_body.glb", "type": FAMILY, "pose": STRIKE,
-         "row": _row_with(men_for("strike_body"), {"attachments": att}), "faction": "beasts"},
-        {"label": "a) baked in one GLB", "path": STAGE_RES + "strike_attach.glb", "type": FAMILY, "pose": STRIKE,
-         "row": _row_with(baked_men), "faction": "beasts"},
-        {"label": "b) fused blades", "path": STAGE_RES + "strike_fused.glb", "type": FAMILY, "pose": STRIKE,
-         "row": _row_with(men_for("strike_fused")), "faction": "beasts"},
-    ]
+def place_cuffs():
+    """The placement sheets of the cuff candidates: SHEETS/a2_placement_<key>.png (+ _zoom) for each row file there is."""
+    for c in CUFF_CANDIDATES:
+        if os.path.exists(cuff_row_path(c["key"])):
+            place(cuff_row_path(c["key"]), os.path.join(SHEETS, "a2_placement_%s.png" % c["key"]))
+
+
+def compare_plan(att, cuffs=()):
+    """The shots of the board comparison: the figures as the board draws them, from each camera. The first is what the game has now
+    (its row exactly as world3d/models.json holds it); a) the strike body with `att` (the row's attachments: the loader), then one per
+    cuff candidate, (label, attachments) in `cuffs`; b) the fused-blades model. Pure: rows are built in memory, the table is never
+    written. (The baked GLBs draw as the loader's figure does: the first round's sheet showed the two side by side, identical.)"""
+    body = STAGE_RES + "strike_body.glb"
+    items = [{"label": "in the game now", "path": "res://" + GAME_STRIKE, "type": FAMILY, "pose": STRIKE, "row": _unit_row(), "faction": "beasts"},
+             {"label": "a) flat blade", "path": body, "type": FAMILY, "pose": STRIKE,
+              "row": _row_with(men_for("strike_body"), {"attachments": att}), "faction": "beasts"}]
+    for label, cuff_att in cuffs:
+        items.append({"label": label, "path": body, "type": FAMILY, "pose": STRIKE,
+                      "row": _row_with(men_for("strike_body"), {"attachments": cuff_att}), "faction": "beasts"})
+    items.append({"label": "b) fused blades", "path": STAGE_RES + "strike_fused.glb", "type": FAMILY, "pose": STRIKE,
+                  "row": _row_with(men_for("strike_fused")), "faction": "beasts"})
     return [{"file": "board_%s.png" % n, "title": "Bloodsworn strike: %s" % n, "mode": "board", "yaw": y, "pitch": p, "items": items}
             for n, y, p in CAMERAS]
 
 
 def compare(out=None):
-    """The board's look of the strike pose, four figures side by side as the board draws them (Models._glb_figure through a row: the
-    sizing, the turn, the team base, Look A): what the game has now; a) the body with its attachments (the loader, from a row
-    that names them); a) the same baked into one GLB (what the Review Table shows); b) the fused-blades model. Four cameras:
-    the board's near one, from the side, from behind, and low. Writes SHEETS/compare_board.png."""
+    """The board's look of the strike pose, the figures side by side as the board draws them (Models._glb_figure through a row: the
+    sizing, the turn, the team base, Look A): what the game has now; a) the body with the flat blade attached (the loader, from a
+    row that names it); a2, a3) with each cuff blade; b) the fused-blades model. Four cameras: the board's near one, from the side,
+    from behind, and low. Writes SHEETS/compare_board.png."""
     with open(attachments_path()) as f:
         att = json.load(f)["attachments"]
-    plan = compare_plan(att, load_records()["strike_attach"]["men"])
-    d = _shoot(plan, "board", "1280x720")
+    cuffs = []
+    for c in CUFF_CANDIDATES:
+        if os.path.exists(cuff_row_path(c["key"])):
+            with open(cuff_row_path(c["key"])) as f:
+                cuffs.append(("%s) cuff, %s" % (c["item"], "hook" if c["key"] == "cuff_c" else "along the arm"), json.load(f)["attachments"]))
+    plan = compare_plan(att, cuffs)
+    n = len(plan[0]["items"])
+    d = _shoot(plan, "board", "%dx720" % (n * 320))
     o = out or os.path.join(SHEETS, "compare_board.png")
-    _xstack([os.path.join(d, s["file"]) for s in plan], o, 2, 1280, 720)
+    _xstack([os.path.join(d, s["file"]) for s in plan], o, 2, n * 320, 720)
+    ## the same cameras on the candidates alone (the cuff blades and b), larger: the overview's figures are small
+    close = [dict(s, file=s["file"].replace("board_", "close_"), items=[i for i in s["items"] if i["label"][:2] in ("a2", "a3", "b)")])
+             for s in plan]
+    if len(close[0]["items"]) > 1:
+        d2 = _shoot(close, "board_close", "%dx720" % (len(close[0]["items"]) * 420))
+        _xstack([os.path.join(d2, s["file"]) for s in close], os.path.join(SHEETS, "compare_close.png"), 2, len(close[0]["items"]) * 420, 720)
     print(o)
     return o
 
@@ -534,10 +672,61 @@ def story_sheets(outdir=None):
             cells.append(p)
             labels.append("%s, snapshot %d" % (what, i + 1))
     a2 = _xstack(cells, os.path.join(outdir, "a_models.png"), 4, 380, 380, labels)
-    print(a1)
-    print(a2)
-    print(b1)
-    return a1, a2, b1
+    ## the cuff round: three rounds of pictures (3 takes each), then the three models of round 3's takes
+    cells, labels = [], []
+    for rnd in sorted(CUFF_PROMPTS):
+        for k, p in enumerate(candidate_files("cuff_" + rnd), 1):
+            cells.append(p)
+            labels.append("cuff %s take %d%s" % (rnd, k, " [MODELLED: %s]" % picked_name(rnd, k) if picked_name(rnd, k) else ""))
+    c1 = _xstack(cells, os.path.join(outdir, "a2_pictures.png"), 3, 460, 460, labels)
+    cells, labels = [], []
+    for key in ("cuff_a", "cuff_b", "cuff_c"):
+        for i, p in enumerate(snap(key)):
+            cells.append(p)
+            labels.append("%s model, snapshot %d" % (key.replace("_", " "), i + 1))
+    c2 = _xstack(cells, os.path.join(outdir, "a2_models.png"), 4, 380, 380, labels)
+    print(a1, a2, b1, c1, c2, sep="\n")
+    return a1, a2, b1, c1, c2
+
+
+def picked_name(rnd, k):
+    """The cuff model (a, b, c) that was made from take k of round rnd, or ''."""
+    for key, v in load_state().get("picks", {}).items():
+        row, _, name = key.partition(":")
+        if row == "pic_cuff_" + rnd and v == k and name.startswith("bloodsworn_cuff_"):
+            return name[len("bloodsworn_cuff_"):]
+    return ""
+
+
+def cuff_sidecar(meta):
+    """The sidecar entries of the cuff round: each placed candidate (baked into its GLB) and the three cuff-blade parts."""
+    rec = load_records()
+    out = {}
+    for c in CUFF_CANDIDATES:
+        name = "strike_attach_" + c["key"]
+        if name not in rec:
+            continue
+        out["strike/bloodsworn_%s.glb" % name] = {
+            "group": "strike", "label": c["label"], "target": GAME_STRIKE,
+            "prompt": "%s) ATTACHMENTS WITH THE MOUNT IN THE PART: the same bare-forearm strike body as a), and a blade made together "
+                      "with its mount (a picture of a bone cuff laced with sinew and spikes with the blade growing out of it as one "
+                      "piece, an edit of the ready picture so the palette is the Bloodsworn's, then image-to-3D, %d faces), seated "
+                      "so the cuff wraps each forearm: %s. Two entries of the unit row's `attachments` (attachments.json); baked "
+                      "into one mesh here so it shows in this viewer."
+                      % (c["item"], F.measure(staged_path("model_" + c["key"]))["faces"], c["how"]),
+            "meta": dict(meta, size={"axis": "height", "men": rec[name]["men"]}, body_share=BODY_SHARE["strike_body"],
+                         faces=rec[name]["faces"])}
+    for key, what in (("cuff_a", "blade runs along the cuff's axis"), ("cuff_b", "blade stands radially from a ring"),
+                      ("cuff_c", "blade rises from the end of a tube and hooks back over it")):
+        if os.path.exists(staged_path("model_" + key)):
+            out["parts/bloodsworn_%s.glb" % key] = {
+                "group": "parts", "label": "The cuff blade %s alone (%s)" % (key[-1], what),
+                "prompt": "Part %s of the cuff round: round 3 take %d of the pictures (an edit of the ready picture: a small bone cuff "
+                          "laced with sinew with the blade growing out of it as one piece), image-to-3D at 2000 faces. %s."
+                          % (key[-1], "abc".index(key[-1]) + 1,
+                             "Not placed: its blade stands radially from the ring, so on a forearm it lies edge-on to the front camera"
+                             if key == "cuff_b" else "Placed as %s on the strike body" % {"cuff_a": "a2", "cuff_c": "a3"}[key])}
+    return out
 
 
 def build_sidecar():
@@ -557,6 +746,7 @@ def build_sidecar():
                       % F.measure(staged_path(BLADE_USED, BLADE_USED_VERSION))["faces"],
             "meta": dict(meta, size={"axis": "height", "men": rec["strike_attach"]["men"]}, body_share=BODY_SHARE["strike_body"],
                          faces=rec["strike_attach"]["faces"])},
+        **cuff_sidecar(meta),
         "strike/bloodsworn_strike_fused.glb": {
             "group": "strike", "label": "Bloodsworn · strike · b) fused blades", "target": GAME_STRIKE,
             "prompt": "b) FUSED BLADES: the ready picture edited to: the same figure, now %s. The second round's take 2 (both blades "
@@ -581,6 +771,21 @@ def build_sidecar():
     }
 
 
+def batch_sources():
+    """The batch's files: path inside the batch -> the staged GLB it is copied from (those that exist). The strike candidates are
+    baked or fused models; the parts are the models the candidates are made of."""
+    src = {"strike/bloodsworn_strike_attach.glb": staged_path("model_strike_attach"),
+           "strike/bloodsworn_strike_fused.glb": staged_path("model_strike_fused"),
+           "parts/bloodsworn_blade.glb": staged_path(BLADE_USED, BLADE_USED_VERSION),
+           "parts/bloodsworn_blade_1200.glb": staged_path("model_blade"),
+           "parts/bloodsworn_strike_body.glb": staged_path("model_strike_body")}
+    for c in CUFF_CANDIDATES:
+        src["strike/bloodsworn_strike_attach_%s.glb" % c["key"]] = staged_path("model_strike_attach_" + c["key"])
+    for key in ("cuff_a", "cuff_b", "cuff_c"):
+        src["parts/bloodsworn_%s.glb" % key] = staged_path("model_" + key)
+    return {rel: p for rel, p in src.items() if os.path.exists(p)}
+
+
 def batch(name=REVIEW_BATCH, title="M4 fixtures: the Bloodsworn strike with its forearm blades, two ways"):
     """review/<name> from the staged models: review.py from-folder (the strike items' target is the game's own strike model, so `0`
     compares), the candidate row (attachments.json) and the sheets copied in. No install action: nothing here is installed, and
@@ -590,11 +795,7 @@ def batch(name=REVIEW_BATCH, title="M4 fixtures: the Bloodsworn strike with its 
     folder = os.path.join(ROOT, GLB_CAND, "_stage_" + name)
     shutil.rmtree(folder, ignore_errors=True)
     side = build_sidecar()
-    for rel, src in (("strike/bloodsworn_strike_attach.glb", staged_path("model_strike_attach")),
-                     ("strike/bloodsworn_strike_fused.glb", staged_path("model_strike_fused")),
-                     ("parts/bloodsworn_blade.glb", staged_path(BLADE_USED, BLADE_USED_VERSION)),
-                     ("parts/bloodsworn_blade_1200.glb", staged_path("model_blade")),
-                     ("parts/bloodsworn_strike_body.glb", staged_path("model_strike_body"))):
+    for rel, src in batch_sources().items():
         os.makedirs(os.path.dirname(os.path.join(folder, rel)), exist_ok=True)
         shutil.copy2(src, os.path.join(folder, rel))
     with open(os.path.join(folder, "prompts.json"), "w") as f:
@@ -619,7 +820,8 @@ def batch(name=REVIEW_BATCH, title="M4 fixtures: the Bloodsworn strike with its 
             if e.get("target"):
                 it["target"] = e["target"]
     data.pop("actions", None)
-    data["items"].sort(key=lambda it: (0 if it.get("group") == "strike" else 1, it["id"]))  ## the two candidates first, the parts after
+    ## the strike candidates first (by their label: a, a2, a3, b), the parts after
+    data["items"].sort(key=lambda it: (0, it["label"]) if it.get("group") == "strike" else (1, it["id"]))
     tmp = bj + ".tmp"
     with open(tmp, "w") as f:
         json.dump(data, f, indent=2)
@@ -637,6 +839,20 @@ def batch(name=REVIEW_BATCH, title="M4 fixtures: the Bloodsworn strike with its 
     with open(os.path.join(bdir, "attachments.json"), "w") as f:
         json.dump(row, f, indent=1)
         f.write("\n")
+    for c in CUFF_CANDIDATES:  ## the cuff round's rows: the numbers a2 and a3 are placed with
+        if os.path.exists(cuff_row_path(c["key"])):
+            with open(cuff_row_path(c["key"])) as f:
+                crow = json.load(f)
+            crow["_note"] = ("%s) as a row of world3d/models.json would hold it (not installed). mesh is parts/bloodsworn_%s.glb of this "
+                             "batch; pivot is the centre of the cuff, so pos is where the cuff sits on the forearm of the strike body "
+                             "(parts/bloodsworn_strike_body.glb, its own space). The rot numbers are Godot's Euler (YXZ) degrees of: "
+                             "roll about the part's own long axis, then a turn about Z that sets the cuff's axis along the forearm; "
+                             "pose_size.strike.men sizes the BODY (%.3f)." % (c["item"], c["key"], men_for("strike_body")))
+            with open(os.path.join(bdir, "attachments_%s.json" % c["key"]), "w") as f:
+                json.dump(crow, f, indent=1)
+                f.write("\n")
+            if os.path.exists(cuff_params_path(c["key"])):  ## the placement in the terms it was made in (`row` turns it into the row)
+                shutil.copy2(cuff_params_path(c["key"]), os.path.join(bdir, "placement_%s.json" % c["key"]))
     os.makedirs(os.path.join(bdir, "sheets"), exist_ok=True)
     for p in glob.glob(os.path.join(SHEETS, "*.png")):
         shutil.copy2(p, os.path.join(bdir, "sheets", os.path.basename(p)))
@@ -708,6 +924,18 @@ def main(argv):
         bake(rest[0] if rest else None)
     elif cmd == "place":
         place(rest[0] if rest else None, opt.get("out"), opt.get("body", "strike_body"))
+    elif cmd == "row":
+        ## row <cuff key> [params.json]: the candidate row from its placement (cuff_row), written to the candidate's row file
+        with open(rest[1] if len(rest) > 1 else cuff_params_path(rest[0])) as f:
+            row = cuff_row(rest[0], json.load(f))
+        with open(cuff_row_path(rest[0]), "w") as f:
+            json.dump(row, f, indent=1)
+        print(cuff_row_path(rest[0]))
+    elif cmd == "place-cuffs":
+        place_cuffs()
+    elif cmd == "bake-cuffs":
+        for c in CUFF_CANDIDATES:
+            bake(cuff_row_path(c["key"]), "strike_attach_" + c["key"])
     elif cmd == "compare":
         compare(opt.get("out"))
     elif cmd == "story":

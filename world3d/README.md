@@ -241,6 +241,11 @@ row may therefore carry the part as a model of its own and name where it goes on
   graph paper of 0.1, or as the board draws figures; `tools/fixtures/bake.gd` writes the same merge to one GLB (so a part can also be
   baked in for good). `tools/ludo/asc_3d_fixtures.py place|bake|compare` drive them for the Bloodsworn strike (the numbers loop: edit
   the row's numbers, `place`, look). Nothing installed uses attachments yet; `tests/test_model_attachments.gd` covers the loader.
+- **A part with its mount.** A part made as a mount with its fixture growing out of it (a bone cuff laced round a forearm with its blade
+  as one piece: round 2 of the Bloodsworn strike) gives the part an obvious seat: `pos` is where the cuff sits on the body (the pivot is
+  the cuff's centre), and the part is turned so the cuff's axis follows the limb. That turn is a roll about the part's own axis and then a
+  turn about Z, which `rot` (Euler, Y X Z order) does not say directly: `asc_3d_fixtures.py row <part>` solves it from the placement.
+  A flat blade is edge-on from the direction along its plane, whatever the mount: a limb's blade seen from the limb's end is a line.
 
 ### Tests
 
