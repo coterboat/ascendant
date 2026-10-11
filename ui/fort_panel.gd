@@ -19,15 +19,23 @@ extends VBoxContainer
 const BREAKDOWN := "breakdown"
 const REASON := "rules_reason"
 const FONT := 17
+## UX-3: the lines the province card shows while the panel is closed (the walls, the recruits a turn, a construction, a siege that
+## stands); every other line is "the fort panel" the card's button opens (set_expanded).
+const SUMMARY := ["WallsBar", "WallsRow", "RecruitLimitLabel", "ConstructionLabel"]
 
 var map: MapScreen
 var province_id := ""
+## UX-3: the Fortify controls are the province card's own action (FortifyControls), not part of the panel there.
+var with_fortify := true
+## UX-3: all of the panel shows (the card's "Fort panel" is open), or only its SUMMARY lines.
+var expanded := true
 
 
-## The fort section for `province_id` on `host`'s side panel, or null when there is nothing to show (no sieges,
-## or no fort, no site and nothing the viewer could build there).
-static func make(host: MapScreen, pid: String) -> FortPanel:
-	var s := host.state
+## The fort section for `province_id` on `host`'s card, or null when there is nothing to show (no sieges, or no fort, no site
+## and nothing the viewer could build there). `with_fortify` false leaves the Fortify controls out (the province card shows them
+## as its own action, FortifyControls). `open` false shows only the SUMMARY lines until set_expanded(true).
+static func make(host: MapScreen, pid: String, with_fortify_controls: bool = true, open: bool = true) -> FortPanel:
+	var s := host.board_state()
 	var p := s.find_province(pid) if s != null else null
 	if p == null or not s.sieges:
 		return null
@@ -36,8 +44,38 @@ static func make(host: MapScreen, pid: String) -> FortPanel:
 	var panel := FortPanel.new()
 	panel.map = host
 	panel.province_id = pid
+	panel.with_fortify = with_fortify_controls
 	panel._build()
+	panel.set_expanded(open)
+	if panel.get_child_count() == 0:
+		panel.free()  # an owned province with nothing built: only the Fortify controls would have been here
+		return null
 	return panel
+
+
+## What a siege asks of the viewer at `pid`: "storm" (their armies are at an enemy fort with a garrison inside: Storm or wait),
+## "sally" (their own fort is besieged with walls left: Sally, or hold) or "". The panel's choices and the army card's siege
+## action follow the same rule.
+static func siege_choice(host: MapScreen, pid: String) -> String:
+	var s := host.board_state()
+	var p := s.find_province(pid) if s != null else null
+	if p == null or not s.sieges or host.orders == null or s.find_faction(host.viewing_faction_id) == null:
+		return ""
+	var viewer := host.viewing_faction_id
+	var stands := p.fort_level > 0 and SiegeRules.siege_stands(s, pid)
+	if stands and p.owner == viewer and p.walls > 0:
+		return "sally"
+	if p.fort_level > 0 and p.owner != viewer and not SiegeRules.garrison(s, pid).is_empty() and not host.orders.storm_armies(pid).is_empty():
+		return "storm"
+	return ""
+
+
+## Shows all of the panel, or only the lines the card keeps in view (SUMMARY).
+func set_expanded(on: bool) -> void:
+	expanded = on
+	for c in get_children():
+		if c is CanvasItem:
+			c.visible = on or SUMMARY.has(String(c.name)) or c.has_meta("summary")
 
 
 ## Whether the viewer could ever fortify `p` (theirs, not a capital, below a keep): the Fortify button shows.
@@ -52,7 +90,7 @@ func _init() -> void:
 
 
 func _build() -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var p := s.find_province(province_id)
 	var viewer := map.viewing_faction_id
 	var stands := p.fort_level > 0 and SiegeRules.siege_stands(s, province_id)
@@ -74,24 +112,27 @@ func _build() -> void:
 		_add_siege(p, viewer)
 	if map.orders == null or s.find_faction(viewer) == null:
 		return
-	if stands and p.owner == viewer and p.walls > 0:
-		_add_sally(p, viewer)
-	elif p.fort_level > 0 and p.owner != viewer and not SiegeRules.garrison(s, province_id).is_empty() \
-			and not map.orders.storm_armies(province_id).is_empty():
-		_add_storm(p, viewer)
-	if _may_fortify_here(map, p):
-		_add_fortify(p)
+	match siege_choice(map, province_id):
+		"sally":
+			_add_sally(p, viewer)
+		"storm":
+			_add_storm(p, viewer)
+	if with_fortify and _may_fortify_here(map, p):
+		var fortify := FortifyControls.make(map, province_id)
+		if fortify != null:
+			add_child(fortify)
 
 
 # --- what the fort is ----------------------------------------------------------------------------------
 
 func _add_status(p: Province, stands: bool) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	if stands:
 		var who := FortView.besieger_name(s, province_id)
 		var n := SiegeRules.turn_of_siege(s, province_id)
 		var text := ("Breached, with the %s outside: turn %d of the siege" if p.walls <= 0 else "Besieged by the %s: turn %d of the siege") % [who, n]
-		_number("SiegeStatusLabel", text, FortView.turn_of_siege_breakdown(s, province_id), UiPalette.NEGATIVE.lightened(0.15))
+		var status := _number("SiegeStatusLabel", text, FortView.turn_of_siege_breakdown(s, province_id), UiPalette.NEGATIVE.lightened(0.15))
+		status.set_meta("summary", true)  # a siege that stands shows on the closed card
 		return
 	var quiet := "Not besieged: the walls repair while no army of another faction is here." \
 		if p.walls < SiegeRules.walls_max(p.fort_level) else "Not besieged, walls whole."
@@ -101,9 +142,10 @@ func _add_status(p: Province, stands: bool) -> void:
 
 
 func _add_walls(p: Province) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var walls := Breakdown.walls(s, province_id)
 	var bar := WallsBar.new(p.walls, SiegeRules.walls_max(p.fort_level), 14.0, 1.0)
+	bar.name = "WallsBar"
 	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.tooltip_text = TooltipText.from_breakdown(walls)
 	bar.set_meta(BREAKDOWN, walls)
@@ -122,7 +164,7 @@ func _add_walls(p: Province) -> void:
 
 
 func _add_recruits(p: Province, viewer: String) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var mine := p.owner == viewer and map.orders != null
 	var b := Breakdown.recruit_limit(s, province_id, viewer if mine else p.owner, map.orders.orders() if mine else [])
 	var text := "Recruits: %d a turn (%s)" % [int(b.total), SiegeRules.level_word(p.fort_level)]
@@ -136,7 +178,7 @@ func _add_recruits(p: Province, viewer: String) -> void:
 # --- the siege -----------------------------------------------------------------------------------------
 
 func _add_siege(p: Province, viewer: String) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var inside := SiegeRules.garrison(s, province_id)
 	var outside := SiegeRules.besiegers(s, province_id)
 	_number("InsideLabel", "Inside the walls: %s (%s)" % [_names(inside), _count(SiegeRules.troops(inside), "troop")],
@@ -163,7 +205,7 @@ func _add_siege(p: Province, viewer: String) -> void:
 
 
 func _add_cut_off(p: Province) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var info := SiegeRules.cut_off_info(s, province_id)
 	var b := Breakdown.cut_off(s, province_id)
 	var who := FortView.besieger_name(s, province_id)
@@ -182,7 +224,7 @@ func _add_cut_off(p: Province) -> void:
 # --- the viewer's choices ------------------------------------------------------------------------------
 
 func _add_sally(p: Province, viewer: String) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var o := map.orders
 	_add_garrison_odds(p, viewer)
 	_heading("SallyHeading", "Sally: come out and fight", "sally")
@@ -244,7 +286,7 @@ func _add_sally(p: Province, viewer: String) -> void:
 ## The garrison's odds lines (S-2, §9.2), before its choices: holding a storm, a sally with every army but the
 ## ruler's, and a relief with that sally.
 func _add_garrison_odds(p: Province, viewer: String) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var fc := FortView.siege_forecast(s, viewer, province_id, map.orders.orders())
 	if not fc.has("storm_odds") and not fc.has("sally_odds"):
 		return
@@ -268,7 +310,7 @@ func _odds_line(node_name: String, text: String, odds: Dictionary, title: String
 
 
 func _add_storm(p: Province, viewer: String) -> void:
-	var s := map.state
+	var s := map.board_state()  # ARM-1: the board a queued muster leaves, so an army it forms can sally
 	var o := map.orders
 	_heading("StormHeading", "Storm or wait", "storm")
 	var toggle := CheckButton.new()
@@ -318,37 +360,6 @@ func _add_storm(p: Province, viewer: String) -> void:
 		var ra := s.find_army(String(fc.reach[0]))
 		_odds_line("ReliefStormOdds", "Storming with their army from %s arriving too: %%s." % s.find_province(ra.location).name,
 			fc.get("relief_storm_odds", {}), "Storm odds with their relief")
-
-
-func _add_fortify(p: Province) -> void:
-	var s := map.state
-	var o := map.orders
-	var to := SiegeRules.fortify_level(s, province_id)
-	var i := o.fortify_index(province_id)
-	if i >= 0:
-		var fb := o.fortify_breakdown(i)
-		var fc := o.fortify_preview(province_id)
-		var text := "Fortify ordered: %s at %s for %d gold (%d gold left). It stands at the end of turn %d if no enemy army stands here, and takes recruits from turn %d. Cancel it in your orders." % [
-			SiegeRules.fort_phrase(to), p.name, int(fc.cost), int(fb.total), int(fc.stands), int(fc.recruit_from)] if fc.ok else String(o.order_texts()[i])
-		_number("FortifyQueued", text, fb, UiPalette.GILT)
-		return
-	var fc2 := o.fortify_preview(province_id)
-	var button := Button.new()
-	button.name = "FortifyButton"
-	var verb := "Fortify: build a %s" % SiegeRules.level_word(to) if p.fort_level <= 0 else "Upgrade to a %s" % SiegeRules.level_word(to)
-	button.text = "%s (%d gold, %s)" % [verb, int(SiegeRules.level_data(to).cost), _count(int(SiegeRules.level_data(to).turns), "turn")]
-	button.focus_mode = Control.FOCUS_NONE
-	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	button.add_theme_font_size_override("font_size", FONT)
-	button.add_theme_color_override("font_color", UiPalette.GILT)
-	button.disabled = not bool(fc2.ok)
-	button.tooltip_text = TooltipText.plain(verb if p.fort_level > 0 else "Fortify", String(fc2.text) if fc2.ok else String(fc2.reason))
-	CodexLink.attach(button, "fortify", map.request_codex)
-	var pid := province_id
-	button.pressed.connect(func(): map.queue_fortify(pid))
-	add_child(button)
-	if not fc2.ok:
-		_reason("FortifyReason", String(fc2.reason))
 
 
 # --- nodes ------------------------------------------------------------------------------------------
@@ -402,7 +413,7 @@ func _label(node_name: String, text: String, colour: Color, parent: Control = nu
 
 ## "the Crown's 3rd and King Corvane I" for armies.
 func _names(armies: Array) -> String:
-	return RulerRules._and_list(armies.map(func(a): return TurnReportText.army_name(map.state, a.id, a.owner)))
+	return RulerRules._and_list(armies.map(func(a): return TurnReportText.army_name(map.board_state(), a.id, a.owner)))
 
 
 static func _count(n: int, singular: String, plural: String = "") -> String:

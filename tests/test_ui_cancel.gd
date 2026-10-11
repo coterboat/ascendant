@@ -148,18 +148,18 @@ func test_the_codex_routes_through_the_dispatcher_not_around_it() -> void:
 func test_the_ruler_panel_and_the_sacrifice_dialog_over_the_card() -> void:
 	var game := _game({"players": [CROWN, CLANS], "seed": 77, "rulers": true})
 	var map := game.map
-	assert_true(map.details_card.visible, "the capital's card is up")
+	assert_true(map.cards.visible, "the capital's card is up")
 	map.open_ruler_panel()
 	map.open_sacrifice_dialog("")
 	assert_true(map.sacrifice_dialog.visible and map.ruler_panel.visible)
 	assert_eq(map.ui_cancel.cancel(), "modal")
 	assert_false(map.sacrifice_dialog.visible, "the dialog over the panel closes first")
-	assert_true(map.ruler_panel.visible and map.details_card.visible)
+	assert_true(map.ruler_panel.visible and map.cards.visible)
 	assert_eq(map.ui_cancel.cancel(), "modal")
 	assert_false(map.ruler_panel.visible, "then the panel")
-	assert_true(map.details_card.visible, "the card is not touched yet")
+	assert_true(map.cards.visible, "the card is not touched yet")
 	assert_eq(map.ui_cancel.cancel(), "card")
-	assert_false(map.details_card.visible)
+	assert_false(map.cards.visible)
 	game.free()
 
 
@@ -232,9 +232,9 @@ func test_under_the_handoff_cover_esc_does_nothing() -> void:
 func test_esc_with_nothing_open_but_a_card_closes_the_card_then_opens_the_menu() -> void:
 	var game := _game()
 	var map := game.map
-	assert_true(map.details_card.visible)
+	assert_true(map.cards.visible)
 	game._unhandled_input(_esc())
-	assert_false(map.details_card.visible, "the first Esc closes the card")
+	assert_false(map.cards.visible, "the first Esc closes the card")
 	assert_false(game.menu_overlay.visible)
 	game._unhandled_input(_esc())
 	assert_true(game.menu_overlay.visible, "the second opens the menu")
@@ -332,9 +332,9 @@ func test_a_right_click_on_empty_3d_board_closes_the_topmost_thing() -> void:
 	assert_true(b.province_at(Vector2(2, 2)).is_empty() and b.army_at(Vector2(2, 2)).is_empty(), "the corner of the board is empty sea")
 	var click := CodexLink.right_click()
 	click.position = Vector2(2, 2)
-	assert_true(map.details_card.visible)
+	assert_true(map.cards.visible)
 	b._gui_input(click)
-	assert_false(map.details_card.visible, "the card closed")
+	assert_false(map.cards.visible, "the card closed")
 	b._gui_input(click)
 	assert_false(game.menu_overlay.visible, "and a second right-click does not open the menu")
 	# On a province or an army a right-click is its codex entry, as it was.
@@ -343,10 +343,10 @@ func test_a_right_click_on_empty_3d_board_closes_the_topmost_thing() -> void:
 	var on_land := CodexLink.right_click()
 	on_land.position = at
 	map.select_province(capital)
-	assert_true(map.details_card.visible)
+	assert_true(map.cards.visible)
 	b._gui_input(on_land)
 	assert_true(game.codex.visible, "a right-click on land opens its codex entry")
-	assert_true(map.details_card.visible, "and closes nothing")
+	assert_true(map.cards.visible, "and closes nothing")
 	game.free()
 
 
@@ -354,9 +354,9 @@ func test_a_right_click_on_the_empty_2d_map_closes_the_topmost_thing() -> void:
 	var game := _game()
 	var map := game.map
 	assert_true(map.board == null, "the 2D map")
-	assert_true(map.details_card.visible)
+	assert_true(map.cards.visible)
 	map._on_map_view_input(CodexLink.right_click())
-	assert_false(map.details_card.visible, "the card closed")
+	assert_false(map.cards.visible, "the card closed")
 	map._on_map_view_input(CodexLink.right_click())
 	assert_false(game.menu_overlay.visible, "a right-click never opens the menu")
 	game.free()
@@ -366,10 +366,10 @@ func test_a_right_click_on_a_2d_region_is_its_codex_entry_not_a_cancel() -> void
 	var game := _game()
 	var map := game.map
 	var region: ProvinceRegion = map.regions["westwatch"]
-	assert_true(map.details_card.visible)
+	assert_true(map.cards.visible)
 	region.gui_input.emit(CodexLink.right_click())
 	assert_true(game.codex.visible, "the region's own codex link took the click")
-	assert_true(map.details_card.visible, "the card stays")
+	assert_true(map.cards.visible, "the card stays")
 	game.free()
 
 
@@ -382,9 +382,9 @@ func test_the_map_previews_codex_closes_through_the_dispatcher() -> void:
 	assert_true(map.own_codex.cancel_router.is_valid())
 	assert_true(map.own_codex.handle_cancel(_esc()))
 	assert_false(map.own_codex.visible, "the preview's codex closes")
-	assert_true(map.details_card.visible, "and the card under it stays")
+	assert_true(map.cards.visible, "and the card under it stays")
 	map._unhandled_input(_esc())
-	assert_false(map.details_card.visible, "the preview has no game screen: the map handles Esc itself and closes the card")
+	assert_false(map.cards.visible, "the preview has no game screen: the map handles Esc itself and closes the card")
 	map.free()
 
 
@@ -392,7 +392,7 @@ func test_the_game_screen_and_the_map_do_not_both_handle_one_press() -> void:
 	var game := _game()
 	assert_true(game.map.intercept_back, "the map leaves Esc to the game screen")
 	game.map._unhandled_input(_esc())
-	assert_true(game.map.details_card.visible, "so the map's own handler did nothing")
+	assert_true(game.map.cards.visible, "so the map's own handler did nothing")
 	game._unhandled_input(_esc())
-	assert_false(game.map.details_card.visible, "and the game screen's closed one thing")
+	assert_false(game.map.cards.visible, "and the game screen's closed one thing")
 	game.free()

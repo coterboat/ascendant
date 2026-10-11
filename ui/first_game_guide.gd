@@ -55,10 +55,10 @@ const HOW_TO_PLAY := "how_to_play"
 ## The three steps: each a single line that says what to do, and a tooltip with the rest.
 const STEPS := [
 	{"id": "move", "title": "Move an army: click it, then a neighbor",
-		"tip": "Click one of your armies, then a province next to it. The move is listed under Your orders this turn, with its forecast, and nothing happens until every player has ended the turn. An army you don't move holds where it is.",
+		"tip": "Click one of your armies, then a province next to it. The move shows on the army's card and under the tray's Orders button, with its forecast, and nothing happens until every player has ended the turn. An army you don't move holds where it is.",
 		"entry": "move"},
 	{"id": "recruit", "title": "Recruit at your capital (the card)",
-		"tip": "Your capital is selected: press a Recruit button on the card at the bottom left. The price is paid, and the unit joins you, when the turn resolves.",
+		"tip": "Your capital is selected: press Recruit on its card at the bottom left, then a unit. The price is paid, and the unit joins you, when the turn resolves.",
 		"entry": "recruit"},
 	{"id": "end_turn", "title": "End your turn (the seal, bottom right)",
 		"tip": "End turn locks your orders in. Every player's orders then resolve together, in one fixed order, and the turn report tells you what happened and why.",

@@ -822,6 +822,52 @@ static func blessing_of(state: GameState, army_id: String) -> Dictionary:
 	return {}
 
 
+## Whether blessing `blessing` (an enchantment) covers `unit`, a fighter of `army`: the blessing lists the army, and the
+## unit is not marked outside it (ARM-1, design/ARM1_SPLIT_MERGE.md §2.1: a unit that joined the army after the casting
+## isn't blessed). Every reader of a blessing's coverage decides through this, per fighter.
+static func covers(blessing: Dictionary, army_id: String, unit: Unit) -> bool:
+	return Array(blessing.get("armies", [])).has(army_id) and not unit.has_status(UnitStatus.OUTSIDE_BLESSING, String(blessing.get("id", "")))
+
+
+## Clears the "outside the blessing" markers of enchantment `enchantment_id` (UnitStatus.clear_source): from every
+## unit, or only from those in `army_ids` when given. The one call every path that ends or restarts a blessing makes
+## (ARM-1 §2.1). Returns how many markers it cleared.
+static func clear_outside(state: GameState, enchantment_id: String, army_ids: Array = []) -> int:
+	return UnitStatus.clear_source(state, enchantment_id, "source_ends", army_ids)
+
+
+## How much of `army` its blessing covers (ARM-1, §2.1): {"blessing": the enchantment or {}, "covered": fighters under it,
+## "total": the army's fighters (units, commander, ruler), "outside": fighters that joined after it was cast}. An army with no
+## blessing has none covered and none outside.
+static func blessing_coverage(state: GameState, army: Army) -> Dictionary:
+	var b := blessing_of(state, army.id)
+	var total := 0
+	var covered := 0
+	for u in UnitStatus.army_fighters(army):
+		total += 1
+		if not b.is_empty() and covers(b, army.id, u):
+			covered += 1
+	return {"blessing": b, "covered": covered, "total": total, "outside": (total - covered) if not b.is_empty() else 0}
+
+
+## The counts for players (ARM-1, §2.1): "all 8 fighters" when the blessing covers the whole army, "6 of 8 fighters; 2 joined
+## after it was cast" when some are outside it. "" for an army with no blessing.
+static func coverage_words(cov: Dictionary) -> String:
+	if cov.blessing.is_empty():
+		return ""
+	if int(cov.outside) <= 0:
+		return "all %d %s" % [int(cov.total), "fighter" if int(cov.total) == 1 else "fighters"]
+	return "%d of %d fighters; %d joined after it was cast" % [int(cov.covered), int(cov.total), int(cov.outside)]
+
+
+## Takes army `army_id` out of every blessing that lists it (a muster disbanded it: ARM-1). A blessing left with no army
+## stays in play, empty, until the enchantments phase ends it ("no army left"), as when its last army is destroyed.
+static func forget_army(state: GameState, army_id: String) -> void:
+	for e in state.enchantments:
+		if String(e.kind) == "blessing" and Array(e.armies).has(army_id):
+			e.armies = Array(e.armies).filter(func(aid): return String(aid) != army_id)
+
+
 ## Far Sight's reading of `faction_id` (§6.2): everything private but its research target, as it stands now.
 ## {"faction", "gold", "mandates", "kept_power", "research_points", "nodes" (researched, in order), "spells", "spellbook"}.
 static func reading(state: GameState, faction_id: String) -> Dictionary:
@@ -943,12 +989,19 @@ static func ritual_effect(state: GameState, faction_id: String, order) -> Dictio
 			var kept := []
 			for e in state.enchantments:
 				if String(e.kind) == "blessing" and String(e.faction) == faction_id and String(e.id) != same:
+					var listed: Array = Array(e.armies).duplicate()
 					e.armies = e.armies.filter(func(aid): return not blessed.has(String(aid)))
+					# ARM-1 (§2.1): the armies that leave this blessing take its "outside" markers off their fighters (one left
+					# empty ends here, and no marker of it can outlive it)
+					clear_outside(state, String(e.id), listed.filter(func(aid): return blessed.has(String(aid))))
 					if e.armies.is_empty():
 						continue
 				kept.append(e)
 			state.enchantments = kept
 			var began := _begin(state, faction_id, order.ritual, kind, order.target, turn, until, bonus, blessed)
+			# ARM-1 (§2.1): a re-cast keeps the blessing's id, so it clears the markers by hand: the new casting covers everyone
+			# in the armies it now lists
+			clear_outside(state, String(began.id), blessed)
 			out.enchantment = began.id
 			out.restarted = began.restarted
 			out.blessed = blessed
@@ -1186,7 +1239,7 @@ static func _effect_words(state: GameState, after: GameState, faction_id: String
 				# §11.2: each army with its size ("the Crown's 3rd (24 fighters)").
 				names = Array(fx.blessed).map(func(aid): return "%s (%s)" % [TurnReportText.army_name(after, String(aid), faction_id),
 					fighters_words(after, after.find_army(String(aid))) if after.find_army(String(aid)) != null else "gone"])
-				return "blesses %s there, %s, through turn %d: %s Armies arriving this turn aren't blessed." % [
+				return "blesses %s there, %s, through turn %d: %s Armies arriving this turn aren't blessed, and neither are fighters who join these armies later, by a muster or as recruits, until you cast it again." % [
 					_count(names.size(), "army of yours", "armies of yours"), _and_list(names), until, effect]
 			return "%s %s blessed through turn %d: %s" % [Serial.cap(_and_list(names)), "is" if names.size() == 1 else "are", until, effect]
 		"summon":
@@ -1461,11 +1514,16 @@ static func enchantment_step(state: GameState, turn: int) -> Dictionary:
 				if a == null or a.location != pid or not can_heal(state, a.owner, pid):
 					continue
 				var budget := int(spell_numbers(String(e.ritual), int(e.bonus)).value)
-				var healed := _give(state, [a], budget)
+				var healed := _give(state, [a], budget, String(e.id))  # ARM-1: the fighters marked outside this blessing get none
 				if not healed.is_empty():
-					out.healed.append({"enchantment": String(e.id), "ritual": String(e.ritual), "faction": String(e.faction), "army": a.id,
+					var row := {"enchantment": String(e.id), "ritual": String(e.ritual), "faction": String(e.faction), "army": a.id,
 						"province": pid, "budget": budget, "total": healed.reduce(func(t, h): return t + int(h.to) - int(h.from), 0),
-						"healed": healed, "until_turn": int(e.until_turn)})
+						"healed": healed, "until_turn": int(e.until_turn)}
+					var cov := blessing_coverage(state, a)
+					if int(cov.outside) > 0:
+						row["outside"] = int(cov.outside)  # only an army with fighters outside its blessing carries these
+						row["fighters"] = int(cov.total)
+					out.healed.append(row)
 		for e in state.enchantments:
 			if String(e.kind) != "curse" or String(e.province) != pid:
 				continue
@@ -1520,6 +1578,8 @@ static func enchantment_step(state: GameState, turn: int) -> Dictionary:
 		if cause.is_empty():
 			kept.append(e)
 		else:
+			if String(e.kind) == "blessing":
+				clear_outside(state, String(e.id))  # ARM-1 (§2.1): no marker outlives the blessing it is outside of
 			var ended := enchantment_copy(e)
 			ended["cause"] = cause
 			out.ended.append(ended)
@@ -1529,11 +1589,13 @@ static func enchantment_step(state: GameState, turn: int) -> Dictionary:
 
 ## Gives `budget` hit points to the armies' wounded fighters, one at a time to the one with the fewest left (ties: the
 ## first in fighter order), never above its maximum. Returns [{"army", "index" (in fighter order), "name", "from", "to"}].
-static func _give(state: GameState, armies: Array, budget: int) -> Array:
+static func _give(state: GameState, armies: Array, budget: int, blessing_id: String = "") -> Array:
 	var fighters := []
 	for a in armies:
 		var members := _members(a)
 		for i in members.size():
+			if not blessing_id.is_empty() and members[i].has_status(UnitStatus.OUTSIDE_BLESSING, blessing_id):
+				continue  # ARM-1 (§2.1): it joined this army after the blessing was cast, so the blessing skips it
 			fighters.append({"army": a.id, "index": i, "unit": members[i], "max": _max_hp(state, members[i])})
 	var changed := {}
 	for _i in budget:
@@ -1610,9 +1672,12 @@ static func _enchantment(state: GameState, eid: String) -> Dictionary:
 
 ## The blessing_healed sentence.
 static func healed_text(state: GameState, h: Dictionary) -> String:
-	return "%s healed %s at %s: %d hit points to %s, the most wounded first (up to %d a turn, through turn %d)." % [
+	var text := "%s healed %s at %s: %d hit points to %s, the most wounded first (up to %d a turn, through turn %d)." % [
 		spell_name(String(h.ritual)), TurnReportText.army_name(state, String(h.army), String(h.faction)), _province_name(state, String(h.province)),
 		int(h.total), _count(h.healed.size(), "wounded fighter", "wounded fighters"), int(h.budget), int(h.until_turn)]
+	if int(h.get("outside", 0)) > 0:  # ARM-1 (§2.1): only an army with fighters outside its blessing says so
+		text += " It blesses %d of the army's %d fighters; %d joined after it was cast." % [int(h.fighters) - int(h.outside), int(h.fighters), int(h.outside)]
+	return text
 
 
 ## The curse_bit sentence: what the curse took, from whom, and when it ends.

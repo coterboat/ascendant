@@ -323,52 +323,53 @@ func current_order_texts() -> Array:
 ##   "Move the Crown's 1st (Spearmen, Crossbowmen, Knights and Knight Captain) from Crownkeep to Westwatch."
 ##   "Recruit Spearmen at Crownkeep for 8 gold."
 func describe_order(faction_id: String, order) -> String:
+	var board := _board_for(faction_id)  # ARM-1: with musters queued, an army they form is on the board its orders are about
 	if order is MoveOrder:
-		var army := _state.find_army(order.army_id)
-		var to := TurnResolver._province_name(_state, order.to)
+		var army := board.find_army(order.army_id)
+		var to := TurnResolver._province_name(board, order.to)
 		if army == null:  # as the order check says it (TurnResolver.check_move's "unknown_army")
 			return "Move an army that is not on the map to %s." % to
-		var who := "%s from %s" % [TurnReportText.army_title(_state, army, false), TurnResolver._province_name(_state, army.location)]
-		if order.is_road_move() and TurnResolver.road_rule(_state, faction_id, order) == "forest_stride":  # M4-2
-			return "Move %s to %s through the forest of %s (Forest Stride)." % [who, to, TurnResolver._province_name(_state, order.via)]
+		var who := "%s from %s" % [TurnReportText.army_title(board, army, false), TurnResolver._province_name(board, army.location)]
+		if order.is_road_move() and TurnResolver.road_rule(board, faction_id, order) == "forest_stride":  # M4-2
+			return "Move %s to %s through the forest of %s (Forest Stride)." % [who, to, TurnResolver._province_name(board, order.via)]
 		if order.is_road_move():  # King's Roads (M2-4)
-			return "Move %s to %s by the King's Roads through %s." % [who, to, TurnResolver._province_name(_state, order.via)]
+			return "Move %s to %s by the King's Roads through %s." % [who, to, TurnResolver._province_name(board, order.via)]
 		return "Move %s to %s." % [who, to]
 	if order is RecruitOrder:
-		var faction := _state.find_faction(faction_id)
+		var faction := board.find_faction(faction_id)
 		var ut: UnitType = TurnResolver.recruitable_type(faction, order.unit_type_id, _state) if faction else null
 		if ut == null:
-			return "Recruit %s." % TurnResolver._unit_type_name(_state, order.unit_type_id)
+			return "Recruit %s." % TurnResolver._unit_type_name(board, order.unit_type_id)
 		# The price the recruitment phase charges (Muster Grounds included, M2-4).
-		var price := TurnResolver.recruit_cost(_state, faction_id, ut.id)
+		var price := TurnResolver.recruit_cost(board, faction_id, ut.id)
 		if order.is_with_ruler():  # Warband Muster (M2-4)
-			return "Recruit %s with %s for %d gold." % [ut.name, RulerRules.current_name(_state, faction_id), price]
-		var where := TurnResolver.recruit_at(_state, faction, order)  # M3c: a recruit at a fort names it
-		return "Recruit %s at %s for %d gold." % [ut.name, TurnResolver._province_name(_state, faction.capital if where.is_empty() else where), price]
+			return "Recruit %s with %s for %d gold." % [ut.name, RulerRules.current_name(board, faction_id), price]
+		var where := TurnResolver.recruit_at(board, faction, order)  # M3c: a recruit at a fort names it
+		return "Recruit %s at %s for %d gold." % [ut.name, TurnResolver._province_name(board, faction.capital if where.is_empty() else where), price]
 	if order is FortifyOrder:  # M3c
-		var to := SiegeRules.fortify_level(_state, order.province)
-		return "Fortify %s: build %s there for %d gold (%d turns of work)." % [TurnResolver._province_name(_state, order.province),
+		var to := SiegeRules.fortify_level(board, order.province)
+		return "Fortify %s: build %s there for %d gold (%d turns of work)." % [TurnResolver._province_name(board, order.province),
 			SiegeRules.fort_phrase(to), int(SiegeRules.level_data(to).cost), int(SiegeRules.level_data(to).turns)]
 	if order is SiegeOrder:  # M3c
 		if order.is_storm():
-			return "Storm the walls of %s with every army of yours there." % TurnResolver._province_name(_state, order.province)
-		var army := _state.find_army(order.army_id)
+			return "Storm the walls of %s with every army of yours there." % TurnResolver._province_name(board, order.province)
+		var army := board.find_army(order.army_id)
 		if army == null:  # as the order check says it
 			return "Sally out with an army that is not on the map."
-		var who := TurnReportText.army_title(_state, army, false)
-		var where := TurnResolver._province_name(_state, army.location)
+		var who := TurnReportText.army_title(board, army, false)
+		var where := TurnResolver._province_name(board, army.location)
 		if not order.with_army.is_empty():
-			var relief := _state.find_army(order.with_army)
+			var relief := board.find_army(order.with_army)
 			return "Sally out of %s with %s, together with the relief from %s." % [where, who,
-				TurnResolver._province_name(_state, relief.location) if relief else "an army that is not on the map"]
+				TurnResolver._province_name(board, relief.location) if relief else "an army that is not on the map"]
 		return "Sally out of %s with %s against the siege lines." % [where, who]
 	if order is SacrificeOrder:  # M2-6
 		var mid: String = order.mandate_id
 		return "Sacrifice: %s gives up %d power for %s (%d, +%d for a mid-game sacrifice)." % [
-			RulerRules._cap(RulerRules.current_name(_state, faction_id)), RulerRules.sacrifice_cost(mid),
+			RulerRules._cap(RulerRules.current_name(board, faction_id)), RulerRules.sacrifice_cost(mid),
 			RulerRules.mandate_name(mid), RulerRules.mandate_cost(mid), MandateData.SACRIFICE_PREMIUM]
 	if order is ResearchOrder:  # M4: the research target (shown only to its own player)
-		var fc := Forecast.research(_state, faction_id, [order])
+		var fc := Forecast.research(board, faction_id, [order])
 		if not fc.ok:
 			return "Research %s." % AscensionRules.node_name(order.node_id)
 		return "Research %s next (%d research, done at the end of %s)." % [fc.name, fc.cost,
@@ -376,13 +377,31 @@ func describe_order(faction_id: String, order) -> String:
 	if order is SpellbookOrder:  # M5-5: the battle spellbook, in order, with the spells switched off
 		return "Set your battle spellbook: %s." % MagicRules.spellbook_text(order.order, order.off)
 	if order is CastOrder:  # M5-5
-		var army := _state.find_army(order.army_id)
-		var who := "%s at %s" % [TurnReportText.army_title(_state, army, false), TurnResolver._province_name(_state, army.location)] \
+		var army := board.find_army(order.army_id)
+		var who := "%s at %s" % [TurnReportText.army_title(board, army, false), TurnResolver._province_name(board, army.location)] \
 			if army != null else "an army that is not on the map"
-		var on := " on %s" % TurnResolver._province_name(_state, order.target) if not order.target.is_empty() else ""
-		var paid := "in blood" if order.pay == CastOrder.BLOOD else "for %d gold" % int(MagicRules.price(_state, faction_id, order.ritual, order.size).gold)
+		var on := " on %s" % TurnResolver._province_name(board, order.target) if not order.target.is_empty() else ""
+		var paid := "in blood" if order.pay == CastOrder.BLOOD else "for %d gold" % int(MagicRules.price(board, faction_id, order.ritual, order.size).gold)
 		return "Cast %s%s from %s, %s." % [MagicRules.spell_name(order.ritual), on, who, paid]
+	if order is MusterOrder:  # ARM-1: on the board the earlier musters leave, so the unit places mean the units they will be
+		var prior := []
+		for o in current_orders() if faction_id == current_player() else []:
+			if is_same(o, order):
+				break
+			prior.append(o)
+		return MusterRules.order_text(RulerRules.state_after_orders(_state, faction_id, prior), faction_id, order)
 	return "An order this game does not know."
+
+
+## The board `faction_id`'s queued orders are about: the state, or (ARM-1) with its queued musters applied, which are
+## hoisted before every other order (RulerRules.state_after_orders). Only the current player's orders are ever queued.
+func _board_for(faction_id: String) -> GameState:
+	if _phase != Phase.ORDERS or faction_id != current_player():
+		return _state
+	var queued := current_orders()
+	if not MusterRules.has_musters(queued):
+		return _state  # no musters: the text is exactly what it always was
+	return RulerRules.state_after_orders(_state, faction_id, queued)
 
 
 ## What the handoff screen shows. "" outside the HANDOFF phase.
@@ -602,6 +621,11 @@ static func replay(game_record, battle_resolver: BattleResolver = null, up_to_tu
 		var orders := OrderBook.orders_from_dict(orders_data, order_errors)
 		for e in order_errors:
 			errors.append("Turn %d: %s" % [i + 1, e])
+		# ARM-1 (§1): a malformed muster is an error that stops the replay, never an order skipped.
+		var bad_musters := OrderBook.malformed_musters(orders)
+		if not bad_musters.is_empty():
+			errors.append_array(bad_musters.map(func(m): return "Turn %d: %s" % [i + 1, m]))
+			return {"state": null, "events": [], "errors": errors}
 		var result := TurnResolver.resolve(state, orders, Serial.to_int(entry.get("seed", 0)), battle_resolver)
 		if result.new_state == null:
 			errors.append_array(result.get("errors", []))

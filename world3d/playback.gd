@@ -57,6 +57,62 @@ static func model_of(state: GameState) -> Dictionary:
 	return out
 
 
+## ARM-1: the state the turn's movement starts from, for the playback: `before` with the turn's muster events applied (the armies a
+## split formed, the units a transfer moved, a merge's, a swap's, the armies a muster disbanded), so an army formed this turn can be
+## seen marching the same turn. Musters run first in the orders phase, before anyone moves, so this is what the board stood on when
+## the marches began. `before` itself when the turn held no muster. Fighters are moved by their type (the events name types, not
+## places), which is all a board needs; a copy, so `before` is never changed.
+static func muster_start(before: GameState, events: Array) -> GameState:
+	var any := false
+	for e in events:
+		if MusterRules.EVENT_TYPES.has(String(e.get("type", ""))):
+			any = true
+			break
+	if not any or before == null:
+		return before
+	var s := before.deep_copy([])
+	if s == null:
+		return before
+	for e in events:
+		var n: Dictionary = e.get("numbers", {})
+		match String(e.get("type", "")):
+			"army_split", "units_transferred", "armies_merged":
+				var from := s.find_army(String(n.get("from", "")))
+				if from == null:
+					continue
+				var to := s.find_army(String(n.get("to", "")))
+				if to == null:
+					to = Army.new()
+					to.id = String(n.get("to", ""))
+					to.owner = from.owner
+					to.location = from.location
+					s.armies.append(to)
+				for type_id in n.get("units", []):
+					for i in from.units.size():
+						if from.units[i].type.id == String(type_id):
+							to.units.append(from.units[i])
+							from.units.remove_at(i)
+							break
+				if not String(n.get("commander", "")).is_empty() and from.commander != null:
+					to.commander = from.commander
+					from.commander = null
+				var engines := mini(int(n.get("engines", 0)), from.engines)
+				from.engines -= engines
+				to.engines += engines
+			"commanders_swapped":
+				var a := s.find_army(String(n.get("a", "")))
+				var b := s.find_army(String(n.get("b", "")))
+				if a != null and b != null:
+					var keep := a.commander
+					a.commander = b.commander
+					b.commander = keep
+			"army_disbanded":
+				var gone := s.find_army(String(n.get("army", "")))
+				if gone != null:
+					s.armies.erase(gone)
+	return s
+
+
 ## The model after a turn's events, from the events alone:
 ##   army_moved             the army stands at the event's last province (a road move's way is in between)
 ##   battle, border_battle  every army in numbers.destroyed is gone
@@ -111,6 +167,17 @@ static func apply_events(model: Dictionary, events: Array) -> Dictionary:
 			"recruited", "ruler_arrived", "summoned":
 				if not ids.is_empty() and not provs.is_empty():
 					armies[ids[0]] = provs[0]
+			"army_split":
+				## ARM-1: a muster formed a new army (ids: the source, then the new one) where the split happened; it can march
+				## the same turn, and the army_moved event that follows moves it on
+				if ids.size() >= 2 and not provs.is_empty():
+					armies[ids[1]] = provs[0]
+					if model.has("forts"):
+						army_owner[ids[1]] = (e.get("factions", [""]) as Array)[0]
+			"army_disbanded":
+				## ARM-1: an army a muster left with no one in it is gone
+				if not ids.is_empty():
+					armies.erase(ids[0])
 			"summon_faded":
 				## M5-9: a pack that faded and left its army empty takes the army with it
 				if bool((e.get("numbers", {}) as Dictionary).get("removed", false)) and not ids.is_empty():

@@ -1231,6 +1231,7 @@ static func _clone_army(a: Army) -> Army:
 static func _clone_unit(u: Unit) -> Unit:
 	var c := Unit.new(u.type, u.owner)
 	c.current_hp = u.current_hp
+	c.statuses = u.statuses.duplicate(true)  # ARM-1: a test battle counts the blessing per fighter, as the real one does
 	return c
 
 

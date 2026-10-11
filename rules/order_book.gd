@@ -24,6 +24,12 @@ class_name OrderBook
 ## its move or a tied sally whose relief move is gone is dropped, each with its reason (last_dropped()). With no
 ## siege orders queued, remove() behaves exactly as before: it drops nothing and leaves last_dropped() alone.
 ##
+## Musters (ARM-1, design/ARM1_SPLIT_MERGE.md): a MusterOrder (split, merge, swap commanders) is checked against the
+## board as the faction's earlier musters leave it, and every OTHER order against the board after ALL its musters
+## (RulerRules.state_after_orders hoists them before everything else, wherever they stand in the list), so a new army can
+## be given a move, a cast, a sally or a recruit destination in the same turn. Adding, changing or cancelling a muster
+## checks every other order again, and the ones that no longer hold are removed with their reasons (last_dropped()).
+##
 ## Magic (M5-5, design/M5_MAGIC_FOG.md §5.1, §6.1), only in a game with magic: a cast order (CastOrder) pins its army,
 ## so queuing one drops any move given to that army, earlier or later ("Move to Thornvale removed: your army at
 ## Fangridge is casting Bloodrot this turn, so it holds."), and a move for an army that casts is refused. Gold-paid
@@ -52,8 +58,8 @@ func submit(state: GameState, faction_id: String, order) -> String:
 	elif order is SpellbookOrder:
 		_last_dropped = _replace_spellbook(state, faction_id)  # M5-5: one per turn, the new one replaces it
 	_orders[faction_id].append(order)
-	if order is SacrificeOrder or order is CastOrder:
-		_last_dropped = _recheck(state, faction_id)  # M5-5: a cast drops its army's move, given before it
+	if order is SacrificeOrder or order is CastOrder or order is MusterOrder:
+		_last_dropped = _recheck(state, faction_id)  # M5-5: a cast drops its army's move, given before it; ARM-1: a muster re-checks the rest
 	elif order is MoveOrder and _has_siege_orders(faction_id):
 		_last_dropped = _recheck_sieges(state, faction_id)  # M3c: a sally by an army that now moves is dropped
 	return ""
@@ -66,7 +72,9 @@ func submit(state: GameState, faction_id: String, order) -> String:
 func remove(faction_id: String, index: int, state: GameState = null) -> void:
 	var removed = _remove_at(faction_id, index)
 	var board: GameState = state if state != null else _state
-	if removed is MoveOrder and board != null and _has_siege_orders(faction_id):
+	if removed is MusterOrder and board != null:
+		_last_dropped = _recheck(board, faction_id)  # ARM-1: what relied on the muster is checked again
+	elif removed is MoveOrder and board != null and _has_siege_orders(faction_id):
 		_last_dropped = _recheck_sieges(board, faction_id)
 
 
@@ -121,6 +129,10 @@ static func check_order(state: GameState, faction_id: String, order, existing: A
 		var prior := RulerRules.queued_sacrifice(existing)
 		return RulerRules.sacrifice_check(state, faction_id, order.mandate_id, prior.mandate_id if prior != null else "")
 	var board: GameState = view if view != null else RulerRules.state_after_orders(state, faction_id, existing)
+	if order is MusterOrder:
+		# ARM-1: a muster acts on the board its predecessors leave, not on the final one: `view`, when a caller gives it, is
+		# that board; otherwise the state with `existing`'s sacrifice and musters applied (all of them come before this one).
+		return MusterForecast.refusal(board, faction_id, order)  # the forecast asks the same question, so its words are these
 	if order is MoveOrder:
 		var pins := MagicRules.pinned_armies(board, faction_id, existing)  # M5-5: {} without casts
 		if pins.has(order.army_id):
@@ -166,14 +178,34 @@ static func check_order(state: GameState, faction_id: String, order, existing: A
 ## [{"order", "code", "reason", "text"}]}. Pure: `state` and `orders` are not changed.
 ## M3c: storms and sallies are checked after every other order, against all of those that pass, as the
 ## resolver checks them after every move; they keep their place in the list.
+## ARM-1: the musters are checked first, each against the board the sacrifice and the musters kept before it leave (a
+## muster that no longer holds is dropped, and the ones after it are checked on what remains), then every other order
+## against the board after all the kept musters, wherever the musters stand in the list.
 static func recheck(state: GameState, faction_id: String, orders: Array) -> Dictionary:
-	var view := RulerRules.state_after_orders(state, faction_id, orders)
-	var kept := []
 	var dropped := []
-	for order in orders:
+	var sacrifices: Array = orders.filter(func(o): return o is SacrificeOrder)
+	var kept_musters := []
+	var surviving: Array = orders
+	if MusterRules.has_musters(orders):
+		for order in orders:
+			if not (order is MusterOrder):
+				continue
+			var mcheck := check_order(state, faction_id, order, sacrifices + kept_musters)
+			if mcheck.is_empty():
+				kept_musters.append(order)
+			else:
+				dropped.append({"order": order, "code": mcheck.code, "reason": mcheck.reason,
+					"text": dropped_text(state, faction_id, order, mcheck)})
+		surviving = orders.filter(func(o): return not (o is MusterOrder) or kept_musters.has(o))
+	var view := RulerRules.state_after_orders(state, faction_id, surviving)
+	var kept := []
+	for order in surviving:
 		if order is SiegeOrder:
 			continue
-		var check := check_order(state, faction_id, order, kept, view)
+		if order is MusterOrder:
+			kept.append(order)  # already checked above
+			continue
+		var check := _army_gone(state, view, faction_id, order, check_order(state, faction_id, order, kept, view))
 		if check.is_empty():
 			kept.append(order)
 		else:
@@ -191,18 +223,49 @@ static func recheck(state: GameState, faction_id: String, orders: Array) -> Dict
 				unpinned.append(order)
 		kept = unpinned
 	var passed := {}
-	for order in orders:
+	for order in surviving:
 		if not (order is SiegeOrder):
 			continue
-		var check := check_order(state, faction_id, order, kept + passed.keys(), view)
+		var check := _army_gone(state, view, faction_id, order, check_order(state, faction_id, order, kept + passed.keys(), view))
 		if check.is_empty():
 			passed[order] = true
 		else:
 			dropped.append({"order": order, "code": check.code, "reason": check.reason,
 				"text": dropped_text(state, faction_id, order, check)})
 	if not passed.is_empty():
-		kept = orders.filter(func(o): return kept.has(o) or passed.has(o))
+		kept = surviving.filter(func(o): return kept.has(o) or passed.has(o))
 	return {"kept": kept, "dropped": dropped}
+
+
+## ARM-1: when `check` refused `order` because an army it names isn't on the board (code "unknown_army"), says why in
+## the muster's terms: the army is gone because your musters left it empty, or it was to be formed by a muster that is no
+## longer in the plan. Any other result, and a game with no musters, comes back as it was.
+static func _army_gone(state: GameState, board: GameState, faction_id: String, order, check: Dictionary) -> Dictionary:
+	if check.is_empty() or String(check.get("code", "")) != "unknown_army":
+		return check
+	var ids := []
+	if order is MoveOrder or order is CastOrder:
+		ids = [order.army_id]
+	elif order is SiegeOrder:
+		ids = [order.army_id, order.with_army]
+	for id in ids:
+		var why := gone_reason(state, board, faction_id, String(id))
+		if not why.is_empty():
+			return {"code": "army_gone", "reason": why}
+	return check
+
+
+## Why army `army_id` is not on `board` when the plan expects it, in plain words; "" when it is there, or when it is
+## simply an army this game never had. `state` is the start of the turn.
+static func gone_reason(state: GameState, board: GameState, faction_id: String, army_id: String) -> String:
+	if army_id.is_empty() or board.find_army(army_id) != null:
+		return ""
+	var name := TurnReportText.army_name(state, army_id, faction_id)
+	if state.find_army(army_id) != null:
+		return "%s is not there after your musters: they leave it with no one in it." % RulerRules._cap(name)
+	if TurnReportText.faction_of(army_id) == faction_id and TurnReportText.army_number(army_id) >= int(state.next_army_ids.get(faction_id, 1)):
+		return "%s doesn't exist now: the muster that was to form it is no longer in your plan." % RulerRules._cap(name)
+	return ""
 
 
 ## The plain line for an order removed by a re-check: what it was, then why. "Road move to Westwatch
@@ -247,7 +310,25 @@ static func short_text(state: GameState, faction_id: String, order) -> String:
 		return "Cast %s%s" % [MagicRules.spell_name(order.ritual), where]
 	if order is SpellbookOrder:  # M5-5
 		return "Battle spellbook"
+	if order is MusterOrder:  # ARM-1
+		return MusterRules.short_text(state, faction_id, order)
 	return "An unknown order"
+
+
+## The plain reasons of the malformed musters in `orders` ({faction id: [orders]}), in faction id order: [] when there are
+## none. A record holding one fails to load (GameSession.replay and from_record), never skips it (ARM-1 §1).
+static func malformed_musters(orders: Dictionary) -> Array:
+	var out := []
+	var fids: Array = orders.keys()
+	fids.sort()
+	for fid in fids:
+		var list = orders[fid]
+		if not (list is Array):
+			continue
+		for i in list.size():
+			if list[i] is MusterOrder and not list[i].malformed.is_empty():
+				out.append("Order %d for '%s' is a malformed muster order: %s." % [i + 1, fid, list[i].malformed])
+	return out
 
 
 ## Serializable form of all orders, for saved replays.
@@ -281,7 +362,9 @@ static func orders_from_dict(data: Dictionary, errors = null) -> Dictionary:
 
 
 ## Old records without "via" or "at" load as M1 orders (design/M2_RULER.md §9). A sacrifice is
-## {"type": "sacrifice", "mandate": id} (M2-6), a research order {"type": "research", "node": id} (M4-1).
+## {"type": "sacrifice", "mandate": id} (M2-6), a research order {"type": "research", "node": id} (M4-1). A muster
+## (ARM-1) is read STRICTLY (MusterOrder.parse): one that is malformed is reported and returned as a MusterOrder with
+## `malformed` set, so orders_from_dict keeps it and a loader can fail on it (has_malformed_muster).
 static func order_from_dict(data: Dictionary, errors = null):
 	match str(data.get("type", "")):
 		"move":
@@ -303,6 +386,16 @@ static func order_from_dict(data: Dictionary, errors = null):
 				str(data.get("pay", CastOrder.GOLD)), Serial.to_int(data.get("size", 0)))
 		"spellbook":  # M5-5
 			return SpellbookOrder.new(Serial.to_string_array(data.get("order", [])), Serial.to_string_array(data.get("off", [])))
+		"muster":  # ARM-1 (design/ARM1_SPLIT_MERGE.md §1): STRICT, unlike the lenient parsers above
+			var parsed := MusterOrder.parse(data)
+			if not String(parsed.problem).is_empty():
+				# Never skipped: the malformed order comes back (MusterOrder.malformed) so the load can fail on it.
+				var why := "A muster order is malformed: %s." % parsed.problem
+				if errors is Array:
+					errors.append(why)
+				else:
+					push_error(why)
+			return parsed.order
 	var msg := "Unknown order type '%s'. Orders are 'move', 'recruit', 'sacrifice' and 'research'." % str(data.get("type", ""))
 	if errors is Array:
 		errors.append(msg)

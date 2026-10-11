@@ -509,9 +509,13 @@ func test_ruler_army_on_the_map_reads_plainly_and_explains_every_number() -> voi
 	var map := game.map
 	assert_true(RulerRules.has_rulers(map.state), "the game screen started a game with rulers")
 	map.select_province("crownkeep")
+	var listed := map.details.find_child("ArmyRow_kingdom-2", true, false)
+	assert_true(listed != null, "the ruler's army is listed on the province card")
+	assert_eq((listed.find_child("ArmyButton", true, false) as Button).text, "The Ever-Regent at Crownkeep")
+	map.select_army("kingdom-2")
 	var panel := map.details.find_child("Army_kingdom-2", true, false)
-	assert_true(panel != null, "the ruler's army is listed in the side panel")
-	var header := panel.find_child("ArmyHeader", true, false) as Button
+	assert_true(panel != null, "the ruler's army has its card")
+	var header := panel.find_child("ArmyTitle", true, false) as Label
 	assert_eq(header.text, "The Ever-Regent at Crownkeep")
 	assert_eq((panel.find_child("ArmyMembers", true, false) as Label).text, "Ruler of the Aurel Crown", "who the army is, on the line under it (#125)")
 	assert_eq(String(header.get_meta(CodexLink.META)), "ruler_army")

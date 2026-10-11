@@ -111,7 +111,7 @@ func _rects(screen: Control) -> Dictionary:
 			"hint": _r(map.hint_label), "research": _r(screen.research_hud.chip), "magic": _r(screen.research_hud.magic_chip),
 			"ruler": _r(screen.ruler_button), "report": _r(screen.report_button), "codex": _r(screen.codex_button), "help": _r(screen.help_button),
 			"chronicle": _r(screen.chronicle_button), "lenses": _r(screen.lenses_button),
-			"compact": [1.0 if hud.compact else 0.0, 0.0, 0.0, 0.0, true], "card": _r(map.details_card), "safe": _r_rect(hud.safe_area()),
+			"compact": [1.0 if hud.compact else 0.0, 0.0, 0.0, 0.0, true], "card": _r(map.cards), "safe": _r_rect(hud.safe_area()),
 			"guide": _r(screen.first_game_guide), "map": _r(map.map_view),
 			"research_panel": _rt(research), "research_close": _r(screen.research_hud.panel.close_button) if research != null else [],
 			"report_box": _rt(report_box), "report_close": _r(screen.report_overlay.find_child("CloseReportButton", true, false))}

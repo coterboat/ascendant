@@ -273,7 +273,11 @@ func test_ruler_army_shows_a_ruler_card() -> void:
 	var ruler_army := RulerRules.ruler_army(s, "kingdom")
 	screen.select_army(ruler_army.id)
 	var row := screen.details.find_child("RulerRow", true, false)
-	assert_true(row != null and row.get_child(0) is Art.PortraitCard, "the ruler's card beside its name")
+	assert_true(row != null and row.find_child("RulerLabel", true, false) != null, "the ruler's line on its army card")
+	var chip := screen.details.find_child("Chip_ruler", true, false) as UnitStrip.Chip
+	assert_true(chip != null and chip.get_child(0) is Art.PortraitCard, "the ruler's card in the portrait row, with its hit-point bar")
+	assert_eq((chip.get_child(0) as Art.PortraitCard).frame, UiPalette.GILT, "gilt-ringed")
+	assert_true(chip.has_bar(), "with a hit-point bar")
 	screen.open_ruler_panel()
 	for fid in ["kingdom", "beasts"]:
 		var col := screen.ruler_panel.columns.find_child("Column_%s" % fid, false, false)

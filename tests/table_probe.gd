@@ -60,7 +60,7 @@ func _run() -> void:
 
 
 func _scenarios() -> Array:
-	var out := ["rest", "dismissed", "notice", "forecast"]
+	var out := ["rest", "dismissed", "notice", "forecast", "army", "recruit", "march", "army_notice"]
 	if kind == "3d":
 		out.append_array(["playback", "closeup"])
 	return out
@@ -142,12 +142,22 @@ func _setup(scenario: String) -> void:
 			map.dismiss_selection_card()
 		"notice":
 			game.show_notice("Game saved", "Saved as \"Saved 2026-10-10 14:03\". %s" % SaveGame.ORDERS_NOTE)
+		"army":  # UX-3: the army card with its order on it, and the forecast of another destination (refused: it has its move)
+			map.select_army("kingdom-1")
+			map.select_province("westwatch")
+			map.preview_move("highcrag")
+		"recruit":  # UX-3: the province card with the Recruit section open
+			map.cards.open_section("recruit")
+		"march":  # UX-3: picking a march destination: the card is a slim strip
+			map.select_army("kingdom-1")
+			map.cards.begin_march()
+			map.preview_move("westwatch")  # the strip carries the hovered destination's compact forecast
+		"army_notice":  # UX-3: the crowded left column: a notice and the guide above the army card
+			game.show_notice("Game saved", "Saved as \"Saved 2026-10-10 14:03\". %s" % SaveGame.ORDERS_NOTE)
+			map.select_army("kingdom-1")
 		"forecast":
 			map.select_army("kingdom-1")
 			map.preview_move("westwatch")
-			if not map.hover_panel.visible:
-				map.hover_label.text = "March to Westwatch: the forecast of the battle and its odds, long enough to wrap onto a second line of the move forecast bar."
-				map.hover_panel.visible = true
 		"playback":
 			var overlay: Control = map.board.overlay
 			overlay._play_label.text = "Turn 1 plays out: the armies march, and 1 battle is fought."
@@ -178,11 +188,68 @@ func _measure(scenario: String) -> Dictionary:
 	if kind == "2d":
 		var canvas := game.map.map_canvas
 		out["canvas"] = [canvas.global_position.x, canvas.global_position.y, MapLayout.SIZE.x * canvas.scale.x, MapLayout.SIZE.y * canvas.scale.y, canvas.is_visible_in_tree()]
+	out["card_parts"] = _card_parts()
 	out["labels"] = _province_labels()
 	out["sweep"] = await _sweep(pieces, rects)
 	if scenario == "rest":
 		out["clicks"] = await _clicks(pieces, rects)
 		await _setup("rest")
+		out["edges"] = await _edges()
+		await _setup("rest")
+	return out
+
+
+## UX-3 (design/UX_WAR_TABLE.md §3.3): the card's rect with each province selected, then each army, at the camera's farthest and nearest
+## zoom (the 3D board; the 2D map has one): {zoom key: [[what, id, x, y, w, h, visible], ...]}. The card is docked in the left column, so
+## it must not depend on where the selection is on screen.
+func _edges() -> Dictionary:
+	var map := game.map
+	var out := {}
+	var zooms: Array = ["flat"]
+	if kind == "3d":
+		zooms = ["far", "near"]
+	var centre := root.get_visible_rect().size * 0.5
+	for z in zooms:
+		if kind == "3d":
+			var board: Board3D = map.board
+			board.zoom_at(centre, -1.0 if z == "far" else 1.0)
+			board.zoom_at(centre, -1.0 if z == "far" else 1.0)
+			await _frames(3)
+		var rows := []
+		for p in map.state.provinces:
+			map.selected_army_id = ""
+			map.select_province(p.id)
+			await _frames(5)  # the card's size settles over a few frames: its pinned row wraps once it has a width
+			rows.append(["province", p.id] + _r(map.cards))
+		for a in map.state.armies:
+			if a.owner == "kingdom":
+				map.select_army(a.id)
+				await _frames(5)
+				rows.append(["army", a.id] + _r(map.cards))
+		out[z] = rows
+	if kind == "3d":
+		var board2: Board3D = map.board
+		board2.zoom_at(centre, -1.0)
+		await _frames(3)
+	return out
+
+
+## UX-3: where the selection card keeps its pinned actions and its scroll, as drawn: [x, y, w, h, visible] for the card's first action
+## (the first button of the first pinned row), the pinned bar and the scroll; only the mode while the card is hidden or is the march strip.
+func _card_parts() -> Dictionary:
+	var cards: SelectionCards = game.map.cards
+	var out := {"marching": cards.marching, "mode": cards.mode, "forecast": _r(game.map.hover_panel), "slot": _r(cards.forecast_slot),
+		"forecast_lines": game.map.hover_panel.lines()}
+	if not cards.visible or cards.marching:
+		return out
+	var first: Control = null
+	for c in cards.pinned.get_children():
+		if c is Control and c.visible:
+			first = c.get_child(0) as Control if c is HFlowContainer and c.get_child_count() > 0 else c as Control
+			break
+	out["first_action"] = _r(first)
+	out["pinned"] = _r(cards.pinned)
+	out["scroll"] = _r(cards.scroll)
 	return out
 
 
@@ -211,7 +278,7 @@ func _province_labels() -> Dictionary:
 func _pieces() -> Dictionary:
 	var hud := game.map.table()
 	var out := {"plaque": hud.plaque, "menu": hud.menu_button, "opponent": hud.opponent_panel, "stack": hud.notification_stack, "tray": hud.tray,
-		"seal": hud.seal, "card": game.map.details_card, "hover": game.map.hover_panel,
+		"seal": hud.seal, "card": game.map.cards,
 		"guide": game.first_game_guide, "notice": game.notice_panel}
 	for id in hud.system_button_ids():
 		out["sys_%s" % id] = hud.system_button(id)

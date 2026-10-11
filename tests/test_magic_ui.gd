@@ -885,10 +885,10 @@ func test_the_army_panel_names_its_casters_and_each_spell_with_its_number() -> v
 	var map := game.map
 	var state := game.session.state()
 	for where in ["highcrag", "stonegate", "crownkeep"]:
-		map.select_province(where)
+		var army: Army = state.armies.filter(func(a): return a.owner == CROWN and a.location == where and not MagicRules.casters(state, a).filter(func(c): return c.battle).is_empty())[0]
+		map.select_army(army.id)  # its casters and spells are on the army's card
 		var line := map.details.find_child("CastersLine", true, false) as Label
 		assert_true(line != null, "%s: a casters line" % where)
-		var army: Army = state.armies.filter(func(a): return a.owner == CROWN and a.location == where and not MagicRules.casters(state, a).filter(func(c): return c.battle).is_empty())[0]
 		var model := MagicView.army_line(state, army)
 		assert_eq(line.text, String(model.header))
 		assert_eq(line.get_meta("breakdown"), Breakdown.army_units(state, army.id))
@@ -1336,7 +1336,7 @@ func test_every_number_on_the_magic_screens_has_its_breakdown_and_every_term_its
 	var game := _screen(s, [CLANS, CROWN])
 	var map := game.map
 	var army := _army_at(game.session.state(), CLANS, "thornvale")
-	map.select_province("thornvale")
+	map.select_army(army.id)
 	for name in ["CastersLine", "MasteryLine"]:
 		var l := map.details.find_child(name, true, false) as Label
 		assert_true(l != null and l.has_meta("breakdown"), "the army panel's %s has a breakdown" % name)

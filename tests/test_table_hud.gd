@@ -9,9 +9,9 @@ extends "res://tests/test_case.gd"
 ##   the system row opens today's panels as they are; the Chronicle and Lenses are placeholders for later tickets;
 ##   the ? lists every key and mouse binding (checked against the board's own code) and today's hint text in full;
 ##   the seal shows End turn and the order count, and pulses for a new player once an order is queued;
-##   the tray's Orders button brings the temporary details card back, so no order is ever out of reach;
+##   the tray's Orders button shows the orders list in the card's place, so no order is ever out of reach;
 ##   the opponent plaque: banner, name, tag, the codex link, the fog's "last seen" line; rebuilt per viewer in a hotseat game;
-##   the temporary details card is today's side panel: shown on a selection, closable, closed for good until a click;
+##   the selection cards (UX-3, tests/test_selection_cards.gd has their contents): shown on a selection, closable, closed for good until a click;
 ##   the four host seams (SelectionHost, ReportHost, LensHost, UiCancel) and what each does with a stand-in;
 ##   hotseat: the handoff rebuilds the HUD for the next player and nothing of the last is left.
 ## Numbers and words come from the data and the rules, never from this file.
@@ -430,7 +430,7 @@ func test_the_trays_orders_button_brings_the_card_back() -> void:
 	var game := _game()
 	var map := game.map
 	var hud := map.table()
-	var card := map.details_card
+	var card := map.cards
 	assert_true(card.visible, "the capital is selected: its card is up")
 	card.dismiss()
 	assert_false(card.visible)
@@ -441,7 +441,7 @@ func test_the_trays_orders_button_brings_the_card_back() -> void:
 	map.selected_army_id = ""
 	map.set_state(map.state, CROWN)
 	assert_true(card.visible, "an opened card stays while nothing is selected")
-	assert_true(_texts(card).contains("No province selected"), "saying so, and listing the orders")
+	assert_true(_texts(card).contains("No orders yet"), "saying so, and listing the orders")
 	assert_ne(hud.hint_label.text, "", "the tray's line says what to do now")
 	assert_true(hud.tray_slot() != null and hud.tray.is_ancestor_of(hud.tray_slot()), "and its slot is there for the order tokens (UX-4)")
 	game.free()
@@ -533,20 +533,22 @@ func test_last_seen_reads_the_viewers_view_and_never_the_truth() -> void:
 		assert_false(body.contains(forbidden), "last_seen_text never touches %s" % forbidden)
 
 
-# --- the temporary details card ---------------------------------------------------------------------
+# --- the selection cards ----------------------------------------------------------------------------
 
-func test_the_details_card_is_todays_side_panel_docked_bottom_left_and_closable() -> void:
+func test_the_province_card_is_docked_in_the_tables_card_slot_and_closable() -> void:
 	var game := _game(VS_COMPUTER)
 	var map := game.map
-	var card := map.details_card
-	assert_eq(map.details, card.details, "map.details is the card's content: today's builders fill it")
+	var card := map.cards
+	assert_eq(map.details, card.details, "map.details is the open card's content")
 	assert_true(card.visible, "a selection (the capital) shows the card")
 	assert_true(map.table().pieces().has(card) and card.get_parent() == map.table(), "a piece of the Table, which places it")
+	assert_eq(card.mode, "province")
 	var text := _texts(card)
-	for part in ["Crownkeep", "Owner:", "Terrain:", "Income:", "Armies here", "Your orders this turn"]:
+	for part in ["Crownkeep", "Owner:", "Terrain:", "Income:", "Armies here"]:
 		assert_true(text.contains(part), "the card has %s, as the side panel had" % part)
+	assert_false(text.contains("Your orders this turn"), "the orders list is the tray's, not the card's")
 	assert_true(card.details.find_child("ProvinceHeader", true, false) != null)
-	assert_true(card.details.find_children("Recruit_*", "Button", true, false).size() > 0, "and the recruit buttons")
+	assert_true(card.details.find_children("Recruit_*", "Button", true, false).size() > 0, "the recruit buttons are built, in the Recruit section")
 	# Closable: the close button, and the dismissed card stays closed through every refresh until a click.
 	assert_eq(card.close_button.tooltip_text.contains("Esc"), true)
 	card.close_button.pressed.emit()
@@ -567,6 +569,7 @@ func test_closing_the_card_puts_the_army_back_so_a_click_cannot_order_from_a_car
 	map.select_army("kingdom-1")
 	assert_eq(map.selected_army_id, "kingdom-1")
 	assert_eq(map.selection_host.kind(), "army", "the host has an army")
+	assert_eq(map.cards.mode, "army", "and the army card is up")
 	map.dismiss_selection_card()
 	assert_eq(map.selected_army_id, "", "no army selected")
 	assert_eq(map.selected_province_id, "crownkeep")
@@ -576,18 +579,20 @@ func test_closing_the_card_puts_the_army_back_so_a_click_cannot_order_from_a_car
 	game.free()
 
 
-func test_orders_with_cancel_buttons_and_recruiting_are_on_the_card() -> void:
+func test_orders_with_cancel_buttons_are_listed_under_the_trays_orders_button() -> void:
 	var game := _game(VS_COMPUTER)
 	var map := game.map
 	map.select_army("kingdom-1")
 	map.select_province("westwatch")
 	map.select_province("crownkeep")
 	(map.details.find_children("Recruit_*", "Button", true, false)[0] as Button).pressed.emit()
+	assert_true(map.details.find_children("Order_*", "", true, false).is_empty(), "the province card lists no orders")
+	map.table().orders_button.pressed.emit()
 	var rows := map.details.find_children("Order_*", "", true, false)
-	assert_eq(rows.size(), 2, "both orders are listed on the card")
+	assert_eq(rows.size(), 2, "both orders are listed under the Orders button")
 	assert_true(map.details.find_children("CancelButton", "Button", true, false).size() == 2, "each with its cancel button")
 	(map.details.find_children("CancelButton", "Button", true, false)[0] as Button).pressed.emit()
-	assert_eq(game.session.current_orders().size(), 1, "cancelling works from the card")
+	assert_eq(game.session.current_orders().size(), 1, "cancelling works from the list")
 	game.free()
 
 
@@ -622,10 +627,10 @@ func test_the_selection_host_tells_its_presenter_what_is_selected() -> void:
 	assert_eq(spy.log.slice(spy.log.size() - 4), [["province", "crownkeep"], ["army", "kingdom-1", "crownkeep"], ["refresh"], ["clear"]])
 	assert_eq(changes, [["province", "crownkeep"], ["army", "kingdom-1"], ["", ""]], "changed names each new selection, not refreshes")
 	assert_eq([host.kind(), host.id()], ["", ""])
-	# The map screen drives it: the details card is its presenter until UX-3's cards replace it.
+	# The map screen drives it: the selection cards are its presenter (UX-3).
 	var game := _game()
 	var map := game.map
-	assert_eq(map.selection_host.presenter(), map.details_card)
+	assert_eq(map.selection_host.presenter(), map.cards)
 	var spy2 := SpyPresenter.new()
 	map.selection_host.set_presenter(spy2)
 	map.select_army("kingdom-1")
@@ -740,7 +745,7 @@ func test_the_handoff_rebuilds_the_hud_for_the_next_player_and_leaves_nothing_of
 	map.select_army("kingdom-1")
 	map.preview_move("westwatch")
 	assert_true(game.end_turn_button.text.contains("1 order"))
-	assert_true(_texts(map.details).contains("Aurel Crown"))
+	assert_true(_texts(map.details).contains("Crownkeep"), "the army card says where it is")
 	var crown_text := _texts(hud)
 	game.end_turn()
 	assert_true(game.handoff.visible and not map.visible, "the cover is up and the table is hidden behind it")
@@ -753,7 +758,7 @@ func test_the_handoff_rebuilds_the_hud_for_the_next_player_and_leaves_nothing_of
 	assert_eq(hud.orders_button.text, "Orders")
 	assert_eq(map.selected_army_id, "")
 	assert_false(map.hover_panel.visible, "no forecast of player 1's")
-	assert_false(_texts(map.details).contains("Aurel Crown"), "the card is player 2's own")
+	assert_false(_texts(map.details).contains("Crownkeep"), "the card is player 2's own")
 	assert_true(_texts(map.details).contains("Fangridge"), "it shows their capital")
 	assert_eq(map.faction_label.text, map.state.find_faction(CLANS).faction_name, "the plaque is theirs")
 	assert_eq(map.gold_label.tooltip_text.begins_with(TooltipText.from_breakdown(Breakdown.gold(map.state, CLANS))), true)
