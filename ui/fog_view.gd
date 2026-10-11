@@ -13,14 +13,14 @@ class_name FogView
 ##   rival_summary(state, viewer, fid, intel)   what you know of a rival: its ruler, where it is, its mandates
 ##   missed_text(battle, viewer, before)        "what you didn't see" in a battle you fought (§2.8)
 ##   lift(truth, players, missed)               the victory screen's "the fog lifts" (§2.1): the truth at the end
-##   legend_rows(state)                         the Vision map mode's legend
+##   legend_rows(state)                         the legend of the Vision map mode UX-2 retired, kept for the Sight lens (UX-7)
 ## Sight levels and sources come from FogRules; estimates from the view notes FogRules wrote (Army.seen).
 
 const REPORT_HEADER := "Fog of war: this report shows what you saw."
 const CONTINUE := "Continue only when nobody else can see the screen."
 const COVER_LINE := "Fog of war is on: each player sees only their own view. " + CONTINUE
 const NOTES_HIDDEN := "Hidden while the fog of war lasts: the computer's notes name its hidden armies and plans. They show here once the game is over."
-## The Vision map mode's level for a province out of sight that was never seen.
+## The level of a province out of sight that was never seen.
 const NEVER := "never"
 const LEVEL_TITLES := {"clear": "In clear sight", "glimpse": "Glimpsed", "veiled": "Out of sight", "never": "Never seen"}
 const LEVEL_CODEX := {"clear": "vision_clear", "glimpse": "vision_glimpsed", "veiled": "vision_out_of_sight", "never": "last_seen"}
@@ -512,13 +512,15 @@ static func lift(truth: GameState, players: Array, missed: Array) -> Dictionary:
 
 # --- the Vision map mode (§11.1) -------------------------------------------------------------------
 
-## The Vision map mode's legend: [{"key", "title", "short" (the row), "text" (its hover), "codex"}], one row per mark.
+## The sight legend: [{"key", "title", "short" (the row), "text" (its hover), "codex"}], one row per mark. The Vision map mode it belonged to is
+## retired (UX-2: the ground's four looks and each plate's hover tell the levels); the rows stay as the text UX-7's Sight lens shows, with
+## ProvinceRegion.legend_swatch for each row's swatch.
 static func legend_rows(state: GameState) -> Array:
 	var rows := [
 		{"key": "clear", "title": "In clear sight", "short": "exact", "text": "No veil: land you own or stand in. You see every army there exactly.", "codex": "vision_clear"},
-		{"key": "glimpse", "title": "Glimpsed", "short": "rough numbers", "text": "A light veil: next to your land and armies, two away from forts, commanders, rulers and scouts. Armies show rounded.", "codex": "vision_glimpsed"},
-		{"key": "veiled", "title": "Out of sight", "short": "as you last saw it", "text": "A dark veil with hatching: you see only what you saw there last. Owners, terrain and forts stay true.", "codex": "vision_out_of_sight"},
-		{"key": "never", "title": "Never seen", "short": "nothing known", "text": "The darkest veil: you have never seen an army there.", "codex": "last_seen"},
+		{"key": "glimpse", "title": "Glimpsed", "short": "rough numbers", "text": "A step darker, with a thin mist drifting over it: next to your land and armies, two away from forts, commanders, rulers and scouts. Armies show rounded.", "codex": "vision_glimpsed"},
+		{"key": "veiled", "title": "Out of sight", "short": "as you last saw it", "text": "Two steps darker, in sepia, ruled with hatch lines like an old map: you see only what you saw there last. Owners, terrain and forts stay true.", "codex": "vision_out_of_sight"},
+		{"key": "never", "title": "Never seen", "short": "nothing known", "text": "The darkest: flat parchment with no terrain drawn on it. You have never seen an army there.", "codex": "last_seen"},
 		{"key": "plate", "title": "≈20", "short": "glimpsed, rounded", "text": "A glimpsed army: about 20 fighters, rounded. Hover it for the range.", "codex": "estimates"},
 		{"key": "ghost", "title": "≈10 · 3 turns ago", "short": "remembered", "text": "A grey badge: an army you remembered, last seen there 3 turns ago. It may have moved.", "codex": "last_seen"},
 	]

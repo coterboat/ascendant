@@ -5,7 +5,7 @@ extends SceneTree
 ## content scale factor like Settings does, puts a whole GameScreen in it (every system on, a computer opponent), and for each of the
 ## three sizes the spec names (a 1600x900 window at 100%, the same window at 125%, which lays out as 1280x720, and a 1280x720 window
 ## at 100%, which the project's stretch lays out as 1600x900 scaled down) and on each board (the 3D world and the 2D map) it
-##   * puts the Table in each state it has (at rest with the first-game guide up, a notice, a move forecast, the Vision legend, the
+##   * puts the Table in each state it has (at rest with the first-game guide up, a notice, a move forecast, the
 ##     playback bar and its caption, the fortress close-up) and reports the rect of every HUD piece, as drawn;
 ##   * sweeps the window on a grid with real mouse motion, asks the viewport which control the mouse is over, and reports every
 ##     point where an empty HUD area took the mouse, or a piece did not (the input contract, design/UX_WAR_TABLE.md 1.2);
@@ -60,7 +60,7 @@ func _run() -> void:
 
 
 func _scenarios() -> Array:
-	var out := ["rest", "dismissed", "notice", "forecast", "vision", "army", "recruit", "march", "army_notice"]
+	var out := ["rest", "dismissed", "notice", "forecast", "army", "recruit", "march", "army_notice"]
 	if kind == "3d":
 		out.append_array(["playback", "closeup"])
 	return out
@@ -111,7 +111,6 @@ func _rest() -> void:
 	var map := game.map
 	game._close_overlays()
 	game.notice_panel.visible = false
-	map.set_map_mode("")
 	map.clear_preview()
 	while not game.session.current_orders().is_empty():
 		map.cancel_order(0)
@@ -159,8 +158,6 @@ func _setup(scenario: String) -> void:
 		"forecast":
 			map.select_army("kingdom-1")
 			map.preview_move("westwatch")
-		"vision":
-			map.set_map_mode("vision")
 		"playback":
 			var overlay: Control = map.board.overlay
 			overlay._play_label.text = "Turn 1 plays out: the armies march, and 1 battle is fought."
@@ -281,7 +278,7 @@ func _province_labels() -> Dictionary:
 func _pieces() -> Dictionary:
 	var hud := game.map.table()
 	var out := {"plaque": hud.plaque, "menu": hud.menu_button, "opponent": hud.opponent_panel, "stack": hud.notification_stack, "tray": hud.tray,
-		"seal": hud.seal, "card": game.map.cards, "legend": game.map.vision_legend,
+		"seal": hud.seal, "card": game.map.cards,
 		"guide": game.first_game_guide, "notice": game.notice_panel}
 	for id in hud.system_button_ids():
 		out["sys_%s" % id] = hud.system_button(id)

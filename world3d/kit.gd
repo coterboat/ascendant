@@ -474,6 +474,19 @@ static func fort() -> ArrayMesh:
 ## the garrison stands, the gate's [inner, outer] z, the footprint's side. A fort's model row overrides them.
 const FORT_YARD := {"court": [-8.6, -10.2, 17.2, 5.4], "gate_z": [-10.6, -15.0], "side": 24.0}
 const PALISADE_R := 12.5
+## UX-2 (design/UX_WAR_TABLE.md 2.3): how much bigger each fort level is drawn than its kit model, so a palisade, a keep and a citadel are told
+## apart by size as well as by silhouette at the whole-map zoom (a ring of stakes; a walled keep with its tower; a capital's square fortress
+## with four corner towers). The citadel stays as it is, the biggest; the kit's palisade and keep are drawn bigger, with their yards,
+## gates, walls and everything that stands on them. Keyed by the model table's kind ("palisade", "fort", "fortress"); a damage look's kind
+## ("fort_damaged", "palisade_breached") takes its level's.
+const FORT_SCALE := {"palisade": 1.35, "fort": 1.25, "fortress": 1.0}
+
+
+## The scale a fort of `kind` is drawn at (FORT_SCALE; 1 for any other piece).
+static func fort_scale(kind: String) -> float:
+	return float(FORT_SCALE.get(kind.get_slice("_", 0), 1.0))
+
+
 const PALISADE_YARD := {"court": [-8.2, -9.4, 16.4, 12.0], "gate_z": [-11.0, -16.0], "side": 27.0}
 
 

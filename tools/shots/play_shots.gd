@@ -29,9 +29,16 @@ extends SceneTree
 ## the army can cast a ritual (Far Sight with --fog, or any ritual researched), the cast dialog, then orders the cast: that
 ## turn's report (a shot) has the rituals rows.
 ##   --fast             skip the board's playback on turns that get no shot
+##   --board=2d         the 2D map instead of the 3D board (UX-2: the label diet and the veil on the flat map); default 3d
+##   --stage            UX-2: on the last turn, after its orders shot, stage the VIEW the map shows (never the game) so every level of sight and every
+##                      fort level is on the whole-map shot: one province you never saw is remembered, a palisade stands and another is
+##                      being raised in your land, and a keep's walls are knocked down a step. Shot as tNN_fullmap_staged (needs --fullmap)
+##   --fullmap          UX-2: after each orders shot, frame the whole map (the F key) and shoot it again as tNN_fullmap, then put the
+##                      camera back, so the four veil looks and the three fort levels can be named without hovering
 ## Windowed only: headless has no renderer, so the shots would be blank. walk.md lists every shot with the
 ## turn report's headline lines, so the walk can be read without opening the images.
 
+const Vision := preload("res://world3d/vision.gd")
 const W := 1600
 const H := 900
 var out := "user://shots"
@@ -43,6 +50,9 @@ var max_battles := 3
 var flags := {"rulers": false, "paths": false, "sieges": false, "fog": false, "magic": false, "independents": false}
 var menus := true
 var fast := false
+var fullmap := false
+var stage := false
+var board_kind := "3d"
 var fresh := false
 var defaults := false
 var ui_scale := 100
@@ -67,6 +77,9 @@ func _initialize() -> void:
 			"battles": max_battles = int(kv[1])
 			"no-menus": menus = false
 			"fast": fast = true
+			"fullmap": fullmap = true
+			"stage": stage = true
+			"board": board_kind = kv[1]
 			"fresh": fresh = true
 			"defaults": defaults = true
 			"ui-scale": ui_scale = int(kv[1])
@@ -155,6 +168,8 @@ func _run() -> void:
 	root.add_child(game)
 	await _frames(2)
 	game.start_game(_config())
+	if board_kind != "3d":
+		game.use_board(board_kind)
 	while not BattleStage3D.land_ready():
 		await process_frame
 	Board3D.terrain_now()
@@ -184,6 +199,11 @@ func _run() -> void:
 		if turn == 1 or turn % every == 0 or magic_shot:
 			await _shot("t%02d_orders" % turn, "Turn %d orders: %s%s" % [turn, "; ".join(texts),
 				("\n  REFUSED: " + "; ".join(refused)) if not refused.is_empty() else ""])
+			if fullmap:
+				await _fullmap_shot(game, "t%02d_fullmap" % turn, "Turn %d, the whole map framed (F): veil looks and forts at full zoom." % turn)
+				if stage and turn == max_turns:
+					var staged := _stage_view(game)
+					await _fullmap_shot(game, "t%02d_fullmap_staged" % turn, "Turn %d, the whole map framed, the view staged: %s" % [turn, staged])
 		print("turn %d: end turn" % turn)
 		game.end_turn()
 		await _settle(game, fast and not (turn % every == 0 or turn + 1 == max_turns))
@@ -295,6 +315,64 @@ func _magic_casters(game: GameScreen, turn: int) -> void:
 		cast_turn = turn
 		walk.append("- turn %d: ordered %s from the army at %s" % [turn, MagicRules.spell_name(String(o.ritual)), army.location])
 		return
+
+
+## UX-2 (--stage): stages the VIEW the map shows, not the game: a province you never saw is remembered (out of sight), a palisade
+## stands in your land, another is being raised, and a keep's walls are knocked down a step, so the whole-map shot holds all four levels
+## of sight and all three fort levels with whole and damaged walls. Returns what it did, for the walk.
+func _stage_view(game: GameScreen) -> String:
+	var map = game.map
+	var st: GameState = map.state.deep_copy() ## a copy: the board stands a new state object, and the game's own is never touched
+	var notes := []
+	var memory: Dictionary = map.fog_memory
+	var levels := Vision.levels(st, human, memory)
+	for p in st.provinces:
+		if String(levels.get(p.id, "")) == FogView.NEVER and not p.is_capital:
+			if not memory.has("provinces"):
+				memory["provinces"] = {}
+			memory["provinces"][p.id] = {"seen_turn": 1}
+			notes.append("%s remembered" % p.name)
+			break
+	var raised := 0
+	for p in st.provinces:
+		if p.owner != human or p.is_capital or p.fort_level > 0 or not p.works.is_empty() or raised >= 2:
+			continue
+		if raised == 0:
+			p.fort_level = 1
+			p.has_fort = true
+			p.walls = SiegeRules.walls_max(1)
+			notes.append("a palisade at %s" % p.name)
+		else:
+			p.works = {"to": 1, "left": 1}
+			notes.append("a palisade being raised at %s" % p.name)
+		raised += 1
+	var keep: Province = null
+	for p in st.provinces:
+		if p.fort_level == 2 and p.walls == SiegeRules.walls_max(2):
+			if keep == null or not st.armies.any(func(a): return a.location == p.id): ## a keep with nobody's plate over it, if there is one
+				keep = p
+				if not st.armies.any(func(a): return a.location == p.id):
+					break
+	if keep != null:
+		keep.walls = maxi(1, keep.walls - FortData.WALL_STEP)
+		notes.append("%s's keep damaged (walls %d of %d)" % [keep.name, keep.walls, SiegeRules.walls_max(2)])
+	map.set_state(st, map.viewing_faction_id)
+	return "; ".join(notes)
+
+
+## UX-2: the whole map framed as the F key does, shot, and the camera put back where it was. The glide takes a moment.
+func _fullmap_shot(game: GameScreen, name: String, note: String) -> void:
+	var b = game.map.board
+	if b == null or not b.has_method("fit_whole") or not b.get("prepared"):
+		return
+	var was: Dictionary = (b.goal as Dictionary).duplicate()
+	var was_zoom: float = b.zoom
+	b.fit_whole()
+	await _wait(1.6)
+	await _shot(name, note)
+	b.goal = was
+	b.zoom = was_zoom
+	await _wait(1.0)
 
 
 func _menus() -> void:
