@@ -84,7 +84,9 @@ func test_the_resolver_never_reads_fog() -> void:
 	# Fog is a lens (§2.1): outside the fog rules, the state's own fields and the session's per-viewer doors, no rules
 	# code mentions it. M5-2: the forecasts' fog text lives in forecast.gd (§14: "the view note in every forecast's text,
 	# two odds against sightings, 'no odds' out of sight, sight in move"), which the resolver never calls (checked below).
-	var allowed := ["fog_rules.gd", "game_state.gd", "game_session.gd", "rules_codex.gd", "forecast.gd"]
+	# ARM-1: muster_forecast.gd is a forecast too (it lists how far an army sees before and after a muster), and nothing in the
+	# resolver calls it (the scan below)
+	var allowed := ["fog_rules.gd", "game_state.gd", "game_session.gd", "rules_codex.gd", "forecast.gd", "muster_forecast.gd"]
 	var reads := RegEx.create_from_string("\\.fog\\b|has_fog|FogRules\\.|FogData\\.")
 	var dir := DirAccess.open("res://rules")
 	var scanned := 0
@@ -107,6 +109,16 @@ func test_the_resolver_never_reads_fog() -> void:
 			var code := line if hash_at < 0 else line.substr(0, hash_at)
 			if calls.search(code) != null:
 				fail("rules/%s calls a forecast: %s" % [file, line.strip_edges()])
+	# ARM-1: nor do they call the muster forecast, save the order book, which asks its refusal() (the one question that holds
+	# no fog text: it answers with MusterRules.check) so that the plan's refusal reasons and the forecast's are the same words.
+	var muster_calls := RegEx.create_from_string("MusterForecast\\.(?!refusal\\()")
+	for file in ["turn_resolver.gd", "auto_battle_resolver.gd", "order_book.gd", "siege_rules.gd", "ruler_rules.gd", "ascension_rules.gd",
+			"muster_rules.gd", "magic_rules.gd", "game_session.gd"]:
+		for line in FileAccess.get_file_as_string("res://rules/" + file).split("\n"):
+			var hash_at := line.find("#")
+			var code := line if hash_at < 0 else line.substr(0, hash_at)
+			if muster_calls.search(code) != null:
+				fail("rules/%s calls the muster forecast: %s" % [file, line.strip_edges()])
 
 
 func test_memory_costs_little_on_load() -> void:

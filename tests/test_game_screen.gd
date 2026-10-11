@@ -45,7 +45,9 @@ func _recruit_button(game: GameScreen, unit_type_id: String) -> Button:
 	return null
 
 
+## The orders list is the tray's Orders button's: it shows in the card's place.
 func _order_rows(game: GameScreen) -> Array:
+	game.map.show_orders()
 	return game.map.details.find_children("Order_*", "", true, false)
 
 

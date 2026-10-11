@@ -51,7 +51,8 @@ const BORDER := "border_battle"
 const BATTLE := "battle"
 const ORDINAL_WORDS := ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"]
 ## Event types whose lines name armies (the report's tooltip points at the codex entry on army names).
-const NAMES_ARMIES := ["army_moved", "order_rejected", "border_battle", "battle", "captured", "recruited"]
+const NAMES_ARMIES := ["army_moved", "order_rejected", "border_battle", "battle", "captured", "recruited",
+	"army_split", "units_transferred", "armies_merged", "commanders_swapped", "army_disbanded"]
 ## A one-line explanation of army names for tooltips (RulesCodex "army_names" has the full text).
 const NAMES_HINT := "Every army keeps one name until it is gone: a ruler's army is named after its ruler, and every other army by its number, like the Crown's 3rd."
 
@@ -115,6 +116,8 @@ static func _merged_recruits(group: Array) -> Dictionary:
 		cost += int(e.numbers.cost)
 		new_army = new_army or bool(e.numbers.get("new_army", false))
 		texts.append(String(e.get("text", "")))
+		if e.numbers.has("outside_ritual"):
+			numbers["outside_ritual"] = e.numbers.outside_ritual  # ARM-1: a folded line says it once
 	numbers["cost"] = cost
 	numbers["new_army"] = new_army
 	numbers["gold_after"] = int(group[-1].numbers.get("gold_after", 0))
@@ -497,6 +500,8 @@ static func _line_at(i: int, ctx: Dictionary) -> String:
 			text = _captured_line(e, ctx)
 		"recruited":
 			text = _recruited_line(e, ctx)
+		"army_split", "units_transferred", "armies_merged", "commanders_swapped", "army_disbanded":
+			text = MusterRules.event_sentence(ctx.state, e)  # ARM-1: names for life, the owner's report only
 		"siege_started", "walls_damaged", "walls_breached", "siege_lifted", "fort_built":
 			text = _siege_line(e, ctx)  # M3c: the reader's turn words
 	return text if not text.is_empty() else own_text(e, ctx.viewer)
@@ -1290,6 +1295,8 @@ static func _recruited_line(e: Dictionary, ctx: Dictionary) -> String:
 		text += " The %s now leads %s." % [unit, _name(id, ctx)]
 	else:
 		text += " %s joined %s." % ["They" if plural else "It", _name(id, ctx)]
+	if numbers.has("outside_ritual"):  # ARM-1 (§2.1): it joined an army under a blessing, and isn't covered by it
+		text += " %s under its %s." % ["They aren't" if plural else "It isn't", MagicRules.spell_name(String(numbers.outside_ritual))]
 	if numbers.has("hp") and numbers.has("max_hp") and many.size() <= 1:
 		var ut := _unit_type_by_name(s, fid, unit)
 		var wounded := AscensionRules.arrival_text(ut, int(numbers.hp), int(numbers.max_hp), int(numbers.get("blood_levy", 4)))

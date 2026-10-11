@@ -507,9 +507,10 @@ static func summary(state: GameState, army: Army) -> String:
 	return "\n".join(lines)
 
 
-## Adds the ruler's lines under the army header in the map's side panel. Each line's tooltip is its
-## breakdown (or rule) and links its codex entry; right-clicks call `request_codex`.
-static func fill(box: Control, state: GameState, army: Army, request_codex: Callable) -> void:
+## Adds the ruler's lines under the army header in the map's army card. Each line's tooltip is its
+## breakdown (or rule) and links its codex entry; right-clicks call `request_codex`. `with_portrait` false leaves the ruler's
+## face out of the first line (the army card shows it in its portrait row, with the hit-point bar).
+static func fill(box: Control, state: GameState, army: Army, request_codex: Callable, with_portrait: bool = true) -> void:
 	var f := state.find_faction(army.owner)
 	if f == null or not f.has_ruler() or army.ruler == null:
 		return
@@ -521,7 +522,8 @@ static func fill(box: Control, state: GameState, army: Army, request_codex: Call
 	row.name = "RulerRow"
 	row.add_theme_constant_override("separation", 10)
 	box.add_child(row)
-	row.add_child(Art.ruler_card(rid, name, Vector2(44, 44), Art.Crop.FACE))
+	if with_portrait:
+		row.add_child(Art.ruler_card(rid, name, Vector2(44, 44), Art.Crop.FACE))
 	var ruler_label := _text(row, "Ruler: %s" % name, TooltipText.plain("%s, ruler of the %s" % [RulerRules._cap(name), f.faction_name],
 		"%s It %s. %s" % [String(RulerRules.ruler_data(rid).get("flavour", "")), RulerData.BATTLE_RANKS.get(RulerRules.battle_rank(rid), ""),
 			RulesCodex.text("ruler_army")]), UiPalette.GILT)

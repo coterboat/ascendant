@@ -41,7 +41,8 @@ func _samples(s: GameState) -> Array:
 	with.call("fort_built", ["ebonpeak"], [CLANS], [], {"level": 1, "walls": 3, "recruits": 2, "recruit_from": 6, "province": "ebonpeak"})
 	for t in ["order_rejected", "sacrificed", "recruited", "income", "research_gained", "research_done", "mending", "ruler_healed",
 			"path_healed", "raided", "walls_repaired", "construction_started", "construction_halted", "storm_called_off",
-			"sally_called_off", "sally_found_nothing", "a_future_event"]:
+			"sally_called_off", "sally_found_nothing", "a_future_event",
+			"army_split", "units_transferred", "armies_merged", "commanders_swapped", "army_disbanded"]:  # ARM-1 musters: the owner's alone
 		with.call(t, ["fangridge"], [CLANS], ["beasts-1"], {})
 	for t in ["siege_started", "walls_damaged", "walls_breached", "siege_lifted", "siege_ended", "construction_razed"]:
 		with.call(t, ["blackwood"], [CLANS], ["beasts-1"], {})  # the Crown is not in it here

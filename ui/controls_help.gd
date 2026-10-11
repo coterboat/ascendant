@@ -6,7 +6,7 @@ extends RefCounted
 ## The game screen draws it in a modal. Lens keys are listed from the LensHost, so UX-7's lenses appear by themselves.
 
 ## The first how-to, in the words the top bar's hint tooltip had: select an army, click a neighbour, recruit at the capital.
-const HOW_TO_ORDER := "Select one of your armies, then click a neighboring province to move it there; hover a province first to see the forecast and battle odds. Select your capital to recruit. Each order is listed in the details card beside the selection (the tray's Orders button brings it back), where you can cancel it. Hover any number to see where it comes from; right-click it, or press F1, to open its codex entry. End turn when you are done."
+const HOW_TO_ORDER := "Select one of your armies, then click a neighboring province to move it there (or press March on its card and then click one); hover a province first to see the forecast and battle odds. Select your capital to recruit: press Recruit on its card. Each army's order is on its card, and every order is listed under the tray's Orders button, where you can cancel it. Hover any number to see where it comes from; right-click it, or press F1, to open its codex entry. End turn when you are done."
 const QUICK := "Move: select an army, then a neighbor. Recruit: select your capital."
 
 
@@ -14,9 +14,9 @@ const QUICK := "Move: select an army, then a neighbor. Recruit: select your capi
 static func sections(lens_keys: Array = []) -> Array:
 	var out: Array = []
 	out.append({"title": "Giving orders", "rows": [
-		{"keys": "Click an army, then a province", "text": "Select one of your armies, then click a neighboring province to move it there. Hover the province first to see the forecast and the battle odds."},
-		{"keys": "Click your capital", "text": "Select your capital to recruit. With forts, select any fort you own."},
-		{"keys": "End turn (the seal)", "text": "Lock your orders in. Every player's orders then resolve together. Your orders are listed in the details card, where each has a cancel button; the tray's Orders button brings the card back."},
+		{"keys": "Click an army, then a province", "text": "Select one of your armies, then click a neighboring province to move it there. Hover the province first to see the forecast and the battle odds. The army's card has March too: it folds into a slim strip while you choose, and Esc cancels."},
+		{"keys": "Click your capital, then Recruit", "text": "Select your capital to recruit: press Recruit on its card to see what you can buy. With forts, select any fort you own."},
+		{"keys": "End turn (the seal)", "text": "Lock your orders in. Every player's orders then resolve together. Your orders are listed under the tray's Orders button, where each has a cancel button; an army's own order is on its card."},
 	]})
 	out.append({"title": "The board", "rows": [
 		{"keys": "Drag, middle-drag, W A S D, arrow keys", "text": "Pan the map."},
@@ -32,7 +32,7 @@ static func sections(lens_keys: Array = []) -> Array:
 		{"keys": "Right-click, or F1 while hovering", "text": "Open the codex at the rule behind a number, a plate, an army or a province."},
 		{"keys": "Codex button", "text": "Every rule of the game in plain language, searchable."},
 	]})
-	var close_row := "Close the topmost thing, one at a time: a panel or dialog, then the selection card, then a lens, then the fortress close-up. With nothing left to close, Esc opens the menu."
+	var close_row := "Close the topmost thing, one at a time: a panel or dialog, then choosing a march destination, then the selection card, then a lens, then the fortress close-up. With nothing left to close, Esc opens the menu."
 	out.append({"title": "Closing things", "rows": [
 		{"keys": "Esc", "text": close_row},
 		{"keys": "Right-click on empty board", "text": "The same, without the menu: it closes the topmost thing and does nothing when nothing is open."},

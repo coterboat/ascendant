@@ -251,7 +251,7 @@ func test_the_table_shows_every_button_at_both_sizes() -> void:
 		assert_true(_inside(tray, viewport) and _inside(seal, viewport), "%s: the tray and the seal are inside the window" % where)
 		assert_true(tray.position.y >= viewport.y - TableLayout.BOTTOM_H - 0.5 and seal.position.y >= viewport.y - TableLayout.BOTTOM_H - 0.5, "%s: both in the bottom band" % where)
 		assert_false(TableLayout.overlaps(tray, seal), "%s: the seal is beside the tray" % where)
-		assert_true(_rect(g, "card").end.x <= viewport.x + 0.5, "%s: the details card is inside the window" % where))
+		assert_true(_rect(g, "card").end.x <= viewport.x + 0.5, "%s: the selection card is inside the window" % where))
 	# Below 1600 logical width the system row is icons only: the buttons shrink, the names are in their tooltips.
 	var wide := _screen("1600x900", "game")
 	var narrow := _screen("1280x720", "game")

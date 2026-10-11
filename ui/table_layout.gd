@@ -75,7 +75,7 @@ static func safe_area(viewport: Vector2, chronicle_open: bool = false) -> Rect2:
 
 
 ## Where a board frames the whole map at its first look (the 3D board's whole-map camera, the 2D map's fit): the safe area to
-## the right of the left column (the notice, the guide and the docked details card, CARD_W wide, with a gap each side), so the
+## the right of the left column (the notice, the guide and the docked selection card, CARD_W wide, with a gap each side), so the
 ## map is not drawn under any of them, the plaques or the tray. Until UX-3 puts the selection cards beside their plates the
 ## column is fixed.
 static func framing_area(viewport: Vector2, chronicle_open: bool = false) -> Rect2:

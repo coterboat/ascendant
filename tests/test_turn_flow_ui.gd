@@ -282,7 +282,7 @@ func test_a_whole_turn_through_the_table_report_lines_focus_provinces_on_the_car
 	assert_false(game.report_overlay.visible, "a line closes the report")
 	assert_eq(closed, [1], "and the host heard it close")
 	assert_eq(game.map.selected_province_id, pid, "it shows the province")
-	assert_true(game.map.details_card.visible, "on the details card")
+	assert_true(game.map.cards.visible, "on the card")
 	var name_label := game.map.details.find_child("ProvinceName", true, false) as Label
 	assert_true(name_label != null and name_label.text == game.map.state.find_province(pid).name, "with its name")
 	game.report_button.pressed.emit()

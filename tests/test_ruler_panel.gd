@@ -86,10 +86,10 @@ func test_the_ruler_button_shows_only_in_games_with_rulers() -> void:
 	assert_eq(String(panel.columns.get_child(1).name), "Column_beasts", "then the enemy's")
 	panel.close_button.pressed.emit()
 	assert_false(panel.visible)
-	# The ruler's army in the side panel opens it too.
-	game.map.select_province("crownkeep")
+	# The ruler's army card opens it too.
+	game.map.select_army(RulerRules.ruler_army(game.map.state, "kingdom").id)
 	var open := game.map.details.find_child("OpenRulerPanel", true, false) as Button
-	assert_true(open != null, "the side panel links the ruler panel")
+	assert_true(open != null, "the ruler's army card links the ruler panel")
 	open.pressed.emit()
 	assert_true(panel.visible)
 	# The top bar still fits at 1600 px with the extra button.
@@ -173,7 +173,8 @@ func test_the_dialog_previews_what_the_forecast_says_and_confirm_queues_the_orde
 	assert_eq(queued.size(), 1)
 	assert_true(queued[0] is SacrificeOrder and queued[0].mandate_id == "royal_armories", "Confirm queued the Sacrifice order")
 	assert_true(game.map.status_text.begins_with("Sacrifice ordered: Royal Armories."), game.map.status_text)
-	# The orders list shows it, linked to the codex; the panel shows it queued, and one per turn.
+	# The orders list (the tray's Orders button) shows it, linked to the codex; the panel shows it queued, and one per turn.
+	game.map.show_orders()
 	var line := game.map.details.find_child("Order_0", true, false).find_child("OrderLine", true, false) as Label
 	assert_true(line.text.begins_with("Sacrifice for Royal Armories: King Corvane I gives up 4 power (3, +1 for a mid-game sacrifice), keeping 6."), line.text)
 	assert_eq(String(line.get_meta(CodexLink.META)), "sacrifice")
@@ -228,6 +229,7 @@ func test_cancelling_the_sacrifice_in_the_orders_list_says_which_orders_it_remov
 	map.select_province("stonegate")  # the second click orders the road move
 	assert_eq(map.orders.orders().size(), 2)
 	assert_true(map.orders.orders()[1].is_road_move())
+	map.show_orders()
 	var cancel := map.details.find_child("Order_0", true, false).find_child("CancelButton", true, false) as Button
 	cancel.pressed.emit()
 	assert_eq(map.orders.orders(), [], "the road move went with the sacrifice")
