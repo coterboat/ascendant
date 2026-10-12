@@ -2,7 +2,8 @@ extends "res://tests/test_case.gd"
 ## Issue #6 orders UI: the OrdersController queues moves and recruits through the OrderBook,
 ## reports the rules' reasons, cancels, takes every number from Forecast (battle odds included),
 ## speaks in names (never ids) and never changes the state. Session-backed controllers keep the orders
-## in GameSession's books. Plus the map screen's two-click move, cancel button and hover preview.
+## in GameSession's books. Plus the map screen's two-click move, the tray's cancel (UX-4: the orders are tokens in the tray) and hover
+## preview. The numbering helpers (placed and realm orders, a number being a place in the list) are pinned in tests/test_order_tray.gd.
 
 const MAP_SCENE := "res://ui/map_screen.tscn"
 
@@ -127,13 +128,12 @@ func test_map_screen_two_click_move_and_cancel() -> void:
 	screen.select_province(here.neighbors[0])
 	assert_eq(screen.orders.orders().size(), 1, "second click on a neighbor queues the move")
 	assert_eq(screen.selected_army_id, army.id, "the army stays selected")
-	var cancel: Button = null
-	for n in screen.details.find_children("CancelButton", "Button", true, false):
-		cancel = n
-	assert_true(cancel != null, "the orders list has a cancel button")
-	if cancel:
-		cancel.pressed.emit()
+	var token: OrderToken = screen.table().tray_slot().token_for(0)
+	assert_true(token != null and token.cross != null, "the order is a tray token with a cross")
+	if token:
+		token.cross.pressed.emit()
 	assert_eq(screen.orders.orders().size(), 0, "cancel removes it")
+	assert_true(screen.table().tray_slot().tokens().is_empty(), "and its token")
 	screen.get_parent().remove_child(screen)
 	screen.free()
 

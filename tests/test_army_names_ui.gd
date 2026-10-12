@@ -138,9 +138,9 @@ func test_tooltips_that_name_an_army_use_its_name() -> void:
 	_close(screen)
 
 
-# --- the orders list, forecasts and order checks --------------------------------------------------
+# --- the order's card, forecasts and order checks --------------------------------------------------
 
-func test_the_orders_list_and_forecasts_name_the_army() -> void:
+func test_the_orders_card_and_forecasts_name_the_army() -> void:
 	var s := GameState.new(5)
 	var crown := _crown_army(s)
 	var title := RulerRules._cap(TurnReportText.army_title(s, crown, false))
@@ -151,17 +151,17 @@ func test_the_orders_list_and_forecasts_name_the_army() -> void:
 	# An order for an army that isn't there says so the way the order check does.
 	var gone := session.describe_order("kingdom", MoveOrder.new("kingdom-999", "westwatch"))
 	assert_eq(gone, "Move an army that is not on the map to Westwatch.")
-	# The map's orders list shows the forecast for each queued move.
+	# The army's card shows the forecast for each queued move.
 	var screen := _open(s)
 	screen.select_army(crown.id)
 	assert_eq(screen.queue_move(crown.id, "westwatch"), "")
 	var line := screen.details.find_child("OrderLine", true, false) as Label
 	assert_true(line != null and line.text.begins_with(title), line.text if line else "no order line")
 	_assert_no_place_names_or_ids(_texts(screen.details) + [screen.preview_move("highcrag")], "orders and preview")
-	screen.show_orders()
+	screen.show_order(0)  # a click on its tray token: the order's card
 	var listed := screen.details.find_child("OrderLine", true, false) as Label
-	assert_true(listed != null and listed.text == line.text, "the orders list words it the same way")
-	_assert_no_place_names_or_ids(_texts(screen.details), "the orders list")
+	assert_true(listed != null and listed.text == line.text, "the order's card words it the same way")
+	_assert_no_place_names_or_ids(_texts(screen.details), "the order's card")
 	_close(screen)
 
 

@@ -396,7 +396,7 @@ func _sacrifice_section(col: VBoxContainer, f: Faction) -> void:
 			int(b.total)], TooltipText.from_breakdown(b), UiPalette.GILT)
 		q.name = "QueuedSacrificeLabel"
 		_codex_link(q, "sacrifice")
-		note = "One sacrifice per turn: cancel it in your orders list to choose another."
+		note = "One sacrifice per turn: cancel it from its token in the tray to choose another."
 	elif not can_order:
 		note = "You can sacrifice only while you give orders for your own turn."
 	else:

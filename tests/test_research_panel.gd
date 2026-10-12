@@ -198,13 +198,12 @@ func test_research_this_queues_through_the_session_with_its_forecast() -> void:
 	assert_true(panel.status_label.visible and panel.status_label.text.contains(String(fc.text)), "the forecast is in the status line")
 	assert_true(hud.chip.text.begins_with("Research: Drillyard"), "the chip follows: %s" % hud.chip.text)
 	assert_true(game.end_turn_button.text.contains("1 order"), game.end_turn_button.text)
-	game.map.show_orders()
-	var line := game.map.details.find_child("Order_0", true, false)
-	assert_true(line != null, "the order is in the orders list (the tray's Orders button)")
-	if line:
-		var l := line.find_child("OrderLine", true, false) as Label
-		assert_true(l.text.begins_with("Research: Drillyard"), l.text)
-		assert_eq(String(l.get_meta(CodexLink.META)), "research_order")
+	var token := game.map.table().tray_slot().token_for(0)
+	assert_true(token != null and bool(token.mark.realm) and token.mark["class"] == "research", "the order is a realm token in the tray")
+	game.map.show_order(0)  # its card, with the order's line
+	var l := game.map.details.find_child("OrderLine", true, false) as Label
+	assert_true(l != null and l.text.begins_with("Research: Drillyard"), l.text if l != null else "no order line")
+	assert_eq(String(l.get_meta(CodexLink.META)), "research_order")
 	# Another choice replaces it: still one research order.
 	panel.buttons["crown_charters"].pressed.emit()
 	orders = game.session.current_orders()

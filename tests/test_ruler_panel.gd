@@ -173,9 +173,11 @@ func test_the_dialog_previews_what_the_forecast_says_and_confirm_queues_the_orde
 	assert_eq(queued.size(), 1)
 	assert_true(queued[0] is SacrificeOrder and queued[0].mandate_id == "royal_armories", "Confirm queued the Sacrifice order")
 	assert_true(game.map.status_text.begins_with("Sacrifice ordered: Royal Armories."), game.map.status_text)
-	# The orders list (the tray's Orders button) shows it, linked to the codex; the panel shows it queued, and one per turn.
-	game.map.show_orders()
-	var line := game.map.details.find_child("Order_0", true, false).find_child("OrderLine", true, false) as Label
+	# Its tray token (a realm order: an icon, no number) opens its card, which shows it linked to the codex; the panel shows it queued, and one per turn.
+	var token := game.map.table().tray_slot().token_for(0)
+	assert_true(token != null and bool(token.mark.realm) and token.mark["class"] == "mandate", "a realm token in the tray")
+	game.map.show_order(0)
+	var line := game.map.details.find_child("OrderLine", true, false) as Label
 	assert_true(line.text.begins_with("Sacrifice for Royal Armories: King Corvane I gives up 4 power (3, +1 for a mid-game sacrifice), keeping 6."), line.text)
 	assert_eq(String(line.get_meta(CodexLink.META)), "sacrifice")
 	assert_true(line.tooltip_text.contains("= Kept power after: 6"), line.tooltip_text)
@@ -229,8 +231,8 @@ func test_cancelling_the_sacrifice_in_the_orders_list_says_which_orders_it_remov
 	map.select_province("stonegate")  # the second click orders the road move
 	assert_eq(map.orders.orders().size(), 2)
 	assert_true(map.orders.orders()[1].is_road_move())
-	map.show_orders()
-	var cancel := map.details.find_child("Order_0", true, false).find_child("CancelButton", true, false) as Button
+	map.show_order(0)  # the sacrifice's token opens its card: cancel it there
+	var cancel := map.details.find_child("CancelButton", true, false) as Button
 	cancel.pressed.emit()
 	assert_eq(map.orders.orders(), [], "the road move went with the sacrifice")
 	var status := map.details.find_child("StatusLabel", true, false) as Label

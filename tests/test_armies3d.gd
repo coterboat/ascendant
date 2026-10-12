@@ -393,7 +393,7 @@ func test_hotseat_seat_two_sees_nothing_of_seat_ones_plan() -> void:
 func _ghost_plates(b: Board3D) -> int:
 	var n := 0
 	for c in b.overlay.get_children():
-		if String(c.name).begins_with("GhostPlate") and (c as Control).visible:
+		if (c is OrderToken or String(c.name).begins_with("GhostPlate")) and (c as Control).visible:  # UX-4: the order tokens replaced the ghost plates
 			n += 1
 	return n
 
