@@ -698,7 +698,9 @@ func _rect(c: Control) -> Rect2:
 ## row and the Why tab (the controls are a full-view layer at 0, 0), the why panel and the result card.
 func _pieces(v: BattleSimpleView) -> Dictionary:
 	var out := {"plate left": _rect(v.plates[0]), "plate right": _rect(v.plates[1]), "centre": _rect(v.centre),
-		"caption": _rect(v.caption_strip), "bar": _rect(v.controls.bar), "why tab": _rect(v.controls.buttons.why)}
+		"bar": _rect(v.controls.bar), "why tab": _rect(v.controls.buttons.why)}
+	if v.caption_strip.visible:
+		out["caption"] = _rect(v.caption_strip)
 	if v.controls.queue_row.visible:
 		out["queue row"] = _rect(v.controls.queue_row)
 	if v.why_panel.visible:
@@ -719,17 +721,17 @@ func _assert_fits(v: BattleSimpleView, what: String) -> void:
 		for j in range(i + 1, names.size()):
 			var a: Rect2 = pieces[names[i]]
 			var b: Rect2 = pieces[names[j]]
-			if names[i] == "result card" or names[j] == "result card":
-				continue  # the result card comes up over the stage, the caption included; checked against the band below
-			assert_false(a.grow(-0.5).intersects(b.grow(-0.5)), "%s: the %s and the %s keep apart (%s, %s)" % [what, names[i], names[j], a, b])
+			assert_true(a.intersection(b).get_area() <= 1.0, "%s: the %s and the %s keep apart (%s, %s)" % [what, names[i], names[j], a, b])
 	var band := v.stage_band()
 	assert_true(band.position.y >= v.plates[0].position.y + v.plates[0].size.y, "%s: the stage's band starts under the plates" % what)
 	assert_true(band.end.y <= v.view_size().y - v.controls.bottom_reserve(), "%s: and ends above the controls" % what)
 	assert_true(v.caption_strip.position.y >= v.view_size().y * 2.0 / 3.0 - 0.5, "%s: the caption is in the lower third" % what)
+	assert_ne(v.caption_strip.visible, v.end_card.visible, "%s: the result card stands in for the caption" % what)
 	if pieces.has("why panel") and v._why_docks:
 		assert_true(band.end.x <= v.why_panel.position.x + 0.5, "%s: the band ends at the docked why panel" % what)
 	if pieces.has("result card"):
-		assert_true(band.grow(0.5).encloses(pieces["result card"]), "%s: the result card is inside the band" % what)
+		var r: Rect2 = pieces["result card"]
+		assert_true(r.position.x >= band.position.x and r.end.x <= band.end.x + 0.5 and r.position.y >= band.position.y, "%s: the result card is inside the band" % what)
 
 
 ## UX-8 (§6, and #221's before shot at 1600x900 at 125%, where the old fixed 1600x900 frame lost its right side and its

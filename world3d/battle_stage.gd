@@ -613,7 +613,7 @@ func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array =
 	_set_legend_open(controls.legend_open)
 	_fill_top_bar()
 	_fill_end_card()
-	end_card.visible = false
+	_show_result(false)
 	_set_caption([])
 	_last_time = 0.0
 	_on_seeked(player.live_state())

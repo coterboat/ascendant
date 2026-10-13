@@ -74,6 +74,8 @@ const HUD_TOP := MARGIN + SIDE_PLATE_H + 8.0
 const CAPTION_RESERVE := 78.0
 const CAPTION_GAP := 10.0
 const CAPTION_MAX_W := 1100.0
+## The view's height from which the result card keeps its full-size words.
+const END_TALL := 850.0
 ## A side with more fighters than this is massed (§3.4): numbers only for big and killing hits and the
 ## hovered fighter, status glyphs only on rulers, commanders and the hovered fighter.
 const MASSED := 40
@@ -263,7 +265,7 @@ func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array =
 	_set_legend_open(controls.legend_open)
 	_fill_top_bar()
 	_fill_end_card()
-	end_card.visible = false
+	_show_result(false)
 	_set_caption([])
 	_last_time = 0.0
 	_on_seeked(player.live_state())
@@ -581,7 +583,7 @@ func _on_seeked(st: Dictionary) -> void:
 			break
 	_set_caption(lines)
 	_update_round_label(st)
-	end_card.visible = false
+	_show_result(false)
 	controls.tick()
 
 
@@ -869,7 +871,7 @@ func _band_changed() -> void:
 	_build_field()
 	selection.order = _tab_order()
 	_on_seeked(player.live_state())
-	end_card.visible = end_shown
+	_show_result(end_shown)
 	var c := card(_selected)
 	if c != null:
 		c.selected = true
@@ -929,14 +931,26 @@ func _place_caption() -> void:
 	caption_strip.position = Vector2(roundf(band.position.x + (band.size.x - w) / 2.0), v.y - controls.bottom_reserve() - CAPTION_GAP - h)
 
 
-## The result card: at most 1000 wide, inside the band, near its top.
+## Shows or hides the result card. It stands in for the caption while it is up (its why and lines say it all).
+func _show_result(on: bool) -> void:
+	end_card.visible = on
+	caption_strip.visible = not on
+
+
+## The result card: at most 1000 wide, inside the band, near its top; in a short view (under END_TALL) its words a size
+## smaller and it hangs just under the plates, so it stays above the controls.
 func _fit_end_card(band: Rect2) -> void:
 	var w := minf(1000.0, band.size.x - 48.0)
 	end_card.custom_minimum_size.x = w
 	end_card.size.x = w
+	var tall := view_size().y >= END_TALL
+	end_result.add_theme_font_size_override("font_size", 26 if tall else 22)
+	end_why.add_theme_font_size_override("font_size", 18 if tall else 16)
 	for l in [end_result, end_why] + end_lines.get_children():
 		(l as Control).custom_minimum_size.x = w - 50.0
-	end_card.position = Vector2(roundf(band.position.x + (band.size.x - w) / 2.0), band.position.y + 24.0)
+	for l in end_lines.get_children():
+		(l as Label).add_theme_font_size_override("font_size", 17 if tall else 15)
+	end_card.position = Vector2(roundf(band.position.x + (band.size.x - w) / 2.0), band.position.y + (24.0 if tall else 4.0))
 
 
 func _on_hint_seen() -> void:
@@ -1006,7 +1020,7 @@ func _handled() -> void:
 
 
 func _watch_again() -> void:
-	end_card.visible = false
+	_show_result(false)
 	player.restart()
 	player.play()
 
@@ -1104,7 +1118,7 @@ func _update_round_label(st: Dictionary) -> void:
 func _show_message(text: String) -> void:
 	message_label.text = text
 	message_panel.visible = true
-	end_card.visible = false
+	_show_result(false)
 
 
 # --- the result card ------------------------------------------------------------------------------
@@ -1119,7 +1133,7 @@ func _show_end_card() -> void:
 			else "Back to the report"
 		buttons.next_battle_card.tooltip_text = "Watch the next battle (%s)." % BattleControls.KEYS.next_battle if controls.has_next_battle() \
 			else "That was the last battle: go back to the turn report (%s)." % BattleControls.KEYS.next_battle
-	end_card.visible = true
+	_show_result(true)
 	end_card.reset_size()
 	finished.emit()
 
@@ -1155,7 +1169,7 @@ func _fill_end_card() -> void:
 		end_lines.remove_child(c)
 		c.queue_free()
 	for line in end_card_lines():
-		var l := _label(String(line), 17, UiPalette.TEXT_PRIMARY)
+		var l := _label(String(line), 17 if view_size().y >= END_TALL else 15, UiPalette.TEXT_PRIMARY)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.custom_minimum_size.x = end_card.custom_minimum_size.x - 50.0  # so a new line never measures itself one word wide and stretches the card
 		end_lines.add_child(l)
@@ -1649,7 +1663,7 @@ func _build_end_card() -> void:
 	style.set_corner_radius_all(8)
 	style.set_content_margin_all(22)
 	end_card.add_theme_stylebox_override("panel", style)
-	end_card.visible = false
+	_show_result(false)
 	end_card.z_index = 4
 	frame.add_child(end_card)
 	var col := VBoxContainer.new()
