@@ -257,9 +257,12 @@ func test_the_system_row_opens_todays_panels_as_they_are() -> void:
 	hud.system_button("help").pressed.emit()
 	assert_true(game.help_overlay.visible, "? opens the list of keys")
 	game.help_overlay.visible = false
-	# The Chronicle is a placeholder that a later ticket fills: there, disabled, and it says so. Lenses (UX-7) opens its picker.
-	assert_true(hud.system_button("chronicle").disabled, "the Chronicle is a placeholder")
-	assert_true(hud.system_button("chronicle").tooltip_text.contains("later update"), "and says it is coming")
+	# The Chronicle opens its column (UX-6); Lenses (UX-7) opens its picker.
+	assert_false(hud.system_button("chronicle").disabled, "the Chronicle is live")
+	hud.system_button("chronicle").pressed.emit()
+	assert_true(game.chronicle_hud.is_open() and game.chronicle_hud.column.visible, "the Chronicle button opens the column")
+	hud.system_button("chronicle").pressed.emit()
+	assert_false(game.chronicle_hud.is_open(), "and a second press shuts it")
 	assert_false(hud.system_button("lenses").disabled, "Lenses is live (UX-7)")
 	assert_true(hud.system_button("lenses").tooltip_text.contains("Extra map views (1–6). Off by default."), "and says what it is")
 	hud.system_button("lenses").pressed.emit()
@@ -458,7 +461,9 @@ func test_the_notification_stack_has_an_empty_slot_on_the_left_edge() -> void:
 	var hud := game.map.table()
 	var slot := hud.notification_slot()
 	assert_eq(slot, hud.notification_stack)
-	assert_eq(slot.get_child_count(), 0, "empty: UX-6 fills it")
+	assert_eq(slot.get_child_count(), 1, "UX-6 filled it: the Chronicle's medallion stack, and nothing else")
+	assert_true(slot.get_child(0) is NoticeStack and not slot.get_child(0).visible, "empty and out of the way until there is news")
+	assert_true(hud.pieces().has(slot.get_child(0)), "it takes the mouse only where it draws, and the Table lists it as a piece")
 	assert_eq(slot.mouse_filter, Control.MOUSE_FILTER_IGNORE)
 	assert_eq([slot.offset_left, slot.offset_right], [0.0, TableLayout.STACK_W], "80 px on the left")
 	assert_eq(slot.offset_top, TableLayout.TOP_LEFT_H, "under the system row")
@@ -654,7 +659,7 @@ func test_the_selection_host_tells_its_presenter_what_is_selected() -> void:
 func test_the_report_host_hears_every_step_of_a_reports_life() -> void:
 	var game := _hotseat()
 	var host := game.report_host
-	assert_eq(host.presenter(), game, "the modal report is the default presenter")
+	assert_eq(host.presenter(), game.chronicle_hud, "UX-6: the Chronicle is the presenter, and hands today's modal what it asks for (here the suite's 'full report' setting)")
 	var log := []
 	host.turn_resolved.connect(func(t: int): log.append(["resolved", t]))
 	host.report_ready.connect(func(t: int): log.append(["ready", t]))
