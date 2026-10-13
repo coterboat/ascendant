@@ -13,17 +13,18 @@ placeholder (the kind's icon on a coloured disc), so a file landing here needs n
   rim clear, never paints the outcome in, has no text, and is the same for every faction (faction flavour is parked, §10).
 
 ## How they are made (base first)
-1. **Style samples:** four keys (`battle_won`, `province_lost`, `research_done`, `needs_you`) in four styles from the art seats,
-   into the Review Table batch `review/ux_art/` (local, gitignored), plus each style's four drawn by the game's own
-   `NoticeMedallion` at 1280x720. Alex picks the style.
-2. **The other 28** in the picked style, into the same batch. Alex keeps or rejects each one.
-3. **Install accepted** (`python3 tools/review/review.py apply ux_art`) copies every kept take here.
+1. **Style samples (done):** four keys in five styles from the art seats, judged in the Review Table batch `review/ux_art/`
+   (local, gitignored), each drawn by the game's own `NoticeMedallion` at 1280x720. **Alex 10-13: d, the bright cel look** (the
+   subject large in front of a bright sky with one low hill), as the base that each faction's set is made from.
+2. **The standard set (the base round):** all 32 in d, into the same batch. Alex keeps or rejects each one. In every set,
+   needs-you gets a pale parchment ground in place of the shared sky, so it still jumps out of the stack.
+3. **The faction sets**, derived from the standard set once it is kept: the same subjects with each faction's sky and
+   materials (the Crown's blue sky, sun pommels and white stone; the Clans' ochre and crimson dusk, bone, briar and red paint;
+   the Candlewake's violet dusk, ivory wax and lilac flame, once the faction is in the game). They go in
+   `assets/ui/notices/<faction id>/<key>.png`, and `NoticeArt` shows the viewer's own set (`NoticeArt.viewer`).
+4. **Install accepted** (`python3 tools/review/review.py apply ux_art`) copies every kept take here.
 
-The four styles of the sample round: **vignette** (a miniature oil painting in a round window), **emblem** (a cream and gold
-symbol on enamel in the kind's colour), **relief** (a struck medal, gold relief on kind-coloured enamel) and **cel** (the
-game's own cel-shaded look). The kinds' colours are `NoticeArt.DISC`.
-
-## The 32 subjects (a draft for the full round; Alex's notes on the samples come first)
+## The 32 subjects (Alex 10-13: fine)
 | key | kind | subject |
 |---|---|---|
 | `needs_you` | Needs you | a single bronze bell swung mid-ring |
