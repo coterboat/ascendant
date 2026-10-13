@@ -6,18 +6,24 @@ extends Control
 ## 3D stage can replace the field later and keep the same player. It reads the log, the report, static data
 ## (Art, RulesCodex, the resolver's constants) and its own settings, and never changes the game.
 ##
-## Screen (1600 x 900 base, centred when the window is wider or taller), as M3 §3.1:
-##   top bar      0-88     the title, each side's plaque (emblem, name, attacking / defending / arrived, the
-##                         terrain and fort chips) and strength bar with its break notch and numbers, the round
-##   field        88-688   backdrop and cards (BattleLayout), effects, the round banner; 1216 wide while the
-##                         why panel is docked
-##   caption      688-752  the round's caption (BattleCaptions), each line linked to its codex entry; before
-##                         round 1 the first-visit hint with its Got it button (remembered)
-##   controls     752-900  BattleControls (M3-4): the scrubber with round ticks and key-moment markers;
-##                         Restart, Play/Pause, 1x 2x 4x, Skip to end, a jump button per key-moment kind,
-##                         Legend, Why, Close
-##   why panel    1216, 88, 384 x 664   BattleWhyPanel (M3-4), docked right. When the battle only fits the
-##                         narrow field as a crowd, the panel floats over the full-width field instead (§3.4).
+## Screen (UX-8, #221, design/UX_WAR_TABLE.md §6): laid out over the whole view at any size (1600 x 900 base; 1280 x
+## 720 at a 125% interface), everything over a full-bleed stage:
+##   the stage    full-bleed: the backdrop fills the view; the cards (BattleLayout) and effects stand in the stage's
+##                free band (stage_band(): under the plates, above the caption and the controls, left of the docked
+##                why panel); the round banner and a key moment's line at the band's top
+##   side plates  top left and top right (TableHud's plaque look): the side's name (and its people), a role chip
+##                (defending, attacking, storming...), the strength bar with its break notch, and "hp · morale ·
+##                breaks at N hp"; each side's morale tag hangs under its plate
+##   the centre   top, between the plates: the battle's name and turn, the round, the condition chips (terrain,
+##                fort or walls, or the note that nobody defends)
+##   the caption  one plate in the lower third, above the controls: the round's caption (BattleCaptions), each line
+##                linked to its codex entry; before round 1 the first-visit hint with its Got it button (remembered)
+##   controls     BattleControls (M3-4, laid out by UX-8): the bottom bar (Restart, Play/Pause, 1x 2x 4x, the
+##                scrubber with round ticks and a clickable marker per key moment, Skip to end, Legend, Settings,
+##                Close), the queue row above it with more than one battle, and the Why tab on the right edge
+##   why panel    BattleWhyPanel (M3-4), WHY_W wide down the right edge under the plates. Docked, the stage's band
+##                narrows beside it; when the battle only fits the narrow band as a crowd, the panel floats over the
+##                full-width band instead (§3.4).
 ## The legend (BattleLegend, M3-4) opens over the field. The result card comes up over the field at the end:
 ## the result, the why with its factor chips, each side's losses, the ruler, feast and aftermath lines, and
 ## Watch again / Full report / Close.
@@ -56,9 +62,20 @@ signal codex_requested(key: String)
 signal report_requested(event: Dictionary)
 
 const BASE := Vector2(1600, 900)
-const TOP_H := 88.0
-const FIELD_H := 600.0
-const CAPTION_H := 64.0
+## UX-8: the margin round the view's edge, the side plates' height, width range and gap to the centre, and the room
+## the caption keeps above the controls. HUD_TOP is where the stage's free band starts (under the plates).
+const MARGIN := 16.0
+const SIDE_PLATE_H := 92.0
+const SIDE_PLATE_MAX_W := 500.0
+const SIDE_PLATE_MIN_W := 340.0
+const SIDE_PLATE_GAP := 12.0
+const CENTRE_MIN_W := 420.0
+const HUD_TOP := MARGIN + SIDE_PLATE_H + 8.0
+const CAPTION_RESERVE := 78.0
+const CAPTION_GAP := 10.0
+const CAPTION_MAX_W := 1100.0
+## The view's height from which the result card keeps its full-size words.
+const END_TALL := 850.0
 ## A side with more fighters than this is massed (§3.4): numbers only for big and killing hits and the
 ## hovered fighter, status glyphs only on rulers, commanders and the hovered fighter.
 const MASSED := 40
@@ -71,12 +88,10 @@ const TAG_TIME := 2.5
 const MOMENT_TOAST := 1.8
 const FIRST_HINT := "The bars show hit points left; the white notch is where a side breaks. Hover anyone to see what it's doing and why."
 const TOOLTIP_WRAP := 72
-## The why panel's width when docked, and where the narrowed field ends (§3.1).
+## The why panel's width (§3.1).
 const WHY_W := 384.0
-const WHY_X := 1216.0
 const DEPLOY_LINE := "Before round 1: the armies deploy. Press Space to play, or L for what every mark means."
-## #125: the terrain and fort chips keep this far from the title and the plaque, with this gap between them.
-const CHIP_GAP := 10.0
+## The condition chips' gap.
 const CHIP_SEPARATION := 6.0
 
 var player: BattlePlayer = null
@@ -116,6 +131,8 @@ var _why_open := true
 var _why_docks := true
 var _hint_seen := false
 var _selected := -1
+var _band_last := Rect2()
+var _loading := false
 
 # Nodes.
 var frame: Control
@@ -127,11 +144,17 @@ var banner_label: Label
 var toast_label: Label
 var title_label: Label
 var round_label: Label
+## UX-8: the side plates (left, right), each with its name label, role chip, strength bar and text.
+var plates: Array = []
 var plaque_labels: Array = []
-var chip_boxes: Array = []
+var role_chips: Array = []
 var bars: Array = []
 var bar_texts: Array = []
 var tag_labels: Array = []
+## UX-8: the centre plate (title, round, condition chips) and its row of condition chips; center_chip is the note
+## that nobody defends (or the battle's place at the walls), shown as a chip in that row.
+var centre: PanelContainer
+var conditions: HBoxContainer
 var center_chip: Label
 var caption_labels: Array = []
 var field: Control
@@ -144,7 +167,6 @@ var selection := BattleSelection.new()
 ## Aliases into the controls (and the result card's buttons), as M3-3 named them.
 var scrubber: BattleScrubber
 var buttons: Dictionary = {}
-var moment_buttons: Dictionary = {}
 var end_card: PanelContainer
 var end_result: Label
 var end_why: Label
@@ -164,8 +186,8 @@ func _init() -> void:
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	resized.connect(_center_frame)
-	_center_frame()
+	resized.connect(_layout)
+	_layout()
 
 
 func _process(delta: float) -> void:
@@ -220,7 +242,8 @@ func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array =
 	player.beat.connect(_on_beat)
 	player.seeked.connect(_on_seeked)
 	controls.bind(player, st)
-	_why_docks = not BattleLayout.build(_log, Vector2(WHY_X, FIELD_H)).crowd
+	_loading = true
+	_why_docks = not BattleLayout.build(_log, Vector2(view_size().x - WHY_W, stage_band().size.y)).crowd
 	if not _why_docks and controls.why_open:
 		# Nothing fits beside the panel (§3.4): it starts collapsed for this battle, and Why / W opens it over
 		# the field. The remembered setting is left as it is.
@@ -242,10 +265,12 @@ func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array =
 	_set_legend_open(controls.legend_open)
 	_fill_top_bar()
 	_fill_end_card()
-	end_card.visible = false
+	_show_result(false)
 	_set_caption([])
 	_last_time = 0.0
 	_on_seeked(player.live_state())
+	_loading = false
+	_band_last = stage_band()
 	return ""
 
 
@@ -274,7 +299,7 @@ func bar(si: int) -> BattleStrengthBar:
 	return bars[_slot_of_side(si)]
 
 
-## The left (0) or right (1) slot of the top bar where side `si` is shown.
+## The left (0) or right (1) side plate where side `si` is shown.
 func _slot_of_side(si: int) -> int:
 	return 0 if si == int(layout.get("left", 0)) else 1
 
@@ -558,7 +583,7 @@ func _on_seeked(st: Dictionary) -> void:
 			break
 	_set_caption(lines)
 	_update_round_label(st)
-	end_card.visible = false
+	_show_result(false)
 	controls.tick()
 
 
@@ -732,50 +757,200 @@ func _tab_order() -> Array:
 
 # --- the why panel and the legend -----------------------------------------------------------------
 
-## The field's width: narrowed while the why panel is docked (§3.1), full when it floats or is closed.
+## The view's size: the control's own (the window, under the host), or BASE before it has one.
+func view_size() -> Vector2:
+	return size if size.x > 10.0 and size.y > 10.0 else BASE
+
+
+## The stage band's width: narrowed while the why panel is docked (§3.1), the whole view when it floats or is closed.
 func field_width() -> float:
-	return WHY_X if _why_open and _why_docks else BASE.x
+	return view_size().x - WHY_W if _why_open and _why_docks else view_size().x
+
+
+## UX-8: the stage's free band, in the view's (and the field's) coordinates: under the plates, above the caption and
+## the controls, left of the docked why panel. The cards stand in it; the 3D stage frames the battle in it.
+func stage_band() -> Rect2:
+	var bottom := view_size().y - controls.bottom_reserve() - CAPTION_RESERVE
+	return Rect2(0.0, HUD_TOP, field_width(), maxf(120.0, bottom - HUD_TOP))
+
+
+## The part of the band the why panel leaves free, docked or floating: the caption, the queue row and the result card
+## centre on it.
+func free_band() -> Rect2:
+	var band := stage_band()
+	if _why_open:
+		band.size.x = minf(band.size.x, view_size().x - WHY_W)
+	return band
+
+
+## The side plates' width at this view's width: as wide as SIDE_PLATE_MAX_W while the centre keeps CENTRE_MIN_W between them.
+func plate_width() -> float:
+	return clampf(floorf((view_size().x - 2.0 * MARGIN - 2.0 * SIDE_PLATE_GAP - CENTRE_MIN_W) / 2.0), SIDE_PLATE_MIN_W, SIDE_PLATE_MAX_W)
 
 
 func _set_why_open(on: bool) -> void:
 	_why_open = on
-	var before := field.size.x
-	_apply_width()
+	_layout()
 	if on:
 		why_panel.refresh()
-	if player != null and absf(field.size.x - before) > 0.5:
-		var end_shown := end_card.visible
-		_build_field()
-		selection.order = _tab_order()
-		_on_seeked(player.live_state())
-		end_card.visible = end_shown
-		var c := card(_selected)
-		if c != null:
-			c.selected = true
 
 
-## The legend opens over the whole field and the why panel (it is modal: L, Esc or its x closes it).
+## The legend opens over the whole stage and the why panel (it is modal: L, Esc or its x closes it).
 func _set_legend_open(on: bool) -> void:
 	legend.visible = on
-	legend.place(Rect2(16, TOP_H + 8, BASE.x - 32, FIELD_H + CAPTION_H - 16))
+	_place_legend()
 
 
-## Sizes the field, the caption strip and what sits on them to field_width(), and docks or floats the why
-## panel.
+func _place_legend() -> void:
+	var v := view_size()
+	legend.place(Rect2(MARGIN, HUD_TOP, v.x - 2.0 * MARGIN, v.y - BattleControls.BAR_H - BattleControls.GAP - HUD_TOP))
+
+
+## Lays the screen out for the view's size and field_width(): the full-bleed stage and the band in it, the plates, the
+## centre, the tags, the caption, the controls, the why panel, the result card and the legend. When the band moved
+## (a resize, the why panel docking or closing, the queue row), the battle on it is laid out again (_band_changed).
 func _apply_width() -> void:
-	var w := field_width()
-	field.size.x = w
-	for n in [stage, backdrop, cards_layer, effects]:
-		(n as Control).size.x = w
-	banner_label.size.x = w
-	toast_label.size.x = w - 400.0
-	caption_strip.size.x = w
-	caption_strip.custom_minimum_size.x = w
-	tag_labels[1].position.x = w - 24.0 - 520.0
-	end_card.position.x = (w - end_card.custom_minimum_size.x) / 2.0
-	message_panel.position.x = (w - message_panel.custom_minimum_size.x) / 2.0
+	_layout()
+
+
+func _layout() -> void:
+	if frame == null:
+		return
+	var v := view_size()
+	var fw := field_width()
+	var band := stage_band()
+	frame.position = Vector2.ZERO
+	frame.size = v
+	field.position = Vector2.ZERO
+	field.size = v
+	stage.size = v
+	backdrop.size = v
+	backdrop.horizon = band.position.y + BattleBackdrop.HORIZON_H * band.size.y / 600.0
+	backdrop.span_w = fw
+	for n in [cards_layer, effects]:
+		(n as Control).position = band.position
+		(n as Control).size = band.size
+	banner_label.position = Vector2(0, band.position.y + 14.0)
+	banner_label.size.x = fw
+	toast_label.position = Vector2(200, band.position.y + 54.0)
+	toast_label.size.x = maxf(200.0, fw - 400.0)
+	# The plates in the top corners, the centre between them.
+	var pw := plate_width()
+	for k in 2:
+		var plate: PanelContainer = plates[k]
+		plate.position = Vector2(MARGIN if k == 0 else v.x - MARGIN - pw, MARGIN)
+		plate.size = Vector2(pw, SIDE_PLATE_H)
+		var tag: Label = tag_labels[k]
+		var tw := minf(520.0, fw / 2.0 - MARGIN - 8.0)
+		tag.size.x = tw
+		tag.position = Vector2(MARGIN if k == 0 else fw - MARGIN - tw, MARGIN + SIDE_PLATE_H + 6.0)
+	var cx := MARGIN + pw + SIDE_PLATE_GAP
+	centre.position = Vector2(cx, MARGIN)
+	centre.size = Vector2(v.x - 2.0 * cx, 0.0)
+	_fit_texts()
+	_place_caption()
 	why_panel.visible = _why_open
-	why_panel.position = Vector2(WHY_X, TOP_H)
+	var wy := HUD_TOP
+	why_panel.position = Vector2(v.x - WHY_W, wy)
+	why_panel.custom_minimum_size = Vector2(WHY_W, v.y - BattleControls.BAR_H - BattleControls.GAP - wy)
+	why_panel.size = why_panel.custom_minimum_size
+	var free := free_band()
+	controls.fit(v, free, free.end.x)
+	_fit_end_card(free)
+	message_panel.position = Vector2(roundf(free.position.x + (free.size.x - message_panel.custom_minimum_size.x) / 2.0), free.position.y + 120.0)
+	_place_legend()
+	var changed := band != _band_last
+	_band_last = band
+	if changed and player != null and not _loading and not _log.is_empty():
+		_band_changed()
+
+
+## The band moved under a battle on screen: lay its cards out again on the same state.
+func _band_changed() -> void:
+	var end_shown := end_card.visible
+	_build_field()
+	selection.order = _tab_order()
+	_on_seeked(player.live_state())
+	_show_result(end_shown)
+	var c := card(_selected)
+	if c != null:
+		c.selected = true
+
+
+## The plates' names (shrunk to fit beside the role chip), the title (shrunk to the centre) and the condition chips
+## (their short words when the full ones don't fit).
+func _fit_texts() -> void:
+	var inner := plate_width() - 20.0
+	for k in 2:
+		var chip: Label = role_chips[k]
+		var cw := _font_of(chip).get_string_size(chip.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size_of(chip, UiPalette.TYPE_SMALL)).x + 14.0 if chip.visible else 0.0
+		var l: Label = plaque_labels[k]
+		l.size.x = maxf(80.0, inner - cw - 8.0)
+		_fit(l, UiPalette.TYPE_NAME, UiPalette.TYPE_SMALL + 1)
+	var cin := centre.size.x - 20.0
+	title_label.size.x = cin
+	_fit(title_label, UiPalette.TYPE_NAME, UiPalette.TYPE_SMALL + 1)
+	var chips := conditions.get_children().filter(func(c): return (c as Control).visible)
+	for words in ["full", "short"]:
+		for c in chips:
+			(c as Label).text = String((c as Label).get_meta(words, (c as Label).text))
+		if chips_width(chips) <= cin:
+			break
+
+
+## The caption plate: as wide as its words (at most the free band, less a margin), centred on the free band, its foot
+## CAPTION_GAP above the controls. A line too long for that wraps to a second line (no more), and the plate grows upward.
+func _place_caption() -> void:
+	var band := free_band()
+	var v := view_size()
+	var got := 0.0
+	if hint_button.visible:
+		got = 12.0 + _font_of(hint_button).get_string_size(hint_button.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x + 24.0
+	var widest := 0.0
+	for k in 2:
+		var l: Label = caption_labels[k]
+		if not l.text.is_empty():
+			widest = maxf(widest, _font_of(l).get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size_of(l, 18)).x)
+	var w := clampf(widest + got + 32.0, 240.0, minf(CAPTION_MAX_W, band.size.x - 2.0 * MARGIN))
+	var inner := w - got - 30.0
+	var h := 14.0
+	for k in 2:
+		var l: Label = caption_labels[k]
+		l.visible = k == 0 or not l.text.is_empty()
+		if not l.visible:
+			continue
+		var fs := _font_size_of(l, 18)
+		var line_h := _font_of(l).get_height(fs)
+		var lines := 1
+		if not l.text.is_empty():
+			lines = clampi(ceili(_font_of(l).get_multiline_string_size(l.text, HORIZONTAL_ALIGNMENT_CENTER, inner, fs).y / line_h - 0.01), 1, 2)
+		l.custom_minimum_size = Vector2(inner, line_h * lines)
+		h += line_h * lines
+	caption_strip.custom_minimum_size = Vector2(w, h)
+	caption_strip.size = Vector2(w, h)
+	caption_strip.position = Vector2(roundf(band.position.x + (band.size.x - w) / 2.0), v.y - controls.bottom_reserve() - CAPTION_GAP - h)
+
+
+## Shows or hides the result card. It stands in for the caption while it is up (its why and lines say it all).
+func _show_result(on: bool) -> void:
+	end_card.visible = on
+	caption_strip.visible = not on
+
+
+## The result card: at most 1000 wide, inside the band, near its top; in a short view (under END_TALL) its words a size
+## smaller and it hangs just under the plates, so it stays above the controls.
+func _fit_end_card(band: Rect2) -> void:
+	var w := minf(1000.0, band.size.x - 48.0)
+	end_card.custom_minimum_size.x = w
+	end_card.size.x = w
+	var tall := view_size().y >= END_TALL
+	end_result.add_theme_font_size_override("font_size", 26 if tall else 22)
+	end_why.add_theme_font_size_override("font_size", 18 if tall else 16)
+	for l in [end_result, end_why] + end_lines.get_children():
+		(l as Control).custom_minimum_size.x = w - 50.0
+	for l in end_lines.get_children():
+		(l as Label).add_theme_font_size_override("font_size", 17 if tall else 15)
+	end_card.position = Vector2(roundf(band.position.x + (band.size.x - w) / 2.0), band.position.y + (24.0 if tall else 4.0))
 
 
 func _on_hint_seen() -> void:
@@ -834,8 +1009,8 @@ func _gui_input(event: InputEvent) -> void:
 	# A click on the empty field clears the selection.
 	var mb := event as InputEventMouseButton
 	if mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and player != null:
-		var at := mb.position - frame.position
-		if Rect2(Vector2(0, TOP_H), Vector2(field_width(), FIELD_H)).has_point(at):
+		var at := mb.position - frame.position - field.position
+		if Rect2(Vector2.ZERO, Vector2(field_width(), view_size().y)).has_point(at):
 			selection.clear()
 
 
@@ -845,7 +1020,7 @@ func _handled() -> void:
 
 
 func _watch_again() -> void:
-	end_card.visible = false
+	_show_result(false)
 	player.restart()
 	player.play()
 
@@ -897,6 +1072,7 @@ func _set_caption(lines: Array) -> void:
 			l.text = ""
 			l.tooltip_text = ""
 	hint_button.visible = lines.is_empty() and not _hint_seen
+	_place_caption()
 
 
 ## MVP-3 (#177): the line under a garrison battle's first caption, before the first blow: who the Free Holds are, that they hold the
@@ -942,7 +1118,7 @@ func _update_round_label(st: Dictionary) -> void:
 func _show_message(text: String) -> void:
 	message_label.text = text
 	message_panel.visible = true
-	end_card.visible = false
+	_show_result(false)
 
 
 # --- the result card ------------------------------------------------------------------------------
@@ -957,7 +1133,7 @@ func _show_end_card() -> void:
 			else "Back to the report"
 		buttons.next_battle_card.tooltip_text = "Watch the next battle (%s)." % BattleControls.KEYS.next_battle if controls.has_next_battle() \
 			else "That was the last battle: go back to the turn report (%s)." % BattleControls.KEYS.next_battle
-	end_card.visible = true
+	_show_result(true)
 	end_card.reset_size()
 	finished.emit()
 
@@ -993,9 +1169,9 @@ func _fill_end_card() -> void:
 		end_lines.remove_child(c)
 		c.queue_free()
 	for line in end_card_lines():
-		var l := _label(String(line), 17, UiPalette.TEXT_PRIMARY)
+		var l := _label(String(line), 17 if view_size().y >= END_TALL else 15, UiPalette.TEXT_PRIMARY)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size.x = 950  # so a new line never measures itself one word wide and stretches the card
+		l.custom_minimum_size.x = end_card.custom_minimum_size.x - 50.0  # so a new line never measures itself one word wide and stretches the card
 		end_lines.add_child(l)
 	end_card.reset_size()  # a card filled for a longer battle before shrinks back to its content
 	buttons.report.disabled = _report.is_empty()
@@ -1055,19 +1231,12 @@ static func _cap(text: String) -> String:
 
 # --- building -------------------------------------------------------------------------------------
 
-func _center_frame() -> void:
-	if frame == null:
-		return
-	var s := size if size.x > 10.0 else BASE
-	frame.position = ((s - BASE) / 2.0).floor().max(Vector2.ZERO)
-
-
 func _build_field() -> void:
 	for c in cards_layer.get_children():
 		cards_layer.remove_child(c)
 		c.queue_free()
 	effects.clear()
-	layout = BattleLayout.build(_log, Vector2(field_width(), FIELD_H))
+	layout = BattleLayout.build(_log, stage_band().size)
 	_cards = []
 	_cards.resize(_log.fighters.size())
 	_glyph_cards = []
@@ -1108,9 +1277,12 @@ func _fill_top_bar() -> void:
 		place = "at %s" % BattleBackdrop.province_name(String(pids[0])) if not pids.is_empty() else "in the field"
 	var turn := int(_log.get("turn", 0))
 	title_label.text = "Battle %s%s" % [place, " · turn %d" % turn if turn > 0 else ""]
-	_fit(title_label, 20, 13)
 	var border: bool = _log.get("kind", "province") == "border"
 	var defender := String(_log.get("defender", ""))
+	for c in conditions.get_children():
+		if c != center_chip:
+			conditions.remove_child(c)
+			c.queue_free()
 	for si in _log.sides.size():
 		var k := _slot_of_side(si)
 		var side: Dictionary = _log.sides[si]
@@ -1118,17 +1290,16 @@ func _fill_top_bar() -> void:
 		if not border and not _siege_block().is_empty():
 			role = FortView.siege_role(_siege_block(), si)  # M3c S-3: "storming", "sallying garrison", "garrison, in the breach"...
 		var people := String(side.get("people", {}).get("name", "")) if side.get("people", {}) is Dictionary else ""
-		plaque_labels[k].text = "%s · %s · %s" % [side.name, people, role] if not people.is_empty() else "%s · %s" % [side.name, role]
-		_fit(plaque_labels[k], 18, 13)
+		plaque_labels[k].text = "%s · %s" % [side.name, people] if not people.is_empty() else String(side.name)
 		var people_words := " Its people: %s." % people if not people.is_empty() else ""
 		plaque_labels[k].tooltip_text = TooltipText.plain(String(side.name), "%s, %s. %s%s" % [SeatEmblem.describe(_side_seat[si]).capitalize(),
 			_role_words(side, border, defender), _army_words(side), people_words])
+		var chip: Label = role_chips[k]
+		chip.text = role
+		chip.tooltip_text = TooltipText.plain(role.capitalize(), _role_words(side, border, defender).capitalize() + ".")
 		var b: BattleStrengthBar = bars[k]
 		b.seat = _side_seat[si]
 		b.mirrored = k == 1
-		for c in chip_boxes[k].get_children():
-			chip_boxes[k].remove_child(c)
-			c.queue_free()
 		if side.get("defender", false) and not border:
 			var terrain := String(_log.get("terrain", ""))
 			var bonus: Dictionary = AutoBattleResolver.TERRAIN.get(terrain, {})
@@ -1136,29 +1307,28 @@ func _fill_top_bar() -> void:
 				var text := "%s: +%d defense" % [terrain.capitalize(), int(bonus.defense)]
 				if int(bonus.get("attack", 0)) > 0:
 					text += " and +%d attack" % int(bonus.attack)
-				var chip := _chip(text, TooltipText.plain("Terrain", "The defender of a %s province gets %s." % [terrain, text.substr(text.find(":") + 2)]))
+				var chip2 := _chip(text, TooltipText.plain("Terrain", "The defender of a %s province gets %s." % [terrain, text.substr(text.find(":") + 2)]))
 				var short := "%s +%d def" % [terrain.capitalize(), int(bonus.defense)] + (", +%d atk" % int(bonus.attack) if int(bonus.get("attack", 0)) > 0 else "")
-				chip.set_meta("full", text)
-				chip.set_meta("short", short)
-				chip_boxes[k].add_child(chip)
-				CodexLink.attach(chip, TooltipText.codex_for(TooltipText.terrain_kind(terrain)), codex_requested.emit)
+				chip2.set_meta("full", text)
+				chip2.set_meta("short", short)
+				conditions.add_child(chip2)
+				CodexLink.attach(chip2, TooltipText.codex_for(TooltipText.terrain_kind(terrain)), codex_requested.emit)
 			var walls := FortView.siege_chip(_siege_block())
 			if not walls.is_empty():  # M3c S-3 (§9.7): a stormed garrison's walls replace the fort's old +2
 				var wchip := _chip(String(walls.text), String(walls.tip))
 				wchip.name = "SiegeChip"
-				wchip.set_meta("full", wchip.text)  # #125: "Walls +3 def" where the full words don't fit (_place_chips)
+				wchip.set_meta("full", wchip.text)  # #125: "Walls +3 def" where the full words don't fit (_fit_texts)
 				wchip.set_meta("short", String(walls.get("short", wchip.text.get_slice(" (", 0).replace(": ", " ").replace(" defense", " def"))))
-				chip_boxes[k].add_child(wchip)
+				conditions.add_child(wchip)
 				CodexLink.attach(wchip, String(walls.codex), codex_requested.emit)
 			elif _log.get("fort", false):
 				var fchip := _chip("Fort: +%d defense" % AutoBattleResolver.FORT_DEFENSE, TooltipText.plain("Fort", "Only a defender gets a fort's bonus: +%d defense to every fighter." % AutoBattleResolver.FORT_DEFENSE))
 				fchip.set_meta("full", fchip.text)
 				fchip.set_meta("short", "Fort +%d def" % AutoBattleResolver.FORT_DEFENSE)
-				chip_boxes[k].add_child(fchip)
+				conditions.add_child(fchip)
 				CodexLink.attach(fchip, "fort", codex_requested.emit)
-	for k2 in 2:
-		_place_chips(k2)
 	var open := FortView.siege_chip(_siege_block())
+	CodexLink.detach(center_chip)
 	if border:
 		center_chip.text = "Border battle: nobody defends, no terrain bonus"
 	elif defender.is_empty() and not open.is_empty():
@@ -1168,43 +1338,21 @@ func _fill_top_bar() -> void:
 	else:
 		center_chip.text = ""
 	center_chip.visible = not center_chip.text.is_empty()
+	center_chip.set_meta("full", center_chip.text)
+	if border:
+		center_chip.set_meta("short", "Border: nobody defends")
+	elif defender.is_empty() and not open.is_empty():
+		center_chip.set_meta("short", String(open.get("short", center_chip.text)))
+	else:
+		center_chip.set_meta("short", "Nobody defends: no bonus")
 	center_chip.tooltip_text = TooltipText.plain("Terrain", "Only a side that already held the province gets its terrain and fort bonus. Here nobody did.") if center_chip.visible else ""
 	if center_chip.visible and defender.is_empty() and not open.is_empty() and not border:
 		center_chip.tooltip_text = String(open.tip)
 		CodexLink.attach(center_chip, String(open.codex), codex_requested.emit)
 	elif center_chip.visible:
 		CodexLink.attach(center_chip, "battle_terrain", codex_requested.emit)
-
-
-## Puts slot `k`'s terrain and fort chips where they never overlap the title or the plaque (#125): beside the
-## plaque's text when they fit between it and the title, in their short words ("Hills +1 def, +1 atk") if only
-## those fit, else centred under the round counter (that row's note only shows when nobody defends, and
-## chips only when someone does). The full words stay in each chip's tooltip.
-func _place_chips(k: int) -> void:
-	var box: HBoxContainer = chip_boxes[k]
-	var chips := box.get_children()
-	if chips.is_empty():
-		return
-	var tf := _font_of(title_label)
-	var tw := tf.get_string_size(title_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size_of(title_label, 20)).x
-	var title_l := title_label.position.x + (title_label.size.x - tw) / 2.0
-	var title_r := title_l + tw
-	var pl: Label = plaque_labels[k]
-	var pw := minf(_font_of(pl).get_string_size(pl.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size_of(pl, 18)).x, pl.size.x)
-	var lo := pl.position.x + pw + CHIP_GAP if k == 0 else title_r + CHIP_GAP
-	var hi := title_l - CHIP_GAP if k == 0 else pl.position.x + pl.size.x - pw - CHIP_GAP
-	for words in ["full", "short"]:
-		for c in chips:
-			(c as Label).text = String((c as Label).get_meta(words, (c as Label).text))
-		var w := chips_width(chips)
-		if w <= hi - lo:
-			box.position = Vector2(lo if k == 0 else hi - w, 6)
-			box.size = Vector2(w, 22)
-			return
-	## under the round counter, centred in the title's column
-	var w2 := chips_width(chips)
-	box.position = Vector2(title_label.position.x + (title_label.size.x - w2) / 2.0, center_chip.position.y)
-	box.size = Vector2(w2, 20)
+	conditions.visible = conditions.get_children().any(func(c): return (c as Control).visible)
+	_fit_texts()
 
 
 ## The width the chips take side by side (their text, padding and the box's gaps).
@@ -1269,11 +1417,11 @@ func _build() -> void:
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(frame)
 
-	# The field: a clipping window, a stage inside it that shakes.
+	# The field: a clipping window over the whole view (full-bleed, UX-8), a stage inside it that shakes.
 	field = Control.new()
 	field.name = "Field"
-	field.position = Vector2(0, TOP_H)
-	field.size = Vector2(BASE.x, FIELD_H)
+	field.position = Vector2.ZERO
+	field.size = BASE
 	field.clip_contents = true
 	field.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	frame.add_child(field)
@@ -1300,7 +1448,7 @@ func _build() -> void:
 	banner_label = _label("", 30, UiPalette.TEXT_PRIMARY)
 	banner_label.name = "Banner"
 	banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	banner_label.position = Vector2(0, 14)
+	banner_label.position = Vector2(0, HUD_TOP + 14.0)
 	banner_label.size = Vector2(BASE.x, 40)
 	banner_label.add_theme_color_override("font_outline_color", UiPalette.KEYLINE_INK)
 	banner_label.add_theme_constant_override("outline_size", 8)
@@ -1310,7 +1458,7 @@ func _build() -> void:
 	toast_label = _label("", 18, UiPalette.GILT)
 	toast_label.name = "MomentToast"
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	toast_label.position = Vector2(200, 54)
+	toast_label.position = Vector2(200, HUD_TOP + 54.0)
 	toast_label.size = Vector2(BASE.x - 400, 28)
 	toast_label.add_theme_color_override("font_outline_color", UiPalette.KEYLINE_INK)
 	toast_label.add_theme_constant_override("outline_size", 4)
@@ -1323,110 +1471,134 @@ func _build() -> void:
 	_build_end_card()
 	_build_message()
 	selection.changed.connect(_on_selection)
+	_layout()
 
 
+## UX-8: the side plates (top left and right), each side's morale tag under its plate, and the centre between them.
 func _build_top_bar() -> void:
-	var top := ColorRect.new()
-	top.name = "TopBar"
-	top.color = UiPalette.PANEL_RAISED
-	top.size = Vector2(BASE.x, TOP_H)
-	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	frame.add_child(top)
-	title_label = _label("", 20, UiPalette.TEXT_PRIMARY)
-	title_label.name = "Title"
-	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_label.position = Vector2(560, 6)
-	title_label.size = Vector2(480, 26)
-	title_label.clip_text = true
-	title_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	top.add_child(title_label)
-	round_label = _label("", 18, UiPalette.GILT)
-	round_label.name = "RoundLabel"
-	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	round_label.position = Vector2(560, 34)
-	round_label.size = Vector2(480, 24)
-	round_label.tooltip_text = TooltipText.plain("Rounds", "A battle is fought in rounds. Every fighter attacks once a round, damage lands at the end of the round, then each side checks its morale.")
-	round_label.mouse_filter = Control.MOUSE_FILTER_PASS
-	top.add_child(round_label)
-	CodexLink.attach(round_label, "battle_rounds", codex_requested.emit)
-	center_chip = _label("", 13, UiPalette.TEXT_SECONDARY)
-	center_chip.name = "TerrainNote"
-	center_chip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	center_chip.position = Vector2(560, 60)
-	center_chip.size = Vector2(480, 20)
-	center_chip.mouse_filter = Control.MOUSE_FILTER_PASS
-	top.add_child(center_chip)
 	for k in 2:
-		var x := 24.0 if k == 0 else BASE.x - 24.0 - 520.0
-		var plaque := _label("", 18, UiPalette.TEXT_PRIMARY)
-		plaque.name = "Plaque%d" % k
-		plaque.position = Vector2(x + (30.0 if k == 0 else 0.0), 4)
-		plaque.size = Vector2(300, 26)
-		plaque.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if k == 0 else HORIZONTAL_ALIGNMENT_RIGHT
-		if k == 1:
-			plaque.position.x = x + 520.0 - 30.0 - 300.0
-		plaque.mouse_filter = Control.MOUSE_FILTER_PASS
-		top.add_child(plaque)
-		plaque_labels.append(plaque)
-		var chips := HBoxContainer.new()
-		chips.name = "Chips%d" % k
-		chips.add_theme_constant_override("separation", 6)
-		chips.position = Vector2(x + (330.0 if k == 0 else 0.0), 6)
-		chips.size = Vector2(190, 22)
-		chips.alignment = BoxContainer.ALIGNMENT_BEGIN if k == 0 else BoxContainer.ALIGNMENT_END
-		top.add_child(chips)
-		chip_boxes.append(chips)
+		var plate := PanelContainer.new()
+		plate.name = "Plate%d" % k
+		plate.add_theme_stylebox_override("panel", TableHud.plaque_style(10, 7))
+		plate.mouse_filter = Control.MOUSE_FILTER_STOP
+		plate.clip_contents = true
+		frame.add_child(plate)
+		plates.append(plate)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 4)
+		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		plate.add_child(col)
+		var head := HBoxContainer.new()
+		head.name = "Head"
+		head.add_theme_constant_override("separation", 8)
+		head.alignment = BoxContainer.ALIGNMENT_BEGIN if k == 0 else BoxContainer.ALIGNMENT_END
+		head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		col.add_child(head)
+		var name_label := _label("", UiPalette.TYPE_NAME, UiPalette.TEXT_PRIMARY)
+		name_label.name = "Name%d" % k
+		name_label.add_theme_font_override("font", UiFonts.name())
+		name_label.custom_minimum_size.y = 26
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if k == 0 else HORIZONTAL_ALIGNMENT_RIGHT
+		name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		name_label.clip_text = true
+		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		name_label.mouse_filter = Control.MOUSE_FILTER_PASS
+		plaque_labels.append(name_label)
+		var role := _chip("", "")
+		role.name = "Role%d" % k
+		role.add_theme_font_size_override("font_size", UiPalette.TYPE_SMALL)
+		role.add_theme_color_override("font_color", UiPalette.GILT)
+		role.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		role_chips.append(role)
+		if k == 0:
+			head.add_child(name_label)
+			head.add_child(role)
+		else:
+			head.add_child(role)
+			head.add_child(name_label)
 		var b := BattleStrengthBar.new()
 		b.name = "StrengthBar%d" % k
-		b.position = Vector2(x, 34)
-		b.size = Vector2(520, 22)
-		top.add_child(b)
+		b.custom_minimum_size = Vector2(200, 22)
+		col.add_child(b)
 		bars.append(b)
-		var t := _label("", 14, UiPalette.TEXT_SECONDARY)
+		var t := _label("", UiPalette.TYPE_SMALL, UiPalette.TEXT_SECONDARY)
 		t.name = "StrengthText%d" % k
-		t.position = Vector2(x + (30.0 if k == 0 else 0.0), 60)
-		t.size = Vector2(490, 20)
+		t.add_theme_font_override("font", UiFonts.number())
 		t.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if k == 0 else HORIZONTAL_ALIGNMENT_RIGHT
+		t.clip_text = true
+		t.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		t.mouse_filter = Control.MOUSE_FILTER_PASS
-		top.add_child(t)
+		col.add_child(t)
 		bar_texts.append(t)
 		CodexLink.attach(b, "battle_strength", func(key): codex_requested.emit(key))
 		CodexLink.attach(t, "battle_strength", func(key): codex_requested.emit(key))
 		var tag := _label("", 16, UiPalette.GILT)
 		tag.name = "MoraleTag%d" % k
-		tag.position = Vector2(x, TOP_H + 4.0)
+		tag.position = Vector2(MARGIN, HUD_TOP)
 		tag.size = Vector2(520, 22)
 		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if k == 0 else HORIZONTAL_ALIGNMENT_RIGHT
 		BattleStrengthBar.style_tag(tag)
 		tag.z_index = 3
 		frame.add_child(tag)
 		tag_labels.append(tag)
+	centre = PanelContainer.new()
+	centre.name = "Centre"
+	centre.add_theme_stylebox_override("panel", TableHud.plaque_style(10, 6))
+	centre.mouse_filter = Control.MOUSE_FILTER_STOP
+	frame.add_child(centre)
+	var mid := VBoxContainer.new()
+	mid.add_theme_constant_override("separation", 3)
+	mid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	centre.add_child(mid)
+	title_label = _label("", UiPalette.TYPE_NAME, UiPalette.TEXT_PRIMARY)
+	title_label.name = "Title"
+	title_label.add_theme_font_override("font", UiFonts.title())
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.clip_text = true
+	title_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	mid.add_child(title_label)
+	round_label = _label("", 17, UiPalette.GILT)
+	round_label.name = "RoundLabel"
+	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	round_label.tooltip_text = TooltipText.plain("Rounds", "A battle is fought in rounds. Every fighter attacks once a round, damage lands at the end of the round, then each side checks its morale.")
+	round_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	mid.add_child(round_label)
+	CodexLink.attach(round_label, "battle_rounds", codex_requested.emit)
+	conditions = HBoxContainer.new()
+	conditions.name = "Conditions"
+	conditions.add_theme_constant_override("separation", int(CHIP_SEPARATION))
+	conditions.alignment = BoxContainer.ALIGNMENT_CENTER
+	conditions.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mid.add_child(conditions)
+	center_chip = _chip("", "")
+	center_chip.name = "TerrainNote"
+	center_chip.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
+	center_chip.visible = false
+	conditions.add_child(center_chip)
 
 
+## UX-8: the caption, one plate in the lower third (placed by _place_caption): the round's caption, a second quieter
+## line when the round has one, and the first-visit hint's Got it.
 func _build_caption() -> void:
 	var strip := PanelContainer.new()
 	caption_strip = strip
 	strip.name = "CaptionStrip"
-	strip.position = Vector2(0, TOP_H + FIELD_H)
-	strip.size = Vector2(BASE.x, CAPTION_H)
-	var style := StyleBoxFlat.new()
-	style.bg_color = UiPalette.PANEL_BG
-	style.border_color = UiPalette.PANEL_BORDER
-	style.border_width_top = 2
-	style.border_width_bottom = 2
-	style.content_margin_left = 24
-	style.content_margin_right = 24
-	style.content_margin_top = 6
-	style.content_margin_bottom = 6
+	var style := TableHud.plaque_style(14, 6)
+	style.bg_color = Color(UiPalette.PANEL_BG, 0.9)
 	strip.add_theme_stylebox_override("panel", style)
+	strip.mouse_filter = Control.MOUSE_FILTER_STOP
+	strip.clip_contents = true
 	frame.add_child(strip)
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 12)
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	strip.add_child(line)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 2)
+	col.add_theme_constant_override("separation", 0)
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	line.add_child(col)
 	hint_button = Button.new()
 	hint_button.name = "GotIt"
@@ -1439,9 +1611,12 @@ func _build_caption() -> void:
 	hint_button.visible = false
 	line.add_child(hint_button)
 	for k in 2:
-		var l := _label("", 18, UiPalette.TEXT_PRIMARY if k == 0 else UiPalette.TEXT_SECONDARY)
+		var l := _label("", 18 if k == 0 else 15, UiPalette.TEXT_PRIMARY if k == 0 else UiPalette.TEXT_SECONDARY)
 		l.name = "Caption%d" % k
-		l.clip_text = true
+		l.add_theme_font_override("font", UiFonts.body())
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.max_lines_visible = 2
 		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
 		col.add_child(l)
@@ -1450,19 +1625,18 @@ func _build_caption() -> void:
 
 func _build_controls() -> void:
 	controls = BattleControls.new()
-	controls.position = Vector2(0, TOP_H + FIELD_H + CAPTION_H)
 	controls.selection = selection
 	frame.add_child(controls)
+	controls.layout_changed.connect(_layout)
 	scrubber = controls.scrubber
 	buttons = controls.buttons
-	moment_buttons = controls.moment_buttons
 	controls.why_toggled.connect(_set_why_open)
 	controls.legend_toggled.connect(_set_legend_open)
 	controls.close_requested.connect(close)
 	controls.codex_requested.connect(codex_requested.emit)
 	controls.pin_requested.connect(func(_fid): if not _why_open: controls.set_why(true, false))
 	why_panel = BattleWhyPanel.new()
-	why_panel.position = Vector2(WHY_X, TOP_H)
+	why_panel.position = Vector2(BASE.x - WHY_W, HUD_TOP)
 	why_panel.z_index = 3
 	why_panel.codex_requested.connect(codex_requested.emit)
 	why_panel.close_requested.connect(func(): controls.set_why(false))
@@ -1479,7 +1653,7 @@ func _build_controls() -> void:
 func _build_end_card() -> void:
 	end_card = PanelContainer.new()
 	end_card.name = "ResultCard"
-	end_card.position = Vector2(300, TOP_H + 40)
+	end_card.position = Vector2(300, HUD_TOP + 40)
 	end_card.size = Vector2(1000, 0)
 	end_card.custom_minimum_size = Vector2(1000, 0)
 	var style := StyleBoxFlat.new()
@@ -1489,7 +1663,7 @@ func _build_end_card() -> void:
 	style.set_corner_radius_all(8)
 	style.set_content_margin_all(22)
 	end_card.add_theme_stylebox_override("panel", style)
-	end_card.visible = false
+	_show_result(false)
 	end_card.z_index = 4
 	frame.add_child(end_card)
 	var col := VBoxContainer.new()
