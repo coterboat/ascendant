@@ -60,7 +60,7 @@ func _run() -> void:
 
 
 func _scenarios() -> Array:
-	var out := ["rest", "dismissed", "notice", "forecast", "army", "recruit", "march", "army_notice"]
+	var out := ["rest", "dismissed", "notice", "forecast", "army", "recruit", "march", "army_notice", "notices", "chronicle"]
 	if kind == "3d":
 		out.append_array(["playback", "closeup"])
 	return out
@@ -109,6 +109,7 @@ func _resize(entry: Array) -> void:
 ## Back to the table at rest: nothing open, the capital selected with two recruits ordered (a tall card), the guide up.
 func _rest() -> void:
 	var map := game.map
+	_chronicle_off()
 	game._close_overlays()
 	game.notice_panel.visible = false
 	map.clear_preview()
@@ -126,6 +127,53 @@ func _rest() -> void:
 		if not types.is_empty():
 			map.queue_recruit(String(types[0].id))
 	game.first_game_guide.sync(game.session, map.state)
+
+
+## UX-6: the Chronicle with nothing in it, shut.
+func _chronicle_off() -> void:
+	var hud := game.chronicle_hud
+	hud.close()
+	hud.announcements = []
+	hud.summary = {}
+	hud._refresh_all()
+
+
+## UX-6: a real resolved turn's news (a battle won with its capture, a battle lost, a province taken, the treasury, recruits) and enough
+## more notable announcements of the Crown's to fill the stack past six, as the viewer's own. The Table is laid out for them as for any.
+func _chronicle_news() -> void:
+	var hud := game.chronicle_hud
+	var s := GameState.new(8)
+	s.armies.clear()
+	for pid in ["thornvale", "stonegate", "greenglade", "highcrag", "westwatch"]:
+		s.find_province(pid).owner = "kingdom"
+	for pid in ["wildmoor", "blackwood", "deepwood", "fangridge", "bloodfen", "ebonpeak", "ironspike"]:
+		s.find_province(pid).owner = "beasts"
+	for spec in [["kingdom-1", "kingdom", "thornvale", ["knights", "knights", "knights", "knights"]], ["kingdom-2", "kingdom", "stonegate", ["spearmen"]],
+			["kingdom-3", "kingdom", "greenglade", ["spearmen", "spearmen"]], ["beasts-1", "beasts", "wildmoor", ["war_bear"]],
+			["beasts-2", "beasts", "blackwood", ["war_bear", "war_bear", "tuskers", "tuskers"]]]:
+		var a := Army.new()
+		a.id = spec[0]
+		a.owner = spec[1]
+		a.location = spec[2]
+		for t in spec[3]:
+			a.units.append(Unit.new(TurnResolver.recruitable_type(s.find_faction(spec[1]), t), spec[1]))
+		s.armies.append(a)
+	var orders := {"kingdom": [MoveOrder.new("kingdom-1", "wildmoor"), MoveOrder.new("kingdom-2", "blackwood"), MoveOrder.new("kingdom-3", "deepwood"), RecruitOrder.new("knights")], "beasts": []}
+	var r := TurnResolver.resolve(s, orders, 1, AutoBattleResolver.new())
+	var items := ChronicleModel.build({"turn": 1, "events": r.events, "header": "Turn 1", "fog": false}, r.new_state, "kingdom")
+	var more := []
+	for it in items:
+		if not it.routine:
+			for k in 3:
+				var copy: Dictionary = it.duplicate(true)
+				copy["id"] = "%s.copy%d" % [it.id, k]
+				more.append(copy)
+	items.append_array(more)
+	hud.seat = "kingdom"
+	hud.turn = 1
+	hud.announcements = items
+	hud.summary = ChronicleModel.summary(items, {"events": r.events}, r.new_state, "kingdom")
+	hud._refresh_all()
 
 
 func _hide_playback() -> void:
@@ -168,6 +216,11 @@ func _setup(scenario: String) -> void:
 			overlay.caption_panel().visible = true
 		"closeup":
 			map.board.enter_closeup(map.state.find_faction("kingdom").capital, true)
+		"notices":  # UX-6: the medallion stack down the left edge, lit with a turn's news (more than six, so the compact Table shows "+N")
+			_chronicle_news()
+		"chronicle":  # UX-6: the Chronicle's column open on the right, its markers on the board, the card and the guide giving way
+			_chronicle_news()
+			game.chronicle_hud.open()
 	await _frames(6)
 
 
@@ -196,6 +249,47 @@ func _measure(scenario: String) -> Dictionary:
 		await _setup("rest")
 		out["edges"] = await _edges()
 		await _setup("rest")
+	if scenario == "notices" or scenario == "chronicle":
+		out["chronicle"] = _chronicle_parts()
+		out["chronicle_clicks"] = await _chronicle_clicks(rects)
+		await _setup(scenario)
+	return out
+
+
+## UX-6: what the Chronicle shows as drawn: how many medallions and the "+N", the open column's cards, the markers (their numbers and where
+## they are in the Table's coordinates, for the cards that have a province).
+func _chronicle_parts() -> Dictionary:
+	var hud := game.chronicle_hud
+	var out := {"medallions": [], "more": _r(hud.stack.more), "toggle": _r(hud.stack.toggle), "capacity": hud.stack.capacity, "total": hud.stack.total,
+		"markers": {}, "cards": hud.column.cards.size(), "open": hud.is_open()}
+	for m in hud.stack.medallions:
+		out.medallions.append(_r(m))
+	for id in hud.markers.marker_ids():
+		var b := hud.markers.marker(id)
+		out.markers[id] = [b.number] + _r(b)
+	return out
+
+
+## UX-6: a click on the padding of the stack (between its medallions) and on the column's padding is eaten: it picks nothing on the board and
+## changes nothing.
+func _chronicle_clicks(rects: Dictionary) -> Array:
+	var map := game.map
+	var capital: String = map.state.find_faction("kingdom").capital
+	var out := []
+	for name in ["notices", "chronicle"]:
+		var r: Array = rects.get(name, [])
+		if r.size() != 5 or not bool(r[4]):
+			continue
+		var rect := Rect2(r[0], r[1], r[2], r[3])
+		var p := rect.position + Vector2(2, rect.size.y - 3)
+		var land := _land_under(p)
+		map.selected_army_id = ""
+		map.select_province(capital)
+		await _frames(1)
+		var turns_before: int = game.session.turns_played()
+		await _click(p)
+		out.append({"piece": name, "at": [p.x, p.y], "land": land, "selected": map.selected_province_id, "capital": capital,
+			"army": map.selected_army_id, "turns": game.session.turns_played() - turns_before})
 	return out
 
 
@@ -279,7 +373,8 @@ func _pieces() -> Dictionary:
 	var hud := game.map.table()
 	var out := {"plaque": hud.plaque, "menu": hud.menu_button, "opponent": hud.opponent_panel, "stack": hud.notification_stack, "tray": hud.tray,
 		"seal": hud.seal, "card": game.map.cards,
-		"guide": game.first_game_guide, "notice": game.notice_panel}
+		"guide": game.first_game_guide, "notice": game.notice_panel,
+		"notices": game.chronicle_hud.stack, "chronicle": game.chronicle_hud.column}
 	for id in hud.system_button_ids():
 		out["sys_%s" % id] = hud.system_button(id)
 	if kind == "3d":

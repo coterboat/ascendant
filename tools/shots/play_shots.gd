@@ -33,8 +33,14 @@ extends SceneTree
 ##   --stage            UX-2: on the last turn, after its orders shot, stage the VIEW the map shows (never the game) so every level of sight and every
 ##                      fort level is on the whole-map shot: one province you never saw is remembered, a palisade stands and another is
 ##                      being raised in your land, and a keep's walls are knocked down a step. Shot as tNN_fullmap_staged (needs --fullmap)
+##   --split=N          UX-6: on turn N (after turn 1's recruits) the person's seat splits its biggest army in two before its other orders, so that
+##                      turn's Chronicle shows ARM-1's muster entry (default: none)
+##   --chronicle=MODE   UX-6: when the Chronicle opens by itself, whatever the player's settings say: important (the default), needs_you, always,
+##                      never (the medallions only, to see them lit and unread) or report (today's modal report)
 ##   --fullmap          UX-2: after each orders shot, frame the whole map (the F key) and shoot it again as tNN_fullmap, then put the
 ##                      camera back, so the four veil looks and the three fort levels can be named without hovering
+##   --lenses           UX-7: on the last turn, after its orders shot, turn each map lens on in turn (as keys 1 to 6 do) and shoot it as
+##                      tNN_lens_N_<id> (and framed whole with --fullmap), its legend's totals in walk.md; then the lens goes off again
 ## Windowed only: headless has no renderer, so the shots would be blank. walk.md lists every shot with the
 ## turn report's headline lines, so the walk can be read without opening the images.
 
@@ -51,8 +57,11 @@ var flags := {"rulers": false, "paths": false, "sieges": false, "fog": false, "m
 var menus := true
 var fast := false
 var fullmap := false
+var lenses := false
 var stage := false
 var board_kind := "3d"
+var split_turn := -1
+var chronicle_mode := ""
 var fresh := false
 var defaults := false
 var ui_scale := 100
@@ -78,8 +87,11 @@ func _initialize() -> void:
 			"no-menus": menus = false
 			"fast": fast = true
 			"fullmap": fullmap = true
+			"lenses": lenses = true
 			"stage": stage = true
 			"board": board_kind = kv[1]
+			"split": split_turn = int(kv[1])
+			"chronicle": chronicle_mode = kv[1]
 			"fresh": fresh = true
 			"defaults": defaults = true
 			"ui-scale": ui_scale = int(kv[1])
@@ -162,6 +174,8 @@ func _run() -> void:
 	await _frames(2)
 	if menus:
 		await _menus()
+	if ChronicleModel.AUTO_OPEN.has(chronicle_mode):
+		ChronicleSettings.default_auto_open = chronicle_mode
 	var game: GameScreen = load("res://ui/game_screen.tscn").instantiate()
 	game.autosave_enabled = false
 	game.save_store = SaveStore.new(out.path_join("saves"))
@@ -185,6 +199,8 @@ func _run() -> void:
 		var magic_shot := false
 		if flags.magic:
 			magic_shot = await _magic_steps(game, turn)
+		if turn == split_turn:
+			_queue_split(game)
 		var orders: Array = brain.plan_orders(game.session.state(), human, rng, "normal")
 		var refused := []
 		for o in orders:
@@ -204,10 +220,13 @@ func _run() -> void:
 				if stage and turn == max_turns:
 					var staged := _stage_view(game)
 					await _fullmap_shot(game, "t%02d_fullmap_staged" % turn, "Turn %d, the whole map framed, the view staged: %s" % [turn, staged])
+		if lenses and turn == max_turns:
+			await _lens_shots(game, turn)
 		print("turn %d: end turn" % turn)
 		game.end_turn()
 		await _settle(game, fast and not (turn % every == 0 or turn + 1 == max_turns))
 		print("turn %d: settled" % turn)
+		await _chronicle_shot(game, turn)
 		var report := game.session.turn_report_for(human)
 		var mine := BattleHost.battles_of(game.session.battle_events(), human)
 		var lines := _headlines(report)
@@ -360,6 +379,34 @@ func _stage_view(game: GameScreen) -> String:
 	return "; ".join(notes)
 
 
+## UX-7 (--lenses): each map lens on in turn, as its key does (the board's texture, the plates' values, the legend card), shot, and
+## framed whole with --fullmap; then off. walk.md gets each legend's question and totals.
+func _lens_shots(game: GameScreen, turn: int) -> void:
+	var map = game.map
+	# the compositing check (§4.0): one of the person's armies selected, so its province wears the selection band and its neighbours
+	# the move target's glow under every lens (with --stage the view also holds all four looks of sight)
+	for a in map.state.armies:
+		if a.owner == human and a.ruler == null:
+			map.select_army(a.id)
+			walk.append("- lens shots: %s selected (its neighbours are move targets)" % a.id)
+			break
+	map.lens_ui.open_picker()  # the Lenses button's picker, as a click opens it
+	await _wait(0.4)
+	await _shot("t%02d_lens_picker" % turn, "The Lenses button's picker: the six lenses with their keys, and Off.")
+	map.lens_ui.picker.hide()
+	for id in MapLens.IDS:
+		map.lens_host.activate(id)
+		await _wait(0.8)
+		var legend: Dictionary = map.lens_ui.result().get("legend", {})
+		var note := "Turn %d, the %s lens (key %d): %s %s" % [turn, MapLens.title_of(id), MapLens.mode_of(id), String(MapLens.lens(id).question),
+			" | ".join(legend.get("totals", []))]
+		await _shot("t%02d_lens_%d_%s" % [turn, MapLens.mode_of(id), id], note)
+		if fullmap:
+			await _fullmap_shot(game, "t%02d_lens_%d_%s_fullmap" % [turn, MapLens.mode_of(id), id], note + " (the whole map framed)")
+	map.lens_host.clear()
+	await _frames(2)
+
+
 ## UX-2: the whole map framed as the F key does, shot, and the camera put back where it was. The glide takes a moment.
 func _fullmap_shot(game: GameScreen, name: String, note: String) -> void:
 	var b = game.map.board
@@ -403,11 +450,11 @@ func _menus() -> void:
 	await _frames(2)
 
 
-## Waits for the board's playback after End turn: the game screen opens the turn report once the playback
-## has finished (or at once without one), so the report showing is the signal. Gives up after 90 s.
+## Waits for the board's playback after End turn: the report host hears the turn's report is ready once the playback has finished (or
+## at once without one) (UX-6: the Chronicle presents it; the modal opens only on request). Gives up after 90 s.
 func _settle(game: GameScreen, skip: bool = false) -> void:
 	var start := Time.get_ticks_msec()
-	while not game.report_overlay.visible and not game.session.is_over() and Time.get_ticks_msec() - start < 90000:
+	while game.report_host.last_ready < game.session.turns_played() and not game.session.is_over() and Time.get_ticks_msec() - start < 90000:
 		if skip and game.map.board != null and game.map.board.has_method("skip_playback") and game.map.board.is_playing():
 			game.map.board.skip_playback()
 		await process_frame
@@ -415,11 +462,55 @@ func _settle(game: GameScreen, skip: bool = false) -> void:
 
 
 func _close_overlays(game: GameScreen) -> void:
+	if game.chronicle_hud != null:
+		game.chronicle_hud.close()
 	if game.battle_host.visible:
 		game.battle_host.close()
 	if game.report_overlay.visible:
 		game.close_turn_report()
 	await _frames(2)
+
+
+## UX-6: the Chronicle at the start of a turn: how it came up by itself (a shot of the table as the player finds it), then, with a map
+## shot every few turns or whenever something important happened, the column open at its first card.
+func _chronicle_shot(game: GameScreen, turn: int) -> void:
+	var hud := game.chronicle_hud
+	if hud == null or game.session.is_over():
+		return
+	var important := hud.announcements.filter(func(it): return it.important)
+	var note := "Turn %d begins: %d announcements (%d notable, %d important); the column %s by itself; %d unread." % [turn, hud.announcements.size(),
+		ChronicleModel.notable(hud.items()).size(), important.size(), "opened" if hud.is_open() else "stayed shut", hud.unread_count()]
+	if turn == 1 or turn % every == 0 or not important.is_empty() or turn == split_turn:
+		await _shot("t%02d_start" % turn, note)
+		if not hud.is_open():
+			hud.open()
+			await _shot("t%02d_chronicle" % turn, "Turn %d: the Chronicle opened from its button. Headlines: %s" % [turn, " | ".join(hud.items().map(func(it): return String(it.headline)).slice(0, 8))])
+		else:
+			walk.append("  headlines: %s" % " | ".join(hud.items().map(func(it): return String(it.headline)).slice(0, 8)))
+		if turn == split_turn:  # ARM-1's muster entry: the column scrolled to the split's own card
+			var musters := hud.items().filter(func(it): return ["army_split", "units_transferred", "armies_merged"].has(String(it.type)))
+			if not musters.is_empty():
+				hud.open(String(musters[0].id))
+				await _frames(10)
+				await _shot("t%02d_split" % turn, "Turn %d: the split's own card in the Chronicle: %s | %s" % [turn, musters[0].headline, musters[0].detail])
+		hud.close()
+
+
+## --split: the person's seat splits its biggest army (the units after the first half form a new one).
+func _queue_split(game: GameScreen) -> void:
+	var st := game.session.state()
+	var best: Army = null
+	for a in st.armies:
+		if a.owner == human and a.ruler == null and a.units.size() >= 2 and (best == null or a.units.size() > best.units.size()):
+			best = a
+	if best == null:
+		walk.append("- turn %d: nothing to split" % split_turn)
+		return
+	var indices := []
+	for i in range(best.units.size() / 2, best.units.size()):
+		indices.append(i)
+	var why: String = game.session.queue_order(MusterOrder.transfer(best.id, "", indices))
+	walk.append("- turn %d: split %s%s" % [split_turn, best.id, (" REFUSED: " + why) if why != "" else ""])
 
 
 ## The report's first few lines, flattened to one string for walk.md.
