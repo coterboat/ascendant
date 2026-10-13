@@ -69,6 +69,8 @@ func _run() -> void:
 		return
 	if game.handoff.visible:
 		game.handoff.ready_button.pressed.emit()
+	if game.notice_panel.visible:
+		game.notice_ok.pressed.emit()  # "Game loaded": not what these shots are about
 	while not BattleStage3D.land_ready():
 		await process_frame
 	await _wait(2.0)
