@@ -685,6 +685,23 @@ func test_the_vision_map_mode_is_retired_and_its_legend_text_is_kept() -> void:
 	var text := _flat(" ".join(rows.map(func(r): return "%s %s %s" % [r.title, r.short, r.text])))
 	for word in ["In clear sight", "Glimpsed", "Out of sight", "Never seen", "≈", "remembered"]:
 		assert_true(text.contains(word), "the kept legend explains %s: %s" % [word, text])
+	# UX-7: the Vision legend's job moved to the Sight lens: its legend card carries every row, each with its veil's swatch and its words
+	map.lens_host.activate("sight")
+	var card := map.lens_ui.legend
+	assert_true(card.visible, "the Sight lens shows its legend")
+	var shown := card.text()
+	for r in rows:
+		assert_true(shown.contains("%s: %s" % [r.title, r.short]), "the Sight lens's legend has the row %s" % r.title)
+	var grid := card.find_child("SightRows", true, false)
+	assert_true(grid != null and grid.get_child_count() == rows.size() * 2, "a swatch and a line per row")
+	for l in grid.find_children("SightRow*", "Label", true, false):
+		assert_false((l as Label).tooltip_text.is_empty(), "each row's hover says what it means")
+	# and its "why do I see this": every province's sight sources, from FogRules.sight_sources, in each plate's hover
+	var lens := map.lens_ui.result()
+	for src in FogRules.sight_sources(view, CROWN):
+		var e: Dictionary = lens.entries[String(src.province)]
+		assert_true(String(e.text).begins_with("sees") or String(e.text) == "Far Sight", "%s is a source and its plate says what it sees" % src.province)
+	map.lens_host.clear()
 	map.free()
 
 
