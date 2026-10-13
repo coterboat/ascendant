@@ -510,6 +510,30 @@ func test_plates_show_the_lens_value_on_both_boards_with_its_breakdown_on_hover(
 	game.free()
 
 
+func test_the_2d_map_draws_a_flat_lens_colour_under_the_veil_and_the_plate_value() -> void:
+	var src := FileAccess.get_file_as_string("res://ui/province_region.gd")
+	var lens_at := src.find("	_draw_lens()  #")
+	assert_true(lens_at > 0 and lens_at < src.find("	_draw_veil()  #"), "the 2D lens colour is drawn under the veil, so sight still reads")
+	assert_eq(ProvinceRegion.lens_fill("", {}), {}, "no lens, no colour")
+	for id in MapLens.IDS:
+		var weak: Dictionary = ProvinceRegion.lens_fill(id, {"tint": Color.RED, "strength": 0.2})
+		var strong: Dictionary = ProvinceRegion.lens_fill(id, {"tint": Color.RED, "strength": 0.9})
+		assert_true((strong.colour as Color).a > (weak.colour as Color).a, "%s: a stronger value lies more strongly on the 2D map" % id)
+	var game := _game()
+	var map := game.map
+	assert_true(map.board == null, "the 2D map")
+	map.lens_host.activate("making")
+	var r := map.lens_ui.result()
+	for pid in map.regions:
+		var region: ProvinceRegion = map.regions[pid]
+		assert_eq(region.lens_id, "making")
+		assert_eq(region.lens_chip.pips.marks, int(r.entries[pid].pips), "%s's plate shows its marks" % pid)
+	map.lens_host.clear()
+	for pid in map.regions:
+		assert_eq((map.regions[pid] as ProvinceRegion).lens_id, "")
+	game.free()
+
+
 func test_the_legend_card_sits_bottom_left_with_the_question_the_scale_and_the_totals() -> void:
 	var game := _game()
 	var map := game.map

@@ -377,6 +377,10 @@ func _lens_shots(game: GameScreen, turn: int) -> void:
 			map.select_army(a.id)
 			walk.append("- lens shots: %s selected (its neighbours are move targets)" % a.id)
 			break
+	map.lens_ui.open_picker()  # the Lenses button's picker, as a click opens it
+	await _wait(0.4)
+	await _shot("t%02d_lens_picker" % turn, "The Lenses button's picker: the six lenses with their keys, and Off.")
+	map.lens_ui.picker.hide()
 	for id in MapLens.IDS:
 		map.lens_host.activate(id)
 		await _wait(0.8)
