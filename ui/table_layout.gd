@@ -29,14 +29,17 @@ const WIDE_FROM := 1600.0
 const CARD_W := 400.0
 ## The notice is as wide as the card: the guide, the notice and the card share the left column, so the board frames to their right.
 const NOTICE_W := CARD_W
-const LEGEND_W := 280.0
+## UX-7: the lens legend lives in the left column too, as wide as the card.
+const LEGEND_W := CARD_W
 const HOVER_MAX_W := 760.0
 ## The pieces arrange() places, in the order they take their spots (the first never moves). The playback bar, its caption and the
 ## close-up chip are the board's own transient pieces, hung by the Table so nothing covers their buttons. The notice and the guide
 ## take the top of the left column before the card, which docks under them and shrinks (it scrolls): the whole left column is the
 ## card's, the guide's and the notice's, and the board frames the map to the right of it (framing_area), so the guide never covers
-## the map (UX-1 review: at 125% it covered Westwatch, the capital's neighbour and turn 1's first move).
-const FLOATING := ["playback", "closeup", "caption", "notice", "guide", "card", "legend", "hover"]
+## the map (UX-1 review: at 125% it covered Westwatch, the capital's neighbour and turn 1's first move). UX-7: the lens legend takes
+## the bottom of the column before the card too (a lens is on only when the player asked for it), and the card docks on top of it,
+## shrinking as it does for the guide; only when the column can't hold the legend and a card's least height does it stand beside it.
+const FLOATING := ["playback", "closeup", "caption", "notice", "guide", "legend", "card", "hover"]
 ## The shortest a selection card is squeezed to (it scrolls) when a piece above it needs its room.
 const CARD_MIN_H := 120.0
 
@@ -134,7 +137,9 @@ static func find_spot(size: Vector2, preferred: Vector2, safe: Rect2, blockers: 
 ##   guide              under the notice (or at the top left); below a playback bar that is in its way
 ##   card               docked bottom left of the safe area, as tall as it needs; it shrinks (and scrolls) for the notice, the guide or
 ##                      a playback bar above it
-##   legend             the lens legend, top right of the safe area
+##   legend             the lens legend (UX-7, §4.0), bottom left of the safe area, in the left column the map is framed beside, under the
+##                      notice and the guide; beside the column only when the column can't also hold a card's least height
+##   card               (with a legend in the column: docked on top of it)
 ##   hover              the move forecast, along the bottom of the safe area to the right of the card
 static func arrange(viewport: Vector2, pieces: Dictionary, chronicle_open: bool = false) -> Dictionary:
 	var safe := safe_area(viewport, chronicle_open)
@@ -156,9 +161,22 @@ static func arrange(viewport: Vector2, pieces: Dictionary, chronicle_open: bool 
 				var middle: float = (rects["playback"] as Rect2).get_center().x if rects.has("playback") else frame.get_center().x
 				preferred = Vector2(_centred_x(middle, size.x, safe), top)
 			"card":
-				preferred = Vector2(safe.position.x + GAP, safe.end.y - GAP - size.y)
+				# docked bottom left, on top of the lens legend when it is in the column (UX-7)
+				var bottom := safe.end.y - GAP
+				if rects.has("legend") and (rects["legend"] as Rect2).position.x < safe.position.x + GAP + CARD_W:
+					bottom = (rects["legend"] as Rect2).position.y - GAP
+				size.y = maxf(minf(size.y, bottom - safe.position.y - GAP), 0.0)
+				preferred = Vector2(safe.position.x + GAP, bottom - size.y)
 			"legend":
-				preferred = Vector2(safe.end.x - GAP - size.x, safe.position.y + GAP)
+				# UX-7 (§4.0): bottom left, in the card's column, when the column still leaves a card its least height under the notice and
+				# the guide; else beside the column, at the bottom
+				var top := safe.position.y + GAP
+				for above in ["notice", "guide"]:
+					if rects.has(above):
+						top = maxf(top, (rects[above] as Rect2).end.y + GAP)
+				var floor_y := safe.end.y - GAP
+				var in_column := floor_y - size.y - GAP - top >= CARD_MIN_H
+				preferred = Vector2(safe.position.x + GAP if in_column else safe.position.x + 2.0 * GAP + CARD_W, floor_y - size.y)
 			"guide":
 				if rects.has("notice"):
 					preferred = Vector2(safe.position.x + GAP, (rects["notice"] as Rect2).end.y + GAP)

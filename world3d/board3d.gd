@@ -226,6 +226,8 @@ func _build_world() -> void:
 	wv.name = "WorldView"
 	_vp.add_child(wv)
 	wv.setup(_terrain, look)
+	if not wv.rejected.is_empty():
+		return  ## UX-7: a map wider than the province textures (WorldView.width_error): nothing is built, the board stays unprepared
 	wv.set_effects(true)
 	armies = Armies.new()
 	armies.name = "Armies"

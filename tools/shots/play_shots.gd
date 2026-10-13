@@ -42,6 +42,8 @@ extends SceneTree
 ##                      never (the medallions only, to see them lit and unread) or report (today's modal report)
 ##   --fullmap          UX-2: after each orders shot, frame the whole map (the F key) and shoot it again as tNN_fullmap, then put the
 ##                      camera back, so the four veil looks and the three fort levels can be named without hovering
+##   --lenses           UX-7: on the last turn, after its orders shot, turn each map lens on in turn (as keys 1 to 6 do) and shoot it as
+##                      tNN_lens_N_<id> (and framed whole with --fullmap), its legend's totals in walk.md; then the lens goes off again
 ## Windowed only: headless has no renderer, so the shots would be blank. walk.md lists every shot with the
 ## turn report's headline lines, so the walk can be read without opening the images.
 
@@ -58,6 +60,7 @@ var flags := {"rulers": false, "paths": false, "sieges": false, "fog": false, "m
 var menus := true
 var fast := false
 var fullmap := false
+var lenses := false
 var stage := false
 var board_kind := "3d"
 var split_turn := -1
@@ -88,6 +91,7 @@ func _initialize() -> void:
 			"no-menus": menus = false
 			"fast": fast = true
 			"fullmap": fullmap = true
+			"lenses": lenses = true
 			"stage": stage = true
 			"board": board_kind = kv[1]
 			"split": split_turn = int(kv[1])
@@ -223,6 +227,8 @@ func _run() -> void:
 					await _fullmap_shot(game, "t%02d_fullmap_staged" % turn, "Turn %d, the whole map framed, the view staged: %s" % [turn, staged])
 			if plan:
 				await _plan_shot(game, turn)
+		if lenses and turn == max_turns:
+			await _lens_shots(game, turn)
 		print("turn %d: end turn" % turn)
 		game.end_turn()
 		await _settle(game, fast and not (turn % every == 0 or turn + 1 == max_turns))
@@ -378,6 +384,34 @@ func _stage_view(game: GameScreen) -> String:
 		notes.append("%s's keep damaged (walls %d of %d)" % [keep.name, keep.walls, SiegeRules.walls_max(2)])
 	map.set_state(st, map.viewing_faction_id)
 	return "; ".join(notes)
+
+
+## UX-7 (--lenses): each map lens on in turn, as its key does (the board's texture, the plates' values, the legend card), shot, and
+## framed whole with --fullmap; then off. walk.md gets each legend's question and totals.
+func _lens_shots(game: GameScreen, turn: int) -> void:
+	var map = game.map
+	# the compositing check (§4.0): one of the person's armies selected, so its province wears the selection band and its neighbours
+	# the move target's glow under every lens (with --stage the view also holds all four looks of sight)
+	for a in map.state.armies:
+		if a.owner == human and a.ruler == null:
+			map.select_army(a.id)
+			walk.append("- lens shots: %s selected (its neighbours are move targets)" % a.id)
+			break
+	map.lens_ui.open_picker()  # the Lenses button's picker, as a click opens it
+	await _wait(0.4)
+	await _shot("t%02d_lens_picker" % turn, "The Lenses button's picker: the six lenses with their keys, and Off.")
+	map.lens_ui.picker.hide()
+	for id in MapLens.IDS:
+		map.lens_host.activate(id)
+		await _wait(0.8)
+		var legend: Dictionary = map.lens_ui.result().get("legend", {})
+		var note := "Turn %d, the %s lens (key %d): %s %s" % [turn, MapLens.title_of(id), MapLens.mode_of(id), String(MapLens.lens(id).question),
+			" | ".join(legend.get("totals", []))]
+		await _shot("t%02d_lens_%d_%s" % [turn, MapLens.mode_of(id), id], note)
+		if fullmap:
+			await _fullmap_shot(game, "t%02d_lens_%d_%s_fullmap" % [turn, MapLens.mode_of(id), id], note + " (the whole map framed)")
+	map.lens_host.clear()
+	await _frames(2)
 
 
 ## UX-2: the whole map framed as the F key does, shot, and the camera put back where it was. The glide takes a moment.
