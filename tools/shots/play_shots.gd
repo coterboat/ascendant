@@ -35,6 +35,9 @@ extends SceneTree
 ##                      being raised in your land, and a keep's walls are knocked down a step. Shot as tNN_fullmap_staged (needs --fullmap)
 ##   --split=N          UX-6: on turn N (after turn 1's recruits) the person's seat splits its biggest army in two before its other orders, so that
 ##                      turn's Chronicle shows ARM-1's muster entry (default: none)
+##   --plan             UX-5: after each orders shot, press the End turn seal with review before sealing on (the Chronicle opens at
+##                      the Plan: the orders as sentences with their forecasts, the checks, the seal) and shoot it as tNN_plan; on a build
+##                      without the Plan, the Chronicle as it is (its Plan tab). Then the column closes and the walk ends the turn as ever.
 ##   --chronicle=MODE   UX-6: when the Chronicle opens by itself, whatever the player's settings say: important (the default), needs_you, always,
 ##                      never (the medallions only, to see them lit and unread) or report (today's modal report)
 ##   --fullmap          UX-2: after each orders shot, frame the whole map (the F key) and shoot it again as tNN_fullmap, then put the
@@ -59,6 +62,7 @@ var stage := false
 var board_kind := "3d"
 var split_turn := -1
 var chronicle_mode := ""
+var plan := false
 var fresh := false
 var defaults := false
 var ui_scale := 100
@@ -88,6 +92,7 @@ func _initialize() -> void:
 			"board": board_kind = kv[1]
 			"split": split_turn = int(kv[1])
 			"chronicle": chronicle_mode = kv[1]
+			"plan": plan = true
 			"fresh": fresh = true
 			"defaults": defaults = true
 			"ui-scale": ui_scale = int(kv[1])
@@ -216,6 +221,8 @@ func _run() -> void:
 				if stage and turn == max_turns:
 					var staged := _stage_view(game)
 					await _fullmap_shot(game, "t%02d_fullmap_staged" % turn, "Turn %d, the whole map framed, the view staged: %s" % [turn, staged])
+			if plan:
+				await _plan_shot(game, turn)
 		print("turn %d: end turn" % turn)
 		game.end_turn()
 		await _settle(game, fast and not (turn % every == 0 or turn + 1 == max_turns))
@@ -460,6 +467,23 @@ func _chronicle_shot(game: GameScreen, turn: int) -> void:
 				await _frames(10)
 				await _shot("t%02d_split" % turn, "Turn %d: the split's own card in the Chronicle: %s | %s" % [turn, musters[0].headline, musters[0].detail])
 		hud.close()
+
+
+## --plan (UX-5): the seal pressed with review before sealing on opens the Chronicle at the Plan; shot, then closed.
+func _plan_shot(game: GameScreen, turn: int) -> void:
+	var has_plan := "plan_hud" in game and game.get("plan_hud") != null
+	if has_plan:
+		var hud = game.get("plan_hud")
+		hud.call("set_review", "always")
+		game.call("seal")
+	else:
+		game.chronicle_hud.open()
+	await _wait(0.6)
+	await _shot("t%02d_plan" % turn, "Turn %d: the End turn seal with review before sealing on: %s" % [turn,
+		"the Chronicle's Plan, the orders as sentences with their forecasts" if has_plan else "no Plan on this build (the Chronicle's Plan tab)"])
+	if has_plan:
+		game.get("plan_hud").call("set_review", "never")
+	game.chronicle_hud.close()
 
 
 ## --split: the person's seat splits its biggest army (the units after the first half form a new one).

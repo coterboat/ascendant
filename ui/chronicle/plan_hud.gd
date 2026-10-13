@@ -18,6 +18,7 @@ var game: GameScreen
 var page: PlanPage
 var first_game := false
 var _seat := ""
+var _sig := ""  # what the page shows now, so an unchanged plan is not drawn again
 
 
 func _init(p_game: GameScreen) -> void:
@@ -32,8 +33,7 @@ func _init(p_game: GameScreen) -> void:
 	page.seal_requested.connect(func(): game.end_turn())
 	page.review_changed.connect(set_review)
 	page.codex_requested.connect(game.open_codex)
-	game.chronicle_hud.set_plan_page(page)
-	game.map.orders_changed.connect(refresh)
+	game.chronicle_hud.set_plan_page(page)  # GameScreen._update_hud (on every order change too) keeps it current
 
 
 func _settings() -> ChronicleSettings:
@@ -91,6 +91,11 @@ func refresh() -> void:
 	if looking and game.map.orders != null:
 		var turn := int(game.chronicle_hud.turn) if int(game.chronicle_hud.turn) > 0 else game.session.turn_number() - 1
 		plan = PlanModel.build(game.map.orders, game.session.state_for(eyes), eyes, turn)
+	var sig := JSON.stringify([plan.sentences.map(func(x): return [x.index, x.text, x.tip]), plan.checks.map(func(x): return [x.id, x.detail]),
+		plan.gold, _settings().review, looking])
+	if sig == _sig:
+		return
+	_sig = sig
 	page.show_plan(plan, _settings().review, looking, seal_tip(plan.sentences.size()))
 
 
