@@ -46,6 +46,9 @@ func _initialize() -> void:
 	var scratch := "user://test_run_%d" % OS.get_process_id()
 	SaveStore.default_root = scratch.path_join("saves")
 	GameSettings.default_path = scratch.path_join("settings.cfg")
+	# UX-6: a fresh install opens the Chronicle on important turns, but the suite's older tests read today's full report at the start of
+	# a turn, so the run asks for it ("report"); the Chronicle's own tests set the mode they mean.
+	ChronicleSettings.default_auto_open = "report"
 
 	var files := _find_test_files(TEST_ROOT)
 	files.sort()

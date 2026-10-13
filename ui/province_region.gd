@@ -104,6 +104,12 @@ var always_detail := false:
 		always_detail = value
 		_update_detail()
 var _hovered := false
+## UX-7 (design/UX_WAR_TABLE.md §4.0, §1.5): the map lens on the 2D map is a flat colour over the region (under the veil, so sight still
+## reads) and the lens value on its plate (LensChip, the 3D board's own); the 3D board's blend effects (glow, hatch, rings) are the
+## legend's to name. set_lens(id, entry) from MapLens.build, "" and {} for none.
+var lens_id := ""
+var lens_entry := {}
+var lens_chip: LensChip = null
 
 
 ## Builds the region for `province_id` from `state`. `center` is in the map canvas' design space.
@@ -218,6 +224,48 @@ func _update_detail() -> void:
 ## Whether the gold, the enchantments and a quiet fort's chip are showing now (tests).
 func detail_shown() -> bool:
 	return income_label != null and income_label.visible
+
+
+## UX-7: lens `id`'s entry for this province (MapLens.build), or none ("" / {}): the flat colour and the plate's lens value. `open` opens
+## a codex key (the chip's right-click or F1).
+func set_lens(id: String, entry: Dictionary, open: Callable = Callable()) -> void:
+	lens_id = id if not entry.is_empty() else ""
+	lens_entry = entry if not lens_id.is_empty() else {}
+	if lens_id.is_empty():
+		if lens_chip != null:
+			lens_chip.get_parent().remove_child(lens_chip)
+			lens_chip.queue_free()
+			lens_chip = null
+	else:
+		if lens_chip == null:
+			lens_chip = LensChip.new()
+			var box := get_node_or_null("Labels")
+			if box != null:
+				box.add_child(lens_chip)
+				box.move_child(lens_chip, mini(1, box.get_child_count() - 1))  # under the name
+		lens_chip.set_entry(id, entry, open if open.is_valid() else codex_requested.emit)
+	queue_redraw()
+
+
+## The flat colour a lens lays over this region on the 2D map: {} with no lens. The Owner lens's seat colour at full strength, every other
+## lens's colour as strong as its value (MapLens's strength), over a muting grey, so its palette runs in lightness as on the 3D board.
+static func lens_fill(id: String, entry: Dictionary) -> Dictionary:
+	if id.is_empty() or entry.is_empty():
+		return {}
+	var k := clampf(float(entry.get("strength", 0.0)), 0.0, 1.0)
+	var mood: Vector4 = MapLens.mood(id).mood
+	var mute := Color(MapLens.mood(id).tone, clampf(0.25 + 0.35 * mood.x, 0.0, 0.6))
+	var alpha := 0.62 * k if id == "owner" else 0.2 + 0.6 * k
+	return {"mute": mute, "colour": Color(entry.get("tint", Color.BLACK), alpha if k > 0.0 else 0.0)}
+
+
+func _draw_lens() -> void:
+	var fill := lens_fill(lens_id, lens_entry)
+	if fill.is_empty():
+		return
+	draw_colored_polygon(_polygon, fill["mute"])
+	if (fill["colour"] as Color).a > 0.0:
+		draw_colored_polygon(_polygon, fill["colour"])
 
 
 ## M5-2: the fog of war on this region, for `viewer` (its view `state`, its memory and its view at the start of the last
@@ -580,6 +628,7 @@ func _draw() -> void:
 	var closed := _polygon.duplicate()
 	closed.append(_polygon[0])
 	_draw_edge_shade(closed)
+	_draw_lens()  # UX-7: a lens's flat colour, under the veil (sight still reads under every lens)
 	_draw_veil()  # M5-2: the fog of war, under the owner ring (owners are public)
 	# Owner ring with the bible's keylines: ink inside, halo outside, so the colour reads on any terrain.
 	draw_polyline(closed, UiPalette.KEYLINE_HALO, 9.0, true)

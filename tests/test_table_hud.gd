@@ -257,10 +257,16 @@ func test_the_system_row_opens_todays_panels_as_they_are() -> void:
 	hud.system_button("help").pressed.emit()
 	assert_true(game.help_overlay.visible, "? opens the list of keys")
 	game.help_overlay.visible = false
-	# The Chronicle and Lenses are placeholders that later tickets fill: there, disabled, and they say so.
-	for id in ["chronicle", "lenses"]:
-		assert_true(hud.system_button(id).disabled, "%s is a placeholder" % id)
-		assert_true(hud.system_button(id).tooltip_text.contains("later update"), "and says it is coming")
+	# The Chronicle opens its column (UX-6); Lenses (UX-7) opens its picker.
+	assert_false(hud.system_button("chronicle").disabled, "the Chronicle is live")
+	hud.system_button("chronicle").pressed.emit()
+	assert_true(game.chronicle_hud.is_open() and game.chronicle_hud.column.visible, "the Chronicle button opens the column")
+	hud.system_button("chronicle").pressed.emit()
+	assert_false(game.chronicle_hud.is_open(), "and a second press shuts it")
+	assert_false(hud.system_button("lenses").disabled, "Lenses is live (UX-7)")
+	assert_true(hud.system_button("lenses").tooltip_text.contains("Extra map views (1–6). Off by default."), "and says what it is")
+	hud.system_button("lenses").pressed.emit()
+	assert_eq(game.map.lens_host.active_id(), "", "opening its picker turns no lens on")
 	game.free()
 
 
@@ -350,10 +356,9 @@ func test_the_help_lists_every_key_and_mouse_binding() -> void:
 	var tip := game.map.hint_label.tooltip_text.replace("\n", " ")
 	for part in ["neighboring province", "forecast and battle odds", "capital to recruit", "F1", "End turn"]:
 		assert_true(tip.contains(part), "the tray hint's tooltip keeps '%s'" % part)
-	# A lens key registered with the host shows up by itself.
-	game.map.lens_host.register("owner", "Owner", KEY_1)
-	game.open_controls_help()
-	assert_true(_texts(game.help_overlay).contains("Owner lens"), "UX-7's lenses are listed from the LensHost")
+	# The lens keys come from the host by themselves (UX-7's six).
+	for id in game.map.lens_host.ids():
+		assert_true(text.contains("%s lens" % game.map.lens_host.title_of(id)), "UX-7's %s lens is listed from the LensHost" % id)
 	game.free()
 
 
@@ -456,7 +461,9 @@ func test_the_notification_stack_has_an_empty_slot_on_the_left_edge() -> void:
 	var hud := game.map.table()
 	var slot := hud.notification_slot()
 	assert_eq(slot, hud.notification_stack)
-	assert_eq(slot.get_child_count(), 0, "empty: UX-6 fills it")
+	assert_eq(slot.get_child_count(), 1, "UX-6 filled it: the Chronicle's medallion stack, and nothing else")
+	assert_true(slot.get_child(0) is NoticeStack and not slot.get_child(0).visible, "empty and out of the way until there is news")
+	assert_true(hud.pieces().has(slot.get_child(0)), "it takes the mouse only where it draws, and the Table lists it as a piece")
 	assert_eq(slot.mouse_filter, Control.MOUSE_FILTER_IGNORE)
 	assert_eq([slot.offset_left, slot.offset_right], [0.0, TableLayout.STACK_W], "80 px on the left")
 	assert_eq(slot.offset_top, TableLayout.TOP_LEFT_H, "under the system row")
@@ -652,7 +659,7 @@ func test_the_selection_host_tells_its_presenter_what_is_selected() -> void:
 func test_the_report_host_hears_every_step_of_a_reports_life() -> void:
 	var game := _hotseat()
 	var host := game.report_host
-	assert_eq(host.presenter(), game, "the modal report is the default presenter")
+	assert_eq(host.presenter(), game.chronicle_hud, "UX-6: the Chronicle is the presenter, and hands today's modal what it asks for (here the suite's 'full report' setting)")
 	var log := []
 	host.turn_resolved.connect(func(t: int): log.append(["resolved", t]))
 	host.report_ready.connect(func(t: int): log.append(["ready", t]))
@@ -703,11 +710,13 @@ class SpyReport extends RefCounted:
 		return true
 
 
-func test_the_lens_host_has_no_lens_yet_and_feeds_the_board_the_active_one() -> void:
+func test_the_lens_host_feeds_the_board_the_active_one() -> void:
 	var game := _game()
-	var host := game.map.lens_host
-	assert_eq(host.ids(), [], "no lens yet")
-	assert_eq(host.active_id(), "", "none active")
+	assert_eq(game.map.lens_host.ids(), MapLens.IDS, "UX-7 registered its six lenses with the map's host")
+	assert_eq(game.map.lens_host.active_id(), "", "none active")
+	# The seam itself, on a host of its own.
+	var host := LensHost.new()
+	assert_eq(host.ids(), [], "a new host has no lens")
 	assert_eq(host.id_for_key(KEY_1), "")
 	var fed := []
 	host.register("owner", "Owner", KEY_1, func(board): fed.append(board))
@@ -727,12 +736,12 @@ func test_the_lens_host_has_no_lens_yet_and_feeds_the_board_the_active_one() -> 
 	assert_eq(host.active_id(), "")
 	assert_false(host.activate("nope"))
 	assert_eq(changes, ["owner", ""])
-	# A key press toggles it on the map screen, unless a modal is open.
+	# A key press toggles the map's lens on the map screen, unless a modal is open.
 	var key := InputEventKey.new()
 	key.keycode = KEY_1
 	key.pressed = true
 	game.map._unhandled_key_input(key)
-	assert_eq(host.active_id(), "owner")
+	assert_eq(game.map.lens_host.active_id(), "owner")
 	game.free()
 
 

@@ -1,0 +1,63 @@
+[
+	{"tool": "discover_tools", "args": {"request": ["runtime_advanced", "editor_advanced"]}, "note": "the two groups a walk needs, on top of the 36 tools every session starts with"},
+
+	{"tool": "game_stop", "args": {}, "note": "idempotent: a clean start whether or not a game is already running"},
+	{"sleep_ms": 2500},
+	{"tool": "game_start", "args": {"scene_path": "main", "wait_for_runtime": false}},
+	{"tool": "game_start", "args": {"if_running": "return", "runtime_poll": true}, "until": "\"runtime_ready\":true", "every_ms": 3000, "timeout_ms": 180000, "note": "a cold start takes longer than the 10 s game_start waits by itself"},
+
+	{"tool": "execute_code", "args": {"code": "get_tree().current_scene.name"}, "until": "TitleScreen", "every_ms": 3000, "timeout_ms": 180000, "note": "the poll above can read the registry entry of the game that just stopped: only a call that reaches the new game proves it is up"},
+	{"tool": "runtime_screenshot", "args": {"image_response_mode": "disk"}, "note": "1: the title, from the running game"},
+
+	{"tool": "input_simulate", "args": {"events": {"event_type": "click_node", "event_data": {"node_path": "/root/TitleScreen/Center/Box/NewGameButton"}}}},
+	{"sleep_ms": 1000},
+	{"tool": "execute_code", "args": {"code": "get_tree().current_scene.get_node('NewGameScreen').seed_edit.clear()"}, "note": "the seed box starts with a random seed: empty it, then type ours"},
+	{"tool": "input_simulate", "args": {"events": {"event_type": "send_text", "event_data": {"node_path": "/root/TitleScreen/NewGameScreen/Margin/Centered/Panel/Box/Scroll/Body/SeedRow/SeedEdit", "text": "4242"}}}, "expect": "\"text_after\":\"4242\""},
+	{"tool": "execute_code", "args": {"code": "get_tree().current_scene.get_node('NewGameScreen').config()"}, "expect": "\"seed\":4242", "note": "the screen's own config, read back from the running game"},
+	{"tool": "input_simulate", "args": {"events": {"event_type": "click_node", "event_data": {"node_path": "/root/TitleScreen/NewGameScreen/Margin/Centered/Panel/Box/Buttons/StartButton"}}}, "note": "the button reads Choose builds"},
+	{"sleep_ms": 1500},
+	{"tool": "input_simulate", "args": {"events": {"event_type": "click_node", "event_data": {"node_path": "/root/TitleScreen/NewGameScreen/BuildScreen/Margin/Page/Footer/LockInButton"}}}, "note": "the balanced preset is already picked"},
+	{"tool": "execute_code", "args": {"code": "get_tree().current_scene.name"}, "until": "GameScreen", "every_ms": 1000, "timeout_ms": 90000},
+	{"tool": "execute_code", "args": {"code": "get_tree().current_scene.set('autosave_enabled', false)"}, "note": "an editor playtest uses the player's own user:// saves: switch the autosave off before the first turn"},
+	{"tool": "execute_code", "args": {"code": "str(not get_tree().current_scene.get_node('Map/MapView').has_node('Board3D') or get_tree().current_scene.get_node('Map/MapView/Board3D').prepared)"}, "until": "true", "every_ms": 1000, "timeout_ms": 120000, "note": "the screen is up while the 3D board still shows \"Raising the land...\": clicks sent now land on nothing"},
+
+	{"tool": "execute_code", "args": {"code": "'turn ' + str(get_tree().current_scene.session.turn_number()) + ', seed ' + str(get_tree().current_scene.session.state().seed_value)"}, "expect": "seed 4242"},
+	{"tool": "runtime_screenshot", "args": {"image_response_mode": "disk"}, "note": "2: turn 1, before any order"},
+
+	{"tool": "execute_code", "args": {"code": "str(get_tree().current_scene.find_children('ArmyButton', '', true, false)[0].get_path())"}, "capture": "armyButton", "note": "the army's row in the province card; its node name is generated, so ask for the path"},
+	{"tool": "input_simulate", "args": {"events": {"event_type": "click_node", "event_data": {"node_path": "${armyButton}"}}}},
+	{"tool": "execute_code", "args": {"code": "get_tree().current_scene.get_node('Map').selected_army_id"}, "expect": "kingdom-1"},
+	{"tool": "execute_code", "args": {"code": "str(int(get_tree().current_scene.get_node('Map').regions['westwatch'].get_global_rect().get_center().x))"}, "capture": "wx"},
+	{"tool": "execute_code", "args": {"code": "str(int(get_tree().current_scene.get_node('Map').regions['westwatch'].get_global_rect().get_center().y))"}, "capture": "wy"},
+	{"tool": "input_simulate", "args": {"events": {"event_type": "mouse_motion", "event_data": {"position": {"x": "${wx}", "y": "${wy}"}}}}, "note": "hover first: the army card shows the forecast of this march"},
+	{"sleep_ms": 600},
+	{"tool": "runtime_screenshot", "args": {"image_response_mode": "disk"}, "note": "3: the hover forecast"},
+	{"tool": "input_simulate", "args": {"events": {"event_type": "click", "event_data": {"position": {"x": "${wx}", "y": "${wy}"}}}}, "note": "a real click on the province region orders the move"},
+	{"sleep_ms": 800},
+	{"tool": "execute_code", "args": {"code": "str(get_tree().current_scene.session.current_order_texts())"}, "expect": "to Westwatch", "note": "the session's own list of this turn's orders"},
+	{"tool": "runtime_screenshot", "args": {"image_response_mode": "disk"}, "note": "4: the order placed"},
+
+	{"tool": "execute_code", "args": {"code": "str(get_tree().current_scene.find_children('EndTurnButton', '', true, false)[0].get_path())"}, "capture": "endTurn"},
+	{"tool": "input_simulate", "args": {"events": {"event_type": "click_node", "event_data": {"node_path": "${endTurn}"}}}, "note": "End turn: the computer's orders are made, the turn resolves, the playback starts"},
+	{"tool": "execute_code", "args": {"code": "str(get_tree().current_scene.get_node('Overlays/BattleHost').visible)"}, "until": "true", "every_ms": 1000, "timeout_ms": 120000, "note": "wait for the battle the turn started (the game watches your battles by default)"},
+	{"sleep_ms": 3500},
+	{"tool": "runtime_screenshot", "args": {"image_response_mode": "disk"}, "note": "5: the battle host on the 3D stage, the armies deployed"},
+	{"tool": "execute_code", "args": {"code": "str(get_tree().current_scene.get_node('Overlays/BattleHost').current_event())"}, "expect": "held_vs_arrival", "note": "the battle as the rules resolved it: strengths, winner, rounds, the why text"},
+	{"tool": "execute_code", "args": {"code": "str(get_tree().current_scene.get_node('Overlays/BattleHost').view.controls.buttons.skip.get_path())"}, "capture": "skipButton"},
+	{"tool": "input_simulate", "args": {"events": {"event_type": "click_node", "event_data": {"node_path": "${skipButton}"}}}, "note": "Skip to end"},
+	{"sleep_ms": 2500},
+	{"tool": "runtime_screenshot", "args": {"image_response_mode": "disk"}, "note": "6: the battle's result"},
+	{"tool": "execute_code", "args": {"code": "str(get_tree().current_scene.get_node('Overlays/BattleHost').view.controls.buttons.close.get_path())"}, "capture": "closeButton"},
+	{"tool": "input_simulate", "args": {"events": {"event_type": "click_node", "event_data": {"node_path": "${closeButton}"}}}},
+	{"tool": "execute_code", "args": {"code": "str(get_tree().current_scene.get_node('Overlays/BattleHost').visible)"}, "until": "false", "every_ms": 1000, "timeout_ms": 30000},
+
+	{"tool": "execute_code", "args": {"code": "'turn ' + str(get_tree().current_scene.session.turn_number()) + '; Westwatch owner: ' + get_tree().current_scene.session.state().find_province('westwatch').owner + '; the army is at ' + get_tree().current_scene.session.state().find_army('kingdom-1').location"}, "expect": "Westwatch owner: kingdom", "note": "the board after the turn, read from the game state"},
+	{"tool": "execute_code", "args": {"code": "str(get_tree().current_scene.get_node('Map').regions['westwatch'].find_children('*', 'Label', true, false)[0].text)"}, "note": "and from the map's own nodes: the Westwatch region's first label"},
+	{"tool": "runtime_screenshot", "args": {"image_response_mode": "disk"}, "note": "7: the map after the turn"},
+
+	{"tool": "debugger_get_log", "args": {"limit": 15}, "note": "what the running game printed"},
+	{"tool": "editor_get_console", "args": {"level_filter": "error", "limit": 10}, "note": "errors in the editor's own output"},
+	{"tool": "game_stop", "args": {}},
+	{"sleep_ms": 1500},
+	{"tool": "editor_screenshot", "args": {"image_response_mode": "disk", "force_foreground_editor": true}, "note": "8: the editor's main viewport (not its docks); a game launched from a minimized editor leaves it minimized, and this raises it"}
+]

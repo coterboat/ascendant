@@ -20,7 +20,7 @@ const SCRATCH := "user://table_probe"
 const BOARDS := ["3d", "2d"]
 ## The spec's three sizes: key -> the logical size the game lays out for.
 const SIZES := {"1600x900": Vector2(1600, 900), "1600x900@125": Vector2(1280, 720), "1280x720": Vector2(1600, 900)}
-const SCENARIOS := ["rest", "dismissed", "notice", "forecast", "army", "recruit", "march", "army_notice"]
+const SCENARIOS := ["rest", "dismissed", "notice", "forecast", "army", "recruit", "march", "army_notice", "notices", "chronicle"]
 const FLOATING := ["card", "notice", "guide", "hover", "playback", "caption", "closeup"]
 ## The march strip with its three forecast lines grows upward a little, and no more than this: it is a strip, not a card.
 const MARCH_STRIP_MAX_H := 170.0
@@ -143,6 +143,12 @@ func _check_state(board: String, key: String, scenario: String, m: Dictionary) -
 			assert_true(_shown(m, "playback") and _shown(m, "caption"), "%s: the playback bar and its caption" % where)
 		"closeup":
 			assert_true(_shown(m, "closeup"), "%s: the fortress chip" % where)
+		"notices":
+			assert_true(_shown(m, "notices"), "%s: the medallion stack is lit with the turn's news" % where)
+			assert_false(_shown(m, "chronicle"), "%s: the column is shut" % where)
+		"chronicle":
+			assert_true(_shown(m, "chronicle") and _shown(m, "notices"), "%s: the column is open beside the medallions" % where)
+			assert_true(_shown(m, "card") and _shown(m, "guide"), "%s: and the card and the guide give way, they do not vanish" % where)
 
 
 # --- the selection cards (UX-3, design/UX_WAR_TABLE.md §3.3) ---------------------------------------------
@@ -217,6 +223,96 @@ func test_the_card_is_docked_the_same_for_every_province_and_army_at_every_zoom_
 	assert_true(counted.n >= expected, "cards were measured for every province and army (%d of at least %d)" % [counted.n, expected])
 
 
+# --- the Chronicle's pieces (UX-6, design/UX_WAR_TABLE.md §1.3, §5) -----------------------------------------
+
+## The medallion stack stays in its 80 px slot at every size, shows at most six medallions below 1600 logical and "+N" for the rest, and
+## sits clear of the card, the guide and the plaques; the open column takes its band on the right (420 px, 360 px below 1600 logical) and
+## the plaques, the tray and the seal keep to the board's side of it; the markers are on the board where their cards' provinces are.
+func test_the_medallion_stack_stays_in_its_slot_and_shows_at_most_six_below_1600() -> void:
+	var checked := [0]
+	_each(func(board: String, key: String, scenario: String, m: Dictionary):
+		if scenario != "notices" and scenario != "chronicle":
+			return
+		var where := _where(board, key, scenario)
+		var vp := _viewport(m)
+		var slot := _rect(m, "stack")
+		var stack := _rect(m, "notices")
+		assert_true(slot.grow(0.5).encloses(stack), "%s: the stack is inside its 80 px slot (%s in %s)" % [where, stack, slot])
+		var parts: Dictionary = m.chronicle
+		assert_true(int(parts.total) > 6, "%s: the turn had more news than six (%d)" % [where, parts.total])
+		var shown: int = (parts.medallions as Array).size()
+		assert_true(shown >= 1, "%s: medallions are drawn" % where)
+		if vp.x < TableLayout.WIDE_FROM:
+			assert_true(shown <= NoticeStack.MAX_COMPACT, "%s: at most six below 1600 logical (%d)" % [where, shown])
+			assert_eq(shown, 6, "%s: and six fit" % where)
+		for r in parts.medallions:
+			var rect := Rect2(r[0], r[1], r[2], r[3])
+			assert_true(stack.grow(0.5).encloses(rect), "%s: a medallion is inside the stack" % where)
+			assert_true(rect.size.x <= NoticeMedallion.SIZE_STACK + 0.5, "%s: no wider than its slot allows" % where)
+		var more: Array = parts.more
+		assert_eq(bool(more[4]), int(parts.total) > shown, "%s: '+N' shows exactly when some medallions did not fit" % where)
+		if _shown(m, "card"):
+			assert_false(TableLayout.overlaps(stack, _rect(m, "card")), "%s: the stack never covers the selection card" % where)
+		checked[0] += 1)
+	assert_true(checked[0] >= 12, "the stack was measured in both states, at three sizes, on both boards (%d)" % checked[0])
+
+
+func test_the_open_chronicle_has_its_band_and_everything_gives_way() -> void:
+	var checked := [0]
+	_each(func(board: String, key: String, scenario: String, m: Dictionary):
+		if scenario != "chronicle":
+			return
+		var where := _where(board, key, scenario)
+		var vp := _viewport(m)
+		var band: Rect2 = TableLayout.bands(vp, true)["chronicle"]
+		var column := _rect(m, "chronicle")
+		assert_eq(column.size.x, TableLayout.chronicle_width(vp), "%s: 420 px wide, 360 below 1600 logical" % where)
+		assert_true(is_equal_approx(column.position.x, band.position.x) and column.size.y == vp.y, "%s: it takes its whole band (%s)" % [where, column])
+		var safe := Rect2(m.safe[0], m.safe[1], m.safe[2], m.safe[3])
+		assert_eq(safe, TableLayout.safe_area(vp, true), "%s: the safe area narrowed to make room" % where)
+		for name in m.pieces.keys():
+			if name == "chronicle" or not _shown(m, name):
+				continue
+			assert_false(TableLayout.overlaps(_rect(m, name), column), "%s: %s gives way to the column (%s against %s)" % [where, name, _rect(m, name), column])
+		for name in FLOATING:
+			if _shown(m, name):
+				assert_true(safe.grow(0.5).encloses(_rect(m, name)), "%s: %s is inside the narrowed safe area" % [where, name])
+		var parts: Dictionary = m.chronicle
+		assert_true(int(parts.cards) >= 5, "%s: the column lists the turn's cards (%d)" % [where, parts.cards])
+		# A marker for each card with a province, numbered 1, 2, 3 ..., on the board and under none of the HUD's pieces.
+		var numbers := []
+		for id in parts.markers:
+			var r: Array = parts.markers[id]
+			numbers.append(int(r[0]))
+			if bool(r[5]):
+				var rect := Rect2(r[1], r[2], r[3], r[4])
+				assert_true(Rect2(Vector2.ZERO, vp).grow(0.5).encloses(rect), "%s: a marker is on the screen" % where)
+		numbers.sort()
+		assert_true(numbers.size() >= 3, "%s: markers on the board (%d)" % [where, numbers.size()])
+		assert_eq(numbers, range(1, numbers.size() + 1), "%s: numbered 1, 2, 3 like the cards" % where)
+		checked[0] += 1)
+	assert_true(checked[0] >= 6, "the open column was measured at three sizes on both boards (%d)" % checked[0])
+
+
+func test_a_click_on_the_stack_or_the_column_is_eaten_and_never_reaches_the_board() -> void:
+	var checked := [0]
+	_each(func(board: String, key: String, scenario: String, m: Dictionary):
+		if scenario != "notices" and scenario != "chronicle":
+			return
+		var where := _where(board, key, scenario)
+		var clicks: Array = m.chronicle_clicks
+		var pieces := clicks.map(func(c): return String(c.piece))
+		assert_true(pieces.has("notices"), "%s: the probe clicked the stack" % where)
+		if scenario == "chronicle":
+			assert_true(pieces.has("chronicle"), "%s: and the column" % where)
+		for c in clicks:
+			assert_eq(c.selected, c.capital, "%s: a click on the %s (over %s) left the selection alone" % [where, c.piece, c.land])
+			assert_eq(c.army, "", "%s: and selected no army" % where)
+			assert_eq(int(c.turns), 0, "%s: and ended no turn" % where)
+			checked[0] += 1)
+	assert_true(checked[0] >= 18, "clicks were eaten at every size on both boards (%d)" % checked[0])
+
+
 # --- overlap and the bands --------------------------------------------------------------------------
 
 func test_no_two_hud_pieces_overlap_in_any_state_at_any_size_on_either_board() -> void:
@@ -226,6 +322,8 @@ func test_no_two_hud_pieces_overlap_in_any_state_at_any_size_on_either_board() -
 		assert_true(names.size() >= 14, "%s: the pieces were found (%d)" % [where, names.size()])
 		for i in names.size():
 			for j in range(i + 1, names.size()):
+				if [names[i], names[j]].has("stack") and [names[i], names[j]].has("notices"):
+					continue  # the stack slot is the area the medallions are drawn in (checked inside it below)
 				var a: Rect2 = _rect(m, names[i])
 				var b: Rect2 = _rect(m, names[j])
 				assert_false(TableLayout.overlaps(a, b), "%s: %s and %s overlap (%s, %s)" % [where, names[i], names[j], a, b])
@@ -238,7 +336,7 @@ func test_every_piece_stays_in_its_band_and_every_floating_piece_in_the_safe_are
 		var vp := _viewport(m)
 		var window := Rect2(Vector2.ZERO, vp)
 		var safe := Rect2(m.safe[0], m.safe[1], m.safe[2], m.safe[3])
-		assert_eq(safe, TableLayout.safe_area(vp), "%s: the safe area is the layout's" % where)
+		assert_eq(safe, TableLayout.safe_area(vp, scenario == "chronicle"), "%s: the safe area is the layout's (narrowed by the open Chronicle)" % where)
 		for name in m.pieces.keys():
 			if _shown(m, name):
 				assert_true(window.grow(0.5).encloses(_rect(m, name)), "%s: %s is inside the window (%s)" % [where, name, _rect(m, name)])
@@ -249,7 +347,8 @@ func test_every_piece_stays_in_its_band_and_every_floating_piece_in_the_safe_are
 		# The opponent plaque and Menu: 72 px along the top, on the right.
 		for name in ["opponent", "menu"]:
 			assert_true(_rect(m, name).end.y <= TableLayout.TOP_RIGHT_H + 0.5, "%s: %s ends inside the 72 px band (%d)" % [where, name, _rect(m, name).end.y])
-			assert_true(_rect(m, name).position.x > vp.x * 0.5, "%s: and sits on the right" % where)
+			var board_side := vp.x - (TableLayout.chronicle_width(vp) if scenario == "chronicle" else 0.0)
+			assert_true(_rect(m, name).position.x > board_side * 0.5 and _rect(m, name).end.x <= board_side + 0.5, "%s: and sits on the right of the board's side (%s)" % [where, board_side])
 		# The notification slot: 80 px down the left edge, under the system row, over the tray.
 		assert_eq(_rect(m, "stack").position, Vector2(0, TableLayout.TOP_LEFT_H), "%s: the stack starts under the system row" % where)
 		assert_eq(_rect(m, "stack").size.x, TableLayout.STACK_W, "%s: 80 px wide" % where)
@@ -277,7 +376,8 @@ func test_the_left_column_holds_the_notice_the_guide_and_the_card_in_that_order(
 				var r := _rect(m, name)
 				column.append(r)
 				assert_eq(r.position.x, safe.position.x + TableLayout.GAP, "%s: the %s is in the left column" % [where, name])
-				assert_true(r.end.x <= framing.position.x, "%s: and ends left of the framing area (%d against %d)" % [where, r.end.x, framing.position.x])
+				if scenario != "chronicle":  # an open Chronicle at 1280 logical leaves the map 480 px: the framing yields to it, not the card
+					assert_true(r.end.x <= framing.position.x, "%s: and ends left of the framing area (%d against %d)" % [where, r.end.x, framing.position.x])
 		for i in range(1, column.size()):
 			assert_true((column[i] as Rect2).position.y >= (column[i - 1] as Rect2).end.y, "%s: each is under the one above it" % where)
 		if _shown(m, "card"):
@@ -321,7 +421,7 @@ func test_the_2d_map_fits_the_framing_area() -> void:
 		var where := _where(board, key, scenario)
 		var canvas := Rect2(m.canvas[0], m.canvas[1], m.canvas[2], m.canvas[3])
 		var framing := Rect2(m.framing[0], m.framing[1], m.framing[2], m.framing[3])
-		assert_eq(framing, TableLayout.framing_area(_viewport(m)), "%s: the framing area is the layout's" % where)
+		assert_eq(framing, TableLayout.framing_area(_viewport(m), scenario == "chronicle"), "%s: the framing area is the layout's" % where)
 		assert_true(framing.grow(1.0).encloses(canvas), "%s: the whole 2D map is inside the framing area (%s in %s)" % [where, canvas, framing])
 		assert_true(canvas.size.x >= 0.7 * framing.size.x or canvas.size.y >= 0.7 * framing.size.y, "%s: and fills most of it (%s)" % [where, canvas]))
 
