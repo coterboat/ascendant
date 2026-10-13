@@ -761,12 +761,11 @@ func _assert_roles(event: Dictionary, state: GameState, want: Dictionary) -> voi
 		return
 	var v := BattleSimpleView.new()
 	assert_eq(v.show_battle(battle_log, event.numbers.get("report", {}), [], event), "", "the battle plays")
-	var plaques := [v.plaque_labels[0].text, v.plaque_labels[1].text]
-	for p in plaques:
-		assert_false(p.ends_with("· arrived") or p.ends_with("· attacking"), "no M1 role on the plaque: %s" % p)
 	for k in 2:
-		for chip in v.chip_boxes[k].get_children():
-			assert_false((chip as Label).text.begins_with("Fort:"), "no Fort +2 chip with sieges on: %s" % (chip as Label).text)
+		var role := String(v.role_chips[k].text)
+		assert_false(role == "arrived" or role == "attacking", "no M1 role on the plate: %s" % role)
+	for chip in v.conditions.get_children():
+		assert_false(String((chip as Label).get_meta("full", (chip as Label).text)).begins_with("Fort:"), "no Fort +2 chip with sieges on: %s" % (chip as Label).text)
 	v.free()
 
 

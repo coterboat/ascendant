@@ -323,21 +323,28 @@ func test_the_stage_never_rolls_dice_or_resolves_anything() -> void:
 func _screen_of(s: BattleStage3D, fid: int) -> Vector2:
 	var e: Array = s.figures.ends_at(s.figures.index_of(fid), s.player.time())
 	var v := Cam.project(s.wv.rig, s._view, (e[0] as Vector3).lerp(e[1], 0.55))
-	return v / s._px + s.frame.position + Vector2(0, BattleSimpleView.TOP_H)
+	return v / s._px + s.frame.position + s.field.position
 
 
 func test_hover_and_click_pick_a_fighter_for_the_selection() -> void:
+	## UX-8: which flank the camera frames a small battle from depends on the band's shape, and from some flanks more fighters
+	## stand behind another; so most fighters are picked by their own upper body over three battles, not one.
+	var picked := 0
+	var total := 0
+	for name in ["king_falls_wins", "starting_plains", "forest_fort"]:
+		var t := _stage(_fixture(name))
+		t.player.seek_round(1)
+		for f in t._log.fighters:
+			var fid := int(f.id)
+			var got := t.pick(_screen_of(t, fid))
+			if got == fid:
+				picked += 1
+			total += 1
+			assert_true(got >= 0, "%s: something is under %s" % [name, f.name])
+		t.free()
+	assert_true(picked >= total * 0.8, "a ray picks most fighters by their own upper body (%d of %d; the rest stand behind another)" % [picked, total])
 	var s := _stage(_fixture("king_falls_wins"))
 	s.player.seek_round(1)
-	var picked := 0
-	for f in s._log.fighters:
-		var fid := int(f.id)
-		var at := _screen_of(s, fid)
-		var got := s.pick(at)
-		if got == fid:
-			picked += 1
-		assert_true(got >= 0, "something is under %s" % f.name)
-	assert_true(picked >= s._log.fighters.size() * 0.8, "a ray picks most fighters by their own upper body (%d of %d; the rest stand behind another)" % [picked, s._log.fighters.size()])
 	var king := -1
 	for f in s._log.fighters:
 		if f.role == "ruler":
@@ -364,7 +371,7 @@ func test_hover_and_click_pick_a_fighter_for_the_selection() -> void:
 	var empty := InputEventMouseButton.new()
 	empty.button_index = MOUSE_BUTTON_LEFT
 	empty.pressed = true
-	empty.position = s.frame.position + Vector2(8, BattleSimpleView.TOP_H + 8)
+	empty.position = s.frame.position + s.field.position + Vector2(8, BattleSimpleView.HUD_TOP + 8)
 	s.selection.select(king)
 	s._gui_input(empty)
 	assert_eq(s.selection.selected, -1, "a click on empty land clears the selection")
@@ -676,12 +683,14 @@ func test_f_reframes_and_a_jump_frames_the_moment() -> void:
 	assert_eq(s.focus_moves, 1, "the jump frames the moment's camera hint")
 	for k in 70:
 		s.tick(STEP)
-	var subject := int(m.camera.fighters[0])
-	var sp: Vector2 = s.plan.slots[subject]["pos"]
-	var tg: Vector3 = s.rig.target
 	assert_true(float(s.rig.span) < float(whole.span) - 0.5, "it comes in closer than the whole battle")
-	assert_true(Vector2(tg.x, tg.z).distance_to(sp) < Vector2((whole.target as Vector3).x, (whole.target as Vector3).z).distance_to(sp) + 0.01,
-		"toward the falling king")
+	## UX-8: what a player sees: the moment's fighters inside the band the camera frames into (the old check measured the
+	## rig's ground target, which sits off the framed group by the band's offset from the view's centre)
+	var band := Rect2(s._band().position / s._px, s._band().size / s._px).grow(2.0)
+	for fid in m.camera.fighters:
+		var e: Array = s.figures.ends_at(s.figures.index_of(int(fid)), s.player.time())
+		var on := Cam.project(s.rig, s._view, (e[0] as Vector3).lerp(e[1], 0.55)) / s._px
+		assert_true(band.has_point(on), "the falling king's moment is framed: fighter %d at %s in %s" % [int(fid), on, band])
 	s.player.play()
 	for k in int((BattleStage3D.FOCUS_HOLD + BattleStage3D.MOVE_TIME + 0.5) / STEP):
 		s.tick(STEP)

@@ -5,6 +5,9 @@ extends "res://tests/test_case.gd"
 ##   seeking to a point equals the field after playing to it, for every fixture, every round start and 200
 ##   seeded random events;
 ## - every §5.3 key works, every control's tooltip names its key, and jumps land with the 0.5 s lead-in;
+## - UX-8 (#221): the scrubber's moment markers sit at their moments' events, a click on one jumps there, and only the
+##   kinds the battle has are drawn; the bar, the queue row, the Why tab, the plates, the centre, the caption and the
+##   why panel fit and keep off each other at the three supported sizes, on the Simple view and the 3D stage alike;
 ## - the why panel's numbers are BattleExplain's for the current beat (and sum to the log's), its pinned
 ##   fighter is BattleExplain's explanation now, and the round's totals add up to the log's round_end;
 ## - every legend row is drawn by the screen's own drawing function and links a codex entry that exists;
@@ -268,10 +271,8 @@ func test_every_control_names_its_key() -> void:
 		var b: Button = v.controls.buttons[id]
 		assert_true(b.tooltip_text.contains("(%s)" % want[id]) or b.tooltip_text.contains("(%s " % want[id]), "%s's tooltip names its key %s: %s" % [b.text, want[id], b.tooltip_text])
 		assert_eq(b.focus_mode, Control.FOCUS_NONE, "%s never takes the keyboard (Space stays play / pause, Tab selects)" % b.text)
-	for kind in BattleMoments.KINDS:
-		var b: Button = v.controls.moment_buttons[kind]
-		if not b.disabled:
-			assert_true(b.tooltip_text.replace("\n", " ").contains("M jumps to the next key moment"), "%s names M" % b.text)
+	for m in v.scrubber.marks:
+		assert_true(String(m.tip).replace("\n", " ").contains("M jumps to the next key moment"), "the %s marker names M" % m.kind)
 	assert_true(v.why_panel.close_button.tooltip_text.contains("(%s)" % keys.why), "the why panel's x names W")
 	v.player.play()
 	assert_true(v.controls.buttons.play.tooltip_text.contains("Pause (Space)"), "Pause names Space too")
@@ -284,19 +285,14 @@ func test_jumps_land_on_their_moment_with_the_lead_in() -> void:
 		var fx := _fixture(name)
 		var v := _view(fx)
 		var p := v.player
-		for kind in BattleMoments.KINDS:
-			var have := BattleMoments.of_kind(fx.log, kind)
-			var b: Button = v.controls.moment_buttons[kind]
-			assert_eq(b.disabled, have.is_empty(), "%s: %s is enabled exactly when there is one" % [name, kind])
-			if have.is_empty():
-				assert_eq(b.tooltip_text.split("\n\n")[0].replace("\n", " "), String(BattleMoments.missing(fx.log)[kind]).replace("\n", " "),
-					"%s: the disabled %s button says why" % [name, kind])
-				continue
+		var marks: Array = v.scrubber.marks
+		assert_eq(marks.size(), BattleMoments.key_moments(fx.log).size(), "%s: one marker per key moment" % name)
+		for i in marks.size():
+			var m: Dictionary = marks[i]
 			p.restart()
-			b.pressed.emit()
-			var m: Dictionary = have[0]
-			var at := maxf(0.0, p.moment_time(m) - BattlePlayer.LEAD_IN)
-			assert_true(absf(p.time() - at) < 0.0001, "%s: %s lands %.1f s before its moment" % [name, kind, BattlePlayer.LEAD_IN])
+			v.scrubber._gui_input(_click(v.scrubber.mark_point(i)))
+			var at := maxf(0.0, float(m.t) - BattlePlayer.LEAD_IN)
+			assert_true(absf(p.time() - at) < 0.0001, "%s: the %s marker lands %.1f s before its moment" % [name, m.kind, BattlePlayer.LEAD_IN])
 			assert_false(p.is_playing(), "%s: a jump keeps pause" % name)
 			# Playing on, the moment's beat fires within the lead-in, on its event.
 			var fired := {}
@@ -305,12 +301,78 @@ func test_jumps_land_on_their_moment_with_the_lead_in() -> void:
 			while fired.is_empty() and guard < 200:
 				guard += 1
 				for fb in p.advance(STEP):
-					if fb.kind == "moment" and fb.data.kind == kind:
+					if fb.kind == "moment" and fb.data.kind == m.kind:
 						fired = fb
-			assert_eq(int(fired.get("event", -1)), int(m.event), "%s: %s fires on its moment's event" % [name, kind])
+			assert_eq(int(fired.get("event", -1)), int(m.event), "%s: %s fires on its moment's event" % [name, m.kind])
 			assert_true(guard * STEP * p.speed() <= BattlePlayer.LEAD_IN + 0.6 + STEP * 4, "%s: within the lead-in" % name)
 			p.pause()
 		v.free()
+
+
+func _click(at: Vector2, button := MOUSE_BUTTON_LEFT, pressed := true) -> InputEventMouseButton:
+	var e := InputEventMouseButton.new()
+	e.button_index = button
+	e.pressed = pressed
+	e.position = at
+	return e
+
+
+## UX-8 (§6): every key moment is a marker on the scrubber at its event's place (its beat's time), with today's words, a
+## jump on a click and its codex entry on a right-click; a kind the battle lacks has no marker, and the scrubber says why.
+func test_moment_markers_sit_at_their_events_and_only_the_kinds_the_battle_has() -> void:
+	for name in Fx.names():
+		var fx := _fixture(name)
+		var v := _view(fx)
+		var p := v.player
+		var want := BattleMoments.key_moments(fx.log)
+		var marks: Array = v.scrubber.marks
+		assert_eq(marks.size(), want.size(), "%s: a marker per moment" % name)
+		var kinds := {}
+		for m in want:
+			kinds[String(m.kind)] = true
+			var found := marks.filter(func(k): return k.kind == m.kind and int(k.event) == int(m.event))
+			assert_eq(found.size(), 1, "%s: the %s at event %d has its marker" % [name, m.kind, int(m.event)])
+			if found.is_empty():
+				continue
+			assert_true(absf(float(found[0].t) - p.moment_time(m)) < 0.0001, "%s: at its beat's time" % name)
+			assert_true(String(found[0].tip).replace("\n", " ").contains(String(m.text)), "%s: its tooltip is the moment's words" % name)
+		for m in marks:
+			assert_true(kinds.has(String(m.kind)), "%s: no marker of a kind the battle lacks (%s)" % [name, m.kind])
+			assert_true(RulesCodex.ENTRIES.has(String(m.codex)), "%s: the %s marker links a codex entry" % [name, m.kind])
+		var missing := BattleMoments.missing(fx.log)
+		for kind in missing:
+			if kind == "spell" and not fx.log.get("magic", false):
+				continue
+			var why_not := String(missing[kind])
+			assert_true(v.scrubber.missing_lines.any(func(l): return String(l).ends_with(why_not)), "%s: the scrubber says why there is no %s" % [name, kind])
+		# The markers stand apart: two that would overlap stack in two lanes.
+		for i in marks.size():
+			for j in range(i + 1, marks.size()):
+				var d: Vector2 = v.scrubber.mark_point(i) - v.scrubber.mark_point(j)
+				assert_true(absf(d.x) >= BattleScrubber.MARK or absf(d.y) >= BattleScrubber.MARK - 0.1,
+					"%s: markers %d and %d don't sit on each other" % [name, i, j])
+		v.free()
+	# Hover, F1 and right-click: the marker's own codex entry; a click on the bare line still scrubs.
+	var fx2 := _fixture("king_falls_wins")
+	var w := _view(fx2)
+	var sc := w.scrubber
+	assert_false(sc.marks.is_empty())
+	var opened := []
+	w.codex_requested.connect(func(key): opened.append(key))
+	var mm := InputEventMouseMotion.new()
+	mm.position = sc.mark_point(0)
+	sc._gui_input(mm)
+	assert_eq(sc.hovered, 0, "hovering a marker lights it")
+	assert_eq(CodexLink.key_at(sc), String(sc.marks[0].codex), "F1 over it finds its codex entry")
+	assert_eq(sc._get_tooltip(sc.mark_point(0)), String(sc.marks[0].tip), "and its tooltip is the moment's")
+	sc._gui_input(_click(sc.mark_point(0), MOUSE_BUTTON_RIGHT))
+	assert_eq(opened, [String(sc.marks[0].codex)], "a right-click opens it")
+	sc._notification(Control.NOTIFICATION_MOUSE_EXIT)
+	assert_eq(CodexLink.key_at(sc), "", "leaving the scrubber drops it")
+	sc._gui_input(_click(Vector2(sc.x_of(2.0), sc.line_y())))
+	assert_true(absf(w.player.time() - 2.0) < 0.0001, "a click on the line seeks there")
+	sc._gui_input(_click(Vector2(sc.x_of(2.0), sc.line_y()), MOUSE_BUTTON_LEFT, false))
+	w.free()
 
 
 # --- the why panel ----------------------------------------------------------------------------------
@@ -603,9 +665,10 @@ func _left_click() -> InputEventMouseButton:
 
 func test_the_why_panel_docks_beside_a_narrower_field_or_floats_over_a_crowd() -> void:
 	var v := _view(_fixture("starting_plains"))
-	assert_eq(v.field_width(), BattleSimpleView.WHY_X, "docked: the field is 1216 wide")
+	var docked_w := BattleSimpleView.BASE.x - BattleSimpleView.WHY_W
+	assert_eq(v.field_width(), docked_w, "docked: the band is the view less the panel")
 	for f in v._log.fighters:
-		assert_true((v.layout.slots[int(f.id)].rect as Rect2).end.x <= BattleSimpleView.WHY_X, "every card is left of the panel")
+		assert_true((v.layout.slots[int(f.id)].rect as Rect2).end.x + v.cards_layer.position.x <= v.why_panel.position.x, "every card is left of the panel")
 	v.controls.set_why(false, false)
 	assert_eq(v.field_width(), BattleSimpleView.BASE.x, "closed: the full width")
 	assert_false(v.why_panel.visible, "and the panel is hidden")
@@ -619,6 +682,123 @@ func test_the_why_panel_docks_beside_a_narrower_field_or_floats_over_a_crowd() -
 	assert_true(big.why_panel.visible, "Why opens it")
 	assert_eq(big.field_width(), BattleSimpleView.BASE.x, "over the field, which keeps its width")
 	big.free()
+
+
+# --- the layout (UX-8) ------------------------------------------------------------------------------
+
+## The logical sizes the viewer is laid out at: a 1600x900 (or 1280x720) window at 100%, and 1600x900 at 125%.
+const VIEWS := [Vector2(1600, 900), Vector2(1280, 720)]
+
+
+func _rect(c: Control) -> Rect2:
+	return Rect2(c.position, c.size)
+
+
+## Every piece of the viewer's HUD that is on screen now, by name: the plates, the centre, the caption, the bar, the queue
+## row and the Why tab (the controls are a full-view layer at 0, 0), the why panel and the result card.
+func _pieces(v: BattleSimpleView) -> Dictionary:
+	var out := {"plate left": _rect(v.plates[0]), "plate right": _rect(v.plates[1]), "centre": _rect(v.centre),
+		"caption": _rect(v.caption_strip), "bar": _rect(v.controls.bar), "why tab": _rect(v.controls.buttons.why)}
+	if v.controls.queue_row.visible:
+		out["queue row"] = _rect(v.controls.queue_row)
+	if v.why_panel.visible:
+		out["why panel"] = _rect(v.why_panel)
+	if v.end_card.visible:
+		out["result card"] = _rect(v.end_card)
+	return out
+
+
+func _assert_fits(v: BattleSimpleView, what: String) -> void:
+	var view := Rect2(Vector2.ZERO, v.view_size())
+	var pieces := _pieces(v)
+	for name in pieces:
+		var r: Rect2 = pieces[name]
+		assert_true(view.grow(0.5).encloses(r), "%s: the %s is inside the view (%s in %s)" % [what, name, r, view])
+	var names := pieces.keys()
+	for i in names.size():
+		for j in range(i + 1, names.size()):
+			var a: Rect2 = pieces[names[i]]
+			var b: Rect2 = pieces[names[j]]
+			if names[i] == "result card" or names[j] == "result card":
+				continue  # the result card comes up over the stage, the caption included; checked against the band below
+			assert_false(a.grow(-0.5).intersects(b.grow(-0.5)), "%s: the %s and the %s keep apart (%s, %s)" % [what, names[i], names[j], a, b])
+	var band := v.stage_band()
+	assert_true(band.position.y >= v.plates[0].position.y + v.plates[0].size.y, "%s: the stage's band starts under the plates" % what)
+	assert_true(band.end.y <= v.caption_strip.position.y + 0.5, "%s: and ends above the caption" % what)
+	if pieces.has("why panel") and v._why_docks:
+		assert_true(band.end.x <= v.why_panel.position.x + 0.5, "%s: the band ends at the docked why panel" % what)
+	if pieces.has("result card"):
+		assert_true(band.grow(0.5).encloses(pieces["result card"]), "%s: the result card is inside the band" % what)
+
+
+## UX-8 (§6, and #221's before shot at 1600x900 at 125%, where the old fixed 1600x900 frame lost its right side and its
+## controls): at every supported size, both views lay every piece inside the view and keep the pieces apart, with the
+## why panel open or closed, with and without the queue row, and with the result card up.
+func test_the_viewer_fits_every_size_with_its_pieces_apart() -> void:
+	for at in VIEWS:
+		for kind in ["simple", "3d"]:
+			for name in ["king_falls_wins", "biggest", "round_cap_defender"]:
+				var fx := _fixture(name)
+				var v: BattleSimpleView = BattleSimpleView.new() if kind == "simple" else BattleStage3D.new()
+				v.controls.remember = false
+				v.size = at
+				assert_eq(v.show_battle(fx.log, fx.report), "", "the battle plays")
+				var what := "%s %s at %s" % [kind, name, at]
+				_assert_fits(v, what + ", why as remembered")
+				v.controls.set_why(not v.controls.why_open, false)
+				_assert_fits(v, what + ", why toggled")
+				v.controls.set_queue(1, 3, "Battle of Thornvale")
+				assert_true(v.controls.queue_row.visible, "the queue row shows")
+				_assert_fits(v, what + ", in a queue")
+				v.controls.set_why(true, false)
+				_assert_fits(v, what + ", in a queue, why open")
+				v.player.skip_to_end()
+				assert_true(v.end_card.visible, "the result card is up")
+				_assert_fits(v, what + ", at the result")
+				v.controls.set_queue(0, 1)
+				assert_false(v.controls.queue_row.visible, "one battle: no queue row")
+				_assert_fits(v, what + ", out of the queue")
+				v.free()
+
+
+## UX-8: a resize lays the battle out again on the same state: the band, the cards (Simple view) and the plates follow the
+## new size.
+func test_a_resize_lays_the_battle_out_again() -> void:
+	var fx := _fixture("king_falls_wins")
+	var v := _view(fx)
+	v.player.seek_round(2)
+	var hp := []
+	for f in fx.log.fighters:
+		hp.append(v.card(int(f.id)).hp)
+	var before := v.stage_band()
+	v.size = Vector2(1280, 720)
+	v._layout()
+	assert_ne(v.stage_band(), before, "the band follows the view")
+	_assert_fits(v, "resized to 1280x720")
+	for f in fx.log.fighters:
+		var r: Rect2 = v.layout.slots[int(f.id)].rect
+		assert_true(Rect2(Vector2.ZERO, v.stage_band().size).encloses(r), "%s's card is inside the new band" % f.name)
+		assert_eq(v.card(int(f.id)).hp, int(hp[fx.log.fighters.find(f)]), "on the same state")
+	v.free()
+
+
+## UX-8 (§6): the Simple view and the 3D stage are built from the one BattleControls, with the same markers and keys.
+func test_both_views_share_the_one_controls_component() -> void:
+	var fx := _fixture("king_falls_wins")
+	var a := _view(fx)
+	var b := BattleStage3D.new()
+	b.controls.remember = false
+	assert_eq(b.show_battle(fx.log, fx.report), "")
+	for v in [a, b]:
+		assert_true(v.controls is BattleControls, "%s hosts BattleControls" % v.name)
+		assert_true(v.controls.get_parent() == v.frame, "%s: on its frame" % v.name)
+		assert_eq(v.scrubber, v.controls.scrubber, "%s: its scrubber is the controls'" % v.name)
+		assert_eq(v.buttons, v.controls.buttons, "%s: and its buttons" % v.name)
+	assert_eq(a.scrubber.marks, b.scrubber.marks, "the same markers on both")
+	assert_eq(a.controls.buttons.keys(), b.controls.buttons.keys(), "the same buttons")
+	assert_true(b.controls.reframe_key and not a.controls.reframe_key, "F reframes only the 3D stage's camera")
+	a.free()
+	b.free()
 
 
 # --- settings -------------------------------------------------------------------------------------

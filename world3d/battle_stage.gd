@@ -2,8 +2,8 @@ class_name BattleStage3D
 extends BattleSimpleView
 ## M3b, "battles on the land" (design/3D_DIRECTION.md 7; design/M3_BATTLES.md 3-8 carried to 3D): a battle
 ## played back in 3D on the province where it happened, driven entirely by the renderer-agnostic
-## BattlePlayer. It is the Simple view's screen with its field swapped for the land: the same top bar
-## (plaques, strength bars with break notches, chips), caption strip, result card, controls, why panel,
+## BattlePlayer. It is the Simple view's screen with its field swapped for the land: the same side plates
+## (strength bars with break notches), centre and condition chips, caption, result card, controls, why panel,
 ## legend and selection (the M3-3 and M3-4 components, unchanged), so a host shows either with the same
 ## calls (show_event, show_battle, close; signals closed, codex_requested, report_requested) and the why
 ## panel works here exactly as in the Simple view.
@@ -173,7 +173,7 @@ func _init() -> void:
 	view3d.stage = self
 	view3d.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	view3d.position = Vector2.ZERO
-	view3d.size = Vector2(BASE.x, FIELD_H)
+	view3d.size = BASE
 	field.add_child(view3d)
 	field.move_child(view3d, 0) ## the land is the field: under the stage, the overlay and the banners
 	overlay = StageOverlay.new()
@@ -275,12 +275,14 @@ func build_now() -> void:
 	_fit_viewport()
 
 
-## The land renders the field (1600 x 600 at the base viewport, the full width even while the why panel is
-## docked over its right side) at the window's physical pixels, at most MAX_PX per screen pixel.
+## The land renders the field (UX-8: full-bleed, the whole view, even while the why panel is docked over its right
+## side) at the window's physical pixels, at most MAX_PX per screen pixel.
 func _fit_viewport() -> void:
+	if view3d != null:
+		view3d.size = view_size()
 	if _vp == null:
 		return
-	var s := Vector2(BASE.x, FIELD_H)
+	var s := view_size()
 	var px := 1.0
 	if is_inside_tree():
 		px = clampf(get_viewport().get_final_transform().get_scale().x, 1.0, MAX_PX)
@@ -593,6 +595,7 @@ func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array =
 	player.beat.connect(_on_beat)
 	player.seeked.connect(_on_seeked)
 	controls.bind(player, st)
+	_loading = true
 	_why_docks = true ## the camera frames the battle beside the docked panel at any size
 	_why_open = controls.why_open
 	_shake.enabled = screen_shake and not reduced_motion
@@ -614,6 +617,8 @@ func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array =
 	_set_caption([])
 	_last_time = 0.0
 	_on_seeked(player.live_state())
+	_loading = false
+	_band_last = stage_band()
 	if _vp != null and not _field_pending:
 		_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	return ""
@@ -818,8 +823,8 @@ static func place_fort(world: Node3D, faction: String, at: Vector2, yaw: float, 
 
 ## The field band the camera fills, in view pixels (the view is the field).
 func _band() -> Rect2:
-	var fw := field_width()
-	var r := Rect2(BAND_SIDE, BAND_TOP, fw - BAND_SIDE * 2.0, FIELD_H - BAND_TOP - BAND_BOTTOM)
+	var b := stage_band()
+	var r := Rect2(b.position.x + BAND_SIDE, b.position.y + BAND_TOP, b.size.x - BAND_SIDE * 2.0, maxf(40.0, b.size.y - BAND_TOP - BAND_BOTTOM))
 	return Rect2(r.position * _px, r.size * _px)
 
 
@@ -915,7 +920,7 @@ func _apply_rig() -> void:
 		var k: float = 1.0 - float(_shake_cam["t"]) / float(_shake_cam["dur"])
 		if k > 0.0:
 			var off := shake_offset(float(_shake_cam["amp"]) * k, float(_shake_cam["t"]), float(_shake_cam["phase"]))
-			var wpp: float = float(r["span"]) / FIELD_H ## world units per screen pixel of the field
+			var wpp: float = float(r["span"]) / view_size().y ## world units per screen pixel of the field
 			var right := Cam.right_of(float(r["yaw"]))
 			r["target"] = (r["target"] as Vector3) + Vector3(right.x, 0.0, right.y) * off.x * wpp + Vector3.UP * off.y * wpp
 	wv.rig = r
@@ -1082,7 +1087,7 @@ func _fit_land_labels() -> void:
 			continue
 		var w2: float = tag.get_minimum_size().x
 		tag.size.x = w2
-		tag.position.x = 24.0 if k == 0 else fw - 24.0 - w2
+		tag.position.x = MARGIN if k == 0 else fw - MARGIN - w2
 
 
 ## The quality ladder (3D_DIRECTION 3.4): after LADDER_SECONDS under LADDER_FPS, one rung down: SSAO and
@@ -1163,6 +1168,7 @@ func _set_caption(lines: Array) -> void:
 	if not chip.is_empty():
 		var key := String(chip["codex"])
 		CodexLink.attach(l, key, codex_requested.emit)
+	_place_caption()
 
 
 func _on_beat(b: Dictionary, st: Dictionary) -> void:
@@ -1646,7 +1652,8 @@ func _spell_words(p: Dictionary) -> void:
 			tag["tag"] = true
 
 
-## MVP-3 (#177): a spell's words stay below this field row: the round banner (y 14 to 54) and the moment toast (54 to 82) are above it.
+## MVP-3 (#177): a spell's words stay this far below the stage band's top (UX-8): the round banner (14 to 54) and the moment toast
+## (54 to 82) are above it.
 const WORDS_TOP := 88.0
 
 
@@ -1809,8 +1816,8 @@ func _tab_order() -> Array:
 func pick(at: Vector2) -> int:
 	if figures == null or rig.is_empty() or plan.is_empty():
 		return -1
-	var local := at - frame.position - Vector2(0, TOP_H)
-	if local.x < 0.0 or local.y < 0.0 or local.x > field_width() or local.y > FIELD_H:
+	var local := at - frame.position - field.position
+	if local.x < 0.0 or local.y < 0.0 or local.x > field_width() or local.y > view_size().y:
 		return -1
 	var r := Cam.ray(wv.rig, _view, local * _px)
 	var o: Vector3 = r[0]
@@ -1879,7 +1886,7 @@ func _gui_input(event: InputEvent) -> void:
 				rig["yaw"] = float(rig["yaw"]) - dpx.x * 0.3
 				rig["pitch"] = clampf(float(rig["pitch"]) + dpx.y * 0.2, 20.0, 82.0)
 			else:
-				var wpp: float = float(rig["span"]) / FIELD_H
+				var wpp: float = float(rig["span"]) / view_size().y
 				var right := Cam.right_of(float(rig["yaw"]))
 				var fwd := Vector2(-sin(deg_to_rad(float(rig["yaw"]))), -cos(deg_to_rad(float(rig["yaw"]))))
 				var sh: Vector2 = right * (-dpx.x * wpp) + fwd * (dpx.y * wpp / maxf(sin(deg_to_rad(float(rig["pitch"]))), 0.3))
@@ -1927,8 +1934,8 @@ func _gui_input(event: InputEvent) -> void:
 			if selection.selected >= 0 and not _why_open:
 				controls.set_why(true, false)
 		else:
-			var at := mb.position - frame.position
-			if Rect2(Vector2(0, TOP_H), Vector2(field_width(), FIELD_H)).has_point(at):
+			var at := mb.position - frame.position - field.position
+			if Rect2(Vector2.ZERO, Vector2(field_width(), view_size().y)).has_point(at):
 				selection.clear()
 
 
@@ -1942,7 +1949,7 @@ func _set_hover(fid: int) -> void:
 
 func _get_tooltip(at_position: Vector2) -> String:
 	## M3c S-5: the walls' plate explains itself (the chip's words: what the walls give, and why)
-	if _walls_plate.size.x > 0.0 and _walls_plate.has_point(at_position - frame.position - Vector2(0, TOP_H)):
+	if _walls_plate.size.x > 0.0 and _walls_plate.has_point(at_position - frame.position - field.position):
 		return String(FortView.siege_chip(_siege_block()).get("tip", ""))
 	var fid := pick(at_position)
 	if fid < 0 or player == null:
@@ -1985,21 +1992,18 @@ func _unhandled_input(event: InputEvent) -> void:
 
 # --- the why panel and width -----------------------------------------------------------------------------
 
-func _set_why_open(on: bool) -> void:
-	_why_open = on
-	_apply_width()
-	if on:
-		why_panel.refresh()
+## The band moved (the why panel docked or closed, the queue row, a resize): frame the battle in it again.
+func _band_changed() -> void:
 	if not plan.is_empty():
 		goal = _frame_all()
 		if not _user_rig and _focus_left < 0.0:
 			_move_to(goal)
 
 
-func _apply_width() -> void:
-	super._apply_width()
+func _layout() -> void:
+	super._layout()
 	if overlay != null:
-		overlay.size = Vector2(field_width(), FIELD_H)
+		overlay.size = Vector2(field_width(), view_size().y)
 
 
 # --- texts ------------------------------------------------------------------------------------------------
@@ -2195,14 +2199,15 @@ func _draw_overlay(ci: CanvasItem) -> void:
 		var shown := pos - Vector2(0, rise)
 		var rect := _words_rect(font, String(n["text"]), int(n["size"]), shown)
 		if bool(n.get("tag", false)):
-			rect = place_words(rect, placed, Rect2(Vector2(0.0, WORDS_TOP), Vector2(field_width(), FIELD_H - WORDS_TOP)))
+			var band := stage_band()
+			rect = place_words(rect, placed, Rect2(Vector2(0.0, band.position.y + WORDS_TOP), Vector2(field_width(), band.size.y - WORDS_TOP)))
 			shown = Vector2(rect.position.x + rect.size.x * 0.5, rect.end.y - 4.0)
 			pos = shown + Vector2(0, rise)
 		placed.append(rect)
 		BattleEffects.draw_number(ci, font, {"pos": pos, "text": n["text"], "color": n["color"],
 			"size": n["size"], "age": n["age"], "life": n["life"]})
-	## the camera's keys, bottom right of the field
-	draw_camera_hint(ci, font, Vector2((ci as Control).size.x - 12.0, FIELD_H - 10.0), CAMERA_HINT)
+	## the camera's keys, bottom right of the stage's band (above the caption and the controls)
+	draw_camera_hint(ci, font, Vector2(field_width() - 12.0, stage_band().end.y - 6.0), CAMERA_HINT)
 
 
 ## M3c S-5: the walls' plate, hung over the gate-side wall for the whole battle: what the walls give the garrison in a storm
@@ -2220,7 +2225,7 @@ func _draw_walls_plate(ci: CanvasItem, font: Font) -> void:
 		return
 	var storm := String(siege.get("kind", "")) == "storm"
 	_walls_plate = draw_walls_plate(ci, font, at, text, int(siege.get("walls", 0)), int(siege.get("walls_max", 0)) if storm else 0,
-		Rect2(Vector2.ZERO, Vector2(field_width(), FIELD_H)))
+		stage_band())
 
 
 ## Draws a walls plate hung from `at` (its stalk's foot, field pixels): `text` over `cells` cells, `walls` of them standing

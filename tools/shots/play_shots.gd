@@ -30,6 +30,8 @@ extends SceneTree
 ## turn's report (a shot) has the rituals rows.
 ##   --fast             skip the board's playback on turns that get no shot
 ##   --board=2d         the 2D map instead of the 3D board (UX-2: the label diet and the veil on the flat map); default 3d
+##   --battle-view=V    UX-8: the battles watched play in the Simple view ("simple") or on the 3D stage ("3d"), as Settings' "Battle
+##                      view" sets it; default: the setting as it is (3d for a fresh walk)
 ##   --stage            UX-2: on the last turn, after its orders shot, stage the VIEW the map shows (never the game) so every level of sight and every
 ##                      fort level is on the whole-map shot: one province you never saw is remembered, a palisade stands and another is
 ##                      being raised in your land, and a keep's walls are knocked down a step. Shot as tNN_fullmap_staged (needs --fullmap)
@@ -53,6 +55,7 @@ var fast := false
 var fullmap := false
 var stage := false
 var board_kind := "3d"
+var battle_view := ""
 var fresh := false
 var defaults := false
 var ui_scale := 100
@@ -80,6 +83,7 @@ func _initialize() -> void:
 			"fullmap": fullmap = true
 			"stage": stage = true
 			"board": board_kind = kv[1]
+			"battle-view": battle_view = kv[1]
 			"fresh": fresh = true
 			"defaults": defaults = true
 			"ui-scale": ui_scale = int(kv[1])
@@ -106,6 +110,8 @@ func _initialize() -> void:
 		if fresh:
 			saved.save()
 		root.content_scale_factor = ui_scale / 100.0
+	if not battle_view.is_empty():
+		BattleFx.save_settings({"view": battle_view}, GameSettings.default_path if fresh else "")
 	# The window stays as launched: `--resolution WxH` (see the header) takes a walk at another size, 1280x720 for
 	# instance (MVP-1, #141: every screen fits both), and without it the window is the project's default, W x H.
 	print("window: ", DisplayServer.window_get_size(), " (default ", Vector2i(W, H), ")")

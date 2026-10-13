@@ -405,7 +405,7 @@ func test_the_walls_defense_reads_on_screen_before_the_first_hit() -> void:
 		var chip := FortView.siege_chip(siege)
 		assert_true(String(s.caption_labels[1].tooltip_text).begins_with(String(chip.tip)), "%s: the caption's tooltip is the walls' own words, then the codex's" % name)
 		s._walls_plate = Rect2(Vector2(20, 20), Vector2(100, 24))
-		assert_eq(s._get_tooltip(s.frame.position + Vector2(0, BattleSimpleView.TOP_H) + Vector2(40, 30)), String(chip.tip), "%s: hovering the plate says it too" % name)
+		assert_eq(s._get_tooltip(s.frame.position + s.field.position + Vector2(40, 30)), String(chip.tip), "%s: hovering the plate says it too" % name)
 		assert_true(plate.length() < 60, "%s: the plate is short enough to hang over the wall (%d characters)" % [name, plate.length()])
 	## and once the battle is played the same line is replaced by the round captions, the plate stays
 	_open(s, "storm_keep")
