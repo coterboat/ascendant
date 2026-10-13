@@ -147,7 +147,7 @@ From the probe (playbook §10, PR #12):
 
 13. **Native alpha.** `sprite`, `sprite-vfx` and `ui_asset` come back as RGBA with a transparent background at about 768 px, even though prompts ask for grey or black. `texture` and `asset` come back opaque (1024², and 864×1152 for `ar_3_4`).
     - A removeBackground cutout on a `sprite` pick is close to a no-op (alpha differs by 1–4 levels). **Cutouts are only for opaque types** (`asset` banners, map icons that come back opaque), or when native alpha fails its gate.
-    - `sprite-vfx` needs no cutout. **Flatten it onto `#000`** for additive use.
+    - `sprite-vfx` needs no cutout. Keep its native alpha: effects are drawn with normal alpha (§4.2, Alex 10-13), not flattened onto black.
     - `ui_asset` can key out a panel's own dark centre. **Gate: panel centre alpha = 255.**
 14. **Forge trims every sheet**, even with `loop: false`, and frame 0 isn't guaranteed to be your input. **Gate every sheet: frame 0 matches the base** (bbox offset ≤ 2 px, mean alpha difference ≤ 3%) before use.
 15. **One-phrase attacks fail** (1 clean take in 4, and the cel re-roll lost the spearhead in frames 4–8). Attacks are **always keyframed** (§4.1). Pole-arms get the **reach canvas**.
@@ -171,7 +171,7 @@ Style blocks are in §6. `art_style: Cel-Shaded` everywhere. The credits column 
 |---|---|---|---|---|---|---|---|
 | unit base frame | createImage (native alpha) | `sprite` / `High Angle` / `ar_1_1` | trimmed onto the family canvas (§4.1) → ship at 50% | webp lossless, alpha | `assets/units/<faction>/<unit>/<unit>_base.webp` | silhouette gate, feet anchor, figure L\* 40–65 | 1.5 |
 | unit animation | §4.1 | – | §4.1 | webp lossless sheet + `.json` | `assets/units/<faction>/<unit>/<unit>_<state>.webp` | frame-0 gate, weapon present in every frame, loop wrap | 21.5 / unit |
-| spell / impact VFX | createImage (native alpha) → flatten on black → forge | `sprite-vfx` / `Any perspective` / `ar_1_1` | §4.2 | webp lossless (on black) + `.json` | `assets/vfx/<vfx>/<vfx>.webp` | frame-0 gate, ≤ 2 flash frames above 80% | 5.5 |
+| spell / impact VFX | createImage (native alpha) → forge (keyframes for a hit) | `sprite-vfx` / `Any perspective` / `ar_1_1` | §4.2 | webp lossless (native alpha) + `.json` | `assets/vfx/<vfx>/<vfx>.webp` | frame-0 gate, ≤ 2 flash frames above 80% | 5.5 |
 | terrain | createImage (anchor), generateWithStyle (rest) | `texture` / `Top-Down` / `ar_1_1` | 1024 → 512×512 seamless | webp q90 | `assets/terrain/<terrain>.webp` | **lightness gate** (below), seams on a 3×3 tile, ≥ 12 L\* between M1 terrains | 1.5 |
 | faction banner | createImage (anchor), generateWithStyle (rest) → removeBackground | `asset` / `Any perspective` / `ar_3_4` | 864×1152 → 256×384, hang point top-centre | webp lossless, alpha | `assets/banners/<faction>.webp` | emblem readable at 48 px and in greyscale, clean alpha | 2.0 |
 | map icon | createImage (+ cutout if opaque) | `icon` / `High Angle` / `ar_1_1` | → 128×128, subject in the centre 112 | webp lossless, alpha | `assets/map_icons/<icon>.webp` | readable at 24 px | 1.5–2.0 |
@@ -229,11 +229,14 @@ Per unit: 1.5 base + 4 + 4 + 5.5 + 4 + 4 = **23.0 cr**. Plan **×1.5 for re-roll
 ### 4.2 Spell and impact VFX (M3/M5)
 VFX are untinted, on their own layer. Ownership comes from the code-drawn area marker and the caster's ring.
 
+**Blend: normal alpha, not additive** (Alex 10-13, ART-VFX #229). On the bright cel board and stage, additive washed every effect to a
+white flash; with the sheet's own alpha the cel shapes and colours hold. Prompts never say "transparent" (it is drawn as a checkerboard).
+
 | kind | master → ship cell | frames | Ludo | playback | blend |
 |---|---|---|---|---|---|
-| impact | 384×384 → 192×192 | 16 | still n=3 (native alpha, flattened onto `#000`) → forge 1.0 s (4.0), `frame_size: -9`, `crop: false`, manual margins h 0.45 / v 0.35 | one-shot, 24 fps, `hit_frame` | additive |
-| projectile | 256×256 → 128×128 | 9 | still → forge 1.0 s, `final_image` = first frame | loop, 12 fps; code moves and rotates it | additive |
-| cast / channel | 384×384 → 192×192 | 16 | still → forge 2.0 s, `final_image` = first frame | loop, 12 fps | additive |
+| impact | 384×384 → 192×192 | 16 | still n=3 (native alpha) at half size on its canvas → forge 1.0 s, `frame_size: -9`, `crop: false`, manual margins h 0.45 / v 0.35; or keyframes (the still small, full size, a faint remnant) when forge leaves the model | one-shot, 24 fps, `hit_frame` | normal alpha |
+| projectile | 256×256 → 128×128 | 9 | still → forge 1.0 s, `final_image` = first frame | loop, 12 fps; code moves and rotates it (in 3D, code meshes: 3D_DIRECTION §7.5) | normal alpha |
+| cast / channel | 384×384 → 192×192 | 16 | still → forge 2.0 s, `final_image` = first frame | loop, 12 fps | normal alpha |
 | smoke / dust | 384×384 → 192×192 | 16 | still (keep native alpha) → forge 1.5 s | one-shot, 16 fps | normal alpha |
 | area marker, screen shake | – | – | code only | – | – |
 
