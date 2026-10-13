@@ -93,7 +93,7 @@ vec3 fog_prop(vec3 c) {
 	if (id > 254.5) {
 		return c;
 	}
-	float v = texture(prop_vision, vec2((id + 0.5) / 16.0, 0.5)).r;
+	float v = texture(prop_vision, vec2((id + 0.5) / float(textureSize(prop_vision, 0).x), 0.5)).r;
 	int li = int(floor(v * 3.0 + 0.5));
 	if (li >= 3) {
 		return c;
@@ -107,6 +107,36 @@ vec3 fog_prop(vec3 c) {
 	lc *= luma0 * lift.x / max(dot(lc, vec3(0.299, 0.587, 0.114)), 0.02);
 	lc = mix(tone.rgb, lc, 0.15 + 0.85 * lift.z);
 	return pow(clamp(lc, 0.0, 1.0), vec3(2.2));
+}
+
+// UX-7 (design/UX_WAR_TABLE.md 4.0), a map lens on the woods, rocks and cottages: under a lens the ground is muted to the lens's mood,
+// and a bright canopy on top of it would compete with the lens's colours as it once did with the veil. prop_lens_mode is the ground's
+// lens_mode on the props' materials (WorldView.set_lens), 0 everywhere else, and then this is one branch and no fetch. The woods are
+// muted as the ground is (drained, pulled to the mood's tone, darkened), and a wash (Owner) or an owner glow (Making) tints them a little,
+// so a province reads as one piece. prop_lens is the ground's lens_tex (row 0: the tint and its strength).
+uniform int prop_lens_mode = 0;
+uniform sampler2D prop_lens : filter_nearest, repeat_disable;
+uniform vec4 prop_lens_mood = vec4(0.0, 1.0, 0.0, 0.0);
+uniform vec3 prop_lens_tone = vec3(0.5, 0.5, 0.5);
+
+vec3 lens_prop(vec3 c) {
+	if (prop_lens_mode <= 0) {
+		return c;
+	}
+	float id = floor(texture(prop_data_n, (v_world.xz - prop_origin) / prop_extent).r * 255.0 + 0.5);
+	if (id > 254.5) {
+		return c;
+	}
+	vec4 la = texture(prop_lens, vec2((id + 0.5) / float(textureSize(prop_lens, 0).x), 0.25));
+	vec3 s = pow(max(c, vec3(0.0)), vec3(1.0 / 2.2)); // the ground's sum works in sRGB
+	vec3 w = vec3(0.299, 0.587, 0.114);
+	float l0 = dot(s, w);
+	vec3 m = mix(s, vec3(l0), prop_lens_mood.x);
+	m = mix(m, prop_lens_tone * (l0 / max(dot(prop_lens_tone, w), 0.02)), prop_lens_mood.z);
+	m *= prop_lens_mood.y;
+	float k = (prop_lens_mode == 1 || prop_lens_mode == 5) ? 0.3 : 0.12;
+	m = mix(m, la.rgb * (dot(m, w) / max(dot(la.rgb, w), 0.02)), k * la.a);
+	return pow(clamp(m, 0.0, 1.0), vec3(2.2));
 }
 
 vec3 model_albedo(vec4 vcol, vec2 uv) {
@@ -134,5 +164,5 @@ vec3 model_albedo(vec4 vcol, vec2 uv) {
 	c = mix(v_team, c, vcol.a);
 	c = mix(c, vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), desat);
 	c = mix(c, vec3(0.871, 0.144, 0.127), v_hurt * 0.4);
-	return fog_prop(c * tint);
+	return lens_prop(fog_prop(c * tint));
 }
