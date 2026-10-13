@@ -32,7 +32,7 @@ static func sections(lens_keys: Array = []) -> Array:
 		{"keys": "Right-click, or F1 while hovering", "text": "Open the codex at the rule behind a number, a plate, an army or a province."},
 		{"keys": "Codex button", "text": "Every rule of the game in plain language, searchable."},
 	]})
-	var close_row := "Close the topmost thing, one at a time: a panel or dialog, then choosing a march destination, then the selection card, then a lens, then the fortress close-up. With nothing left to close, Esc opens the menu."
+	var close_row := "Close the topmost thing, one at a time: a panel or dialog, then choosing a march destination, then the Chronicle, then the selection card, then a lens, then the fortress close-up. With nothing left to close, Esc opens the menu."
 	out.append({"title": "Closing things", "rows": [
 		{"keys": "Esc", "text": close_row},
 		{"keys": "Right-click on empty board", "text": "The same, without the menu: it closes the topmost thing and does nothing when nothing is open."},
@@ -44,8 +44,9 @@ static func sections(lens_keys: Array = []) -> Array:
 		out.append({"title": "Lenses", "rows": rows})
 	out.append({"title": "The system row", "rows": [
 		{"keys": "Research, Magic, Ruler", "text": "Open the research panel (and its Magic tab) and the ruler panel."},
-		{"keys": "Chronicle, Lenses", "text": "The turn's announcements with your plan, and the optional map views. They arrive in later updates."},
-		{"keys": "Turn report", "text": "Read again what happened last turn."},
+		{"keys": "Chronicle", "text": "The turn's announcements, each with its own image, in a column you open and close: sort them, hide the kinds you don't need, pin the ones to keep, dismiss the rest, and press Full report for every line. The round medallions down the left edge are the same news: hover one to read it, click it to open its card, right-click it to dismiss it. Your plan for the turn joins it in a later update."},
+		{"keys": "Lenses", "text": "The optional map views. They arrive in a later update."},
+		{"keys": "Turn report", "text": "Read again every line of what happened last turn."},
 		{"keys": "Codex, ?", "text": "The rules, and this list."},
 	]})
 	return out

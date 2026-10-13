@@ -125,8 +125,11 @@ func show_report(session: GameSession, computer_notes: Array = [], eyes: String 
 	fog_before = session.view_before(eyes) if session != null and bool(report.get("fog", false)) else null
 	show_report_data(report, viewer, session != null, after)
 	if not viewer.is_empty() and after != null:
-		show_needs_you(PathView.needs_you(after, viewer))
-		show_siege_needs_you(FortView.needs_you(after, viewer, int(report.get("turn", 0))))  # M3c
+		# UX-6 (§5.2): the current-state "needs you" lines are one pure function, ChronicleModel.needs, which the Chronicle reads too
+		var needs := ChronicleModel.needs(after, viewer, int(report.get("turn", 0)))
+		var research := needs.filter(func(n): return String(n.kind) == "research")
+		show_needs_you(String(research[0].text) if not research.is_empty() else "")
+		show_siege_needs_you(needs.filter(func(n): return String(n.kind) == "siege").map(func(n): return {"text": n.text, "province": n.province, "codex": n.codex}))  # M3c
 	_show_seats(session, after)
 	show_computer_notes(computer_notes)
 
