@@ -132,7 +132,6 @@ func _row(s: Dictionary) -> PanelContainer:
 	text.name = "Sentence"
 	text.text = String(s.get("head", s.text))
 	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	text.max_lines_visible = 3  # (no trimming mode: with one, a wrapping label's minimum height collapses, as NoticeCard found)
 	text.custom_minimum_size.x = 200
 	text.add_theme_font_override("font", UiFonts.body())
 	text.add_theme_font_size_override("font_size", UiPalette.TYPE_SMALL + 1)
