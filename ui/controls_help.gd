@@ -41,10 +41,12 @@ static func sections(lens_keys: Array = []) -> Array:
 		var rows: Array = []
 		for lk in lens_keys:
 			rows.append({"keys": String(lk[0]), "text": "%s lens. Press it again to bring the art back." % String(lk[1])})
+		rows.append({"keys": "` (or Esc)", "text": "Turn the lens off. One lens is on at a time, and none when a game starts. The Lenses button in the system row lists them too, and the legend card at the bottom left says what the one on is showing."})
 		out.append({"title": "Lenses", "rows": rows})
 	out.append({"title": "The system row", "rows": [
 		{"keys": "Research, Magic, Ruler", "text": "Open the research panel (and its Magic tab) and the ruler panel."},
-		{"keys": "Chronicle, Lenses", "text": "The turn's announcements with your plan, and the optional map views. They arrive in later updates."},
+		{"keys": "Chronicle", "text": "The turn's announcements with your plan. It arrives in a later update."},
+		{"keys": "Lenses", "text": "The optional map views (1 to 6): Owner, Income, Threat, Magic, Making and Sight, one at a time, each with its own colours and a legend. Off by default."},
 		{"keys": "Turn report", "text": "Read again what happened last turn."},
 		{"keys": "Codex, ?", "text": "The rules, and this list."},
 	]})

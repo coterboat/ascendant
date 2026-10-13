@@ -37,7 +37,8 @@ extends Control
 ## The host seams (UX-1, §1.1): later tickets plug into these instead of editing this file.
 ##   selection_host (SelectionHost)  "show this army or province" and "selection cleared"; the selection cards are its presenter
 ##   cards (SelectionCards)          the army card, the province card and one order's card (show_order); `details` is the open one's content
-##   lens_host (LensHost)            the active lens id, its keys, and the feed to the board (no lens yet)
+##   lens_host (LensHost)            the active lens id, its keys, and the feed to the board; UX-7's six lenses are registered
+##                                   there by lens_ui (LensUi: the legend card, the Lenses button's picker, the 2D map's colours)
 ##   ui_cancel (UiCancel)            Esc and a right-click on empty board close the topmost thing, one per press (§1.4)
 ##   (the game screen has the fourth, report_host: ReportHost)
 ##
@@ -129,6 +130,7 @@ var map_canvas: Control
 var hud: TableHud
 var selection_host := SelectionHost.new()
 var lens_host := LensHost.new()
+var lens_ui: LensUi  # UX-7: the six lenses on this screen (keys 1 to 6, the legend card, the picker, both boards)
 var ui_cancel := UiCancel.new()
 var cards: SelectionCards  # the army card, the province card and one order's card: the selection host's presenter (UX-3, UX-4)
 var details: VBoxContainer  # the open card's content (cards.details): what the side panel's lines became
@@ -204,6 +206,7 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 	_update_map_marks()
 	_announce_selection(false)
 	_follow_ruler_panel()
+	lens_ui.refresh()  # UX-7: the active lens for this state (off for a new session or seat)
 	_sync_board()
 	_refresh_order_marks()
 
@@ -353,7 +356,7 @@ func _input(event: InputEvent) -> void:
 
 
 ## Esc in the map preview, where no game screen owns it: the one dispatcher (UiCancel). In a game the game screen calls it, so
-## nothing here runs twice. Lens keys (1 to 6, UX-7) turn a lens on or off while no modal panel is open.
+## nothing here runs twice. Lens keys (1 to 6, UX-7) turn a lens on or off while no modal panel is open, and ` turns it off.
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel") and not intercept_back:
 		if not ui_cancel.cancel().is_empty() and is_inside_tree():
@@ -367,6 +370,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	var lens := lens_host.id_for_key(k.keycode)
 	if not lens.is_empty():
 		lens_host.toggle(lens)
+		if is_inside_tree():
+			get_viewport().set_input_as_handled()
+	elif k.keycode == KEY_QUOTELEFT and not lens_host.active_id().is_empty():
+		lens_host.clear()
 		if is_inside_tree():
 			get_viewport().set_input_as_handled()
 
@@ -569,6 +576,7 @@ func set_board(new_board: Control) -> void:
 	map_canvas.visible = board == null
 	arrow_layer.visible = board == null
 	_refresh_order_marks()
+	lens_ui.refresh()  # UX-7: the lens legend names the 3D-only effects on the 2D map
 	if board != null:
 		map_view.add_child(board)
 		map_view.move_child(board, 0)
@@ -679,6 +687,7 @@ func _build_table() -> void:
 	hud.tray_slot().codex_opener = request_codex
 	hud.tray_slot().order_pressed.connect(show_order)
 	hud.tray_slot().order_cancelled.connect(cancel_order)
+	lens_ui = LensUi.new(self)  # UX-7: registers the lenses with the host, the legend card and the Lenses button
 
 
 ## The Table's layers in the one cancel dispatcher (§1.4): the map screen's own modals, the selection card, the lens and the

@@ -144,7 +144,7 @@ var report_button: Button  # the system row's Turn report, until UX-6's Chronicl
 var codex_button: Button
 var help_button: Button  # the system row's ?: every key and mouse binding
 var chronicle_button: Button  # a placeholder for UX-6: the Chronicle
-var lenses_button: Button  # a placeholder for UX-7: the lenses
+var lenses_button: Button  # the system row's Lenses (UX-7): its picker of the six map lenses (MapScreen.lens_ui)
 var results_button: Button  # only once the game is over: it takes the seal's place
 var ruler_button: Button  # M2-6: opens the ruler panel; only in a game with rulers
 var research_hud: ResearchHud  # M4-4: the research chip, the research panel and the lock-in preview
@@ -1267,9 +1267,7 @@ func _build_hud() -> void:
 	chronicle_button.disabled = true  # UX-6 fills it
 	report_button = _hud_button("TurnReportButton", "Turn report", open_turn_report)
 	hud.add_system_button("report", report_button)
-	lenses_button = hud.make_system_button("lenses", "Lenses", TooltipText.plain("Lenses",
-		"Optional map views, each with its own overlay: who owns what, income, threat, magic, how far each faction has made the land its own, and sight. They arrive in a later update."), Callable())
-	lenses_button.disabled = true  # UX-7 fills it
+	lenses_button = map.lens_ui.button  # UX-7: the map screen's lenses (LensUi) made it, with its picker
 	codex_button = _hud_button("CodexButton", "Codex", open_codex.bind(""))
 	codex_button.tooltip_text = TooltipText.plain("Codex", "Every rule of the game in plain language, searchable. Right-click a number, or hover it and press F1, to open the codex at the rule behind it.")
 	hud.add_system_button("codex", codex_button)
