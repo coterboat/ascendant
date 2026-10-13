@@ -314,6 +314,7 @@ func _fill_spellbook_preview() -> void:
 		title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_tip(title, String(pv.title), String(pv.tooltip), "spellbook_preview")
 		title.set_meta("rule_text", true)
+		_preview_icons(box, pv)
 		var k := 0
 		for line in pv.lines:
 			var l := _label(box, String(line), 12, UiPalette.TEXT_SECONDARY)
@@ -327,12 +328,38 @@ func _fill_spellbook_preview() -> void:
 		more.name = "PreviewMore"
 
 
+## UI-ICONS (#233): under a preview's title, the icons of the spells its casters will cast in the open, in the order they cast them
+## (the preview's own casts, Forecast.spellbook_preview); nothing when none of them has its icon yet.
+func _preview_icons(box: VBoxContainer, pv: Dictionary) -> void:
+	var row := HBoxContainer.new()
+	row.name = "PreviewSpells_%s" % String(pv.province)
+	row.add_theme_constant_override("separation", 4)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var seen := {}
+	for c in Dictionary(pv.get("preview", {})).get("open", {}).get("casts", []):
+		var sid := String(c.get("spell", ""))
+		if String(c.get("faction", "")) != viewer_fid or seen.has(sid):
+			continue
+		seen[sid] = true
+		var icon := SpellIcons.rect(sid, 20)
+		if icon != null:
+			icon.tooltip_text = String(c.get("name", ""))
+			row.add_child(icon)
+	if row.get_child_count() > 0:
+		box.add_child(row)
+	else:
+		row.free()
+
+
 ## One spellbook row: on or off, the spell, whether your casters can cast it now, and the arrows.
 func _spellbook_row(r: Dictionary, book: Dictionary) -> Control:
 	var row := HBoxContainer.new()
 	row.name = "Spell_%s" % String(r.spell)
 	row.add_theme_constant_override("separation", 6)
 	var sid := String(r.spell)
+	var icon := SpellIcons.rect(sid, 22)  # UI-ICONS (#233)
+	if icon != null:
+		row.add_child(icon)
 	var check := CheckBox.new()
 	check.name = "On"
 	check.text = String(r.name)
@@ -419,6 +446,9 @@ func _card(c: Dictionary, own: bool) -> PanelContainer:
 		top = HBoxContainer.new()
 		top.add_theme_constant_override("separation", 10)
 		box.add_child(top)
+	var spell_icon := SpellIcons.rect(nid, 34) if compact else null  # UI-ICONS (#233): an arcana card's spell wears its icon
+	if spell_icon != null:
+		top.add_child(spell_icon)
 	var name_label := _label(top, String(c.name), 18, UiPalette.TEXT_PRIMARY if st != AscensionRules.CLOSED else UiPalette.TEXT_DISABLED)
 	name_label.name = "Name"
 	name_label.tooltip_text = TooltipText.plain(String(c.name), "%s%s" % [String(c.detail), ("\n\n" + String(c.reason)) if not String(c.reason).is_empty() else ""])

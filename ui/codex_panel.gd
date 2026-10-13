@@ -5,6 +5,8 @@ extends Control
 ## Links written as [url=codex:<key>]...[/url] in entry text open that entry. Entries without explicit
 ## links get one automatic link per other entry whose title (letters and spaces only: Income, Hit
 ## points, Morale and routs, ...) appears in the text as whole words; a longer title wins an overlap.
+## UI-ICONS (#233): a spell's entry (and the blood mandate's) shows its painted icon beside its name in the list and above its
+## title on its page, once the icon's file has landed (SpellIcons).
 ## Esc closes the panel, in one press, even while the search box has focus: the panel takes Esc in
 ## _input, before the focused search box would use it to stop editing. Hosts need no Esc code of their
 ## own; the panel only skips Esc when another overlay is open above it among its siblings.
@@ -23,6 +25,7 @@ var _search: LineEdit
 var _list: ItemList
 var _no_matches: Label
 var _title: Label
+var _icon: TextureRect  # UI-ICONS: the shown entry's spell icon (hidden when it has none)
 var _body: RichTextLabel
 var _close: Button
 
@@ -43,6 +46,16 @@ func _bind() -> void:
 	_title = %EntryTitle
 	_body = %EntryText
 	_close = %CloseButton
+	_list.fixed_icon_size = Vector2i(22, 22)
+	_icon = TextureRect.new()
+	_icon.name = "EntryIcon"
+	_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT
+	_icon.custom_minimum_size = Vector2(64, 64)
+	_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_icon.visible = false
+	_title.get_parent().add_child(_icon)
+	_title.get_parent().move_child(_icon, _title.get_index())
 	_search.text_changed.connect(filter)
 	_list.item_selected.connect(_on_item_selected)
 	_body.meta_clicked.connect(follow_link)
@@ -111,6 +124,12 @@ func current_key() -> String:
 
 
 ## Plain text of the entry on the right, as the player reads it (links stripped).
+## UI-ICONS: the spell icon shown above the entry's title, or null.
+func shown_icon() -> Texture2D:
+	_bind()
+	return _icon.texture if _icon.visible else null
+
+
 func shown_text() -> String:
 	_bind()
 	return _body.get_parsed_text()
@@ -130,7 +149,7 @@ func filter(text: String) -> int:
 		var title := String(e.get("title", ""))
 		var body := String(e.get("text", ""))
 		if needle.is_empty() or title.to_lower().contains(needle) or body.to_lower().contains(needle):
-			var idx := _list.add_item(title)
+			var idx := _list.add_item(title, SpellIcons.texture(SpellIcons.of_codex(key)))
 			_list.set_item_metadata(idx, key)
 			_shown_keys.append(key)
 	_no_matches.visible = _shown_keys.is_empty()
@@ -149,6 +168,8 @@ func show_entry(key: String) -> bool:
 		filter("")
 	var e := RulesCodex.entry(key)
 	_title.text = String(e.get("title", ""))
+	_icon.texture = SpellIcons.texture(SpellIcons.of_codex(key))
+	_icon.visible = _icon.texture != null
 	_body.text = _linked_text(key, String(e.get("text", "")))
 	if _body.is_inside_tree():
 		_body.scroll_to_line(0)
