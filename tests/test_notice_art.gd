@@ -72,6 +72,38 @@ func test_a_file_named_after_a_kind_stands_in_for_its_types_that_have_no_file_of
 	_end()
 
 
+## UX-ART #222 (Alex 10-13, faction flavour): a faction's own medallion, <dir><faction id>/<image>.png, is worn by that faction's viewer
+## before the standard file and the kind's; another faction's viewer, and nobody in particular (""), wear the standard one. Each viewer's
+## texture is its own (hotseat seats never share one).
+func test_a_factions_own_medallion_is_worn_by_its_viewer_and_the_standard_one_by_the_rest() -> void:
+	_begin()
+	var saved_viewer := NoticeArt.viewer
+	var factions: Array = FactionData.FACTIONS.map(func(f): return String(f.id))
+	assert_true(factions.size() >= 2, "two factions to tell apart")
+	var own: String = factions[0]
+	var other: String = factions[1]
+	_paint("needs_you", Color(0.9, 0.85, 0.7))
+	_paint("battles", Color(0.4, 0.1, 0.1))
+	DirAccess.make_dir_recursive_absolute("%s/%s" % [_scratch, own])
+	_paint("%s/needs_you" % own, Color(0.2, 0.3, 0.9))
+	NoticeArt.viewer = ""
+	assert_eq(NoticeArt.path_for("needs_you", "needs_you"), "%s/needs_you.png" % _scratch, "nobody in particular wears the standard one")
+	NoticeArt.viewer = own
+	assert_eq(NoticeArt.path_for("needs_you", "needs_you"), "%s/%s/needs_you.png" % [_scratch, own], "%s's viewer wears its own" % own)
+	assert_eq(NoticeArt.path_for("battle_won", "battles"), "%s/battles.png" % _scratch, "a type it has no file for falls back as before")
+	var own_tex := NoticeArt.texture("needs_you", "needs_you", 52)
+	NoticeArt.viewer = other
+	assert_eq(NoticeArt.path_for("needs_you", "needs_you"), "%s/needs_you.png" % _scratch, "%s's viewer wears the standard one" % other)
+	var other_tex := NoticeArt.texture("needs_you", "needs_you", 52)
+	assert_true(own_tex != null and other_tex != null and own_tex != other_tex, "each viewer's medallion is its own texture")
+	assert_true(own_tex.get_image().get_pixel(26, 26).b > 0.8 and other_tex.get_image().get_pixel(26, 26).r > 0.8, "painted from its own file")
+	assert_eq(NoticeArt.path_for("needs_you", "needs_you", own), "%s/%s/needs_you.png" % [_scratch, own], "a faction asked for explicitly wins")
+	NoticeArt.viewer = saved_viewer
+	DirAccess.remove_absolute("%s/%s/needs_you.png" % [_scratch, own])
+	DirAccess.remove_absolute("%s/%s" % [_scratch, own])
+	_end()
+
+
 func test_the_flag_icon_the_set_lacks_is_drawn_in_its_style() -> void:
 	for px in [16, 24, 48]:
 		var tex := NoticeArt.icon("flag", px)
