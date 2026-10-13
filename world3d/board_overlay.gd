@@ -49,6 +49,11 @@ var _plate_hover := "" ## the province whose plate the mouse is over
 var _plate_focus := "" ## the province whose plate has the keyboard focus
 var _detail_sig := ""
 var _always := {} ## part -> true: a lens shows that part of every plate (set_always)
+## UX-7 (design/UX_WAR_TABLE.md §4.0): the map lens the plates show (MapLens.build's result: its entries, legend), {} for none. With a
+## lens on every plate carries its LensChip (the lens value, its breakdown on hover), the plate's own hover starts with it, the Magic
+## lens shows every plate's enchantments, and the Sight lens marks Far Sight with a target.
+var _lens := {}
+var _lens_open := Callable()
 var _focus_tip: PanelContainer = null
 var _focus_label: Label = null
 var _army_plates := {} ## army id -> PanelContainer
@@ -129,6 +134,10 @@ func refresh() -> void:
 		if hud != null and hud.has_signal("layout_changed") and not hud.is_connected("layout_changed", _on_table_layout):
 			hud.connect("layout_changed", _on_table_layout)
 	_update_closeup_chip()
+	## UX-7: the lens values over the army plates (they find spots clear of them, _place_lens_chips, but never go under one)
+	for pl in _plates.values():
+		if pl.get("lens") != null:
+			move_child(pl["lens"], get_child_count() - 1)
 	## the legend, the playback bar, the caption and the close-up chip stay above every plate
 	move_child(_legend, get_child_count() - 1)
 	move_child(_play_bar, get_child_count() - 1)
@@ -248,6 +257,8 @@ func _unit_name(st: GameState, faction_id: String, type_id: String) -> String:
 func _build_province_plates() -> void:
 	for p in _plates.values():
 		(p["root"] as Node).queue_free()
+		if p.get("lens") != null:
+			(p["lens"] as Node).queue_free()  # UX-7: the lens value is the overlay's child, beside its plate
 	_plates.clear()
 	if _focus_tip != null:
 		_focus_tip.visible = false
@@ -392,6 +403,7 @@ func _build_province_plates() -> void:
 			ench.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 			detail.add_child(ench)
 			pl["parts"]["enchantments"] = ench
+	_apply_lens_chips()
 	update_sight()
 
 
@@ -463,7 +475,150 @@ class _Plate extends VBoxContainer:
 ## FogView.province_text) and the codex link: the level's own entry when the province is not in clear sight (what the sight line's
 ## was), else Province's.
 func plate_tooltip(pid: String) -> String:
-	return province_tooltip(pid, plate_codex(pid))
+	var lens_tip := lens_tooltip(pid)
+	var own := province_tooltip(pid, plate_codex(pid))
+	return own if lens_tip.is_empty() else "%s\n\n%s" % [lens_tip, own]
+
+
+# ------------------------------------------------------------------ the lens on the plates (UX-7)
+
+## Shows lens `result` (MapLens.build's: {"id", "entries", "legend"}) on every plate, or none with {}. `open` opens a codex key (a
+## right-click or F1 on a chip). The plates keep it when they are rebuilt for a new state.
+func set_lens(result: Dictionary, open: Callable = Callable()) -> void:
+	_lens = result
+	if open.is_valid():
+		_lens_open = open
+	_apply_lens_chips()
+	set_always("enchantments", String(_lens.get("id", "")) == "magic")
+	_dirty = true
+	queue_redraw()
+
+
+func clear_lens() -> void:
+	set_lens({})
+
+
+## The lens the plates show ("" none).
+func lens_id() -> String:
+	return String(_lens.get("id", ""))
+
+
+## The chip of `pid`'s plate (null with no lens on).
+func lens_chip(pid: String) -> LensChip:
+	if not _plates.has(pid):
+		return null
+	return _plates[pid].get("lens") as LensChip
+
+
+## The lens's hover for `pid`: its value with its breakdown ("" with no lens on).
+func lens_tooltip(pid: String) -> String:
+	var e: Dictionary = (_lens.get("entries", {}) as Dictionary).get(pid, {})
+	return String(e.get("tooltip", ""))
+
+
+func _apply_lens_chips() -> void:
+	var entries: Dictionary = _lens.get("entries", {})
+	var id := String(_lens.get("id", ""))
+	for pid in _plates.keys():
+		var pl: Dictionary = _plates[pid]
+		var chip: LensChip = pl.get("lens")
+		var e: Dictionary = entries.get(pid, {})
+		if e.is_empty():
+			if chip != null:
+				remove_child(chip)
+				chip.queue_free()
+				pl["lens"] = null
+			continue
+		if chip == null:
+			## the chip is the overlay's own child, placed beside its plate each frame (_place_lens_chips), so it never grows the plate
+			## into its neighbours' and finds a spot clear of the army plates, as the order tokens do
+			chip = LensChip.new()
+			chip.name = "LensValue_%s" % String(pid)
+			chip.visible = false
+			chip.gui_input.connect(_on_chip_input.bind(String(pid), chip))
+			add_child(chip)
+			pl["lens"] = chip
+		chip.set_entry(id, e, _lens_open)
+		chip.reset_size()
+	_dirty = true
+
+
+## UX-7: each lens value in the first spot free of every army plate, every other plate and every value placed before it: under its plate,
+## right of its name, left of it, above it (else under it all the same). `taken` holds the army plates' rects; the values placed are
+## added to it, so the order tokens placed after go round them too.
+func _place_lens_chips(taken: Array) -> void:
+	var roots := {}
+	for pid in _plates.keys():
+		var root: Control = _plates[pid]["root"]
+		if root.visible:
+			roots[pid] = Rect2(root.position, root.size)
+	for pid in _plates.keys():
+		var pl: Dictionary = _plates[pid]
+		var chip: Control = pl.get("lens")
+		if chip == null:
+			continue
+		chip.visible = roots.has(pid) and not _playing
+		if not chip.visible:
+			continue
+		var own: Rect2 = roots[pid]
+		var sz := chip.get_combined_minimum_size()
+		chip.size = sz
+		var row: Control = (pl["root"] as Control).get_child(0)
+		var name_mid := own.position.y + row.position.y + row.size.y * 0.5
+		var name_w := row.size.x
+		var spots := [
+			Rect2(Vector2(own.get_center().x - sz.x * 0.5, own.end.y - 1.0), sz),
+			Rect2(Vector2(own.get_center().x + name_w * 0.5 + 3.0, name_mid - sz.y * 0.5), sz),
+			Rect2(Vector2(own.get_center().x - name_w * 0.5 - 3.0 - sz.x, name_mid - sz.y * 0.5), sz),
+			Rect2(Vector2(own.get_center().x - sz.x * 0.5, own.position.y - sz.y + 1.0), sz),
+		]
+		var pick: Rect2 = spots[0]
+		for spot: Rect2 in spots:
+			var clear := true
+			for r: Rect2 in taken:
+				if r.grow(1.0).intersects(spot):
+					clear = false
+					break
+			if clear:
+				for other in roots:
+					if other != pid and (roots[other] as Rect2).intersects(spot):
+						clear = false
+						break
+			if clear:
+				pick = spot
+				break
+		chip.position = pick.position.round()
+		taken.append(pick)
+
+
+## A click on a chip selects its province, as a click on the land under it does (a right-click is its codex link's).
+func _on_chip_input(event: InputEvent, pid: String, chip: Control) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and board != null and board.map != null:
+		chip.accept_event()
+		board.map.select_province(pid)
+
+
+## The Sight lens's target on each province your Far Sight sees (MapLens: "far_sight").
+func _draw_lens_marks() -> void:
+	if String(_lens.get("id", "")) != "sight" or _playing:
+		return
+	var t = board.wv.terrain
+	var entries: Dictionary = _lens.get("entries", {})
+	for pid in entries:
+		if not bool((entries[pid] as Dictionary).get("far_sight", false)):
+			continue
+		var i: int = t.index_of(String(pid))
+		if i < 0:
+			continue
+		var at: Vector2 = board.project(t.centres[i], 6.0)
+		if at.x < -9999:
+			continue
+		var gilt := Color("#FFD27A")
+		for k in [[16.0, 3.5, UiPalette.KEYLINE_INK], [16.0, 2.0, gilt], [8.0, 3.0, UiPalette.KEYLINE_INK], [8.0, 1.6, gilt]]:
+			draw_arc(at, float(k[0]), 0.0, TAU, 40, k[2], float(k[1]), true)
+		for d in [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN]:
+			draw_line(at + d * 11.0, at + d * 22.0, UiPalette.KEYLINE_INK, 3.5, true)
+			draw_line(at + d * 11.0, at + d * 22.0, gilt, 1.8, true)
 
 
 ## The codex key the plate links: the sight level's (vision_*, last_seen) for a glimpsed, out-of-sight or never-seen province, else
@@ -1016,6 +1171,7 @@ func _process(_delta: float) -> void:
 		placed.append(rect)
 		pc.position = rect.position.round()
 		pc.visible = s2.x > -100 and s2.x < vp.x + 100 and s2.y > -50 and s2.y < vp.y + 50
+	_place_lens_chips(placed)  ## UX-7: the lens values, clear of the army plates
 	_place_order_marks(placed)
 	if _playing:
 		_play_label.text = _play_text()
@@ -1026,6 +1182,7 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	if board == null or not board.prepared or board.map == null:
 		return
+	_draw_lens_marks()
 	for arrow in arrow_plan():
 		_draw_move(String(arrow.army), String(arrow.to), String(arrow.via), bool(arrow.preview))
 	if _playing:

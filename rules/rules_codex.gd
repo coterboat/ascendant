@@ -1115,6 +1115,36 @@ const ENTRIES := {
 		"title": "Odds against what you can see",
 		"text": "Under fog of war, a battle forecast is worked out against what you can see: the shown numbers of a glimpsed army at full health, the mandates and spells you know, and the kept power you know or assume. It gives two odds, at the shown numbers and at the top of the range, and lists its guesses on hover. They may have more you haven't seen. A rival's mages with no spell you know of are assumed to cast the first spell of their first school (Sunlance for the Crown, Briar Snare for the Clans), and the forecast says so. Against a province out of sight it gives no odds. After a battle, the report says what you didn't see.",
 	},
+	# --- UX-7 (#217; design/UX_WAR_TABLE.md §4): the map lenses, the codex page "Map lenses" and one entry per lens. They show what the
+	# game already has (ui/map_lens.gd) and change no rule. Making's count is its first version (Alex 10-10). Plain text: tooltips quote them.
+	"map_lenses": {
+		"title": "Map lenses",
+		"text": "Six optional map views, each with its own colours and feel, for when you want every number on the board at once: Owner lens, Income lens, Threat lens, Magic lens, Making lens and Sight lens. Press 1 to 6 to turn one on, and the same key again, Esc or ` to turn it off, or pick one from the Lenses button in the row under your realm's name. One lens is on at a time, and every game starts with none. With a lens on, every province's plate shows the lens's value (hover it for where it comes from), and a legend card at the bottom left says what the lens asks, its scale and its totals. Every scale runs from dark to light, never by colour alone. Fog of war still shows under every lens, and a lens shows only what you can see. The lenses change nothing in the rules. On the 2D map each lens is a flat colour and the plate values; the glows, the hatching and the rings are the 3D board's.",
+	},
+	"lens_owner": {
+		"title": "Owner lens",
+		"text": "Key 1. Who holds what? Every province washed in its owner's seat colour at full strength over muted land, with a thick border, and neutral land in slate. Each plate names the owner beside its emblem, so it reads without colour. The legend counts each side's provinces and the base income they pay. Owners are public: fog of war never hides them.",
+	},
+	"lens_income": {
+		"title": "Income lens",
+		"text": "Key 2. What is it worth? A warm glow from dark umber on poor land to bright gilt on rich land, and each plate shows the province's base income: what it pays its owner before mandates, paths and a siege's cut-off. The legend's totals are base income only, and say so. A rival's real income is never worked out here; your own is on each of your plates' gold.",
+	},
+	"lens_threat": {
+		"title": "Threat lens",
+		"text": "Key 3. What could hit me next turn? Red pencil hatching, denser where more rival strength stands in or next to a province: the attack and defense of every rival army you can see or remember there, the same size guide as an army's strength. It is an estimate from your sightings only. It looks one step out and roads may reach further; armies you can't see aren't counted; a remembered army counts as it was last seen, and the plate gives that turn. Where your own armies can also get to next turn, the edge pulses amber. The Free Holds never march, so their garrisons aren't counted.",
+	},
+	"lens_magic": {
+		"title": "Magic lens",
+		"text": "Key 4. Where is magic at work? An ink-violet glow and sigils on every province with an enchantment in play that you can see: wards, curses, blessings on the armies standing there, Far Sight and your own Bastion forts. The plates show them, and the legend names a ritual laid over the whole map, like the Blood Moon. It shows what is in play, not what could be cast: a ritual's reach is the cast dialog's.",
+	},
+	"lens_making": {
+		"title": "Making lens",
+		"text": "Key 5. How far has each faction made the land its own? Up to four marks on each province, filled in its owner's colour, over an owner glow that deepens with them. A province someone owns has 1 mark, one more after 3 turns held and another after 6 (turns held are kept in games with forts and sieges), and one more where the owner's path shapes the land: Hallowed Land and Dread Lands everywhere it holds, the Forges at a fort, the Wild Spreads in a forest. A faction's own capital has all four. Under fog of war a rival's path counts only once you know it. Making has no rules effect yet: what it will do comes later.",
+	},
+	"lens_sight": {
+		"title": "Sight lens",
+		"text": "Key 6. Why do I see what I see? Warm lantern rings on the land your sources see, brightest at the source: your provinces, your forts and your armies (a ruler, a commander or a scout sees further), each plate saying what it sees, and a target where your Far Sight looks. A dashed ring shows land your queued marches will bring into sight next turn. The legend lists the four looks of sight. Only in a game with fog of war. This lens is provisional: the veil on the land already shows sight, and the lens is here to explain it.",
+	},
 }
 
 
