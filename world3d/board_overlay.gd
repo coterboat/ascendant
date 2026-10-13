@@ -49,6 +49,11 @@ var _plate_hover := "" ## the province whose plate the mouse is over
 var _plate_focus := "" ## the province whose plate has the keyboard focus
 var _detail_sig := ""
 var _always := {} ## part -> true: a lens shows that part of every plate (set_always)
+## UX-7 (design/UX_WAR_TABLE.md §4.0): the map lens the plates show (MapLens.build's result: its entries, legend), {} for none. With a
+## lens on every plate carries its LensChip (the lens value, its breakdown on hover), the plate's own hover starts with it, the Magic
+## lens shows every plate's enchantments, and the Sight lens marks Far Sight with a target.
+var _lens := {}
+var _lens_open := Callable()
 var _focus_tip: PanelContainer = null
 var _focus_label: Label = null
 var _army_plates := {} ## army id -> PanelContainer
@@ -392,6 +397,7 @@ func _build_province_plates() -> void:
 			ench.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 			detail.add_child(ench)
 			pl["parts"]["enchantments"] = ench
+	_apply_lens_chips()
 	update_sight()
 
 
@@ -463,7 +469,101 @@ class _Plate extends VBoxContainer:
 ## FogView.province_text) and the codex link: the level's own entry when the province is not in clear sight (what the sight line's
 ## was), else Province's.
 func plate_tooltip(pid: String) -> String:
-	return province_tooltip(pid, plate_codex(pid))
+	var lens_tip := lens_tooltip(pid)
+	var own := province_tooltip(pid, plate_codex(pid))
+	return own if lens_tip.is_empty() else "%s\n\n%s" % [lens_tip, own]
+
+
+# ------------------------------------------------------------------ the lens on the plates (UX-7)
+
+## Shows lens `result` (MapLens.build's: {"id", "entries", "legend"}) on every plate, or none with {}. `open` opens a codex key (a
+## right-click or F1 on a chip). The plates keep it when they are rebuilt for a new state.
+func set_lens(result: Dictionary, open: Callable = Callable()) -> void:
+	_lens = result
+	if open.is_valid():
+		_lens_open = open
+	_apply_lens_chips()
+	set_always("enchantments", String(_lens.get("id", "")) == "magic")
+	_dirty = true
+	queue_redraw()
+
+
+func clear_lens() -> void:
+	set_lens({})
+
+
+## The lens the plates show ("" none).
+func lens_id() -> String:
+	return String(_lens.get("id", ""))
+
+
+## The chip of `pid`'s plate (null with no lens on).
+func lens_chip(pid: String) -> LensChip:
+	if not _plates.has(pid):
+		return null
+	return _plates[pid].get("lens") as LensChip
+
+
+## The lens's hover for `pid`: its value with its breakdown ("" with no lens on).
+func lens_tooltip(pid: String) -> String:
+	var e: Dictionary = (_lens.get("entries", {}) as Dictionary).get(pid, {})
+	return String(e.get("tooltip", ""))
+
+
+func _apply_lens_chips() -> void:
+	var entries: Dictionary = _lens.get("entries", {})
+	var id := String(_lens.get("id", ""))
+	for pid in _plates.keys():
+		var pl: Dictionary = _plates[pid]
+		var chip: LensChip = pl.get("lens")
+		var e: Dictionary = entries.get(pid, {})
+		if e.is_empty():
+			if chip != null:
+				chip.queue_free()
+				(pl["root"] as Node).remove_child(chip)
+				pl["lens"] = null
+				(pl["root"] as Control).reset_size()
+			continue
+		if chip == null:
+			chip = LensChip.new()
+			chip.gui_input.connect(_on_chip_input.bind(String(pid), chip))
+			var root: Control = pl["root"]
+			root.add_child(chip)
+			root.move_child(chip, 1 if pl.get("marks") == null else 2)  ## under the name (and the marks that warn), over the detail
+			pl["lens"] = chip
+		chip.set_entry(id, e, _lens_open)
+		(pl["root"] as Control).reset_size()
+	_dirty = true
+
+
+## A click on a chip selects its province, as a click on the land under it does (a right-click is its codex link's).
+func _on_chip_input(event: InputEvent, pid: String, chip: Control) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and board != null and board.map != null:
+		chip.accept_event()
+		board.map.select_province(pid)
+
+
+## The Sight lens's target on each province your Far Sight sees (MapLens: "far_sight").
+func _draw_lens_marks() -> void:
+	if String(_lens.get("id", "")) != "sight" or _playing:
+		return
+	var t = board.wv.terrain
+	var entries: Dictionary = _lens.get("entries", {})
+	for pid in entries:
+		if not bool((entries[pid] as Dictionary).get("far_sight", false)):
+			continue
+		var i: int = t.index_of(String(pid))
+		if i < 0:
+			continue
+		var at: Vector2 = board.project(t.centres[i], 6.0)
+		if at.x < -9999:
+			continue
+		var gilt := Color("#FFD27A")
+		for k in [[16.0, 3.5, UiPalette.KEYLINE_INK], [16.0, 2.0, gilt], [8.0, 3.0, UiPalette.KEYLINE_INK], [8.0, 1.6, gilt]]:
+			draw_arc(at, float(k[0]), 0.0, TAU, 40, k[2], float(k[1]), true)
+		for d in [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN]:
+			draw_line(at + d * 11.0, at + d * 22.0, UiPalette.KEYLINE_INK, 3.5, true)
+			draw_line(at + d * 11.0, at + d * 22.0, gilt, 1.8, true)
 
 
 ## The codex key the plate links: the sight level's (vision_*, last_seen) for a glimpsed, out-of-sight or never-seen province, else
@@ -1026,6 +1126,7 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	if board == null or not board.prepared or board.map == null:
 		return
+	_draw_lens_marks()
 	for arrow in arrow_plan():
 		_draw_move(String(arrow.army), String(arrow.to), String(arrow.via), bool(arrow.preview))
 	if _playing:

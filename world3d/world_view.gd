@@ -38,12 +38,19 @@ var cam: Camera3D
 var gmat: ShaderMaterial
 var wmat: ShaderMaterial
 var outline_mat: ShaderMaterial
-var owner_img: Image
+## The province textures (UX-7, design/UX_WAR_TABLE.md §4.0): one column per province index, Vision.WIDTH wide, the one width every
+## texture is built with and the ground shader divides by (prov_u reads it from the texture). A map with more provinces than that is
+## rejected in setup, before any texture is built (width_error).
+var owner_img: Image ## WIDTH x 1 RGBA8: rgb the owner's colour, a owned
 var owner_tex: ImageTexture
-var mark_img: Image ## 16 x 1: r a King's Roads destination, g a legal move target, b a focus flash
+var mark_img: Image ## WIDTH x 1 RGBA8: r a King's Roads destination, g a legal move target, b a focus flash, a a forest the rules grew
 var mark_tex: ImageTexture
-var vision_img: Image ## M5-3, 16 x 1 R8 beside the owner wash: 0 never seen, 85 remembered, 170 glimpsed, 255 in clear sight (Vision)
+var vision_img: Image ## M5-3, WIDTH x 1 R8 beside the owner wash: 0 never seen, 85 remembered, 170 glimpsed, 255 in clear sight (Vision)
 var vision_tex: ImageTexture
+var lens_img: Image ## UX-7, WIDTH x 2 RGBA8: the active map lens (MapLens.texels): row 0 its tint and strength, row 1 its mark and flag
+var lens_tex: ImageTexture
+var lens_id := "" ## UX-7: the lens the ground and the props draw ("" none: lens_mode 0, nothing drawn)
+var rejected := "" ## why setup built nothing ("" when it built the world)
 var prop_fog_on := false ## MVP-3 (#177): the woods, rocks and cottages take the ground's veil (set_vision)
 var fog_on := false ## M5-3: the ground shader veils what the vision texture says (a fog game only; otherwise the ground is untouched)
 var capital_of := {} ## province id -> the faction whose capital it is in the map data (picks the fortress kit)
@@ -87,6 +94,10 @@ var rig := {"target": Vector3(500, 0, 300), "pitch": 58.0, "yaw": 0.0, "fov": 30
 func setup(p_terrain: RefCounted, p_look: String = "cel") -> void:
 	terrain = p_terrain
 	look = p_look
+	rejected = width_error(terrain.ids.size())
+	if not rejected.is_empty():
+		printerr(rejected)  ## not built: every province texture is one column per province, Vision.WIDTH wide
+		return
 	for f in FactionData.FACTIONS:
 		capital_of[String(f.capital)] = String(f.id)
 	_build_ground()
@@ -121,15 +132,19 @@ func _build_ground() -> void:
 	var dtex := ImageTexture.create_from_image(terrain.data_image)
 	gmat.set_shader_parameter("data_n", dtex)
 	gmat.set_shader_parameter("data_l", dtex)
-	owner_img = Image.create(16, 1, false, Image.FORMAT_RGBA8)
+	owner_img = Image.create(Vision.WIDTH, 1, false, Image.FORMAT_RGBA8)
 	owner_tex = ImageTexture.create_from_image(owner_img)
 	gmat.set_shader_parameter("owner_tex", owner_tex)
-	mark_img = Image.create(16, 1, false, Image.FORMAT_RGBA8)
+	mark_img = Image.create(Vision.WIDTH, 1, false, Image.FORMAT_RGBA8)
 	mark_tex = ImageTexture.create_from_image(mark_img)
 	gmat.set_shader_parameter("mark_tex", mark_tex)
 	vision_img = Image.create_from_data(Vision.WIDTH, 1, false, Image.FORMAT_R8, Vision.texels({}, []))
 	vision_tex = ImageTexture.create_from_image(vision_img)
 	gmat.set_shader_parameter("vision_tex", vision_tex)
+	lens_img = Image.create_from_data(Vision.WIDTH, 2, false, Image.FORMAT_RGBA8, MapLens.no_texels())
+	lens_tex = ImageTexture.create_from_image(lens_img)
+	gmat.set_shader_parameter("lens_tex", lens_tex)
+	gmat.set_shader_parameter("lens_mode", 0)
 	gmat.set_shader_parameter("fog_on", 0.0)
 	gmat.set_shader_parameter("fog_drift", 1.0 if quality < FOG_STILL_RUNG else 0.0)
 	var looks: Dictionary = Vision.look_arrays() ## UX-2: the four looks of the ground, one per sight level
@@ -415,6 +430,7 @@ func _wire_prop_fog() -> void:
 		pm.set_shader_parameter("prop_extent", Terrain3D.EXTENT)
 		pm.set_shader_parameter("prop_look_tone", looks["look_tone"]) ## UX-2: the props wear the ground's looks
 		pm.set_shader_parameter("prop_look_lift", looks["look_lift"])
+		pm.set_shader_parameter("prop_lens", lens_tex) ## UX-7: and its lens
 	_set_prop_fog(1.0 if fog_on else 0.0)
 
 
@@ -428,6 +444,58 @@ func _set_prop_fog(on: float) -> void:
 ## The vision texture's bytes as the ground reads them (tests, and comparing two boards).
 func vision_bytes() -> PackedByteArray:
 	return vision_img.get_data()
+
+
+## UX-7 (design/UX_WAR_TABLE.md §4.0): the map lens `id` ("" none) over the ground and the props, from MapLens.build's entries
+## ({province id: entry}): one texture update (MapLens.texels, Vision.WIDTH x 2) and the lens's mode and mood. The ground shader
+## composes it in §4.0's order, so the veil still reads under it; the woods, rocks and cottages are muted with the ground.
+func set_lens(id: String, entries: Dictionary) -> void:
+	if gmat == null:
+		return
+	lens_id = id if MapLens.mode_of(id) > 0 else ""
+	lens_img = Image.create_from_data(Vision.WIDTH, 2, false, Image.FORMAT_RGBA8, MapLens.texels(entries if not lens_id.is_empty() else {}, terrain.ids))
+	lens_tex.update(lens_img)
+	var mode := MapLens.mode_of(lens_id)
+	var md := MapLens.mood(lens_id)
+	var tone: Color = md.tone
+	gmat.set_shader_parameter("lens_mode", mode)
+	gmat.set_shader_parameter("lens_mood", md.mood)
+	gmat.set_shader_parameter("lens_tone", Vector3(tone.r, tone.g, tone.b))
+	for m in _prop_mats:
+		var pm := m as ShaderMaterial
+		pm.set_shader_parameter("prop_lens_mode", mode)
+		pm.set_shader_parameter("prop_lens_mood", md.mood)
+		pm.set_shader_parameter("prop_lens_tone", Vector3(tone.r, tone.g, tone.b))
+
+
+func clear_lens() -> void:
+	set_lens("", {})
+
+
+## The shader's lens_mode now (0 none).
+func lens_mode() -> int:
+	return int(gmat.get_shader_parameter("lens_mode")) if gmat != null else 0
+
+
+## The four province textures' bytes as the ground reads them (tests: their exact bytes and order).
+func owner_bytes() -> PackedByteArray:
+	return owner_img.get_data()
+
+
+func mark_bytes() -> PackedByteArray:
+	return mark_img.get_data()
+
+
+func lens_bytes() -> PackedByteArray:
+	return lens_img.get_data()
+
+
+## Why a map of `count` provinces can't be drawn ("" when it can): every province texture has one column per province, Vision.WIDTH
+## wide, so a map with more is turned away before any texture is built.
+static func width_error(count: int) -> String:
+	if count <= Vision.WIDTH:
+		return ""
+	return "The 3D board draws at most %d provinces (one column of each province texture per province, Vision.WIDTH), and this map has %d." % [Vision.WIDTH, count]
 
 
 ## The owner wash as {province id: Color (alpha 0: nobody)}, for comparing two boards.
