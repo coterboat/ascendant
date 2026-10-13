@@ -677,9 +677,30 @@ static func needs(state: GameState, viewer: String, report_turn: int, orders: Ar
 		out.append({"key": "research", "kind": "research", "text": research, "province": "", "codex": "research_order", "variant": "research"})
 	for line in FortView.needs_you(state, viewer, report_turn):
 		var codex := String(line.codex)
+		if settles_siege(state, String(line.province), orders):
+			continue  # UX-5: an order this turn answers it
 		out.append({"key": "siege.%s" % String(line.province), "kind": "siege", "text": String(line.text), "province": String(line.province),
 			"codex": codex, "variant": codex})
 	return out
+
+
+## UX-5: whether an order queued this turn answers the siege at `pid`: a storm of it, a sally from it, or a march into it (relief) or out of
+## it (leaving). Holding is the other answer, which no order can say, so the need stays until the turn is sealed.
+static func settles_siege(state: GameState, pid: String, orders: Array) -> bool:
+	for o in orders:
+		if o is SiegeOrder:
+			if String(o.province) == pid:
+				return true
+			var sallying := state.find_army(String(o.army_id)) if not String(o.army_id).is_empty() else null
+			if sallying != null and sallying.location == pid:
+				return true
+		elif o is MoveOrder:
+			if String(o.to) == pid:
+				return true
+			var a := state.find_army(String(o.army_id))
+			if a != null and a.location == pid:
+				return true
+	return false
 
 
 ## The needs as announcements, ids "need.<key>.t<turn>".

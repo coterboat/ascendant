@@ -404,6 +404,7 @@ func set_plan_page(page: Control) -> void:
 	plan_tab.disabled = page == null
 	if page != null:
 		plan_holder.add_child(page)
+		plan_tab.tooltip_text = TooltipText.plain("Plan", "Your orders this turn as sentences, each with its forecast, what still needs you, and the seal.")
 	else:
 		show_tab("read")
 
