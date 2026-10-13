@@ -6,7 +6,8 @@ class_name Art
 ## there yet. A missing file is checked with ResourceLoader.exists() first, so nothing is printed.
 ##   portrait(unit_type_id, faction_id = "")   a unit's or commander's portrait (384x512, 3:4)
 ##                                              assets/portraits/<faction>/<unit type id>.webp (a transformation's
-##                                              new unit, data/paths.gd NEW_UNITS, is found by its id too)
+##                                              new unit, data/paths.gd NEW_UNITS, and M5's mages and summons,
+##                                              data/magic.gd MAGES and SUMMONS, are found by their ids too)
 ##   variant_portrait(unit_type_id, faction_id, transformation_id)   a transformation's look of a unit it
 ##                                              changes (M4 §12.1: Sunspears for spearmen in the Celestial Host)
 ##                                              assets/portraits/<faction>/<unit type id>__<transformation id>.webp
@@ -17,6 +18,8 @@ class_name Art
 ##   banner(faction_id)                         assets/banners/<faction>.webp (256x384, hang point top centre)
 ##   terrain(terrain_id)                        assets/terrain/<terrain>.webp (512x512, seamless)
 ##   title_backdrop()                           assets/ui/title_backdrop.webp (the title screen's job wires it)
+##   spell_icon(key)                            assets/ui/spells/<key>.png (256x256): a spell's or ritual's icon by
+##                                              its data/magic.gd SPELLS id, or Tithe of Blood's (ART-M5-2D, #224)
 ## Audio will live under AUDIO_DIR with an audio.json map; the audio job wires it, not this file.
 ##
 ## Widgets (Controls that draw themselves, so they cost one node each and never lay out wrongly):
@@ -36,6 +39,7 @@ const RULER_PORTRAIT_PATH := "res://assets/portraits/rulers/%s.webp"
 const BANNER_PATH := "res://assets/banners/%s.webp"
 const TERRAIN_PATH := "res://assets/terrain/%s.webp"
 const TITLE_BACKDROP_PATH := "res://assets/ui/title_backdrop.webp"
+const SPELL_ICON_PATH := "res://assets/ui/spells/%s.png"
 const AUDIO_DIR := "res://assets/audio/"
 ## Portraits are 3:4 (384x512).
 const PORTRAIT_ASPECT := 0.75
@@ -64,7 +68,8 @@ static func texture(path: String) -> Texture2D:
 
 
 ## The faction a unit type belongs to ("kingdom" for "spearmen"), from the faction data, or for a
-## transformation's new unit ("seraphs") from the side of the fork that adds it; "" if none.
+## transformation's new unit ("seraphs") from the side of the fork that adds it, or for a mage or a summon
+## ("adepts", "thornwolves") from the magic data; "" if none.
 static func unit_faction(unit_type_id: String) -> String:
 	if _unit_factions.is_empty():
 		for f in FactionData.FACTIONS:
@@ -79,6 +84,10 @@ static func unit_faction(unit_type_id: String) -> String:
 			var new_unit := String(AscensionRules.node_effects(String(b.get("transformation", ""))).get("new_unit", ""))
 			if not new_unit.is_empty():
 				_unit_factions[new_unit] = String(b.get("faction", ""))
+		for fid in MagicData.MAGES:  # M5: each faction's mage (ART-M5-2D, #224)
+			_unit_factions[String(MagicData.MAGES[fid].id)] = String(fid)
+		for sid in MagicData.SUMMONS:  # and the summoned creatures, by their own faction field
+			_unit_factions[String(sid)] = String(MagicData.SUMMONS[sid].get("faction", ""))
 	return String(_unit_factions.get(unit_type_id, ""))
 
 
@@ -128,6 +137,14 @@ static func terrain(terrain_id: String) -> Texture2D:
 
 static func title_backdrop() -> Texture2D:
 	return texture(TITLE_BACKDROP_PATH)
+
+
+## A spell's, ritual's or blood mandate's icon (a data/magic.gd SPELLS id, or "tithe_of_blood"), or null when it
+## has not landed yet; the screens keep their own drawing until it does.
+static func spell_icon(key: String) -> Texture2D:
+	if key.is_empty():
+		return null
+	return texture(SPELL_ICON_PATH % key)
 
 
 ## A square crop of a portrait around the face (FACE_REGION), for small icons. Cached per texture.
