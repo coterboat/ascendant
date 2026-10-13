@@ -10,6 +10,7 @@ Stdlib plus ffmpeg.
 """
 import json
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -175,9 +176,26 @@ gltf/embedded_image_handling=2
 """
 
 
+def import_uid(path):
+    """The uid of an existing .import ("uid://..."), or None when there is no file or no uid line."""
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        m = re.search(r'^uid="(uid://[^"]+)"\s*$', f.read(), re.M)
+    return m.group(1) if m else None
+
+
 def write_import(res_path, root):
-    """A .import beside the model that embeds its textures (GPU-compressed) rather than extracting them."""
-    open(os.path.join(root, res_path + ".import"), "w").write(IMPORT.format(res=res_path))
+    """A .import beside the model that embeds its textures (GPU-compressed) rather than extracting them. The uid of
+    an import already there is kept, so scenes that name the model by uid still find it after a replace; Godot
+    writes path= and dest_files= back on its next import."""
+    path = os.path.join(root, res_path + ".import")
+    text = IMPORT.format(res=res_path)
+    uid = import_uid(path)
+    if uid:
+        text = text.replace('type="PackedScene"\n', 'type="PackedScene"\nuid="%s"\n' % uid, 1)
+    with open(path, "w") as f:
+        f.write(text)
 
 
 if __name__ == "__main__":
