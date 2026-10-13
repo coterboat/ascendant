@@ -21,7 +21,8 @@ extends Control
 ##   notification_slot() -> Control   the column on the left edge: UX-6's NoticeStack fills it with medallions, and takes the mouse only where it draws
 ##   register_piece(control)          a control of someone else's that takes the mouse by design (the medallion stack, the Chronicle column):
 ##                                    pieces() lists it, so the input contract's test holds it and what is inside it to the rule
-##   tray_slot() -> Control           the tray's order slot (UX-4 fills it with tokens)
+##   tray_slot() -> OrderTray         the tray's order slot: UX-4's tokens (ui/tray/), the placed orders by number and then the realm ones, with the
+##                                    gold they leave; the hint line shows in its place while it is empty
 ##   opponent_slot -> HBoxContainer   where the rivals' plaques go
 ##   set_system_label(id, text)       a system button's label (shown beside its icon when wide, hidden when compact)
 ##   set_hint(text, tooltip)          the tray's one line of "what to do now"
@@ -38,9 +39,6 @@ extends Control
 
 signal layout_changed
 signal compact_changed(on: bool)
-## The tray's Orders button: show the orders list in the card's place (until UX-4's tray tokens).
-signal orders_requested
-
 ## The system buttons that carry an icon (UX-0a's UiIcons, white masks tinted with the button's colours); the icon's name is the
 ## button's id except for the two in ICON_OF. A button without one (the ?) keeps its text. Below 1600 logical width the row
 ## shows the icons only (the tooltips name them): a button's label is kept in its "label" meta and put back when the window is
@@ -73,9 +71,8 @@ var opponent_panel: PanelContainer
 var menu_button: Button
 var notification_stack: Control
 var tray: PanelContainer
-var orders_button: Button
-var hint_label: Label  # the tray's one line of "what to do now" (until UX-4's tokens fill the slot)
-var tray_tokens: HBoxContainer
+var hint_label: Label  # the tray's one line of "what to do now": shown while the tray holds no orders
+var tray_tokens: OrderTray  # UX-4: the order tokens (OrderTray, ui/tray/order_tray.gd)
 var seal: PanelContainer
 var seal_slot: HBoxContainer
 ## Tests: the size to lay out for when this node has no size of its own (outside a tree).
@@ -105,6 +102,7 @@ func _init() -> void:
 	_build_top_right()
 	_build_bottom()
 	resized.connect(queue_layout)
+	compact_changed.connect(tray_tokens.set_compact)
 
 
 func _notification(what: int) -> void:
@@ -241,7 +239,7 @@ func notification_slot() -> Control:
 	return notification_stack
 
 
-func tray_slot() -> Control:
+func tray_slot() -> OrderTray:
 	return tray_tokens
 
 
@@ -630,19 +628,6 @@ func _build_bottom() -> void:
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_theme_constant_override("separation", 10)
 	tray.add_child(row)
-	orders_button = Button.new()
-	orders_button.name = "OrdersButton"
-	orders_button.text = "Orders"
-	orders_button.icon = UiIcons.icon("orders", ICON_PX)
-	orders_button.expand_icon = false
-	orders_button.add_theme_color_override("icon_normal_color", UiPalette.TEXT_PRIMARY)
-	orders_button.add_theme_color_override("icon_hover_color", UiPalette.GILT)
-	orders_button.focus_mode = Control.FOCUS_NONE
-	orders_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	orders_button.custom_minimum_size = Vector2(0, 40)
-	orders_button.add_theme_font_size_override("font_size", 16)
-	orders_button.pressed.connect(orders_requested.emit)
-	row.add_child(orders_button)
 	hint_label = Label.new()
 	hint_label.name = "HintLabel"
 	hint_label.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -655,11 +640,14 @@ func _build_bottom() -> void:
 	hint_label.add_theme_font_size_override("font_size", 14)
 	hint_label.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 	row.add_child(hint_label)
-	tray_tokens = HBoxContainer.new()
+	# UX-4 (§3.4): the orders as tokens, placed ones by number and then the realm ones, with the gold they leave. While there are none the
+	# hint line says what to do; the tray's tooltip explains the numbers.
+	tray_tokens = OrderTray.new()
 	tray_tokens.name = "TraySlot"
-	tray_tokens.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	tray_tokens.add_theme_constant_override("separation", 6)
+	tray_tokens.changed.connect(func(count: int): hint_label.visible = count == 0)
 	row.add_child(tray_tokens)
+	tray.tooltip_text = TooltipText.plain("Your orders",
+		"The orders you have given this turn, in the order given: the numbered ones first, each also marked with its number on the board, then the realm orders (research, spellbook, mandate) as icons. Hover one for its forecast, click it to see it and change or cancel it, or press its cross, or right-click it, to cancel. %s" % OrderMarks.RENUMBER_NOTE)
 	seal = PanelContainer.new()
 	seal.name = "Seal"
 	seal.mouse_filter = Control.MOUSE_FILTER_STOP

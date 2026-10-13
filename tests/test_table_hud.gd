@@ -9,7 +9,7 @@ extends "res://tests/test_case.gd"
 ##   the system row opens today's panels as they are; the Chronicle and Lenses are placeholders for later tickets;
 ##   the ? lists every key and mouse binding (checked against the board's own code) and today's hint text in full;
 ##   the seal shows End turn and the order count, and pulses for a new player once an order is queued;
-##   the tray's Orders button shows the orders list in the card's place, so no order is ever out of reach;
+##   the tray holds the orders as tokens (UX-4, tests/test_order_tray.gd has their contents) and the hint line while it is empty;
 ##   the opponent plaque: banner, name, tag, the codex link, the fog's "last seen" line; rebuilt per viewer in a hotseat game;
 ##   the selection cards (UX-3, tests/test_selection_cards.gd has their contents): shown on a selection, closable, closed for good until a click;
 ##   the four host seams (SelectionHost, ReportHost, LensHost, UiCancel) and what each does with a stand-in;
@@ -311,7 +311,7 @@ func test_every_moved_control_keeps_its_tooltip_and_codex_link() -> void:
 	assert_true(map.back_button.tooltip_text.contains("Save the game"), "Menu's tooltip")
 	assert_true(map.back_button.tooltip_text.contains("Esc"))
 	assert_true(map.find_child("VisionButton", true, false) == null and hud.system_button("vision") == null, "UX-2 retired the Vision map mode: no Vision button in the system row")
-	assert_true(hud.orders_button.tooltip_text.replace("\n", " ").contains("cancel button"), "the tray's Orders button explains itself")
+	assert_true(hud.tray.tooltip_text.replace("\n", " ").contains("numbers are places in this list"), "the tray explains its numbers (UX-4)")
 	assert_true(hud.hint_label.tooltip_text.replace("\n", " ").contains("F1"), "the tray's line keeps the whole how-to")
 	assert_true(game.help_button.tooltip_text.contains("key and mouse"), "the ? names itself")
 	game.free()
@@ -349,7 +349,7 @@ func test_the_help_lists_every_key_and_mouse_binding() -> void:
 		assert_true(text.contains(binding), "the ? lists %s" % binding)
 	# Today's hint text, in full: the how-to the top bar's hint tooltip had.
 	assert_eq(ControlsHelp.QUICK, "Move: select an army, then a neighbor. Recruit: select your capital.")
-	for part in ["select one of your armies", "neighboring province", "forecast and the battle odds", "Select your capital to recruit", "cancel button"]:
+	for part in ["select one of your armies", "neighboring province", "forecast and the battle odds", "Select your capital to recruit", "a cross to cancel it"]:
 		assert_true(text.to_lower().contains(part.to_lower()), "the ? has '%s'" % part)
 	var tip := game.map.hint_label.tooltip_text.replace("\n", " ")
 	for part in ["neighboring province", "forecast and battle odds", "capital to recruit", "F1", "End turn"]:
@@ -381,7 +381,7 @@ func test_the_seal_shows_end_turn_and_the_order_count() -> void:
 	game.map.select_province(game.map.state.find_faction(CROWN).capital)
 	(game.map.details.find_children("Recruit_*", "Button", true, false)[0] as Button).pressed.emit()
 	assert_eq(game.end_turn_button.text, "End turn\n1 order")
-	assert_eq(hud.orders_button.text, "Orders (1)")
+	assert_eq(hud.tray_slot().tokens().size(), 1, "the tray holds the order as a token")
 	assert_true(game.end_turn_button.tooltip_text.contains("never seeing yours"), "it runs today's end-turn flow, with today's tooltip")
 	game.end_turn_button.pressed.emit()
 	assert_eq(game.session.turns_played(), 1, "a press ends the turn, as before")
@@ -430,24 +430,28 @@ func test_the_seal_does_not_pulse_for_the_computer_or_a_watched_game() -> void:
 
 # --- the tray ---------------------------------------------------------------------------------------
 
-func test_the_trays_orders_button_brings_the_card_back() -> void:
+func test_the_tray_shows_the_hint_until_an_order_is_queued_and_a_token_brings_its_card() -> void:
 	var game := _game()
 	var map := game.map
 	var hud := map.table()
 	var card := map.cards
 	assert_true(card.visible, "the capital is selected: its card is up")
+	assert_ne(hud.hint_label.text, "", "the tray's line says what to do now")
+	assert_true(hud.hint_label.visible and hud.tray_slot().tokens().is_empty(), "and shows while the tray is empty")
+	assert_true(hud.tray_slot() != null and hud.tray.is_ancestor_of(hud.tray_slot()), "the slot for the order tokens is in the tray")
+	(card.details.find_children("Recruit_*", "Button", true, false)[0] as Button).pressed.emit()
+	assert_eq(hud.tray_slot().tokens().size(), 1, "an order has its token")
+	assert_false(hud.hint_label.visible, "and the hint gives way to the tokens")
 	card.dismiss()
 	assert_false(card.visible)
-	hud.orders_button.pressed.emit()
-	assert_true(card.visible, "the Orders button shows the card again")
-	assert_true(_texts(card).contains("Your orders this turn"), "with the orders list")
+	hud.tray_slot().tokens()[0].pressed.emit(0)
+	assert_true(card.visible and card.mode == "order", "a token shows its order's card, whatever was closed")
 	map.selected_province_id = ""
 	map.selected_army_id = ""
 	map.set_state(map.state, CROWN)
-	assert_true(card.visible, "an opened card stays while nothing is selected")
-	assert_true(_texts(card).contains("No orders yet"), "saying so, and listing the orders")
-	assert_ne(hud.hint_label.text, "", "the tray's line says what to do now")
-	assert_true(hud.tray_slot() != null and hud.tray.is_ancestor_of(hud.tray_slot()), "and its slot is there for the order tokens (UX-4)")
+	assert_true(card.visible and card.mode == "order", "an opened order card stays while nothing is selected")
+	map.cancel_order(0)
+	assert_true(hud.hint_label.visible and hud.tray_slot().tokens().is_empty(), "the hint is back once the order is cancelled")
 	game.free()
 
 
@@ -585,7 +589,7 @@ func test_closing_the_card_puts_the_army_back_so_a_click_cannot_order_from_a_car
 	game.free()
 
 
-func test_orders_with_cancel_buttons_are_listed_under_the_trays_orders_button() -> void:
+func test_orders_are_tokens_in_the_tray_each_with_its_cancel() -> void:
 	var game := _game(VS_COMPUTER)
 	var map := game.map
 	map.select_army("kingdom-1")
@@ -593,12 +597,13 @@ func test_orders_with_cancel_buttons_are_listed_under_the_trays_orders_button() 
 	map.select_province("crownkeep")
 	(map.details.find_children("Recruit_*", "Button", true, false)[0] as Button).pressed.emit()
 	assert_true(map.details.find_children("Order_*", "", true, false).is_empty(), "the province card lists no orders")
-	map.table().orders_button.pressed.emit()
-	var rows := map.details.find_children("Order_*", "", true, false)
-	assert_eq(rows.size(), 2, "both orders are listed under the Orders button")
-	assert_true(map.details.find_children("CancelButton", "Button", true, false).size() == 2, "each with its cancel button")
-	(map.details.find_children("CancelButton", "Button", true, false)[0] as Button).pressed.emit()
-	assert_eq(game.session.current_orders().size(), 1, "cancelling works from the list")
+	var tokens := map.table().tray_slot().tokens()
+	assert_eq(tokens.size(), 2, "both orders are tokens in the tray")
+	for t in tokens:
+		assert_true(map.table().tray.is_ancestor_of(t) and (t as OrderToken).cross != null, "each in the tray, with its cross")
+	((tokens[0] as OrderToken).cross as Button).pressed.emit()
+	assert_eq(game.session.current_orders().size(), 1, "cancelling works from the tray")
+	assert_true(game.session.current_orders()[0] is RecruitOrder, "the march was the one cancelled")
 	game.free()
 
 
@@ -761,7 +766,7 @@ func test_the_handoff_rebuilds_the_hud_for_the_next_player_and_leaves_nothing_of
 	assert_true(game.handoff_log.back().covered, "rebuilt while the cover was still up")
 	# Nothing of player 1 is left anywhere on it.
 	assert_eq(game.end_turn_button.text, "End turn\nno orders", "an empty seal")
-	assert_eq(hud.orders_button.text, "Orders")
+	assert_true(hud.tray_slot().tokens().is_empty() and hud.hint_label.visible, "an empty tray: the hint, none of player 1's tokens")
 	assert_eq(map.selected_army_id, "")
 	assert_false(map.hover_panel.visible, "no forecast of player 1's")
 	assert_false(_texts(map.details).contains("Crownkeep"), "the card is player 2's own")

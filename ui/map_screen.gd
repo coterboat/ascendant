@@ -3,7 +3,9 @@ extends Control
 ## The main map screen (issue #5): the M1 map drawn from a GameState, full-bleed, with the Table over it (UX-1, #194,
 ## design/UX_WAR_TABLE.md §1): the realm plaque with the viewing player's gold and the turn, the system row, the
 ## opponent plaque and Menu, the tray and the seal (TableHud), and the selection cards (SelectionCards, UX-3, #206: the army card
-## and the province card, docked in the left column).
+## and the province card, docked in the left column). UX-4 (#213, §3.4): every queued order is numbered on the board and in the tray
+## (OrderTray, its tokens in tray_slot()), a click on a token focuses its place and opens its card (show_order), and the tray's cross
+## or a right-click cancels it.
 ## Reads the GameState only and never changes it. Every number on screen has a tooltip with its
 ## breakdown (rules/breakdown.gd) and a plain-language description, ending with the codex entry that
 ## explains it: right-click (or F1 while hovering) asks for that entry with codex_requested (#8). In the
@@ -34,7 +36,7 @@ extends Control
 ##
 ## The host seams (UX-1, §1.1): later tickets plug into these instead of editing this file.
 ##   selection_host (SelectionHost)  "show this army or province" and "selection cleared"; the selection cards are its presenter
-##   cards (SelectionCards)          the army card, the province card and the orders list (show_orders); `details` is the open one's content
+##   cards (SelectionCards)          the army card, the province card and one order's card (show_order); `details` is the open one's content
 ##   lens_host (LensHost)            the active lens id, its keys, and the feed to the board (no lens yet)
 ##   ui_cancel (UiCancel)            Esc and a right-click on empty board close the topmost thing, one per press (§1.4)
 ##   (the game screen has the fourth, report_host: ReportHost)
@@ -104,6 +106,7 @@ var session: GameSession = null  # game screen (#7): when set, orders live in th
 var intercept_back := false  # game screen (#7): the host confirms before leaving
 var status_text := ""  # last order result: the rules' reason when an order was refused
 var arrow_layer: Control  # drawn above the regions: one arrow per queued move
+var order_marks_2d: OrderMarks2D = null  # UX-4: the numbers and tokens of the queued orders over the 2D map (the 3D board draws its own)
 var hover_panel: ForecastGlance  # the move forecast of the hovered province, compact; it lives in the selection card or the march strip (UX-3)
 var own_codex: CodexPanel = null  # map preview only: opened when no game screen listens for codex_requested
 var ruler_panel: RulerPanel = null  # M2-6: opened by open_ruler_panel(), over the map and the Table
@@ -127,7 +130,7 @@ var hud: TableHud
 var selection_host := SelectionHost.new()
 var lens_host := LensHost.new()
 var ui_cancel := UiCancel.new()
-var cards: SelectionCards  # the army card, the province card and the orders list: the selection host's presenter (UX-3)
+var cards: SelectionCards  # the army card, the province card and one order's card: the selection host's presenter (UX-3, UX-4)
 var details: VBoxContainer  # the open card's content (cards.details): what the side panel's lines became
 var faction_label: Label  # the realm plaque's name (the HUD's own nodes)
 var faction_emblem: SeatEmblem  # the viewing player's seat emblem, on their banner left of their name
@@ -202,6 +205,7 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 	_announce_selection(false)
 	_follow_ruler_panel()
 	_sync_board()
+	_refresh_order_marks()
 
 
 func select_province(province_id: String) -> void:
@@ -427,7 +431,7 @@ func queue_sacrifice(mandate_id: String) -> String:
 	var reason := orders.queue_sacrifice(mandate_id)
 	if reason.is_empty():
 		GameAudio.sfx("sacrifice")
-		status_text = "Sacrifice ordered: %s. It resolves first when the turn ends, so your other orders already count on it; cancel it with the cross in the tray's Orders list." % \
+		status_text = "Sacrifice ordered: %s. It resolves first when the turn ends, so your other orders already count on it; cancel it with the cross on its tray token." % \
 			RulerRules.mandate_name(mandate_id)
 		status_text += _removed_text(orders.last_removed())
 	else:
@@ -467,7 +471,7 @@ func queue_cast(ritual: String, army_id: String, target: String, pay: String = C
 	var reason := orders.queue_cast(ritual, army_id, target, pay, size)
 	if reason.is_empty():
 		GameAudio.sfx("sacrifice")
-		status_text = "Ritual ordered: %s. It is cast before anyone moves when the turn ends, and the army holds; Cancel order on its card, or the cross in the tray's Orders list, takes it back." % \
+		status_text = "Ritual ordered: %s. It is cast before anyone moves when the turn ends, and the army holds; Cancel order on its card, or the cross on its tray token, takes it back." % \
 			MagicRules.spell_name(ritual)
 		status_text += _removed_text(orders.last_removed())
 	else:
@@ -564,6 +568,7 @@ func set_board(new_board: Control) -> void:
 	board = new_board
 	map_canvas.visible = board == null
 	arrow_layer.visible = board == null
+	_refresh_order_marks()
 	if board != null:
 		map_view.add_child(board)
 		map_view.move_child(board, 0)
@@ -620,6 +625,9 @@ func _bind() -> void:
 	arrow_layer.size = MapLayout.SIZE
 	arrow_layer.draw.connect(_draw_order_arrows)
 	map_view.add_child(arrow_layer)
+	order_marks_2d = OrderMarks2D.new()
+	order_marks_2d.map = self
+	map_view.add_child(order_marks_2d)
 	# The move forecast of a hovered destination: two or three short lines and an "i" with the whole paragraph (UX-3). It no longer floats
 	# over the board: the selection cards adopt it, under an army's actions and in the march strip.
 	hover_panel = ForecastGlance.new()
@@ -666,8 +674,11 @@ func _build_table() -> void:
 	details = cards.details
 	hud.set_floating("card", cards)
 	selection_host.set_presenter(cards)
-	hud.orders_requested.connect(cards.open_orders)
 	hud.layout_changed.connect(_on_table_layout)
+	# UX-4: the tray's tokens: a click focuses the order's place and opens its card, the cross (or a right-click) cancels it.
+	hud.tray_slot().codex_opener = request_codex
+	hud.tray_slot().order_pressed.connect(show_order)
+	hud.tray_slot().order_cancelled.connect(cancel_order)
 
 
 ## The Table's layers in the one cancel dispatcher (§1.4): the map screen's own modals, the selection card, the lens and the
@@ -696,6 +707,8 @@ func _fit_map() -> void:
 	map_canvas.position = avail.position + (avail.size - MapLayout.SIZE * s) / 2.0
 	arrow_layer.scale = map_canvas.scale
 	arrow_layer.position = map_canvas.position
+	if order_marks_2d != null:
+		order_marks_2d.place()
 
 
 ## The Table moved (a new window size, the Chronicle opening): the 2D map and the 3D board's whole-map framing follow the framing
@@ -853,7 +866,7 @@ func _update_ruler_line(f: Faction) -> void:
 ## Queues a move for the viewing faction. Returns "" or the rules' reason (also shown in the panel).
 func queue_move(army_id: String, to_province: String) -> String:
 	var reason := orders.queue_move(army_id, to_province)
-	status_text = reason if not reason.is_empty() else "Move ordered. Armies move when the turn ends; Cancel order on the army's card, or the cross in the tray's Orders list, takes it back."
+	status_text = reason if not reason.is_empty() else "Move ordered. Armies move when the turn ends; Cancel order on the army's card, or the cross on its tray token, takes it back."
 	if reason.is_empty() and not orders.last_relief.is_empty():  # M3c: the garrison comes out to join the relief
 		var place := state.find_province(to_province).name
 		status_text = "Relief ordered: it marches into %s when the turn ends, and the garrison comes out to join it: %s. Untick them in %s's fort panel to keep them in." % [
@@ -870,7 +883,7 @@ func queue_move(army_id: String, to_province: String) -> String:
 func queue_muster(order: MusterOrder) -> String:
 	var reason := orders.queue_muster(order)
 	if reason.is_empty():
-		status_text = "%s Armies muster first when the turn ends, before anything moves, so a new army can be given a move now. Cancel muster on the army's card, or the cross in the tray's Orders list, undoes it.%s" % [
+		status_text = "%s Armies muster first when the turn ends, before anything moves, so a new army can be given a move now. Cancel muster on the army's card, or the cross on its tray token, undoes it.%s" % [
 			orders.order_text(orders.orders().size() - 1), _removed_text(orders.last_removed())]
 	else:
 		status_text = reason
@@ -914,7 +927,7 @@ func queue_fortify(province_id: String) -> String:
 	var reason := orders.queue_fortify(province_id)
 	if reason.is_empty():
 		var fc := orders.fortify_preview(province_id)
-		status_text = "Fortify ordered: %s at %s stands at the end of turn %d if no enemy army stands there, and takes recruits from turn %d. Cancel it with the cross in the tray's Orders list." % [
+		status_text = "Fortify ordered: %s at %s stands at the end of turn %d if no enemy army stands there, and takes recruits from turn %d. Cancel it with the cross on its tray token." % [
 			SiegeRules.fort_phrase(int(fc.level)), state.find_province(province_id).name, int(fc.stands), int(fc.recruit_from)]
 	else:
 		status_text = reason
@@ -987,7 +1000,17 @@ func _orders_changed() -> void:
 	if ruler_panel != null and ruler_panel.visible:
 		ruler_panel.refresh()  # a queued or cancelled sacrifice shows there
 	_sync_board()
+	_refresh_order_marks()
 	orders_changed.emit()
+
+
+## UX-4: the tray's tokens and the 2D map's order marks follow the orders (the 3D board's marks follow board.sync(), above). Their numbers
+## are places in orders(), so every change of the list, and a new turn, rebuilds them.
+func _refresh_order_marks() -> void:
+	if hud != null:
+		hud.tray_slot().refresh(orders)
+	if order_marks_2d != null:
+		order_marks_2d.refresh()
 
 
 ## The map marks that follow the orders: King's Roads destinations for the selected army and the
@@ -1130,11 +1153,21 @@ func _show_details() -> void:
 	selection_host.refresh()
 
 
-## The tray's Orders button: today's "Your orders this turn" list, with its cancel buttons, in the card's place (UX-3, until UX-4's
-## tray tokens). Selecting an army or a province shows its card again.
-func show_orders() -> void:
+## A tray token, or an order's mark on the board, was clicked (UX-4): focuses the order's place (the province is selected and the board
+## glides there) and opens the order's card, with Change (where the order allows it) and Cancel. A realm order has no place: just its
+## card. The army is unselected first, so focusing a place can never read as the second click of a two-click move.
+func show_order(index: int) -> void:
 	_bind()
-	cards.open_orders()
+	if orders == null or state == null or casting():
+		return
+	var list := orders.orders()
+	if index < 0 or index >= list.size():
+		return
+	var place := OrderMarks.place_of(orders, index)
+	if not place.is_empty() and state.find_province(place) != null:
+		selected_army_id = ""
+		focus_province(place)
+	cards.open_order(list[index])
 
 
 ## Tells the selection host what is selected. `force` is a click: the card opens even if it was closed, and even for the same

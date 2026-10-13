@@ -6,7 +6,7 @@ extends RefCounted
 ## The game screen draws it in a modal. Lens keys are listed from the LensHost, so UX-7's lenses appear by themselves.
 
 ## The first how-to, in the words the top bar's hint tooltip had: select an army, click a neighbour, recruit at the capital.
-const HOW_TO_ORDER := "Select one of your armies, then click a neighboring province to move it there (or press March on its card and then click one); hover a province first to see the forecast and battle odds. Select your capital to recruit: press Recruit on its card. Each army's order is on its card, and every order is listed under the tray's Orders button, where you can cancel it. Hover any number to see where it comes from; right-click it, or press F1, to open its codex entry. End turn when you are done."
+const HOW_TO_ORDER := "Select one of your armies, then click a neighboring province to move it there (or press March on its card and then click one); hover a province first to see the forecast and battle odds. Select your capital to recruit: press Recruit on its card. Each army's order is on its card, and every order is a token in the tray along the bottom, numbered as it is on the board: hover it for its forecast, click it to see its card, and right-click it, or press its cross, to cancel it. Hover any number to see where it comes from; right-click it, or press F1, to open its codex entry. End turn when you are done."
 const QUICK := "Move: select an army, then a neighbor. Recruit: select your capital."
 
 
@@ -16,7 +16,7 @@ static func sections(lens_keys: Array = []) -> Array:
 	out.append({"title": "Giving orders", "rows": [
 		{"keys": "Click an army, then a province", "text": "Select one of your armies, then click a neighboring province to move it there. Hover the province first to see the forecast and the battle odds. The army's card has March too: it folds into a slim strip while you choose, and Esc cancels."},
 		{"keys": "Click your capital, then Recruit", "text": "Select your capital to recruit: press Recruit on its card to see what you can buy. With forts, select any fort you own."},
-		{"keys": "End turn (the seal)", "text": "Lock your orders in. Every player's orders then resolve together. Your orders are listed under the tray's Orders button, where each has a cancel button; an army's own order is on its card."},
+		{"keys": "End turn (the seal)", "text": "Lock your orders in. Every player's orders then resolve together. Your orders are the tokens in the tray, numbered as they are on the board; each has a cross to cancel it (a right-click does too), and an army's own order is on its card."},
 	]})
 	out.append({"title": "The board", "rows": [
 		{"keys": "Drag, middle-drag, W A S D, arrow keys", "text": "Pan the map."},

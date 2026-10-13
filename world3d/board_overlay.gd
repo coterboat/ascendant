@@ -10,17 +10,19 @@
 ##   * the order arrows: every queued move drawn as a ribbon along the roads it marches (a King's Roads
 ##     move bends through its middle province's centre, ringed in gilt), and a dashed preview of the
 ##     move a click would order while you hover;
+##   * UX-4: the numbered marks of your queued orders (OrderToken, from OrderMarks, the tray's list): a march's number in the
+##     middle of its arrow, and a token beside its province's stage for a recruit ("+N units"), a fortify (the walls icon), a storm
+##     or sally (the siege icon), a ritual and a muster, each in a spot clear of every plate (_place_order_marks);
 ##   * during a turn's playback: a clash marker at each battle, the phase's caption (Movement, Battles,
 ##     Captures, Recruits, as the turn report's headings) with what is happening, and the playback bar
 ##     (its phases, speed, skip);
 ##   * M3a.2: a gathered army's plate carries a march mark (ordered to march: it waits at the gate); a
-##     ghost block's plate the gold left; the fortress close-up's chip (Esc or zoom out to leave) and a
-##     compass while the view is turned;
+##     fortress close-up's chip (Esc or zoom out to leave) and a compass while the view is turned;
 ##   * the board's legend in the corner, whose tooltip explains every mark on the land;
 ##   * M3c S-4, in a game with sieges: each plate carries the fort chip (FortChip, S-3's: the level, the walls bar
 ##     marking the storm steps, the besieger's chevrons, a site's turns of work), a province's tooltip says what the
 ##     board shows at its fort (SiegeBoard.describe), the legend explains the kits, damage looks, scaffolding, camp
-##     rings, siege works, chevrons and packed garrisons, and a queued Fortify's ghost scaffold carries a plate.
+##     rings, siege works, chevrons and packed garrisons, and a queued Fortify's ghost scaffold has its order token (UX-4).
 ## Reads the map screen (state, selection, orders, regions' marks) and never changes the game.
 extends Control
 
@@ -33,7 +35,7 @@ const Vision := preload("res://world3d/vision.gd")
 const EnchantDecals := preload("res://world3d/enchant_decals.gd")
 const ARROW := Color("#FFFFFF")
 const ARROW_HALO := Color(0.102, 0.086, 0.071, 0.85)
-const LEGEND := "The 3D board, what you see:\n- A province's colour wash and inner border: its owner, in their player colour. Its plate (name, owner's emblem, a crown on a capital) shows what warns (cut off, besieged, an heir countdown) and, on hover, Tab focus or selection, its gold, garrison and walls.\n- A white band inside a province: the one you selected. A cream band: the one under the mouse.\n- A soft gilt glow at the edges: where your selected army can march this turn.\n- A dashed gilt band: a King's Roads destination two provinces away.\n- Figures: each army as blocks of its units (a block per unit type, %s), its commander and banner bearer at the back. The plate above gives the exact count.\n- In the woods every block stands on a tray in its owner's colour (a gilt ring for a ruler's army), so woods-green figures never pass for trees.\n- Zoomed far out, each army becomes a stand: a base in its owner's colour (a gilt ring for a ruler's army), its banner, and one figure for each of its three most numerous unit types, under its count plate. Zoom in and the blocks come back.\n- A fortress's muster yard: its armies stand a block to a slot (a capital holds 6 blocks), facing the gate. An army the yard can't hold musters in the war camp outside the walls: tents, a fire and its smoke. A big camp means a big muster: war is coming.\n- Translucent figures in a yard: the recruits you queued, in the slot each will take. Only you see them.\n- An army in a column at its gate (or the edge of its province), facing a road, with a gilt arrow on its plate: one you ordered to march. It leaves when the turn ends. Only you see it gathered.\n- White arrows along the roads: your queued moves.\n- During a turn's playback the captions follow the turn report's phases: Movement, Battles, Captures, Recruits. Crossed swords mark a battle: the lines trade blows and the fallen lie where they fell. A capture's colour sweeps out from the arriving column.\n- View fortress (in the recruit panel) or a double-click on a fortress: a close-up of its yard. Esc or zooming out leaves it.%s\n\nDrag or WASD to pan, the wheel (or a pinch or two-finger scroll on a trackpad) to zoom, double-click to glide to a province, C your capital, F the whole map, L Look A or B. Settings can switch to the 2D map."
+const LEGEND := "The 3D board, what you see:\n- A province's colour wash and inner border: its owner, in their player colour. Its plate (name, owner's emblem, a crown on a capital) shows what warns (cut off, besieged, an heir countdown) and, on hover, Tab focus or selection, its gold, garrison and walls.\n- A white band inside a province: the one you selected. A cream band: the one under the mouse.\n- A soft gilt glow at the edges: where your selected army can march this turn.\n- A dashed gilt band: a King's Roads destination two provinces away.\n- Figures: each army as blocks of its units (a block per unit type, %s), its commander and banner bearer at the back. The plate above gives the exact count.\n- In the woods every block stands on a tray in its owner's colour (a gilt ring for a ruler's army), so woods-green figures never pass for trees.\n- Zoomed far out, each army becomes a stand: a base in its owner's colour (a gilt ring for a ruler's army), its banner, and one figure for each of its three most numerous unit types, under its count plate. Zoom in and the blocks come back.\n- A fortress's muster yard: its armies stand a block to a slot (a capital holds 6 blocks), facing the gate. An army the yard can't hold musters in the war camp outside the walls: tents, a fire and its smoke. A big camp means a big muster: war is coming.\n- Translucent figures in a yard: the recruits you queued, in the slot each will take. Only you see them.\n- An army in a column at its gate (or the edge of its province), facing a road, with a gilt arrow on its plate: one you ordered to march. It leaves when the turn ends. Only you see it gathered.\n- White arrows along the roads: your queued moves.\n- Gilt numbered tokens: your queued orders, numbered in the order you gave them, the same numbers as the tray along the bottom. A march's number sits beside its arrow; a recruit (\"+2 units\"), a fortify (the walls icon), a storm or sally (the siege icon), a ritual and a muster (the split icon) have their token beside their province. Click a token to see its order and change or cancel it; right-click it to cancel. Cancelling an order moves the numbers after it up. Only you see them.\n- During a turn's playback the captions follow the turn report's phases: Movement, Battles, Captures, Recruits. Crossed swords mark a battle: the lines trade blows and the fallen lie where they fell. A capture's colour sweeps out from the arriving column.\n- View fortress (in the recruit panel) or a double-click on a fortress: a close-up of its yard. Esc or zooming out leaves it.%s\n\nDrag or WASD to pan, the wheel (or a pinch or two-finger scroll on a trackpad) to zoom, double-click to glide to a province, C your capital, F the whole map, L Look A or B. Settings can switch to the 2D map."
 
 var board: Control ## board3d.gd
 var _plates := {} ## province id -> {"root": _Plate, "name": Label, "dot": SeatEmblem, "glyph": Control, "pennant": Control, "badge": Label, "chip": FortChip or null (only while it warns),
@@ -52,15 +54,13 @@ var _focus_label: Label = null
 var _army_plates := {} ## army id -> PanelContainer
 var _built_for: GameState = null
 var _army_sig := ""
-var _ghost_plates: Array = [] ## [PanelContainer], one per ghost block, in ghost_list() order
-var _ghost_sig := ""
+var _order_marks: Array = [] ## [OrderToken], one per mark of the viewer's queued orders (UX-4)
 var _play_bar: PanelContainer
 var _play_label: Label
 var _speed_buttons := {}
 var _legend: Label
 var _legend_sieges := false
 var _legend_fog := false ## M5-3: the legend's tooltip carries the fog section (a fog game)
-var _fortify_plates := {} ## M3c S-4: province id -> the plate over a queued Fortify's ghost scaffold
 var _caption: PanelContainer
 var _caption_title: Label
 var _caption_detail: Label
@@ -117,20 +117,17 @@ func refresh() -> void:
 		_build_province_plates()
 		if map.state.sieges != _legend_sieges or Vision.active(map.state) != _legend_fog:
 			_legend_tip()
-	_build_fortify_plates()
 	_update_province_marks()
 	_dirty = true
 	var sig := "%s|%s|%s|%s" % [map.state.get_instance_id(), map.selected_army_id, board.armies.armies.size(), JSON.stringify(board.armies.gathered)]
 	if sig != _army_sig and not _playing:
 		_army_sig = sig
 		_build_army_plates()
-	var ghosts: Array = board.armies.ghost_list()
-	var gsig := ""
-	for g in ghosts:
-		gsig += "%s:%s;" % [g["province"], ",".join(PackedStringArray(g["types"]))]
-	if gsig != _ghost_sig:
-		_ghost_sig = gsig
-		_build_ghost_plates(ghosts)
+	_build_order_marks()
+	if map.has_method("table"):  # the Table moved a piece (the card grew, the window changed): the tokens find their spots again
+		var hud: Control = map.table()
+		if hud != null and hud.has_signal("layout_changed") and not hud.is_connected("layout_changed", _on_table_layout):
+			hud.connect("layout_changed", _on_table_layout)
 	_update_closeup_chip()
 	## the legend, the playback bar, the caption and the close-up chip stay above every plate
 	move_child(_legend, get_child_count() - 1)
@@ -140,94 +137,98 @@ func refresh() -> void:
 	queue_redraw()
 
 
-## A small dashed plate over each block of queued recruits: how many, and what they are.
-func _build_ghost_plates(ghosts: Array) -> void:
-	for g in _ghost_plates:
-		remove_child(g)
-		(g as Node).queue_free()
-	_ghost_plates.clear()
+## UX-4 (design/UX_WAR_TABLE.md §3.4): the numbered marks of the viewer's own queued orders, replacing the dashed plate that was over each
+## block of queued recruits and the plate over a queued Fortify's scaffold. One token (OrderToken, the board look) for each placed order,
+## from the same list the tray reads (OrderMarks): a march's number sits in the middle of its arrow; a recruit token at the fort the
+## unit is made at (the number and "+N units", every recruit made there folded into one); a fortify token with the walls icon; a
+## storm or a sally with the siege icon; a ritual at its target; a muster at the province it happens in. Only the viewer's own
+## orders ever show (map.orders is the viewing faction's, and a hotseat seat starts empty). A click focuses the place and opens the
+## order's card (the same as its tray token), a right-click cancels it.
+func _build_order_marks() -> void:
+	for t in _order_marks:
+		remove_child(t)
+		t.queue_free()
+	_order_marks.clear()
 	var map: Control = board.map
-	var st: GameState = map.state
-	for g in ghosts:
-		var counts := {}
-		var order: Array = []
-		for t in g["types"]:
-			if not counts.has(t):
-				counts[t] = 0
-				order.append(t)
-			counts[t] += 1
-		var parts: Array = []
-		for t in order:
-			parts.append("%d %s" % [counts[t], _unit_name(st, String(g["owner"]), t)])
-		var p := st.find_province(g["province"])
-		var where: String = p.name if p != null else "your capital"
-		var gold_left := -1
-		if map.orders != null:
-			gold_left = int(map.orders.gold_after_recruits().get("gold_after", -1))
-		var pc := PanelContainer.new()
-		pc.name = "GhostPlate_%s" % String(g["province"])
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(UiPalette.PANEL_BG, 0.75)
-		sb.border_color = UiPalette.GILT
-		sb.set_border_width_all(1)
-		sb.set_corner_radius_all(6)
-		sb.content_margin_left = 6
-		sb.content_margin_right = 6
-		pc.add_theme_stylebox_override("panel", sb)
-		var lb := Label.new()
-		lb.text = ("+%d queued" % (g["types"] as Array).size()) + ("  ·  %d gold left" % gold_left if gold_left >= 0 else "")
-		lb.add_theme_font_size_override("font_size", 13)
-		lb.add_theme_color_override("font_color", UiPalette.GILT)
-		lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		pc.add_child(lb)
-		pc.mouse_filter = Control.MOUSE_FILTER_PASS
-		pc.tooltip_text = TooltipText.plain("Queued recruits: %s" % ", ".join(parts),
-			"They are paid when the turn ends and join your armies at %s. The translucent figures stand in the yard slot each will take (beside the army it joins, or a slot of its own; in the war camp outside the walls when the yard is full). Only you see them, and cancelling the order on the card removes them.%s" % [where,
-				(" After them you have %d gold left." % gold_left) if gold_left >= 0 else ""])
-		CodexLink.attach(pc, TooltipText.codex_for("recruit"), map.request_codex)
-		add_child(pc)
-		_ghost_plates.append(pc)
-
-
-## M3c S-4: a plate over each ghost scaffold (the viewer's own queued Fortify orders): what will rise, and that only
-## they see it. The order's own text is its tooltip.
-func _build_fortify_plates() -> void:
-	var want: Array = board.wv.fortify_ghosts()
-	for pid in _fortify_plates.keys():
-		if not want.has(pid):
-			(_fortify_plates[pid] as Node).queue_free()
-			_fortify_plates.erase(pid)
-	var map: Control = board.map
-	for pid in want:
-		if _fortify_plates.has(pid):
-			continue
-		var p: Province = map.state.find_province(pid)
-		var to: int = mini((p.fort_level if p != null else 0) + 1, FortData.MAX_BUILT)
-		var pc := PanelContainer.new()
-		pc.name = "FortifyPlate_%s" % pid
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(UiPalette.PANEL_BG, 0.75)
-		sb.border_color = UiPalette.GILT
-		sb.set_border_width_all(1)
-		sb.set_corner_radius_all(6)
-		sb.content_margin_left = 6
-		sb.content_margin_right = 6
-		pc.add_theme_stylebox_override("panel", sb)
-		var lb := Label.new()
-		lb.text = "%s queued" % SiegeRules.level_name(to)
-		lb.add_theme_font_size_override("font_size", 13)
-		lb.add_theme_color_override("font_color", UiPalette.GILT)
-		lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		pc.add_child(lb)
-		pc.mouse_filter = Control.MOUSE_FILTER_PASS
-		var i: int = map.orders.fortify_index(pid) if map.orders != null and map.orders.has_method("fortify_index") else -1
-		var order_text: String = String(map.orders.order_texts()[i]) if i >= 0 else ""
-		pc.tooltip_text = TooltipText.plain("Fortify queued: %s at %s" % [SiegeRules.fort_phrase(to), p.name if p != null else pid],
-			"The translucent scaffolding marks where it will rise. The gold is paid when the turn ends; from the next turn the scaffolding stands, and the walls rise inside it as the work is done. Only you see it.%s" % (("\n\n" + order_text) if not order_text.is_empty() else ""))
-		CodexLink.attach(pc, "fortify", map.request_codex)
-		add_child(pc)
-		_fortify_plates[pid] = pc
+	if map == null or map.orders == null or map.state == null:
+		return
+	for bm in OrderMarks.board_marks(OrderMarks.marks(map.orders)):
+		var t := OrderToken.make(bm, map.orders, OrderToken.Look.BOARD)
+		t.pressed.connect(func(i: int): map.show_order(i))
+		t.cancel_requested.connect(func(i: int): map.cancel_order(i))
+		add_child(t)
+		_order_marks.append(t)
 	_dirty = true
+
+
+func _on_table_layout() -> void:
+	_dirty = true
+
+
+## The order tokens on the board now (each has its `mark`).
+func order_marks() -> Array:
+	return _order_marks.duplicate()
+
+
+## Places the order tokens: a march's number on its arrow, every other token beside its province's stage, each in the first free spot
+## (clear of every province plate, every army plate and every token placed before it), nearest its anchor first. `taken` starts with
+## the army plates' rects. The plates are placed before this runs, so no token ever sits on a plate's label.
+func _place_order_marks(taken: Array) -> void:
+	var vp: Vector2 = size
+	for pl in _plates.values():
+		var root: Control = pl["root"]
+		if root.visible:
+			taken.append(Rect2(root.position, root.size).grow(2.0))
+	var hud := OrderSpots.hud_rects(board.map, global_position)  # the Table's pieces (the card, the guide, the plaques, the tray) draw over the board
+	taken.append_array(hud)
+	var bounds := Rect2(Vector2(2.0, 2.0), vp - Vector2(4.0, 4.0))
+	var t = board.wv.terrain
+	for tok in _order_marks:
+		var token := tok as OrderToken
+		if _playing:
+			token.visible = false
+			continue
+		## the whole token in a free spot; else just its number (still readable, and small enough to fit); else the spot that overlaps least
+		token.set_tight(false)
+		token.size = token.get_combined_minimum_size()
+		var rect := OrderSpots.free_spot(_mark_spots(token.mark, token.size, t), taken, bounds, true)
+		if rect.size.x <= 0.0:
+			token.set_tight(true)
+			token.size = token.get_combined_minimum_size()
+			rect = OrderSpots.free_spot(_mark_spots(token.mark, token.size, t), taken, bounds, false, hud)
+		token.visible = rect.size.x > 0.0
+		if not token.visible:
+			continue
+		token.position = rect.position.round()
+		taken.append(rect.grow(2.0))
+
+
+## The rects, best first, a token of `sz` for `mark` may take: along the arrow for a march (the middle first), else round the stage of
+## its province (the ghost block's anchor first for a recruit). Empty when the mark has nowhere on screen.
+func _mark_spots(m: Dictionary, sz: Vector2, t) -> Array:
+	var out := []
+	if String(m["class"]) == "march":
+		return OrderSpots.path_spots(move_points(String(m.army), String(m.to), String(m.via)), sz)
+	var pid := String(m.place)
+	var i: int = t.index_of(pid)
+	if i < 0:
+		return out
+	var c: Vector2 = t.centres[i]
+	var r: float = t.stage_r[i]
+	var base: Vector2 = board.project(c, 4.0)
+	if base.x < -9999:
+		return out
+	if String(m["class"]) == "recruit":
+		for g in board.armies.ghost_list():
+			if String(g["province"]) == pid:
+				var gp: Vector2 = board.project3(g["anchor"])
+				if gp.x > -9999:
+					out.append(Rect2(gp - Vector2(sz.x * 0.5, sz.y), sz))  # over the first ghost, as its plate stood
+				break
+	var rx: float = absf(board.project(c + Vector2(r, 0), 4.0).x - base.x)
+	var ry: float = maxf(absf(board.project(c + Vector2(0, -r), 4.0).y - base.y), rx * 0.45)
+	out.append_array(OrderSpots.ring_spots(base, rx, ry, sz))
+	return out
 
 
 func _unit_name(st: GameState, faction_id: String, type_id: String) -> String:
@@ -1015,35 +1016,7 @@ func _process(_delta: float) -> void:
 		placed.append(rect)
 		pc.position = rect.position.round()
 		pc.visible = s2.x > -100 and s2.x < vp.x + 100 and s2.y > -50 and s2.y < vp.y + 50
-	var ghosts: Array = board.armies.ghost_list()
-	for i in _ghost_plates.size():
-		var gp: PanelContainer = _ghost_plates[i]
-		if i >= ghosts.size() or _playing:
-			gp.visible = false
-			continue
-		var s3: Vector2 = board.project3(ghosts[i]["anchor"])
-		if gp.size.x <= 1.0:
-			gp.reset_size()
-		var grect := Rect2(s3 - Vector2(gp.size.x * 0.5, gp.size.y), gp.size)
-		for k in 4:
-			var hit := false
-			for o in placed:
-				if (o as Rect2).grow(1.0).intersects(grect):
-					grect.position.y = (o as Rect2).position.y - grect.size.y - 2.0
-					hit = true
-			if not hit:
-				break
-		placed.append(grect)
-		gp.position = grect.position.round()
-		gp.visible = s3.x > -100 and s3.x < vp.x + 100 and s3.y > -50 and s3.y < vp.y + 50
-	for pid in _fortify_plates.keys():
-		var fpc: PanelContainer = _fortify_plates[pid]
-		var y: Dictionary = board.wv.fort_geom(pid, "palisade", String(board.wv.map_kits().get(pid, "")))
-		var s4: Vector2 = board.project(y["centre"], 12.0)
-		if fpc.size.x <= 1.0:
-			fpc.reset_size()
-		fpc.position = (s4 - Vector2(fpc.size.x * 0.5, fpc.size.y)).round()
-		fpc.visible = not _playing and s4.x > -100 and s4.x < vp.x + 100 and s4.y > -50 and s4.y < vp.y + 50
+	_place_order_marks(placed)
 	if _playing:
 		_play_label.text = _play_text()
 		_update_caption()

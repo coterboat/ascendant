@@ -27,7 +27,7 @@ func _ink(img: Image) -> Dictionary:
 
 func test_every_name_loads_at_both_sizes() -> void:
 	UiIcons.warnings = PackedStringArray()
-	assert_eq(UiIcons.NAMES.size(), 24, "the set is 24 icons")
+	assert_eq(UiIcons.NAMES.size(), 25, "the set is 25 icons (UX-4 added muster)")
 	for icon_name in UiIcons.NAMES:
 		for px in [UiIcons.SIZE, UiIcons.SIZE_SMALL]:
 			var tex := UiIcons.icon(icon_name, px)

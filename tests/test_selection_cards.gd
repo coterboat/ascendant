@@ -8,7 +8,7 @@ extends "res://tests/test_case.gd"
 ##     real actions (March, Change route, Storm or Sally, Cast, Cancel), and your other armies in the province for ARM-1;
 ##   March: the card folds into a slim strip, registered with UiCancel as the march layer; Esc and a right-click end it;
 ##   a rival's army: what FogView allows, and no actions;
-##   the orders list stays under the tray's Orders button, with its cancel buttons;
+##   an order's card opens from its tray token (UX-4), with its Change and Cancel;
 ##   a click on the land is the province side; every number on a card explains itself.
 ## Placement at the three sizes on both boards is tests/test_table_geometry.gd's (the live probe measures the card in each state).
 ## Numbers and words come from the data and the rules, never from this file.
@@ -771,28 +771,31 @@ func test_your_other_armies_in_the_province_are_laid_out_on_the_card() -> void:
 	map.free()
 
 
-# --- the orders list under the tray's Orders button ----------------------------------------------------
+# --- an order's card, opened from its tray token (UX-4) ------------------------------------------------
 
-func test_the_trays_orders_button_shows_the_list_and_the_card_comes_back() -> void:
+func test_a_tray_token_shows_its_orders_card_and_the_card_comes_back() -> void:
 	var game := _game()
 	var map := game.map
 	var cards := map.cards
 	map.select_army("kingdom-1")
 	map.select_province("westwatch")
-	var hud := map.table()
-	hud.orders_button.pressed.emit()
-	assert_eq(cards.mode, "orders")
-	assert_true(_texts(map.details).has("Your orders this turn"))
+	assert_eq(game.session.current_orders().size(), 1, "the march is ordered")
+	var token: OrderToken = map.table().tray_slot().token_for(0)
+	assert_true(token != null, "and has its token")
+	token.pressed.emit(0)
+	assert_eq(cards.mode, "order")
+	assert_true(_texts(map.details).any(func(t): return String(t).begins_with("Order 1")), "the card says which order it is")
 	assert_true(cards.back_button.visible, "a way back to the card of what is selected")
-	assert_eq(map.details.find_children("Order_*", "", true, false).size(), 1)
+	assert_eq(map.details.find_children("OrderLine", "", true, false).size(), 1)
 	(_node(map.details, "CancelButton") as Button).pressed.emit()
-	assert_eq(game.session.current_orders().size(), 0, "cancel works as before")
-	assert_eq(cards.mode, "orders", "and the list stays")
-	cards.back_button.pressed.emit()
-	assert_eq(cards.mode, "army", "Back returns to the army card")
-	hud.orders_button.pressed.emit()
+	assert_eq(game.session.current_orders().size(), 0, "Cancel order works, through the map screen's own API")
+	assert_eq(cards.mode, "province", "and the card comes back, the order's place selected (the army is not)")
+	assert_eq(map.selected_army_id, "", "so focusing an order's place never reads as a second click")
+	map.select_army("kingdom-1")
+	map.select_province("westwatch")
+	map.table().tray_slot().token_for(0).pressed.emit(0)
 	assert_eq(map.ui_cancel.cancel(), "card", "Esc is the card layer")
-	assert_eq(cards.mode, "army", "and from the list it goes back to the card under it")
+	assert_eq(cards.mode, "province", "and from an order's card it goes back to the card under it")
 	assert_eq(map.ui_cancel.cancel(), "card")
 	assert_false(cards.visible, "the next closes the card")
 	game.free()
@@ -810,15 +813,20 @@ func test_every_number_on_every_card_has_a_breakdown_and_every_codex_link_resolv
 		cards.append(["province", p.id])
 	for a in s.armies:
 		cards.append(["army", a.id])
-	cards.append(["orders", ""])
+	cards.append(["order", "0"])
+	cards.append(["order", "1"])
+	map.select_army("kingdom-1")
+	map.select_province("westwatch")  # a march (order 1)
+	map.select_province("crownkeep")
+	map.queue_recruit(String(map.orders.recruitable_types()[0].id))  # and a recruit (order 2)
 	for entry in cards:
 		match String(entry[0]):
 			"province":
 				map.select_province(String(entry[1]))
 			"army":
 				map.select_army(String(entry[1]))
-			"orders":
-				map.show_orders()
+			"order":
+				map.show_order(int(entry[1]))
 		var where := "%s %s" % entry
 		for c in map.details.find_children("*", "", true, false):
 			if not (c is Label or c is Button) or not _shown(c, map.details):

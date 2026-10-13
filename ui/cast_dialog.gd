@@ -7,7 +7,7 @@ extends Control
 ## this turn (and the move that cancels), and the gold left after your queued rituals and recruits. Every word of the
 ## forecast comes from MagicRules.forecast_ritual, the same ritual_effect the rituals phase runs, so the forecast is the
 ## result unless a rival's ward turns it aside. Nothing changes until Confirm, which queues the CastOrder (confirmed);
-## it can be cancelled from the orders list until the turn ends.
+## it can be cancelled from its tray token until the turn ends.
 ##
 ## M5-8: the dialog docks at the right edge and leaves the board in view and clickable: the target is a ring on the board
 ## with every province in the ritual's range lit (rings_changed, which the map draws), and a click on a lit province picks
@@ -22,7 +22,7 @@ signal codex_requested(key: String)
 signal rings_changed(lit: Array, chosen: String)
 
 const PANEL_WIDTH := 580
-const NOTE := "Nothing changes until you cast. You can cancel the order from your orders list until you end the turn."
+const NOTE := "Nothing changes until you cast. You can cancel the order from its token in the tray until you end the turn."
 const SECTION_TITLES := {"effect": "What it will do", "blood": "The price in blood", "risk": "The risk", "pin": "The army"}
 
 var orders: OrdersController = null

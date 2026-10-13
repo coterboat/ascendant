@@ -102,9 +102,9 @@ func test_map_numbers_link_to_the_codex_and_every_key_exists() -> void:
 	var army_numbers := _assert_numbers_linked(map.details, "army card")
 	assert_true(army_numbers >= 5, "title, units, strength, the move order, unit counts (%d)" % army_numbers)
 	assert_eq(map.details.find_children("OrderLine", "Label", true, false).size(), 1, "the army card has its own order")
-	map.show_orders()
-	var list_numbers := _assert_numbers_linked(map.details, "orders list")
-	assert_true(list_numbers >= 3, "the order lines and gold after recruits (%d)" % list_numbers)
+	map.show_order(0)
+	var list_numbers := _assert_numbers_linked(map.details, "order card")
+	assert_true(list_numbers >= 2, "the order's number and its line (%d)" % list_numbers)
 	for id in map.regions:
 		var region: ProvinceRegion = map.regions[id]
 		assert_eq(String(region.income_label.get_meta(CodexLink.META)), "income", "%s's income badge" % id)
@@ -115,11 +115,13 @@ func test_map_numbers_link_to_the_codex_and_every_key_exists() -> void:
 	map.select_province("crownkeep")
 	for b in map.details.find_children("Recruit_*", "Button", true, false):
 		assert_eq(String(b.get_meta(CodexLink.META)), "recruit")
-	map.show_orders()
-	var lines := map.details.find_children("OrderLine", "Label", true, false)
-	assert_eq(lines.size(), 2)
-	assert_eq(String(lines[0].get_meta(CodexLink.META)), "move")
-	assert_eq(String(lines[1].get_meta(CodexLink.META)), "recruit")
+	var kinds := []
+	for i in 2:
+		map.show_order(i)  # each order's card, from its token
+		var lines := map.details.find_children("OrderLine", "Label", true, false)
+		assert_eq(lines.size(), 1)
+		kinds.append(String(lines[0].get_meta(CodexLink.META)))
+	assert_eq(kinds, ["move", "recruit"])
 	# An enemy province with an army: owner, terrain, its army's numbers.
 	map.select_province("fangridge")
 	_assert_links_valid(map, "enemy capital")
@@ -137,7 +139,7 @@ func test_right_click_opens_the_codex_at_the_entry() -> void:
 		game.map.details.find_children("Recruit_*", "Button", true, false)[0]]
 	game.map.select_army("kingdom-1")
 	samples.append(game.map.details.find_children("StrengthLabel", "Label", true, false)[0])
-	game.map.show_orders()
+	game.map.show_order(0)
 	samples.append_array([game.map.details.find_children("OrderLine", "Label", true, false)[0],
 		game.map.regions["fangridge"].army_box.get_child(0),
 		game.map.regions["crownkeep"].income_label])

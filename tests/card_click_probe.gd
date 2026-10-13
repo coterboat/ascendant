@@ -6,7 +6,8 @@ extends SceneTree
 ##   * a click on the Recruit button opens its section, and a click on a recruit button queues the order;
 ##   * a click on March folds the card into a slim strip; Esc ends the pick and brings the card back;
 ##   * March again, then a click on a neighbouring province on the board orders the march (the board's own picking);
-##   * a click on Cancel order withdraws it; the tray's Orders button shows the list and Esc goes back to the card.
+##   * a click on Cancel order withdraws it; a click on an order's tray token (UX-4) opens its card and Esc goes back to the card under it
+##     (tests/tray_probe.gd drives the tray itself: cancelling from its tokens, the numbers on the board).
 ## It prints one PASS or FAIL line a check and a last line, "CLICK_PROBE OK" or "CLICK_PROBE FAILED n". Never touches the player's
 ## settings or saves (they go to a scratch folder under user://).
 ##
@@ -143,9 +144,13 @@ func _run() -> void:
 	_check(cancel != null, "Cancel order is on the card")
 	await _click(_centre(cancel))
 	_check(game.session.current_orders().filter(func(o): return o is MoveOrder).is_empty(), "a real click on Cancel order withdraws it")
-	# the tray's Orders button
-	await _click(_centre(map.table().orders_button))
-	_check(cards.mode == "orders", "the tray's Orders button shows the list")
+	# a tray token: the recruit ordered at the start has its token, and a real click on it
+	map.select_province(String(map.state.find_faction("kingdom").capital))
+	await _frames(8)
+	var tokens: Array = map.table().tray_slot().tokens()
+	_check(tokens.size() >= 1, "the recruit has its token in the tray")
+	await _click(_centre(tokens[0]))
+	_check(cards.mode == "order", "a real click on a tray token opens its order's card")
 	await _key(KEY_ESCAPE)
 	_check(cards.mode == "army" or cards.mode == "province", "Esc goes back to the card under it: %s" % cards.mode)
 	var failed := results.filter(func(r): return String(r).begins_with("FAIL"))

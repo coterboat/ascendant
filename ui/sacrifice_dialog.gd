@@ -4,7 +4,7 @@ extends Control
 ## see a before → after preview of your own numbers (kept power, the ruler's hit points, attack, defense,
 ## ability rank and effect, every unit stat and recruit price it changes, income this turn, your queued
 ## attacks fought again, and any queued order it would remove). Nothing changes until Confirm, which
-## queues the Sacrifice order (confirmed); it can be cancelled from the orders list until the turn ends.
+## queues the Sacrifice order (confirmed); it can be cancelled from its tray token until the turn ends.
 ## Every number comes from Forecast.sacrifice, which reads the same copy the sacrifice phase resolves
 ## with, so the preview is what happens. Opened from the ruler panel (MapScreen.open_sacrifice_dialog).
 

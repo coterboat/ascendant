@@ -419,6 +419,52 @@ func test_the_board_follows_the_state_owners_armies_and_queued_recruits() -> voi
 	game.free()
 
 
+## UX-4 (design/UX_WAR_TABLE.md §3.4): the order arrows carry their numbers and the ghost recruits their token. Every queued march has its
+## arrow and a number token for it (a march's mark: its number alone, in the middle of the arrow, the same number as the tray's); a hover
+## preview has none; the recruit's token (the number and "+1 unit") replaced the dashed plate over its ghost; and cancelling the march
+## moves the recruit up to number 1 on the board.
+func test_each_queued_arrow_has_its_number_and_a_recruit_its_token_in_place_of_the_ghost_plate() -> void:
+	var game := _game_with_board()
+	var b: Board3D = game.map.board
+	var map: MapScreen = game.map
+	var st: GameState = map.state
+	var f := st.find_faction(map.viewing_faction_id)
+	var army: Army = null
+	for a in st.armies:
+		if a.owner == f.id and a.ruler == null:
+			army = a
+			break
+	var here: Province = st.find_province(army.location)
+	assert_eq(map.queue_move(army.id, here.neighbors[0]), "", "a march")
+	map.selected_army_id = ""
+	map.select_province(f.capital)
+	assert_eq(map.queue_recruit(String(map.orders.recruitable_types()[0].id)), "", "and a recruit")
+	var arrows: Array = b.overlay.arrow_plan().filter(func(a): return not a.preview)
+	var marches: Array = b.overlay.order_marks().filter(func(t): return t.mark["class"] == "march")
+	assert_eq(arrows.size(), 1)
+	assert_eq(marches.size(), arrows.size(), "a number token for every arrow")
+	assert_eq([marches[0].mark.army, marches[0].mark.to], [arrows[0].army, arrows[0].to], "the token is the arrow's own")
+	assert_eq(marches[0].chip.text, str(map.orders.number_of(0)), "its number is the order's place in the list, as in the tray")
+	assert_eq(marches[0].chip.text, map.table().tray_slot().token_for(0).chip.text, "the same as the tray's")
+	var recruit: OrderToken = b.overlay.order_marks().filter(func(t): return t.mark["class"] == "recruit")[0]
+	assert_eq([recruit.chip.text, recruit.label.text], ["2", "+1 unit"], "the recruit's token: its number and its count")
+	assert_eq(b.armies.ghost_count(), 1, "the translucent ghost still stands where it will join")
+	assert_true(b.overlay.find_children("GhostPlate_*", "", true, false).is_empty(), "but the dashed plate over it is gone")
+	assert_true(b.overlay.find_children("FortifyPlate_*", "", true, false).is_empty(), "and so is the fortify plate")
+	# a hover preview is an arrow, not an order: it has no number
+	b.hover_id = here.neighbors[1]
+	map.selected_army_id = ""
+	map.select_army(army.id)
+	map.preview_move(here.neighbors[1])
+	assert_eq(b.overlay.arrow_plan().filter(func(a): return a.preview).size(), 1, "the hover preview is there")
+	assert_eq(b.overlay.order_marks().size(), 2, "and adds no token: the march and the recruit")
+	map.clear_preview()
+	map.cancel_order(0)
+	assert_eq(b.overlay.arrow_plan().filter(func(a): return not a.preview), [], "cancelling the march takes its arrow")
+	assert_eq(b.overlay.order_marks().map(func(t): return t.chip.text), ["1"], "and its token, and the recruit is number 1")
+	game.free()
+
+
 func _check_board_matches(b: Board3D, st: GameState, when: String) -> void:
 	var painted: Dictionary = b.wv.owners_painted()
 	var seats: Array = b.map.seat_order()

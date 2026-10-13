@@ -133,9 +133,9 @@ func queue(node_id: String) -> String:
 	var status := why
 	if why.is_empty():
 		var fc := Forecast.research(game.map.state, viewer(), game.session.current_orders())
-		status = "Research order given: %s It replaces any research order you gave this turn, and you can cancel it in your orders list until you end the turn." % String(fc.get("text", ""))
+		status = "Research order given: %s It replaces any research order you gave this turn, and you can cancel it from its token in the tray until you end the turn." % String(fc.get("text", ""))
 		if game.map.has_method("_orders_changed"):
-			game.map._orders_changed()  # the side panel's orders list, End turn's count and this chip
+			game.map._orders_changed()  # the tray's token, End turn's count and this chip
 	if panel != null and panel.visible:
 		panel.set_orders(game.session.current_orders(), status)
 	return why
@@ -147,7 +147,7 @@ func queue_spellbook(order: Array, off: Array) -> String:
 	var why := game.session.queue_spellbook(order, off)
 	var status := why
 	if why.is_empty():
-		status = "Battle spellbook set: %s. It applies from this turn and is kept until you change it; you can cancel it in your orders list until you end the turn." % MagicRules.spellbook_text(order, off)
+		status = "Battle spellbook set: %s. It applies from this turn and is kept until you change it; you can cancel it from its token in the tray until you end the turn." % MagicRules.spellbook_text(order, off)
 		if game.map.has_method("_orders_changed"):
 			game.map._orders_changed()
 	if panel != null and panel.visible:

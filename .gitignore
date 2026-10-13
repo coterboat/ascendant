@@ -30,3 +30,7 @@ review/*/
 # What `review.py canon` writes for the demo batch and for the tool's own tests (the real canon is committed)
 assets/_concept/lore/sample_*/
 assets/_concept/lore/zz_test_*/
+
+# Rig lab: models are big and local (tools/rig_lab/README.md)
+tools/rig_lab/models/*
+!tools/rig_lab/models/.gdignore

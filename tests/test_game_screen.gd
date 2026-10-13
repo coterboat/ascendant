@@ -45,10 +45,9 @@ func _recruit_button(game: GameScreen, unit_type_id: String) -> Button:
 	return null
 
 
-## The orders list is the tray's Orders button's: it shows in the card's place.
+## The orders are the tray's tokens (UX-4): one for each queued order.
 func _order_rows(game: GameScreen) -> Array:
-	game.map.show_orders()
-	return game.map.details.find_children("Order_*", "", true, false)
+	return game.map.table().tray_slot().tokens()
 
 
 ## After End turn: the cover is up and the map hidden. Ready hands the computer over.
@@ -136,7 +135,7 @@ func test_three_scripted_turns_through_the_game_screen() -> void:
 	# Turn 1, seat 1: a two-click move and a recruit from the capital's recruit button.
 	_order_through_map(game, [["kingdom-1", "westwatch"], ["spearmen"]])
 	assert_eq(game.end_turn_button.text, "End turn\n2 orders", "the seal counts the queued orders")
-	assert_eq(game.map.table().orders_button.text, "Orders (2)", "and so does the tray's Orders button")
+	assert_eq(game.map.table().tray_slot().tokens().size(), 2, "and so do the tray's tokens")
 	assert_true(game.end_turn_button.tooltip_text.contains("player 2 (Thornmane Clans)"), "and says who plays next")
 	assert_eq(game.map.orders.orders(), session.current_orders(), "the map shows the session's orders")
 	assert_eq(_order_rows(game).size(), 2)
@@ -263,6 +262,7 @@ func test_seat_two_never_sees_seat_one_orders() -> void:
 	var mine := game.map.orders.order_texts()
 	assert_eq(mine.size(), 2)
 	assert_eq(_order_rows(game).size(), 2, "seat 1 sees both orders listed")
+	game.map.show_order(0)  # its tray token opens the order's card, which has its line
 	assert_true(_visible_text(game).contains(mine[0]))
 	game.end_turn_button.pressed.emit()
 	assert_eq(game.map.orders.orders(), [], "nothing to draw while the computer is passed")
@@ -275,7 +275,7 @@ func test_seat_two_never_sees_seat_one_orders() -> void:
 	assert_eq(game.map.orders.orders(), [], "no arrows: seat 2 has no moves queued")
 	assert_eq(_order_rows(game).size(), 0, "no order rows")
 	assert_eq(game.end_turn_button.text, "End turn\nno orders")
-	assert_eq(game.map.table().orders_button.text, "Orders", "seat 2's tray has no orders of seat 1")
+	assert_eq(game.map.table().tray_slot().tokens().size(), 0, "seat 2's tray has no orders of seat 1")
 	assert_eq(game.map.selected_army_id, "", "seat 1's selection is not carried over")
 	assert_eq(game.map.status_text, "")
 	var text := _visible_text(game)
@@ -317,7 +317,8 @@ func test_move_into_an_enemy_held_province_shows_forecast_battle_odds() -> void:
 	assert_eq(game.session.current_orders().size(), 1)
 	var rows := _order_rows(game)
 	assert_eq(rows.size(), 1)
-	var line: Label = rows[0].get_child(0)
+	game.map.show_order(0)  # a click on its tray token opens the order's card: its line, with the forecast
+	var line: Label = game.map.details.find_child("OrderLine", true, false)
 	assert_true(line.text.contains(verdict), line.text)
 	for r in odds.reasons:
 		assert_true(line.text.contains(r), "order line reason: %s" % r)
