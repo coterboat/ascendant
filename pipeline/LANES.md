@@ -43,7 +43,7 @@ One full Godot suite or autoplay matrix at a time on this Mac, across the studio
 ## The lanes
 
 ### UI: `ascendant lane UI`
-The War Table (`design/UX_WAR_TABLE.md`) and the screens: UX-5, UX-8, UX-9, then UI fixes from playtests.
+The War Table (`design/UX_WAR_TABLE.md`) and the screens: UX-5 #220, UX-8 #221, UX-9, then UI fixes from playtests.
 - Owns `ui/`, `world3d/board_overlay.gd`, `tools/shots/`. A ticket that touches `ui/map_screen.gd` or `ui/game_screen.gd` says so
   in its PR; the director merges those one at a time.
 - Every ticket: before and after shots at 1600x900, 1600x900 at 125% and 1280x720 (`tools/shots/play_shots.gd --defaults --fresh`),
@@ -54,7 +54,7 @@ The art pipeline: Review Table batches (`review/<batch>/`, `tools/review/README.
 - Never accepts or rejects for Alex; he does that in the Review Table.
 - **Base first** (Alex 10-8): a few style samples go to Alex before a full batch, and an approved base before anything derived from it.
 - Each batch logs its credit spend. The 2D art Alex still wants: concept art (also as model3d inputs), portraits, lore and codex art.
-- Queue: UX-ART (the 32 notice medallions, keys in #218's PR body; `NoticeArt` picks up `assets/ui/notices/<key>.png` with no code
+- Queue: UX-ART #222 (the 32 notice medallions, keys in #218's PR body; `NoticeArt` picks up `assets/ui/notices/<key>.png` with no code
   change), then the rigged-model line (one Bake3D model per unit, our own clips; `tools/rig_lab/`), then what Alex picks.
 
 ### Rules and AI: `ascendant lane AI`
