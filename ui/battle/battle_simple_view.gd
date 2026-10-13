@@ -896,23 +896,34 @@ func _fit_texts() -> void:
 			break
 
 
-## The caption plate: as wide as its words (at most the band, less a margin), centred on the band, its foot CAPTION_GAP
-## above the controls.
+## The caption plate: as wide as its words (at most the free band, less a margin), centred on the free band, its foot
+## CAPTION_GAP above the controls. A line too long for that wraps to a second line (no more), and the plate grows upward.
 func _place_caption() -> void:
 	var band := free_band()
 	var v := view_size()
-	var w := 0.0
+	var got := 0.0
+	if hint_button.visible:
+		got = 12.0 + _font_of(hint_button).get_string_size(hint_button.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x + 24.0
+	var widest := 0.0
 	for k in 2:
 		var l: Label = caption_labels[k]
-		if l.text.is_empty():
+		if not l.text.is_empty():
+			widest = maxf(widest, _font_of(l).get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size_of(l, 18)).x)
+	var w := clampf(widest + got + 32.0, 240.0, minf(CAPTION_MAX_W, band.size.x - 2.0 * MARGIN))
+	var inner := w - got - 30.0
+	var h := 14.0
+	for k in 2:
+		var l: Label = caption_labels[k]
+		l.visible = k == 0 or not l.text.is_empty()
+		if not l.visible:
 			continue
-		w = maxf(w, _font_of(l).get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size_of(l, 18)).x)
-	if hint_button.visible:
-		w += 12.0 + _font_of(hint_button).get_string_size(hint_button.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x + 24.0
-	w = clampf(w + 52.0, 240.0, minf(CAPTION_MAX_W, band.size.x - 2.0 * MARGIN))
-	var two := not (caption_labels[1] as Label).text.is_empty()
-	(caption_labels[1] as Label).visible = two
-	var h := 44.0 + (22.0 if two else 0.0)
+		var fs := _font_size_of(l, 18)
+		var line_h := _font_of(l).get_height(fs)
+		var lines := 1
+		if not l.text.is_empty():
+			lines = clampi(ceili(_font_of(l).get_multiline_string_size(l.text, HORIZONTAL_ALIGNMENT_CENTER, inner, fs).y / line_h - 0.01), 1, 2)
+		l.custom_minimum_size = Vector2(inner, line_h * lines)
+		h += line_h * lines
 	caption_strip.custom_minimum_size = Vector2(w, h)
 	caption_strip.size = Vector2(w, h)
 	caption_strip.position = Vector2(roundf(band.position.x + (band.size.x - w) / 2.0), v.y - controls.bottom_reserve() - CAPTION_GAP - h)
@@ -1590,7 +1601,8 @@ func _build_caption() -> void:
 		l.name = "Caption%d" % k
 		l.add_theme_font_override("font", UiFonts.body())
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		l.clip_text = true
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.max_lines_visible = 2
 		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
 		col.add_child(l)

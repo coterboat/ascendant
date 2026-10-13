@@ -724,7 +724,8 @@ func _assert_fits(v: BattleSimpleView, what: String) -> void:
 			assert_false(a.grow(-0.5).intersects(b.grow(-0.5)), "%s: the %s and the %s keep apart (%s, %s)" % [what, names[i], names[j], a, b])
 	var band := v.stage_band()
 	assert_true(band.position.y >= v.plates[0].position.y + v.plates[0].size.y, "%s: the stage's band starts under the plates" % what)
-	assert_true(band.end.y <= v.caption_strip.position.y + 0.5, "%s: and ends above the caption" % what)
+	assert_true(band.end.y <= v.view_size().y - v.controls.bottom_reserve(), "%s: and ends above the controls" % what)
+	assert_true(v.caption_strip.position.y >= v.view_size().y * 2.0 / 3.0 - 0.5, "%s: the caption is in the lower third" % what)
 	if pieces.has("why panel") and v._why_docks:
 		assert_true(band.end.x <= v.why_panel.position.x + 0.5, "%s: the band ends at the docked why panel" % what)
 	if pieces.has("result card"):

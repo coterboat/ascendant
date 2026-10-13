@@ -57,6 +57,8 @@ const QUEUE_H := 44.0
 const GAP := 6.0
 const TAB := Vector2(36, 104)
 const QUEUE_MAX_W := 900.0
+## How far under the band's top the Why tab hangs (clear of the morale tags under the plates).
+const TAB_DROP := 40.0
 ## How close to a round's start (s at 1x) counts as sitting on it, for ← and →.
 const ROUND_EPS := 0.001
 ## The key of every action (§5.3), as the tooltips name them.
@@ -157,7 +159,7 @@ func tick(_real_delta: float = 0.0) -> void:
 
 
 ## UX-8: lays the controls out over a view of `view`: the bar along the bottom, the queue row above it centred on
-## `band` (the stage's free area), and the Why tab hanging left of `tab_right`, just under `band`'s top.
+## `band` (the stage's free area), and the Why tab hanging left of `tab_right`, TAB_DROP under `band`'s top.
 func fit(view: Vector2, band: Rect2, tab_right: float) -> void:
 	position = Vector2.ZERO
 	size = view
@@ -168,7 +170,7 @@ func fit(view: Vector2, band: Rect2, tab_right: float) -> void:
 	queue_row.position = Vector2(roundf(band.position.x + (band.size.x - qw) / 2.0), view.y - BAR_H - GAP - QUEUE_H)
 	var tab: Button = buttons.why
 	tab.size = TAB
-	tab.position = Vector2(tab_right - TAB.x, band.position.y + 8.0)
+	tab.position = Vector2(tab_right - TAB.x, band.position.y + TAB_DROP)
 	_size_scrubber()
 
 
