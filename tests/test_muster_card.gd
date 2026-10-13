@@ -384,12 +384,15 @@ func test_a_new_army_can_be_selected_marched_and_cancelled() -> void:
 	map.free()
 
 
-func test_the_orders_list_shows_the_muster_with_its_sentence_and_a_cancel() -> void:
+func test_the_muster_token_opens_its_card_with_its_sentence_and_a_cancel() -> void:
 	var f := _two_armies()
 	var map: MapScreen = f.map
 	_board(map).button_order("split")
 	_board(map).split_button.pressed.emit()
-	map.show_orders()
+	var token := map.table().tray_slot().token_for(0)
+	assert_true(token != null and token.mark["class"] == "muster", "the split has its token in the tray")
+	assert_eq(token.chip.text, "1", "numbered 1")
+	token.pressed.emit(0)  # a click on it opens the order's card
 	var lines := map.details.find_children("OrderLine", "", true, false)
 	assert_eq(lines.size(), 1)
 	assert_true(String((lines[0] as Label).text).begins_with("Split "), (lines[0] as Label).text)
