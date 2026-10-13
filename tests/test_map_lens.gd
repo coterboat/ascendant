@@ -568,13 +568,15 @@ func test_the_legend_card_sits_bottom_left_with_the_question_the_scale_and_the_t
 			assert_true((at_left and at_bottom) or (at_left and rect.end.y <= card.position.y) or (at_bottom and absf(rect.position.x - card.end.x - TableLayout.GAP) < 0.5),
 				"%s's legend is bottom left, or above the card docked there, or beside it (%s, card %s)" % [id, rect, card])
 			assert_false(hud.overflowed().has("legend"), "with room")
+			if not hud.placed().has("guide") and not hud.placed().has("notice"):
+				assert_eq(rect.position.x, safe.position.x + TableLayout.GAP, "%s's legend is short enough for the left column at %s (%d px tall), clear of the map" % [id, size, rect.size.y])
 			for other in hud.placed():
 				if other != "legend":
 					assert_false(TableLayout.overlaps(rect, hud.placed()[other]), "%s's legend doesn't overlap the %s" % [id, other])
 	map.lens_host.activate("sight")
 	var rows := FogView.legend_rows(map.state)
 	for row in rows:
-		assert_true(map.lens_ui.legend.text().contains(String(row.title)), "the Sight lens carries the sight legend's %s" % row.title)
+		assert_true(map.lens_ui.legend.text().contains(LensLegend.row_label(row)), "the Sight lens carries the sight legend's %s" % row.title)
 	map.lens_host.clear()
 	assert_false(map.lens_ui.legend.visible)
 	game.free()

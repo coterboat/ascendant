@@ -233,7 +233,7 @@ static func _owner(out: Dictionary, state: GameState, viewer: String, seats: Arr
 		"pattern": SeatEmblem.NOBODY_SHAPE, "seat": -1})
 	out.legend = {"scale": {"kind": "swatches", "steps": steps}, "totals": [],
 		"notes": ["Seat colours at full strength over muted land, with a thick border; each plate names the owner.", "Owners are public: fog never hides them."],
-		"notes_2d": ["On the 2D map: a flat colour, without the 3D board's thick borders."]}
+		"notes_2d": ["On the 2D map: a flat colour, without the thick borders."]}
 
 
 # --- 2. Income: what is it worth? (glow) --------------------------------------------------------------
@@ -278,7 +278,7 @@ static func _income(out: Dictionary, state: GameState, viewer: String, seats: Ar
 	out.legend = {"scale": {"kind": "ramp", "steps": steps, "low": "%d gold" % lo, "high": "%d gold" % hi}, "totals": totals,
 		"notes": ["Base income only: these totals are what the land pays before mandates, paths and cut-offs, and say so. A rival's real income is never worked out here.",
 			"Dark umber is poor land, bright gilt is rich; the plate gives the number."],
-		"notes_2d": ["On the 2D map: a flat colour, without the 3D board's glow."]}
+		"notes_2d": ["On the 2D map: a flat colour, without the glow."]}
 
 
 # --- 3. Threat: what could hit me next turn? (hatch) ----------------------------------------------------
@@ -407,7 +407,7 @@ static func _threat(out: Dictionary, state: GameState, viewer: String) -> void:
 		"totals": totals,
 		"notes": ["An estimate from sightings only: one step; roads may reach further. Armies you can't see aren't counted.",
 			"Denser red hatching, more strength. An amber pulse: your armies can get there too."],
-		"notes_2d": ["On the 2D map: a flat red, darker for more, without the hatching or the pulse."]}
+		"notes_2d": ["On the 2D map: a flat red, without the hatching or the pulse."]}
 
 
 # --- 4. Magic: where is magic at work? (glow) -----------------------------------------------------------
@@ -482,7 +482,7 @@ static func _magic(out: Dictionary, state: GameState, viewer: String) -> void:
 			totals.append("%s: everywhere, %s's, through turn %d." % [String(g.name), _faction_name(state, String(g.faction)), int(g.until)])
 	out.legend = {"scale": {"kind": "ramp", "steps": steps, "low": "one", "high": "%d or more" % maxi(top, 3)}, "totals": totals,
 		"notes": ["Only what is in play, and only what you can see: a rival's enchantment shows where you see its province.", "Brighter violet and more sigils, more at work."],
-		"notes_2d": ["On the 2D map: a flat violet, without the 3D board's glow and sigils."]}
+		"notes_2d": ["On the 2D map: a flat violet, without the glow and sigils."]}
 
 
 # --- 5. Making: how far has each faction made the land its own? (marks) ----------------------------------
@@ -567,7 +567,7 @@ static func _making(out: Dictionary, state: GameState, viewer: String, seats: Ar
 	out.legend = {"scale": {"kind": "ramp", "steps": steps, "low": "1 mark", "high": "all 4"}, "totals": totals,
 		"notes": ["How deeply each faction holds its land. What it will do comes later.",
 			"A mark for owning it, one after 3 turns held and one after 6, and one where the owner's path shapes the land; a capital has all four."],
-		"notes_2d": ["On the 2D map: a flat owner colour and the marks, without the 3D board's glow."]}
+		"notes_2d": ["On the 2D map: a flat owner colour, without the glow."]}
 
 
 # --- 6. Sight (provisional): why do I see what I see? (ring) ---------------------------------------------
@@ -700,13 +700,13 @@ static func _sight(out: Dictionary, state: GameState, viewer: String, orders: Ar
 		var parts := [TooltipText.count(int(counts.owned), "province"), TooltipText.count(int(counts.fort), "fort"), TooltipText.count(int(counts.army), "army", "armies")]
 		if int(counts.far_sight) > 0:
 			parts.append("%d Far Sight" % int(counts.far_sight))
-		totals.append("Your sources: %s." % RulerRules._and_list(parts))
-		totals.append("In sight: %d of %d provinces; next turn %d more from your queued marches (dashed)." % [lit.size(), state.provinces.size(), newly])
+		totals.append("Seen from %s." % ", ".join(parts))
+		totals.append("In sight: %d of %d; next turn %d more (dashed)." % [lit.size(), state.provinces.size(), newly])
 	notes.append("Warm lantern rings light the land each source sees, brightest at the source; a target marks Far Sight. A dashed ring: next turn's sight from your queued marches.")
 	notes.append("Provisional: the veil already shows sight. This lens explains it, and earns its place when spying gives it more to show.")
 	out.legend = {"scale": {"kind": "ramp", "steps": steps_scale, "low": "two steps away", "high": "the source"}, "totals": totals, "notes": notes,
 		"rows": FogView.legend_rows(state) if fog else [],
-		"notes_2d": ["On the 2D map: land in sight is lit flat, without the 3D board's lantern rings."]}
+		"notes_2d": ["On the 2D map: lit flat, without the lantern rings."]}
 
 
 # --- the ground's sums, on the CPU ----------------------------------------------------------------------

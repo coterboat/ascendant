@@ -690,12 +690,18 @@ func test_the_vision_map_mode_is_retired_and_its_legend_text_is_kept() -> void:
 	var card := map.lens_ui.legend
 	assert_true(card.visible, "the Sight lens shows its legend")
 	var shown := card.text()
-	for r in rows:
-		assert_true(shown.contains("%s: %s" % [r.title, r.short]), "the Sight lens's legend has the row %s" % r.title)
 	var grid := card.find_child("SightRows", true, false)
-	assert_true(grid != null and grid.get_child_count() == rows.size() * 2, "a swatch and a line per row")
-	for l in grid.find_children("SightRow*", "Label", true, false):
-		assert_false((l as Label).tooltip_text.is_empty(), "each row's hover says what it means")
+	assert_true(grid != null and grid.get_child_count() == rows.size() * 2, "a swatch and a label per row")
+	var labels := []
+	for i in range(1, grid.get_child_count(), 2):
+		labels.append(grid.get_child(i))
+	assert_eq(labels.size(), rows.size())
+	for i in rows.size():
+		var r: Dictionary = rows[i]
+		assert_true(shown.contains(LensLegend.row_label(r)), "the Sight lens's legend has the row %s" % r.title)
+		var tip := _flat((labels[i] as Label).tooltip_text)
+		for part in [String(r.title), String(r.short), _flat(String(r.text))]:
+			assert_true(tip.contains(part), "the row %s says on hover: %s" % [r.title, part])
 	# and its "why do I see this": every province's sight sources, from FogRules.sight_sources, in each plate's hover
 	var lens := map.lens_ui.result()
 	for src in FogRules.sight_sources(view, CROWN):

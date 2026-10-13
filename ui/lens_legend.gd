@@ -148,21 +148,32 @@ static func _clipped(swatch: Control, at_size: Vector2) -> Control:
 	return clip
 
 
-## The sight legend's rows (FogView.legend_rows): the veil's swatch for each level, its title and what it means in short.
+## The rows whose swatch already shows their title (a plate's "≈20", a ghost's "≈10", Far Sight's eye): the label is their short text.
+const SWATCH_TITLED := ["plate", "ghost", "eye"]
+
+
+## The sight legend's rows (FogView.legend_rows), two to a line so the card stays short beside the selection card: the veil's swatch for
+## each level with its name (or, for the plates and the eye, what the swatch means), and the row's whole text on hover.
 func _sight_rows(rows: Array) -> Control:
 	var grid := GridContainer.new()
 	grid.name = "SightRows"
-	grid.columns = 2
+	grid.columns = 4
 	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 2)
 	for r in rows:
-		grid.add_child(_clipped(ProvinceRegion.legend_swatch(String(r.key)), Vector2(36, 20)))
-		var l := _label("SightRow", "%s: %s" % [String(r.title), String(r.short)], UiPalette.TYPE_SMALL, UiPalette.TEXT_SECONDARY)
-		l.custom_minimum_size = Vector2(W - 70.0, 0)
-		l.tooltip_text = TooltipText.wrap_text(String(r.text))
+		grid.add_child(_clipped(ProvinceRegion.legend_swatch(String(r.key)), Vector2(34, 18)))
+		var l := _label("SightRow", row_label(r), UiPalette.TYPE_SMALL, UiPalette.TEXT_SECONDARY)
+		l.custom_minimum_size = Vector2((W - 24.0) * 0.5 - 40.0 - 3.0, 0)
+		l.mouse_filter = Control.MOUSE_FILTER_PASS
+		l.tooltip_text = TooltipText.plain("%s: %s" % [String(r.title), String(r.short)], String(r.text))
 		grid.add_child(l)
 	return grid
+
+
+## What a sight row's label says beside its swatch.
+static func row_label(r: Dictionary) -> String:
+	return String(r.short) if SWATCH_TITLED.has(String(r.key)) else String(r.title)
 
 
 ## One swatch: its colour, and the mark that says it without colour (a seat emblem, a density of hatching, sigils, rings or pips).
