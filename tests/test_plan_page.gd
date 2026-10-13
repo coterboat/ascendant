@@ -188,6 +188,8 @@ func test_the_sentences_follow_the_trays_numbers_with_the_same_forecasts() -> vo
 	if not research.is_empty():
 		assert_true(bool(research[0].realm) and int(research[0].number) == 0, "research is a realm order, unnumbered, after the placed ones")
 		assert_true(String(research[0].text).contains(String(Forecast.research(c.state, CROWN, c.orders()).text)), "with its finish turn")
+		var fc := Forecast.research(c.state, CROWN, c.orders())
+		assert_true(String(research[0].head).contains("turn %d" % int(fc.done_turn)), "and the line shows its finish turn: %s" % research[0].head)
 	# the rows the page draws, in that order
 	var rows := _page(game).rows
 	assert_eq(rows.map(func(r): return int(r.get_meta("index"))), want)

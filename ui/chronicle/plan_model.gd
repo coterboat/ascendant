@@ -12,9 +12,12 @@ extends RefCounted
 ##     end-turn warnings"; the game has none besides these needs.)
 ##   - the gold after the orders (OrdersController.gold_after_recruits, the tray's last token).
 ##
+## A sentence this long or shorter shows whole (research with its finish turn, a recruit with its price); a longer one shows its first sentence.
+const WHOLE := 140
+
 ## A SENTENCE is {"index" (into orders()), "number" (0 for a realm order), "realm", "class" (OrderMarks.class_of), "title" (its class's
-## name: "March"), "icon" (UiIcons), "text" (the whole sentence, order_text), "head" (its first sentence: the order itself, with its
-## price or finish turn), "forecast" (a march into a fight: the battle odds line as order_text has it, cut to its first sentence; "" for
+## name: "March"), "icon" (UiIcons), "text" (the whole sentence, order_text), "head" (the sentence, or its first sentence when it is
+## longer than WHOLE: the order itself), "forecast" (a march into a fight: the battle odds line as order_text has it, cut to its first sentence; "" for
 ## the rest), "tip", "codex" (its codex entry), "place" (the province its board mark stands in, "" for a realm order)}. The page shows
 ## the head and the forecast, the whole sentence and its breakdown on hover: the essential line visible, the rest a hover away.
 
@@ -44,7 +47,12 @@ static func sentence(c: OrdersController, index: int) -> Dictionary:
 		var line := String(odds.get("line", ""))
 		if (bool(odds.get("enemy_present", false)) or bool(odds.get("fog", false))) and line != OrdersController.NO_ENEMY_TEXT and text.contains(line):
 			forecast = first_sentence(line).get_slice(" ⓘ", 0).strip_edges()  # the fog forecast's ⓘ: its guesses are in the tooltip
-	var head := first_sentence(text)
+	var head := text if text.length() <= WHOLE else first_sentence(text)
+	if o is ResearchOrder and text.length() > WHOLE:
+		# research: through the sentence that says when it is done (order_text's own words, from the same forecast)
+		var fc := Forecast.research(c.state, c.faction_id, c.orders())
+		if bool(fc.get("ok", false)) and int(fc.get("done_turn", 0)) > 0:
+			head = through_sentence_with(text, "turn %d" % int(fc.done_turn))
 	if not forecast.is_empty() and head.contains(forecast):
 		forecast = ""
 	return {"index": index, "number": number, "realm": number == 0, "class": cls, "title": String(OrderMarks.CLASS_NAME.get(cls, "Order")),
@@ -67,6 +75,19 @@ static func first_sentence(text: String) -> String:
 			var nx := text[i + 2]
 			if nx == nx.to_upper() and nx != nx.to_lower() or nx.is_valid_int():
 				return text.substr(0, i + 1)
+	return text
+
+
+## `text` up to the end of the first sentence that contains `needle` (the whole text when none does).
+static func through_sentence_with(text: String, needle: String) -> String:
+	var rest := text
+	var out := ""
+	while not rest.is_empty():
+		var one := first_sentence(rest)
+		out += one
+		if one.contains(needle):
+			return out
+		rest = rest.substr(one.length())
 	return text
 
 
