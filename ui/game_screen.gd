@@ -144,7 +144,7 @@ var report_button: Button  # the system row's Turn report, until UX-6's Chronicl
 var codex_button: Button
 var help_button: Button  # the system row's ?: every key and mouse binding
 var chronicle_button: Button  # a placeholder for UX-6: the Chronicle
-var lenses_button: Button  # the system row's Lenses (UX-7): its picker of the six map lenses (MapScreen.lens_ui)
+var lenses_button: Button  # a placeholder for UX-7: the lenses
 var results_button: Button  # only once the game is over: it takes the seal's place
 var ruler_button: Button  # M2-6: opens the ruler panel; only in a game with rulers
 var research_hud: ResearchHud  # M4-4: the research chip, the research panel and the lock-in preview
