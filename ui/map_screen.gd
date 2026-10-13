@@ -368,11 +368,13 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if k == null or not k.pressed or k.echo or ui_cancel.is_open("modal"):
 		return
 	var lens := lens_host.id_for_key(k.keycode)
+	if lens.is_empty() and k.physical_keycode != KEY_NONE:
+		lens = lens_host.id_for_key(k.physical_keycode)  # UX-7: the top row's 1 to 6 on any layout (AZERTY's & é " ' ( -)
 	if not lens.is_empty():
 		lens_host.toggle(lens)
 		if is_inside_tree():
 			get_viewport().set_input_as_handled()
-	elif k.keycode == KEY_QUOTELEFT and not lens_host.active_id().is_empty():
+	elif (k.keycode == KEY_QUOTELEFT or k.physical_keycode == KEY_QUOTELEFT) and not lens_host.active_id().is_empty():  # the key left of 1, on any layout
 		lens_host.clear()
 		if is_inside_tree():
 			get_viewport().set_input_as_handled()

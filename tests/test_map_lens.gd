@@ -598,6 +598,15 @@ func test_keys_toggle_a_lens_and_the_same_key_esc_or_backquote_turn_it_off() -> 
 	map._unhandled_key_input(_key(KEY_6))
 	map._unhandled_key_input(_key(KEY_QUOTELEFT))
 	assert_eq(host.active_id(), "", "` turns it off")
+	# the same keys on another layout (AZERTY's top row gives ' on the 4 key; a German one ^ left of the 1): their physical place counts
+	var four := _key(KEY_APOSTROPHE)
+	four.physical_keycode = KEY_4
+	map._unhandled_key_input(four)
+	assert_eq(host.active_id(), "magic", "the key where 4 is turns Magic on, whatever it types")
+	var left_of_one := _key(KEY_ASCIICIRCUM)
+	left_of_one.physical_keycode = KEY_QUOTELEFT
+	map._unhandled_key_input(left_of_one)
+	assert_eq(host.active_id(), "", "and the key left of 1 turns it off")
 	game.open_controls_help()  # a modal is open: the keys are the modal's
 	map._unhandled_key_input(_key(KEY_1))
 	assert_eq(host.active_id(), "", "no lens under a modal")

@@ -41,7 +41,7 @@ static func sections(lens_keys: Array = []) -> Array:
 		var rows: Array = []
 		for lk in lens_keys:
 			rows.append({"keys": String(lk[0]), "text": "%s lens. Press it again to bring the art back." % String(lk[1])})
-		rows.append({"keys": "` (or Esc)", "text": "Turn the lens off. One lens is on at a time, and none when a game starts. The Lenses button in the system row lists them too, and the legend card at the bottom left says what the one on is showing."})
+		rows.append({"keys": "` (or Esc)", "text": "The key left of 1: turn the lens off. One lens is on at a time, and none when a game starts. The Lenses button in the system row lists them too, and the legend card at the bottom left says what the one on is showing."})
 		out.append({"title": "Lenses", "rows": rows})
 	out.append({"title": "The system row", "rows": [
 		{"keys": "Research, Magic, Ruler", "text": "Open the research panel (and its Magic tab) and the ruler panel."},

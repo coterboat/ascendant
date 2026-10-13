@@ -134,6 +134,10 @@ func refresh() -> void:
 		if hud != null and hud.has_signal("layout_changed") and not hud.is_connected("layout_changed", _on_table_layout):
 			hud.connect("layout_changed", _on_table_layout)
 	_update_closeup_chip()
+	## UX-7: the lens values over the army plates (they find spots clear of them, _place_lens_chips, but never go under one)
+	for pl in _plates.values():
+		if pl.get("lens") != null:
+			move_child(pl["lens"], get_child_count() - 1)
 	## the legend, the playback bar, the caption and the close-up chip stay above every plate
 	move_child(_legend, get_child_count() - 1)
 	move_child(_play_bar, get_child_count() - 1)
@@ -253,6 +257,8 @@ func _unit_name(st: GameState, faction_id: String, type_id: String) -> String:
 func _build_province_plates() -> void:
 	for p in _plates.values():
 		(p["root"] as Node).queue_free()
+		if p.get("lens") != null:
+			(p["lens"] as Node).queue_free()  # UX-7: the lens value is the overlay's child, beside its plate
 	_plates.clear()
 	if _focus_tip != null:
 		_focus_tip.visible = false
@@ -519,21 +525,70 @@ func _apply_lens_chips() -> void:
 		var e: Dictionary = entries.get(pid, {})
 		if e.is_empty():
 			if chip != null:
+				remove_child(chip)
 				chip.queue_free()
-				(pl["root"] as Node).remove_child(chip)
 				pl["lens"] = null
-				(pl["root"] as Control).reset_size()
 			continue
 		if chip == null:
+			## the chip is the overlay's own child, placed beside its plate each frame (_place_lens_chips), so it never grows the plate
+			## into its neighbours' and finds a spot clear of the army plates, as the order tokens do
 			chip = LensChip.new()
+			chip.name = "LensValue_%s" % String(pid)
+			chip.visible = false
 			chip.gui_input.connect(_on_chip_input.bind(String(pid), chip))
-			var root: Control = pl["root"]
-			root.add_child(chip)
-			root.move_child(chip, 1 if pl.get("marks") == null else 2)  ## under the name (and the marks that warn), over the detail
+			add_child(chip)
 			pl["lens"] = chip
 		chip.set_entry(id, e, _lens_open)
-		(pl["root"] as Control).reset_size()
+		chip.reset_size()
 	_dirty = true
+
+
+## UX-7: each lens value in the first spot free of every army plate, every other plate and every value placed before it: under its plate,
+## right of its name, left of it, above it (else under it all the same). `taken` holds the army plates' rects; the values placed are
+## added to it, so the order tokens placed after go round them too.
+func _place_lens_chips(taken: Array) -> void:
+	var roots := {}
+	for pid in _plates.keys():
+		var root: Control = _plates[pid]["root"]
+		if root.visible:
+			roots[pid] = Rect2(root.position, root.size)
+	for pid in _plates.keys():
+		var pl: Dictionary = _plates[pid]
+		var chip: Control = pl.get("lens")
+		if chip == null:
+			continue
+		chip.visible = roots.has(pid) and not _playing
+		if not chip.visible:
+			continue
+		var own: Rect2 = roots[pid]
+		var sz := chip.get_combined_minimum_size()
+		chip.size = sz
+		var row: Control = (pl["root"] as Control).get_child(0)
+		var name_mid := own.position.y + row.position.y + row.size.y * 0.5
+		var name_w := row.size.x
+		var spots := [
+			Rect2(Vector2(own.get_center().x - sz.x * 0.5, own.end.y - 1.0), sz),
+			Rect2(Vector2(own.get_center().x + name_w * 0.5 + 3.0, name_mid - sz.y * 0.5), sz),
+			Rect2(Vector2(own.get_center().x - name_w * 0.5 - 3.0 - sz.x, name_mid - sz.y * 0.5), sz),
+			Rect2(Vector2(own.get_center().x - sz.x * 0.5, own.position.y - sz.y + 1.0), sz),
+		]
+		var pick: Rect2 = spots[0]
+		for spot: Rect2 in spots:
+			var clear := true
+			for r: Rect2 in taken:
+				if r.grow(1.0).intersects(spot):
+					clear = false
+					break
+			if clear:
+				for other in roots:
+					if other != pid and (roots[other] as Rect2).intersects(spot):
+						clear = false
+						break
+			if clear:
+				pick = spot
+				break
+		chip.position = pick.position.round()
+		taken.append(pick)
 
 
 ## A click on a chip selects its province, as a click on the land under it does (a right-click is its codex link's).
@@ -1116,6 +1171,7 @@ func _process(_delta: float) -> void:
 		placed.append(rect)
 		pc.position = rect.position.round()
 		pc.visible = s2.x > -100 and s2.x < vp.x + 100 and s2.y > -50 and s2.y < vp.y + 50
+	_place_lens_chips(placed)  ## UX-7: the lens values, clear of the army plates
 	_place_order_marks(placed)
 	if _playing:
 		_play_label.text = _play_text()
