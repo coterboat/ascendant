@@ -175,6 +175,13 @@ func test_the_sentences_follow_the_trays_numbers_with_the_same_forecasts() -> vo
 	var march := c.orders()[shown[0].index] as MoveOrder
 	assert_true(march != null, "order 1 is the march")
 	assert_true(String(shown[0].text).contains(String(c.move_odds(march.army_id, march.to).line)), "the march's battle odds")
+	# what a line shows: its first sentence, and for the march into a fight the odds as the sentence words them
+	for s in shown:
+		assert_true(String(s.text).begins_with(String(s.head)), "order %d: the line is the sentence's start" % int(s.index))
+		assert_true(String(s.forecast).is_empty() or String(s.text).contains(String(s.forecast)), "order %d: the forecast line is the sentence's own" % int(s.index))
+	assert_false(String(shown[0].forecast).is_empty(), "the march into the Free Holds' garrison shows its battle forecast")
+	assert_eq(PlanModel.first_sentence("The Crown's 1st (Spearmen. Knights) moves to Westwatch. It arrives turn 2."), "The Crown's 1st (Spearmen. Knights) moves to Westwatch.")
+	assert_eq(PlanModel.first_sentence("Gold 1.5 a turn."), "Gold 1.5 a turn.")
 	var recruit: Dictionary = shown.filter(func(s): return c.orders()[s.index] is RecruitOrder)[0]
 	assert_true(String(recruit.text).contains("%d gold" % c.recruit_cost((c.orders()[recruit.index] as RecruitOrder).unit_type_id)), "the recruit's price")
 	var research := shown.filter(func(s): return c.orders()[s.index] is ResearchOrder)

@@ -13,8 +13,10 @@ extends RefCounted
 ##   - the gold after the orders (OrdersController.gold_after_recruits, the tray's last token).
 ##
 ## A SENTENCE is {"index" (into orders()), "number" (0 for a realm order), "realm", "class" (OrderMarks.class_of), "title" (its class's
-## name: "March"), "icon" (UiIcons), "text", "tip", "codex" (its codex entry), "place" (the province its board mark stands in, "" for a
-## realm order)}.
+## name: "March"), "icon" (UiIcons), "text" (the whole sentence, order_text), "head" (its first sentence: the order itself, with its
+## price or finish turn), "forecast" (a march into a fight: the battle odds line as order_text has it, cut to its first sentence; "" for
+## the rest), "tip", "codex" (its codex entry), "place" (the province its board mark stands in, "" for a realm order)}. The page shows
+## the head and the forecast, the whole sentence and its breakdown on hover: the essential line visible, the rest a hover away.
 
 ## When the seal opens the Plan first: ChronicleSettings.review, and whether this is the player's first game.
 static func review_on(mode: String, first_game: bool) -> bool:
@@ -35,9 +37,37 @@ static func sentence(c: OrdersController, index: int) -> Dictionary:
 	var o = c.orders()[index]
 	var cls := OrderMarks.class_of(o)
 	var number := c.number_of(index)
+	var text := c.order_text(index)
+	var forecast := ""
+	if o is MoveOrder:
+		var odds := c.move_odds(o.army_id, o.to)
+		var line := String(odds.get("line", ""))
+		if (bool(odds.get("enemy_present", false)) or bool(odds.get("fog", false))) and line != OrdersController.NO_ENEMY_TEXT and text.contains(line):
+			forecast = first_sentence(line).get_slice(" ⓘ", 0).strip_edges()  # the fog forecast's ⓘ: its guesses are in the tooltip
+	var head := first_sentence(text)
+	if not forecast.is_empty() and head.contains(forecast):
+		forecast = ""
 	return {"index": index, "number": number, "realm": number == 0, "class": cls, "title": String(OrderMarks.CLASS_NAME.get(cls, "Order")),
-		"icon": String(OrderMarks.CLASS_ICON.get(cls, "orders")), "text": c.order_text(index), "tip": OrderMarks.tip(c, index),
-		"codex": TooltipText.codex_for(c.order_codex_kind(index), c.order_breakdown(index)), "place": OrderMarks.place_of(c, index)}
+		"icon": String(OrderMarks.CLASS_ICON.get(cls, "orders")), "text": text, "head": head, "forecast": forecast,
+		"tip": OrderMarks.tip(c, index), "codex": TooltipText.codex_for(c.order_codex_kind(index), c.order_breakdown(index)),
+		"place": OrderMarks.place_of(c, index)}
+
+
+## The first sentence of `text`: up to the first full stop outside brackets that is followed by a space and a capital letter or a digit
+## (so "(Spearmen, Knights)" and "1.5" stay whole). The whole text when it is one sentence.
+static func first_sentence(text: String) -> String:
+	var depth := 0
+	for i in text.length():
+		var ch := text[i]
+		if ch == "(":
+			depth += 1
+		elif ch == ")":
+			depth = maxi(0, depth - 1)
+		elif ch == "." and depth == 0 and i + 2 < text.length() and text[i + 1] == " ":
+			var nx := text[i + 2]
+			if nx == nx.to_upper() and nx != nx.to_lower() or nx.is_valid_int():
+				return text.substr(0, i + 1)
+	return text
 
 
 ## The checks: the viewer's current-state needs (ChronicleModel.needs, with the orders queued now) as Needs-you announcements.

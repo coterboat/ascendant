@@ -2,9 +2,10 @@ class_name PlanPage
 extends VBoxContainer
 ## UX-5 (design/UX_WAR_TABLE.md §5.3): the Chronicle's Plan tab, the end-of-turn review. It draws what PlanHud hands it (show_plan, a
 ## PlanModel.build) and says what was pressed with signals; it holds no game facts of its own. Top to bottom:
-##   - your orders as sentences: the placed ones by the tray's number, then the realm orders by their icon. Each is the order's sentence
-##     with its forecast, its tooltip the tray token's (the breakdown behind its numbers), its codex entry a right-click away; a click on
-##     it focuses its place on the board and opens its card, and its x cancels it;
+##   - your orders as sentences: the placed ones by the tray's number, then the realm orders by their icon. Each shows the order's first
+##     sentence (the order, with its price or finish turn) and, for a march into a fight, its battle forecast in gilt; the whole sentence
+##     and the breakdown behind its numbers are its tooltip (the tray token's), its codex entry a right-click away; a click on it focuses
+##     its place on the board and opens its card, and its x cancels it;
 ##   - the checks, as Needs-you cards (the Read side's own cards, with their place and codex; pinning and dismissing stay on Read);
 ##   - the foot: the gold after the orders, when the seal opens this page first (review before sealing, a setting), and the seal itself:
 ##     "Seal the orders · End turn".
@@ -122,17 +123,34 @@ func _row(s: Dictionary) -> PanelContainer:
 		badge.name = "Number"
 		badge.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		line.add_child(badge)
+	var words := VBoxContainer.new()
+	words.add_theme_constant_override("separation", 2)
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	words.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_child(words)
 	var text := Label.new()
 	text.name = "Sentence"
-	text.text = String(s.text)
+	text.text = String(s.get("head", s.text))
 	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.max_lines_visible = 3  # (no trimming mode: with one, a wrapping label's minimum height collapses, as NoticeCard found)
 	text.custom_minimum_size.x = 200
 	text.add_theme_font_override("font", UiFonts.body())
 	text.add_theme_font_size_override("font_size", UiPalette.TYPE_SMALL + 1)
 	text.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
 	text.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	line.add_child(text)
+	words.add_child(text)
+	if not String(s.get("forecast", "")).is_empty():
+		var fc := Label.new()
+		fc.name = "Forecast"
+		fc.text = String(s.forecast)
+		fc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		fc.max_lines_visible = 2
+		fc.custom_minimum_size.x = 200
+		fc.add_theme_font_override("font", UiFonts.number())
+		fc.add_theme_font_size_override("font_size", UiPalette.TYPE_SMALL)
+		fc.add_theme_color_override("font_color", UiPalette.GILT)
+		fc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		words.add_child(fc)
 	var cross := Button.new()
 	cross.name = "Cancel"
 	cross.icon = UiIcons.icon("dismiss", 16)
