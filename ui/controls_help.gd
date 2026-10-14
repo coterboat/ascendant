@@ -7,7 +7,7 @@ extends RefCounted
 
 ## The first how-to, in the words the top bar's hint tooltip had: select an army, click a neighbour, recruit at the capital.
 const HOW_TO_ORDER := "Select one of your armies, then click a neighboring province to move it there (or press March on its card and then click one); hover a province first to see the forecast and battle odds. Select your capital to recruit: press Recruit on its card. Each army's order is on its card, and every order is a token in the tray along the bottom, numbered as it is on the board: hover it for its forecast, click it to see its card, and right-click it, or press its cross, to cancel it. Hover any number to see where it comes from; right-click it, or press F1, to open its codex entry. End turn when you are done."
-const QUICK := "Move: select an army, then a neighbor. Recruit: select your capital."
+const QUICK := "March: click an army, then March on its card. Recruit: click your capital, then Recruit."
 
 
 ## The sections of the help. `lens_keys` is [[key name, lens title]] from the LensHost.

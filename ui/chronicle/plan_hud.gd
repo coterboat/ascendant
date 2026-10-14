@@ -19,6 +19,7 @@ var page: PlanPage
 var first_game := false
 var _seat := ""
 var _sig := ""  # what the page shows now, so an unchanged plan is not drawn again
+var _turn := -1  # the turn the page was last shown for: a new turn starts the Chronicle on Read (UX-9)
 
 
 func _init(p_game: GameScreen) -> void:
@@ -91,6 +92,11 @@ func _looking() -> bool:
 func refresh() -> void:
 	var looking := _looking()
 	var eyes := game.viewer() if looking else ""
+	var turn_now := game.session.turn_number() if game.session != null else -1
+	if turn_now != _turn:
+		_turn = turn_now
+		if is_showing() or game.chronicle_hud.column.current_tab() == "plan":
+			game.chronicle_hud.column.show_tab("read")  # a new turn opens on its news, not on last turn's Plan
 	if eyes != _seat:
 		_seat = eyes
 		if not looking and is_showing():
