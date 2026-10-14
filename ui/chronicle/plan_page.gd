@@ -40,6 +40,8 @@ var gold_label: Label
 var review_option: OptionButton
 var seal_button: Button
 var shown: Dictionary = {}  # what show_plan was last given (for tests)
+var _pulse: Tween = null
+var _pulsing := false
 
 
 func _init() -> void:
@@ -91,6 +93,26 @@ func show_plan(plan: Dictionary, review: String, seal_on: bool, seal_tip: String
 	review_option.select(ChronicleSettings.REVIEWS.find(review))
 	seal_button.disabled = not seal_on
 	seal_button.tooltip_text = seal_tip
+
+
+## UX-9 (the director's call on Q UX-9, b): while the table's seal points here, this seal pulses gilt, slowly, as TableHud's does: one
+## thing to press at a time.
+func pulse_seal(on: bool) -> void:
+	if on == _pulsing:
+		return
+	_pulsing = on
+	if _pulse != null:
+		_pulse.kill()
+		_pulse = null
+	seal_button.self_modulate = Color.WHITE
+	if on and is_inside_tree():
+		_pulse = create_tween().set_loops()
+		_pulse.tween_property(seal_button, "self_modulate", Color(1.5, 1.35, 0.9), TableHud.PULSE_S).set_trans(Tween.TRANS_SINE)
+		_pulse.tween_property(seal_button, "self_modulate", Color.WHITE, TableHud.PULSE_S).set_trans(Tween.TRANS_SINE)
+
+
+func seal_pulsing() -> bool:
+	return _pulsing
 
 
 ## The sentence rows' words, in the order shown (for tests and the no-raw-ids check).

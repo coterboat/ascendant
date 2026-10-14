@@ -36,6 +36,10 @@ func _init(p_game: GameScreen) -> void:
 	page.codex_requested.connect(game.open_codex)
 	game.chronicle_hud.set_plan_page(page)  # GameScreen._update_hud (on every order change too) keeps it current
 	game.chronicle_hud.column.plan_tab.pressed.connect(_plan_shown)  # UX-9: the first-game guide ticks its Plan step
+	# UX-9: the table's seal says where to seal while the Plan shows; the column opening, closing or changing tab redresses it
+	game.chronicle_hud.column.visibility_changed.connect(_column_changed)
+	game.chronicle_hud.column.plan_tab.pressed.connect(_column_changed)
+	game.chronicle_hud.column.read_tab.pressed.connect(_column_changed)
 
 
 func _settings() -> ChronicleSettings:
@@ -69,6 +73,24 @@ func open_plan() -> void:
 		game.chronicle_hud.column.show_tab("plan")
 		_plan_shown()
 	refresh()
+	_column_changed()
+
+
+## UX-9 (Q UX-9, b): while the Plan shows with review before sealing on, the table's seal points at the Plan's ("Seal in the Plan"),
+## which pulses: one thing to press. GameScreen._update_hud calls it after dressing the seal; otherwise the seal is as it was.
+func dress_seal() -> void:
+	var pointing := review_on() and _looking() and is_showing()
+	page.pulse_seal(pointing)
+	if not pointing:
+		return
+	game.end_turn_button.text = "Seal in\nthe Plan →"
+	game.end_turn_button.tooltip_text = TooltipText.plain("Seal in the Plan", "Your orders are open in the Chronicle's Plan, each with its forecast. Seal the orders at its foot ends the turn; the Chronicle's x goes back to the board.")
+	game.map.table().set_seal_pulse(false)
+
+
+func _column_changed() -> void:
+	if game.session != null:
+		game._update_hud()
 
 
 ## UX-9: the Plan was shown to the person giving orders: the first-game guide ticks its step.

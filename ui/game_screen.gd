@@ -1117,6 +1117,8 @@ func _update_hud() -> void:
 	end_turn_button.visible = not over
 	results_button.visible = over
 	hud.set_seal_pulse(playing and n > 0 and not _seal_learned())  # a new player: a gentle nudge once an order is queued
+	if plan_hud != null:
+		plan_hud.dress_seal()  # UX-9: while the Plan shows, the seal points at the Plan's (and that one pulses)
 	_refresh_opponents()
 	var has_report: bool = session != null and _report_turn() > 0
 	report_button.disabled = not has_report
