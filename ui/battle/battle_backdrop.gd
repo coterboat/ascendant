@@ -11,6 +11,20 @@ const SKY_TOP := Color("#A9CBE6")
 const SKY_BOTTOM := Color("#E9EEF0")
 const HORIZON_H := 100.0
 
+## UX-8: where the horizon runs, from the top (the view lays the backdrop out full-bleed and puts the horizon a little
+## below its plates, over the cards' band); HORIZON_H by default.
+var horizon := HORIZON_H:
+	set(value):
+		if absf(value - horizon) > 0.01:
+			horizon = value
+			queue_redraw()
+## UX-8: the width the two sides stand across (the cards' band, narrower than the backdrop while the why panel is
+## docked): the border line and the defender's fort are drawn on its halves. 0: the backdrop's own width.
+var span_w := 0.0:
+	set(value):
+		if absf(value - span_w) > 0.01:
+			span_w = value
+			queue_redraw()
 var terrain := "plains"
 var border := false
 var border_names: Array = []
@@ -58,10 +72,10 @@ func _draw() -> void:
 	var h := size.y
 	var ground_col := UiPalette.terrain_color(terrain)
 	# Sky.
-	var sky := PackedVector2Array([Vector2(0, 0), Vector2(w, 0), Vector2(w, HORIZON_H), Vector2(0, HORIZON_H)])
+	var sky := PackedVector2Array([Vector2(0, 0), Vector2(w, 0), Vector2(w, horizon), Vector2(0, horizon)])
 	draw_polygon(sky, PackedColorArray([SKY_TOP, SKY_TOP, SKY_BOTTOM, SKY_BOTTOM]))
 	# Ground.
-	var ground := Rect2(0, HORIZON_H, w, h - HORIZON_H)
+	var ground := Rect2(0, horizon, w, h - horizon)
 	if _texture != null:
 		# 50% horizontal and 30% vertical scale, so the ground suggests the high angle (§3.3).
 		draw_set_transform(ground.position, 0.0, Vector2(0.5, 0.3))
@@ -74,36 +88,37 @@ func _draw() -> void:
 	# Horizon silhouette, 25% darker than the ground.
 	var sil := ground_col.darkened(0.25)
 	var pts := PackedVector2Array()
-	pts.append(Vector2(0, HORIZON_H + 6))
+	pts.append(Vector2(0, horizon + 6))
 	var steps := 64
 	for k in steps + 1:
 		var x := w * k / steps
-		var y := HORIZON_H - 6.0
+		var y := horizon - 6.0
 		match terrain:
 			"forest":
-				y = HORIZON_H - 14.0 - absf(sin(k * 1.7)) * 16.0 - absf(sin(k * 0.45)) * 8.0
+				y = horizon - 14.0 - absf(sin(k * 1.7)) * 16.0 - absf(sin(k * 0.45)) * 8.0
 			"hills":
-				y = HORIZON_H - 18.0 - sin(k / float(steps) * TAU * 1.5 + 0.6) * 16.0
+				y = horizon - 18.0 - sin(k / float(steps) * TAU * 1.5 + 0.6) * 16.0
 		pts.append(Vector2(x, y))
-	pts.append(Vector2(w, HORIZON_H + 6))
+	pts.append(Vector2(w, horizon + 6))
 	draw_colored_polygon(pts, sil)
-	draw_line(Vector2(0, HORIZON_H + 6), Vector2(w, HORIZON_H + 6), Color(UiPalette.KEYLINE_INK, 0.35), 2.0)
+	draw_line(Vector2(0, horizon + 6), Vector2(w, horizon + 6), Color(UiPalette.KEYLINE_INK, 0.35), 2.0)
 	# A defended fort behind the defender's back line.
 	if not fort_on.is_empty():
 		_draw_fort()
 	# A border: a dashed map-ink line down the centre with both province names at its top.
+	var cw := span_w if span_w > 0.0 else w
 	if border:
-		var y := HORIZON_H + 10.0
+		var y := horizon + 10.0
 		while y < h:
-			draw_line(Vector2(w / 2.0, y), Vector2(w / 2.0, minf(y + 14.0, h)), Color(UiPalette.MAP_INK, 0.8), 3.0)
+			draw_line(Vector2(cw / 2.0, y), Vector2(cw / 2.0, minf(y + 14.0, h)), Color(UiPalette.MAP_INK, 0.8), 3.0)
 			y += 24.0
 		var font := get_theme_default_font()
 		if border_names.size() == 2:
 			var fs := 16
 			var left_name := String(border_names[0])
 			var lw := font.get_string_size(left_name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-			_label(font, Vector2(w / 2.0 - lw - 12.0, HORIZON_H + 28.0), left_name, fs)
-			_label(font, Vector2(w / 2.0 + 12.0, HORIZON_H + 28.0), String(border_names[1]), fs)
+			_label(font, Vector2(cw / 2.0 - lw - 12.0, horizon + 28.0), left_name, fs)
+			_label(font, Vector2(cw / 2.0 + 12.0, horizon + 28.0), String(border_names[1]), fs)
 
 
 func _label(font: Font, pos: Vector2, text: String, fs: int) -> void:
@@ -114,11 +129,11 @@ func _label(font: Font, pos: Vector2, text: String, fs: int) -> void:
 func _draw_fort() -> void:
 	# A wall along the horizon on the defender's half, with a gatehouse: the fort stands behind the
 	# defender's ranks without covering a card.
-	var w := size.x
+	var w := span_w if span_w > 0.0 else size.x
 	var x0 := w / 2.0 + 90.0 if fort_on == "right" else 0.0
 	var x1 := w if fort_on == "right" else w / 2.0 - 90.0
-	var top := HORIZON_H - 42.0
-	var base := HORIZON_H + 10.0
+	var top := horizon - 42.0
+	var base := horizon + 10.0
 	var col := Color(UiPalette.MAP_INK, 0.6)
 	draw_rect(Rect2(x0, top, x1 - x0, base - top), col)
 	var merlon := 12.0

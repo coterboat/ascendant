@@ -172,7 +172,7 @@ func test_the_battle_view_headers_and_hover_texts_follow_the_rule() -> void:
 	for si in sides.size():
 		var k := v._slot_of_side(si)
 		var role := FortView.siege_role(siege, si)
-		assert_true(String(v.plaque_labels[k].text).ends_with(role), "side %d's header ends with its role: %s" % [si, v.plaque_labels[k].text])
+		assert_eq(String(v.role_chips[k].text), role, "side %d's plate has its role chip: %s" % [si, v.role_chips[k].text])
 		assert_true(String(v.plaque_labels[k].tooltip_text).contains(role), "and its tooltip says it: %s" % v.plaque_labels[k].tooltip_text)
 	for text in v.visible_texts():
 		assert_false(String(text).contains("nobody holds the ground"), "nothing on the screen says so: %s" % text)

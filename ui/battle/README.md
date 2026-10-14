@@ -9,7 +9,7 @@ and watching never changes the game (tests check this at three levels).
 | `battle_host.gd` | `BattleHost` (M3-5): **the one place the game opens a battle.** Queue, Next/Previous, the view choice, the stings, the settings panel. |
 | `battle_player.gd` | `BattlePlayer` (M3-3): the renderer-agnostic clock, beats and state. No nodes. |
 | `battle_simple_view.gd/.tscn` | `BattleSimpleView` (M3-3): the 2D Simple view, a battle view (below). |
-| `battle_controls.gd` | `BattleControls` (M3-4): the control bar, keys, scrubber; M3-5 adds the queue row and Settings. |
+| `battle_controls.gd` | `BattleControls` (M3-4): the controls, keys, scrubber; M3-5 adds the queue row and Settings; UX-8 lays them out as the bottom bar (the scrubber's clickable moment markers replace the moment buttons), the queue row above it and the Why tab. |
 | `battle_why_panel.gd`, `battle_why.gd` | the why panel and its pure model (M3-4). |
 | `battle_legend.gd` | the legend (M3-4). |
 | `battle_selection.gd` | Tab / click selection and pinning (M3-4). |
@@ -63,8 +63,8 @@ And it hosts **the same components** on top, so the 2D overlay is identical in b
 
 ```gdscript
 var player := BattlePlayer.new(battle_log, report)   # the clock, beats and state; the stage only draws them
-controls.bind(player)            # BattleControls: scrubber, buttons, §5.3 keys (place it at y 752, 1600x148)
-why_panel.bind(player, selection)   # BattleWhyPanel, docked right (1216, 88), 384x664
+controls.bind(player)            # BattleControls: scrubber, buttons, §5.3 keys; controls.fit(view_size, band, tab_right) lays it out (UX-8)
+why_panel.bind(player, selection)   # BattleWhyPanel, WHY_W wide down the right edge under the side plates
 legend.set_rows(BattleLegend.overlay_rows() + stage_rows)   # BattleLegend
 selection.bind(player, tab_order)   # BattleSelection: a raycast pick -> selection.toggle(fid)
 # every frame: player.advance(dt); controls.tick(dt); why_panel.tick(dt)

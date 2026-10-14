@@ -254,6 +254,22 @@ class Install(unittest.TestCase):
         self.assertEqual(self.snapshot(), first)
         self.assertTrue(read(dst + ".import").startswith("# the model's own"))
 
+    def test_a_replaced_model_keeps_its_godot_import_and_uid_byte_for_byte(self):
+        ## a model already in the game, with the .import Godot wrote for it (uid, path, dest_files), and a new take of
+        ## other bytes accepted over it: the GLB is replaced, the import stays (the Free Holds' install rewrote them, 10-10)
+        old = os.path.join(REPO, "assets", "models", "units", "kingdom", "spearmen_march.glb")
+        dst = os.path.join(self.tmp, G.model_target("sunspears", "march"))
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy(old, dst)
+        shutil.copy(old + ".import", dst + ".import")
+        before = read(dst + ".import", "rb")
+        self.assertNotEqual(sha(old), sha(SAMPLE_GLB))
+        self.add("sunspears", "march")
+        self.run_install()
+        self.assertEqual(sha(dst), sha(SAMPLE_GLB))
+        self.assertEqual(read(dst + ".import", "rb"), before)
+        self.assertEqual(G.glb_slim.import_uid(dst + ".import"), G.glb_slim.import_uid(old + ".import"))
+
 
 class ReviewBatch(unittest.TestCase):
     """What review.py from-folder makes of the staged folder, through batch(): a throwaway batch in review/."""
