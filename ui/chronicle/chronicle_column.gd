@@ -84,7 +84,8 @@ func _build() -> void:
 	title_label.add_theme_font_size_override("font_size", UiPalette.TYPE_NAME + 2)
 	title_label.add_theme_color_override("font_color", UiPalette.GILT)
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title_label.tooltip_text = TooltipText.plain("The Chronicle", "The announcements of each turn, like the start-of-turn notices of Dominions and Total War: sort them, hide the kinds you don't need, pin the ones to keep and dismiss the rest.")
+	title_label.tooltip_text = TooltipText.plain("The Chronicle", "The announcements of each turn, like the start-of-turn notices of Dominions and Total War: sort them, hide the kinds you don't need, pin the ones to keep and dismiss the rest. Plan reads your orders back before you seal them.")
+	CodexLink.attach(title_label, "the_chronicle", func(k: String): codex_requested.emit(k))  # UX-9: its codex entry
 	title_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	head.add_child(title_label)
 	read_tab = _tab("ReadTab", "Read", true)

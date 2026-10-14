@@ -34,6 +34,7 @@ func _init(p_game: GameScreen) -> void:
 	page.review_changed.connect(set_review)
 	page.codex_requested.connect(game.open_codex)
 	game.chronicle_hud.set_plan_page(page)  # GameScreen._update_hud (on every order change too) keeps it current
+	game.chronicle_hud.column.plan_tab.pressed.connect(_plan_shown)  # UX-9: the first-game guide ticks its Plan step
 
 
 func _settings() -> ChronicleSettings:
@@ -65,7 +66,14 @@ func open_plan() -> void:
 	game.chronicle_hud.open()
 	if game.chronicle_hud.is_open():
 		game.chronicle_hud.column.show_tab("plan")
+		_plan_shown()
 	refresh()
+
+
+## UX-9: the Plan was shown to the person giving orders: the first-game guide ticks its step.
+func _plan_shown() -> void:
+	if game.first_game_guide != null and _looking():
+		game.first_game_guide.note_plan_seen(game.viewer())
 
 
 func is_showing() -> bool:

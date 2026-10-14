@@ -20,13 +20,26 @@ const ENTRIES := {
 	"how_to_play": {
 		"title": "How to play",
 		"text": "A game is a string of turns, and every turn goes the same way.\n"
-			+ "1. Read: the turn report says what happened last turn and why, line by line. Click a line to see it on the map.\n"
-			+ "2. Plan: on the one map screen, select an army and click a neighboring province to move it, or select your capital and press a Recruit button. Every order shows its forecast before you commit, and is listed under Your orders this turn, where you can cancel it.\n"
-			+ "3. Commit: press End turn.\n"
+			+ "1. Read: the Chronicle opens with what happened last turn, one card per announcement, and the medallions down the left edge are the same news. Click a card's place to see it on the board. See The Chronicle.\n"
+			+ "2. Plan: the board is the game. Click one of your armies and press March on its card, or click your capital and press Recruit. Every order shows its forecast before you give it, stands on the board with its number and waits in the tray along the bottom, where its cross cancels it. See The Table.\n"
+			+ "3. Commit: press End turn, the seal at the bottom right. In your first game it opens the Chronicle's Plan first, your orders as sentences with their forecasts, and you seal them there. See Review before sealing.\n"
 			+ "4. Resolve: everyone gives orders at the same time, without seeing anyone else's, and then all of them resolve together in one fixed order (see How a turn resolves). Nobody gets to react to what you chose this turn.\n"
-			+ "5. Watch: battles play out on the land and you can watch the ones you care about, or skim the rest from their reports. Then read the next report and plan again.\n"
+			+ "5. Watch: battles play out on the land, and you can watch the ones you care about from their cards, or skim the rest. See Watching a battle. Then read the next turn and plan again.\n"
 			+ "You win by capturing the enemy capital.\n"
-			+ "No rule is hidden. Hover any number to see where it comes from, and right-click it (or press F1 while hovering) to open its codex entry. The Codex button in the row under your realm's name opens this book at any time, and the ? beside it lists every key and mouse binding.",
+			+ "No rule is hidden. Hover any number to see where it comes from, and right-click it (or press F1 while hovering) to open its codex entry. The Codex button in the row under your realm's name opens this book at any time, and the ? beside it lists every key and mouse binding. When you want every number on the board at once, the lenses show it (see Map lenses).",
+	},
+	# --- UX-9 (#234): the War Table's pieces, one short entry each, linked from How to play.
+	"the_table": {
+		"title": "The Table",
+		"text": "The board fills the screen, and everything else sits on it. Top left, your realm's plaque (gold, income, turn and ruler) with the row of buttons under it: Research, Magic, Ruler, Chronicle, Turn report, Lenses, Codex and ?. Down the left edge, the medallions of this turn's news. Top right, your rivals and the Menu. Click an army or a province and its card opens beside it with what it can do: an army's card marches, splits and merges, a province's card recruits and fortifies. Your orders stand on the board, numbered, and wait in the tray along the bottom with the gold they leave; the seal at the bottom right ends the turn. Esc closes the topmost thing, one at a time.",
+	},
+	"the_chronicle": {
+		"title": "The Chronicle",
+		"text": "The column on the right that tells a turn as a story. Read is what happened: one card per announcement, sorted by what matters most to you (or by place, or by kind), each with its place on the board, Watch and Battle report on a battle, and a ? for its rule. Hide the kinds you don't need, pin a card to keep it, dismiss the rest; Full report at its foot is every line of the turn. Plan is what you are about to do: your orders as sentences, each with its forecast, what still needs you, the gold your orders leave, and the seal. It opens by itself when something important happened, and the Chronicle button in the row under your realm's name opens it any time. See Review before sealing.",
+	},
+	"notice_medallions": {
+		"title": "Medallions",
+		"text": "The round images down the left edge of the board: one for each of this turn's announcements, newest on top, the same news as the Chronicle's cards. Each kind of news has its own image: a battle won or lost, an army lost, a province taken or lost, a siege, a ruler fallen or returned, research done, a ritual cast, recruits raised, the treasury, and what needs you. Hover one to read its headline, click it to open its card in the Chronicle, right-click it to dismiss it.",
 	},
 	# --- MVP-2 (#163): the six boxes on the new game screen, all ticked by default. Plain text, no links: the codex panel links
 	# the other entries' titles by itself. Each line says what the system adds; its own entry has the rules.
@@ -389,7 +402,7 @@ const ENTRIES := {
 	# Numbers from AutoBattleResolver's constants.
 	"battle_playback": {
 		"title": "Watching a battle",
-		"text": "A battle is fought by the rules first, all at once, and only then played back. The playback shows exactly what happened: the same rolls, hits, wounds and morale checks as the battle report, round by round, so watching it can never change the result. A caption after every round says what mattered most, and hovering anyone shows what it is doing and the numbers behind it. Speed it up, pause it, skip to the end or jump to its key moments whenever you like.",
+		"text": "A battle is fought by the rules first, all at once, and only then played back. The playback shows exactly what happened: the same rolls, hits, wounds and morale checks as the battle report, round by round, so watching it can never change the result. A caption after every round says what mattered most, and hovering anyone shows what it is doing and the numbers behind it. Speed it up, pause it, skip to the end or jump to its key moments whenever you like. On the battle screen each side has its plate in a top corner: its name, its role, its strength bar with the notch where it breaks, and its morale. The round and the conditions sit between them, the round's caption in the lower third, and the controls along the bottom: Restart, Play, the speed, the scrubber with a mark for each key moment (click one to jump there), Skip to end, Legend (L) and Settings. Why (W) on the right edge says what is happening now and why.",
 	},
 	"battle_formation": {
 		"title": "Ranks on the battlefield",

@@ -113,6 +113,26 @@ func test_automatic_links_point_at_other_entries() -> void:
 	_free(panel)
 
 
+## UX-9 (#234): How to play is the War Table's turn, and gains one short entry for each of its pieces: the Table, the Chronicle (Read and
+## Plan, with Review before sealing), the medallions, the lenses and the battle viewer, each a link away.
+func test_how_to_play_gains_the_tables_pieces() -> void:
+	var panel = _make_panel()
+	var body: RichTextLabel = panel.get_node("%EntryText")
+	assert_true(panel.show_entry("how_to_play"))
+	for key in ["the_table", "the_chronicle", "turn_review", "battle_playback", "map_lenses"]:
+		assert_true(RulesCodex.ENTRIES.has(key), "%s is an entry" % key)
+		assert_true(body.text.contains("[url=codex:%s]" % key), "How to play links %s" % key)
+	assert_true(panel.show_entry("the_table"))
+	assert_true(body.text.contains("[url=codex:notice_medallions]"), "the Table links the medallions")
+	for key in ["the_table", "the_chronicle", "notice_medallions"]:
+		var words := String(RulesCodex.entry(key).text).split(" ").size()
+		assert_true(words <= 160, "%s is one short entry (%d words)" % [key, words])
+	var old := ["Your orders this turn", "side panel", "top bar"]
+	for phrase in old:
+		assert_false(String(RulesCodex.entry("how_to_play").text).contains(phrase), "How to play no longer names %s" % phrase)
+	_free(panel)
+
+
 func test_no_raw_ids_in_player_facing_text() -> void:
 	var panel = _make_panel()
 	var list: ItemList = panel.get_node("%EntryList")
