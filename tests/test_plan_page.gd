@@ -102,6 +102,21 @@ func test_review_on_opens_the_plan_and_its_seal_ends_the_turn() -> void:
 	_clean()
 
 
+## UX-9: the Chronicle left on the Plan when a turn was sealed opens the next turn on Read, the turn's news.
+func test_a_new_turn_opens_the_chronicle_on_read() -> void:
+	var game := _game({}, true, "always")
+	_give_orders(game)
+	game.end_turn_button.pressed.emit()
+	assert_eq(game.chronicle_hud.column.current_tab(), "plan")
+	_page(game).seal_button.pressed.emit()
+	game._update_hud()
+	assert_eq(game.chronicle_hud.column.current_tab(), "read", "the next turn starts on its news")
+	game.chronicle_hud.open("")
+	assert_eq(game.chronicle_hud.column.current_tab(), "read", "and opens there")
+	game.free()
+	_clean()
+
+
 func test_review_off_ends_the_turn_at_once() -> void:
 	var game := _game({}, true, "never")
 	_give_orders(game)
