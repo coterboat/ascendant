@@ -364,6 +364,9 @@ static func _describe(e: Dictionary, row_text: String, ctx: Dictionary) -> Dicti
 		"own": flags.contains(FLAG_OWN), "type": type, "facts": facts_of(e, variant_key, fields, ctx), "variant": variant_key}
 	if GameSession.BATTLE_TYPES.has(type) and not provinces.is_empty():
 		item["provinces"] = provinces.duplicate()
+	var spell := spell_of(e)
+	if not spell.is_empty():
+		item["spell"] = spell  # UI-ICONS (#233): the card wears the spell's icon
 	# A muster that left fighters outside their blessing is worth a medallion: the player should know (ARM-1, §2.1).
 	if ["army_split", "units_transferred", "armies_merged", "commanders_swapped"].has(type) and not e.get("numbers", {}).get("outside", []).is_empty():
 		item["routine"] = false
@@ -701,6 +704,17 @@ static func settles_siege(state: GameState, pid: String, orders: Array) -> bool:
 			if a != null and a.location == pid:
 				return true
 	return false
+
+
+## UI-ICONS (#233): the spell an event is about (a ritual cast, ended or turned aside; a spell learned), as a data/magic.gd SPELLS id,
+## or "".
+static func spell_of(e: Dictionary) -> String:
+	var numbers: Dictionary = e.get("numbers", {}) if e.get("numbers") is Dictionary else {}
+	for key in ["ritual", "spell", "node"]:
+		var id := String(numbers.get(key, ""))
+		if not id.is_empty() and MagicData.SPELLS.has(id):
+			return id
+	return ""
 
 
 ## The needs as announcements, ids "need.<key>.t<turn>".

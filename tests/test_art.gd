@@ -73,6 +73,52 @@ func test_every_transformation_has_its_new_unit_and_changed_unit_portraits() -> 
 	assert_eq(Art.variant_portrait("spearmen", "kingdom", ""), null, "no transformation, no look")
 
 
+## ART-M5-2D (#224): M5's mages and summons belong to their factions in the magic data, so their portraits are found by
+## unit id alone, as every other unit's. A portrait that has landed (Alex keeps them in the Review Table) is 384x512 and
+## the same texture with or without the faction; one that hasn't is null, quietly.
+func test_magic_units_are_found_by_id_with_their_portraits() -> void:
+	var units := {}  # unit id -> faction id
+	for fid in MagicData.MAGES:
+		units[String(MagicData.MAGES[fid].id)] = String(fid)
+	for sid in MagicData.SUMMONS:
+		units[String(sid)] = String(MagicData.SUMMONS[sid].faction)
+	assert_true(units.size() > 0, "M5 has mages and summons")
+	var landed := 0
+	for uid in units:
+		assert_eq(Art.unit_faction(uid), units[uid], "%s belongs to %s" % [uid, units[uid]])
+		var tex := Art.portrait(uid)
+		if not ResourceLoader.exists(Art.PORTRAIT_PATH % [units[uid], uid]):
+			assert_true(tex == null, "%s has no portrait yet, and that is quiet" % uid)
+			continue
+		landed += 1
+		assert_true(tex != null, "%s's portrait is found by its id alone" % uid)
+		if tex != null:
+			assert_eq(tex.get_size(), Vector2(384, 512), "%s's portrait is 384x512" % uid)
+			assert_true(Art.portrait(uid, units[uid]) == tex, "the faction-qualified lookup finds the same texture")
+	assert_true(landed > 0, "the portraits Alex kept for #224 have landed")
+
+
+## ART-M5-2D (#224): a spell's icon by its id (and Tithe of Blood's), 256x256 and cached once it lands; null before that,
+## and for an empty or unknown id.
+func test_spell_icons_are_found_by_spell_id() -> void:
+	var keys: Array = MagicData.SPELLS.keys()
+	keys.append(MagicRules.TITHE_OF_BLOOD)
+	var landed := 0
+	for key in keys:
+		var tex := Art.spell_icon(String(key))
+		if not ResourceLoader.exists(Art.SPELL_ICON_PATH % key):
+			assert_true(tex == null, "%s has no icon yet, and that is quiet" % key)
+			continue
+		landed += 1
+		assert_true(tex != null, "%s has its icon" % key)
+		if tex != null:
+			assert_eq(tex.get_size(), Vector2(256, 256), "%s's icon is 256x256" % key)
+			assert_true(Art.spell_icon(String(key)) == tex, "and it is cached: loaded once")
+	assert_true(landed > 0, "the icons Alex kept for #224 have landed")
+	assert_true(Art.spell_icon("") == null, "no id, no icon")
+	assert_true(Art.spell_icon("no_such_spell") == null, "an unknown spell has none")
+
+
 func test_every_faction_has_a_banner_and_every_terrain_a_tile() -> void:
 	for f in FactionData.FACTIONS:
 		var b := Art.banner(f.id)
