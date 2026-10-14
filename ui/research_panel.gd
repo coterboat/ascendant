@@ -240,7 +240,7 @@ func _magic_column(col: Dictionary) -> VBoxContainer:
 	row.name = "Mastery"
 	row.add_theme_constant_override("separation", 14)
 	box.add_child(row)
-	var head := _label(row, "Mastery:", 14, UiPalette.TEXT_SECONDARY)
+	var head := _label(row, "Mastery:", 15, UiPalette.TEXT_SECONDARY)
 	_tip(head, "Mastery", RulesCodex.text("mastery"), "mastery")
 	head.set_meta("rule_text", true)
 	for line in col.mastery:
@@ -265,13 +265,13 @@ func _fill_magic_sidebar() -> void:
 	target.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_bd(target, s.progress)
 	if bool(s.complete):
-		var sold := _label(sidebar, "Nothing is left to research: each turn your research is sold for gold.", 14, UiPalette.GILT)
+		var sold := _label(sidebar, "Nothing is left to research: each turn your research is sold for gold.", 15, UiPalette.GILT)
 		sold.name = "SoldLabel"
 		sold.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_bd(sold, Breakdown.research_sold(state, viewer_fid))
 	sidebar.add_child(HSeparator.new())
 	_heading(sidebar, "Battle spellbook", "spellbook")
-	var how := _label(sidebar, "Each round casters cast the first useful spell nobody on their side has cast yet. Tick a spell on or off; the arrows reorder.", 13, UiPalette.TEXT_SECONDARY)
+	var how := _label(sidebar, "Each round casters cast the first useful spell nobody on their side has cast yet. Tick a spell on or off; the arrows reorder.", 15, UiPalette.TEXT_SECONDARY)
 	how.name = "SpellbookHow"
 	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_tip(how, "Battle spellbook", RulesCodex.text("spellbook"), "spellbook")
@@ -298,12 +298,12 @@ func _fill_spellbook_preview() -> void:
 	box.add_theme_constant_override("separation", 1)
 	sidebar.add_child(box)
 	if previews.is_empty():
-		var none := _label(box, "No army of yours holds a caster yet: recruit a mage, or bring the Ever-Regent to your army. Then each army's casts are previewed here.", 12, UiPalette.TEXT_DISABLED)
+		var none := _label(box, "No army of yours holds a caster yet: recruit a mage, or bring the Ever-Regent to your army. Then each army's casts are previewed here.", 15, UiPalette.TEXT_DISABLED)
 		none.name = "PreviewNone"
 		none.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		none.set_meta("rule_text", true)
 		return
-	var head := _label(box, "What your casters will cast, round 1", 13, UiPalette.GILT)
+	var head := _label(box, "What your casters will cast, round 1", 15, UiPalette.GILT)
 	head.name = "PreviewHead"
 	_tip(head, "What your casters will cast", RulesCodex.text("spellbook_preview"), "spellbook_preview")
 	head.set_meta("rule_text", true)
@@ -456,7 +456,7 @@ func _card(c: Dictionary, own: bool) -> PanelContainer:
 	var kind := RulerRules._cap(String(c.kind_name))  # "Tier II", "Oath", "Transformation"
 	if not String(c.branch).is_empty():
 		kind = "%s · %s" % [kind, AscensionRules.branch_name(String(c.branch))]
-	var kind_label := _label(top, kind, 13, UiPalette.TEXT_SECONDARY)
+	var kind_label := _label(top, kind, 15, UiPalette.TEXT_SECONDARY)
 	kind_label.name = "Kind"
 	if compact:
 		kind_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -477,7 +477,7 @@ func _card(c: Dictionary, own: bool) -> PanelContainer:
 	state_label.tooltip_text = TooltipText.from_breakdown(c.breakdown)
 	CodexLink.attach(state_label, "fork" if st == AscensionRules.CLOSED else "research_order", codex_requested.emit)
 	if st == AscensionRules.CLOSED and own:
-		var why := _label(box, reason, 13, UiPalette.TEXT_DISABLED)
+		var why := _label(box, reason, 15, UiPalette.TEXT_DISABLED)
 		why.name = "Reason"
 		why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		why.set_meta("breakdown", c.breakdown)
@@ -501,7 +501,7 @@ func _card(c: Dictionary, own: bool) -> PanelContainer:
 		var b := _card_button(c)
 		if b != null:
 			if compact:  # M5-8: the button sits on the name's line, so the card is a line shorter
-				b.add_theme_font_size_override("font_size", 14)
+				b.add_theme_font_size_override("font_size", 15)
 				b.custom_minimum_size = Vector2(0, 26)
 				top.add_child(b)
 			else:
@@ -573,7 +573,7 @@ func _fill_sidebar(own: bool) -> void:
 			p.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			_tip(p, String(s.people), RulesCodex.text("transformation"), "transformation")
 			p.set_meta("rule_text", true)
-		var secret := _label(sidebar, "What they are researching now is secret.", 14, UiPalette.TEXT_DISABLED)
+		var secret := _label(sidebar, "What they are researching now is secret.", 15, UiPalette.TEXT_DISABLED)
 		secret.name = "SecretLabel"
 		secret.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_tip(secret, "Research targets are private", RulesCodex.text("research_order"), "research_order")
@@ -642,6 +642,7 @@ func _heading(parent: Control, text: String, codex: String) -> Label:
 
 
 func _label(parent: Control, text: String, font_size: int, colour: Color) -> Label:
+	font_size = maxi(font_size, UiPalette.TYPE_FLOOR)  # UI-FIT (#237): nothing the player reads below the floor
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", font_size)
@@ -753,7 +754,7 @@ func _build() -> void:
 	status_label.name = "StatusLabel"
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status_label.visible = false
-	footer_label = _label(box, "", 14, UiPalette.TEXT_SECONDARY)
+	footer_label = _label(box, "", 15, UiPalette.TEXT_SECONDARY)
 	footer_label.name = "Footer"
 	footer_label.set_meta("rule_text", true)  # help text ("F1"), not a number
 	footer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

@@ -63,7 +63,7 @@ func _init() -> void:
 	head.add_child(_title)
 	var hint := Label.new()
 	hint.text = "Click a row for its codex entry · L or Esc closes"
-	hint.add_theme_font_size_override("font_size", 13)
+	hint.add_theme_font_size_override("font_size", 15)
 	hint.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 	head.add_child(hint)
 	var close := Button.new()
@@ -129,7 +129,7 @@ func set_rows(p_rows: Array) -> void:
 		m.text = _text_of(r)
 		m.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		m.custom_minimum_size.x = ROW_W - SWATCH.x - 10.0
-		m.add_theme_font_size_override("font_size", 12)
+		m.add_theme_font_size_override("font_size", 15)
 		m.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 		m.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		words.add_child(m)
@@ -218,7 +218,7 @@ static func overlay_rows(seat: int = 0) -> Array:
 			"battle_morale", "BattleStrengthBar.style_tag", Callable(), "", func() -> Control:
 				var l := Label.new()
 				l.text = "-4 morale"
-				BattleStrengthBar.style_tag(l, 13)
+				BattleStrengthBar.style_tag(l, UiPalette.TYPE_FLOOR)
 				l.position = Vector2(0, 10)
 				return l),
 		_row("broke", "BROKE", "The side broke: its loss reached its break line, and its survivors flee.", "battle_morale", "BattleStrengthBar.paint",

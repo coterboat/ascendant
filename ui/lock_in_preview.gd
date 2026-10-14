@@ -149,14 +149,14 @@ func _fill_roster(fid: String) -> void:
 			if cell.changed:
 				var was := Label.new()
 				was.name = "Was_%s_%s" % [String(row.type).validate_node_name(), stat]
-				was.add_theme_font_size_override("font_size", 12)
+				was.add_theme_font_size_override("font_size", 15)
 				was.add_theme_color_override("font_color", UiPalette.TEXT_DISABLED)
 				_show_line(was, "was %d" % int(cell.before), cell.before_bd, "", String(cell.before_bd.get("codex", "units")))
 				box.add_child(was)
 			roster.add_child(box)
 		var t := Label.new()
 		t.text = String(row.trait)
-		t.add_theme_font_size_override("font_size", 14)
+		t.add_theme_font_size_override("font_size", 15)
 		t.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 		var key := AutoBattleResolver.codex_id_for_trait(String(row.trait))
 		t.tooltip_text = TooltipText.plain(String(row.trait), String(AutoBattleResolver.TRAIT_TEXT.get(String(row.trait), "")))
@@ -201,7 +201,7 @@ func _captioned(card: Control, caption: String, tip: String) -> VBoxContainer:
 	var l := Label.new()
 	l.text = caption
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.add_theme_font_size_override("font_size", 13)
+	l.add_theme_font_size_override("font_size", 15)
 	l.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 	box.add_child(l)
 	return box
@@ -255,7 +255,7 @@ func _show_line(l: Label, text: String, breakdown: Dictionary, tooltip: String, 
 func _small(text: String, tip: String) -> Label:
 	var l := Label.new()
 	l.text = text
-	l.add_theme_font_size_override("font_size", 13)
+	l.add_theme_font_size_override("font_size", 15)
 	l.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 	l.tooltip_text = tip
 	l.mouse_filter = Control.MOUSE_FILTER_PASS

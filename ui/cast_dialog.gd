@@ -88,7 +88,7 @@ func _init() -> void:
 	cancel_button = _button("CancelButton", "Cancel", "Close this without casting anything.")
 	cancel_button.pressed.connect(close)
 	head.add_child(cancel_button)
-	intro_label = _label("", 14, UiPalette.TEXT_SECONDARY)
+	intro_label = _label("", 15, UiPalette.TEXT_SECONDARY)
 	intro_label.name = "Intro"
 	intro_label.set_meta("rule_text", true)  # words, with the army's name for life
 	box.add_child(intro_label)
@@ -118,7 +118,7 @@ func _init() -> void:
 	foot.name = "Foot"
 	foot.add_theme_constant_override("separation", 12)
 	box.add_child(foot)
-	note_label = _label(NOTE, 13, UiPalette.TEXT_SECONDARY)
+	note_label = _label(NOTE, 15, UiPalette.TEXT_SECONDARY)
 	note_label.name = "Note"
 	note_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.add_child(note_label)
@@ -162,7 +162,7 @@ func show_for(p_orders: OrdersController, p_army_id: String, select: String = ""
 		b.focus_mode = Control.FOCUS_NONE
 		b.toggle_mode = true
 		b.custom_minimum_size = Vector2(265, 0)
-		b.add_theme_font_size_override("font_size", 14)
+		b.add_theme_font_size_override("font_size", 15)
 		b.text = "%s · %s\n%s" % [o.name, o.price, String(o.line) if o.ok else String(o.reason)]
 		var icon := SpellIcons.texture(String(o.ritual))  # UI-ICONS (#233): the ritual's icon, when its art has landed
 		if icon != null:
@@ -461,6 +461,7 @@ func _show_nothing() -> void:
 
 
 func _label(text: String, font_size: int, color: Color) -> Label:
+	font_size = maxi(font_size, UiPalette.TYPE_FLOOR)  # UI-FIT (#237): nothing the player reads below the floor
 	var l := Label.new()
 	l.text = text
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

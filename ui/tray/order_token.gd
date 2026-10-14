@@ -104,7 +104,7 @@ func _build(c: OrdersController) -> void:
 	label.text = String(mark.get("label", "")) if look == Look.TRAY else String(mark.get("board", ""))
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	label.add_theme_font_size_override("font_size", 13 if look == Look.TRAY else 14)
+	label.add_theme_font_size_override("font_size", UiPalette.TYPE_FLOOR)  # UI-FIT (#237): the floor
 	label.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
 	if look == Look.TRAY:
 		label.custom_minimum_size.x = LABEL_W

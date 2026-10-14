@@ -71,7 +71,7 @@ const STATS := ["hp", "attack", "defense", "cost"]
 const STAT_HEADS := {"hp": "Hit points", "attack": "Attack", "defense": "Defense", "cost": "Cost"}
 const RULER_STATS := ["hp", "attack", "defense"]
 const BODY_SIZE := 15
-const SMALL_SIZE := 13
+const SMALL_SIZE := 15
 
 var game_config := {}  # the config being built for; "rulers" and "builds" are added at the end
 var step: Step = Step.IDLE
@@ -1417,6 +1417,7 @@ func _outline_icon(size: Vector2i, round: bool) -> Texture2D:
 
 
 func _label(node_name: String, text: String, font_size: int, color: Color, wrap: bool = false) -> Label:
+	font_size = maxi(font_size, UiPalette.TYPE_FLOOR)  # UI-FIT (#237): nothing the player reads below the floor
 	var l := Label.new()
 	l.name = node_name
 	l.text = text

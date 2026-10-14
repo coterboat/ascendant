@@ -1379,10 +1379,10 @@ func _refresh_opponents() -> void:
 			vs.text = "vs"
 			vs.custom_minimum_size = Vector2(24, 0)
 			vs.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			vs.add_theme_font_size_override("font_size", 14)
+			vs.add_theme_font_size_override("font_size", 15)
 			vs.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 			line.add_child(vs)
-		var banner := Art.banner_card(fid, 30.0)
+		var banner := Art.banner_card(fid, 26.0)  # UI-FIT (#237): with its words at the floor, the plaque still clears the system row
 		banner.name = "RivalBanner"
 		line.add_child(banner)
 		var emblem := SeatEmblem.new(i, SeatEmblem.Look.TOKEN, 16.0)
@@ -1392,7 +1392,7 @@ func _refresh_opponents() -> void:
 		name_label.name = "OpponentName"
 		name_label.text = faction_name
 		name_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		name_label.add_theme_font_size_override("font_size", 14)
+		name_label.add_theme_font_size_override("font_size", 15)
 		name_label.add_theme_color_override("font_color", UiPalette.seat_color(i).lightened(0.3))
 		name_label.set_meta("seat_help", TooltipText.plain("%s is played by the computer" % faction_name, AISeat.tag_help(faction_name, session.computer_level(fid)))
 			if computer_seat else TooltipText.plain("%s is played by a person" % faction_name,
@@ -1405,7 +1405,7 @@ func _refresh_opponents() -> void:
 			tag = VictoryScreen.computer_tag(faction_name, session.computer_level(fid), open_codex)
 		else:
 			tag = _player_tag(i, faction_name)
-		tag.add_theme_font_size_override("font_size", 11)
+		tag.add_theme_font_size_override("font_size", 15)
 		(tag.get_theme_stylebox("normal") as StyleBoxFlat).content_margin_top = 0
 		(tag.get_theme_stylebox("normal") as StyleBoxFlat).content_margin_bottom = 1
 		# The tag and, in a fog game, the "last seen" line share the row under the name (the plaque is 72 px tall at most).
@@ -1419,7 +1419,7 @@ func _refresh_opponents() -> void:
 		seen.name = "LastSeen"
 		seen.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		seen.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		seen.add_theme_font_size_override("font_size", 12)
+		seen.add_theme_font_size_override("font_size", 15)
 		seen.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 		seen.set_meta("rival", fid)
 		under.add_child(seen)
@@ -1844,6 +1844,7 @@ func _overlay_button(row: HBoxContainer, node_name: String, text: String, action
 
 
 func _label(node_name: String, font_size: int, color: Color) -> Label:
+	font_size = maxi(font_size, UiPalette.TYPE_FLOOR)  # UI-FIT (#237): nothing the player reads below the floor
 	var l := Label.new()
 	l.name = node_name
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

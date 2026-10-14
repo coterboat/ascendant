@@ -1732,6 +1732,7 @@ func _fit(l: Label, largest: int, smallest: int) -> void:
 
 
 func _label(text: String, font_size: int, col: Color) -> Label:
+	font_size = maxi(font_size, UiPalette.TYPE_FLOOR)  # UI-FIT (#237): nothing the player reads below the floor
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", font_size)
@@ -1741,7 +1742,7 @@ func _label(text: String, font_size: int, col: Color) -> Label:
 
 
 func _chip(text: String, tip: String) -> Label:
-	var l := _label(text, 13, UiPalette.TEXT_PRIMARY)
+	var l := _label(text, 15, UiPalette.TEXT_PRIMARY)
 	var style := StyleBoxFlat.new()
 	style.bg_color = UiPalette.PANEL_BG
 	style.border_color = UiPalette.GILT

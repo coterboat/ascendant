@@ -41,14 +41,14 @@ func _init() -> void:
 	toggle.name = "FoldButton"
 	toggle.focus_mode = Control.FOCUS_NONE
 	toggle.custom_minimum_size = Vector2(WIDTH, CONTROL_H)
-	toggle.add_theme_font_size_override("font_size", 13)
+	toggle.add_theme_font_size_override("font_size", 15)
 	toggle.pressed.connect(_on_toggle)
 	add_child(toggle)
 	more = Button.new()
 	more.name = "MoreButton"
 	more.focus_mode = Control.FOCUS_NONE
 	more.custom_minimum_size = Vector2(WIDTH, CONTROL_H)
-	more.add_theme_font_size_override("font_size", 13)
+	more.add_theme_font_size_override("font_size", 15)
 	more.pressed.connect(more_requested.emit)
 	add_child(more)
 	visible = false

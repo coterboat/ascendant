@@ -97,7 +97,7 @@ func _build() -> void:
 	var meta := Label.new()
 	meta.name = "Meta"
 	meta.text = "%s · turn %d" % [ChronicleModel.KIND_NAMES.get(String(item.kind), ""), int(item.turn)]
-	meta.add_theme_font_size_override("font_size", UiPalette.TYPE_SMALL - 1)
+	meta.add_theme_font_size_override("font_size", UiPalette.TYPE_SMALL)
 	meta.add_theme_color_override("font_color", UiPalette.TEXT_DISABLED)
 	meta.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	titles.add_child(meta)

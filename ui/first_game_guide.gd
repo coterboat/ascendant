@@ -354,10 +354,22 @@ func _refresh_systems() -> void:
 	systems_toggle.visible = not others.is_empty()
 	systems_lines_box.visible = _systems_open and not others.is_empty()
 	var names := others.map(func(s): return String(SHORT_NAMES.get(String(s.id), s.name)))
-	systems_toggle.text = "%s Also on: %s" % ["\u25BE" if _systems_open else "\u25B8", "" if _systems_open else ", ".join(names)]
+	systems_toggle.text = "%s Also on: %s" % ["\u25BE" if _systems_open else "\u25B8", "" if _systems_open else _one_line(names)]
 	var tip := others.map(func(s): return "%s: %s" % [String(s.name), String(s.rest)])
 	systems_toggle.tooltip_text = TooltipText.plain("The other systems in this game",
 		"%s.\n\nClick to open or fold one line about each; every name in them opens its codex entry, and hovering a line says more." % "\n".join(tip))
+
+
+## UI-FIT (#237): the folded row's names, as many as fit on its one line at the floor's size, then "+N" (every one is in its tooltip).
+func _one_line(names: Array) -> String:
+	var font := systems_toggle.get_theme_default_font()
+	var fs := systems_toggle.get_theme_font_size("font_size")
+	var room := WIDTH - 40.0 - font.get_string_size("\u25B8 Also on: ", HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	for k in range(names.size(), 0, -1):
+		var text := ", ".join(names.slice(0, k)) + ("" if k == names.size() else " +%d" % (names.size() - k))
+		if font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x <= room:
+			return text
+	return "+%d" % names.size()
 
 
 # --- nodes ----------------------------------------------------------------------------------------
@@ -372,7 +384,7 @@ func _build() -> void:
 	head.name = "Head"
 	head.add_theme_constant_override("separation", 5)
 	box.add_child(head)
-	title_label = _label("TitleLabel", "First game guide", 18, UiPalette.GILT)
+	title_label = _label("TitleLabel", "First game guide", 17, UiPalette.GILT)
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS  # the head row also holds How to play and Hide
 	head.add_child(title_label)
@@ -398,7 +410,7 @@ func _build() -> void:
 		check.text = String(step.title)
 		check.disabled = true  # a tick you can see, not a switch you can flip
 		check.focus_mode = Control.FOCUS_NONE
-		check.add_theme_font_size_override("font_size", 16)
+		check.add_theme_font_size_override("font_size", UiPalette.TYPE_FLOOR)  # UI-FIT: a line shorter, so the card still fits at 125%
 		_tight(check)
 		check.add_theme_color_override("font_disabled_color", UiPalette.TEXT_PRIMARY)
 		check.tooltip_text = TooltipText.plain(String(step.title), String(step.tip))
@@ -428,7 +440,7 @@ func _build() -> void:
 		line.fit_content = true
 		line.scroll_active = false
 		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		line.add_theme_font_size_override("normal_font_size", 13)
+		line.add_theme_font_size_override("normal_font_size", 15)
 		line.add_theme_color_override("default_color", UiPalette.TEXT_SECONDARY)
 		line.add_theme_color_override("meta_color", UiPalette.LINK)
 		line.custom_minimum_size = Vector2(WIDTH - 16.0, 0)
@@ -445,7 +457,7 @@ func _build() -> void:
 	systems_toggle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	systems_toggle.focus_mode = Control.FOCUS_NONE
 	systems_toggle.custom_minimum_size = Vector2(WIDTH - 16.0, 0)
-	systems_toggle.add_theme_font_size_override("font_size", 13)
+	systems_toggle.add_theme_font_size_override("font_size", 15)
 	_tight(systems_toggle)
 	systems_toggle.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 	systems_toggle.add_theme_color_override("font_hover_color", UiPalette.GILT)
@@ -484,6 +496,7 @@ func _tight(b: BaseButton) -> void:
 
 
 func _label(node_name: String, text: String, font_size: int, color: Color) -> Label:
+	font_size = maxi(font_size, UiPalette.TYPE_FLOOR)  # UI-FIT (#237): nothing the player reads below the floor
 	var l := Label.new()
 	l.name = node_name
 	l.text = text

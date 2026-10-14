@@ -48,7 +48,10 @@ const SELECTION := Color("#FFFFFF")
 const TYPE_TITLE := 28
 const TYPE_NAME := 20
 const TYPE_BODY := 16
-const TYPE_SMALL := 14
+const TYPE_SMALL := 15
+## UI-FIT (#237): the smallest size any text the player reads may use: 15 logical px draw at the bible's 12 px floor in the smallest
+## supported window (1280x720 at 100%, a 0.8 scale). tests/test_type_floor.gd holds the screens to it.
+const TYPE_FLOOR := 15
 const TYPE_NUMBER := 18
 
 

@@ -637,7 +637,7 @@ func _build_bottom() -> void:
 	hint_label.custom_minimum_size = Vector2(300, 0)
 	hint_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hint_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	hint_label.add_theme_font_size_override("font_size", 14)
+	hint_label.add_theme_font_size_override("font_size", 15)
 	hint_label.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 	row.add_child(hint_label)
 	# UX-4 (§3.4): the orders as tokens, placed ones by number and then the realm ones, with the gold they leave. While there are none the
