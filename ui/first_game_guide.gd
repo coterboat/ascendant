@@ -464,7 +464,7 @@ func _build() -> void:
 	_tight(how_button)
 	how_button.add_theme_color_override("font_color", UiPalette.LINK)
 	how_button.add_theme_color_override("font_hover_color", UiPalette.GILT)
-	how_button.tooltip_text = TooltipText.plain("How to play", "The turn loop (read, plan, commit, resolve, watch), the Table, the Chronicle, the lenses and the battle viewer, why orders are simultaneous and where every number explains itself.")
+	how_button.tooltip_text = TooltipText.plain("How to play", "The turn loop (read, plan, commit, resolve, watch), the Table, the Chronicle and the battle viewer, why orders are simultaneous and where every number explains itself.")
 	how_button.pressed.connect(func(): codex_requested.emit(HOW_TO_PLAY))
 	# MVP-3 (#177): beside Hide in the head row, not a row of its own: the card is shorter by a line and leaves the capital's
 	# neighbor clear at 125% too.
