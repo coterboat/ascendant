@@ -2207,7 +2207,7 @@ func _draw_overlay(ci: CanvasItem) -> void:
 		BattleEffects.draw_number(ci, font, {"pos": pos, "text": n["text"], "color": n["color"],
 			"size": n["size"], "age": n["age"], "life": n["life"]})
 	## the camera's keys, bottom right of the stage's band (above the caption and the controls)
-	draw_camera_hint(ci, font, Vector2(field_width() - 12.0, stage_band().end.y - 6.0), CAMERA_HINT)
+	draw_camera_hint(ci, font, Vector2(field_width() - 12.0, minf(stage_band().end.y, caption_strip.position.y if caption_strip.visible else INF) - 6.0), CAMERA_HINT)
 
 
 ## M3c S-5: the walls' plate, hung over the gate-side wall for the whole battle: what the walls give the garrison in a storm

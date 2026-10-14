@@ -254,8 +254,13 @@ func _run() -> void:
 				await _wait(6.0)
 				await _shot("t%02d_battle" % turn, "Battle watched: %s (view %s)" % [
 					BattleHost.battle_title(mine[0]), game.battle_host.view_kind])
+				# UX-9: play it out (the viewer opens paused before round 1), so the second shot is the result, not the deploy again
+				var bview = game.battle_host.view
+				if bview != null and bview.get("player") != null:
+					bview.player.set_speed(4)
+					bview.player.play()
 				await _wait(14.0)
-				await _shot("t%02d_battle_end" % turn, "Same battle, later.")
+				await _shot("t%02d_battle_end" % turn, "Same battle, played at 4x for 14 s (the result card when it is over).")
 				game.battle_host.close()
 				print("turn %d: battle closed" % turn)
 				await _frames(4)

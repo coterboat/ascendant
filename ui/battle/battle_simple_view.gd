@@ -1616,8 +1616,7 @@ func _build_caption() -> void:
 		l.add_theme_font_override("font", UiFonts.body())
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.max_lines_visible = 2
-		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		l.max_lines_visible = 2  # (no trimming mode: with one, a wrapping label showed one line and its ellipsis at 125%, UX-9's walk)
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
 		col.add_child(l)
 		caption_labels.append(l)

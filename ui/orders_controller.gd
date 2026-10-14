@@ -594,9 +594,9 @@ func order_text(index: int) -> String:
 		return head + _arrival_note(r)
 	if r.at == RecruitOrder.AT_RULER:
 		var name := RulerRules.current_name(state, faction_id)
-		return "Recruit one %s with %s for %d gold, leaving %d gold. It gathers at %s, where %s starts this turn, and joins your armies there at the end of the turn, if you still own %s then and %s stands; if not, it is cancelled and costs nothing." % [
-			_unit_name(r.unit_type), name, r.cost, r.gold_after, _province_name(r.province), name, _province_name(r.province), name] + _arrival_note(r)
-	var text := "Recruit one %s at %s for %d gold, leaving %d gold." % [_unit_name(r.unit_type), _capital_name(), r.cost, r.gold_after]
+		return "Recruit %s with %s for %d gold, leaving %d gold. It gathers at %s, where %s starts this turn, and joins your armies there at the end of the turn, if you still own %s then and %s stands; if not, it is cancelled and costs nothing." % [
+			_unit_phrase(String(r.unit_type)), name, r.cost, r.gold_after, _province_name(r.province), name, _province_name(r.province), name] + _arrival_note(r)
+	var text := "Recruit %s at %s for %d gold, leaving %d gold." % [_unit_phrase(String(r.unit_type)), _capital_name(), r.cost, r.gold_after]
 	return text + _arrival_note(r)
 
 
@@ -1084,12 +1084,13 @@ func recruitable_types_at(province_id: String) -> Array:
 	return out
 
 
-## "one Spearmen", "a Siege Ram", "Wallbreakers" for a recruit order line.
+## "Spearmen", "a Siege Ram", "an Iron Colossus", "Wallbreakers" for a recruit order line (UX-9: a unit named in the plural is
+## one recruit already; "one Knights" read wrong).
 func _unit_phrase(unit_type_id: String) -> String:
 	var name := _unit_name(unit_type_id)
-	if not FortData.engine_by_id(unit_type_id).is_empty():
-		return name if name.ends_with("s") else "a %s" % name
-	return "one %s" % name
+	if name.ends_with("s"):
+		return name
+	return ("an %s" if "AEIOU".contains(name.left(1).to_upper()) else "a %s") % name
 
 
 # --- helpers --------------------------------------------------------------------------------------
