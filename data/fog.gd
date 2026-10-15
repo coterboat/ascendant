@@ -149,13 +149,13 @@ const TEXT := {
 	"ritual_cast": "{faction} cast {ritual}, in effect through turn {until_turn}.",
 	"ritual_fell": "{ritual} fell on {province} ({faction}), through turn {until_turn}.",
 	"curse_bit": "Your {ritual} bit {faction}'s fighters at {province}: it takes up to {budget} hit points a turn from them, through turn {until_turn}.",
-	"move": "An army of {faction} ({total} fighters: {types}) marched from {from} to {to}.",
-	"move_away": "An army of {faction} ({total} fighters: {types}) marched out of {from} toward {to}, out of your sight.",
+	"move": "An army of {faction} ({fighters}: {types}) marched from {from} to {to}.",
+	"move_away": "An army of {faction} ({fighters}: {types}) marched out of {from} toward {to}, out of your sight.",
 	# synthetic events (§2.8): what is left over between the view before the turn and the view after it
-	"sighting_changed": "You now see {total} fighters of {faction} at {province} ({level}).",
+	"sighting_changed": "You now see {fighters} of {faction} at {province} ({level}).",
 	"sighting_lost": "You no longer see that army of {faction} at {province}.",
-	"memory_added": "{province} is out of your sight now: you last saw {total} fighters of {faction} there, on turn {turn}.",
-	"army_changed": "Your army at {province} now holds {total} fighters.",
+	"memory_added": "{province} is out of your sight now: you last saw {fighters} of {faction} there, on turn {turn}.",
+	"army_changed": "Your army at {province} now holds {fighters}.",
 	"army_gone": "Your army at {province} is gone.",
 }
 

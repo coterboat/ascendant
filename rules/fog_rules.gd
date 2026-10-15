@@ -1317,15 +1317,19 @@ static func _rebuilt_move(e: Dictionary, army_ids: Array, before_sight: Dictiona
 	var order := type_order(before, fid)
 	var n := 0
 	var types := {}
+	# TEXT-1 (#240): every fighter it names is counted, its commanders and its ruler too, as a battle's "fighters" are: a ruler
+	# alone read "(none fighters: the Ninth Fang)", and a War Bear with its Warchief and its ruler "(1-2 fighters: ...)" over three names.
 	for a in movers:
 		n += a.units.size()
 		for u in a.units:
 			types[u.type.id] = true
 		if a.commander != null:
+			n += 1
 			types[a.commander.type.id] = true
 	var type_list := _ordered_keys(types, order)
 	for a in movers:
 		if a.ruler != null:
+			n += 1
 			type_list.append(a.ruler.type.id)
 	var total := exact_count(n) if String(before_sight.get(from)) == CLEAR else round_count(n)
 	var numbers := {"faction": fid, "from": from, "to": to, "total": total, "types": type_list}
@@ -1340,7 +1344,18 @@ static func _move_params(numbers: Dictionary, state: GameState) -> Dictionary:
 	for type_id in numbers.types:
 		names.append(type_name(state, String(numbers.faction), String(type_id)))
 	return {"faction": _the_faction(state, String(numbers.faction)), "from": _province_name(state, String(numbers.from)),
-		"to": _province_name(state, String(numbers.to)), "total": String(numbers.total.text), "types": RulerRules._and_list(names)}
+		"to": _province_name(state, String(numbers.to)), "total": String(numbers.total.text), "fighters": fighters_words(String(numbers.total.text)),
+		"types": RulerRules._and_list(names)}
+
+
+## TEXT-1 (#240): a count's words with "fighter" agreeing: "1 fighter", "no fighters" (the estimate's "none"), "about 5 fighters",
+## "1-2 fighters". The templates take this as {fighters}; they read "1 fighters" and "none fighters" before.
+static func fighters_words(count_text: String) -> String:
+	if count_text == "1":
+		return "1 fighter"
+	if count_text == String(FogData.ESTIMATE.none_text):
+		return "no fighters"
+	return "%s fighters" % count_text
 
 
 ## The FogData.SAFE_NUMBERS row an event of the viewer's report is held to (§14): "move" for a rebuilt move.
@@ -1569,9 +1584,9 @@ static func synthetic_events(view_before: GameState, view_after: GameState, show
 			total += int(entry.counts[k])
 		var state: GameState = view_after if view_after != null else view_before
 		var template := "army_gone" if own and gone else t
+		var total_text := String(note.get("total", {}).get("text", str(total))) if not note.is_empty() else str(total)
 		var text := String(FogData.TEXT.get(template, "")).format({"faction": _the_faction(state, String(entry.owner)),
-			"province": _province_name(state, String(entry.location)),
-			"total": String(note.get("total", {}).get("text", str(total))) if not note.is_empty() else str(total),
+			"province": _province_name(state, String(entry.location)), "total": total_text, "fighters": fighters_words(total_text),
 			"level": String(FogData.LEVEL_NAMES.get(String(entry.level), entry.level)), "turn": int(numbers.turn)})
 		out.append({"type": t, "phase": "view", "provinces": [String(entry.location)], "factions": [String(entry.owner)],
 			"armies": [id], "cause": "view", "numbers": numbers, "text": text, "codex": String(FogData.SYNTHETIC_CODEX.get(t, "sight")),
