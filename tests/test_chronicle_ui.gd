@@ -558,6 +558,7 @@ func test_each_seat_has_its_own_chronicle_and_the_handoff_clears_it() -> void:
 	var game := _battle_turn("never")
 	var hud := game.chronicle_hud
 	assert_eq(hud.seat, CROWN)
+	assert_eq(NoticeArt.viewer, CROWN, "the medallions wear the Crown's own set (UX-ART #222)")
 	hud.open()
 	var crown_card: NoticeCard = hud.column.cards[0]
 	var crown_id := String(crown_card.item.id)
@@ -569,12 +570,14 @@ func test_each_seat_has_its_own_chronicle_and_the_handoff_clears_it() -> void:
 	assert_true(game.handoff.visible, "the cover is up")
 	assert_false(hud.is_open(), "the column is shut behind it")
 	assert_eq(hud.seat, "", "nobody in particular is looking")
+	assert_eq(NoticeArt.viewer, "", "and no faction's set is worn")
 	assert_eq(hud.items(), [], "nothing is listed")
 	assert_false(hud.stack.visible, "no medallions")
 	assert_eq(hud.markers.marker_ids(), [])
 	assert_true(game.chronicle_button.disabled, "the button waits")
 	game.handoff.ready_button.pressed.emit()
 	assert_eq(hud.seat, CLANS, "the next seat's own Chronicle")
+	assert_eq(NoticeArt.viewer, CLANS, "and the Clans' own medallion set")
 	assert_eq(hud.store.pinned(CLANS), [], "seat 2 never sees seat 1's pins")
 	assert_eq(hud.store.dismissed(CLANS), [])
 	hud.open()

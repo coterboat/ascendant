@@ -393,7 +393,13 @@ func test_what_you_didnt_see() -> void:
 	assert_eq(FogView.missed_text(event, CROWN, view), "", "nothing you didn't see")
 
 
+## The fog hint shows in a game that is not the player's first: in a first game the first-game guide explains fog itself and the
+## banner yields to it (MVP-3, one card at a time). So the test says which it is: the guide's hint is seen. Run alone, nothing had seen
+## it, the guide came up and the banner never showed; in the full suite an earlier test happened to leave it seen. The run's hints are
+## put back exactly as they were at the end (not erased: later tests read them too).
 func test_the_first_fog_turn_has_its_hint_until_got_it() -> void:
+	var saved := _hints()
+	_set_hints({GameSettings.HINT_FIRST_GAME: true})
 	var game := _game({"players": [CROWN, CLANS], "seed": 4242, "fog": true, "ai": {CLANS: "normal"}})
 	assert_true(game.notice_panel.visible, "the first fog turn shows the hint")
 	assert_eq(game.notice_label.text, GameScreen.FOG_HINT)
@@ -403,11 +409,9 @@ func test_the_first_fog_turn_has_its_hint_until_got_it() -> void:
 	assert_true(GameSettings.hint_seen("fog"), "Got it is remembered in the settings")
 	game.free()
 	# The hint is for the first turn only: it never sits over a turn report (the notice is above the overlays).
-	var cfg0 := ConfigFile.new()
-	cfg0.load(GameSettings.default_path)
-	cfg0.erase_section(GameSettings.HINTS)
-	cfg0.save(GameSettings.default_path)
+	_set_hints({GameSettings.HINT_FIRST_GAME: true})
 	var later := _game({"players": [CROWN, CLANS], "seed": 4244, "fog": true, "ai": {CLANS: "normal"}})
+	assert_true(later.notice_panel.visible and later.notice_label.text == GameScreen.FOG_HINT, "its first turn has the hint")
 	later.end_turn()
 	assert_true(later.report_overlay.visible, "the turn 1 report opens")
 	assert_false(later.notice_panel.visible and later.notice_label.text == GameScreen.FOG_HINT, "no hint over the report")
@@ -419,11 +423,34 @@ func test_the_first_fog_turn_has_its_hint_until_got_it() -> void:
 	var plain := _game({"players": [CROWN, CLANS], "seed": 4243, "ai": {CLANS: "normal"}})
 	assert_ne(plain.notice_label.text, GameScreen.FOG_HINT, "no hint without fog")
 	plain.free()
-	# Leave the run's settings as they were.
+	# In a first game the guide explains fog, and the banner yields to it.
+	_set_hints({})
+	var first := _game({"players": [CROWN, CLANS], "seed": 4242, "fog": true, "ai": {CLANS: "normal"}})
+	assert_false(first.notice_panel.visible and first.notice_label.text == GameScreen.FOG_HINT, "a first game: the guide says it instead")
+	assert_true(first.first_game_guide.explains_fog(), "in its fog line")
+	first.free()
+	_set_hints(saved)
+
+
+## The [hints] section of the run's settings file, as {hint: value}.
+func _hints() -> Dictionary:
+	var out := {}
 	var cfg := ConfigFile.new()
 	if cfg.load(GameSettings.default_path) == OK and cfg.has_section(GameSettings.HINTS):
+		for key in cfg.get_section_keys(GameSettings.HINTS):
+			out[key] = cfg.get_value(GameSettings.HINTS, key)
+	return out
+
+
+## Makes the [hints] section exactly `hints` (no section when it is empty), keeping the rest of the file.
+func _set_hints(hints: Dictionary) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(GameSettings.default_path)
+	if cfg.has_section(GameSettings.HINTS):
 		cfg.erase_section(GameSettings.HINTS)
-		cfg.save(GameSettings.default_path)
+	for key in hints:
+		cfg.set_value(GameSettings.HINTS, key, hints[key])
+	cfg.save(GameSettings.default_path)
 
 
 # --- forecasts (§2.10) ----------------------------------------------------------------------------------
