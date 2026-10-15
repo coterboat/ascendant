@@ -19,7 +19,7 @@ enum Look { TRAY, BOARD }
 const CHIP_H := 22.0
 const ICON_PX := 18
 const TRAY_H := 34.0
-const LABEL_W := 72.0
+const LABEL_W := 84.0  # UI-FIT (#237): the words at the floor's 15 px, "Westwatch" whole (72 held it at 13 px)
 const CROSS_PX := 18.0
 
 var index := -1
