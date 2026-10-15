@@ -52,6 +52,8 @@ const TYPE_SMALL := 15
 ## UI-FIT (#237): the smallest size any text the player reads may use: 15 logical px draw at the bible's 12 px floor in the smallest
 ## supported window (1280x720 at 100%, a 0.8 scale). tests/test_type_floor.gd holds the screens to it.
 const TYPE_FLOOR := 15
+## The same floor in the window's own pixels, for text that scales with the board (the 2D map's plates): 12 px on screen.
+const SCREEN_FLOOR_PX := 12.0
 const TYPE_NUMBER := 18
 
 

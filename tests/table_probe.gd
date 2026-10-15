@@ -243,6 +243,7 @@ func _measure(scenario: String) -> Dictionary:
 		out["canvas"] = [canvas.global_position.x, canvas.global_position.y, MapLayout.SIZE.x * canvas.scale.x, MapLayout.SIZE.y * canvas.scale.y, canvas.is_visible_in_tree()]
 	out["card_parts"] = _card_parts()
 	out["labels"] = _province_labels()
+	out["board_text"] = _board_text()
 	out["sweep"] = await _sweep(pieces, rects)
 	if scenario == "rest":
 		out["clicks"] = await _clicks(pieces, rects)
@@ -314,7 +315,14 @@ func _edges() -> Dictionary:
 			map.selected_army_id = ""
 			map.select_province(p.id)
 			await _frames(5)  # the card's size settles over a few frames: its pinned row wraps once it has a width
-			rows.append(["province", p.id] + _r(map.cards))
+			var row: Array = ["province", p.id] + _r(map.cards)
+			if kind == "3d":  # UI-FIT (#237): where the selection ends up once the camera's glide is done (snapped), in Table coordinates
+				var board3: Board3D = map.board
+				board3._snap_rig()
+				await _frames(2)
+				var at: Vector2 = board3.project(board3.wv.terrain.centre_of(p.id))
+				row.append([at.x, at.y])
+			rows.append(row)
 		for a in map.state.armies:
 			if a.owner == "kingdom":
 				map.select_army(a.id)
@@ -382,6 +390,36 @@ func _province_labels() -> Dictionary:
 		if label != null:
 			var r: Rect2 = label.get_global_transform() * Rect2(Vector2.ZERO, label.size)
 			out.rects[id] = [r.position.x, r.position.y, r.size.x, r.size.y, label.is_visible_in_tree()]
+	return out
+
+
+## UI-FIT (#237): every province's name on the board as drawn, {id: [x, y, w, h, shown, folded]}, the selected province, and on the 2D map
+## the smallest text of each plate as drawn in the window's own pixels ({id: px}). A folded 3D plate shows only its emblem.
+func _board_text() -> Dictionary:
+	var map := game.map
+	var ratio := float(root.size.x) / root.get_visible_rect().size.x
+	var out := {"names": {}, "smallest": {}, "selected": map.selected_province_id, "tooltips": {}}
+	for p in map.state.provinces:
+		var label: Control = null
+		var folded := false
+		if kind == "3d":
+			var plate: Dictionary = map.board.overlay._plates.get(p.id, {})
+			label = plate.get("name", null)
+			folded = map.board.overlay.plate_folded(p.id)
+			if folded:
+				out.tooltips[p.id] = map.board.overlay.plate_tooltip(p.id)
+		else:
+			var region: ProvinceRegion = map.regions[p.id]
+			label = region.name_label
+			var smallest := INF
+			for n in region.get_node("Labels").find_children("*", "Control", true, false):
+				var c := n as Control
+				if (c is Label or c is Button) and c.is_visible_in_tree() and not str(c.get("text")).strip_edges().is_empty():
+					smallest = minf(smallest, c.get_theme_font_size("font_size") * c.get_global_transform().get_scale().y * ratio)
+			out.smallest[p.id] = smallest if smallest < INF else -1.0  # -1: nothing showing (JSON has no infinity)
+		if label != null:
+			var r: Rect2 = label.get_global_transform() * Rect2(Vector2.ZERO, label.size)
+			out.names[p.id] = [r.position.x, r.position.y, r.size.x, r.size.y, label.is_visible_in_tree(), folded]
 	return out
 
 

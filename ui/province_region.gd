@@ -104,6 +104,9 @@ var always_detail := false:
 		always_detail = value
 		_update_detail()
 var _hovered := false
+## UI-FIT (#237): the least font size of the plate's text, in the canvas's own pixels, so it never draws below the 12 px floor however
+## small the map is framed (MapScreen._fit_map works it out from the canvas scale and the window). 0 leaves every size as built.
+var text_floor := 0
 ## UX-7 (design/UX_WAR_TABLE.md §4.0, §1.5): the map lens on the 2D map is a flat colour over the region (under the veil, so sight still
 ## reads) and the lens value on its plate (LensChip, the 3D board's own); the 3D board's blend effects (glow, hatch, rings) are the
 ## legend's to name. set_lens(id, entry) from MapLens.build, "" and {} for none.
@@ -206,7 +209,31 @@ func setup(state: GameState, p: Province, center: Vector2, seats: Array = [], vi
 		_hovered = false
 		_update_detail())
 	_update_detail()
+	_apply_text_floor()
 	queue_redraw()
+
+
+## UI-FIT (#237): every text on the plate (its name, gold, fort chip, army badges, enchantments, countdown) at `px` or more.
+func set_text_floor(px: int) -> void:
+	if px == text_floor:
+		return
+	text_floor = px
+	_apply_text_floor()
+
+
+func _apply_text_floor() -> void:
+	var box := get_node_or_null("Labels")
+	if box == null:
+		return
+	for n in box.find_children("*", "Control", true, false):
+		if not (n is Label or n is Button):
+			continue
+		var c := n as Control
+		if not c.has_meta("base_font_size"):
+			c.set_meta("base_font_size", c.get_theme_font_size("font_size"))
+		var base := int(c.get_meta("base_font_size"))
+		if text_floor > base or c.get_theme_font_size("font_size") != base:
+			c.add_theme_font_size_override("font_size", maxi(base, text_floor))
 
 
 ## UX-2 (§2.1): what this plate shows besides what warns. The gold, the enchantments and a quiet fort's chip appear while the region is

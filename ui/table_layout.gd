@@ -32,6 +32,10 @@ const NOTICE_W := CARD_W
 ## UX-7: the lens legend lives in the left column too, as wide as the card.
 const LEGEND_W := CARD_W
 const HOVER_MAX_W := 760.0
+## The narrowest the framing area gets before it reaches under the card column. UI-FIT (#237): 420, so at every supported size, the
+## Chronicle open at 125% included (840 px of safe area), the column stays clear and the card never covers the map's west edge, where
+## the capital sits (it was 480, which put the framing 48 px under the card there).
+const MAP_MIN_W := 420.0
 ## The pieces arrange() places, in the order they take their spots (the first never moves). The playback bar, its caption and the
 ## close-up chip are the board's own transient pieces, hung by the Table so nothing covers their buttons. The notice and the guide
 ## take the top of the left column before the card, which docks under them and shrinks (it scrolls): the whole left column is the
@@ -83,7 +87,7 @@ static func safe_area(viewport: Vector2, chronicle_open: bool = false) -> Rect2:
 ## column is fixed.
 static func framing_area(viewport: Vector2, chronicle_open: bool = false) -> Rect2:
 	var safe := safe_area(viewport, chronicle_open)
-	var left := minf(CARD_W + 2.0 * GAP, maxf(safe.size.x - 480.0, 0.0))
+	var left := minf(CARD_W + 2.0 * GAP, maxf(safe.size.x - MAP_MIN_W, 0.0))
 	return Rect2(safe.position.x + left, safe.position.y, safe.size.x - left, safe.size.y)
 
 

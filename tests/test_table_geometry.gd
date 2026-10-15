@@ -198,6 +198,7 @@ func test_the_selection_card_is_placed_with_its_first_action_in_view_in_every_st
 ## is docked in the left column, so where the selected province or army is on screen makes no difference. With every province selected, then
 ## each army of yours, at the 3D camera's farthest and nearest zoom (the 2D map has one zoom), at every size on both boards, the card keeps
 ## the same left edge and width, stays docked at the bottom of the safe area and inside it, and never covers the tray or the plaques.
+## UI-FIT (#237): on the 3D board, the selected province itself ends in the framing area (the camera glides it there), never under the card.
 func test_the_card_is_docked_the_same_for_every_province_and_army_at_every_zoom_and_size() -> void:
 	var counted := {"n": 0}
 	_each(func(board: String, key: String, scenario: String, m: Dictionary):
@@ -218,6 +219,11 @@ func test_the_card_is_docked_the_same_for_every_province_and_army_at_every_zoom_
 				assert_true(r.size.x <= TableLayout.CARD_W + 0.5, "%s: no wider than the card slot" % what)
 				assert_true(is_equal_approx(r.end.y, safe.end.y - TableLayout.GAP), "%s: docked at the bottom (%s)" % [what, r])
 				assert_true(safe.grow(0.5).encloses(r), "%s: inside the safe area" % what)
+				if row.size() > 7:  # UI-FIT (#237): on the 3D board the selected province ends in the framing area, never under the card
+					var framing := Rect2(m.framing[0], m.framing[1], m.framing[2], m.framing[3])
+					var at := Vector2(row[7][0], row[7][1])
+					assert_true(framing.grow(1.0).has_point(at), "%s: the province is in view in the framing area (%s in %s)" % [what, at, framing])
+					assert_false(r.has_point(at), "%s: and not under the card" % what)
 				counted.n += 1)
 	var expected: int = SIZES.size() * 3 * 16  # three sizes; the 3D board's two zooms and the 2D map's one; at least 16 selections each
 	assert_true(counted.n >= expected, "cards were measured for every province and army (%d of at least %d)" % [counted.n, expected])
@@ -376,8 +382,8 @@ func test_the_left_column_holds_the_notice_the_guide_and_the_card_in_that_order(
 				var r := _rect(m, name)
 				column.append(r)
 				assert_eq(r.position.x, safe.position.x + TableLayout.GAP, "%s: the %s is in the left column" % [where, name])
-				if scenario != "chronicle":  # an open Chronicle at 1280 logical leaves the map 480 px: the framing yields to it, not the card
-					assert_true(r.end.x <= framing.position.x, "%s: and ends left of the framing area (%d against %d)" % [where, r.end.x, framing.position.x])
+				# UI-FIT (#237): with the Chronicle open too (at 125% the framing used to reach 48 px under the card, over the capital)
+				assert_true(r.end.x <= framing.position.x, "%s: and ends left of the framing area (%d against %d)" % [where, r.end.x, framing.position.x])
 		for i in range(1, column.size()):
 			assert_true((column[i] as Rect2).position.y >= (column[i - 1] as Rect2).end.y, "%s: each is under the one above it" % where)
 		if _shown(m, "card"):
@@ -425,6 +431,41 @@ func test_the_province_card_shows_its_facts_and_never_cuts_a_line_unsaid() -> vo
 			assert_true(more.end.y <= scroll.end.y + 0.5 and more.position.y >= scroll.end.y - ScrollMore.FADE_H - 0.5, "%s: at the scroll's bottom edge" % where)
 		checked[0] += 1)
 	assert_eq(checked[0], BOARDS.size() * SIZES.size(), "both boards at the three sizes")
+
+
+## UI-FIT (#237): the board's own text at 125%. The plates' names ran into each other ("Blackwo⊙ E 3 eak") with the map framed small (the
+## Chronicle open), and the 2D map's text drew at 7 px. In every state at every size on both boards: no two province names that show
+## overlap; on the 3D board a plate that had no room is folded to its emblem, its name in its tooltip, and the selected province's never
+## is; on the 2D map every text on a plate draws at the 12 px floor or more, in the window's own pixels.
+func test_the_board_names_never_overlap_and_the_2d_text_keeps_the_floor() -> void:
+	var counts := {"names": 0, "folded": 0, "smallest": 0}
+	_each(func(board: String, key: String, scenario: String, m: Dictionary):
+		var where := _where(board, key, scenario)
+		var text: Dictionary = m.board_text
+		var shown := []
+		for id in text.names:
+			var r: Array = text.names[id]
+			if bool(r[4]):
+				shown.append([id, Rect2(r[0], r[1], r[2], r[3])])
+			if bool(r[5]):
+				counts.folded += 1
+				assert_true(String(text.tooltips.get(id, "")).contains(_province_name(id)), "%s: folded %s keeps its name in its tooltip" % [where, id])
+				assert_ne(id, String(text.selected), "%s: the selected province's plate is never folded" % where)
+		for i in shown.size():
+			for j in range(i + 1, shown.size()):
+				assert_false(TableLayout.overlaps(shown[i][1], shown[j][1]), "%s: %s's name (%s) and %s's (%s) overlap" % [where, shown[i][0], shown[i][1], shown[j][0], shown[j][1]])
+		counts.names += shown.size()
+		for id in text.smallest:
+			var px := float(text.smallest[id])
+			if px >= 0.0:
+				assert_true(px >= UiPalette.SCREEN_FLOOR_PX - 0.05, "%s: %s's plate text draws at %.1f px, at least the floor" % [where, id, px])
+				counts.smallest += 1)
+	assert_true(counts.names > 0 and counts.smallest > 0, "names and 2D text were measured (%s)" % counts)
+
+
+func _province_name(pid: String) -> String:
+	var p := GameState.new(1).find_province(pid)
+	return p.name if p != null else pid
 
 
 ## The review's regression: at 125% the first-game guide hung over the north of the map and covered Westwatch, the capital's

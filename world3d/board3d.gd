@@ -787,6 +787,17 @@ func focus_on(province_id: String, instant: bool = false) -> void:
 		_snap_rig()
 
 
+## UI-FIT (#237): a selected province whose centre is outside `area` (the Table's framing area: under the card it opens, a plaque, the
+## tray, the Chronicle, or off the screen) glides to the middle of the screen, which is in the framing area at every size, at the zoom
+## it is at. Zoomed all the way out the whole-map framing already holds every province, and a close-up or a playback is left alone.
+func keep_in_view(province_id: String, area: Rect2) -> void:
+	if not prepared or wv.terrain.index_of(province_id) < 0 or not closeup.is_empty() or _playing or zoom <= 0.001:
+		return
+	if area.has_point(project(wv.terrain.centre_of(province_id))):
+		return
+	goal = rig_for(wv.terrain.centre_of(province_id) + Vector2(0, 6), zoom)
+
+
 ## C or Home: the viewing player's capital.
 func focus_capital() -> void:
 	if map == null or map.state == null:
