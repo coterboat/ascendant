@@ -732,9 +732,14 @@ func _fit_map() -> void:
 ## text is set at least as big as the floor over the canvas scale and the window's own scale.
 func _apply_board_text_floor() -> void:
 	var drawn := map_canvas.scale.x * _window_px_per_logical()
-	board_text_floor = int(ceil(UiPalette.SCREEN_FLOOR_PX / maxf(drawn, 0.01)))
+	var px := int(ceil(UiPalette.SCREEN_FLOOR_PX / maxf(drawn, 0.01)))
+	if px == board_text_floor:
+		return
+	board_text_floor = px
 	for id in regions:
 		(regions[id] as ProvinceRegion).set_text_floor(board_text_floor)
+	if order_marks_2d != null:
+		order_marks_2d.place.call_deferred()  # UI-CLUTTER (#238): once the plates' text has its new size, the marks go round it
 
 
 ## How many of the window's own pixels a logical pixel is: 1.25 at 125%, 0.8 in a 1280x720 window (the project's 1600x900 stretched).

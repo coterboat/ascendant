@@ -1,7 +1,8 @@
 class_name NumberBadge
 extends Control
 ## UX-6 (design/UX_WAR_TABLE.md §5.2, "Markers"): a small numbered disc. A card in the Chronicle wears one, and the board shows the same
-## number at the card's province, so the eye finds where it happened. It never takes the mouse. `pulse()` swells it once.
+## number at the card's province, so the eye finds where it happened. It takes no mouse on a card; the board's marker takes it (UI-CLUTTER,
+## ChronicleMarkers: its hover names the card, a click opens it). `pulse()` swells it once.
 
 const SIZE := 24.0
 

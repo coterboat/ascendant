@@ -468,6 +468,65 @@ func _province_name(pid: String) -> String:
 	return p.name if p != null else pid
 
 
+## UI-CLUTTER (#238): on a busy board the Chronicle's markers stacked unreadably ("1 4 8" on one province), 3D army badges covered province
+## names ("stwatch"), order chips cut "Ruler", and with the Chronicle open the tray ran off the window's left edge with its words trimmed.
+## In every state at every size on both boards (the Chronicle's state puts several markers on one province; the state at rest an army and
+## its order marks on the capital): no two markers overlap, and none sits on a shown province name; no 3D army plate sits on a shown name;
+## no whole order mark sits on a shown name, nor on a 2D plate's text (a mark with no room left shows its number alone, the spot that
+## overlaps least); a tray word that fits LABEL_MAX is never trimmed; and the tray and the seal keep inside the band left of the column.
+func test_markers_badges_order_marks_and_names_give_way_to_each_other() -> void:
+	var counts := {"markers": 0, "army_plates": 0, "order_marks": 0, "tight": 0, "tray_words": 0, "tray_bands": 0}
+	_each(func(board: String, key: String, scenario: String, m: Dictionary):
+		var where := _where(board, key, scenario)
+		var c: Dictionary = m.clutter
+		var names := []
+		for id in m.board_text.names:
+			var r: Array = m.board_text.names[id]
+			if bool(r[4]):
+				names.append([id, Rect2(r[0], r[1], r[2], r[3])])
+		var markers := []
+		for d in c.markers:
+			if bool(d[5]):
+				markers.append([d[0], Rect2(d[1], d[2], d[3], d[4])])
+		for i in markers.size():
+			for j in range(i + 1, markers.size()):
+				assert_false(TableLayout.overlaps(markers[i][1], markers[j][1]), "%s: markers %s and %s overlap" % [where, markers[i][0], markers[j][0]])
+			for n in names:
+				assert_false(TableLayout.overlaps(markers[i][1], n[1]), "%s: marker %s sits on %s's name" % [where, markers[i][0], n[0]])
+		counts.markers += markers.size()
+		for a in c.army_plates:
+			var rect := Rect2(a[1], a[2], a[3], a[4])
+			for n in names:
+				assert_false(TableLayout.overlaps(rect, n[1]), "%s: %s's army plate (%s) sits on %s's name (%s)" % [where, a[0], rect, n[0], n[1]])
+			counts.army_plates += 1
+		var text := names.duplicate()
+		for t in c.plate_text:
+			text.append([t[0], Rect2(t[1], t[2], t[3], t[4])])
+		for o in c.order_marks:
+			if not bool(o[6]):
+				continue
+			if bool(o[1]):
+				counts.tight += 1
+				continue
+			var rect := Rect2(o[2], o[3], o[4], o[5])
+			for n in text:
+				assert_false(TableLayout.overlaps(rect, n[1]), "%s: the order mark %s (%s) sits on %s (%s)" % [where, o[0], rect, n[0], n[1]])
+			counts.order_marks += 1
+		for w in c.tray_words:
+			if float(w[2]) <= OrderToken.LABEL_MAX - 2.0:
+				assert_false(bool(w[1]), "%s: the tray's \"%s\" is trimmed with room to spare" % [where, w[0]])
+			counts.tray_words += 1
+		var vp := _viewport(m)
+		var band_end: float = vp.x - (TableLayout.chronicle_width(vp) if scenario == "chronicle" else 0.0)
+		var tray := _rect(m, "tray")
+		var seal := _rect(m, "seal")
+		assert_true(tray.position.x >= TableHud.PLAQUE_MARGIN.x - 0.5 and tray.end.x <= band_end + 0.5, "%s: the tray is in its band (%s, to %d)" % [where, tray, band_end])
+		if _shown(m, "seal"):
+			assert_true(seal.end.x <= band_end + 0.5 and not TableLayout.overlaps(tray, seal), "%s: the seal too, beside the tray (%s)" % [where, seal])
+		counts.tray_bands += 1)
+	assert_true(counts.markers > 0 and counts.army_plates > 0 and counts.order_marks > 0 and counts.tray_words > 0, "each kind was measured (%s)" % counts)
+
+
 ## The review's regression: at 125% the first-game guide hung over the north of the map and covered Westwatch, the capital's
 ## neighbour and turn 1's first move. On turn 1 with the guide up, the name labels of the capital and of every neighbour are inside
 ## the framing area as drawn, and clear of every HUD piece (the guide, the card, the plaques, the system row, the tray and the seal

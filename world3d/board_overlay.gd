@@ -35,6 +35,9 @@ const Vision := preload("res://world3d/vision.gd")
 const EnchantDecals := preload("res://world3d/enchant_decals.gd")
 const ARROW := Color("#FFFFFF")
 const ARROW_HALO := Color(0.102, 0.086, 0.071, 0.85)
+## UI-CLUTTER (#238): the rects of the board's own text as last placed (province plates, army plates, order marks), in this overlay's
+## pixels: the Chronicle's markers keep clear of them (ChronicleMarkers.taken_rects).
+var _taken: Array = []
 ## How far a province plate may slide to clear another before it folds instead (UI-FIT, _declutter_plates).
 const PLATE_NUDGE := 40.0
 const LEGEND := "The 3D board, what you see:\n- A province's colour wash and inner border: its owner, in their player colour. Its plate (name, owner's emblem, a crown on a capital) shows what warns (cut off, besieged, an heir countdown) and, on hover, Tab focus or selection, its gold, garrison and walls. Where plates would overlap (the whole map in a small window), one slides aside or folds to its emblem: hover it, or zoom in, for its name.\n- A white band inside a province: the one you selected. A cream band: the one under the mouse.\n- A soft gilt glow at the edges: where your selected army can march this turn.\n- A dashed gilt band: a King's Roads destination two provinces away.\n- Figures: each army as blocks of its units (a block per unit type, %s), its commander and banner bearer at the back. The plate above gives the exact count.\n- In the woods every block stands on a tray in its owner's colour (a gilt ring for a ruler's army), so woods-green figures never pass for trees.\n- Zoomed far out, each army becomes a stand: a base in its owner's colour (a gilt ring for a ruler's army), its banner, and one figure for each of its three most numerous unit types, under its count plate. Zoom in and the blocks come back.\n- A fortress's muster yard: its armies stand a block to a slot (a capital holds 6 blocks), facing the gate. An army the yard can't hold musters in the war camp outside the walls: tents, a fire and its smoke. A big camp means a big muster: war is coming.\n- Translucent figures in a yard: the recruits you queued, in the slot each will take. Only you see them.\n- An army in a column at its gate (or the edge of its province), facing a road, with a gilt arrow on its plate: one you ordered to march. It leaves when the turn ends. Only you see it gathered.\n- White arrows along the roads: your queued moves.\n- Gilt numbered tokens: your queued orders, numbered in the order you gave them, the same numbers as the tray along the bottom. A march's number sits beside its arrow; a recruit (\"+2 units\"), a fortify (the walls icon), a storm or sally (the siege icon), a ritual and a muster (the split icon) have their token beside their province. Click a token to see its order and change or cancel it; right-click it to cancel. Cancelling an order moves the numbers after it up. Only you see them.\n- During a turn's playback the captions follow the turn report's phases: Movement, Battles, Captures, Recruits. Crossed swords mark a battle: the lines trade blows and the fallen lie where they fell. A capture's colour sweeps out from the arriving column.\n- View fortress (in the recruit panel) or a double-click on a fortress: a close-up of its yard. Esc or zooming out leaves it.%s\n\nDrag or WASD to pan, the wheel (or a pinch or two-finger scroll on a trackpad) to zoom, double-click to glide to a province, C your capital, F the whole map, L Look A or B. Settings can switch to the 2D map."
@@ -1161,21 +1164,30 @@ func _process(_delta: float) -> void:
 		if pc.size.x <= 1.0:
 			pc.reset_size()
 		var rect := Rect2(s2 - Vector2(pc.size.x * 0.5, pc.size.y), pc.size)
-		## a simple declutter: a plate that would sit on another one (or on a province's plate, UI-FIT) moves up above it
-		for k in 4:
-			var hit := false
-			for o in blocked:
-				if (o as Rect2).grow(1.0).intersects(rect):
-					rect.position.y = (o as Rect2).position.y - rect.size.y - 2.0
-					hit = true
-			if not hit:
-				break
+		## a plate that would sit on another one (or on a province's plate, UI-FIT) takes the nearest clear spot beside it, within
+		## PLATE_NUDGE (UI-CLUTTER: moving only up, a province's garrison badges stacked into a tower away from it); else it moves up above it
+		var near := _clear_spot(rect, blocked)
+		if near.size.x > 0.0:
+			rect = near
+		else:
+			for k in 4:
+				var hit := false
+				for o in blocked:
+					if (o as Rect2).grow(1.0).intersects(rect):
+						rect.position.y = (o as Rect2).position.y - rect.size.y - 2.0
+						hit = true
+				if not hit:
+					break
 		placed.append(rect)
 		blocked.append(rect)
 		pc.position = rect.position.round()
 		pc.visible = s2.x > -100 and s2.x < vp.x + 100 and s2.y > -50 and s2.y < vp.y + 50
 	_place_lens_chips(placed)  ## UX-7: the lens values, clear of the army plates
 	_place_order_marks(placed)
+	_taken = blocked.duplicate()  ## UI-CLUTTER: what the Chronicle's markers keep clear of
+	for tok in _order_marks:
+		if (tok as Control).visible:
+			_taken.append(Rect2((tok as Control).position, (tok as Control).size))
 	if _playing:
 		_play_label.text = _play_text()
 		_update_caption()
@@ -1238,6 +1250,10 @@ func _clear_spot(rect: Rect2, kept: Array) -> Rect2:
 		if clear:
 			return r
 	return Rect2(rect.position, Vector2.ZERO)
+
+
+func taken_rects() -> Array:
+	return _taken.duplicate()
 
 
 ## A plate's rank for the declutter: 0 for the one the player is looking at, 1 a capital, 2 one of the viewer's own, 3 the rest.

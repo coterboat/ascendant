@@ -73,14 +73,15 @@ func place() -> void:
 		taken.append(rect.grow(2.0))
 
 
-## What a token must keep clear of: each region's name, income and army badges (as drawn, through the canvas's own transform) and the Table's pieces.
+## What a token must keep clear of: each region's name, income, fort chip, enchantments, heir countdown and army badges (as drawn, through
+## the canvas's own transform) and the Table's pieces. UI-CLUTTER (#238): the chip, the enchantments and the countdown too.
 func _taken() -> Array:
 	var out := OrderSpots.hud_rects(map, global_position)
 	for id in map.regions:
 		var region: ProvinceRegion = map.regions[id]
 		if not region.is_visible_in_tree():
 			continue
-		for c in [region.name_label, region.income_label, region.army_box]:
+		for c in [region.name_label, region.income_label, region.fort_chip, region.enchantment_badges, region.countdown_badge, region.army_box]:
 			var ctl := c as Control
 			if ctl != null and ctl.is_visible_in_tree() and ctl.size.x > 0.0:
 				out.append((ctl.get_global_transform() * Rect2(Vector2.ZERO, ctl.size)).grow(2.0))
