@@ -21,6 +21,7 @@ extends Control
 ##   notification_slot() -> Control   the column on the left edge: UX-6's NoticeStack fills it with medallions, and takes the mouse only where it draws
 ##   register_piece(control)          a control of someone else's that takes the mouse by design (the medallion stack, the Chronicle column):
 ##                                    pieces() lists it, so the input contract's test holds it and what is inside it to the rule
+##   register_piece_source(callable)  UI-CLUTTER: the same for pieces that come and go (the Chronicle's markers), asked for each time
 ##   tray_slot() -> OrderTray         the tray's order slot: UX-4's tokens (ui/tray/), the placed orders by number and then the realm ones, with the
 ##                                    gold they leave; the hint line shows in its place while it is empty
 ##   opponent_slot -> HBoxContainer   where the rivals' plaques go
@@ -85,6 +86,7 @@ var right_column: HBoxContainer  # the opponent plaque and Menu
 var bottom_row: HBoxContainer  # the tray and the seal
 var _system := {}  # id -> Button
 var _extra_pieces: Array = []  # register_piece: UX-6's medallion stack and Chronicle column
+var _piece_sources: Array = []  # register_piece_source: Callables that return pieces that come and go (UI-CLUTTER: the Chronicle's markers)
 var _floating := {}  # kind -> Control
 var _layout_queued := false
 var _last_rects := {}
@@ -251,6 +253,13 @@ func register_piece(control: Control) -> void:
 		_extra_pieces.append(control)
 
 
+## UI-CLUTTER (#238): pieces that come and go, asked for each time pieces() is: `source` returns an Array of controls, each MOUSE_FILTER_STOP
+## and as big as it draws (the Chronicle's markers on the board: each disc's hover names its card, a click opens it).
+func register_piece_source(source: Callable) -> void:
+	if not _piece_sources.has(source):
+		_piece_sources.append(source)
+
+
 ## A floating piece the Table positions inside the safe area: "card", "legend" or "hover". It becomes a child of this node.
 func set_floating(kind: String, control: Control) -> void:
 	_register_floating(kind, control)
@@ -283,6 +292,11 @@ func pieces() -> Array:
 	for c in _extra_pieces:
 		if is_instance_valid(c):
 			out.append(c)
+	for source: Callable in _piece_sources:
+		if source.is_valid():
+			for c in source.call():
+				if is_instance_valid(c):
+					out.append(c)
 	return out
 
 
@@ -351,6 +365,7 @@ func relayout() -> void:
 	var middle := (vp.x - taken) * 0.5 / maxf(vp.x, 1.0)
 	bottom_row.anchor_left = middle
 	bottom_row.anchor_right = middle
+	_fit_tray(vp.x - taken)
 	var card := _piece("card")
 	if card != null and is_instance_valid(card) and card.has_method("fit"):
 		card.call("fit", TableLayout.card_max_height(vp, chronicle_open))
@@ -372,6 +387,15 @@ func relayout() -> void:
 		if placed_piece != null:
 			_apply(placed_piece, _last_rects[kind])
 	layout_changed.emit()
+
+
+## UI-CLUTTER (#238): the tray and the seal keep inside the bottom band left of an open Chronicle: the tray's strip gets what the band
+## leaves beside the seal (less the tray's own padding and gold), and shows the tokens that fit. It ran off the window's left edge before.
+func _fit_tray(band_w: float) -> void:
+	var seal_w := seal.get_combined_minimum_size().x + float(bottom_row.get_theme_constant("separation")) if seal.visible else 0.0
+	var style := tray.get_theme_stylebox("panel")
+	var padding := style.get_margin(SIDE_LEFT) + style.get_margin(SIDE_RIGHT) + tray_tokens.overhead()
+	tray_tokens.set_max_width(maxf(band_w - 2.0 * PLAQUE_MARGIN.x - seal_w - padding, 0.0))
 
 
 ## UI-FIT (#237): the selection card outranks the guide (§1.3), so the guide folds (FirstGameGuide.fold_for_card) when the card

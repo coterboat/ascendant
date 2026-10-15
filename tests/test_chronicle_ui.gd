@@ -477,6 +477,38 @@ func test_markers_are_numbered_like_the_cards_and_go_with_the_card_or_the_column
 	_clean_scratch()
 
 
+## UI-CLUTTER (#238): a marker on the board says what it is. Its disc takes the mouse (a piece of the Table); its hover names its card and
+## every card on view at that province by number; a click opens the column at its card. Where they stand is the Table probe's to check.
+func test_a_marker_names_its_cards_on_hover_and_opens_its_card_on_a_click() -> void:
+	var game := _battle_turn("never")
+	var hud := game.chronicle_hud
+	hud.open()
+	var numbered := hud.column.cards.filter(func(c): return c.number > 0)
+	assert_true(numbered.size() > 0)
+	var card: NoticeCard = numbered[numbered.size() - 1]
+	var id := String(card.item.id)
+	var disc: NumberBadge = hud.markers.marker(id)
+	assert_eq(disc.mouse_filter, Control.MOUSE_FILTER_STOP, "the disc takes the mouse")
+	assert_true(game.map.table().pieces().has(disc), "as a piece of the Table")
+	assert_eq(hud.markers.mouse_filter, Control.MOUSE_FILTER_IGNORE, "the layer around the discs does not")
+	var tip := disc.tooltip_text.replace("\n", " ")  # wrapped for the tooltip
+	assert_true(tip.contains("Chronicle card %d" % card.number) and tip.contains(String(card.item.headline)), "it names its card: %s" % tip)
+	for other in numbered:
+		if String(other.item.province) == String(card.item.province):
+			assert_true(tip.contains("%d. %s" % [other.number, other.item.headline]), "and each card at its province: %s" % tip)
+	assert_true(tip.contains("Click"), "and says what a click does")
+	hud.close()
+	hud.open()
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	hud.markers.marker(id).gui_input.emit(press)
+	assert_eq(hud.last_opened_at, id, "a click opens the column at its card")
+	assert_true(hud.is_open())
+	game.free()
+	_clean_scratch()
+
+
 # --- pins ---------------------------------------------------------------------------------------------------
 
 func test_a_pinned_card_stays_across_turns_as_it_was_shown_and_lives_outside_the_game() -> void:

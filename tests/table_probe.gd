@@ -244,7 +244,15 @@ func _measure(scenario: String) -> Dictionary:
 	out["card_parts"] = _card_parts()
 	out["labels"] = _province_labels()
 	out["board_text"] = _board_text()
-	out["sweep"] = await _sweep(pieces, rects)
+	out["clutter"] = _clutter()
+	# UI-CLUTTER (#238): the Chronicle's marker discs take the mouse by design (Table pieces that come and go). They ride on the board, under
+	# every other piece, so the sweep looks for them after the pieces.
+	var swept := pieces.duplicate()
+	var swept_rects := rects.duplicate()
+	for b in game.chronicle_hud.markers.discs():
+		swept["marker %s" % b.name] = b
+		swept_rects["marker %s" % b.name] = _r(b)
+	out["sweep"] = await _sweep(swept, swept_rects)
 	if scenario == "rest":
 		out["clicks"] = await _clicks(pieces, rects)
 		await _setup("rest")
@@ -420,6 +428,43 @@ func _board_text() -> Dictionary:
 		if label != null:
 			var r: Rect2 = label.get_global_transform() * Rect2(Vector2.ZERO, label.size)
 			out.names[p.id] = [r.position.x, r.position.y, r.size.x, r.size.y, label.is_visible_in_tree(), folded]
+	return out
+
+
+## UI-CLUTTER (#238): what crowds the board and the tray, as drawn: the Chronicle's marker discs, the 3D army plates, the order marks (whole
+## or tight), the 2D plates' text, and each tray token's words with whether they are trimmed though they would fit in LABEL_MAX.
+func _clutter() -> Dictionary:
+	var map := game.map
+	var out := {"markers": [], "army_plates": [], "order_marks": [], "plate_text": [], "tray_words": []}
+	for b in game.chronicle_hud.markers.discs():
+		out.markers.append([String(b.name)] + _r(b))
+	var tokens: Array = []
+	if kind == "3d":
+		var overlay = map.board.overlay
+		for id in overlay._army_plates:
+			var pc: Control = overlay._army_plates[id]
+			if pc.is_visible_in_tree():
+				out.army_plates.append([String(id)] + _r(pc))
+		tokens = overlay.order_marks()
+	else:
+		tokens = map.order_marks_2d._tokens
+		for id in map.regions:
+			var region: ProvinceRegion = map.regions[id]
+			for c in [region.name_label, region.income_label, region.fort_chip, region.enchantment_badges, region.countdown_badge, region.army_box]:
+				var ctl := c as Control
+				if ctl != null and ctl.is_visible_in_tree() and ctl.size.x > 0.0:
+					var r: Rect2 = ctl.get_global_transform() * Rect2(Vector2.ZERO, ctl.size)
+					out.plate_text.append(["%s %s" % [id, ctl.name], r.position.x, r.position.y, r.size.x, r.size.y])
+	for t in tokens:
+		var tok := t as OrderToken
+		if tok.is_visible_in_tree():
+			out.order_marks.append([String(tok.mark.get("label", tok.name)), tok._tight] + _r(tok))
+	for t in game.map.table().tray_slot().tokens():
+		var tok := t as OrderToken
+		if tok.label != null and tok.label.is_visible_in_tree():
+			var natural: float = tok.label.get_theme_font("font").get_string_size(tok.label.text, HORIZONTAL_ALIGNMENT_LEFT, -1,
+				tok.label.get_theme_font_size("font_size")).x
+			out.tray_words.append([tok.label.text, natural > tok.label.size.x + 1.0, natural])
 	return out
 
 

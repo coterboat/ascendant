@@ -84,6 +84,8 @@ func _init(p_game: GameScreen) -> void:
 	column.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
 	markers = ChronicleMarkers.new()
 	markers.map = game.map
+	markers.marker_pressed.connect(open)  # UI-CLUTTER (#238): a marker's click opens its card
+	_hud.register_piece_source(markers.discs)  # and the discs take the mouse by design
 	_hud.add_child(markers)
 	_hud.move_child(markers, 0)
 	_hud.layout_changed.connect(_on_layout)
@@ -277,7 +279,7 @@ func _refresh_column() -> void:
 		if column.visible and not String(it.province).is_empty():
 			n += 1
 			number = n
-			markers_now.append({"number": n, "province": String(it.province), "id": id})
+			markers_now.append({"number": n, "province": String(it.province), "id": id, "headline": String(it.get("headline", ""))})
 		cards.append({"item": it, "opts": {"number": number, "pinned": store.is_pinned(seat, id), "unread": _fresh.has(id),
 			"expanded": _expanded.has(id), "watch_why": _watch_why(it)}})
 		seen_cards[id] = true

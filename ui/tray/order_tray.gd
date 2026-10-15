@@ -42,6 +42,11 @@ var _tokens: Array = []
 var _last_count := 0
 var _divider: Control = null
 var _fit_queued := false
+## UI-CLUTTER (#238): the widest the token strip may be, from the Table (the bottom band beside the seal, less the tray's own padding):
+## it shows the tokens that fit, VISIBLE_TOKENS at most, and scrolls for the rest. With the Chronicle open the tray ran off the window's
+## left edge. INF until the Table says.
+var max_width := INF
+var _shown := 0
 
 
 func _init() -> void:
@@ -137,14 +142,30 @@ func token_for(index: int) -> OrderToken:
 	return null
 
 
-## How many tokens show without scrolling (VISIBLE_TOKENS at most).
+## How many tokens show without scrolling (VISIBLE_TOKENS at most, fewer when max_width holds fewer).
 func visible_tokens() -> int:
-	return mini(_tokens.size(), VISIBLE_TOKENS)
+	return _shown
 
 
 ## True when the strip has more tokens than fit and scrolls sideways.
 func scrolls() -> bool:
-	return _tokens.size() > VISIBLE_TOKENS
+	return _shown < _tokens.size()
+
+
+## The tray's width besides its strip: the gold it leaves and the gap before it, counted whether it shows or not, so the room the Table
+## gives the strip never depends on which orders are queued (UI-CLUTTER).
+func overhead() -> float:
+	var gold := maxf(gold_box.get_combined_minimum_size().x, gold_label.get_theme_font("font").get_string_size("888 left",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, gold_label.get_theme_font_size("font_size")).x + GOLD_PX + 4.0)
+	return float(get_theme_constant("separation")) + gold
+
+
+## The Table's room for the strip (UI-CLUTTER): it refits when that changes.
+func set_max_width(w: float) -> void:
+	if is_equal_approx(w, max_width):
+		return
+	max_width = w
+	_fit()
 
 
 ## The Table crossed 1600 logical width (TableHud.compact_changed).
@@ -182,25 +203,32 @@ func _refresh_gold(c: OrdersController) -> void:
 	CodexLink.attach(gold_box, TooltipText.codex_for("gold_after_recruits"), func(key): _open_codex(key))
 
 
-## Sizes the scroll to the first VISIBLE_TOKENS tokens: all of them up to seven, so a short list never scrolls and a long one shows seven.
+## Sizes the scroll to the first tokens: all of them up to seven, so a short list never scrolls and a long one shows seven, and fewer
+## when max_width holds fewer (one at the least).
 func _fit() -> void:
 	if _tokens.is_empty():
 		scroll.custom_minimum_size = Vector2.ZERO
+		_shown = 0
 		return
 	var width := 0.0
 	var height := 0.0
 	var shown := 0
+	var divider := 0.0  # the divider's room, counted when a token after it shows
 	for child in strip.get_children():
 		if child == _divider:
-			if shown < VISIBLE_TOKENS:
-				width += GAP + (child as Control).get_combined_minimum_size().x
+			divider = GAP + (child as Control).get_combined_minimum_size().x
 			continue
 		if shown >= VISIBLE_TOKENS:
 			break
-		width += (child as Control).get_combined_minimum_size().x + (GAP if shown > 0 else 0)
+		var more := divider + (child as Control).get_combined_minimum_size().x + (GAP if shown > 0 else 0)
+		if shown > 0 and width + more > max_width:
+			break
+		width += more
+		divider = 0.0
 		height = maxf(height, (child as Control).get_combined_minimum_size().y)
 		shown += 1
-	var scrolling := _tokens.size() > VISIBLE_TOKENS
+	_shown = shown
+	var scrolling := shown < _tokens.size()
 	scroll.custom_minimum_size = Vector2(ceilf(width), ceilf(height) + (SCROLL_BAR_H if scrolling else 0.0))
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO if scrolling else ScrollContainer.SCROLL_MODE_DISABLED
 

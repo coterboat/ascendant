@@ -98,6 +98,8 @@ static func hud_rects(map: Control, origin: Vector2) -> Array:
 		return out
 	for c in hud.pieces():
 		var ctl := c as Control
+		if ctl is NumberBadge:
+			continue  # UI-CLUTTER: the Chronicle's markers ride on the board and go round the order marks, not the other way
 		if ctl != null and ctl.is_visible_in_tree() and ctl.size.x > 0.0:
 			out.append(Rect2(ctl.global_position - origin, ctl.size).grow(4.0))
 	var placed: Dictionary = hud.placed()
