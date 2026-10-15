@@ -252,3 +252,60 @@ func test_the_observer_gets_the_truth() -> void:
 	var session: GameSession = g.session
 	assert_eq(JSON.stringify(session.turn_report_for(FogRules.OBSERVER)), JSON.stringify(session.turn_report()))
 	assert_eq(Kit.to_json(session.state_for(FogRules.OBSERVER)), Kit.to_json(session.state()))
+
+
+## TEXT-1 (#240): a seen move counts every fighter it names, its commanders and its ruler too (as a battle's "fighters" are), and its words
+## agree with the count. A ruler marching alone read "(none fighters: the Ninth Fang)", and a War Bear with its Warchief and its ruler
+## "(1-2 fighters: War Bear, Warchief and the Ninth Fang)". Real moves of the Clans' ruler, alone and with an army and its commander,
+## out of a province the Crown sees, at each sight level the map gives: the count's range holds the number of names, and never says none.
+func test_a_seen_move_counts_every_fighter_it_names() -> void:
+	var checked := 0
+	for level in [FogRules.CLEAR, FogRules.GLIMPSE]:
+		for with_army in [false, true]:
+			var s := GameState.with_rulers(95)
+			s.setup_fog([])
+			var spot := _seen_spot(s, level)
+			if spot.is_empty():
+				continue
+			var ruler := RulerRules.ruler_army(s, CLANS)
+			var moving: Array = [ruler]
+			if with_army:
+				for a in s.armies:
+					if a.owner == CLANS and a.ruler == null and a.commander != null and not a.units.is_empty():
+						moving.append(a)
+						break
+				assert_eq(moving.size(), 2, "the Clans have an army with a commander")
+			var orders := []
+			for a in moving:
+				(a as Army).location = spot.from
+				orders.append(MoveOrder.new((a as Army).id, spot.to))
+			var r := TurnResolver.resolve(s, {CROWN: [], CLANS: orders}, 1, AutoBattleResolver.new())
+			var seen := FogRules.filter_events(r.events, CROWN, s, r.new_state).filter(func(e): return String(e.type) == "army_moved")
+			var what := "%s, %s" % [level, "the ruler with an army" if with_army else "the ruler alone"]
+			assert_eq(seen.size(), 1, "%s: the Crown sees one move" % what)
+			if seen.is_empty():
+				continue
+			var e: Dictionary = seen[0]
+			var named: int = (e.numbers.types as Array).size()
+			var fighters := 0
+			for a in moving:
+				fighters += (a as Army).units.size() + (1 if (a as Army).commander != null else 0) + (1 if (a as Army).ruler != null else 0)
+			assert_true(int(e.numbers.total.low) <= fighters and fighters <= int(e.numbers.total.high), "%s: the count holds its %d fighters: %s" % [what, fighters, e.text])
+			assert_true(int(e.numbers.total.high) >= named, "%s: and every one of the %d kinds it names: %s" % [what, named, e.text])
+			assert_false(String(e.text).contains("none") or String(e.text).contains("1 fighters"), "%s: the words agree with the count: %s" % [what, e.text])
+			checked += 1
+	assert_true(checked >= 2, "moves were checked (%d)" % checked)
+
+
+## A province the Crown sees at `level` with a neighbour the Clans can march into without a fight: {"from", "to"}, or {} when none.
+func _seen_spot(s: GameState, level: String) -> Dictionary:
+	var sight := FogRules.sight(s, CROWN)
+	for p in s.provinces:
+		if String(sight.get(p.id, "")) != level or p.owner == CROWN:
+			continue
+		for n in p.neighbors:
+			var q := s.find_province(n)
+			if q.owner == CROWN or s.armies.any(func(a): return a.location == n):
+				continue
+			return {"from": p.id, "to": n}
+	return {}
