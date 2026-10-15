@@ -5,12 +5,18 @@ extends RefCounted
 ## battles.png, stands in for every image of that kind that has none of its own). Until a file is there the medallion is the kind's icon
 ## on a coloured disc, drawn by NoticeMedallion from the colours here, so UX-ART can land with no code change.
 ##
-##   NoticeArt.path_for(image, kind) -> String          the art file for it ("" when there is none)
-##   NoticeArt.texture(image, kind, px) -> Texture2D    the painted art as a px-square disc (round, cached), or null
-##   NoticeArt.disc(kind) / NoticeArt.ring(tone)        the placeholder's colours
+## Each faction may have its own set (UX-ART #222, Alex 10-13: the faction lives in the subject): assets/ui/notices/<faction id>/<image>.png
+## is worn by that faction's viewer, before the standard <image>.png and the kind's file.
+##
+##   NoticeArt.path_for(image, kind, faction = viewer) -> String        the art file for it ("" when there is none)
+##   NoticeArt.texture(image, kind, px, faction = viewer) -> Texture2D  the painted art as a px-square disc (round, cached), or null
+##   NoticeArt.disc(kind) / NoticeArt.ring(tone)                        the placeholder's colours
 
 ## Where UX-ART's files go (a var so a test can point it at a scratch folder).
 static var dir := "res://assets/ui/notices/"
+## The faction whose own set the medallions wear: the person at the controls, set by ChronicleHud as the seat changes (each hotseat
+## seat its own). "" (watch mode, the handoff cover) wears the standard set.
+static var viewer := ""
 ## The disc behind each kind's icon: dark enough for a cream icon to read, and never the only difference between kinds (the icons differ).
 const DISC := {
 	"needs_you": Color("#6B4F12"), "battles": Color("#6E2B27"), "land": Color("#3C5A2E"), "rulers": Color("#58407A"),
@@ -60,8 +66,13 @@ static func ring(tone: String) -> Color:
 
 
 ## The art file for an image key, falling back to its kind's file; "" when neither exists.
-static func path_for(image: String, kind: String) -> String:
-	for stem in [image, kind]:
+static func path_for(image: String, kind: String, faction: String = "") -> String:
+	var fid := faction if not faction.is_empty() else viewer
+	var stems := []
+	if not fid.is_empty() and not image.is_empty():
+		stems.append("%s/%s" % [fid, image])  # the faction's own medallion first (UX-ART #222, Alex 10-13)
+	stems.append_array([image, kind])
+	for stem in stems:
 		if String(stem).is_empty():
 			continue
 		var p := "%s%s.png" % [dir, stem]
@@ -71,8 +82,8 @@ static func path_for(image: String, kind: String) -> String:
 
 
 ## The painted art for the medallion as a round `px`-square texture, or null when UX-ART has not painted it yet.
-static func texture(image: String, kind: String, px: int) -> Texture2D:
-	var p := path_for(image, kind)
+static func texture(image: String, kind: String, px: int, faction: String = "") -> Texture2D:
+	var p := path_for(image, kind, faction)
 	if p.is_empty():
 		return null
 	var key := "%s@%d" % [p, px]
