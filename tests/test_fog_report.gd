@@ -264,7 +264,11 @@ func test_a_seen_move_counts_every_fighter_it_names() -> void:
 		for with_army in [false, true]:
 			var s := GameState.with_rulers(95)
 			s.setup_fog([])
+			if level == FogRules.CLEAR:  # the Crown sees its own land clearly: give it a province next to its capital, empty
+				var capital := s.find_province(s.find_faction(CROWN).capital)
+				s.find_province(String(capital.neighbors[0])).owner = CROWN
 			var spot := _seen_spot(s, level)
+			assert_false(spot.is_empty(), "%s: the Crown sees a province at that level with a free neighbour" % level)
 			if spot.is_empty():
 				continue
 			var ruler := RulerRules.ruler_army(s, CLANS)
@@ -294,14 +298,14 @@ func test_a_seen_move_counts_every_fighter_it_names() -> void:
 			assert_true(int(e.numbers.total.high) >= named, "%s: and every one of the %d kinds it names: %s" % [what, named, e.text])
 			assert_false(String(e.text).contains("none") or String(e.text).contains("1 fighters"), "%s: the words agree with the count: %s" % [what, e.text])
 			checked += 1
-	assert_true(checked >= 2, "moves were checked (%d)" % checked)
+	assert_eq(checked, 4, "both sight levels, the ruler alone and with an army")
 
 
-## A province the Crown sees at `level` with a neighbour the Clans can march into without a fight: {"from", "to"}, or {} when none.
+## An empty province the Crown sees at `level`, with a neighbour the Clans can march into without a fight: {"from", "to"}, or {}.
 func _seen_spot(s: GameState, level: String) -> Dictionary:
 	var sight := FogRules.sight(s, CROWN)
 	for p in s.provinces:
-		if String(sight.get(p.id, "")) != level or p.owner == CROWN:
+		if String(sight.get(p.id, "")) != level or s.armies.any(func(a): return a.location == p.id):
 			continue
 		for n in p.neighbors:
 			var q := s.find_province(n)
