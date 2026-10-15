@@ -164,6 +164,12 @@ func show_for(p_orders: OrdersController, p_army_id: String, select: String = ""
 		b.custom_minimum_size = Vector2(265, 0)
 		b.add_theme_font_size_override("font_size", 14)
 		b.text = "%s · %s\n%s" % [o.name, o.price, String(o.line) if o.ok else String(o.reason)]
+		var icon := SpellIcons.texture(String(o.ritual))  # UI-ICONS (#233): the ritual's icon, when its art has landed
+		if icon != null:
+			b.icon = icon
+			b.expand_icon = true
+			b.add_theme_constant_override("icon_max_width", 34)
+			b.set_meta("spell_icon", String(o.ritual))
 		b.disabled = not o.ok
 		var price_bd := Breakdown.ritual_price(orders.view_state(), orders.faction_id, String(o.ritual), int(o.sizes[0]) if not o.sizes.is_empty() else 0)
 		b.set_meta("breakdown", price_bd)

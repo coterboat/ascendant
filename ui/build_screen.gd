@@ -1198,6 +1198,9 @@ func _mandate_row(mid: String, fname: String) -> Control:
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 8)
 	row.add_child(top)
+	var icon := SpellIcons.rect(mid, 22)  # UI-ICONS (#233): the blood mandate wears its icon from the spell set
+	if icon != null:
+		top.add_child(icon)
 	var check := CheckBox.new()
 	check.name = "Check_%s" % mid
 	check.text = String(md.name)
