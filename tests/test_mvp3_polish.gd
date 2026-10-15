@@ -71,11 +71,15 @@ func test_the_guide_folds_the_other_systems_and_every_explanation_stays_reachabl
 	var text := "\n".join(shown)
 	var others := FirstGameGuide.SYSTEMS.filter(func(s): return String(s.id) != "fog")
 	assert_eq(others.size(), 5, "five systems fold; fog does not")
+	var unnamed := 0  # UI-FIT (#237): the row is one line at the 12 px floor; the names that don't fit are counted, "+N"
 	for s in others:
 		var short := String(FirstGameGuide.SHORT_NAMES.get(String(s.id), s.name))
-		assert_true(guide.systems_toggle.text.contains(short), "the row names %s: %s" % [short, guide.systems_toggle.text])
-		assert_true(guide.systems_toggle.tooltip_text.replace("\n", " ").contains(String(s.rest)), "its tooltip says what %s is: %s" % [s.name, guide.systems_toggle.tooltip_text])
+		if not guide.systems_toggle.text.contains(short):
+			unnamed += 1
 		assert_false((guide.system_lines[s.id] as Control).get_parent() != guide.systems_lines_box, "%s's line is in the fold" % s.id)
+		assert_true(guide.systems_toggle.tooltip_text.replace("\n", " ").contains("%s: %s" % [s.name, s.rest]), "its tooltip names %s and says what it is: %s" % [s.name, guide.systems_toggle.tooltip_text])
+	assert_true(unnamed == 0 or guide.systems_toggle.text.ends_with("+%d" % unnamed), "the row names each system or counts the rest: %s" % guide.systems_toggle.text)
+	assert_true(unnamed < others.size(), "and names some: %s" % guide.systems_toggle.text)
 	assert_true((guide.system_lines["fog"] as Control).visible, "the fog line stays on the card")
 	assert_eq(guide.system_lines["fog"].get_parent(), guide.systems_box, "outside the fold")
 	assert_true(text.contains(String(FirstGameGuide.SYSTEMS[3].name)), "and says so: %s" % text)

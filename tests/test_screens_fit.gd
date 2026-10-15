@@ -194,7 +194,15 @@ func test_the_build_screen_fits_and_its_columns_scroll_under_pinned_buttons() ->
 		var columns := _rect(s, "columns")
 		assert_true(_inside(_rect(s, "lock_in"), viewport) and _inside(_rect(s, "back"), viewport), "Lock in build and Back are on screen at %s" % key)
 		assert_true(_inside(columns, viewport) and columns.size.y >= MIN_SCROLL_HEIGHT, "the columns sit in a visible scroll container at %s (%s)" % [key, columns])
-		assert_true(_rect(s, "lock_in").position.y >= columns.end.y - 0.5, "Lock in build is pinned below the columns at %s" % key))
+		assert_true(_rect(s, "lock_in").position.y >= columns.end.y - 0.5, "Lock in build is pinned below the columns at %s" % key)
+		# UI-FIT (#237): at 125% the ruler and power columns were cut with the only scroll bar beside the third. While the columns are
+		# taller than their scroll, the fade and "More" show over its bottom edge, inside it; when they fit, nothing shows.
+		var cut: bool = float(s.rects.columns_h) > columns.size.y + 2.0
+		assert_eq(_shown(s, "more"), cut, "at %s the columns are %d tall in %d: the More cue %s" % [key, s.rects.columns_h, columns.size.y, "shows" if cut else "hides"])
+		if cut:
+			var more := _rect(s, "more_button")
+			assert_true(_shown(s, "more_button") and columns.grow(0.5).encloses(more), "More is inside the columns at %s (%s in %s)" % [key, more, columns])
+			assert_true(more.end.y >= columns.end.y - ScrollMore.FADE_H, "at their bottom edge at %s" % key))
 
 
 func test_the_codex_settings_and_load_screens_fit() -> void:

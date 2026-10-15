@@ -14,7 +14,8 @@ extends Control
 ## which GameScreen.start_game turns into the starting state (GameState.with_rulers).
 ##
 ## Layout (one screen at 1600x900, no scrolling; at 1280x720 the columns scroll under the pinned header, presets and
-## Lock in build): the header and the presets on top, then three columns:
+## Lock in build, with the fade and "More" over their bottom edge while more is below, UI-FIT's ScrollMore): the header and the
+## presets on top, then three columns:
 ##   ruler      the two ruler cards (name, rank, body, ability, succession), and the picked ruler at this
 ##              build's kept power next to spending or keeping everything, with a risk line and the
 ##              succession this build leaves
@@ -110,6 +111,7 @@ var mandate_checks := {}  # mandate id -> CheckBox
 var mandate_reasons := {}  # mandate id -> Label ("Needs 4 power; 2 left.")
 var mandate_rows := {}  # mandate id -> Control
 var other_box: VBoxContainer
+var columns_more: ScrollMore  # UI-FIT (#237): the "More" cue over the columns' bottom edge
 var _card_labels := {}  # ruler id -> {"body": [Label x3], "ability": Label, "succession": Label}
 var _grid_labels := {}  # "hp" / "attack" / "defense" / "rank" -> [now, spend all, keep all] Labels
 var _ruler_lines := {}  # "morale" / "ability" / "risk" / "succession" -> Label
@@ -996,7 +998,10 @@ func _build_body() -> void:
 	scroll.name = "ColumnsScroll"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	body.add_child(scroll)
+	# UI-FIT (#237): at 125% the ruler and power columns were cut with the only scroll bar beside the third: the fade and "More" say so.
+	var frame := ScrollMore.frame(scroll, BACKGROUND)
+	body.add_child(frame)
+	columns_more = frame.get_node("MoreCue") as ScrollMore
 	var columns := HBoxContainer.new()
 	columns.name = "Columns"
 	columns.size_flags_horizontal = Control.SIZE_EXPAND_FILL

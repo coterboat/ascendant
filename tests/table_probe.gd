@@ -344,6 +344,23 @@ func _card_parts() -> Dictionary:
 	out["first_action"] = _r(first)
 	out["pinned"] = _r(cards.pinned)
 	out["scroll"] = _r(cards.scroll)
+	# UI-FIT (#237): whether the guide folded for the card, what the card asked for, the "More" cue, and every line of text in the scroll
+	out["guide_folded"] = game.first_game_guide.folded()
+	var guide := game.first_game_guide
+	out["guide_unfolded"] = guide.unfolded_height()
+	var was := guide.folded()
+	guide.fold_for_card(false)  # measured unfolded, then put back (the Table lays it out again next frame, the same way)
+	out["guide_unfolded_real"] = guide.get_combined_minimum_size().y
+	guide.fold_for_card(was)
+	out["desired"] = cards.desired_height()
+	out["more"] = cards.has_more_below()
+	out["more_button"] = _r(cards.more_button)
+	var lines := []
+	for n in cards.holder.find_children("*", "Label", true, false):
+		var l := n as Label
+		if l.is_visible_in_tree() and not l.text.strip_edges().is_empty():
+			lines.append([String(l.name)] + _r(l))
+	out["lines"] = lines
 	return out
 
 

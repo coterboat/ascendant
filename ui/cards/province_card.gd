@@ -7,7 +7,7 @@ extends CardBase
 ##     fort recruit section and the ruler's), Fortify (FortifyControls, today's fort panel flow) and the Fort panel (opens the
 ##     whole fort panel under the fort line: the siege, the garrison, Storm and Sally);
 ##   - the facts, each with its breakdown on hover and its codex link: owner, garrison, terrain, income, capital, the fort
-##     (FortChip, walls, recruits a turn and how many are ordered), neighbours, vision under fog, and the enchantments on it;
+##     (its level, walls, recruits a turn and how many are ordered), neighbours, vision under fog, and the enchantments on it;
 ##   - the armies here, each a button that selects it, with its portraits (UnitStrip).
 ## What each section shows is what the side panel showed: it was moved here, not rewritten, so every tooltip and codex link is
 ## the one it had. Sections the card builds closed are built all the same and hidden until their button opens them
@@ -21,6 +21,10 @@ var recruit_section: RecruitSection = null
 var fort_panel: FortPanel = null
 var fortify: FortifyControls = null
 var armies_box: VBoxContainer = null
+
+## UI-FIT (#237): the header strip's height and its banner's: a squeezed card at 125% keeps its facts down to the fort in view.
+const HEADER_H := 64.0
+const BANNER_H := 46.0
 
 
 static func make(host: MapScreen, pid: String) -> ProvinceCard:
@@ -65,13 +69,13 @@ func _add_header(p: Province) -> void:
 		sb.axis_stretch_vertical = StyleBoxTexture.AXIS_STRETCH_MODE_TILE
 		sb.region_rect = Rect2(0, 0, 512, 160)
 		sb.modulate_color = Color(0.72, 0.72, 0.72)
-		sb.set_content_margin_all(10)
+		sb.set_content_margin_all(8)
 		sb.content_margin_left = 14
 		header.add_theme_stylebox_override("panel", sb)
 	else:
 		var flat := StyleBoxFlat.new()
 		flat.bg_color = UiPalette.terrain_color(p.terrain).darkened(0.3)
-		flat.set_content_margin_all(10)
+		flat.set_content_margin_all(8)
 		header.add_theme_stylebox_override("panel", flat)
 	add_child(header)
 	var row := HBoxContainer.new()
@@ -84,16 +88,16 @@ func _add_header(p: Province) -> void:
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.add_theme_font_override("font", UiFonts.name())
-	title.add_theme_font_size_override("font_size", 30)
+	title.add_theme_font_size_override("font_size", 28)
 	title.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
 	title.add_theme_color_override("font_outline_color", UiPalette.KEYLINE_INK)
 	title.add_theme_constant_override("outline_size", 8)
 	row.add_child(title)
 	if not p.owner.is_empty():
-		var banner := Art.banner_card(p.owner, 60.0)
+		var banner := Art.banner_card(p.owner, BANNER_H)
 		banner.name = "OwnerBanner"
 		row.add_child(banner)
-	header.custom_minimum_size = Vector2(0, 80)
+	header.custom_minimum_size = Vector2(0, HEADER_H)
 
 
 ## The actions on this province: Recruit, Fortify, the fort panel. Each only where the viewer can use it.
@@ -209,22 +213,16 @@ func _add_facts(p: Province) -> void:
 	_add_enchantment_lines(p)  # M5-6: wards, curses and Far Sight on it
 
 
-## M3c S-3: "Fort: Keep" (linked to the level's own entry) with its chip, then the fort section (FortPanel) in a frame: its
-## summary (the walls, the recruits a turn and how many are ordered) always, the rest when the Fort panel is open.
+## M3c S-3: "Fort: Keep" (linked to the level's own entry), then the fort section (FortPanel) in a frame: its summary (the walls,
+## the recruits a turn and how many are ordered, a construction, a siege that stands) always, the rest when the Fort panel is open.
+## UI-FIT (#237): the board's fort chip is not repeated here: beside this line it said the level again, and its walls bar sat over
+## the section's bigger one. The plates keep it.
 func _add_fort_block(p: Province) -> void:
 	var level_key: String = String(SiegeRules.level_data(p.fort_level).id) if p.fort_level > 0 else "fort_levels"
 	var text := "Fort: %s" % (SiegeRules.level_name(p.fort_level) if p.fort_level > 0 else "none")
-	var row := HBoxContainer.new()
-	row.name = "FortRow"
-	row.add_theme_constant_override("separation", 10)
-	add_child(row)
-	var fort_label := add_text(text, TooltipText.plain(text, RulesCodex.text(level_key)), UiPalette.TEXT_PRIMARY, row)
+	var fort_label := add_text(text, TooltipText.plain(text, RulesCodex.text(level_key)), UiPalette.TEXT_PRIMARY)
 	fort_label.name = "FortLabel"
-	fort_label.autowrap_mode = TextServer.AUTOWRAP_OFF  # beside the chip: one line
 	CodexLink.attach(fort_label, level_key, map.request_codex)
-	var chip := FortChip.make(state, p.id, map.seat_order(), map.request_codex)
-	if chip != null:
-		row.add_child(chip)
 	if fort_panel == null:
 		return
 	var frame := PanelContainer.new()

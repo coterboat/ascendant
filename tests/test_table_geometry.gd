@@ -386,6 +386,47 @@ func test_the_left_column_holds_the_notice_the_guide_and_the_card_in_that_order(
 			assert_eq(_rect(m, "guide").position.y, _rect(m, "notice").end.y + TableLayout.GAP if _shown(m, "notice") else safe.position.y + TableLayout.GAP, "%s: the guide hangs under the realm plaque (or the notice)" % where))
 
 
+## UI-FIT (#237): the province card at the capital (the state at rest: a tall card, the guide up) at every size on both boards. At 125%
+## it showed four lines under the whole guide, and at every size the scroll's edge cut its last line with nothing to say there was more.
+## The card outranks the guide (§1.3), so the guide folds for it exactly when the card asks for more than the column leaves under the
+## whole guide; the card shows its name and its facts down to the fort whole; nothing is cut at the scroll's top; and a line the bottom
+## edge cuts has the fade and "More" over it, inside the card.
+func test_the_province_card_shows_its_facts_and_never_cuts_a_line_unsaid() -> void:
+	var checked := [0]
+	_each(func(board: String, key: String, scenario: String, m: Dictionary):
+		if scenario != "rest":
+			return
+		var where := _where(board, key, scenario)
+		var parts: Dictionary = m.card_parts
+		var safe := Rect2(m.safe[0], m.safe[1], m.safe[2], m.safe[3])
+		var gap := TableLayout.GAP
+		assert_true(absf(float(parts.guide_unfolded) - float(parts.guide_unfolded_real)) < 0.5, "%s: the folded guide knows its unfolded height (%d, %d)" % [where, parts.guide_unfolded, parts.guide_unfolded_real])
+		var wanted := minf(float(parts.desired), safe.size.y - 2.0 * gap)
+		var under_whole_guide := safe.size.y - 3.0 * gap - float(parts.guide_unfolded)
+		assert_eq(bool(parts.guide_folded), wanted > under_whole_guide + 0.5, "%s: the guide folds only for a card that needs the room (it asks %d, the whole guide leaves %d)" % [where, wanted, under_whole_guide])
+		var scroll := Rect2(parts.scroll[0], parts.scroll[1], parts.scroll[2], parts.scroll[3])
+		var whole := []
+		var cut := []
+		for line in parts.lines:
+			var r := Rect2(line[1], line[2], line[3], line[4])
+			if scroll.grow(0.5).encloses(r):
+				whole.append(String(line[0]))
+			elif r.position.y < scroll.end.y - 0.5 and r.end.y > scroll.end.y + 0.5:
+				cut.append(String(line[0]))
+			assert_false(r.position.y < scroll.position.y - 0.5 and r.end.y > scroll.position.y + 0.5, "%s: at rest no line is cut at the top (%s)" % [where, line[0]])
+		for name in ["ProvinceName", "OwnerLabel", "TerrainLabel", "IncomeLabel", "CapitalLabel", "FortLabel"]:
+			assert_true(whole.has(name), "%s: %s is wholly in view (%s)" % [where, name, whole])
+		if not cut.is_empty():
+			assert_true(bool(parts.more), "%s: the lines the edge cuts (%s) have the fade and More over them" % [where, cut])
+		if bool(parts.more):
+			var b: Array = parts.more_button
+			var more := Rect2(b[0], b[1], b[2], b[3])
+			assert_true(bool(b[4]) and _rect(m, "card").grow(0.5).encloses(more), "%s: More is shown inside the card (%s)" % [where, more])
+			assert_true(more.end.y <= scroll.end.y + 0.5 and more.position.y >= scroll.end.y - ScrollMore.FADE_H - 0.5, "%s: at the scroll's bottom edge" % where)
+		checked[0] += 1)
+	assert_eq(checked[0], BOARDS.size() * SIZES.size(), "both boards at the three sizes")
+
+
 ## The review's regression: at 125% the first-game guide hung over the north of the map and covered Westwatch, the capital's
 ## neighbour and turn 1's first move. On turn 1 with the guide up, the name labels of the capital and of every neighbour are inside
 ## the framing area as drawn, and clear of every HUD piece (the guide, the card, the plaques, the system row, the tray and the seal

@@ -44,6 +44,10 @@ var details: VBoxContainer
 var pinned: VBoxContainer  # the open card's action buttons, kept in view (CardBase.pinned_nodes)
 var scroll: ScrollContainer
 var holder: VBoxContainer  # the open card, in the scroll
+## UI-FIT (#237): over the bottom of the scroll while more of the card is below (ScrollMore): a fade, so the line the edge cuts reads
+## as going on, and "More".
+var more: ScrollMore
+var more_button: Button
 var close_button: Button
 var back_button: Button
 var title_label: Label
@@ -144,7 +148,10 @@ func _init() -> void:
 	scroll.name = "Scroll"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	details.add_child(scroll)
+	var scroll_frame := ScrollMore.frame(scroll)  # the "More" fade over its bottom
+	details.add_child(scroll_frame)
+	more = scroll_frame.get_node("MoreCue") as ScrollMore
+	more_button = more.button
 	holder = VBoxContainer.new()
 	holder.name = "Holder"
 	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -170,6 +177,11 @@ func _init() -> void:
 	forecast_slot.add_child(forecast_hint)
 	_build_strip()
 	_set_forecast_hint()
+
+
+## True while more of the card is below the scroll's bottom edge (the fade and "More" show).
+func has_more_below() -> bool:
+	return more.has_more_below()
 
 
 ## The slim strip shown instead of the card while a march destination is picked.
@@ -455,6 +467,7 @@ func fit(max_height: float) -> void:
 	var want := clampf(holder.get_combined_minimum_size().y, SCROLL_MIN, room)
 	if not is_equal_approx(scroll.custom_minimum_size.y, want):
 		scroll.custom_minimum_size.y = want
+	more.refresh()
 
 
 ## The height the card asks for now (its content, its header and its padding), before the cap. The strip is as tall as it is.

@@ -44,6 +44,8 @@ extends PanelContainer
 ##   lingering() -> bool, end_linger()   the moment after End turn, every step ticked, and its end
 ##   note_plan_seen(fid)        UX-9: the Plan was shown to `fid` (PlanHud says so): the third step ticks
 ##   next_step() -> String      UX-9: the id of the step lit as the one to do next ("" when all are done)
+##   fold_for_card(on), folded(), unfolded_height()   UI-FIT: the Table folds the card to its head, the step to do next and the
+##                              fog line while a selection card needs the column's room (TableHud.relayout)
 ##   step_states(orders, ended, plan_seen) (static)   the ticks for a list of orders: pure, no scene needed
 ##   systems_on(view) (static)  the per-system lines for a game's flags: pure
 ##   signal codex_requested(key)   a link was pressed (GameScreen opens its codex there)
@@ -115,6 +117,8 @@ var _systems: Array = []  # the SYSTEMS lines on in this game (ids)
 var _systems_open := false  # the "Also on" row is open
 var _fog_explained := false  # the card's fog line told this game's players how fog works: the first fog turn's banner is not needed
 var _seat_title := ""
+var _folded := false  # UI-FIT: a selection card needs the column, so only the head, the step to do next and the fog line show
+var _systems_any := false  # a system line is on in this game
 
 
 func _init() -> void:
@@ -156,6 +160,54 @@ func sync(session: GameSession, view: GameState) -> void:
 		_hide()
 		return
 	_show_for(session, view, fid, turn)
+
+
+## UI-FIT (#237): the selection card outranks the guide (design/UX_WAR_TABLE.md §1.3: a lower piece shrinks before it overlaps
+## a higher one), so when a card needs the left column's room the Table folds the guide to its head, the step to do next and the
+## fog line, and unfolds it when the card is closed or fits. At 125% the province card showed four lines under the whole guide.
+func fold_for_card(on: bool) -> void:
+	if on == _folded:
+		return
+	_folded = on
+	_apply_fold()
+
+
+func folded() -> bool:
+	return _folded
+
+
+## The height the card asks for unfolded, folded or not: the Table decides from it whether the card needs the room.
+func unfolded_height() -> float:
+	var h := get_combined_minimum_size().y
+	if not _folded:
+		return h
+	var sep := float((get_node("Box") as VBoxContainer).get_theme_constant("separation"))
+	for id in step_checks:
+		var check: Control = step_checks[id]
+		if not check.visible:
+			h += check.get_combined_minimum_size().y + sep
+	return h + _in_box(_systems_height(false), sep) - _in_box(_systems_height(true), sep)
+
+
+## The systems box's height folded or not: the fog line, and unfolded the "Also on" row and its open lines. -1 when it hides.
+func _systems_height(fold: bool) -> float:
+	var parts: Array = []
+	if _systems.has("fog"):
+		parts.append((system_lines["fog"] as Control).get_combined_minimum_size().y)
+	if not fold and _others_on():
+		parts.append(systems_toggle.get_combined_minimum_size().y)
+		if _systems_open:
+			parts.append(systems_lines_box.get_combined_minimum_size().y)
+	if parts.is_empty():
+		return -1.0
+	var h := float(systems_box.get_theme_constant("separation")) * (parts.size() - 1)
+	for part in parts:
+		h += float(part)
+	return h
+
+
+static func _in_box(h: float, sep: float) -> float:
+	return 0.0 if h < 0.0 else h + sep
 
 
 ## True when the card's other-systems lines are folded behind the "Also on" row (always, while no other system is on).
@@ -284,6 +336,15 @@ func _tick(states: Dictionary) -> void:
 		if on:
 			done += 1
 	progress_label.text = "%d of %d" % [done, STEPS.size()]
+	_apply_fold()
+
+
+## Folded, only the step to do next shows (none once all are ticked), with the fog line; the "Also on" row waits for the unfold.
+func _apply_fold() -> void:
+	var next := next_step()
+	for id in step_checks:
+		(step_checks[id] as Control).visible = not _folded or id == next
+	_refresh_systems()
 
 
 func _hide() -> void:
@@ -342,7 +403,7 @@ func _set_systems(view: GameState) -> void:
 	_systems = on.map(func(s): return String(s.id))
 	for id in system_lines:
 		(system_lines[id] as Control).visible = _systems.has(id)
-	systems_box.visible = not on.is_empty()
+	_systems_any = not on.is_empty()
 	_fog_explained = _systems.has("fog")
 	_systems_open = false
 	_refresh_systems()
@@ -351,13 +412,23 @@ func _set_systems(view: GameState) -> void:
 ## The "Also on" row and the folded lines for the systems that are on (the fog line is never folded).
 func _refresh_systems() -> void:
 	var others := SYSTEMS.filter(func(s): return String(s.id) != "fog" and _systems.has(String(s.id)))
-	systems_toggle.visible = not others.is_empty()
-	systems_lines_box.visible = _systems_open and not others.is_empty()
+	systems_toggle.visible = _shows_toggle()
+	systems_lines_box.visible = _systems_open and systems_toggle.visible
+	systems_box.visible = _systems_any and (not _folded or _systems.has("fog"))
 	var names := others.map(func(s): return String(SHORT_NAMES.get(String(s.id), s.name)))
 	systems_toggle.text = "%s Also on: %s" % ["\u25BE" if _systems_open else "\u25B8", "" if _systems_open else _one_line(names)]
 	var tip := others.map(func(s): return "%s: %s" % [String(s.name), String(s.rest)])
 	systems_toggle.tooltip_text = TooltipText.plain("The other systems in this game",
 		"%s.\n\nClick to open or fold one line about each; every name in them opens its codex entry, and hovering a line says more." % "\n".join(tip))
+
+
+## The "Also on" row shows while another system than fog is on and the card is not folded for a selection card.
+func _shows_toggle() -> bool:
+	return not _folded and _others_on()
+
+
+func _others_on() -> bool:
+	return SYSTEMS.any(func(s): return String(s.id) != "fog" and _systems.has(String(s.id)))
 
 
 ## UI-FIT (#237): the folded row's names, as many as fit on its one line at the floor's size, then "+N" (every one is in its tooltip).
@@ -389,7 +460,7 @@ func _build() -> void:
 	title_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS  # the head row also holds How to play and Hide
 	head.add_child(title_label)
 	progress_label = _label("ProgressLabel", "0 of %d" % STEPS.size(), 15, UiPalette.TEXT_SECONDARY)
-	progress_label.tooltip_text = TooltipText.plain("Your first turn", "The things to do on a first turn. Each ticks off by itself once you have done it, and the next one is lit in gold.")
+	progress_label.tooltip_text = TooltipText.plain("Your first turn", "The things to do on a first turn. Each ticks off by itself once you have done it, and the next one is lit in gold. While a card you opened needs the room, the guide shows just the next step; close the card to see them all.")
 	progress_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	head.add_child(progress_label)
 	hide_button = Button.new()

@@ -132,8 +132,11 @@ func test_the_province_card_has_the_facts_the_fort_and_the_actions_of_the_land()
 	var income := _node(card, "IncomeLabel") as Label
 	assert_eq(income.text, "Income: %d gold per turn" % int(Breakdown.province_income(s, capital).total))
 	assert_true(income.tooltip_text.contains("= "), "the income's breakdown")
-	# The fort: the chip, the walls and the recruits a turn (with how many are ordered), without opening the fort panel.
-	assert_true(_has(card, "FortChip"), "the fort chip, as the plate has it")
+	# The fort: its level, the walls and the recruits a turn (with how many are ordered), without opening the fort panel.
+	# UI-FIT (#237): the level is said once: the board's chip is not repeated beside "Fort: <level>", over the section's walls bar.
+	assert_eq((_node(card, "FortLabel") as Label).text, "Fort: %s" % SiegeRules.level_name(p.fort_level))
+	assert_false(_has(card, "FortChip"), "no chip beside it saying the level again")
+	assert_true(_has(card, "WallsBar"), "the walls bar is the fort section's")
 	var walls := _node(card, "WallsLabel") as Label
 	var recruits := _node(card, "RecruitLimitLabel") as Label
 	assert_true(_shown(walls, card) and _shown(recruits, card), "the walls and the recruit cap show on the closed card")
