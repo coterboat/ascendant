@@ -542,6 +542,7 @@ func _switch_seat(eyes: String) -> void:
 	summary = {}
 	turn = 0
 	seat = eyes
+	NoticeArt.viewer = eyes  # the medallions wear the seat's own faction set (UX-ART #222)
 	_needs_sig = ""
 	markers.set_markers([])
 	stack.show_items([], {}, 0, false, true)
