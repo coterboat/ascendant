@@ -458,8 +458,10 @@ static func casters_phrase(state: GameState, army: Army) -> String:
 # --- the HUD chip (M5-8) ---------------------------------------------------------------------------------------------
 
 ## The top bar's Magic chip: {"text" (two short lines: "Magic: 3 spells" and "2 mages · 1 cast ordered"), "breakdown" (one line for
-## each spell you know), "tooltip" (casters, queued casts, the gold they leave, a global ritual in play, what a click does),
-## "attention" (no spell known yet: the chip draws the eye to the Magic tab), "codex"}. Your own faction only.
+## each spell your realm can cast), "tooltip" (casters, queued casts, the gold they leave, a global ritual in play, what a click does),
+## "attention" (nothing to cast yet: the chip draws the eye to the Magic tab), "codex"}. Your own faction only.
+## UI-POLISH-1 (#239): it counts what the realm can cast, the ruler's own spells too: on turn 1 it said "no spell yet" while the
+## Ever-Regent cast Sunlance in battle 1. Each line says who knows it ("researched" or "the Ever-Regent's own").
 static func chip(state: GameState, fid: String, orders: Array = []) -> Dictionary:
 	var view := PathView.view_state(state, fid, orders)
 	var known := MagicRules.known_spells(view, fid)
@@ -467,16 +469,29 @@ static func chip(state: GameState, fid: String, orders: Array = []) -> Dictionar
 	for sid in known:
 		var tier := String(MagicRules.spell_data(String(sid)).tier)
 		lines.append({"label": MagicRules.spell_name(String(sid)), "value": 1,
-			"note": ("battle spell, tier %s" if MagicRules.is_battle_spell(String(sid)) else "ritual, tier %s") % tier})
+			"note": ("researched: battle spell, tier %s" if MagicRules.is_battle_spell(String(sid)) else "researched: ritual, tier %s") % tier})
+	var ruler_name := ""
+	var ruler_own := []  # what the ruler casts that nobody researched: its own spell (Sunlance, from turn 1)
+	if RulerRules.ruler_alive(view, fid):
+		ruler_name = RulerRules.current_name(view, fid)
+		for sid in MagicRules.battle_spells(view, fid, MagicRules.RULER):
+			if not known.has(sid):
+				ruler_own.append(sid)
+				lines.append({"label": MagicRules.spell_name(String(sid)), "value": 1, "note": "%s's own: battle spell, from turn 1" % ruler_name})
+	var ruler_casts := not ruler_name.is_empty() and not MagicRules.battle_spells(view, fid, MagicRules.RULER).is_empty()
 	var mages := 0
 	for a in view.armies:
 		if a.owner == fid:
 			for u in a.units:
 				if MagicRules.is_mage(u.type):
 					mages += 1
+	var spells := known.size() + ruler_own.size()
+	var casters := TooltipText.count(mages, "mage")
+	if ruler_casts:
+		casters = "ruler + %s" % casters if mages > 0 else "your ruler casts"
 	var casts := MagicRules.pinned_armies(view, fid, orders).size()
-	var text := "Magic: %s\n%s%s" % [TooltipText.count(known.size(), "spell") if not known.is_empty() else "no spell yet",
-		TooltipText.count(mages, "mage"), " · %s ordered" % TooltipText.count(casts, "cast") if casts > 0 else ""]
+	var text := "Magic: %s\n%s%s" % [TooltipText.count(spells, "spell") if spells > 0 else "no spell yet",
+		casters, " · %s ordered" % TooltipText.count(casts, "cast") if casts > 0 else ""]
 	var parts := PackedStringArray()
 	parts.append(casters_text(view, fid))
 	if casts > 0:
@@ -487,10 +502,15 @@ static func chip(state: GameState, fid: String, orders: Array = []) -> Dictionar
 				MagicRules.spell_name(String(e.ritual)), MagicRules._faction_display(view, String(e.faction)), int(e.until_turn),
 				"your" if String(e.faction) == fid else "its", MagicRules.moon_share_word()])
 	parts.append("Click to open the Magic tab: your arcana, mastery and the battle spellbook.")
-	var desc := "%s %s" % ["Every spell and ritual you have researched; the Magic tab has what is left." if not known.is_empty() \
-		else "You know no spell yet: research one in the Magic tab, and your mages can be recruited.", RulesCodex.text("magic")]
-	return {"text": text, "breakdown": {"title": "Your spells", "description": desc, "lines": lines, "total_label": "Spells you know",
-		"total": known.size(), "codex": "magic"}, "tooltip": "\n\n".join(parts), "attention": known.is_empty(), "codex": "magic"}
+	var who := "Every spell and ritual your realm can cast: the ones you researched%s; the Magic tab has what is left." % (
+		", and %s's own" % ruler_name if not ruler_own.is_empty() else "")
+	if known.is_empty():
+		who = ("%s casts %s, its own; you have researched no spell yet: research one in the Magic tab, and your mages can be recruited." % [
+			RulerRules._cap(ruler_name), MagicRules._and_list(ruler_own.map(func(sid): return MagicRules.spell_name(String(sid))))]) if not ruler_own.is_empty() \
+			else "You know no spell yet: research one in the Magic tab, and your mages can be recruited."
+	var desc := "%s %s" % [who, RulesCodex.text("magic")]
+	return {"text": text, "breakdown": {"title": "Your spells", "description": desc, "lines": lines, "total_label": "Spells your realm can cast",
+		"total": spells, "codex": "magic"}, "tooltip": "\n\n".join(parts), "attention": spells == 0, "codex": "magic"}
 
 
 # --- the lock-in preview's magic row (§8.5) -----------------------------------------------------------------------

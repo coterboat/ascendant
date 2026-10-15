@@ -580,6 +580,39 @@ func test_the_played_board_stands_as_one_built_from_the_next_state() -> void:
 	assert_true(battles >= 2, "battles among them (%d)" % battles)
 
 
+## UI-POLISH-1 (#239): the turn-start camera leaned in on the last battle and stayed there, so a turn began on a hillside with no sense
+## of place. The turn's action is framed with its neighbours, no closer than ACTION_ZOOM_MAX; when the playback ends the camera settles
+## back there from a battle's lean-in, unless the player panned or zoomed meanwhile.
+func test_the_turns_action_is_framed_with_its_neighbours_and_the_camera_settles_back() -> void:
+	var s := GameState.new(21)
+	var b := _board_for(s)
+	var pid := "westwatch"
+	var plan := {"battles": [{"provinces": [pid], "armies": []}], "marches": [], "forts": []}
+	b._frame_action(plan)
+	assert_true(b.zoom <= Board3D.ACTION_ZOOM_MAX + 0.001, "no closer than the action zoom (%f)" % b.zoom)
+	var framed: Dictionary = b.goal.duplicate()
+	b.wv.rig = framed.duplicate()
+	b.wv.apply_rig()
+	var view := Rect2(Vector2.ZERO, b.size)
+	var t = b.wv.terrain
+	assert_true(view.has_point(b.project(t.centre_of(pid))), "the battle is in view")
+	for n in s.find_province(pid).neighbors:
+		assert_true(view.has_point(b.project(t.centre_of(n))), "and %s, next to it, is too" % n)
+	# A battle's lean-in, then the playback ends: back to the action's frame.
+	b.zoom = Board3D.BATTLE_ZOOM
+	b.goal = b.rig_for(t.centre_of(pid), b.zoom)
+	b.settle_on_action()
+	assert_eq(b.goal, framed, "the camera settles back on the action and its neighbours")
+	assert_true(b.zoom <= Board3D.ACTION_ZOOM_MAX + 0.001)
+	# The player pans during the playback: its end leaves the camera where they put it.
+	b._frame_action(plan)
+	b._move_goal(Vector2(12, 0))
+	var theirs: Dictionary = b.goal.duplicate()
+	b.settle_on_action()
+	assert_eq(b.goal, theirs, "a pan keeps the player's camera")
+	_free_board(b)
+
+
 func test_a_game_plays_out_on_the_board_before_the_report_opens() -> void:
 	var game := _game_with_board({"players": ["kingdom", "beasts"], "seed": 21, "ai": {"beasts": "normal"}})
 	var b: Board3D = game.map.board

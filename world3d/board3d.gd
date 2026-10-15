@@ -90,6 +90,9 @@ const CLOSE_PITCH := 52.0 ## the fortress close-up's pitch (design 8.1: about 35
 const CLOSE_SPAN := 56.0 ## the close-up frames the yard, its gate and the camp's edge
 const CLOSE_MIN_SPAN := 34.0
 const BATTLE_ZOOM := 0.8 ## the playback camera leans in this far on each battle
+## UI-POLISH-1 (#239): the turn's action is framed with its neighbours, at most this close, and the camera settles back there when the
+## playback ends: it stayed leaned in on the last battle, so a turn began on a hillside with no sense of where it was.
+const ACTION_ZOOM_MAX := 0.45
 const MIN_FIG_PX := 26.0 ## a man-sized figure never stands shorter than this on the board (design 6.1: 24 px at 1080p)
 const MAX_PIECE_SCALE := 3.2 ## past this the blocks pile into each other: the far-zoom stand's job (design 6.1)
 
@@ -120,6 +123,8 @@ var fps_samples: Array = [] ## (perf probes) recent frame times
 var _vp: SubViewport
 var _px := 1.0
 var _span_fit := 600.0
+var _action_goal := {}  ## the frame of this turn's action (_frame_action): where the camera settles when the playback ends
+var _action_zoom := 0.0
 var _fit_rect := Rect2() ## UX-1: where the whole-map framing goes, in this board's pixels (empty: the whole board)
 var _fit_target := Vector2.ZERO ## the ground point the whole-map camera looks at (the land's centre, slid so it lands in _fit_rect)
 var _fit_size := Vector2.ZERO
@@ -492,7 +497,8 @@ func play_turn(before: GameState, events: Array, after: GameState) -> bool:
 
 
 ## Glides the camera to frame the turn's action: its battles and the columns marching to them; with no
-## battle, the viewing player's own columns; else every column (the whole map when it all moves).
+## battle, the viewing player's own columns; else every column (the whole map when it all moves). UI-POLISH-1: with the neighbours of
+## every province in it, so the action is seen in its place, and no closer than ACTION_ZOOM_MAX.
 func _frame_action(plan: Dictionary) -> void:
 	var t = wv.terrain
 	var pts: Array = []
@@ -521,16 +527,47 @@ func _frame_action(plan: Dictionary) -> void:
 		if not pts.is_empty():
 			break
 	if pts.is_empty():
+		_action_goal = {}
 		return
 	var box := Rect2(pts[0], Vector2.ZERO)
 	for p in pts:
 		box = box.expand(p)
+	for p in action_neighbours(pts):
+		box = box.expand(p)
 	box = box.grow(60.0)
 	var aspect: float = size.x / maxf(size.y, 1.0)
 	var span: float = maxf(box.size.y * 1.2, box.size.x / maxf(aspect, 0.5))
-	var z: float = clampf((log(maxf(span, SPAN_NEAR)) - log(_span_fit)) / (log(SPAN_NEAR) - log(_span_fit)), 0.0, 0.62)
+	var z: float = clampf((log(maxf(span, SPAN_NEAR)) - log(_span_fit)) / (log(SPAN_NEAR) - log(_span_fit)), 0.0, ACTION_ZOOM_MAX)
 	zoom = z
 	goal = rig_for(box.get_center(), z)
+	_action_goal = goal.duplicate()
+	_action_zoom = z
+
+
+## The centres of the provinces next to the action's (`pts`, centres): the action's place on the map.
+func action_neighbours(pts: Array) -> Array:
+	var out := []
+	if map == null or map.state == null:
+		return out
+	var t = wv.terrain
+	for p in map.state.provinces:
+		if not pts.has(t.centre_of(p.id)):
+			continue
+		for n in p.neighbors:
+			if t.index_of(n) >= 0:
+				out.append(t.centre_of(n))
+	return out
+
+
+## UI-POLISH-1: when the playback ends, the camera eases back from its last battle to the turn's action and its neighbours, unless the
+## player moved it meanwhile (a pan or a zoom drops the frame) or a close-up is open.
+func settle_on_action() -> void:
+	if _action_goal.is_empty() or not closeup.is_empty():
+		_action_goal = {}
+		return
+	zoom = _action_zoom
+	goal = _action_goal.duplicate()
+	_action_goal = {}
 
 
 func is_playing() -> bool:
@@ -657,6 +694,7 @@ func _on_playback_finished() -> void:
 		_sync_vision(shown)
 	if overlay != null:
 		overlay.end_playback()
+	settle_on_action()
 	if map != null and map.state != null and map.state != shown:
 		stand(map.state)
 	_sync_marks()
@@ -949,6 +987,7 @@ func _compute_fit() -> void:
 
 
 func _move_goal(v: Vector2) -> void:
+	_action_goal = {}  # the player took the camera: the playback's end leaves it where they put it
 	var t: Vector3 = goal["target"]
 	var p := Vector2(clampf(t.x + v.x, LAND.position.x, LAND.end.x), clampf(t.z + v.y, LAND.position.y, LAND.end.y))
 	var h: float = maxf(wv.terrain.height_at(p), 0.0) * smoothstep(0.2, 0.6, zoom)
@@ -975,6 +1014,7 @@ func zoom_at(local: Vector2, dz: float) -> void:
 			goal["span"] = maxf(CLOSE_MIN_SPAN, float(goal["span"]) * 0.9)
 		return
 	## zoom to the cursor: the ground under it stays under it
+	_action_goal = {}
 	_snap_rig()
 	var g0 := unproject(local)
 	zoom = clampf(zoom + dz, 0.0, 1.0)

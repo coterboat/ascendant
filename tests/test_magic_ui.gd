@@ -1152,9 +1152,22 @@ func test_the_magic_chip_counts_your_spells_and_opens_the_magic_tab() -> void:
 	assert_true(hud.magic_chip.visible, "the chip shows in a magic game")
 	var c := MagicView.chip(game.session.state(), CROWN, game.session.current_orders())
 	assert_eq(hud.magic_chip.text, String(c.text))
-	assert_true(String(c.text).begins_with("Magic: no spell yet"), c.text)
-	assert_true(c.attention, "with no spell the chip draws the eye")
-	assert_eq(int(c.breakdown.total), 0)
+	# UI-POLISH-1 (#239): nothing researched, but the Ever-Regent casts its own Sunlance from turn 1: the chip counts it, and says whose.
+	var st := game.session.state()
+	var own: Array = MagicRules.battle_spells(st, CROWN, MagicRules.RULER)
+	assert_eq(MagicRules.known_spells(st, CROWN), [], "nothing researched yet")
+	assert_false(own.is_empty(), "the Ever-Regent casts its own spell")
+	assert_true(String(c.text).begins_with("Magic: %s" % TooltipText.count(own.size(), "spell")), c.text)
+	assert_true(String(c.text).contains("your ruler casts"), c.text)
+	assert_false(c.attention, "the realm can cast: the chip does not say there is nothing")
+	assert_eq(int(c.breakdown.total), own.size())
+	for sid in own:
+		assert_true(c.breakdown.lines.any(func(l): return String(l.label) == MagicRules.spell_name(String(sid)) and String(l.note).contains(RulerRules.current_name(st, CROWN))),
+			"%s's line names who knows it: %s" % [sid, c.breakdown.lines])
+	assert_true(String(c.breakdown.description).contains("researched no spell yet"), "and that no spell is researched: %s" % c.breakdown.description)
+	# A realm whose ruler casts nothing, with nothing researched: no spell yet, and the chip draws the eye.
+	var plain_ruler := MagicView.chip(_magic({CROWN: "warrior_king"}), CROWN)
+	assert_true(String(plain_ruler.text).begins_with("Magic: no spell yet") and plain_ruler.attention, plain_ruler.text)
 	# Know two spells and queue a cast: the numbers follow.
 	var s2 := AscensionRules.with_nodes(_clans_state(), CLANS, [])
 	var g2 := _screen(s2, [CLANS, CROWN])
