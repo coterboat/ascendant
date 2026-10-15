@@ -342,7 +342,7 @@ func _build_badge() -> void:
 	_badge.add_theme_stylebox_override("panel", style)
 	_badge_label = Label.new()
 	_badge_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_badge_label.add_theme_font_size_override("font_size", 12)
+	_badge_label.add_theme_font_size_override("font_size", 15)
 	_badge_label.add_theme_color_override("font_color", UiPalette.KEYLINE_INK)
 	_badge.add_child(_badge_label)
 	button.add_child(_badge)

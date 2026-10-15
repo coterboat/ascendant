@@ -11,7 +11,7 @@ extends PanelContainer
 ## make() is also the seam for the 3D board's plates (world3d/board_overlay.gd, S-4's): add FortChip.make(...)
 ## to a plate and it reads the same.
 
-const FONT_SIZE := 12
+const FONT_SIZE := 15
 const BAR_HEIGHT := 7.0
 
 var province_id := ""

@@ -35,7 +35,9 @@ const Vision := preload("res://world3d/vision.gd")
 const EnchantDecals := preload("res://world3d/enchant_decals.gd")
 const ARROW := Color("#FFFFFF")
 const ARROW_HALO := Color(0.102, 0.086, 0.071, 0.85)
-const LEGEND := "The 3D board, what you see:\n- A province's colour wash and inner border: its owner, in their player colour. Its plate (name, owner's emblem, a crown on a capital) shows what warns (cut off, besieged, an heir countdown) and, on hover, Tab focus or selection, its gold, garrison and walls.\n- A white band inside a province: the one you selected. A cream band: the one under the mouse.\n- A soft gilt glow at the edges: where your selected army can march this turn.\n- A dashed gilt band: a King's Roads destination two provinces away.\n- Figures: each army as blocks of its units (a block per unit type, %s), its commander and banner bearer at the back. The plate above gives the exact count.\n- In the woods every block stands on a tray in its owner's colour (a gilt ring for a ruler's army), so woods-green figures never pass for trees.\n- Zoomed far out, each army becomes a stand: a base in its owner's colour (a gilt ring for a ruler's army), its banner, and one figure for each of its three most numerous unit types, under its count plate. Zoom in and the blocks come back.\n- A fortress's muster yard: its armies stand a block to a slot (a capital holds 6 blocks), facing the gate. An army the yard can't hold musters in the war camp outside the walls: tents, a fire and its smoke. A big camp means a big muster: war is coming.\n- Translucent figures in a yard: the recruits you queued, in the slot each will take. Only you see them.\n- An army in a column at its gate (or the edge of its province), facing a road, with a gilt arrow on its plate: one you ordered to march. It leaves when the turn ends. Only you see it gathered.\n- White arrows along the roads: your queued moves.\n- Gilt numbered tokens: your queued orders, numbered in the order you gave them, the same numbers as the tray along the bottom. A march's number sits beside its arrow; a recruit (\"+2 units\"), a fortify (the walls icon), a storm or sally (the siege icon), a ritual and a muster (the split icon) have their token beside their province. Click a token to see its order and change or cancel it; right-click it to cancel. Cancelling an order moves the numbers after it up. Only you see them.\n- During a turn's playback the captions follow the turn report's phases: Movement, Battles, Captures, Recruits. Crossed swords mark a battle: the lines trade blows and the fallen lie where they fell. A capture's colour sweeps out from the arriving column.\n- View fortress (in the recruit panel) or a double-click on a fortress: a close-up of its yard. Esc or zooming out leaves it.%s\n\nDrag or WASD to pan, the wheel (or a pinch or two-finger scroll on a trackpad) to zoom, double-click to glide to a province, C your capital, F the whole map, L Look A or B. Settings can switch to the 2D map."
+## How far a province plate may slide to clear another before it folds instead (UI-FIT, _declutter_plates).
+const PLATE_NUDGE := 40.0
+const LEGEND := "The 3D board, what you see:\n- A province's colour wash and inner border: its owner, in their player colour. Its plate (name, owner's emblem, a crown on a capital) shows what warns (cut off, besieged, an heir countdown) and, on hover, Tab focus or selection, its gold, garrison and walls. Where plates would overlap (the whole map in a small window), one slides aside or folds to its emblem: hover it, or zoom in, for its name.\n- A white band inside a province: the one you selected. A cream band: the one under the mouse.\n- A soft gilt glow at the edges: where your selected army can march this turn.\n- A dashed gilt band: a King's Roads destination two provinces away.\n- Figures: each army as blocks of its units (a block per unit type, %s), its commander and banner bearer at the back. The plate above gives the exact count.\n- In the woods every block stands on a tray in its owner's colour (a gilt ring for a ruler's army), so woods-green figures never pass for trees.\n- Zoomed far out, each army becomes a stand: a base in its owner's colour (a gilt ring for a ruler's army), its banner, and one figure for each of its three most numerous unit types, under its count plate. Zoom in and the blocks come back.\n- A fortress's muster yard: its armies stand a block to a slot (a capital holds 6 blocks), facing the gate. An army the yard can't hold musters in the war camp outside the walls: tents, a fire and its smoke. A big camp means a big muster: war is coming.\n- Translucent figures in a yard: the recruits you queued, in the slot each will take. Only you see them.\n- An army in a column at its gate (or the edge of its province), facing a road, with a gilt arrow on its plate: one you ordered to march. It leaves when the turn ends. Only you see it gathered.\n- White arrows along the roads: your queued moves.\n- Gilt numbered tokens: your queued orders, numbered in the order you gave them, the same numbers as the tray along the bottom. A march's number sits beside its arrow; a recruit (\"+2 units\"), a fortify (the walls icon), a storm or sally (the siege icon), a ritual and a muster (the split icon) have their token beside their province. Click a token to see its order and change or cancel it; right-click it to cancel. Cancelling an order moves the numbers after it up. Only you see them.\n- During a turn's playback the captions follow the turn report's phases: Movement, Battles, Captures, Recruits. Crossed swords mark a battle: the lines trade blows and the fallen lie where they fell. A capture's colour sweeps out from the arriving column.\n- View fortress (in the recruit panel) or a double-click on a fortress: a close-up of its yard. Esc or zooming out leaves it.%s\n\nDrag or WASD to pan, the wheel (or a pinch or two-finger scroll on a trackpad) to zoom, double-click to glide to a province, C your capital, F the whole map, L Look A or B. Settings can switch to the 2D map."
 
 var board: Control ## board3d.gd
 var _plates := {} ## province id -> {"root": _Plate, "name": Label, "dot": SeatEmblem, "glyph": Control, "pennant": Control, "badge": Label, "chip": FortChip or null (only while it warns),
@@ -1133,6 +1135,7 @@ func _process(_delta: float) -> void:
 	_last_view = view
 	var t = board.wv.terrain
 	var vp: Vector2 = size
+	var spots := {}
 	for id in _plates.keys():
 		var pl: Dictionary = _plates[id]
 		var root: Control = pl["root"]
@@ -1141,10 +1144,9 @@ func _process(_delta: float) -> void:
 		var r: float = t.stage_r[i]
 		## under the stage (south), so the armies' plates above it stay clear
 		var s: Vector2 = board.project(c + Vector2(0, r * (0.95 if t.is_capital[i] else 1.15)), 2.0)
-		if root.size.x <= 1.0:
-			root.reset_size()
-		root.position = (s - Vector2(root.size.x * 0.5, 0.0)).round()
 		root.visible = s.x > -200 and s.x < vp.x + 200 and s.y > -60 and s.y < vp.y + 60
+		spots[id] = s
+	var blocked := _declutter_plates(spots)
 	_place_focus_tip()
 	var placed: Array = []
 	for id in _army_plates.keys():
@@ -1159,16 +1161,17 @@ func _process(_delta: float) -> void:
 		if pc.size.x <= 1.0:
 			pc.reset_size()
 		var rect := Rect2(s2 - Vector2(pc.size.x * 0.5, pc.size.y), pc.size)
-		## a simple declutter: a plate that would sit on another one moves up above it
+		## a simple declutter: a plate that would sit on another one (or on a province's plate, UI-FIT) moves up above it
 		for k in 4:
 			var hit := false
-			for o in placed:
+			for o in blocked:
 				if (o as Rect2).grow(1.0).intersects(rect):
 					rect.position.y = (o as Rect2).position.y - rect.size.y - 2.0
 					hit = true
 			if not hit:
 				break
 		placed.append(rect)
+		blocked.append(rect)
 		pc.position = rect.position.round()
 		pc.visible = s2.x > -100 and s2.x < vp.x + 100 and s2.y > -50 and s2.y < vp.y + 50
 	_place_lens_chips(placed)  ## UX-7: the lens values, clear of the army plates
@@ -1177,6 +1180,101 @@ func _process(_delta: float) -> void:
 		_play_label.text = _play_text()
 		_update_caption()
 	queue_redraw()
+
+
+## UI-FIT (#237): the province plates where the camera put them, with the ones that would overlap moved a little or folded. Zoomed out with the map framed
+## small (the Chronicle open at 125%, a narrow window) the names ran into each other ("Blackwo⊙ E 3 eak"): now, taken in rank order (the
+## plate the player is looking at: hovered, focused or selected; then the capitals; then the viewer's own provinces; then the rest, in
+## map order), a plate that would sit on one already placed slides beside it (up to PLATE_NUDGE), or else folds to its emblem and its
+## marks. Its name is in its tooltip, and comes back when it is hovered, focused or selected, or when zooming in gives it room. Returns
+## the placed rects (army plates keep clear of them).
+func _declutter_plates(spots: Dictionary) -> Array:
+	var ids: Array = spots.keys()
+	var t = board.wv.terrain
+	var ranks := {}
+	for id in ids:
+		ranks[id] = _plate_rank(String(id)) * 1000 + int(t.index_of(id))
+	ids.sort_custom(func(a, b): return int(ranks[a]) < int(ranks[b]))
+	var kept: Array = []
+	for id in ids:
+		var pl: Dictionary = _plates[id]
+		var root: Control = pl["root"]
+		var at: Vector2 = spots[id]
+		var full := _plate_size(pl, true)
+		var rect := _clear_spot(Rect2(at - Vector2(full.x * 0.5, 0.0), full), kept) if root.visible else Rect2(at, full)
+		var fold := rect.size.x <= 0.0
+		var name_label: Control = pl["name"]
+		if name_label.visible == fold:
+			name_label.visible = not fold
+			root.reset_size()
+		if root.size.x <= 1.0:
+			root.reset_size()
+		if fold:
+			rect = Rect2(at - Vector2(root.size.x * 0.5, 0.0), root.size)
+		root.position = rect.position.round()
+		if root.visible:
+			kept.append(rect)
+	return kept
+
+
+## Where a plate goes clear of the ones already placed: where the camera put it, or the nearest spot beside one it would sit on, up to
+## PLATE_NUDGE away (so it still reads as its province's); an empty rect when there is none (it folds).
+func _clear_spot(rect: Rect2, kept: Array) -> Rect2:
+	var tries: Array = [rect.position]
+	for o: Rect2 in kept:
+		if o.intersects(rect):
+			tries.append_array([Vector2(o.end.x + 2.0, rect.position.y), Vector2(o.position.x - 2.0 - rect.size.x, rect.position.y),
+				Vector2(rect.position.x, o.end.y + 2.0), Vector2(rect.position.x, o.position.y - 2.0 - rect.size.y)])
+	tries.sort_custom(func(a: Vector2, b: Vector2): return a.distance_squared_to(rect.position) < b.distance_squared_to(rect.position))
+	for p: Vector2 in tries:
+		if p.distance_to(rect.position) > PLATE_NUDGE:
+			break
+		var r := Rect2(p, rect.size)
+		var clear := true
+		for o: Rect2 in kept:
+			if o.intersects(r):
+				clear = false
+				break
+		if clear:
+			return r
+	return Rect2(rect.position, Vector2.ZERO)
+
+
+## A plate's rank for the declutter: 0 for the one the player is looking at, 1 a capital, 2 one of the viewer's own, 3 the rest.
+func _plate_rank(pid: String) -> int:
+	if plate_active(pid):
+		return 0
+	var p: Province = board.map.state.find_province(pid)
+	if p == null:
+		return 3
+	if p.is_capital:
+		return 1
+	return 2 if p.owner == String(board.map.viewing_faction_id) else 3
+
+
+## True while `pid`'s plate is folded to its emblem by the declutter.
+func plate_folded(pid: String) -> bool:
+	return _plates.has(pid) and not (_plates[pid]["name"] as Control).visible
+
+
+## The size of a plate with its name shown (`with_name`) or folded, whichever it is now: the name is one more child of its row.
+func _plate_size(pl: Dictionary, with_name: bool) -> Vector2:
+	var root: Control = pl["root"]
+	var name_label: Control = pl["name"]
+	var now := root.get_combined_minimum_size()
+	if name_label.visible == with_name:
+		return now
+	var row: Control = root.get_node("Row")
+	var row_now := row.get_combined_minimum_size()
+	var gap := float(row.get_theme_constant("separation"))
+	var name_size := name_label.get_combined_minimum_size()
+	var grow := 1.0 if with_name else -1.0
+	var row_then := Vector2(row_now.x + grow * (name_size.x + gap), maxf(row_now.y, name_size.y) if with_name else row_now.y)
+	var others := 0.0  # the plate's other lines (its marks, its detail): as wide as the widest
+	for c in root.get_children():
+		if c != row and c is Control and (c as Control).visible:
+			others = maxf(others, (c as Control).get_combined_minimum_size().x)
+	return Vector2(maxf(others, row_then.x), now.y + row_then.y - row_now.y)
 
 
 func _draw() -> void:

@@ -407,7 +407,7 @@ func _add_caster_lines(a: Army, box: Control) -> void:
 		var mastery := add_text(String(line.mastery_text), TooltipText.from_breakdown(mastery_bd), UiPalette.TEXT_SECONDARY, box)
 		mastery.name = "MasteryLine"
 		mastery.set_meta("breakdown", mastery_bd)
-		mastery.add_theme_font_size_override("font_size", 14)
+		mastery.add_theme_font_size_override("font_size", 15)
 		CodexLink.attach(mastery, "mastery", map.request_codex)
 
 

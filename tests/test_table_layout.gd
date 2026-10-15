@@ -65,8 +65,11 @@ func test_the_framing_area_is_the_safe_area_right_of_the_docked_card() -> void:
 		assert_true(safe.encloses(frame), "inside the safe area at %s" % viewport)
 		assert_eq(frame.position.x, safe.position.x + TableLayout.CARD_W + 2.0 * TableLayout.GAP, "right of the left column (the card's width and a gap each side) at %s" % viewport)
 		assert_eq(frame.end, safe.end)
-		assert_true(frame.size.x >= 480.0, "wide enough to frame a map in at %s (%d px)" % [viewport, frame.size.x])
-	assert_eq(TableLayout.framing_area(Vector2(700, 500)).size.x, 480.0, "a window too small for the card column and a map gives the map 480 px")
+		assert_true(frame.size.x >= TableLayout.MAP_MIN_W, "wide enough to frame a map in at %s (%d px)" % [viewport, frame.size.x])
+		# UI-FIT (#237): with the Chronicle open too, the framing stays right of the card column at every supported size
+		var with_chronicle := TableLayout.framing_area(viewport, true)
+		assert_eq(with_chronicle.position.x, frame.position.x, "and with the Chronicle open at %s, clear of the card (%d px of map)" % [viewport, with_chronicle.size.x])
+	assert_eq(TableLayout.framing_area(Vector2(700, 500)).size.x, TableLayout.MAP_MIN_W, "a window too small for the card column and a map gives the map MAP_MIN_W")
 
 
 func test_every_floating_piece_finds_its_place_at_every_size_with_nothing_overlapping() -> void:

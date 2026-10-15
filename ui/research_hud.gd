@@ -27,8 +27,8 @@ func _init(p_game: GameScreen) -> void:
 	chip.focus_mode = Control.FOCUS_NONE
 	chip.visible = false
 	chip.custom_minimum_size = Vector2(0, 0)
-	chip.add_theme_font_size_override("font_size", 13)
-	chip.add_theme_constant_override("line_spacing", -3)
+	chip.add_theme_font_size_override("font_size", 15)
+	chip.add_theme_constant_override("line_spacing", -7)  # UI-FIT: two lines at the floor still end inside the top band
 	chip.pressed.connect(open_panel)
 	game.map.table().add_system_button("research", chip)
 	magic_chip = Button.new()  # M5-8
@@ -36,8 +36,8 @@ func _init(p_game: GameScreen) -> void:
 	magic_chip.focus_mode = Control.FOCUS_NONE
 	magic_chip.visible = false
 	magic_chip.custom_minimum_size = Vector2(0, 0)
-	magic_chip.add_theme_font_size_override("font_size", 13)
-	magic_chip.add_theme_constant_override("line_spacing", -3)
+	magic_chip.add_theme_font_size_override("font_size", 15)
+	magic_chip.add_theme_constant_override("line_spacing", -7)  # UI-FIT: two lines at the floor still end inside the top band
 	magic_chip.pressed.connect(open_magic)
 	game.map.table().add_system_button("magic", magic_chip)
 

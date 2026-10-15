@@ -379,6 +379,43 @@ func test_one_line_per_system_that_is_on_each_linked() -> void:
 	_unseen()
 
 
+## UI-FIT (#237): the Table folds the guide while a selection card needs the left column (the card outranks it, §1.3): its head, the step
+## to do next and the fog line show, the "Also on" row waits, and the step shown follows the ticks. Unfolded, every step is back.
+func test_folded_for_a_card_it_shows_the_step_to_do_next_and_the_fog_line() -> void:
+	_unseen()
+	var all := VS_COMPUTER.duplicate()
+	all.merge({"rulers": true, "paths": true, "sieges": true, "fog": true, "magic": true, "independents": true})
+	var game := _game(all)
+	var guide := game.first_game_guide
+	assert_true(guide.visible and not guide.folded(), "the guide is up, unfolded")
+	guide.fold_for_card(true)
+	assert_true(guide.folded())
+	assert_eq(_steps_shown(guide), [guide.next_step()], "folded, only the step to do next shows")
+	assert_true((guide.system_lines["fog"] as Control).visible and guide.systems_box.visible, "the fog line stays: it is what the board's fog means")
+	assert_false(guide.systems_toggle.visible or guide.systems_lines_box.visible, "the Also on row waits for the unfold")
+	for c in [guide.title_label, guide.progress_label, guide.how_button, guide.hide_button]:
+		assert_true((c as Control).visible, "the head stays whole: %s" % c.name)
+	var first := guide.next_step()
+	assert_eq(_move(game), "")
+	guide.sync(game.session, game.map.state)
+	assert_ne(guide.next_step(), first, "the march ticked")
+	assert_eq(_steps_shown(guide), [guide.next_step()], "and the step shown is the next one")
+	assert_true(guide.progress_label.tooltip_text.contains("close the card"), "the progress says why the others are away")
+	guide.fold_for_card(false)
+	assert_eq(_steps_shown(guide).size(), FirstGameGuide.STEPS.size(), "unfolded, every step is back")
+	assert_true(guide.systems_toggle.visible, "and the Also on row")
+	game.free()
+	_unseen()
+
+
+func _steps_shown(guide: FirstGameGuide) -> Array:
+	var out := []
+	for step in FirstGameGuide.STEPS:
+		if (guide.step_checks[String(step.id)] as Control).visible:
+			out.append(String(step.id))
+	return out
+
+
 func test_the_how_to_play_link_opens_the_entry() -> void:
 	_unseen()
 	var game := _game(VS_COMPUTER)

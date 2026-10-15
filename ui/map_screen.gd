@@ -102,6 +102,7 @@ var viewing_faction_id := ""
 var selected_province_id := ""
 var selected_army_id := ""
 var regions := {}  # province id -> ProvinceRegion
+var board_text_floor := 0  # UI-FIT (#237): the least font size of the 2D plates' text, in canvas pixels (_apply_board_text_floor)
 var orders: OrdersController = null  # issue #6: the viewing faction's orders this turn
 var session: GameSession = null  # game screen (#7): when set, orders live in the session's books
 var intercept_back := false  # game screen (#7): the host confirms before leaving
@@ -195,6 +196,7 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 		regions[p.id] = region
 		if FogView.active(state):
 			region.setup_fog(state, faction_id, fog_memory, fog_before)  # M5-2: sight, memory and sightings
+		region.set_text_floor(board_text_floor)
 	map_canvas.queue_redraw()
 	arrow_layer.queue_redraw()
 	clear_preview()
@@ -249,6 +251,8 @@ func _select_province(province_id: String, keep_army: bool) -> void:
 	_update_road_targets()
 	_announce_selection(true)
 	_sync_board()
+	if board != null and board.has_method("keep_in_view") and hud.has_layout():
+		board.call("keep_in_view", province_id, hud.framing_area())  # UI-FIT (#237): never left under the card it opens
 	province_selected.emit(province_id)
 
 
@@ -716,10 +720,30 @@ func _fit_map() -> void:
 	var s: float = min(avail.size.x / MapLayout.SIZE.x, avail.size.y / MapLayout.SIZE.y)
 	map_canvas.scale = Vector2(s, s)
 	map_canvas.position = avail.position + (avail.size - MapLayout.SIZE * s) / 2.0
+	_apply_board_text_floor()
 	arrow_layer.scale = map_canvas.scale
 	arrow_layer.position = map_canvas.position
 	if order_marks_2d != null:
 		order_marks_2d.place()
+
+
+## UI-FIT (#237): the 2D map's text never draws below the 12 px floor (UiPalette.SCREEN_FLOOR_PX, in the window's own pixels): the
+## canvas is scaled down to fit the framing area (to 0.42 with the Chronicle open at 125%, where "3 units" drew at 7 px), so each plate's
+## text is set at least as big as the floor over the canvas scale and the window's own scale.
+func _apply_board_text_floor() -> void:
+	var drawn := map_canvas.scale.x * _window_px_per_logical()
+	board_text_floor = int(ceil(UiPalette.SCREEN_FLOOR_PX / maxf(drawn, 0.01)))
+	for id in regions:
+		(regions[id] as ProvinceRegion).set_text_floor(board_text_floor)
+
+
+## How many of the window's own pixels a logical pixel is: 1.25 at 125%, 0.8 in a 1280x720 window (the project's 1600x900 stretched).
+func _window_px_per_logical() -> float:
+	var w := get_window() if is_inside_tree() else null
+	var logical := get_viewport_rect().size if is_inside_tree() else Vector2.ZERO
+	if w == null or logical.x <= 0.0:
+		return 1.0
+	return float(w.size.x) / logical.x
 
 
 ## The Table moved (a new window size, the Chronicle opening): the 2D map and the 3D board's whole-map framing follow the framing

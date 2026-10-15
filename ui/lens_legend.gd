@@ -74,6 +74,7 @@ func text() -> String:
 
 
 func _label(node_name: String, text: String, font_size: int, colour: Color) -> Label:
+	font_size = maxi(font_size, UiPalette.TYPE_FLOOR)  # UI-FIT (#237): nothing the player reads below the floor
 	var l := Label.new()
 	l.name = node_name
 	l.text = text

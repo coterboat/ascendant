@@ -458,6 +458,7 @@ func _succession_line(f: Faction) -> String:
 
 
 func _heading(parent: Control, text: String, font_size: int) -> Label:
+	font_size = maxi(font_size, UiPalette.TYPE_FLOOR)  # UI-FIT (#237): nothing the player reads below the floor
 	var l := Label.new()
 	l.text = text
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

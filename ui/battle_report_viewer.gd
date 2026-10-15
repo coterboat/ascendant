@@ -819,6 +819,7 @@ func _card(color: Color) -> PanelContainer:
 
 ## A wrapped line of text. Labels with a tooltip take the mouse so the tooltip shows.
 func _text(parent: Control, text: String, tooltip: String = "", font_size: int = 18, color: Color = UiPalette.TEXT_PRIMARY) -> Label:
+	font_size = maxi(font_size, UiPalette.TYPE_FLOOR)  # UI-FIT (#237): nothing the player reads below the floor
 	var l := Label.new()
 	l.text = text
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

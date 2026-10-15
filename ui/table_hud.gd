@@ -360,7 +360,7 @@ func relayout() -> void:
 		if c == null:
 			continue
 		pieces_now[kind] = _wanted_size(kind, c, vp)
-	var result := TableLayout.arrange(vp, pieces_now, chronicle_open)
+	var result := _arrange_with_guide(vp, pieces_now)
 	_last_rects = result.rects
 	_last_overflow = result.overflow
 	if _last_rects.has("card") and card != null:
@@ -372,6 +372,24 @@ func relayout() -> void:
 		if placed_piece != null:
 			_apply(placed_piece, _last_rects[kind])
 	layout_changed.emit()
+
+
+## UI-FIT (#237): the selection card outranks the guide (§1.3), so the guide folds (FirstGameGuide.fold_for_card) when the card
+## would be squeezed under it unfolded, and unfolds when the card fits or closes. The call is made from the unfolded height every
+## time, so it never flips back and forth.
+func _arrange_with_guide(vp: Vector2, pieces_now: Dictionary) -> Dictionary:
+	var guide := _shown("guide")
+	if guide == null or not guide.has_method("fold_for_card"):
+		return TableLayout.arrange(vp, pieces_now, chronicle_open)
+	var folded_size: Vector2 = pieces_now["guide"]
+	pieces_now["guide"] = Vector2(folded_size.x, float(guide.call("unfolded_height")))
+	var result := TableLayout.arrange(vp, pieces_now, chronicle_open)
+	var squeezed: bool = pieces_now.has("card") and (result.rects["card"] as Rect2).size.y < float(pieces_now["card"].y) - 0.5
+	guide.call("fold_for_card", squeezed)
+	if not squeezed:
+		return result
+	pieces_now["guide"] = _wanted_size("guide", guide, vp)
+	return TableLayout.arrange(vp, pieces_now, chronicle_open)
 
 
 func _shown(kind: String) -> Control:
@@ -637,7 +655,7 @@ func _build_bottom() -> void:
 	hint_label.custom_minimum_size = Vector2(300, 0)
 	hint_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hint_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	hint_label.add_theme_font_size_override("font_size", 14)
+	hint_label.add_theme_font_size_override("font_size", 15)
 	hint_label.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 	row.add_child(hint_label)
 	# UX-4 (§3.4): the orders as tokens, placed ones by number and then the realm ones, with the gold they leave. While there are none the

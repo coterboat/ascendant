@@ -129,7 +129,9 @@ func _rects(screen: Control) -> Dictionary:
 			"continue": _r(screen.continue_button), "map_preview": _r(screen.map_preview_button)}
 	elif screen is BuildScreen:
 		rects = {"lock_in": _r(screen.lock_button), "back": _r(screen.back_button),
-			"columns": _r(screen.find_child("ColumnsScroll", true, false)), "header": _r(screen.find_child("Header", true, false))}
+			"columns": _r(screen.find_child("ColumnsScroll", true, false)), "header": _r(screen.find_child("Header", true, false)),
+			"more": _r(screen.columns_more), "more_button": _r(screen.columns_more.button),  # UI-FIT (#237): the "More" cue
+			"columns_h": (screen.find_child("Columns", true, false) as Control).get_combined_minimum_size().y}
 	elif screen is CodexPanel:
 		rects = {"panel": _r(screen.get_node("Background")), "close": _r(screen.get_node("%CloseButton"))}
 	elif screen is SettingsPanel:

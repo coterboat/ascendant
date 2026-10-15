@@ -31,9 +31,9 @@ signal close_requested
 
 const SIZE := Vector2(384, 664)
 const LIVE_INTERVAL := 0.12
-const BODY := 14
+const BODY := 15
 const NUMBER := 16
-const HEAD := 13
+const HEAD := 15
 const WIDTH := 330.0
 
 var player: BattlePlayer = null
@@ -392,7 +392,7 @@ func _build() -> void:
 	feed_box = VBoxContainer.new()
 	feed_box.add_theme_constant_override("separation", 0)
 	body.add_child(feed_box)
-	feed_more = _label("", 13, UiPalette.TEXT_SECONDARY)
+	feed_more = _label("", 15, UiPalette.TEXT_SECONDARY)
 	feed_more.visible = false
 	body.add_child(feed_more)
 	_head(body, "Pinned fighter")
@@ -412,6 +412,7 @@ func _head(parent: Control, text: String) -> void:
 
 
 func _wrapped(parent: Control, font_size: int = BODY, col: Color = UiPalette.TEXT_PRIMARY) -> Label:
+	font_size = maxi(font_size, UiPalette.TYPE_FLOOR)  # UI-FIT (#237): nothing the player reads below the floor
 	var l := _label("", font_size, col)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.custom_minimum_size.x = WIDTH
@@ -431,6 +432,7 @@ func _grid(parent: Control) -> GridContainer:
 
 
 func _label(text: String, font_size: int, col: Color) -> Label:
+	font_size = maxi(font_size, UiPalette.TYPE_FLOOR)  # UI-FIT (#237): nothing the player reads below the floor
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", font_size)

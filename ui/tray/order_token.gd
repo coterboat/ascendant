@@ -19,7 +19,7 @@ enum Look { TRAY, BOARD }
 const CHIP_H := 22.0
 const ICON_PX := 18
 const TRAY_H := 34.0
-const LABEL_W := 72.0
+const LABEL_W := 84.0  # UI-FIT (#237): the words at the floor's 15 px, "Westwatch" whole (72 held it at 13 px)
 const CROSS_PX := 18.0
 
 var index := -1
@@ -104,7 +104,7 @@ func _build(c: OrdersController) -> void:
 	label.text = String(mark.get("label", "")) if look == Look.TRAY else String(mark.get("board", ""))
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	label.add_theme_font_size_override("font_size", 13 if look == Look.TRAY else 14)
+	label.add_theme_font_size_override("font_size", UiPalette.TYPE_FLOOR)  # UI-FIT (#237): the floor
 	label.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
 	if look == Look.TRAY:
 		label.custom_minimum_size.x = LABEL_W

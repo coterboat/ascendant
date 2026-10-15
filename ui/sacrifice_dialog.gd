@@ -312,6 +312,7 @@ func _trend_color(row: Dictionary) -> Color:
 
 
 func _label(text: String, font_size: int, color: Color) -> Label:
+	font_size = maxi(font_size, UiPalette.TYPE_FLOOR)  # UI-FIT (#237): nothing the player reads below the floor
 	var l := Label.new()
 	l.text = text
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
