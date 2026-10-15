@@ -443,7 +443,7 @@ func test_muster_grounds_prices_match_the_spec_everywhere() -> void:
 	s.find_faction("kingdom").gold = 16
 	var c := OrdersController.new(s, "kingdom")
 	assert_eq(c.queue_recruit("knights"), "")
-	assert_eq(c.order_texts()[0], "Recruit one Knights at Crownkeep for 16 gold, leaving 0 gold.")
+	assert_eq(c.order_texts()[0], "Recruit Knights at Crownkeep for 16 gold, leaving 0 gold.")
 	assert_true(String(c.order_breakdown(0).lines[1].note).contains("Muster Grounds 4"))
 	var g := c.gold_after_recruits()
 	assert_eq(g.gold_after, 0)
@@ -494,7 +494,7 @@ func test_warband_muster_recruits_with_the_fang_up_to_its_rank() -> void:
 	assert_true(commander.contains("Commanders come only from your capital"), commander)
 	_assert_no_raw_ids(commander, "commander reason")
 	assert_eq(c.ruler_recruit_info().left, 0)
-	assert_eq(c.order_texts()[0], "Recruit one Tuskers with the Ninth Fang for 11 gold, leaving 34 gold. It gathers at Ebonpeak, where the Ninth Fang starts this turn, and joins your armies there at the end of the turn, if you still own Ebonpeak then and the Ninth Fang stands; if not, it is cancelled and costs nothing.")
+	assert_eq(c.order_texts()[0], "Recruit Tuskers with the Ninth Fang for 11 gold, leaving 34 gold. It gathers at Ebonpeak, where the Ninth Fang starts this turn, and joins your armies there at the end of the turn, if you still own Ebonpeak then and the Ninth Fang stands; if not, it is cancelled and costs nothing.")
 	assert_eq(c.order_codex_kind(0), "field_recruit")
 	var g := c.gold_after_recruits()
 	assert_eq(g.gold_after, 45 - 11 - 8)

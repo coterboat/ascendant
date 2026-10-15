@@ -350,7 +350,7 @@ func test_the_help_lists_every_key_and_mouse_binding() -> void:
 	for binding in ["Drag", "Mouse wheel", "Double-click", "Right-click", "F1", "Esc", "End turn"]:
 		assert_true(text.contains(binding), "the ? lists %s" % binding)
 	# Today's hint text, in full: the how-to the top bar's hint tooltip had.
-	assert_eq(ControlsHelp.QUICK, "Move: select an army, then a neighbor. Recruit: select your capital.")
+	assert_eq(ControlsHelp.QUICK, "March: click an army, then March on its card. Recruit: click your capital, then Recruit.")
 	for part in ["select one of your armies", "neighboring province", "forecast and the battle odds", "Select your capital to recruit", "a cross to cancel it"]:
 		assert_true(text.to_lower().contains(part.to_lower()), "the ? has '%s'" % part)
 	var tip := game.map.hint_label.tooltip_text.replace("\n", " ")

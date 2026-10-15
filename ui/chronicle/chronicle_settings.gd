@@ -9,6 +9,8 @@ extends RefCounted
 ##   sort          ChronicleModel.SORTS: "importance" (the default), "place" or "kind"
 ##   hidden        kinds the filter chips have switched off (a hidden kind still counts: "3 hidden")
 ##   stack_shown   the left-edge medallions are showing (true) or folded away (false)
+##   review        UX-5 (§5.3): whether the seal opens the Plan first, to review the orders before they are sealed: REVIEWS, "first_game"
+##                 (the default: during a player's first game, the one the first-game guide is for, and not after), "always" or "never"
 ## A missing file, section or value gives the defaults; a value this game does not know is ignored. Other sections of the file are kept.
 
 const SECTION := "chronicle"
@@ -16,17 +18,23 @@ const SECTION := "chronicle"
 ## What a fresh install opens by itself: "important". tests/runner.gd sets it to "report" for the whole suite, so every older test that
 ## reads today's modal report at the start of a turn still does; the Chronicle's own tests set the field they mean.
 static var default_auto_open := "important"
+## UX-5: when the seal opens the Plan first (review before sealing), and what a fresh install does: "first_game". tests/runner.gd sets it
+## to "never" for the whole suite, so every older test's End turn still ends the turn at once; the Plan's own tests set the field they mean.
+const REVIEWS := ["first_game", "always", "never"]
+static var default_review := "first_game"
 
 var path := ""
 var auto_open := ""
 var sort := "importance"
 var hidden: Array = []
 var stack_shown := true
+var review := ""
 
 
 func _init(file_path: String = "") -> void:
 	path = file_path if not file_path.is_empty() else GameSettings.default_path
 	auto_open = default_auto_open
+	review = default_review
 
 
 static func load_from(file_path: String = "") -> ChronicleSettings:
@@ -48,6 +56,9 @@ static func load_from(file_path: String = "") -> ChronicleSettings:
 	var shown = cfg.get_value(SECTION, "stack_shown", true)
 	if shown is bool:
 		s.stack_shown = shown
+	var rv = cfg.get_value(SECTION, "review", s.review)
+	if rv is String and REVIEWS.has(rv):
+		s.review = rv
 	return s
 
 
@@ -62,6 +73,7 @@ func save() -> String:
 	cfg.set_value(SECTION, "sort", sort)
 	cfg.set_value(SECTION, "hidden", hidden)
 	cfg.set_value(SECTION, "stack_shown", stack_shown)
+	cfg.set_value(SECTION, "review", review)
 	var folder := path.get_base_dir()
 	if not folder.is_empty() and not DirAccess.dir_exists_absolute(folder):
 		DirAccess.make_dir_recursive_absolute(folder)
@@ -72,6 +84,14 @@ func set_auto_open(mode: String) -> bool:
 	if not ChronicleModel.AUTO_OPEN.has(mode):
 		return false
 	auto_open = mode
+	return true
+
+
+## UX-5: when the seal opens the Plan first (REVIEWS). False for a value this game does not know.
+func set_review(mode: String) -> bool:
+	if not REVIEWS.has(mode):
+		return false
+	review = mode
 	return true
 
 

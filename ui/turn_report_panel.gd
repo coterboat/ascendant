@@ -455,6 +455,10 @@ func show_siege_needs_you(lines: Array) -> void:
 	rows_box.move_child(siege_needs_you, 1 if needs_you_label != null else 0)
 
 
+## UX-9: the width a wrapping row's words measure their height at (narrower than the panel at its smallest, 1280x720 logical).
+const WRAP_W := 620.0
+
+
 ## M5-2 (§2.8): "What you didn't see: ..." under a battle you fought, linked to the odds-against-what-you-can-see entry.
 func _missed_row(text: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -467,6 +471,7 @@ func _missed_row(text: String) -> HBoxContainer:
 	l.name = "MissedText"
 	l.text = "What you didn't see: %s" % text
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size.x = WRAP_W  # UX-9: a wrapping line measures its height at a real width (it ran off the panel at 125%)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	l.add_theme_font_size_override("font_size", 16)
 	l.add_theme_color_override("font_color", UiPalette.GILT)
@@ -488,6 +493,7 @@ func _teach_row(t: Dictionary) -> HBoxContainer:
 	var l := Label.new()
 	l.text = "%s. %s" % [String(t.title), String(t.text)]
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size.x = WRAP_W
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	l.add_theme_font_size_override("font_size", 17)
 	l.add_theme_color_override("font_color", UiPalette.GILT.lerp(UiPalette.TEXT_PRIMARY, 0.35))

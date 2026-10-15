@@ -604,19 +604,15 @@ func test_escape_closes_the_chronicle_in_uicancels_order() -> void:
 	_clean_scratch()
 
 
-func test_ux5_can_put_its_plan_page_in_the_second_tab() -> void:
+func test_the_plan_page_is_in_the_second_tab() -> void:
 	var game := _battle_turn("never")
 	var column := game.chronicle_hud.column
-	assert_true(column.plan_tab.disabled, "the Plan tab says it is coming")
-	assert_true(column.plan_tab.tooltip_text.contains("later update"))
-	var page := Label.new()
-	page.text = "Your orders as sentences."
-	game.chronicle_hud.set_plan_page(page)
-	assert_false(column.plan_tab.disabled)
+	assert_false(column.plan_tab.disabled, "UX-5's Plan page is in the second tab")
+	assert_true(column.plan_page is PlanPage, "the Plan page")
+	assert_false(column.plan_tab.tooltip_text.contains("later update"), "and the tab no longer says it is coming")
 	column.plan_tab.pressed.emit()
-	column.show_tab("plan")
 	assert_eq(column.current_tab(), "plan")
-	assert_true(page.is_visible_in_tree() or column.plan_holder.visible)
+	assert_true(column.plan_holder.visible and not column.read_page.visible)
 	column.show_tab("read")
 	assert_eq(column.current_tab(), "read")
 	game.free()

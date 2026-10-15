@@ -62,8 +62,10 @@ extends Control
 ##                        Used by SceneFlow.make_loaded_game and by Menu > Load game (in place).
 ##   save_game(name)      Menu > Save game: a manual save. "" or why not. autosave() is the turn-start one.
 ##   open_menu()          the Menu button and Esc: Resume, Save game, Load game, Settings, Quit to title.
-##   end_turn()           the End turn button: hands off to the next player, or resolves the turn. With
-##                        computer seats, the computer then plays at once. In watch mode: next_turn().
+##   end_turn()           hands off to the next player, or resolves the turn. With computer seats, the computer then plays at
+##                        once. In watch mode: next_turn().
+##   seal()               UX-5: the End turn seal: with review before sealing on (plan_hud), it opens the Chronicle's Plan first and
+##                        the Plan's own seal calls end_turn(); otherwise it is end_turn().
 ##   next_turn()          watch mode only: both computers give their orders and the turn resolves.
 ##   open_turn_report()   the Turn report button and the Chronicle's Full report: the last resolved turn's report, through the
 ##                        ReportHost, as today's modal (the Chronicle is the presenter and hands it back: open_report()).
@@ -149,6 +151,7 @@ var codex_button: Button
 var help_button: Button  # the system row's ?: every key and mouse binding
 var chronicle_button: Button  # the system row's Chronicle (UX-6): it opens the column
 var chronicle_hud: ChronicleHud  # UX-6 (§5.2): the Chronicle's Read side: medallions, the column, pins; the ReportHost's presenter
+var plan_hud: PlanHud  # UX-5 (§5.3): the Chronicle's Plan side: your orders as sentences, the checks, the seal's review
 var lenses_button: Button  # a placeholder for UX-7: the lenses
 var results_button: Button  # only once the game is over: it takes the seal's place
 var ruler_button: Button  # M2-6: opens the ruler panel; only in a game with rulers
@@ -428,6 +431,11 @@ static func _starting_state(game_config: Dictionary) -> GameState:
 	if game_config.get("rulers", false) or game_config.has("builds") or OS.get_cmdline_user_args().has("--rulers"):
 		return GameState.with_rulers(seed_value, game_config.get("builds", {}), [])
 	return GameState.new(seed_value)
+
+
+## UX-5: the End turn seal. With review before sealing on, it opens the Plan first (PlanHud.seal). Returns "" or why it could not.
+func seal() -> String:
+	return plan_hud.seal() if plan_hud != null else end_turn()
 
 
 ## Ends the current player's turn. Returns "" or the session's reason it could not.
@@ -1087,6 +1095,8 @@ func _update_hud() -> void:
 		research_hud.refresh()  # M4-4: the chip, and the research panel follows the seat
 	if chronicle_hud:
 		chronicle_hud.refresh()  # UX-6: the Chronicle follows the seat (a hotseat handoff clears it) and the needs
+	if plan_hud:
+		plan_hud.refresh()  # UX-5: the Plan follows the seat's orders
 	if first_game_guide:
 		first_game_guide.sync(session, map.state)  # MVP-1: ticks from the viewer's own orders; hidden behind the cover
 	var watching := is_watching()
@@ -1099,12 +1109,16 @@ func _update_hud() -> void:
 	end_turn_button.disabled = not (playing or watching)
 	end_turn_button.text = "End turn\n%s" % _count(n, "order") if playing else "End turn"
 	end_turn_button.tooltip_text = _end_turn_tooltip(n)
+	if playing and plan_hud != null and plan_hud.review_on():
+		end_turn_button.tooltip_text += "\n\n" + TooltipText.wrap_text("Review before sealing is on: the seal opens your orders in the Chronicle's Plan first, each with its forecast, and you seal them there. Settings, or the Plan's foot, turns it off.")
 	if watching:
 		end_turn_button.text = "Next turn"
 		end_turn_button.tooltip_text = TooltipText.plain("Next turn", "Each computer gives its orders from the map as it stands now, without seeing the other's, and the turn resolves. The turn report then shows what happened and what each computer was thinking.")
 	end_turn_button.visible = not over
 	results_button.visible = over
 	hud.set_seal_pulse(playing and n > 0 and not _seal_learned())  # a new player: a gentle nudge once an order is queued
+	if plan_hud != null:
+		plan_hud.dress_seal()  # UX-9: while the Plan shows, the seal points at the Plan's (and that one pulses)
 	_refresh_opponents()
 	var has_report: bool = session != null and _report_turn() > 0
 	report_button.disabled = not has_report
@@ -1270,7 +1284,7 @@ func _build_hud() -> void:
 	results_button.custom_minimum_size = Vector2(TableHud.SEAL_W, 58)
 	results_button.visible = false
 	hud.add_seal_item(results_button)
-	end_turn_button = _hud_button("EndTurnButton", "End turn", end_turn)
+	end_turn_button = _hud_button("EndTurnButton", "End turn", seal)
 	end_turn_button.custom_minimum_size = Vector2(TableHud.SEAL_W, 58)
 	end_turn_button.add_theme_font_size_override("font_size", 18)
 	end_turn_button.add_theme_color_override("font_color", UiPalette.GILT)
@@ -1284,6 +1298,7 @@ func _build_hud() -> void:
 	hud.add_system_button("ruler", ruler_button)
 	chronicle_hud = ChronicleHud.new(self)  # UX-6: the Chronicle button, the medallion stack and the column; it becomes the report host's presenter
 	chronicle_button = chronicle_hud.button
+	plan_hud = PlanHud.new(self)  # UX-5: the Plan page in the Chronicle's second tab; the seal asks it first
 	report_button = _hud_button("TurnReportButton", "Turn report", open_turn_report)
 	hud.add_system_button("report", report_button)
 	lenses_button = map.lens_ui.button  # UX-7: the map screen's lenses (LensUi) made it, with its picker
