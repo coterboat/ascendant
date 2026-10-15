@@ -177,7 +177,7 @@ func test_a_human_plays_the_computer_through_the_game_screen_with_no_handoff() -
 	assert_eq(game.codex.current_key(), "computer_opponent")
 	game.codex.close()
 	assert_true(game.end_turn_button.tooltip_text.contains("never seeing yours"), game.end_turn_button.tooltip_text)
-	assert_true(game.map.hint_label.text.begins_with("Move: select an army"), game.map.hint_label.text)
+	assert_true(game.map.hint_label.text.begins_with("March: click an army"), game.map.hint_label.text)
 	assert_true(game.map.hint_label.tooltip_text.contains("You give orders as Aurel Crown"), game.map.hint_label.tooltip_text)
 	_assert_no_raw_ids(_visible_text(game), "the first orders phase")
 

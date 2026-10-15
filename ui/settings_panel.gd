@@ -23,6 +23,8 @@ extends Control
 ##   window_picker, scale_picker, watch_picker   the three pickers
 ##   board_picker, speed_picker   M3a.1: the map as the 3D world or the 2D map, and the 3D playback speed
 ##   set_board(value) -> bool, set_playback_speed(value) -> bool
+##   UX-5: review_picker "Review orders": when the End turn seal opens the Chronicle's Plan first (ChronicleSettings.review, saved in the
+##   same file's [chronicle] section): Your first game (the default), Always, Never. set_review(mode) -> bool
 ##   MVP-1 (#141): guide_button "Show the first-game guide again" (show_guide_again()) takes the first-game guide's hint
 ##   back (GameSettings.reset_hint), so the card shows on the first turn of the next game; guide_note says so.
 ##   volume_sliders               {volume key: HSlider}, volume_labels {volume key: Label} ("80%")
@@ -44,6 +46,7 @@ var settings: GameSettings = null
 var window_picker: OptionButton
 var scale_picker: OptionButton
 var watch_picker: OptionButton  # "Off" / "On": watch my battles at the start of each turn (M3-5)
+var review_picker: OptionButton  # UX-5: review orders before sealing: Your first game / Always / Never
 var board_picker: OptionButton  # "3D world" / "2D map" (M3a.1)
 var speed_picker: OptionButton  # 1x / 2x / 4x: a turn's playback on the 3D board
 var volume_sliders := {}  # GameSettings volume key -> HSlider (0 to 100)
@@ -82,6 +85,7 @@ func open(game_settings: GameSettings = null) -> void:
 	watch_picker.select(1 if settings.auto_watch_battles else 0)
 	board_picker.select(GameSettings.BOARDS.find(settings.board))
 	speed_picker.select(GameSettings.PLAYBACK_SPEEDS.find(settings.playback_speed))
+	review_picker.select(ChronicleSettings.REVIEWS.find(ChronicleSettings.load_from(settings.path).review))
 	for key in volume_sliders:
 		_show_volume(key)
 	mute_toggle.set_pressed_no_signal(settings.muted)
@@ -112,6 +116,20 @@ func set_ui_scale(percent: int) -> bool:
 	scale_picker.select(GameSettings.UI_SCALES.find(percent))
 	_changed()
 	return true
+
+
+## UX-5: when the End turn seal opens the Chronicle's Plan first. Saved at once in the [chronicle] section of the same file.
+func set_review(mode: String) -> bool:
+	if settings == null:
+		return false
+	var cs := ChronicleSettings.load_from(settings.path)
+	if not cs.set_review(mode):
+		return false
+	review_picker.select(ChronicleSettings.REVIEWS.find(mode))
+	var why := cs.save()
+	error_label.text = why
+	error_label.visible = not why.is_empty()
+	return why.is_empty()
 
 
 func set_auto_watch(on: bool) -> void:
@@ -287,6 +305,9 @@ func _build() -> void:
 	speed_picker.item_selected.connect(func(i: int): set_playback_speed(GameSettings.PLAYBACK_SPEEDS[i]))
 	_row(box, "Turn playback", speed_picker, TooltipText.plain("Turn playback speed",
 		"How fast each resolved turn plays out on the 3D board before the turn report opens. Space or a click skips it at any speed."))
+	review_picker = _picker("ReviewPicker", ChronicleSettings.REVIEWS.map(func(m): return String(PlanPage.REVIEW_NAMES[m])))
+	review_picker.item_selected.connect(func(i: int): set_review(String(ChronicleSettings.REVIEWS[i])))
+	_row(box, "Review orders", review_picker, PlanPage.review_tooltip())
 	box.add_child(_label("SoundLabel", "Sound", 26, UiPalette.GILT))
 	for key in GameSettings.VOLUME_BUSES:
 		_volume_row(box, String(key))

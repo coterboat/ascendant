@@ -799,7 +799,8 @@ def model_batch():
             "actions": [{"id": "install", "kind": "install", "label": "Install accepted models",
                          "help": "Copy each accepted model to assets/models/units/independents/, write its Godot import, "
                                  "its row in assets/models/models.json and the unit's row in world3d/models.json, so "
-                                 "the board and the stage swap the placeholder figure for it",
+                                 "the board and the stage swap the placeholder figure for it (a model already "
+                                 "installed with the same bytes keeps its file and its import)",
                          "cmd": ["python3", "tools/ludo/asc_3d_free_holds.py", "install-accepted"],
                          "options": [{"flag": "--dry-run", "label": "Dry run", "type": "bool", "default": False}]},
                         {"id": "regen", "kind": "regen", "label": "Redo rejected",
@@ -947,22 +948,29 @@ def entry_for(uid, pose, dst, after, m, body, frac=None, men=None, notes=""):
 
 
 def install_model(uid, pose, src, dry=False):
-    """One accepted model: its slim GLB to the install path, the Godot import, the descriptor row."""
-    dst = os.path.join(ROOT, model_target(uid, pose))
+    """One accepted model: its slim GLB to the install path, the Godot import, the descriptor row. Every accepted item
+    comes through here on each Install, so a model already installed with these bytes keeps its GLB and its .import as
+    they are (Godot's uid, path and dest_files); a new or replaced one gets the import template, keeping an existing
+    import's uid (glb_slim.write_import)."""
+    rel = model_target(uid, pose)
+    dst = os.path.join(ROOT, rel)
+    same = os.path.exists(dst) and filecmp.cmp(src, dst, shallow=False)
     if dry:
-        print("  [dry-run] + %s" % os.path.relpath(dst, ROOT))
+        print("  [dry-run] %s %s%s" % ("=" if same else "+", rel, "  (unchanged)" if same else ""))
         return None
-    os.makedirs(os.path.dirname(dst), exist_ok=True)
-    shutil.copy2(src, dst)
-    glb_slim.write_import(os.path.relpath(dst, ROOT), ROOT)
+    if not same:
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy2(src, dst)
+    if not same or not os.path.exists(dst + ".import"):
+        glb_slim.write_import(rel, ROOT)
     m = F.measure(dst)
     d = F.load_descriptor()
     e = entry_for(uid, pose, dst, os.path.getsize(dst), m, UNITS[uid]["body"],
                   notes="size measured off the GLB (body_frac), not yet read off a ruler render")
     d.setdefault("units", {}).setdefault(uid, {})[pose] = e
     F.dump_descriptor(d)
-    print("  + %s: %d faces, extent %s, %s %.3f men" % (os.path.relpath(dst, ROOT), m["faces"], m["size"],
-                                                        e["size"]["axis"], e["size"]["men"]))
+    print("  %s %s: %d faces, extent %s, %s %.3f men%s" % ("=" if same else "+", rel, m["faces"], m["size"],
+                                                          e["size"]["axis"], e["size"]["men"], "  (unchanged)" if same else ""))
     return e
 
 

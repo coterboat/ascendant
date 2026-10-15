@@ -82,6 +82,9 @@ func _build() -> void:
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	titles.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(titles)
+	var spell_icon := SpellIcons.rect(String(item.get("spell", "")), 30)  # UI-ICONS (#233): a card about a spell wears its icon
+	if spell_icon != null:
+		head.add_child(spell_icon)
 	headline_label = Label.new()
 	headline_label.name = "Headline"
 	headline_label.text = String(item.headline)

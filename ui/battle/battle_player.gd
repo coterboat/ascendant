@@ -69,7 +69,8 @@ extends RefCounted
 ## THE CLOCK. play(), pause(), toggle(), set_speed(1 | 2 | 4), advance(real_delta) (call it every frame; it
 ## fires the beats whose time has come, returns them and emits `beat` for each), step() and step_back() (one
 ## log event, while paused), seek(event_index), seek_round(n), seek_time(t), seek_beat(b), restart(),
-## jump_to_moment(kind) and next_moment() (§5.2: the moment's beat minus LEAD_IN, keeping play or pause),
+## jump_to_moment(kind), next_moment() and jump_to(m) (UX-8: a marker's own moment) (§5.2: the moment's beat minus
+## LEAD_IN, keeping play or pause),
 ## skip_to_end() (fires only the result beat). After a seek the state is exact: state() before a beat that
 ## shows log event i equals BattleTimeline.state_at(i) for every event that is not an attack, and the final
 ## state after skip_to_end(). Seeking replays no animation (`seeked`, not `beat`).
@@ -623,6 +624,16 @@ func next_moment() -> Dictionary:
 	return jump_to_moment("")
 
 
+## UX-8: jumps to moment `m` itself (a scrubber marker's), LEAD_IN before its beat, keeping play or pause. Returns the
+## moment, or {} when `m` is not one of this battle's.
+func jump_to(m: Dictionary) -> Dictionary:
+	for k in _moments.size():
+		if _moments[k].kind == m.get("kind") and int(_moments[k].event) == int(m.get("event", -2)):
+			seek_time(maxf(0.0, _moment_t(k) - LEAD_IN))
+			return _moments[k]
+	return {}
+
+
 ## Goes straight to the result card: the final state, and only the result beat fires.
 func skip_to_end() -> void:
 	if _beats.is_empty():
@@ -729,7 +740,7 @@ func moments() -> Array:
 	return _moments
 
 
-## {kind: why there is none} (BattleMoments.missing), for the disabled jump buttons.
+## {kind: why there is none} (BattleMoments.missing), for the scrubber's tooltip (UX-8).
 func missing_moments() -> Dictionary:
 	return BattleMoments.missing(_log)
 

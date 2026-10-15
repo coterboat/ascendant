@@ -105,7 +105,7 @@ func test_every_link_the_guide_makes_is_a_codex_entry() -> void:
 		assert_true(String(s.name).length() + String(s.rest).length() <= 48, "system %s is one short line (%d characters)" % [s.id, String(s.name).length() + String(s.rest).length()])
 	for step in FirstGameGuide.STEPS:
 		assert_true(String(step.title).length() <= 42, "step %s is one short line (%d characters)" % [step.id, String(step.title).length()])
-	assert_eq(FirstGameGuide.STEPS.map(func(s): return s.id), ["move", "recruit", "end_turn"], "three steps, in the ticket's order")
+	assert_eq(FirstGameGuide.STEPS.map(func(s): return s.id), ["move", "recruit", "plan", "end_turn"], "UX-9: four steps, in the order a turn goes")
 	for s in FirstGameGuide.SYSTEMS:
 		assert_true(RulesCodex.ENTRIES.has(String(s.entry)), "%s links %s" % [s.id, s.entry])
 
@@ -118,22 +118,24 @@ func test_the_steps_tick_from_real_orders() -> void:
 	var guide := game.first_game_guide
 	assert_true(guide.visible, "the card is up on turn 1 of a first game")
 	assert_eq(guide.showing(), CROWN)
-	assert_eq(guide.steps(), {"move": false, "recruit": false, "end_turn": false}, "nothing done yet")
-	assert_eq(guide.progress_label.text, "0 of 3")
+	assert_eq(guide.steps(), {"move": false, "recruit": false, "plan": false, "end_turn": false}, "nothing done yet")
+	assert_eq(guide.progress_label.text, "0 of 4")
+	assert_eq(guide.next_step(), "move", "the first step is lit")
 	assert_eq(_move(game), "")
-	assert_eq(guide.steps(), {"move": true, "recruit": false, "end_turn": false}, "a queued move ticks the first step")
+	assert_eq(guide.steps(), {"move": true, "recruit": false, "plan": false, "end_turn": false}, "a queued move ticks the first step")
 	assert_eq(_recruit(game), "")
-	assert_eq(guide.steps(), {"move": true, "recruit": true, "end_turn": false}, "a queued recruit ticks the second")
-	assert_eq(guide.progress_label.text, "2 of 3")
+	assert_eq(guide.steps(), {"move": true, "recruit": true, "plan": false, "end_turn": false}, "a queued recruit ticks the second")
+	assert_eq(guide.progress_label.text, "2 of 4")
+	assert_eq(guide.next_step(), "plan", "then the Plan's")
 	# The ticks follow the orders, not a memory of having clicked: cancel the move and it unticks.
 	var at := game.session.current_orders().find_custom(func(o): return o is MoveOrder)
 	assert_eq(game.session.cancel_order(at), "")
 	game.map.orders_changed.emit()
-	assert_eq(guide.steps(), {"move": false, "recruit": true, "end_turn": false}, "a cancelled move unticks")
+	assert_eq(guide.steps(), {"move": false, "recruit": true, "plan": false, "end_turn": false}, "a cancelled move unticks")
 	assert_eq(_move(game), "")
 	assert_eq(game.end_turn(), "")
-	assert_eq(guide.steps(), {"move": true, "recruit": true, "end_turn": true}, "End turn ticks the third")
-	assert_true(guide.lingering() and guide.closing_label.visible, "the card stays a moment over the playback, all three ticked")
+	assert_eq(guide.steps(), {"move": true, "recruit": true, "plan": true, "end_turn": true}, "End turn ticks the third")
+	assert_true(guide.lingering() and guide.closing_label.visible, "the card stays a moment over the playback, every step ticked")
 	assert_eq(guide.showing(), "", "and is no longer asking for anything")
 	guide.end_linger()
 	assert_false(guide.visible, "then it goes")
@@ -143,11 +145,36 @@ func test_the_steps_tick_from_real_orders() -> void:
 func test_a_step_is_ticked_by_its_own_kind_of_order_only() -> void:
 	var move := MoveOrder.new("a", "b")
 	var recruit := RecruitOrder.new("spearmen")
-	assert_eq(FirstGameGuide.step_states([], false), {"move": false, "recruit": false, "end_turn": false})
-	assert_eq(FirstGameGuide.step_states([move], false), {"move": true, "recruit": false, "end_turn": false})
-	assert_eq(FirstGameGuide.step_states([recruit], false), {"move": false, "recruit": true, "end_turn": false})
-	assert_eq(FirstGameGuide.step_states([recruit, move], true), {"move": true, "recruit": true, "end_turn": true})
-	assert_eq(FirstGameGuide.step_states([ResearchOrder.new("x")], false), {"move": false, "recruit": false, "end_turn": false}, "other orders tick nothing")
+	assert_eq(FirstGameGuide.step_states([], false), {"move": false, "recruit": false, "plan": false, "end_turn": false})
+	assert_eq(FirstGameGuide.step_states([move], false), {"move": true, "recruit": false, "plan": false, "end_turn": false})
+	assert_eq(FirstGameGuide.step_states([recruit], false), {"move": false, "recruit": true, "plan": false, "end_turn": false})
+	assert_eq(FirstGameGuide.step_states([recruit, move], true), {"move": true, "recruit": true, "plan": true, "end_turn": true})
+	assert_eq(FirstGameGuide.step_states([ResearchOrder.new("x")], false), {"move": false, "recruit": false, "plan": false, "end_turn": false}, "other orders tick nothing")
+
+
+## UX-9: the third step ticks once the Plan is shown, by the seal (review before sealing is on in a first game) or the Plan tab, for
+## the person giving orders only.
+func test_the_plan_step_ticks_when_the_plan_is_shown() -> void:
+	assert_eq(FirstGameGuide.step_states([], false, true), {"move": false, "recruit": false, "plan": true, "end_turn": false})
+	_unseen()
+	var game := _game(VS_COMPUTER)
+	var guide := game.first_game_guide
+	assert_eq(_move(game), "")
+	assert_false(bool(guide.steps().plan), "not shown yet")
+	game.plan_hud.open_plan()
+	assert_true(bool(guide.steps().plan), "the Plan opened: its step ticks")
+	assert_eq(guide.next_step(), "recruit", "the step not done yet is lit, in order")
+	game.chronicle_hud.close()
+	game.map.orders_changed.emit()
+	assert_true(bool(guide.steps().plan), "and stays ticked")
+	game.free()
+	# The Plan tab of the Chronicle ticks it too.
+	_unseen()
+	var g2 := _game(VS_COMPUTER)
+	g2.chronicle_hud.open()
+	g2.chronicle_hud.column.plan_tab.pressed.emit()
+	assert_true(bool(g2.first_game_guide.steps().plan), "the Plan tab")
+	g2.free()
 
 
 func test_each_step_explains_itself_and_links_its_entry() -> void:
@@ -160,7 +187,11 @@ func test_each_step_explains_itself_and_links_its_entry() -> void:
 		assert_true(check.tooltip_text.contains(String(step.tip).substr(0, 24)), "%s has its tooltip" % step.id)
 		assert_eq(CodexLink.key_at(check), step.entry, "%s: right-click or F1 opens %s" % [step.id, step.entry])
 	# UX-1: the steps point at the Table (the card at the bottom left, the seal at the bottom right), not at the old bars.
-	assert_true(FirstGameGuide.STEPS[1].title.contains("card") and FirstGameGuide.STEPS[2].title.contains("seal"), "the steps name the card and the seal")
+	# UX-9: they point at the army and the March on its card, the capital's Recruit, the tray and the Plan, and the seal.
+	assert_true(FirstGameGuide.STEPS[0].title.contains("army") and FirstGameGuide.STEPS[0].title.contains("March"), "the first names the army and March")
+	assert_true(FirstGameGuide.STEPS[1].title.contains("capital") and FirstGameGuide.STEPS[1].title.contains("Recruit"), "the second the capital's Recruit")
+	assert_true(FirstGameGuide.STEPS[2].title.contains("tray") and FirstGameGuide.STEPS[2].title.contains("Plan"), "the third the tray and the Plan")
+	assert_true(FirstGameGuide.STEPS[3].title.contains("seal"), "the fourth the seal")
 	for step in FirstGameGuide.STEPS:
 		assert_false(String(step.title).contains("side panel") or String(step.title).contains("top right"), "%s names a place that is gone" % step.id)
 	game.free()
@@ -266,7 +297,7 @@ func test_hotseat_shows_a_card_per_seat_behind_the_cover() -> void:
 	assert_true(guide.title_label.text.contains("Player 1"), "the card says whose it is")
 	assert_eq(_move(game), "")
 	assert_eq(_recruit(game), "")
-	assert_eq(guide.steps(), {"move": true, "recruit": true, "end_turn": false})
+	assert_eq(guide.steps(), {"move": true, "recruit": true, "plan": false, "end_turn": false})
 	assert_eq(game.end_turn(), "")
 	assert_true(game.handoff.visible, "the cover is up")
 	assert_false(guide.visible, "and no card shows behind it: nothing of seat 1's turn is on screen")
@@ -275,9 +306,9 @@ func test_hotseat_shows_a_card_per_seat_behind_the_cover() -> void:
 	_ready_up(game)
 	assert_eq(guide.showing(), CLANS, "seat 2 gets theirs when the cover lifts")
 	assert_true(guide.title_label.text.contains("Player 2"))
-	assert_eq(guide.steps(), {"move": false, "recruit": false, "end_turn": false}, "from seat 2's own orders: seat 1's ticks are not shown to them")
+	assert_eq(guide.steps(), {"move": false, "recruit": false, "plan": false, "end_turn": false}, "from seat 2's own orders: seat 1's ticks are not shown to them")
 	assert_eq(_move(game), "")
-	assert_eq(guide.steps(), {"move": true, "recruit": false, "end_turn": false})
+	assert_eq(guide.steps(), {"move": true, "recruit": false, "plan": false, "end_turn": false})
 	assert_eq(game.end_turn(), "")
 	assert_true(GameSettings.hint_seen(GameSettings.HINT_FIRST_GAME), "remembered once every person has finished")
 	_ready_up(game)
@@ -421,7 +452,7 @@ func test_a_fog_game_card_is_the_viewers_own() -> void:
 	assert_true(guide.visible)
 	assert_true(guide.system_lines["fog"].visible, "the fog line is there")
 	var text := _card_text(guide)
-	assert_true(text.contains("Move an army") and text.contains("End your turn"))
+	assert_true(text.contains(String(FirstGameGuide.STEPS[0].title)) and text.contains(String(FirstGameGuide.STEPS[3].title)), "its steps")
 	for f in GameState.new().factions:
 		assert_false(text.contains(f.faction_name), "no faction is named (%s)" % f.faction_name)
 	game.free()

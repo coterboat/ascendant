@@ -415,7 +415,9 @@ func open(at: String = "") -> void:
 		seen[String(it.id)] = true
 	_seen[seat] = seen
 	_refresh_all()
-	column.show_tab("read" if column.current_tab() != "plan" else "plan")
+	# Opened at a card (a medallion, the turn's own news): Read. Otherwise the tab it was left on (UX-9: the turn's news never
+	# opens on last turn's Plan).
+	column.show_tab("read" if not at.is_empty() or column.current_tab() != "plan" else "plan")
 	if not at.is_empty():
 		column.reveal(at)
 	if not was_open:

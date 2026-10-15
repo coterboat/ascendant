@@ -244,7 +244,7 @@ func test_the_system_row_holds_every_button_and_the_seal_and_menu_stay_out_of_it
 func test_the_hint_and_its_whole_help_are_unchanged() -> void:
 	var game := _game(_all_on())
 	assert_eq(game.map.hint_label, game.map.table().hint_label, "the hint is the tray's line")
-	assert_true(game.map.hint_label.text.begins_with("Move: select an army"), game.map.hint_label.text)
+	assert_true(game.map.hint_label.text.begins_with("March: click an army"), game.map.hint_label.text)
 	assert_true(game.map.hint_label.tooltip_text.replace("\n", " ").contains("neighboring province"), "the tooltip keeps the whole how-to")
 	game.free()
 

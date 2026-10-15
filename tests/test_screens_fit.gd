@@ -282,8 +282,8 @@ func test_the_first_game_card_hangs_under_the_plaque_in_the_safe_area_clear_of_t
 		if _shown(g, "card"):
 			assert_false(TableLayout.overlaps(card, _rect(g, "card")), "and clear of the selection card at %s" % key)
 		# The card folds its other systems and keeps How to play in its head row: 160 px, where it was 265 with every system's line
-		# open.
-		assert_true(card.size.y <= 170.0, "folded, the card is short at %s (%d px)" % [key, card.size.y]))
+		# open. UX-9 added a fourth step (the tray and the Plan), a line taller; it hangs in the left column, clear of the board.
+		assert_true(card.size.y <= 196.0, "folded, the card is short at %s (%d px)" % [key, card.size.y]))
 
 
 func test_the_big_panels_fit_the_window_at_both_sizes() -> void:

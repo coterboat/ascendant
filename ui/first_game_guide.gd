@@ -2,11 +2,14 @@ class_name FirstGameGuide
 extends PanelContainer
 ## MVP-1 (#141): the first-game guide. On the first turn of a person's first game a small card sits in the map's
 ## top-left corner (under the board hint, over the water and the north-west hills; never a modal: only the card itself
-## takes clicks) with three one-line steps that tick off from the person's real orders:
-##   1. select an army and move it      (a MoveOrder is queued)
-##   2. recruit at your capital         (a RecruitOrder is queued)
-##   3. End turn                        (the person pressed End turn: the card then shows all three for a few seconds,
-##                                       over the board's playback, and goes)
+## takes clicks) with one-line steps that tick off from the person's real orders. UX-9 (#234) rewrote them for the War Table: each
+## points at the thing to use, where it is:
+##   1. march: click an army, then March on its card         (a MoveOrder is queued)
+##   2. recruit: click your capital, then Recruit on its card (a RecruitOrder is queued)
+##   3. check them: the tray, then the Chronicle's Plan       (the Plan was shown: the seal opens it in a first game, UX-5)
+##   4. seal them                                             (the person ended the turn: the card then shows every step
+##                                                             ticked for a few seconds, over the board's playback, and goes)
+## The next step to do is lit in gilt.
 ## and a link to the codex's "How to play" entry. In a game with rulers, paths, forts, fog, magic or independents one
 ## more line per system that is on follows, its name a link to that system's codex entry. Hide closes the card.
 ## MVP-3 (#177): the fog line stays on the card (it is what the board's "glimpsed" and "never seen" labels mean, and it says
@@ -38,8 +41,10 @@ extends PanelContainer
 ##   sync(session, view)        called by GameScreen whenever its HUD changes (orders, seat, turn): shows, ticks or hides
 ##   steps() -> Dictionary      {"move": bool, "recruit": bool, "end_turn": bool}: what the card ticks now
 ##   showing() -> String        the faction id whose card is up ("" while hidden or lingering)
-##   lingering() -> bool, end_linger()   the moment after End turn, all three ticked, and its end
-##   step_states(orders, ended) (static)   the ticks for a list of orders: pure, no scene needed
+##   lingering() -> bool, end_linger()   the moment after End turn, every step ticked, and its end
+##   note_plan_seen(fid)        UX-9: the Plan was shown to `fid` (PlanHud says so): the third step ticks
+##   next_step() -> String      UX-9: the id of the step lit as the one to do next ("" when all are done)
+##   step_states(orders, ended, plan_seen) (static)   the ticks for a list of orders: pure, no scene needed
 ##   systems_on(view) (static)  the per-system lines for a game's flags: pure
 ##   signal codex_requested(key)   a link was pressed (GameScreen opens its codex there)
 
@@ -49,19 +54,22 @@ const WIDTH := 350.0
 const MARGIN := 12.0
 ## Where the card starts before the Table has placed it: the top left of the board's safe area (TableLayout).
 const TOP := 120.0
-## How long the card stays, all three steps ticked, over the board's playback after End turn.
+## How long the card stays, every step ticked, over the board's playback after End turn.
 const LINGER := 3.5
 const HOW_TO_PLAY := "how_to_play"
-## The three steps: each a single line that says what to do, and a tooltip with the rest.
+## The steps: each a single line that says what to do and where, and a tooltip with the rest.
 const STEPS := [
-	{"id": "move", "title": "Move an army: click it, then a neighbor",
-		"tip": "Click one of your armies, then a province next to it. The move shows on the army's card, as a numbered arrow on the board and as a token in the tray, with its forecast, and nothing happens until every player has ended the turn. An army you don't move holds where it is.",
+	{"id": "move", "title": "March: click an army, then March",
+		"tip": "Click one of your armies on the board: its card opens beside it. Press March, then a province next to it (or click the province straight away). The march shows as a numbered arrow on the board and a token in the tray along the bottom, with its forecast, and nothing happens until every player has ended the turn. An army you don't move holds where it is.",
 		"entry": "move"},
-	{"id": "recruit", "title": "Recruit at your capital (the card)",
-		"tip": "Your capital is selected: press Recruit on its card at the bottom left, then a unit. The price is paid, and the unit joins you, when the turn resolves.",
+	{"id": "recruit", "title": "Recruit: click your capital, then Recruit",
+		"tip": "Click your capital (the crown on the board): its card opens. Press Recruit on the card, then a unit. The price is paid, and the unit joins you, when the turn resolves.",
 		"entry": "recruit"},
-	{"id": "end_turn", "title": "End your turn (the seal, bottom right)",
-		"tip": "End turn locks your orders in. Every player's orders then resolve together, in one fixed order, and the turn report tells you what happened and why.",
+	{"id": "plan", "title": "Check them: the tray, then the Plan",
+		"tip": "Every order is a numbered token in the tray along the bottom; hover one for its forecast. The Chronicle's Plan reads them all back as sentences, each with its forecast: in your first game the End turn seal opens it first.",
+		"entry": "turn_review"},
+	{"id": "end_turn", "title": "Seal: the seal, then Seal the orders",
+		"tip": "End turn (the seal, bottom right) opens the Plan in your first game; Seal the orders at its foot locks your orders in. Every player's orders then resolve together, in one fixed order, and the Chronicle tells you what happened and why.",
 		"entry": "orders"},
 ]
 ## The "Also on" row's short names (one line wide), where a system's full name is longer.
@@ -100,6 +108,7 @@ var _enabled := false  # the hint was unseen when this game started
 var _humans: Array = []  # faction ids a person plays, in seat order
 var _done := {}  # faction id -> true once that person ended their first turn or hid the card
 var _ended := {}  # faction id -> true once that person ended their first turn
+var _plan_seen := {}  # faction id -> true once the Plan was shown to that person (UX-9)
 var _lingering := false
 var _linger_until := 0
 var _systems: Array = []  # the SYSTEMS lines on in this game (ids)
@@ -183,8 +192,9 @@ func lingering() -> bool:
 	return _lingering and visible
 
 
-## The ticks for `orders` (the person's queued orders) and whether they have pressed End turn.
-static func step_states(orders: Array, ended: bool) -> Dictionary:
+## The ticks for `orders` (the person's queued orders), whether the Plan was shown to them and whether they have ended the turn
+## (which ticks the Plan too: a turn sealed was a turn checked, as far as the card goes).
+static func step_states(orders: Array, ended: bool, plan_seen: bool = false) -> Dictionary:
 	var moved := false
 	var recruited := false
 	for o in orders:
@@ -192,7 +202,27 @@ static func step_states(orders: Array, ended: bool) -> Dictionary:
 			moved = true
 		elif o is RecruitOrder:
 			recruited = true
-	return {"move": moved, "recruit": recruited, "end_turn": ended}
+	return {"move": moved, "recruit": recruited, "plan": plan_seen or ended, "end_turn": ended}
+
+
+## UX-9: the Plan was shown to `fid` (the seal opened it, or the Chronicle's Plan tab was pressed): its step ticks.
+func note_plan_seen(fid: String) -> void:
+	if fid.is_empty() or _plan_seen.has(fid):
+		return
+	_plan_seen[fid] = true
+	if _showing == fid:
+		var ticks := steps()
+		ticks["plan"] = true
+		_tick(ticks)
+
+
+## The id of the step lit as the one to do next: the first one not ticked ("" when every one is).
+func next_step() -> String:
+	for step in STEPS:
+		var check: CheckBox = step_checks[String(step.id)]
+		if not check.button_pressed:
+			return String(step.id)
+	return ""
 
 
 ## The system lines for a game: the entries of SYSTEMS whose system is on in `view`, in order.
@@ -210,6 +240,7 @@ func _new_game(session: GameSession) -> void:
 	_turn = 0
 	_done = {}
 	_ended = {}
+	_plan_seen = {}
 	_lingering = false
 	_enabled = not GameSettings.hint_seen(GameSettings.HINT_FIRST_GAME)
 	_humans = session.players().filter(func(f): return not session.is_computer(f))
@@ -235,17 +266,21 @@ func _show_for(session: GameSession, view: GameState, fid: String, turn: int) ->
 		title_label.text = _seat_title
 		closing_label.visible = false
 		how_button.visible = true
-	_tick(step_states(session.current_orders(), _ended.has(fid)))
+	_tick(step_states(session.current_orders(), _ended.has(fid), _plan_seen.has(fid)))
 	visible = true
 
 
 func _tick(states: Dictionary) -> void:
 	var done := 0
-	for id in step_checks:
+	var lit := false
+	for step in STEPS:
+		var id := String(step.id)
 		var on: bool = states.get(id, false)
 		var check: CheckBox = step_checks[id]
 		check.button_pressed = on
-		check.add_theme_color_override("font_disabled_color", UiPalette.POSITIVE if on else UiPalette.TEXT_PRIMARY)
+		var next := not on and not lit  # UX-9: the first step not done yet is lit in gilt
+		lit = lit or next
+		check.add_theme_color_override("font_disabled_color", UiPalette.POSITIVE if on else (UiPalette.GILT if next else UiPalette.TEXT_PRIMARY))
 		if on:
 			done += 1
 	progress_label.text = "%d of %d" % [done, STEPS.size()]
@@ -263,10 +298,11 @@ func _finished_turn(fid: String, session: GameSession) -> void:
 	_done[fid] = true
 	var ticks := steps()
 	ticks["end_turn"] = true
+	ticks["plan"] = true
 	_tick(ticks)
 	_mark_if_everyone_done()
 	_showing = ""
-	# With one person the card stays a moment over the board's playback, all three ticked, then goes. In hotseat the
+	# With one person the card stays a moment over the board's playback, every step ticked, then goes. In hotseat the
 	# handoff cover is up (and another person's turn is next): it goes at once.
 	if session.human_seats() == 1 and session.phase() == GameSession.Phase.ORDERS:
 		_lingering = true
@@ -341,7 +377,7 @@ func _build() -> void:
 	title_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS  # the head row also holds How to play and Hide
 	head.add_child(title_label)
 	progress_label = _label("ProgressLabel", "0 of %d" % STEPS.size(), 15, UiPalette.TEXT_SECONDARY)
-	progress_label.tooltip_text = TooltipText.plain("Your first turn", "The three things to do on a first turn. Each ticks off by itself once you have done it.")
+	progress_label.tooltip_text = TooltipText.plain("Your first turn", "The things to do on a first turn. Each ticks off by itself once you have done it, and the next one is lit in gold.")
 	progress_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	head.add_child(progress_label)
 	hide_button = Button.new()
@@ -370,7 +406,7 @@ func _build() -> void:
 		box.add_child(check)
 		step_checks[String(step.id)] = check
 
-	closing_label = _label("ClosingLabel", "That is a turn. It plays out now; then the turn report says what happened and why.", 15, UiPalette.POSITIVE)
+	closing_label = _label("ClosingLabel", "That is a turn. It plays out now; then the Chronicle says what happened and why.", 15, UiPalette.POSITIVE)
 	closing_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	closing_label.custom_minimum_size = Vector2(WIDTH - 16.0, 0)
 	closing_label.visible = false
@@ -428,7 +464,7 @@ func _build() -> void:
 	_tight(how_button)
 	how_button.add_theme_color_override("font_color", UiPalette.LINK)
 	how_button.add_theme_color_override("font_hover_color", UiPalette.GILT)
-	how_button.tooltip_text = TooltipText.plain("How to play", "The turn loop (read, plan, commit, resolve, watch), why orders are simultaneous and where every number explains itself, on one codex page.")
+	how_button.tooltip_text = TooltipText.plain("How to play", "The turn loop (read, plan, commit, resolve, watch), the Table, the Chronicle and the battle viewer, why orders are simultaneous and where every number explains itself.")
 	how_button.pressed.connect(func(): codex_requested.emit(HOW_TO_PLAY))
 	# MVP-3 (#177): beside Hide in the head row, not a row of its own: the card is shorter by a line and leaves the capital's
 	# neighbor clear at 125% too.

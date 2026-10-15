@@ -7,7 +7,7 @@ extends RefCounted
 
 ## The first how-to, in the words the top bar's hint tooltip had: select an army, click a neighbour, recruit at the capital.
 const HOW_TO_ORDER := "Select one of your armies, then click a neighboring province to move it there (or press March on its card and then click one); hover a province first to see the forecast and battle odds. Select your capital to recruit: press Recruit on its card. Each army's order is on its card, and every order is a token in the tray along the bottom, numbered as it is on the board: hover it for its forecast, click it to see its card, and right-click it, or press its cross, to cancel it. Hover any number to see where it comes from; right-click it, or press F1, to open its codex entry. End turn when you are done."
-const QUICK := "Move: select an army, then a neighbor. Recruit: select your capital."
+const QUICK := "March: click an army, then March on its card. Recruit: click your capital, then Recruit."
 
 
 ## The sections of the help. `lens_keys` is [[key name, lens title]] from the LensHost.
@@ -16,7 +16,7 @@ static func sections(lens_keys: Array = []) -> Array:
 	out.append({"title": "Giving orders", "rows": [
 		{"keys": "Click an army, then a province", "text": "Select one of your armies, then click a neighboring province to move it there. Hover the province first to see the forecast and the battle odds. The army's card has March too: it folds into a slim strip while you choose, and Esc cancels."},
 		{"keys": "Click your capital, then Recruit", "text": "Select your capital to recruit: press Recruit on its card to see what you can buy. With forts, select any fort you own."},
-		{"keys": "End turn (the seal)", "text": "Lock your orders in. Every player's orders then resolve together. Your orders are the tokens in the tray, numbered as they are on the board; each has a cross to cancel it (a right-click does too), and an army's own order is on its card."},
+		{"keys": "End turn (the seal)", "text": "Lock your orders in. Every player's orders then resolve together. In your first game the seal first opens the Chronicle's Plan, your orders as sentences with their forecasts, and you seal them there (Settings: Review before sealing). Your orders are the tokens in the tray, numbered as they are on the board; each has a cross to cancel it (a right-click does too), and an army's own order is on its card."},
 	]})
 	out.append({"title": "The board", "rows": [
 		{"keys": "Drag, middle-drag, W A S D, arrow keys", "text": "Pan the map."},
@@ -45,7 +45,7 @@ static func sections(lens_keys: Array = []) -> Array:
 		out.append({"title": "Lenses", "rows": rows})
 	out.append({"title": "The system row", "rows": [
 		{"keys": "Research, Magic, Ruler", "text": "Open the research panel (and its Magic tab) and the ruler panel."},
-		{"keys": "Chronicle", "text": "The turn's announcements, each with its own image, in a column you open and close: sort them, hide the kinds you don't need, pin the ones to keep, dismiss the rest, and press Full report for every line. The round medallions down the left edge are the same news: hover one to read it, click it to open its card, right-click it to dismiss it. Your plan for the turn joins it in a later update."},
+		{"keys": "Chronicle", "text": "The turn's announcements, each with its own image, in a column you open and close: sort them, hide the kinds you don't need, pin the ones to keep, dismiss the rest, and press Full report for every line. The round medallions down the left edge are the same news: hover one to read it, click it to open its card, right-click it to dismiss it. Its Plan tab is your turn as sentences, each order with its forecast, what still needs you, and the seal; with Review before sealing on (your first game), End turn opens it first."},
 		{"keys": "Lenses", "text": "The optional map views (1 to 6): Owner, Income, Threat, Magic, Making and Sight, one at a time, each with its own colours and a legend. Off by default."},
 		{"keys": "Turn report", "text": "Read again every line of what happened last turn."},
 		{"keys": "Codex, ?", "text": "The rules, and this list."},

@@ -16,6 +16,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.dont_write_bytecode = True
@@ -202,6 +203,138 @@ class BoardTable(unittest.TestCase):
         self.assertEqual(data["figures"]["bearer"]["models"]["independents"], data["figures"]["free_spears"]["model"])
         self.assertEqual(data["figures"]["bearer"]["models"]["kingdom"], json.loads("\n".join(before))["figures"]["bearer"]["models"]["kingdom"])
         self.assertEqual(sorted(rows), sorted(list(FH.UNITS) + ["bearer", "musician"]))
+
+
+def read_bytes(path):
+    with open(path, "rb") as f:
+        return f.read()
+
+
+class Install(unittest.TestCase):
+    """install-accepted (the Review Table's Install for ind_models) into a throwaway project: a temp root with copies of
+    the descriptor and the board table, and review/ind_models with its verdicts. The models are committed Free Holds
+    GLBs, the already-installed ones with their Godot .import (uid=, path=, dest_files=) beside them. The 10-10 Install
+    of the four Hill Slingers rewrote every already-installed model's import as a fresh template (no uid, path or
+    dest_files) although those GLBs had not changed."""
+
+    INSTALLED = os.path.join(FH.ROOT, "assets", "models", "units", "independents")
+
+    def setUp(self):
+        R = FH._review_module()  ## tools/review/review.py, the module install_accepted reads the batch with
+        self.tmp = tempfile.mkdtemp(prefix="fh_install_")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.desc = os.path.join(self.tmp, "assets", "models", "models.json")
+        self.board = os.path.join(self.tmp, "world3d", "models.json")
+        os.makedirs(os.path.dirname(self.desc))
+        os.makedirs(os.path.dirname(self.board))
+        shutil.copy(F.DESCRIPTOR, self.desc)
+        shutil.copy(FH.BOARD_TABLE, self.board)
+        self.bdir = os.path.join(self.tmp, "review", FH.MODEL_BATCH)
+        os.makedirs(os.path.join(self.bdir, "units"))
+        saved = (FH.ROOT, F.DESCRIPTOR, FH.BOARD_TABLE, R.REVIEW)
+        FH.ROOT, F.DESCRIPTOR, FH.BOARD_TABLE, R.REVIEW = self.tmp, self.desc, self.board, Path(self.tmp) / "review"
+
+        def restore():
+            FH.ROOT, F.DESCRIPTOR, FH.BOARD_TABLE, R.REVIEW = saved
+        self.addCleanup(restore)
+        self.items, self.verdicts = [], {}
+
+    def committed(self, name):
+        return os.path.join(self.INSTALLED, name)
+
+    def target(self, uid, pose):
+        return os.path.join(self.tmp, FH.model_target(uid, pose))
+
+    def installed(self, uid, pose, glb=None):
+        """The model as a past Install left it: its GLB and the .import Godot wrote for it (committed copies)."""
+        glb = glb or "%s_%s.glb" % (uid, pose)
+        dst = self.target(uid, pose)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy(self.committed(glb), dst)
+        shutil.copy(self.committed(glb) + ".import", dst + ".import")
+        return dst
+
+    def add(self, uid, pose, glb, verdict="accept"):
+        """One item of review/ind_models as model_batch writes it, its file a copy of a committed GLB."""
+        rel = "units/%s_%s.glb" % (uid, pose)
+        shutil.copy(self.committed(glb), os.path.join(self.bdir, rel))
+        iid = "%s_%s" % (uid, pose)
+        self.items.append({"id": iid, "kind": "model", "file": rel, "target": FH.model_target(uid, pose),
+                           "meta": {"row": "mdl_" + iid, "install": [[rel, FH.model_target(uid, pose)]]}})
+        if verdict:
+            self.verdicts[iid] = {"verdict": verdict, "file_mtime": os.path.getmtime(os.path.join(self.bdir, rel))}
+
+    def install(self, dry=False):
+        with open(os.path.join(self.bdir, "batch.json"), "w") as f:
+            json.dump({"batch": FH.MODEL_BATCH, "title": "t", "items": self.items}, f)
+        with open(os.path.join(self.bdir, "review.json"), "w") as f:
+            json.dump({"items": self.verdicts}, f)
+        FH.install_accepted(dry)
+
+    def test_an_already_installed_model_keeps_its_glb_and_its_import_byte_for_byte(self):
+        dst = self.installed("free_spears", "ready")
+        before_import, before_glb = read_bytes(dst + ".import"), read_bytes(dst)
+        self.assertIn(b'uid="uid://', before_import, "the fixture is Godot's own import")
+        self.add("free_spears", "ready", "free_spears_ready.glb")  ## accepted earlier, the same bytes
+        self.add("hold_captain", "ready", "hold_captain_ready.glb")  ## accepted now, new to the game
+        self.install()
+        self.assertEqual(read_bytes(dst + ".import"), before_import)
+        self.assertEqual(read_bytes(dst), before_glb)
+        new = self.target("hold_captain", "ready")
+        self.assertEqual(read_bytes(new), read_bytes(self.committed("hold_captain_ready.glb")))
+        imp = open(new + ".import").read()
+        self.assertIn("gltf/embedded_image_handling=2", imp, "a new model gets the import template")
+        self.assertNotIn("uid=", imp, "Godot gives a new model its uid on import")
+
+    def test_a_replaced_model_gets_the_template_and_keeps_its_uid(self):
+        dst = self.installed("wildkin", "ready")
+        uid = glb_slim.import_uid(dst + ".import")
+        self.assertTrue(uid and uid.startswith("uid://"))
+        self.add("wildkin", "ready", "wildkin_march.glb")  ## a new take: other bytes
+        self.install()
+        self.assertEqual(read_bytes(dst), read_bytes(self.committed("wildkin_march.glb")))
+        imp = open(dst + ".import").read()
+        self.assertEqual(glb_slim.import_uid(dst + ".import"), uid)
+        self.assertEqual(imp, glb_slim.IMPORT.format(res=FH.model_target("wildkin", "ready")).replace(
+            'type="PackedScene"\n', 'type="PackedScene"\nuid="%s"\n' % uid))
+
+    def test_an_installed_model_with_its_import_missing_gets_the_template(self):
+        dst = self.installed("free_spears", "march")
+        os.remove(dst + ".import")
+        self.add("free_spears", "march", "free_spears_march.glb")
+        self.install()
+        self.assertEqual(open(dst + ".import").read(), glb_slim.IMPORT.format(res=FH.model_target("free_spears", "march")))
+
+    def test_a_dry_run_and_a_rejected_item_write_nothing(self):
+        dst = self.installed("hold_captain", "strike")
+        before = read_bytes(dst + ".import")
+        self.add("hold_captain", "strike", "hold_captain_march.glb")
+        self.install(dry=True)
+        self.assertEqual(read_bytes(dst + ".import"), before)
+        self.assertEqual(read_bytes(dst), read_bytes(self.committed("hold_captain_strike.glb")))
+        self.items, self.verdicts = [], {}
+        self.add("hold_captain", "strike", "hold_captain_march.glb", verdict="reject")
+        self.install()
+        self.assertEqual(read_bytes(dst + ".import"), before)
+        self.assertEqual(read_bytes(dst), read_bytes(self.committed("hold_captain_strike.glb")))
+
+
+class WriteImport(unittest.TestCase):
+    def test_writing_over_an_import_keeps_its_uid_and_a_fresh_one_has_none(self):
+        tmp = tempfile.mkdtemp(prefix="fh_import_")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        res = "m/a.glb"
+        os.makedirs(os.path.join(tmp, "m"))
+        glb_slim.write_import(res, tmp)
+        path = os.path.join(tmp, res + ".import")
+        self.assertIsNone(glb_slim.import_uid(path))
+        shutil.copy(os.path.join(Install.INSTALLED, "wildkin_ready.glb.import"), path)
+        uid = glb_slim.import_uid(path)
+        glb_slim.write_import(res, tmp)
+        self.assertEqual(glb_slim.import_uid(path), uid)
+        text = open(path).read()
+        self.assertIn('source_file="res://m/a.glb"', text)
+        self.assertNotIn("dest_files=", text)
 
 
 if __name__ == "__main__":

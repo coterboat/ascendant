@@ -364,6 +364,9 @@ static func _describe(e: Dictionary, row_text: String, ctx: Dictionary) -> Dicti
 		"own": flags.contains(FLAG_OWN), "type": type, "facts": facts_of(e, variant_key, fields, ctx), "variant": variant_key}
 	if GameSession.BATTLE_TYPES.has(type) and not provinces.is_empty():
 		item["provinces"] = provinces.duplicate()
+	var spell := spell_of(e)
+	if not spell.is_empty():
+		item["spell"] = spell  # UI-ICONS (#233): the card wears the spell's icon
 	# A muster that left fighters outside their blessing is worth a medallion: the player should know (ARM-1, §2.1).
 	if ["army_split", "units_transferred", "armies_merged", "commanders_swapped"].has(type) and not e.get("numbers", {}).get("outside", []).is_empty():
 		item["routine"] = false
@@ -677,9 +680,41 @@ static func needs(state: GameState, viewer: String, report_turn: int, orders: Ar
 		out.append({"key": "research", "kind": "research", "text": research, "province": "", "codex": "research_order", "variant": "research"})
 	for line in FortView.needs_you(state, viewer, report_turn):
 		var codex := String(line.codex)
+		if settles_siege(state, String(line.province), orders):
+			continue  # UX-5: an order this turn answers it
 		out.append({"key": "siege.%s" % String(line.province), "kind": "siege", "text": String(line.text), "province": String(line.province),
 			"codex": codex, "variant": codex})
 	return out
+
+
+## UX-5: whether an order queued this turn answers the siege at `pid`: a storm of it, a sally from it, or a march into it (relief) or out of
+## it (leaving). Holding is the other answer, which no order can say, so the need stays until the turn is sealed.
+static func settles_siege(state: GameState, pid: String, orders: Array) -> bool:
+	for o in orders:
+		if o is SiegeOrder:
+			if String(o.province) == pid:
+				return true
+			var sallying := state.find_army(String(o.army_id)) if not String(o.army_id).is_empty() else null
+			if sallying != null and sallying.location == pid:
+				return true
+		elif o is MoveOrder:
+			if String(o.to) == pid:
+				return true
+			var a := state.find_army(String(o.army_id))
+			if a != null and a.location == pid:
+				return true
+	return false
+
+
+## UI-ICONS (#233): the spell an event is about (a ritual cast, ended or turned aside; a spell learned), as a data/magic.gd SPELLS id,
+## or "".
+static func spell_of(e: Dictionary) -> String:
+	var numbers: Dictionary = e.get("numbers", {}) if e.get("numbers") is Dictionary else {}
+	for key in ["ritual", "spell", "node"]:
+		var id := String(numbers.get(key, ""))
+		if not id.is_empty() and MagicData.SPELLS.has(id):
+			return id
+	return ""
 
 
 ## The needs as announcements, ids "need.<key>.t<turn>".

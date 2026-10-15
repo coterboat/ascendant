@@ -49,6 +49,7 @@ func _initialize() -> void:
 	# UX-6: a fresh install opens the Chronicle on important turns, but the suite's older tests read today's full report at the start of
 	# a turn, so the run asks for it ("report"); the Chronicle's own tests set the mode they mean.
 	ChronicleSettings.default_auto_open = "report"
+	ChronicleSettings.default_review = "never"  # UX-5: the seal ends the turn at once in every older test; the Plan's tests set it
 
 	var files := _find_test_files(TEST_ROOT)
 	files.sort()

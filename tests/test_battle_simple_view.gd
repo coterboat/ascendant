@@ -87,7 +87,9 @@ func test_every_fixture_plays_to_the_timelines_final_state() -> void:
 
 
 func test_every_fighter_has_its_own_place_in_the_field() -> void:
-	var field := Rect2(0, 0, BattleSimpleView.BASE.x, BattleSimpleView.FIELD_H)
+	var probe := BattleSimpleView.new()
+	var field := Rect2(Vector2.ZERO, probe.stage_band().size)
+	probe.free()
 	for name in Fx.names():
 		var fx := _fixture(name)
 		var lay := BattleLayout.build(fx.log, field.size)
@@ -326,13 +328,18 @@ func test_the_controls_and_keys_drive_the_player() -> void:
 	v._unhandled_input(_key(KEY_RIGHT))
 	assert_eq(v.player.state(), v.player.timeline().state_at(v.player.timeline().round_start(r + 1)), "Right goes to the next round's start")
 	for kind in BattleMoments.KINDS:
-		var b: Button = v.moment_buttons[kind]
 		var has := not BattleMoments.of_kind(fx.log, kind).is_empty()
-		assert_eq(b.disabled, not has, "%s's button is enabled exactly when there is one" % kind)
-		assert_false(b.tooltip_text.is_empty(), "%s's button says what it does or why not" % kind)
-	assert_true(v.moment_buttons.turning_point.tooltip_text.contains("ahead from the start"), "the disabled turning point says why")
-	v.moment_buttons.ruler_falls.pressed.emit()
+		var marked := v.scrubber.marks.filter(func(mk): return mk.kind == kind)
+		assert_eq(marked.is_empty(), not has, "%s has a marker on the scrubber exactly when there is one" % kind)
+		for mk in marked:
+			assert_false(String(mk.tip).is_empty(), "%s's marker says what it is" % kind)
+	assert_true(v.scrubber.base_tooltip().contains("ahead from the start"), "the scrubber says why there is no turning point")
 	var m: Dictionary = BattleMoments.of_kind(fx.log, "ruler_falls")[0]
+	var mi := -1
+	for k in v.scrubber.marks.size():
+		if v.scrubber.marks[k].kind == "ruler_falls" and int(v.scrubber.marks[k].event) == int(m.event):
+			mi = k
+	v.scrubber.moment_pressed.emit(mi)
 	assert_true(absf(v.player.time() - (v.player.moment_time(m) - BattlePlayer.LEAD_IN)) < 0.001, "Ruler falls jumps to the king's fall")
 	v.scrubber.scrubbed.emit(3.0)
 	assert_eq(v.player.time(), 3.0, "the scrubber seeks")
@@ -373,10 +380,9 @@ func test_the_bars_captions_and_terms_link_to_the_codex() -> void:
 	assert_eq(v.caption_labels[0].text, String(line.text), "round 1's caption is BattleCaptions'")
 	assert_eq(CodexLink.key_at(v.caption_labels[0]), String(line.codex), "and links its codex entry")
 	var chips := []
-	for k in 2:
-		for c in v.chip_boxes[k].get_children():
-			chips.append((c as Label).text)
-	assert_true(chips.has("Forest: +2 defense") and chips.has("Fort: +2 defense"), "the defender's plaque has its terrain and fort chips")
+	for c in v.conditions.get_children():
+		chips.append(String((c as Label).get_meta("full", (c as Label).text)))
+	assert_true(chips.has("Forest: +2 defense") and chips.has("Fort: +2 defense"), "the centre has the defender's terrain and fort chips")
 	v.card(0)._gui_input(CodexLink.right_click())
 	assert_eq(opened[-1], v.card(0).codex_key, "right-click on a card opens its codex entry")
 	v.free()
