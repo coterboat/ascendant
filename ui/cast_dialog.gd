@@ -14,6 +14,8 @@ extends Control
 ## it (accepts_province, which the map asks). The forecast's sentences are shown under headings (MagicRules.forecast_sections)
 ## and the budget line has its breakdown (Forecast.cast_budget). It offers only the legal targets (OrdersController.cast_options
 ## asks MagicRules.ritual_targets), so a target out of range is never a choice.
+## UI-POLISH-1 (#239): the panel is as tall as what it shows, from under the opponent plaque and Menu down to the top of the tray and
+## seal's band at most (it scrolls past that), so it never covers End turn and has no empty space under a short choice.
 
 signal confirmed(ritual: String, army_id: String, target: String, pay: String, size: int)
 signal cancelled
@@ -22,6 +24,8 @@ signal codex_requested(key: String)
 signal rings_changed(lit: Array, chosen: String)
 
 const PANEL_WIDTH := 580
+## Where the panel starts: under the top right band (the opponent plaque and Menu), a gap below it.
+const TOP := TableLayout.TOP_RIGHT_H + TableLayout.GAP
 const NOTE := "Nothing changes until you cast. You can cancel the order from its token in the tray until you end the turn."
 const SECTION_TITLES := {"effect": "What it will do", "blood": "The price in blood", "risk": "The risk", "pin": "The army"}
 
@@ -49,6 +53,10 @@ var confirm_button: Button
 var cancel_button: Button
 var note_label: Label  # the line above the Cast button; nudge() borrows it
 var _forecast_lines: Array = []  # the sentences on screen, for shown_forecast
+var panel: PanelContainer
+var scroll: ScrollContainer
+var _inner: VBoxContainer
+var _fit_queued := false
 
 
 func _init() -> void:
@@ -56,16 +64,16 @@ func _init() -> void:
 	visible = false
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE  # the board stays clickable: a click on a lit province picks it
-	var panel := PanelContainer.new()
+	panel = PanelContainer.new()
 	panel.name = "Panel"
 	panel.anchor_left = 1.0
 	panel.anchor_right = 1.0
 	panel.anchor_top = 0.0
-	panel.anchor_bottom = 1.0
+	panel.anchor_bottom = 0.0
 	panel.offset_left = -PANEL_WIDTH - 10
 	panel.offset_right = -10
-	panel.offset_top = 70
-	panel.offset_bottom = -10
+	panel.offset_top = TOP
+	panel.offset_bottom = TOP + 200.0  # fit() sets it to what the panel shows
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	var style := UiPalette.panel_style(16)
 	style.border_color = UiPalette.GILT
@@ -92,16 +100,19 @@ func _init() -> void:
 	intro_label.name = "Intro"
 	intro_label.set_meta("rule_text", true)  # words, with the army's name for life
 	box.add_child(intro_label)
-	var scroll := ScrollContainer.new()
+	scroll = ScrollContainer.new()
 	scroll.name = "Scroll"
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	box.add_child(scroll)
+	box.add_child(ScrollMore.frame(scroll, UiPalette.PANEL_BG))  # the fade and More (UI-FIT's) while more of the choice is below
 	var inner := VBoxContainer.new()
 	inner.name = "Inner"
 	inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	inner.add_theme_constant_override("separation", 8)
 	scroll.add_child(inner)
+	_inner = inner
+	inner.minimum_size_changed.connect(_queue_fit)
+	box.minimum_size_changed.connect(_queue_fit)
 	options_box = HFlowContainer.new()
 	options_box.name = "Options"
 	options_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -126,6 +137,33 @@ func _init() -> void:
 	confirm_button.add_theme_color_override("font_color", UiPalette.GILT)
 	confirm_button.pressed.connect(confirm)
 	foot.add_child(confirm_button)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED or what == NOTIFICATION_VISIBILITY_CHANGED:
+		_queue_fit()
+
+
+## Sizes the panel to what it shows: the scroll gets its content's height, up to what the room above the tray and seal's band leaves
+## (the head, the intro and the foot keep theirs).
+func fit() -> void:
+	var vp := get_viewport_rect().size if is_inside_tree() else Vector2(1600, 900)
+	var room := maxf(vp.y - TOP - TableLayout.BOTTOM_H - TableLayout.GAP, 120.0)
+	var fixed := panel.get_combined_minimum_size().y - scroll.custom_minimum_size.y
+	var want := clampf(_inner.get_combined_minimum_size().y, 60.0, maxf(room - fixed, 60.0))
+	if not is_equal_approx(scroll.custom_minimum_size.y, want):
+		scroll.custom_minimum_size.y = want
+	panel.offset_bottom = TOP + minf(panel.get_combined_minimum_size().y, room)
+
+
+func _queue_fit() -> void:
+	if _fit_queued:
+		return
+	_fit_queued = true
+	(func():
+		_fit_queued = false
+		if is_instance_valid(panel):
+			fit()).call_deferred()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -357,6 +395,7 @@ func _refresh() -> void:
 	confirm_button.tooltip_text = TooltipText.plain("Cast", String(forecast.get("text", "")) if forecast.get("ok", false) \
 		else String(forecast.get("reason", "")))
 	rings_changed.emit(lit_provinces(), target)
+	_queue_fit()
 
 
 ## The forecast under its headings: the rules' sentences, each with what it is (MagicRules.forecast_sections).

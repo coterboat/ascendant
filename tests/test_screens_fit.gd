@@ -14,7 +14,7 @@ const PROBE := "res://tests/screen_fit_probe.gd"
 const SCRATCH := "user://screen_fit_probe"  # the probe's own settings and saves (tests/screen_fit_probe.gd)
 const SIZES := {"1600x900": Vector2(1600, 900), "1280x720": Vector2(1280, 720)}
 const SCREENS := ["title", "new_game", "new_game_full", "new_game_error", "victory", "victory_actions", "victory_everything",
-	"victory_draw", "build", "codex", "settings", "load", "guide", "game", "game_research", "game_report"]
+	"victory_draw", "build", "codex", "settings", "load", "guide", "game", "game_research", "game_report", "game_cast"]
 const NEW_GAMES := ["new_game", "new_game_full", "new_game_error"]
 const VICTORIES := ["victory", "victory_actions", "victory_everything", "victory_draw"]
 ## A scroll container smaller than this is not a visible way to the content in it.
@@ -303,4 +303,14 @@ func test_the_big_panels_fit_the_window_at_both_sizes() -> void:
 		var report := _screen(key, "game_report")
 		assert_true(_shown(report, "report_box"), "the turn report is open at %s" % key)
 		assert_true(_inside(_rect(report, "report_box"), viewport), "the turn report fits the window at %s (%s)" % [key, _rect(report, "report_box")])
-		assert_true(_shown(report, "report_close") and _inside(_rect(report, "report_close"), viewport), "its Close is on screen at %s" % key))
+		assert_true(_shown(report, "report_close") and _inside(_rect(report, "report_close"), viewport), "its Close is on screen at %s" % key)
+		# UI-POLISH-1 (#239): the cast dialog covered End turn and stood the window's height with little in it. It is as tall as what it
+		# shows, on screen, and clear of the seal, End turn and Menu.
+		var cast := _screen(key, "game_cast")
+		assert_true(_shown(cast, "cast_panel"), "the cast dialog is open at %s" % key)
+		var panel := _rect(cast, "cast_panel")
+		assert_true(_inside(panel, viewport), "it fits the window at %s (%s)" % [key, panel])
+		assert_true(panel.size.y <= float(cast.rects.cast_want) + 1.0, "no taller than what it shows at %s (%d for %d)" % [key, panel.size.y, cast.rects.cast_want])
+		for name in ["seal", "end_turn", "menu"]:
+			if _shown(cast, name):
+				assert_false(panel.intersects(_rect(cast, name)), "clear of %s at %s (%s, %s)" % [name, key, panel, _rect(cast, name)]))

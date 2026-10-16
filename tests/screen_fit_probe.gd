@@ -55,6 +55,7 @@ func _screens() -> Array:
 		["game", _game],
 		["game_research", _game_research],
 		["game_report", _game_report],
+		["game_cast", _game_cast],
 	]
 
 
@@ -115,6 +116,9 @@ func _rects(screen: Control) -> Dictionary:
 			"guide": _r(screen.first_game_guide), "map": _r(map.map_view),
 			"research_panel": _rt(research), "research_close": _r(screen.research_hud.panel.close_button) if research != null else [],
 			"report_box": _rt(report_box), "report_close": _r(screen.report_overlay.find_child("CloseReportButton", true, false))}
+		if map.cast_dialog != null and map.cast_dialog.visible:  # UI-POLISH-1 (#239): the cast dialog and what it shows
+			rects["cast_panel"] = _r(map.cast_dialog.panel)
+			rects["cast_want"] = map.cast_dialog.panel.get_combined_minimum_size().y
 	elif screen is NewGameScreen:
 		rects = {"start": _r(screen.start_button), "back": _r(screen.back_button), "scroll": _r(screen.body_scroll),
 			"panel": _r(screen.find_child("Panel", true, false)), "error": _r(screen.error_label),
@@ -292,6 +296,15 @@ func _game_report() -> Control:
 	g.close_turn_report()
 	g.end_turn()
 	g.open_turn_report()
+	return g
+
+
+## UI-POLISH-1 (#239): the same game with the cast dialog open for the ruler's army (it casts Far Sight from turn 1).
+func _game_cast() -> Control:
+	var g: GameScreen = _game()
+	g.close_turn_report()
+	var ruler := RulerRules.ruler_army(g.session.state(), "kingdom")
+	g.map.open_cast_dialog(ruler.id)
 	return g
 
 
