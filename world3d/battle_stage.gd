@@ -1226,7 +1226,12 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 			if not ends.is_empty():
 				_add_fx({"kind": "dust", "at": ends[0], "life": DUST_LIFE, "r": 1.0})
 			if b.data.ruler:
-				if not ends.is_empty():
+				var fall := VfxSheets.sheet(VfxSheets.for_moment("ruler_fall"))
+				if not ends.is_empty() and not fall.is_empty() and not reduced_motion:
+					# VFX-WIRE (#242): the fall's sheet bursts from the head of the ruler's staff (Alex 10-15), from its hit_frame
+					_add_fx({"kind": "impact", "at": staff_head(int(b.fighter)), "life": VfxSheets.life(fall), "big": true, "ring": false,
+						"bright": _flash.allow(_real), "sheet": "ruler_fall", "start": VfxSheets.lead(fall)})
+				elif not ends.is_empty():
 					_add_fx({"kind": "burst", "at": (ends[0] as Vector3).lerp(ends[1], 0.55), "life": BURST_LIFE, "r": 1.0})
 					_add_fx({"kind": "impact", "at": (ends[0] as Vector3).lerp(ends[1], 0.62), "life": RING_LIFE if reduced_motion else IMPACT_LIFE,
 						"big": true, "ring": reduced_motion, "bright": not reduced_motion and _flash.allow(_real)})
@@ -1372,6 +1377,15 @@ func _attack_started(b: Dictionary) -> void:
 	if ia < 0 or it < 0:
 		return
 	var now := float(b.t)
+	# VFX-WIRE (#242): a hit's impact sheet starts its lead-in now, so its hit_frame meets the blow (as the Simple view's)
+	if b.data.hit and not reduced_motion:
+		var sid := BattleEffects.impact_sheet(b.data)
+		var sh := VfxSheets.sheet(sid)
+		var home: Array = _ends_home(int(b.target))
+		if not sh.is_empty() and not home.is_empty():
+			_add_fx({"kind": "impact", "at": (home[0] as Vector3).lerp(home[1], 0.62), "life": VfxSheets.life(sh), "big": bool(b.data.big),
+				"ring": false, "bright": _flash.allow(_real), "sheet": sid, "start": VfxSheets.lead(sh) - float(b.data.delay)})
+			_sheet_hits[int(b.event)] = true
 	var proj := String(b.data.projectile)
 	var to: Vector2 = figures.figs[it]["home"]
 	if proj.is_empty():
@@ -1412,9 +1426,10 @@ func _attack_landed(b: Dictionary, st: Dictionary) -> void:
 		figures.add_motion(it, {"kind": "recoil", "t0": now, "dur": Figures.RECOIL, "away": away})
 		var big: bool = b.data.big
 		var kills := int(fs.pending) >= int(fs.hp) and int(fs.pending) - int(b.data.damage) < int(fs.hp)
-		var bright: bool = not reduced_motion and _flash.allow(_real)
-		_add_fx({"kind": "impact", "at": upper, "life": RING_LIFE if reduced_motion else IMPACT_LIFE, "big": big, "ring": reduced_motion,
-			"bright": bright})
+		if not _sheet_hits.erase(int(b.event)):  # its sheet already started with the blow's lead-in
+			var bright: bool = not reduced_motion and _flash.allow(_real)
+			_add_fx({"kind": "impact", "at": upper, "life": RING_LIFE if reduced_motion else IMPACT_LIFE, "big": big, "ring": reduced_motion,
+				"bright": bright})
 		if int(b.data.get("iron_hide", 0)) < 0:
 			_add_fx({"kind": "sparks", "at": upper, "life": SPARK_LIFE, "r": 1.0, "seed": int(b.event)})
 		if shown or big or kills:
@@ -1429,6 +1444,17 @@ func _attack_landed(b: Dictionary, st: Dictionary) -> void:
 
 
 ## A fighter's feet and head where it stands in its place (effects anchor there), world.
+## VFX-WIRE (#242): where a fallen ruler's sheet bursts: the head of its staff, the highest point of its standing model (Models.fx_top),
+## turned with the figure. Lane Art's mock found it "slightly off center from where the staff is" at the figure's middle.
+func staff_head(fid: int) -> Vector3:
+	var i: int = figures.index_of(fid)
+	if i < 0:
+		return Vector3.ZERO
+	var f: Dictionary = figures.figs[i]
+	var p: Vector2 = f["home"]
+	return Vector3(p.x, float(f["y"]), p.y) + Basis(Vector3.UP, float(f["yaw"])) * Models.fx_top(String(f["type"]))
+
+
 func _ends_home(fid: int) -> Array:
 	var i: int = figures.index_of(fid)
 	if i < 0:
@@ -1601,13 +1627,14 @@ func _projectile_material() -> StandardMaterial3D:
 # The cast step's effects (world3d/spell_plan.gd plans them, world3d/spell_fx.gd draws them, world3d/battle_spells.gd turns a
 # cast beat into a plan). They only draw what the log already says: nothing here changes a fighter, a number or the game.
 
-## Where a fighter stands for an effect: {"foot", "head", "r"} (its place and footprint), {} when it isn't on the stage.
+## Where a fighter stands for an effect: {"foot", "head", "r", "yaw"} (its place, footprint and facing: VFX-WIRE's ground sheets turn
+## with it), {} when it isn't on the stage.
 func _spell_ends(fid: int) -> Dictionary:
 	var e: Array = _ends_home(fid)
 	if e.is_empty():
 		return {}
 	var f: Dictionary = figures.figs[figures.index_of(fid)]
-	return {"foot": e[0], "head": e[1], "r": clampf(minf(float(f["w"]), float(f["len"])) * 0.6, 2.4, 6.0)}
+	return {"foot": e[0], "head": e[1], "r": clampf(minf(float(f["w"]), float(f["len"])) * 0.6, 2.4, 6.0), "yaw": float(f["yaw"])}
 
 
 func _spell_ctx(side: int, life: float) -> Dictionary:
@@ -1723,7 +1750,7 @@ func _spells_seeked(st: Dictionary) -> void:
 func _add_fx(e: Dictionary) -> void:
 	if _fx.size() >= BattleFx.MAX_IMPACTS * 2:
 		return
-	e["age"] = 0.0
+	e["age"] = float(e.get("start", 0.0))  # a sheet's lead-in starts below 0
 	e["frames"] = 0
 	_fx.append(e)
 
@@ -2161,7 +2188,8 @@ func _draw_overlay(ci: CanvasItem) -> void:
 			"impact":
 				var big: bool = fx2.get("big", false)
 				var item := {"pos": at2, "r": clampf(ppu2 * 2.4, 9.0, 40.0) * (1.6 if big else 1.0), "ring": bool(fx2.get("ring", false)),
-					"bright": bool(fx2.get("bright", false)), "frames": int(fx2["frames"]), "age": fx2["age"], "life": fx2["life"]}
+					"bright": bool(fx2.get("bright", false)), "frames": int(fx2["frames"]), "age": fx2["age"], "life": fx2["life"],
+					"sheet": String(fx2.get("sheet", ""))}
 				if BattleEffects.draw_impact(ci, item):
 					bright_frames_drawn += 1
 			"sparks":

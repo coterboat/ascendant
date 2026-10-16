@@ -16,11 +16,24 @@
 ##   step(dt)                       ages the pool by `dt` playback seconds (the node steps itself in real time when auto_step is set)
 ##   set_standing(key, elements)    keeps these elements on the map until clear_standing(key)
 ##   clear()                        empties the pool (a seek, a new battle); stats() counts what is alive and what was skipped
+##
+## VFX-WIRE (#242): an effect sheet (VfxSheets) takes over from the code mark it was the placeholder for (VfxSheets.ELEMENTS: the
+## bolt's burst is sun_flare, blood_spray, the summoning ring), and a plan's "sheets" (cast_channel under a caster, briar_burst at a
+## snared fighter's feet) draw only when theirs is there. Each sheet is one more MultiMesh with its own texture (world3d/shaders/
+## vfx_sheet.gdshader, normal alpha), ground sheets laid flat and turned to the element's yaw, the others camera-facing. A one-shot
+## lines its hit_frame up with its element's start (it begins VfxSheets.lead before); a loop plays while its element lasts, with its
+## fades. A missing sheet leaves today's code mark, and a sheet-only entry draws nothing.
 extends Node3D
 
 const SpellPlan := preload("res://world3d/spell_plan.gd")
 const SH_GROUND := preload("res://world3d/shaders/spell_fx_ground.gdshader")
 const SH_TOP := preload("res://world3d/shaders/spell_fx_top.gdshader")
+const SH_SHEET := preload("res://world3d/shaders/vfx_sheet.gdshader")
+## VFX-WIRE: the most instances one sheet draws at once, and how big a sheet's cell is drawn: this many times its element's radius a side
+## (a one-shot's art fills about half its cell; a ring fills most of it).
+const MAX_SHEET := 96
+const SHEET_EDGE_ONE_SHOT := 4.0
+const SHEET_EDGE_RING := 2.3
 
 const GRID := 12 ## a ground decal is a GRID x GRID quad grid, laid on the land by the shader
 const MAX_GROUND := 320
@@ -42,7 +55,8 @@ var spawned := 0
 var skipped := 0
 var flashes_asked := 0
 var flashes_refused := 0
-var drawn := {"ground": 0, "sprites": 0, "beams": 0} ## instances written by the last render (the draw-call test)
+var drawn := {"ground": 0, "sprites": 0, "beams": 0, "sheets": 0} ## instances written by the last render (the draw-call test)
+var _sheet_layers := {} ## VFX-WIRE: sheet id -> its MultiMeshInstance3D (made the first time the sheet draws)
 var _standing := {}
 var _dirty := false
 var _warm := WARM_FRAMES
@@ -113,7 +127,8 @@ func play(plan: Dictionary, real_now: float = 0.0) -> Dictionary:
 		if not may:
 			flashes_refused += 1
 	plan["bright"] = may
-	var item := {"effect": plan["effect"], "plan": plan, "age": 0.0, "life": float(plan["life"]) + 0.05, "frames": 0, "bright": may}
+	var item := {"effect": plan["effect"], "plan": plan, "age": 0.0, "life": maxf(float(plan["life"]), sheets_end(plan)) + 0.05, "frames": 0,
+		"bright": may}
 	pool.add(item)
 	spawned += 1
 	step(0.0)
@@ -139,7 +154,8 @@ func clear() -> void:
 ## How many effects are alive, how many marks are drawn by layer, and what the pool and the limiter turned away.
 func stats() -> Dictionary:
 	return {"alive": pool.size(), "ground": int(drawn["ground"]), "sprites": int(drawn["sprites"]), "beams": int(drawn["beams"]),
-		"spawned": spawned, "skipped": skipped, "flashes_asked": flashes_asked, "flashes_refused": flashes_refused, "standing": standing_count()}
+		"sheets": int(drawn["sheets"]), "spawned": spawned, "skipped": skipped, "flashes_asked": flashes_asked, "flashes_refused": flashes_refused,
+		"standing": standing_count()}
 
 
 # ------------------------------------------------------------------ standing decals
@@ -238,18 +254,110 @@ static func _along(path: PackedVector3Array, u: float) -> Vector3:
 
 func _render() -> void:
 	var n := [0, 0, 0]
+	var ns := {}
 	for it in pool.items:
 		var plan: Dictionary = it["plan"]
 		var bright: bool = bool(it["bright"])
 		var frames := int(it["frames"])
 		for e in plan["elements"]:
+			var sid := String(VfxSheets.ELEMENTS.get(String(e["k"]), ""))
+			if not sid.is_empty() and _put_sheet(sheet_mark(sid, e, float(it["age"]), bright, frames), ns):
+				continue  # its sheet drew it (or will: a one-shot's lead-in)
 			_put(mark(e, float(it["age"]), bright, frames), n)
+		for e in plan.get("sheets", []):
+			_put_sheet(sheet_mark(String(e["sheet"]), e, float(it["age"]), bright, frames), ns)
 	for key in _standing:
 		for e in _standing[key]:
 			_put(mark(e, float(e["t0"]) + 0.01, false, 99), n)
 	_dirty = false
-	drawn = {"ground": n[0], "sprites": n[1], "beams": n[2]}
+	var total := 0
+	for sid in _sheet_layers:
+		var c := int(ns.get(sid, 0))
+		var mi: MultiMeshInstance3D = _sheet_layers[sid]
+		mi.multimesh.visible_instance_count = c
+		mi.visible = c > 0
+		total += c
+	drawn = {"ground": n[0], "sprites": n[1], "beams": n[2], "sheets": total}
 	_write(n[0], n[1], n[2])
+
+
+## VFX-WIRE: what an element looks like through its sheet `sid` `age` seconds into its effect: {} when the sheet is missing (the code
+## mark draws), {"sid"} alone while the sheet holds it but shows no frame (a one-shot before its lead-in or after its last frame),
+## else {"sid", "frame", "pos", "edge", "alpha", "yaw", "ground"}. Pure (the tests read it).
+static func sheet_mark(sid: String, e: Dictionary, age: float, bright: bool, frames: int) -> Dictionary:
+	var s := VfxSheets.sheet(sid)
+	if s.is_empty():
+		return {}
+	var t0 := float(e.get("t0", 0.0))
+	var dur := float(e.get("dur", 1.0))
+	var col: Color = e.get("col", Color.WHITE)
+	var alpha := col.a
+	var frame := -1
+	if (s["loop"] as Array).is_empty():
+		frame = VfxSheets.frame_at(s, age - (t0 - VfxSheets.lead(s)))  # its hit_frame on the element's start
+	else:
+		var t := age - t0
+		if t >= 0.0 and t <= dur:
+			frame = VfxSheets.frame_at(s, t)
+			var k := clampf(minf(t / maxf(float(e.get("fin", 0.1)), 0.0001), (dur - t) / maxf(float(e.get("fout", 0.1)), 0.0001)), 0.0, 1.0)
+			alpha *= k * k * (3.0 - 2.0 * k)
+	if frame < 0:
+		return {"sid": sid}
+	if bool(e.get("bright", false)) and (not bright or frames > BattleFx.BRIGHT_FRAMES):
+		alpha = minf(alpha, BRIGHT_CAP)
+	var ground: bool = s["ground"]
+	return {"sid": sid, "frame": frame, "pos": e["at"], "edge": float(e.get("r", 1.0)) * (SHEET_EDGE_RING if ground else SHEET_EDGE_ONE_SHOT),
+		"alpha": alpha, "yaw": float(e.get("yaw", 0.0)), "ground": ground}
+
+
+## When a plan's last one-shot sheet ends (0 without any): its pool item lives until then, so no sheet is cut short.
+static func sheets_end(plan: Dictionary) -> float:
+	var end := 0.0
+	for e in (plan.get("elements", []) as Array) + (plan.get("sheets", []) as Array):
+		var sid := String(e.get("sheet", VfxSheets.ELEMENTS.get(String(e.get("k", "")), "")))
+		var s := VfxSheets.sheet(sid) if not sid.is_empty() else {}
+		if not s.is_empty() and (s["loop"] as Array).is_empty():
+			end = maxf(end, float(e.get("t0", 0.0)) - VfxSheets.lead(s) + VfxSheets.life(s))
+	return end
+
+
+## Writes a sheet mark into its sheet's layer. Returns true when the sheet holds the element (even showing no frame now).
+func _put_sheet(m: Dictionary, ns: Dictionary) -> bool:
+	if m.is_empty():
+		return false
+	if not m.has("frame"):
+		return true
+	var sid := String(m["sid"])
+	var mi := _sheet_layer(sid)
+	var i := int(ns.get(sid, 0))
+	if mi == null or i >= mi.multimesh.instance_count:
+		return true
+	var edge := float(m["edge"])
+	var basis := Basis.from_scale(Vector3(edge, edge, 1.0))
+	if bool(m["ground"]):
+		basis = Basis(Vector3.UP, float(m["yaw"])) * Basis(Vector3.RIGHT, -PI * 0.5) * basis
+	var mm := mi.multimesh
+	mm.set_instance_transform(i, Transform3D(basis, m["pos"]))
+	mm.set_instance_color(i, Color(1, 1, 1, float(m["alpha"])))
+	mm.set_instance_custom_data(i, Color(float(m["frame"]), 0.0, 0.0, 0.0))
+	ns[sid] = i + 1
+	return true
+
+
+## The sheet's layer: a MultiMesh of quads with its texture (made the first time it draws).
+func _sheet_layer(sid: String) -> MultiMeshInstance3D:
+	if _sheet_layers.has(sid):
+		return _sheet_layers[sid]
+	var s := VfxSheets.sheet(sid)
+	if s.is_empty():
+		return null
+	var mi := _layer("Sheet_%s" % sid, _quad(), SH_SHEET, MAX_SHEET)
+	var mat := mi.material_override as ShaderMaterial
+	mat.set_shader_parameter("sheet", s["texture"])
+	mat.set_shader_parameter("grid", Vector2(float(s["columns"]), float(s["rows"])))
+	mat.set_shader_parameter("ground", 1.0 if bool(s["ground"]) else 0.0)
+	_sheet_layers[sid] = mi
+	return mi
 
 
 func _put(m: Dictionary, n: Array) -> void:

@@ -115,6 +115,7 @@ var _sound := BattleFx.SoundGate.new()
 var _mood_on := false
 var _shake := BattleFx.ShakeLimiter.new()
 var _real := 0.0
+var _sheet_hits := {}  # VFX-WIRE: event index -> true for a hit whose impact sheet started at its attack_started
 var _last_time := 0.0
 var _bars_dirty := true
 var _glyphs_dirty := true
@@ -429,7 +430,10 @@ func _on_beat(b: Dictionary, st: Dictionary) -> void:
 			_animate(c)
 			effects.add_dust(_feet(c), _scale())
 			if b.data.ruler:
-				effects.add_impact(_upper(c), _scale() * 1.2, true, not reduced_motion and _flash.allow(_real), reduced_motion)
+				# VFX-WIRE: the ruler's fall plays its sheet from its hit_frame (a death is not known ahead)
+				var fall := VfxSheets.sheet(VfxSheets.for_moment("ruler_fall"))
+				effects.add_impact(_upper(c), _scale() * 1.2, true, not reduced_motion and _flash.allow(_real), reduced_motion,
+					VfxSheets.for_moment("ruler_fall"), VfxSheets.lead(fall))
 				_try_shake(b.data.shake, int(b.event))
 			_glyphs_dirty = true
 			_bars_dirty = true
@@ -517,6 +521,13 @@ func _attack_started(b: Dictionary) -> void:
 	var t := card(int(b.target))
 	if a == null or t == null:
 		return
+	# VFX-WIRE (#242): a hit's impact sheet starts its lead-in now, so its hit_frame meets the blow (playback knows when it lands)
+	if b.data.hit and not reduced_motion:
+		var sid := BattleEffects.impact_sheet(b.data)
+		var sh := VfxSheets.sheet(sid)
+		if not sh.is_empty() and effects.add_impact(_upper(t), _scale(), bool(b.data.big), _flash.allow(_real), false, sid,
+				VfxSheets.lead(sh) - float(b.data.delay)):
+			_sheet_hits[int(b.event)] = true
 	var proj := String(b.data.projectile)
 	if proj.is_empty():
 		a.lunge(_center(t))
@@ -539,7 +550,8 @@ func _attack_landed(b: Dictionary, st: Dictionary) -> void:
 		t.sync(fs, t.glyphs)
 		var big: bool = b.data.big
 		var kills := int(fs.pending) >= int(fs.hp) and int(fs.pending) - int(b.data.damage) < int(fs.hp)
-		effects.add_impact(_upper(t), _scale(), big, not reduced_motion and _flash.allow(_real), reduced_motion)
+		if not _sheet_hits.erase(int(b.event)):  # its sheet already started with the blow's lead-in
+			effects.add_impact(_upper(t), _scale(), big, not reduced_motion and _flash.allow(_real), reduced_motion)
 		if shown or big or kills:
 			effects.add_number(_upper(t) - Vector2(0, 8), str(int(b.data.damage)), UiPalette.TEXT_PRIMARY, _number_size(big))
 			if int(b.data.get("iron_hide", 0)) < 0:
@@ -553,6 +565,7 @@ func _attack_landed(b: Dictionary, st: Dictionary) -> void:
 
 func _on_seeked(st: Dictionary) -> void:
 	effects.clear()
+	_sheet_hits.clear()
 	_animating.clear()
 	_shake_t = -1.0
 	stage.position = Vector2.ZERO

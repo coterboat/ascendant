@@ -998,6 +998,17 @@ func army_points(id: String) -> Array:
 	return out
 
 
+## VFX-WIRE (#242): the way army `id`'s figures face (its first standing figure's yaw), 0.0 when it has none on the board: a summoning
+## ring under it turns with it.
+func army_yaw(id: String) -> float:
+	if not armies.has(id):
+		return 0.0
+	for f in armies[id]["figs"]:
+		if float(f["scale"]) >= 0.05 and float(f["fall"]) <= 0.5:
+			return float(f.get("yaw", 0.0))
+	return 0.0
+
+
 func figure_count() -> int:
 	var n := 0
 	for e in armies.values():

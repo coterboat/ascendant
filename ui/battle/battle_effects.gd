@@ -6,6 +6,9 @@ extends Control
 ## Pools are BattleFx's: an effect that finds its pool full is skipped, since the bars carry the facts.
 ## Ages are playback seconds (2x and 4x shorten them, pause freezes them); an impact's bright frames are
 ## counted in real frames (at most BattleFx.BRIGHT_FRAMES, and only when the flash limiter allows).
+## VFX-WIRE (#242): an impact may play its effect sheet (VfxSheets: hit_impact, big_impact, ruler_fall) instead of the code star, with
+## the sheet's own alpha. A sheet impact may start before its blow (a negative age, its lead-in), so its hit_frame meets the contact;
+## it draws nothing until its age reaches 0. A missing sheet leaves the code star.
 
 const NUMBER_LIFE := 0.6
 const NUMBER_RISE := 24.0
@@ -13,6 +16,8 @@ const IMPACT_LIFE := 0.2
 const RING_LIFE := 0.3
 const DUST_LIFE := 0.4
 const MISS_OVERSHOOT := 40.0
+## A sheet's cell is drawn this many times the code star's radius a side (the effect fills about half its cell, §4.2).
+const SHEET_EDGE := 4.0
 
 var numbers := BattleFx.Pool.new(BattleFx.MAX_NUMBERS)
 var impacts := BattleFx.Pool.new(BattleFx.MAX_IMPACTS)
@@ -31,10 +36,22 @@ func add_number(pos: Vector2, text: String, col: Color, font_size: int) -> bool:
 
 
 ## An impact star at `pos` (1.6x for a big hit). `bright`: it may show its bright frames (the flash limiter
-## said yes). `ring`: reduced motion's static ring instead of a star.
-func add_impact(pos: Vector2, s: float, big: bool, bright: bool, ring: bool) -> bool:
-	return impacts.add({"pos": pos, "r": 18.0 * s * (1.6 if big else 1.0), "bright": bright and not ring, "ring": ring, "frames": 0, "age": 0.0,
-		"life": RING_LIFE if ring else IMPACT_LIFE})
+## said yes). `ring`: reduced motion's static ring instead of a star. `sheet`: the effect sheet it plays when that is there (never with
+## reduced motion), starting `start` seconds into it (VfxSheets.lead(s) less the time to the blow: negative while it waits).
+func add_impact(pos: Vector2, s: float, big: bool, bright: bool, ring: bool, sheet: String = "", start: float = 0.0) -> bool:
+	var it := {"pos": pos, "r": 18.0 * s * (1.6 if big else 1.0), "bright": bright and not ring, "ring": ring, "frames": 0, "age": 0.0,
+		"life": RING_LIFE if ring else IMPACT_LIFE}
+	var sh := VfxSheets.sheet(sheet) if not sheet.is_empty() and not ring else {}
+	if not sh.is_empty():
+		it["sheet"] = sheet
+		it["age"] = start
+		it["life"] = VfxSheets.life(sh)
+	return impacts.add(it)
+
+
+## The impact sheet for a hit (#229): big_impact for a big hit or a Charge's first hit, else hit_impact.
+static func impact_sheet(data: Dictionary) -> String:
+	return VfxSheets.for_moment("big_hit" if bool(data.get("big", false)) or bool(data.get("first_charge", false)) else "hit")
 
 
 ## A projectile from `from` to `to` taking `life` playback seconds, its apex `arc` x the distance above the
@@ -147,9 +164,18 @@ static func draw_projectile(ci: CanvasItem, p: Dictionary) -> void:
 	ci.draw_circle(head, r, Color(col, a))
 
 
-## An impact: an 8-point star (a static ring with reduced motion). Returns true when it drew a bright frame
+## An impact: an 8-point star (a static ring with reduced motion), or its effect sheet's frame. Returns true when it drew a bright frame
 ## (above 80% opacity: at most BattleFx.BRIGHT_FRAMES real frames, and only when the flash limiter allowed).
 static func draw_impact(ci: CanvasItem, it: Dictionary) -> bool:
+	if float(it.age) < 0.0:
+		return false  # a sheet's lead-in has not begun
+	var sid := String(it.get("sheet", ""))
+	if not sid.is_empty():
+		var sh := VfxSheets.sheet(sid)
+		if not sh.is_empty():
+			var full: bool = it.bright and int(it.frames) <= BattleFx.BRIGHT_FRAMES
+			VfxSheets.draw(ci, sh, VfxSheets.frame_at(sh, float(it.age)), it.pos, float(it.r) * SHEET_EDGE, 1.0 if full else 0.8)
+			return full
 	var k := float(it.age) / float(it.life)
 	var r := float(it.r)
 	if it.ring:
