@@ -104,7 +104,7 @@ func _init() -> void:
 	scroll.name = "Scroll"
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	box.add_child(scroll)
+	box.add_child(ScrollMore.frame(scroll, UiPalette.PANEL_BG))  # the fade and More (UI-FIT's) while more of the choice is below
 	var inner := VBoxContainer.new()
 	inner.name = "Inner"
 	inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
