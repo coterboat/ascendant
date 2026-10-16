@@ -20,6 +20,9 @@ const CHIP_H := 22.0
 const ICON_PX := 18
 const TRAY_H := 34.0
 const LABEL_W := 84.0  # UI-FIT (#237): the words at the floor's 15 px, "Westwatch" whole (72 held it at 13 px)
+## UI-CLUTTER (#238): the words take what they need from LABEL_W up to this ("Knight Captain" whole); longer ones trim, their whole text in
+## the tooltip. A fixed LABEL_W trimmed them with the tray half empty.
+const LABEL_MAX := 150.0
 const CROSS_PX := 18.0
 
 var index := -1
@@ -107,7 +110,8 @@ func _build(c: OrdersController) -> void:
 	label.add_theme_font_size_override("font_size", UiPalette.TYPE_FLOOR)  # UI-FIT (#237): the floor
 	label.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)
 	if look == Look.TRAY:
-		label.custom_minimum_size.x = LABEL_W
+		var natural := label.get_theme_font("font").get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, UiPalette.TYPE_FLOOR).x + 2.0
+		label.custom_minimum_size.x = clampf(ceilf(natural), LABEL_W, LABEL_MAX)
 		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	else:
 		label.add_theme_color_override("font_outline_color", UiPalette.KEYLINE_INK)
