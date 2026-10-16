@@ -40,6 +40,8 @@ const Kit := preload("res://world3d/kit.gd")
 const TABLE_PATH := "res://world3d/models.json"
 ## The pose models a figure can have (rulers add "cheer"; without a model a pose draws the ready one).
 const POSES := ["ready", "march", "strike", "fallen", "cheer"]
+## VFX-WIRE: fx_top's band: the highest 6% of a figure's vertices.
+const FX_TOP_BAND := 0.06
 ## The Kit pieces a building row may fall back to (M3c S-4 adds the siege kinds' placeholders).
 const BUILDING_PIECES := ["fortress", "fort", "cottage", "broadleaf", "pine", "rock", "palisade", "scaffold", "siege_works",
 	"siege_engine", "rubble"]
@@ -377,6 +379,35 @@ static func problems() -> Array:
 
 
 ## Clears the cached meshes (a test that swaps the table).
+## VFX-WIRE (#242): the point an effect bursts from on a figure, in its model's own space (feet at the origin, facing -Z): the middle of
+## its highest vertices, which on the Ever-Regent is the head of its staff (1.7 to the side of its 8.9 height) and on a crowned king the
+## crown. A row's "fx_anchor" ([x, y, z] in the same space) overrides it. Measured once per type on the standing pose.
+static func fx_top(type_id: String) -> Vector3:
+	var key := "fx_top:" + type_id
+	if _meshes.has(key):
+		return _meshes[key]
+	var row := figure_row(type_id)
+	var out := Vector3.ZERO
+	var fixed: Variant = row.get("fx_anchor")
+	if fixed is Array and (fixed as Array).size() == 3:
+		out = Vector3(float(fixed[0]), float(fixed[1]), float(fixed[2]))
+	else:
+		var mesh: Mesh = figure_mesh(type_id, true, "ready").get("mesh")
+		if mesh != null and mesh.get_surface_count() > 0:
+			var verts: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+			var aabb := mesh.get_aabb()
+			var band := aabb.size.y * FX_TOP_BAND
+			var sum := Vector3.ZERO
+			var n := 0
+			for v in verts:
+				if v.y >= aabb.end.y - band:
+					sum += v
+					n += 1
+			out = sum / float(n) if n > 0 else Vector3(0, aabb.end.y, 0)
+	_meshes[key] = out
+	return out
+
+
 static func clear_cache() -> void:
 	_meshes.clear()
 	_table = {}

@@ -15,6 +15,9 @@
 ##   "col" (its alpha is the peak), "up", "yaw", "seed", "w" (the shader's variant: 1 animates a standing decal), "fin", "fout",
 ##   "bright" (may flash: world3d/spell_fx.gd asks the limiter), "path" (a mote's way)}.
 ##
+## VFX-WIRE (#242): a plan's "sheets" are effect sheets that have no code mark (world3d/spell_fx.gd draws them only when their sheet is
+## there): [{"sheet", "at", "r", "t0", "dur", "col", "yaw", "fin", "fout"}]. cast_channel lies under a caster while it casts and
+## briar_burst at a snared fighter's feet; both are on the ground, turned to that fighter's facing (its "yaw", from the stage).
 ## Every effect has a beat on every rung: the ladder thins an effect (no trail, no glow, fewer particles, a still decal), it never
 ## drops it (the tests). Reduced motion keeps each effect as a still mark: no sweep, no travel, no pulse, no particles, no shake,
 ## no flash. Nothing here draws a random number: a particle's place comes from a hash of its index (h01).
@@ -89,7 +92,15 @@ static func rung_of(quality: int, compatibility: bool = false) -> int:
 
 
 static func _plan(effect: String, rung: int) -> Dictionary:
-	return {"effect": effect, "rung": rung, "elements": [], "labels": [], "shake": 0.0, "flash": false, "life": 0.0}
+	return {"effect": effect, "rung": rung, "elements": [], "labels": [], "shake": 0.0, "flash": false, "life": 0.0, "sheets": []}
+
+
+## VFX-WIRE: appends a sheet-only entry (see "sheets" above).
+static func _sheet(plan: Dictionary, sheet: String, at: Vector3, r: float, t0: float, dur: float, col: Color, yaw: float, opts: Dictionary = {}) -> void:
+	var e := {"sheet": sheet, "at": at, "r": r, "t0": t0, "dur": dur, "col": col, "yaw": yaw, "fin": 0.08, "fout": 0.3}
+	for key in opts:
+		e[key] = opts[key]
+	plan["sheets"].append(e)
 
 
 ## Appends an element: kind `k` at `at`, half-size `r`, from `t0` for `dur` seconds, in `col` (its alpha is the peak).
@@ -185,6 +196,9 @@ static func _caster_ring(plan: Dictionary, args: Dictionary, life: float) -> voi
 		return
 	var col: Color = args.get("col", Color.WHITE)
 	_add(plan, "ring", _foot(c) + Vector3.UP * 0.25, float(c.get("r", 3.2)), 0.0, life, _alpha(col, 0.95), {"fin": 0.06, "fout": life * 0.5})
+	## VFX-WIRE: the channel loops on the ground under the caster while it casts, turned to its facing (the ring stays: it is the owner's)
+	_sheet(plan, "cast_channel", _foot(c) + Vector3.UP * 0.2, float(c.get("r", 3.2)), 0.0, life, Color(1, 1, 1, 0.95), float(c.get("yaw", 0.0)),
+		{"fin": 0.06, "fout": life * 0.5})
 
 
 static func _bolt(plan: Dictionary, args: Dictionary, school: String, reduced: bool) -> void:
@@ -248,6 +262,8 @@ static func _snare(plan: Dictionary, args: Dictionary, reduced: bool) -> void:
 		var t0 := 0.1 + 0.03 * mini(i, 8)
 		## the decal ring at the target's feet: the caster's side colour under green thorns, for the round
 		_add(plan, "ring", foot, r * 1.05, t0, life - t0, _alpha(col, 0.9), {"fin": 0.2, "fout": 0.25})
+		## VFX-WIRE: the briars burst from the ground at its feet as the snare lands, turned to its facing
+		_sheet(plan, "briar_burst", foot + Vector3.UP * 0.05, r, t0, 0.0, Color(1, 1, 1, 1.0), float(tg.get("yaw", 0.0)))
 		_add(plan, "thorn_ring", foot + Vector3.UP * 0.05, r * 1.0, t0, life - t0, _alpha(WILD, 0.95), {"fin": 0.25, "fout": 0.25, "yaw": h01(i, 4) * TAU,
 			"w": 0.0 if reduced else 1.0, "seed": float(i)})
 		if rung <= 2:
@@ -432,7 +448,7 @@ static func board(key: String, rung: int, args: Dictionary, reduced: bool = fals
 			_add(plan, "ring", src + Vector3.UP * 0.3, 6.0, 0.0, 0.9, _alpha(BLOOD, 0.8), {"fin": 0.05, "fout": 0.5})
 		"summoned":
 			## a briar ring the creatures step out of; thorns shoot up from it
-			_summon_ring(plan, rung, reduced, at, maxf(r, 6.0), WILD)
+			_summon_ring(plan, rung, reduced, at, maxf(r, 6.0), WILD, float(args.get("yaw", 0.0)))  # VFX-WIRE: turned to the summons' facing
 		"summon_faded":
 			## the creatures dissolve into leaves
 			var nl := 16 if rung <= 1 else (8 if rung == 2 else 0)
@@ -516,11 +532,11 @@ static func _cast(plan: Dictionary, kind: String, rung: int, reduced: bool, scho
 	if bool(args.get("global", false)) or not args.has("at"):
 		_moon(plan, rung, reduced, args.get("map", at), school)
 		return
-	_arrive(plan, rung, reduced, school, kind, at, r, travel)
+	_arrive(plan, rung, reduced, school, kind, at, r, travel, float(args.get("yaw", 0.0)))  # VFX-WIRE: a summoning ring turns with its summons
 
 
 ## What arrives at the target: the ritual's decal, in its `kind`'s look, after `delay` seconds.
-static func _arrive(plan: Dictionary, rung: int, reduced: bool, school: String, kind: String, at: Vector3, r: float, delay: float) -> void:
+static func _arrive(plan: Dictionary, rung: int, reduced: bool, school: String, kind: String, at: Vector3, r: float, delay: float, yaw: float = 0.0) -> void:
 	var pal: Dictionary = SCHOOL_COLOURS[school]
 	var main: Color = pal["main"]
 	var hot: Color = pal["hot"]
@@ -536,7 +552,7 @@ static func _arrive(plan: Dictionary, rung: int, reduced: bool, school: String, 
 		"curse":
 			_add(plan, "veins", land, r * VEIN_K, delay, 1.4, _alpha(BLOOD, 0.9), {"r0": r * VEIN_K if reduced else r * 0.2, "fin": 0.1, "fout": 0.8})
 		"summon":
-			_add(plan, "summon_ring", land, r * 0.35, delay, 1.4, _alpha(WILD, 0.9), {"fin": 0.1, "fout": 0.8})
+			_add(plan, "summon_ring", land, r * 0.35, delay, 1.4, _alpha(WILD, 0.9), {"fin": 0.1, "fout": 0.8, "yaw": yaw})
 		"raising":
 			_add(plan, "dust_ring", land, r * 0.35, delay, 1.4, _alpha(GILT, 0.85), {"fin": 0.1, "fout": 0.8})
 		"sight":
@@ -560,9 +576,10 @@ static func _moon(plan: Dictionary, rung: int, reduced: bool, over: Vector3, sch
 
 
 ## A summoning ring (the creatures step out of it) or a Bastion's: fade in from rung 3, pop in from rung 4.
-static func _summon_ring(plan: Dictionary, rung: int, reduced: bool, at: Vector3, r: float, col: Color) -> void:
+static func _summon_ring(plan: Dictionary, rung: int, reduced: bool, at: Vector3, r: float, col: Color, yaw: float = 0.0) -> void:
 	var fin := 0.7 if (rung <= 2 and not reduced) else (0.3 if rung == 3 else 0.02)
-	_add(plan, "summon_ring", at + Vector3.UP * 0.3, r, 0.0, 2.0, _alpha(col, 0.95), {"fin": fin, "fout": 0.9, "r0": r if (rung >= 3 or reduced) else r * 0.3})
+	_add(plan, "summon_ring", at + Vector3.UP * 0.3, r, 0.0, 2.0, _alpha(col, 0.95), {"fin": fin, "fout": 0.9, "r0": r if (rung >= 3 or reduced) else r * 0.3,
+		"yaw": yaw})
 	if rung <= 2 and not reduced:
 		var n := 14 if rung <= 1 else 7
 		for i in n:

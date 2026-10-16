@@ -240,6 +240,16 @@ white flash; with the sheet's own alpha the cel shapes and colours hold. Prompts
 | smoke / dust | 384×384 → 192×192 | 16 | still (keep native alpha) → forge 1.5 s | one-shot, 16 fps | normal alpha |
 | area marker, screen shake | – | – | code only | – | – |
 
+**The sheet files** (VFX-WIRE #242): `assets/vfx/<id>/<id>.webp`, its frames in a grid (left to right, then top to bottom), and `<id>.json`:
+`{"frames": 16, "columns": 4, "frame_size": [192, 192], "fps": 24, "hit_frame": 6, "loop": [1, 15]}`. `loop` is the frames a loop plays
+(0-based, both ends in; the cast and summoning loops skip frame 0, the dark input still); a one-shot has none. A field left out takes the
+table's value for its kind. A sheet that isn't there leaves the code effect (`world3d/vfx_sheets.gd`).
+
+**Playback:** a one-shot's `hit_frame` meets the moment of contact. Playback knows each blow's time, so its sheet starts `hit_frame / fps`
+before the blow (0.25 s at frame 6 and 24 fps); what isn't known ahead (a ruler's fall) starts on its `hit_frame` (provisional, #242).
+Rings, channels and bursts at a unit's feet lie on the ground plane, turned to that unit's facing (Alex 10-15), not billboarded. A fallen
+ruler's burst comes from its staff head (the model's highest point), not the figure's middle.
+
 ## 5. Transformations (M4)
 
 **Recognisability contract.** A variant keeps:

@@ -121,7 +121,7 @@ func army_ring(aid: String) -> Dictionary:
 	var r := 0.0
 	for p in pts:
 		r = maxf(r, Vector2((p[0] as Vector3).x - mid.x, (p[0] as Vector3).z - mid.z).length())
-	return {"at": mid, "r": maxf(r + 4.0, 7.0)}
+	return {"at": mid, "r": maxf(r + 4.0, 7.0), "yaw": armies.army_yaw(aid) if armies != null and armies.has_method("army_yaw") else 0.0}
 
 
 ## The roads a mote runs from province `a` to province `b`, as world points just above the ground: the roads between neighbours,
@@ -265,6 +265,7 @@ func plan_of(beat: Dictionary) -> Dictionary:
 			if not r3.is_empty():
 				args["at"] = r3["at"]
 				args["r"] = r3["r"]
+				args["yaw"] = r3["yaw"]  # VFX-WIRE: the ring turns with the summons
 			elif has_at:
 				args["r"] = 8.0
 		"fort_raised":
