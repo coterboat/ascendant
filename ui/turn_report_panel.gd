@@ -512,7 +512,7 @@ static func recruited_unit(e: Dictionary) -> String:
 		return ""
 	var factions: Array = e.get("factions", [])
 	var text := str(e.get("text", ""))
-	for f in FactionData.FACTIONS:
+	for f in FactionData.rows():  # CW-7: the preview factions' recruits too
 		if not factions.is_empty() and f.id != str(factions[0]):
 			continue
 		for u in f.unit_types + [f.commander]:

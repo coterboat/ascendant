@@ -11,7 +11,13 @@ extends Control
 ##                before it enters the tree) and switches to it; Back (or Esc) closes it.
 ##   Load game    opens the LoadScreen over the title: every save, newest first, with delete.
 ##   Quick start  straight into a game: NewGameScreen.quick_start_config() (a random faction against the
-##                computer at Normal, every system on, rulers on the balanced preset, a random seed).
+##                computer at Normal, every system on, rulers on the balanced preset, a random seed). CW-7: with
+##                the Candlewake's preview box ticked (GameSettings.preview_factions_on) the preview factions are
+##                in the draw too, once they can play every system Quick start turns on.
+## The banners (CW-7, #258): a banner hangs for every faction that ships, and for a faction still being built once the
+## preview box is ticked and its banner's art is in (banner_factions). Two hang where they always did; a third joins the
+## left flank and the flanks narrow around the menu (provisional, until the Candlewake's banner art is accepted: the
+## title is unchanged until then).
 ##   Codex        opens the CodexPanel over the title; Close (or Esc) returns here.
 ##   Settings     opens the SettingsPanel (window mode, interface size, sound volumes).
 ##   Quit         closes the game.
@@ -27,7 +33,12 @@ const MAP_SCENE := "res://ui/map_screen.tscn"
 const CODEX_SCENE := "res://ui/codex_panel.tscn"
 ## From design/GAME_BRIEF.md's one line.
 const TAGLINE := "Simultaneous-turn fantasy strategy where every rule is visible."
-const BANNERS := {"KingdomBanner": "kingdom", "BeastsBanner": "beasts"}
+const BANNERS := {"KingdomBanner": "kingdom", "BeastsBanner": "beasts"}  # the banners the scene hangs
+## CW-7: where the banners hang, as [left anchor, right anchor] in the banners' order. Two where the scene has them; three
+## with the first two at the flanks' outer edges and the third on the left flank's inner side, each narrowed so the menu
+## keeps its column.
+const TWO_BANNERS := [[0.06, 0.2475], [0.7525, 0.94]]
+const THREE_BANNERS := [[0.02, 0.19], [0.81, 0.98], [0.2, 0.37]]
 
 var continue_button: Button
 var new_game_button: Button
@@ -82,11 +93,7 @@ func _bind() -> void:
 	for b in [continue_button, new_game_button, load_button, quick_start_button, codex_button, settings_button, quit_button]:
 		_style_menu_button(b, b == continue_button)
 	_use_backdrop_art()
-	var model := GameState.new()
-	for node_name in BANNERS:
-		var f := model.find_faction(BANNERS[node_name])
-		var caption := get_node("%s/%s" % [node_name, node_name.replace("Banner", "Caption")]) as Label
-		caption.text = f.faction_name if f else ""
+	hang_banners()
 	continue_button.pressed.connect(func(): continue_game())
 	new_game_button.pressed.connect(open_new_game)
 	load_button.pressed.connect(open_load_screen)
@@ -167,11 +174,50 @@ func open_new_game(last_game: Dictionary = {}) -> void:
 		new_game_screen.start_button.grab_focus.call_deferred()
 
 
-## Back on the new game screen: the title again.
+## Back on the new game screen: the title again (its banners follow the preview box).
 func close_new_game() -> void:
 	if new_game_screen:
 		new_game_screen.visible = false
+	hang_banners()
 	_focus_first()
+
+
+## CW-7: the factions whose banners hang on the title, in FactionData's order: every faction that ships, and a preview one
+## when `preview` is on and its banner's art is in (Art.banner).
+static func banner_factions(preview: bool) -> Array:
+	return FactionData.ids().filter(func(fid): return not FactionData.is_preview(fid) or (preview and Art.banner(fid) != null))
+
+
+## The title's node for `faction_id`'s banner: the scene's own for the two that ship (BANNERS), "<Faction>Banner" otherwise.
+static func banner_node_name(faction_id: String) -> String:
+	var shipped = BANNERS.find_key(faction_id)
+	return String(shipped) if shipped != null else "%sBanner" % faction_id.to_pascal_case()
+
+
+## Hangs a banner, captioned with its faction's name, for each of banner_factions() (three at most): two where the scene
+## hangs them (TWO_BANNERS), three where THREE_BANNERS says. A banner no longer wanted comes down.
+func hang_banners() -> void:
+	var fids := banner_factions(GameSettings.preview_factions_on()).slice(0, THREE_BANNERS.size())
+	var spots: Array = THREE_BANNERS if fids.size() == THREE_BANNERS.size() else TWO_BANNERS
+	var wanted := {}
+	for i in fids.size():
+		var fid := String(fids[i])
+		var node_name := banner_node_name(fid)
+		wanted[node_name] = true
+		var banner := get_node_or_null(node_name) as TextureRect
+		if banner == null:  # a faction the scene doesn't hang: a copy of the first banner, with its own art
+			banner = ($KingdomBanner as TextureRect).duplicate() as TextureRect
+			banner.name = node_name
+			banner.texture = Art.banner(fid)
+			banner.get_child(0).name = node_name.replace("Banner", "Caption")
+			add_child(banner)
+			move_child(banner, $BeastsBanner.get_index() + 1)
+		(banner.get_child(0) as Label).text = String(FactionData.row(fid).get("name", ""))
+		banner.anchor_left = spots[i][0]
+		banner.anchor_right = spots[i][1]
+	for child in get_children():
+		if child is TextureRect and String(child.name).ends_with("Banner"):
+			child.visible = wanted.has(String(child.name))
 
 
 ## The Load game button: every save over the title.
@@ -210,9 +256,10 @@ func start_game(config: Dictionary) -> GameScreen:
 	return game
 
 
-## Straight into a game: you against the computer at Normal, a random faction, every system on, a random seed.
+## Straight into a game: you against the computer at Normal, a random faction, every system on, a random seed. The preview
+## factions are in the draw while the preview box is ticked (CW-7) and they can play every system.
 func quick_start() -> GameScreen:
-	return start_game(NewGameScreen.quick_start_config())
+	return start_game(NewGameScreen.quick_start_config(null, GameSettings.preview_factions_on()))
 
 
 ## Opens the codex over the title, at `key` when given.

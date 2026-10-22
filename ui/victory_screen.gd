@@ -330,7 +330,7 @@ static func _faction_name(fid: String, state: GameState) -> String:
 		var f := state.find_faction(fid)
 		if f != null:
 			return f.faction_name
-	for f in FactionData.FACTIONS:
+	for f in FactionData.rows():
 		if f.id == fid:
 			return f.name
 	return "An unknown faction"
