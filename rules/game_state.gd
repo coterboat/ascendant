@@ -292,7 +292,10 @@ func _seat(faction_ids: Array, errors = null) -> bool:
 		var cap := find_province(f.capital)
 		if cap != null and not shown.is_empty():
 			cap.name = shown
-	return place_starting_armies(errors) and validate(errors)
+	if not place_starting_armies(errors):
+		return false
+	MarkRules.seed_capitals(self)  # CW-3: a marking faction's capital stands at its last stage from the start
+	return validate(errors)
 
 ## The M1 starting state plus a ruler for every faction (design/M2_RULER.md §1.5). `builds` maps a
 ## faction id to its build, {"ruler": ruler id, "mandates": [mandate ids]}, or to a preset id

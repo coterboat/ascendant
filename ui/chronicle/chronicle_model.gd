@@ -248,6 +248,8 @@ const TABLE := {
 		"you": ["land", "terrain_changed", "your_land_minor", "{place} relights", "{row}", "o"],
 		"rival": ["abroad", "terrain_changed", "abroad", "{place} relights", "{row}", ""],
 	},
+	# CW-3 (#254, §3.6): the dead rising from Deep Wake are their owner's news alone.
+	"risen": {"default": ["realm", "recruits_raised", "realm_minor", "The dead rose at {place}", "{row}", "o"]},
 }
 ## The event types that make no announcement: the game's end (the victory screen tells it) and the fold of the viewer's own army counts
 ## (a fog bookkeeping line the full report keeps). The viewer's own moves are skipped too: the board shows them.
@@ -261,7 +263,7 @@ const EVENT_TYPES := ["army_moved", "order_rejected", "battle", "border_battle",
 	"construction_started", "construction_razed", "construction_halted", "army_disbanded", "army_split", "units_transferred",
 	"armies_merged", "commanders_swapped", "blessing_healed", "blood_paid", "storm_called_off", "sally_called_off", "sally_found_nothing",
 	"game_over", "sighting_changed", "sighting_lost", "memory_added", "army_changed",
-	"flame_changed", "guttered", "harvest", "mark_stage", "scar_formed", "scar_consumed"]  # CW-1: the Candlewake's
+	"flame_changed", "guttered", "harvest", "mark_stage", "scar_formed", "scar_consumed", "risen"]  # CW-1, CW-3: the Candlewake's
 ## A report phase's kind, for an event type that has no template yet.
 const PHASE_KINDS := {"orders": "needs_you", "movement": "abroad", "battles": "battles", "sieges": "battles", "capture": "land",
 	"recruitment": "realm", "income": "realm", "research": "realm", "rulers": "rulers", "sacrifice": "rulers", "rituals": "magic",

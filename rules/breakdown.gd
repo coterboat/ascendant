@@ -78,6 +78,8 @@ static func _modifier_rule(key: String) -> String:
 			return "Forge Tithe: every province with a fort you own earns more gold."
 		RulerRules.CUT_OFF:  # M3c
 			return "Cut off: while a real army besieges a fort, from the siege's second turn, it pays its owner nothing and its base income goes to the besiegers."
+		MarkRules.INCOME_KEY:  # CW-3
+			return MarkRules.income_rule()
 	if key.begins_with(AscensionRules.PART_PREFIX):
 		return AscensionRules.part_rule(key)  # M4: Market Charters, Tithe of Light, Deep Mines, Bounty of the Wild
 	return ""

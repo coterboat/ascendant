@@ -1293,6 +1293,10 @@ static func province_income_parts(state: GameState, province_id: String, ruler_a
 	for m in AscensionRules.income_parts(state, p):
 		mods.append(m)
 		total += int(m.value)
+	# CW-3: the Wake (§3.2): a marking faction's own mark at the Wake-Line or Deep Wake pays it less (none without marks).
+	for m in MarkRules.income_parts(state, p):
+		mods.append(m)
+		total += int(m.value)
 	if total < 0:
 		mods.append({"key": "income_floor", "name": "Never below 0", "value": -total,
 			"note": "a province never earns less than nothing"})

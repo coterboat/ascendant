@@ -57,6 +57,17 @@ static func start_flame(state: GameState, faction_id: String) -> int:
 	return mini(out, cap(state, faction_id))
 
 
+## The start flame in words, naming the mandate that raised it (§2.5; the director, 10-22: a hotter start says where it comes
+## from): "flame 2 (Kindling)", or "flame 1".
+static func start_words(state: GameState, faction_id: String) -> String:
+	var flame := start_flame(state, faction_id)
+	if state != null:
+		for mid in RulerRules.mandates(state, faction_id):
+			if int(RulerRules.mandate_data(mid).get("start_flame", 0)) == flame:
+				return "flame %d (%s)" % [flame, RulerRules.mandate_name(mid)]
+	return "flame %d" % flame
+
+
 ## The flame `army` fights a battle at (§2.2): its flame (the one the battle phase began with: nothing changes a flame
 ## during the battle phase), with any battle bonus (Bonfire Night, CW-5), never above its cap. -1 for an army with none.
 static func battle_flame(state: GameState, army: Army) -> int:
@@ -206,23 +217,32 @@ static func harvest(state: GameState, kind: String, province_ids: Array, sides: 
 	var ut := TurnResolver.recruitable_type(f, String(ability.get("unit", "")))
 	if ut == null or count <= 0:
 		return
-	joins.sort_custom(func(x, y): return TurnReportText.army_number(x.id) < TurnReportText.army_number(y.id))
-	var army: Army = joins[0] if not joins.is_empty() else null
+	var raised := raise(state, winner, ut, count, String(province_ids[0]), joins)
+	var e := harvest_event(state, raised.army, ut.id, count, bool(raised.joined))
+	e.phase = String(events.back().get("phase", "battles")) if not events.is_empty() else "battles"
+	events.append(e)
+
+
+## Raises `count` of `ut` for `faction_id` at `province_id` (Harvest; the Risen, MarkRules, CW-3): they join the lowest-numbered
+## army of `joins` at its flame (they don't cool it), or form a new army there lit at the start flame, which the Wick step counts
+## as raised this turn. {"army": the army they are in, "joined": whether it stood there already}.
+static func raise(state: GameState, faction_id: String, ut: UnitType, count: int, province_id: String, joins: Array) -> Dictionary:
+	var sorted := joins.duplicate()
+	sorted.sort_custom(func(x, y): return TurnReportText.army_number(x.id) < TurnReportText.army_number(y.id))
+	var army: Army = sorted[0] if not sorted.is_empty() else null
 	var joined := army != null
 	if army == null:
 		army = Army.new()
-		army.id = state.new_army_id(winner)
-		army.owner = winner
-		army.location = String(province_ids[0])
+		army.id = state.new_army_id(faction_id)
+		army.owner = faction_id
+		army.location = province_id
 		light(state, army)
 		state.armies.append(army)
 	for i in count:
-		var u := Unit.new(ut, winner)
+		var u := Unit.new(ut, faction_id)
 		u.current_hp = RulerRules.unit_max_hp(state, u)
 		army.units.append(u)
-	var e := harvest_event(state, army, ut.id, count, joined)
-	e.phase = String(events.back().get("phase", "battles")) if not events.is_empty() else "battles"
-	events.append(e)
+	return {"army": army, "joined": joined}
 
 
 # --- the words (§2.5) ------------------------------------------------------------------------------------
