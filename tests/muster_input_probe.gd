@@ -9,11 +9,12 @@ extends SceneTree
 ##   * the pointer moves from Split straight onto a line of its forecast, in one event;
 ##   * a click on Split, the pointer left where it was while the forecast grows, orders the split;
 ##   * a portrait dragged onto New army orders another; one dragged onto a row moves a fighter;
-##   * Merge all, Swap commanders and Send engines (a second army with a captain and engines stands at the capital: it is added to
-##     the map's own copy of the board, so only the card's orders see it) and Cancel muster, each clicked;
+##   * Merge all, Swap commanders and Send engines (the probe stands a second army with a captain and two engines at the capital, in
+##     the session's own board) and Cancel muster, each clicked;
 ##   * from every muster button, one jump onto every control of the card in view, each checked (the class: no handler the pointer
 ##     sets off takes away the control it moves onto);
-##   * the capital's Recruit and a recruit button, and the fort panel and its buttons.
+##   * the capital's Recruit and a recruit button and its fort panel, then Storm and Sally, on and off, on the forts tests' besieged
+##     keep, from the army's card and from the fort panel.
 ## It prints one PASS or FAIL line a check and a last line, "MUSTER_PROBE OK" or "MUSTER_PROBE FAILED n". Never touches the
 ## player's settings or saves (they go to a scratch folder under user://).
 ##
