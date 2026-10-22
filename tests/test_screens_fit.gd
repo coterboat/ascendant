@@ -14,7 +14,7 @@ const PROBE := "res://tests/screen_fit_probe.gd"
 const SCRATCH := "user://screen_fit_probe"  # the probe's own settings and saves (tests/screen_fit_probe.gd)
 const SIZES := {"1600x900": Vector2(1600, 900), "1280x720": Vector2(1280, 720)}
 const SCREENS := ["title", "new_game", "new_game_full", "new_game_error", "victory", "victory_actions", "victory_everything",
-	"victory_draw", "build", "codex", "settings", "load", "guide", "game", "game_research", "game_report", "game_cast"]
+	"victory_draw", "build", "codex", "settings", "load", "guide", "game", "game_research", "game_research_clans", "game_report", "game_cast"]
 const NEW_GAMES := ["new_game", "new_game_full", "new_game_error"]
 const VICTORIES := ["victory", "victory_actions", "victory_everything", "victory_draw"]
 ## A scroll container smaller than this is not a visible way to the content in it.
@@ -300,6 +300,8 @@ func test_the_big_panels_fit_the_window_at_both_sizes() -> void:
 		assert_true(_shown(research, "research_panel"), "the research panel is open at %s" % key)
 		assert_true(_inside(_rect(research, "research_panel"), viewport), "the research panel's Magic tab fits the window at %s (%s)" % [key, _rect(research, "research_panel")])
 		assert_true(_shown(research, "research_close") and _inside(_rect(research, "research_close"), viewport), "its Close is on screen at %s" % key)
+		var clans := _screen(key, "game_research_clans")  # #287: the Clans' Magic tab, with a spellbook change's status line
+		assert_true(_inside(_rect(clans, "research_panel"), viewport), "the Clans' Magic tab fits the window at %s (%s)" % [key, _rect(clans, "research_panel")])
 		var report := _screen(key, "game_report")
 		assert_true(_shown(report, "report_box"), "the turn report is open at %s" % key)
 		assert_true(_inside(_rect(report, "report_box"), viewport), "the turn report fits the window at %s (%s)" % [key, _rect(report, "report_box")])
@@ -314,3 +316,29 @@ func test_the_big_panels_fit_the_window_at_both_sizes() -> void:
 		for name in ["seal", "end_turn", "menu"]:
 			if _shown(cast, name):
 				assert_false(panel.intersects(_rect(cast, name)), "clear of %s at %s (%s, %s)" % [name, key, panel, _rect(cast, name)]))
+
+
+## #287: the research panel's Magic tab ran its last row of spell cards over the status and footer lines (the Clans' Wild and Blood schools,
+## at 1600x900; at 125% a spellbook change's status line sat on the same pixels as the cards' last line). The tree scrolls in the panel's
+## body now: as drawn, its cards end above both lines at both sizes, as the Crown and as the Clans, and while more of the tree is below the
+## edge the fade and "More" (UI-FIT's ScrollMore) say so, inside the tree's area. The panel itself still fits the window
+## (test_the_big_panels_fit_the_window_at_both_sizes).
+func test_the_research_trees_cards_end_above_its_status_and_footer_lines() -> void:
+	_each_size(func(key: String, _viewport: Vector2):
+		for name in ["game_research", "game_research_clans"]:
+			var s := _screen(key, name)
+			var where := "%s at %s" % [name, key]
+			var tree := _rect(s, "research_tree")
+			var whole := _rect(s, "research_tree_whole")
+			var footer := _rect(s, "research_footer")
+			assert_true(tree.end.y <= footer.position.y + 0.5, "%s: the cards end above the footer (%d, the footer at %d)" % [where, tree.end.y, footer.position.y])
+			if _shown(s, "research_status"):
+				var status := _rect(s, "research_status")
+				assert_true(tree.end.y <= status.position.y + 0.5, "%s: and above the status line (%d, the line at %d)" % [where, tree.end.y, status.position.y])
+			var cut := whole.size.y > tree.size.y + 2.0
+			assert_eq(_shown(s, "research_more"), cut, "%s: the tree is %d tall in %d: the More cue %s" % [where, whole.size.y, tree.size.y, "shows" if cut else "hides"])
+			if cut:
+				var more := _rect(s, "research_more")
+				assert_true(absf(more.end.y - tree.end.y) <= 1.0 and more.position.y <= tree.position.y + 0.5,
+					"%s: over the tree's area, down to its edge (%s for %s)" % [where, more, tree])
+		assert_true(_shown(_screen(key, "game_research_clans"), "research_status"), "the Clans' tab shows its status line at %s" % key))
