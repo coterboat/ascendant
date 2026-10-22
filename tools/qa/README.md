@@ -47,7 +47,7 @@ whose words open it, your army or province on the board, or a scroll toward the 
 | `muster` | Armies here (MusterBoard), the portraits, the army card | your armies on the board; Split, Merge, New army, Swap |
 | `research` | the research panel, its HUD, the paths and lock-in previews | Research, Magic, spell, path |
 | `fort` | the fort panel, Fortify, the province card, Recruit at, the walls | your provinces on the board; fort, palisade, storm, recruit |
-| `battles` | the battle host (3D stage and Simple view), its controls, the report | every army on the board (marching into fights); Watch, battle, March |
+| `battles` | the battle host (3D stage and Simple view), its controls, the report | every army on the board; Watch, battle, March, and right after March a province next to the army (a garrison or a rival there: a battle) |
 | `chronicle` | the Chronicle, its notices, the Plan | Chronicle, Plan, seal |
 | `settings` | the settings panel | Menu, Settings |
 

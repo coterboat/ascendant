@@ -160,6 +160,7 @@ var _hover_id := 0
 var _hover_desc := "nothing"
 var _stale_id := 0
 var _pending_shot := ""
+var _march_follow := false  # --focus=battles: March was just pressed, so the next gesture picks a neighbouring province
 
 
 func _initialize() -> void:
@@ -386,6 +387,13 @@ func _gesture() -> void:
 		screens_seen[sig] = true
 		if screens_seen.size() <= NEW_SCREEN_SHOTS and gestures > 0:
 			await _shot("new_" + sig.replace(">", "+").replace(" ", "").left(60))
+	if _march_follow:
+		# --focus=battles: a march needs its destination, as a player clicks it next (into a garrison, a rival: a battle)
+		_march_follow = false
+		var dest := _march_target()
+		if not dest.is_empty() and rng.randf() < 0.8:
+			await _click(_point_in(dest.rect, true), MOUSE_BUTTON_LEFT, false, "march to %s" % dest.what)
+			return
 	if turn_gestures >= turn_budget and rng.randf() < 0.35:
 		await _end_turn()
 		return
@@ -465,6 +473,8 @@ func _act_on(t: Dictionary) -> void:
 			# buttons, popups, tabs and any control that takes the mouse or explains itself on hover
 			if roll < 0.68:
 				await _click(p, MOUSE_BUTTON_LEFT, false, what)
+				if focus.has("battles") and t.kind == "button" and String(t.what).contains("\"March\""):
+					_march_follow = true
 			elif roll < 0.76:
 				await _click(p, MOUSE_BUTTON_LEFT, true, what)
 			elif roll < 0.86:
@@ -747,6 +757,7 @@ func _add_board(win: Rect2) -> void:
 			var lead := focus.has("fort") and p.owner == mine
 			_add("board_province", Rect2(s - Vector2(10, 10), Vector2(20, 20)), b, "province %s (%s)" % [p.id, p.owner], 1.2 * (3.0 if lead else 1.0),
 				false, lead)
+			targets.back()["pid"] = String(p.id)
 	for a in st.armies:
 		var r: Rect2 = b.army_rect(a.id)
 		if r.size.x <= 0.0:
@@ -754,6 +765,20 @@ func _add_board(win: Rect2) -> void:
 		var sr := (xf * r).intersection(win)
 		var lead := (focus.has("muster") and a.owner == mine) or (focus.has("battles"))
 		_add("board_army", sr, b, "army %s (%s, %d units)" % [a.id, a.owner, a.units.size()], 2.0 * (3.0 if lead else 1.0), false, lead)
+
+
+## A province on screen next to the selected army's (where its March can go), or {}.
+func _march_target() -> Dictionary:
+	var g := _game()
+	if g == null or g.map == null or g.map.state == null:
+		return {}
+	var st: GameState = g.map.state
+	var a := st.find_army(String(g.map.selected_army_id))
+	var here := st.find_province(a.location) if a != null else null
+	if here == null:
+		return {}
+	var near := targets.filter(func(t): return t.kind == "board_province" and here.neighbors.has(String(t.get("pid", ""))))
+	return near[rng.randi_range(0, near.size() - 1)] if not near.is_empty() else {}
 
 
 func _words(c: Control) -> String:
