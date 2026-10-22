@@ -469,3 +469,44 @@ func test_cards_read_the_board_the_plan_leaves() -> void:
 	map.select_province("crownkeep")
 	assert_true(map.details.find_children("ArmyRow_kingdom-3", "", true, false).size() >= 1, "the province card shows it")
 	map.free()
+
+
+# --- real input (CRASH-1, #249) ----------------------------------------------------------------------------------------------------------
+
+## Splitting an army crashed Alex's game (signal 11 in Viewport::_drop_mouse_over): the pointer moved from Split onto a line of its
+## forecast, Split's mouse_exited rebuilt the forecast and freed that line, and Godot kept it as the hovered control. The runner's tests
+## run before the scene tree is live, so no mouse event is routed in them: tests/muster_input_probe.gd is a real main loop in a child
+## process that sends mouse events through Input at the default game, checks after each one that Godot's hovered control is in the
+## tree, and clicks and drags every muster action, Cancel muster, Recruit and the fort panel in a siege (the same arrangement as the
+## card click probe).
+func test_real_input_on_armies_here_never_leaves_godot_hovering_a_freed_control() -> void:
+	var scratch := "user://muster_input_probe"
+	var cmd := ["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/muster_input_probe.gd"]
+	var output := []
+	var code := OS.execute(OS.get_executable_path(), cmd, output, true)
+	var text := "\n".join(output)
+	var passed := 0
+	var failed := []
+	var errors := []
+	for line in text.split("\n"):
+		if line.begins_with("PASS "):
+			passed += 1
+		elif line.begins_with("FAIL "):
+			failed.append(line)
+		elif line.contains("ERROR"):
+			errors.append(line)
+	assert_true(passed >= 40, "the probe ran its checks (exit code %d, %d passed): %s" % [code, passed, text.right(600)])
+	assert_eq(failed, [], "no real-input check of Armies here failed")
+	assert_eq(errors, [], "and no error was printed")
+	assert_true(text.contains("MUSTER_PROBE OK"), "and it said so (exit code %d)" % code)
+	_remove_tree(scratch)
+
+
+static func _remove_tree(path: String) -> void:
+	if not DirAccess.dir_exists_absolute(path):
+		return
+	for sub in DirAccess.get_directories_at(path):
+		_remove_tree(path.path_join(sub))
+	for file in DirAccess.get_files_at(path):
+		DirAccess.remove_absolute(path.path_join(file))
+	DirAccess.remove_absolute(path)
