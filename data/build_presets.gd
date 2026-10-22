@@ -15,6 +15,20 @@ class_name BuildPresetData
 
 const BALANCED := "balanced"
 
+## CW-2 (#253, design/CANDLEWAKE.md §4.4): the Candlewake's presets, behind their faction's preview (FactionData.
+## PREVIEW_FACTIONS), kept apart from PRESETS so the shipped lists and everything that walks them stay as they are; RulerRules
+## reads both. In the same order as the others: keep, spend, balanced. The computer's play of them is CW-6 (lane AI).
+const PREVIEW_PRESETS := {
+	"candlewake": [
+		{"id": "the_long_procession", "name": "the Long Procession", "style": "keep", "ruler": "half_death",
+			"mandates": [], "ai_role": "field", "ai_sacrifices": ["kindling", "iron_discipline"]},
+		{"id": "ninth_chandlers_vigil", "name": "the Ninth Chandler's Vigil", "style": "spend", "ruler": "mother_tallow",
+			"mandates": ["kindling", "tallow_levy", "heavy_tithes"], "ai_role": "home", "ai_sacrifices": []},
+		{"id": "harvest_moot", "name": "the Harvest Moot", "style": "balanced", "ruler": "half_death",
+			"mandates": ["kindling", "iron_discipline"], "ai_role": "field", "ai_sacrifices": ["tallow_levy", "veteran_levies"]},
+	],
+}
+
 const PRESETS := {
 	"kingdom": [
 		{"id": "warrior_king", "name": "Warrior King", "style": "keep", "ruler": "aurel_king",
