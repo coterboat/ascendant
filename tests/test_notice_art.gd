@@ -119,3 +119,22 @@ func test_the_flag_icon_the_set_lacks_is_drawn_in_its_style() -> void:
 					assert_true(c.r > 0.99 and c.g > 0.99 and c.b > 0.99, "a white mask, tinted by the caller")
 		assert_true(inked > px, "the flag has ink (%d)" % inked)
 	assert_eq(NoticeArt.icon("gold", 24), UiIcons.icon("gold", 24), "every other icon is UiIcons'")
+
+
+## UX-ART #222 (UXART-8, Alex 10-19): the shipped faction sets. Every folder under assets/ui/notices/ is a faction's own set, holds a medallion
+## for every image key, and that faction's viewer wears it (the Candlewake's set ships ahead of the faction; it is worn once CW-2 adds them).
+func test_every_shipped_faction_set_is_whole_and_worn_by_its_viewer() -> void:
+	var saved_viewer := NoticeArt.viewer
+	var sets := DirAccess.get_directories_at("res://assets/ui/notices")
+	var known: Array = FactionData.FACTIONS.map(func(f): return String(f.id))
+	for fid in sets:
+		for key in ChronicleModel.image_keys():
+			assert_true(ResourceLoader.exists("res://assets/ui/notices/%s/%s.png" % [fid, key]), "%s has its %s medallion" % [fid, key])
+		if not known.has(fid):
+			continue
+		NoticeArt.viewer = fid
+		for key in ChronicleModel.image_keys():
+			var info := ChronicleModel.image_info(key)
+			assert_eq(NoticeArt.path_for(key, info.kind), "res://assets/ui/notices/%s/%s.png" % [fid, key], "%s's viewer wears its own %s" % [fid, key])
+	assert_true(sets.size() >= known.size(), "a set for every faction in the game (%s of %s)" % [sets.size(), known.size()])
+	NoticeArt.viewer = saved_viewer
