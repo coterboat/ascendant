@@ -527,7 +527,7 @@ static func recruited_unit(e: Dictionary) -> String:
 				if text.contains(" recruited %s " % String(fx.rename[type_id])):
 					return String(type_id)
 			var new_id := String(fx.get("new_unit", ""))
-			if not new_id.is_empty() and text.contains(" recruited %s " % String(PathData.NEW_UNITS[new_id].name)):
+			if not new_id.is_empty() and text.contains(" recruited %s " % String(AscensionRules.new_unit_data(new_id).name)):  # CW-4: preview units too
 				return new_id
 	return ""
 
