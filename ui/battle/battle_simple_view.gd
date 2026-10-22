@@ -68,6 +68,9 @@ const MARGIN := 16.0
 const SIDE_PLATE_H := 92.0
 const SIDE_PLATE_MAX_W := 500.0
 const SIDE_PLATE_MIN_W := 340.0
+## #265: a side plate's least width when more than two share the top bar (264 at a 1280-wide view with three, less when the
+## centre's words need more room: a long condition chip with no short words, as outside a besieged fort's walls).
+const MANY_PLATE_MIN_W := 180.0
 const SIDE_PLATE_GAP := 12.0
 const CENTRE_MIN_W := 420.0
 const HUD_TOP := MARGIN + SIDE_PLATE_H + 8.0
@@ -134,6 +137,8 @@ var _hint_seen := false
 var _selected := -1
 var _band_last := Rect2()
 var _loading := false
+var _centre_w := 0.0  # #265: with more than two sides, the width the centre plate is given between the halves' plates
+var _centre_need := 0.0  # #265: and the width its words need (the condition chips in their short words), at least CENTRE_MIN_W
 
 # Nodes.
 var frame: Control
@@ -219,8 +224,6 @@ func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array =
 	_hint_seen = bool(st.first_hint_seen)
 	visible = true
 	var problem := BattlePlayer.playback_problem(battle_log)
-	if problem.is_empty() and battle_log.get("sides", []).size() != 2:
-		problem = "Battles with more than two sides can't be watched yet."
 	if not problem.is_empty():
 		_show_message(problem)
 		return problem
@@ -235,7 +238,8 @@ func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array =
 	for s in _log.sides:
 		_side_seat.append(order.find(String(s.faction)))
 		_massed.append(s.fighters.size() > MASSED)
-	_held_by = [-1, -1]
+	_held_by = _per_side(-1)
+	_ensure_plates(_log.sides.size())
 	if player != null:
 		_disconnect_player()
 	player = BattlePlayer.new(_log, _report)
@@ -300,9 +304,46 @@ func bar(si: int) -> BattleStrengthBar:
 	return bars[_slot_of_side(si)]
 
 
-## The left (0) or right (1) side plate where side `si` is shown.
+## The side plate where side `si` is shown: with two sides the left (0) or the right (1) one; with more (#265), its place in
+## the layout's plate order (the left half's sides, then the right's).
+func plate_of(si: int) -> int:
+	return _slot_of_side(si)
+
+
 func _slot_of_side(si: int) -> int:
+	var order: Array = layout.get("order", [])
+	if order.size() >= 3:
+		return maxi(0, order.find(si))
 	return 0 if si == int(layout.get("left", 0)) else 1
+
+
+## How many side plates the battle on screen uses: one a side, never fewer than the two of the top bar.
+func plates_used() -> int:
+	return maxi(2, (_log.get("sides", []) as Array).size())
+
+
+## #265: the plates on the top bar's left half and on its right: [[plate indices], [plate indices]]. Two sides: [[0], [1]];
+## more: the layout's halves, in plate order.
+func plate_groups() -> Array:
+	var n := plates_used()
+	if n <= 2:
+		return [[0], [1]]
+	var groups: Array = layout.get("groups", [])
+	var on_left := (groups[0] as Array).size() if groups.size() == 2 and (layout.get("order", []) as Array).size() == n else n - 1
+	return [range(on_left), range(on_left, n)]
+
+
+## Whether plate `k` is on the top bar's right half (its bar mirrored, its words to the right).
+func plate_on_right(k: int) -> bool:
+	return (plate_groups()[1] as Array).has(k)
+
+
+## An Array with `value` for each side of the battle on screen.
+func _per_side(value: Variant) -> Array:
+	var out := []
+	out.resize((_log.get("sides", []) as Array).size())
+	out.fill(value)
+	return out
 
 
 # --- the clock and motion -------------------------------------------------------------------------
@@ -347,7 +388,7 @@ func _tick_labels(dt: float) -> void:
 		if _toast_t >= MOMENT_TOAST:
 			_toast_t = -1.0
 			toast_label.visible = false
-	for k in 2:
+	for k in tag_labels.size():
 		if _tag_t[k] >= 0.0:
 			_tag_t[k] += dt
 			if _tag_t[k] >= TAG_TIME:
@@ -573,7 +614,7 @@ func _on_seeked(st: Dictionary) -> void:
 	banner_label.visible = false
 	_toast_t = -1.0
 	toast_label.visible = false
-	for k in 2:
+	for k in tag_labels.size():
 		_tag_t[k] = -1.0
 		tag_labels[k].text = ""
 	_last_time = player.time()
@@ -602,7 +643,7 @@ func _on_seeked(st: Dictionary) -> void:
 
 ## Who Iron Discipline held each side with at `st` (the side's last morale check before it).
 func _held_by_at(st: Dictionary) -> Array:
-	var out := [-1, -1]
+	var out := _per_side(-1)
 	var events: Array = _log.events
 	for i in mini(int(st.event), events.size()):
 		var e: Dictionary = events[i]
@@ -749,18 +790,17 @@ func _on_selection(fid: int) -> void:
 			c.queue_redraw()
 
 
-## Tab order (§5.3): the left side first, then the right; each side front rank to back line, each rank
-## front column first, top to bottom.
+## Tab order (§5.3): the left side first, then the right (#265: with more sides, plate by plate); each side front rank
+## to back line, each rank front column first, top to bottom.
 func _tab_order() -> Array:
 	var ids := []
 	for f in _log.fighters:
 		ids.append(int(f.id))
-	var left := int(layout.get("left", 0))
 	ids.sort_custom(func(a, b):
 		var sa: Dictionary = layout.slots[a]
 		var sb: Dictionary = layout.slots[b]
-		var ka := [0 if int(sa.side) == left else 1, int(sa.tier), int(sa.col), int(sa.row), a]
-		var kb := [0 if int(sb.side) == left else 1, int(sb.tier), int(sb.col), int(sb.row), b]
+		var ka := [_slot_of_side(int(sa.side)), int(sa.tier), int(sa.col), int(sa.row), a]
+		var kb := [_slot_of_side(int(sb.side)), int(sb.tier), int(sb.col), int(sb.row), b]
 		for k in ka.size():
 			if ka[k] != kb[k]:
 				return ka[k] < kb[k]
@@ -797,8 +837,37 @@ func free_band() -> Rect2:
 
 
 ## The side plates' width at this view's width: as wide as SIDE_PLATE_MAX_W while the centre keeps CENTRE_MIN_W between them.
+## #265: with more than two sides every plate shares the row equally (at least MANY_PLATE_MIN_W), leaving the centre the room
+## its words need.
 func plate_width() -> float:
+	var n := plates_used()
+	if n > 2:
+		var mid := maxf(CENTRE_MIN_W, _centre_need)
+		return clampf(floorf((view_size().x - 2.0 * MARGIN - float(n) * SIDE_PLATE_GAP - mid) / float(n)), MANY_PLATE_MIN_W, SIDE_PLATE_MAX_W)
 	return clampf(floorf((view_size().x - 2.0 * MARGIN - 2.0 * SIDE_PLATE_GAP - CENTRE_MIN_W) / 2.0), SIDE_PLATE_MIN_W, SIDE_PLATE_MAX_W)
+
+
+## Where side plate `k` stands on the top bar now (the view's coordinates).
+func plate_rect(k: int) -> Rect2:
+	var v := view_size()
+	var pw := plate_width()
+	var groups := plate_groups()
+	var left: Array = groups[0]
+	var right: Array = groups[1]
+	if left.has(k):
+		return Rect2(MARGIN + left.find(k) * (pw + SIDE_PLATE_GAP), MARGIN, pw, SIDE_PLATE_H)
+	var from_end := right.size() - right.find(k)
+	return Rect2(v.x - MARGIN - from_end * pw - (from_end - 1) * SIDE_PLATE_GAP, MARGIN, pw, SIDE_PLATE_H)
+
+
+## Where side plate `k`'s morale tag hangs: under its plate, on its plate's side, left of the docked why panel (field `fw`).
+func _tag_rect(k: int, fw: float) -> Rect2:
+	var pr := plate_rect(k)
+	var y := MARGIN + SIDE_PLATE_H + 6.0
+	if plates_used() <= 2:
+		var tw := minf(520.0, fw / 2.0 - MARGIN - 8.0)
+		return Rect2(MARGIN if k == 0 else fw - MARGIN - tw, y, tw, 22.0)
+	return Rect2(minf(pr.position.x, fw - MARGIN - pr.size.x), y, pr.size.x, 22.0)
 
 
 func _set_why_open(on: bool) -> void:
@@ -848,18 +917,7 @@ func _layout() -> void:
 	toast_label.position = Vector2(200, band.position.y + 54.0)
 	toast_label.size.x = maxf(200.0, fw - 400.0)
 	# The plates in the top corners, the centre between them.
-	var pw := plate_width()
-	for k in 2:
-		var plate: PanelContainer = plates[k]
-		plate.position = Vector2(MARGIN if k == 0 else v.x - MARGIN - pw, MARGIN)
-		plate.size = Vector2(pw, SIDE_PLATE_H)
-		var tag: Label = tag_labels[k]
-		var tw := minf(520.0, fw / 2.0 - MARGIN - 8.0)
-		tag.size.x = tw
-		tag.position = Vector2(MARGIN if k == 0 else fw - MARGIN - tw, MARGIN + SIDE_PLATE_H + 6.0)
-	var cx := MARGIN + pw + SIDE_PLATE_GAP
-	centre.position = Vector2(cx, MARGIN)
-	centre.size = Vector2(v.x - 2.0 * cx, 0.0)
+	_place_plates(fw)
 	_fit_texts()
 	_place_caption()
 	why_panel.visible = _why_open
@@ -890,17 +948,74 @@ func _band_changed() -> void:
 		c.selected = true
 
 
+## Lays the side plates, their morale tags and the centre out: the plates plates_used() needs, each where plate_rect() puts
+## it (with two sides, the top corners), its tag under it, the centre between the halves; any plate a battle with more sides
+## left is hidden. #265: with more than two sides a tag wraps to a second line within its plate's width, so the tags of a
+## round's morale checks never overlap.
+func _place_plates(fw: float) -> void:
+	var n := plates_used()
+	for k in plates.size():
+		var plate: PanelContainer = plates[k]
+		var tag: Label = tag_labels[k]
+		plate.visible = k < n
+		if k >= n:
+			tag.text = ""
+			continue
+		var pr := plate_rect(k)
+		plate.position = pr.position
+		plate.size = pr.size
+		tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if n > 2 else TextServer.AUTOWRAP_OFF
+		tag.max_lines_visible = 2 if n > 2 else -1
+		var tr := _tag_rect(k, fw)
+		tag.size.x = tr.size.x
+		tag.position = tr.position
+	if n <= 2:
+		var cx := MARGIN + plate_width() + SIDE_PLATE_GAP
+		centre.position = Vector2(cx, MARGIN)
+		centre.size = Vector2(view_size().x - 2.0 * cx, 0.0)
+		return
+	var groups := plate_groups()
+	var c0 := plate_rect(int((groups[0] as Array)[-1])).end.x + SIDE_PLATE_GAP
+	var c1 := plate_rect(int((groups[1] as Array)[0])).position.x - SIDE_PLATE_GAP
+	_centre_w = c1 - c0
+	centre.position = Vector2(c0, MARGIN)
+	centre.size = Vector2(_centre_w, 0.0)
+
+
+## #265: makes sure the top bar has `n` side plates (two are built with the view; a battle with more sides adds the rest,
+## which a later battle with fewer hides).
+func _ensure_plates(n: int) -> void:
+	while plates.size() < n:
+		_build_plate(plates.size())
+	while _tag_t.size() < tag_labels.size():
+		_tag_t.append(-1.0)
+
+
+## Turns plate `k` to its half of the top bar: on the right, its role chip before its name and its words to the right (its
+## bar mirrored by _fill_top_bar); on the left, the other way round. Plate 0 is built for the left and plate 1 for the right,
+## as two sides always use them.
+func _orient_plate(k: int, right: bool) -> void:
+	var name_label: Label = plaque_labels[k]
+	var head := name_label.get_parent() as HBoxContainer
+	head.alignment = BoxContainer.ALIGNMENT_END if right else BoxContainer.ALIGNMENT_BEGIN
+	head.move_child(role_chips[k], 0 if right else 1)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
+	(bar_texts[k] as Label).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
+	(tag_labels[k] as Label).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
+
+
 ## The plates' names (shrunk to fit beside the role chip), the title (shrunk to the centre) and the condition chips
 ## (their short words when the full ones don't fit).
 func _fit_texts() -> void:
 	var inner := plate_width() - 20.0
-	for k in 2:
+	for k in plates_used():
 		var chip: Label = role_chips[k]
 		var cw := _font_of(chip).get_string_size(chip.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size_of(chip, UiPalette.TYPE_SMALL)).x + 14.0 if chip.visible else 0.0
 		var l: Label = plaque_labels[k]
 		l.size.x = maxf(80.0, inner - cw - 8.0)
 		_fit(l, UiPalette.TYPE_NAME, UiPalette.TYPE_SMALL + 1)
-	var cin := centre.size.x - 20.0
+	var many := plates_used() > 2
+	var cin := (_centre_w if many else centre.size.x) - 20.0
 	title_label.size.x = cin
 	_fit(title_label, UiPalette.TYPE_NAME, UiPalette.TYPE_SMALL + 1)
 	var chips := conditions.get_children().filter(func(c): return (c as Control).visible)
@@ -909,6 +1024,21 @@ func _fit_texts() -> void:
 			(c as Label).text = String((c as Label).get_meta(words, (c as Label).text))
 		if chips_width(chips) <= cin:
 			break
+	if many:
+		centre.size = Vector2(_centre_w, 0.0)  # #265: back to its width once the chips have their words
+
+
+## #265: the width the centre plate's words need with more than two sides: its condition chips in their short words, and its
+## padding (CENTRE_MIN_W at least, enough for the title and the round).
+func _centre_words_w() -> float:
+	var chips := conditions.get_children().filter(func(c): return (c as Control).visible)
+	var saved := chips.map(func(c): return (c as Label).text)
+	for c in chips:
+		(c as Label).text = String((c as Label).get_meta("short", (c as Label).text))
+	var w := chips_width(chips) + 24.0
+	for k in chips.size():
+		(chips[k] as Label).text = String(saved[k])
+	return maxf(CENTRE_MIN_W, w)
 
 
 ## The caption plate: as wide as its words (at most the free band, less a margin), centred on the free band, its foot
@@ -1227,6 +1357,8 @@ func end_card_lines() -> Array:
 
 
 func _result_sentence() -> String:
+	if _log.sides.size() > 2 and BattleLog.find_event(_log, "end") >= 0:
+		return BattleWhy.result_sentence(_log)  # #265: who left the field and when, every side by name
 	for line in _report.get("lines", []):
 		if String(line).begins_with("Result: "):
 			return String(line).trim_prefix("Result: ")
@@ -1296,6 +1428,8 @@ func _fill_top_bar() -> void:
 		if c != center_chip:
 			conditions.remove_child(c)
 			c.queue_free()
+	for k in plates_used():
+		_orient_plate(k, plate_on_right(k))
 	for si in _log.sides.size():
 		var k := _slot_of_side(si)
 		var side: Dictionary = _log.sides[si]
@@ -1312,7 +1446,7 @@ func _fill_top_bar() -> void:
 		chip.tooltip_text = TooltipText.plain(role.capitalize(), _role_words(side, border, defender).capitalize() + ".")
 		var b: BattleStrengthBar = bars[k]
 		b.seat = _side_seat[si]
-		b.mirrored = k == 1
+		b.mirrored = plate_on_right(k)
 		if side.get("defender", false) and not border:
 			var terrain := String(_log.get("terrain", ""))
 			var bonus: Dictionary = AutoBattleResolver.TERRAIN.get(terrain, {})
@@ -1365,6 +1499,10 @@ func _fill_top_bar() -> void:
 	elif center_chip.visible:
 		CodexLink.attach(center_chip, "battle_terrain", codex_requested.emit)
 	conditions.visible = conditions.get_children().any(func(c): return (c as Control).visible)
+	if plates_used() > 2:
+		# #265: the plates follow the field's halves, known once it is laid out, and leave the centre its words' room
+		_centre_need = _centre_words_w()
+		_place_plates(field_width())
 	_fit_texts()
 
 
@@ -1394,15 +1532,16 @@ func _siege_block() -> Dictionary:
 
 
 func _role_words(side: Dictionary, border: bool, defender: String) -> String:
+	var many := (_log.get("sides", []) as Array).size() > 2  # #265: more than one enemy
 	if border:
-		return "met the enemy on the border as both armies tried to swap places"
+		return "met the other sides' armies on the border as they tried to cross it" if many else "met the enemy on the border as both armies tried to swap places"
 	if not _siege_block().is_empty():  # M3c S-3: its role at the fort and what it meant
 		var si := (_log.get("sides", []) as Array).find(side)
 		return "%s: %s" % [FortView.siege_role(_siege_block(), si), String(FortView.role_meaning(_siege_block(), si).text)]
 	if side.get("defender", false):
 		return "defending: it already held the province"
 	if defender.is_empty():
-		return "arrived at the same time as the enemy, so nobody defends"
+		return "arrived at the same time as the other sides, so nobody defends" if many else "arrived at the same time as the enemy, so nobody defends"
 	return "attacking: it marched in"
 
 
@@ -1490,71 +1629,7 @@ func _build() -> void:
 ## UX-8: the side plates (top left and right), each side's morale tag under its plate, and the centre between them.
 func _build_top_bar() -> void:
 	for k in 2:
-		var plate := PanelContainer.new()
-		plate.name = "Plate%d" % k
-		plate.add_theme_stylebox_override("panel", TableHud.plaque_style(10, 7))
-		plate.mouse_filter = Control.MOUSE_FILTER_STOP
-		plate.clip_contents = true
-		frame.add_child(plate)
-		plates.append(plate)
-		var col := VBoxContainer.new()
-		col.add_theme_constant_override("separation", 4)
-		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		plate.add_child(col)
-		var head := HBoxContainer.new()
-		head.name = "Head"
-		head.add_theme_constant_override("separation", 8)
-		head.alignment = BoxContainer.ALIGNMENT_BEGIN if k == 0 else BoxContainer.ALIGNMENT_END
-		head.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		col.add_child(head)
-		var name_label := _label("", UiPalette.TYPE_NAME, UiPalette.TEXT_PRIMARY)
-		name_label.name = "Name%d" % k
-		name_label.add_theme_font_override("font", UiFonts.name())
-		name_label.custom_minimum_size.y = 26
-		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if k == 0 else HORIZONTAL_ALIGNMENT_RIGHT
-		name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		name_label.clip_text = true
-		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		name_label.mouse_filter = Control.MOUSE_FILTER_PASS
-		plaque_labels.append(name_label)
-		var role := _chip("", "")
-		role.name = "Role%d" % k
-		role.add_theme_font_size_override("font_size", UiPalette.TYPE_SMALL)
-		role.add_theme_color_override("font_color", UiPalette.GILT)
-		role.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		role_chips.append(role)
-		if k == 0:
-			head.add_child(name_label)
-			head.add_child(role)
-		else:
-			head.add_child(role)
-			head.add_child(name_label)
-		var b := BattleStrengthBar.new()
-		b.name = "StrengthBar%d" % k
-		b.custom_minimum_size = Vector2(200, 22)
-		col.add_child(b)
-		bars.append(b)
-		var t := _label("", UiPalette.TYPE_SMALL, UiPalette.TEXT_SECONDARY)
-		t.name = "StrengthText%d" % k
-		t.add_theme_font_override("font", UiFonts.number())
-		t.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if k == 0 else HORIZONTAL_ALIGNMENT_RIGHT
-		t.clip_text = true
-		t.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		t.mouse_filter = Control.MOUSE_FILTER_PASS
-		col.add_child(t)
-		bar_texts.append(t)
-		CodexLink.attach(b, "battle_strength", func(key): codex_requested.emit(key))
-		CodexLink.attach(t, "battle_strength", func(key): codex_requested.emit(key))
-		var tag := _label("", 16, UiPalette.GILT)
-		tag.name = "MoraleTag%d" % k
-		tag.position = Vector2(MARGIN, HUD_TOP)
-		tag.size = Vector2(520, 22)
-		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if k == 0 else HORIZONTAL_ALIGNMENT_RIGHT
-		BattleStrengthBar.style_tag(tag)
-		tag.z_index = 3
-		frame.add_child(tag)
-		tag_labels.append(tag)
+		_build_plate(k)
 	centre = PanelContainer.new()
 	centre.name = "Centre"
 	centre.add_theme_stylebox_override("panel", TableHud.plaque_style(10, 6))
@@ -1578,6 +1653,93 @@ func _build_top_bar() -> void:
 	round_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	mid.add_child(round_label)
 	CodexLink.attach(round_label, "battle_rounds", codex_requested.emit)
+	_build_centre_chips(mid)
+
+
+## Side plate `k` and its morale tag: plate 0 faces the left half, plate 1 the right (the two of every battle); a plate added
+## for a battle with more sides (#265) goes after the last one and is turned to its half by _orient_plate.
+func _build_plate(k: int) -> void:
+	var right := k == 1
+	var after := -1
+	if k >= 2:
+		after = (tag_labels[-1] as Node).get_index()
+	var plate := PanelContainer.new()
+	plate.name = "Plate%d" % k
+	plate.add_theme_stylebox_override("panel", TableHud.plaque_style(10, 7))
+	plate.mouse_filter = Control.MOUSE_FILTER_STOP
+	plate.clip_contents = true
+	frame.add_child(plate)
+	plates.append(plate)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.add_child(col)
+	var head := HBoxContainer.new()
+	head.name = "Head"
+	head.add_theme_constant_override("separation", 8)
+	head.alignment = BoxContainer.ALIGNMENT_END if right else BoxContainer.ALIGNMENT_BEGIN
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(head)
+	var name_label := _label("", UiPalette.TYPE_NAME, UiPalette.TEXT_PRIMARY)
+	name_label.name = "Name%d" % k
+	name_label.add_theme_font_override("font", UiFonts.name())
+	name_label.custom_minimum_size.y = 26
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
+	name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	name_label.clip_text = true
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	plaque_labels.append(name_label)
+	var role := _chip("", "")
+	role.name = "Role%d" % k
+	role.add_theme_font_size_override("font_size", UiPalette.TYPE_SMALL)
+	role.add_theme_color_override("font_color", UiPalette.GILT)
+	role.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	role_chips.append(role)
+	if right:
+		head.add_child(role)
+		head.add_child(name_label)
+	else:
+		head.add_child(name_label)
+		head.add_child(role)
+	var b := BattleStrengthBar.new()
+	b.name = "StrengthBar%d" % k
+	b.custom_minimum_size = Vector2(200, 22)
+	col.add_child(b)
+	bars.append(b)
+	var t := _label("", UiPalette.TYPE_SMALL, UiPalette.TEXT_SECONDARY)
+	t.name = "StrengthText%d" % k
+	t.add_theme_font_override("font", UiFonts.number())
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
+	t.clip_text = true
+	t.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	t.mouse_filter = Control.MOUSE_FILTER_PASS
+	col.add_child(t)
+	bar_texts.append(t)
+	CodexLink.attach(b, "battle_strength", func(key): codex_requested.emit(key))
+	CodexLink.attach(t, "battle_strength", func(key): codex_requested.emit(key))
+	var tag := _label("", 16, UiPalette.GILT)
+	tag.name = "MoraleTag%d" % k
+	tag.position = Vector2(MARGIN, HUD_TOP)
+	tag.size = Vector2(520, 22)
+	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
+	BattleStrengthBar.style_tag(tag)
+	tag.z_index = 3
+	frame.add_child(tag)
+	tag_labels.append(tag)
+	if after >= 0:
+		frame.move_child(plate, after + 1)
+		frame.move_child(tag, after + 2)
+	_plate_added(k)
+
+
+## A side plate was added (k >= 2 for a battle of more sides, #265); the 3D stage puts its words on a dark backing.
+func _plate_added(_k: int) -> void:
+	pass
+
+
+func _build_centre_chips(mid: VBoxContainer) -> void:
 	conditions = HBoxContainer.new()
 	conditions.name = "Conditions"
 	conditions.add_theme_constant_override("separation", int(CHIP_SEPARATION))

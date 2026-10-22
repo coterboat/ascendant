@@ -51,10 +51,9 @@ const VIEW_3D := "3d"
 ## battle view contract. Until the file exists, "3D on the land" plays in the Simple view.
 const STAGE_3D_PATH := "res://world3d/battle_stage.tscn"
 const FALLBACK_NOTE := "3D on the land isn't in the game yet, so this battle plays in the Simple view. The Battle view setting switches over once it arrives."
-## The reasons a battle can't be watched (M3 §6, §2.4).
+## The reasons a battle can't be watched (M3 §6, §2.4). #265: a battle of more than two sides is watched like any other.
 const NO_LOG := "This battle was fought with the test rules and has no playback."
-const MORE_SIDES := "Battles with more than two sides can't be watched yet."
-const NOT_KEPT := "This battle's playback isn't kept any more, and there is no game record here to rebuild it from."
+const NOT_KEPT :="This battle's playback isn't kept any more, and there is no game record here to rebuild it from."
 const NOT_A_BATTLE := "Only battles can be watched."
 const REBUILDING := "Regenerating this battle's playback from the game record…"
 ## M5-2 (§2.8): under fog only the sides that fought a battle saw it.
@@ -409,8 +408,8 @@ func _on_settings_closed() -> void:
 # --- static helpers -------------------------------------------------------------------------------
 
 ## "" when `event` can be watched, else the plain reason (M3 §6): not a battle, fought with the test rules
-## (no log and no report), more than two sides, a log cut short at BattleLog.MAX_EVENTS, or a log that
-## isn't kept and can't be rebuilt (`can_rebuild`: the host has a rebuild_with).
+## (no log and no report), a log cut short at BattleLog.MAX_EVENTS, or a log that isn't kept and can't be
+## rebuilt (`can_rebuild`: the host has a rebuild_with). Any number of sides plays (#265).
 static func watch_problem(event: Dictionary, can_rebuild: bool = false) -> String:
 	if not GameSession.BATTLE_TYPES.has(String(event.get("type", ""))):
 		return NOT_A_BATTLE
@@ -419,10 +418,7 @@ static func watch_problem(event: Dictionary, can_rebuild: bool = false) -> Strin
 		return NO_LOG
 	var battle_log = numbers.get("log", {})
 	if battle_log is Dictionary and not battle_log.is_empty():
-		var problem := BattlePlayer.playback_problem(battle_log)
-		if problem.is_empty() and battle_log.get("sides", []).size() != 2:
-			problem = MORE_SIDES
-		return problem
+		return BattlePlayer.playback_problem(battle_log)
 	var report = numbers.get("report", {})
 	if not (report is Dictionary) or report.is_empty():
 		return NO_LOG

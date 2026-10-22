@@ -6,7 +6,8 @@ extends Control
 ## linked).
 ##
 ##   godot --path . res://ui/battle/battle_watch.tscn -- --fixture king_falls_wins
-##   options: --fixture NAME (a file in tests/fixtures/battles; default starting_plains), --speed 1|2|4,
+##   options: --fixture NAME (a file in tests/fixtures/battles, or three_holds / three_fort / three_rivals: the three-sided
+##            battles of tests/three_side_fixtures.gd, #265, fought on the spot; default starting_plains), --speed 1|2|4,
 ##            --paused, --reduced-motion, --no-art (every portrait and the ground as their placeholders,
 ##            to check the view works with no art at all), --quit-at-end (prints how it ran, then quits)
 ##
@@ -17,6 +18,7 @@ signal closed
 
 const FIXTURE_DIR := "res://tests/fixtures/battles"
 const DEFAULT_FIXTURE := "starting_plains"
+const THREE_FIXTURES := "res://tests/three_side_fixtures.gd" ## --fixture three_<case>: a battle of three sides (#265)
 
 var view: BattleSimpleView
 var viewer: BattleReportViewer
@@ -105,6 +107,8 @@ func _process(_delta: float) -> void:
 
 ## Plays `source` in the view. Returns "" or the plain reason it can't be watched.
 func watch(source: Dictionary, seats: Array = [], report: Dictionary = {}) -> String:
+	if seats.is_empty() and source.get("seats") is Array:
+		seats = source.seats  # #265: a fixture that names its seat order (a third faction's colour)
 	_seats = seats.duplicate()
 	viewer.visible = false
 	if source.has("numbers"):
@@ -114,8 +118,12 @@ func watch(source: Dictionary, seats: Array = [], report: Dictionary = {}) -> St
 	return view.show_battle(source, report, seats)
 
 
-## A stored battle fixture as {"log", "report"} (the log normalised as the resolver wrote it), or {}.
+## A stored battle fixture as {"log", "report"} (the log normalised as the resolver wrote it), or {}. three_<case>: a
+## three-sided battle of the tests' fixtures (#265), fought on the spot, with its seats.
 static func load_fixture(fixture_name: String) -> Dictionary:
+	if fixture_name.begins_with("three_") and ResourceLoader.exists(THREE_FIXTURES):
+		var three: Script = load(THREE_FIXTURES)
+		return three.call("battle", fixture_name.trim_prefix("three_"))
 	var path := "%s/%s.json" % [FIXTURE_DIR, fixture_name]
 	if not FileAccess.file_exists(path):
 		return {}

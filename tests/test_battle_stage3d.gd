@@ -20,6 +20,7 @@ extends "res://tests/test_case.gd"
 ## Expected values come from the logs, the timeline and the data, never hardcoded.
 
 const Fx := preload("res://tests/battle_playback_fixtures.gd")
+const ThreeFx := preload("res://tests/three_side_fixtures.gd")
 const Scenarios := preload("res://tools/battle_log/scenarios.gd")
 const Formation := preload("res://world3d/battle_formation.gd")
 const Cam := preload("res://world3d/battle_camera.gd")
@@ -771,9 +772,11 @@ func test_battles_that_cant_be_watched_say_why_on_the_land_too() -> void:
 	var s := BattleStage3D.new()
 	assert_eq(s.show_event({"type": "battle", "text": "A battle.", "numbers": {}}), "This battle was fought with the test rules and has no playback.")
 	var fx := _fixture("skirmish")
-	var three: Dictionary = fx.log.duplicate(true)
-	three.sides.append(three.sides[0].duplicate(true))
-	assert_eq(s.show_battle(three), "Battles with more than two sides can't be watched yet.")
+	var three: Dictionary = ThreeFx.battle("holds")
+	assert_eq(s.show_battle(three.log, three.report, three.seats), "", "#265: a battle of three sides plays on the land (tests/test_three_sided_battles.gd)")
+	var cut: Dictionary = fx.log.duplicate(true)
+	cut.truncated = true
+	assert_eq(s.show_battle(cut), "This battle is too big to play back. The report has everything.")
 	assert_eq(s.show_battle(fx.log, fx.report), "", "a good log plays")
 	assert_false(s.message_panel.visible, "and the message goes away")
 	s.free()

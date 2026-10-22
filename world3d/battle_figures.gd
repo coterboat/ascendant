@@ -52,6 +52,9 @@ var figs: Array = [] ## by index: the log's fighters (index = fighter id), then 
 var n_fighters := 0
 var groups: Dictionary = {} ## key -> {"mi": MultiMeshInstance3D, "n": int (drawn now), "cap": int}
 var banners: Array = [] ## by side: the standard bearer's banner node
+## #265: by side, the yaw its banner's cloth turns to (radians) instead of following its bearer; empty (every banner follows its
+## bearer, the cloth seen from the flank) until the stage sets it for a battle of more sides
+var banner_yaw: Array = []
 var reduced_motion := false
 var shadows := true
 var land: RefCounted = null ## the baked land (the ground under a moving figure)
@@ -133,6 +136,7 @@ func build(battle_log: Dictionary, plan: Dictionary, colours: Array, lin: Array,
 
 func clear() -> void:
 	_fig_of = []
+	banner_yaw = []
 	for g in groups.values():
 		(g["mi"] as Node).queue_free()
 	groups.clear()
@@ -541,7 +545,10 @@ func _xform(f: Dictionary, p: Dictionary) -> Transform3D:
 	var xf := Transform3D(basis, Vector3(pos.x, y, pos.y))
 	if String(f["role"]) == "bearer" and int(f["side"]) < banners.size():
 		var bn: Node3D = banners[int(f["side"])]
-		bn.transform = Transform3D(Basis(Vector3.UP, yaw + PI * 0.5).scaled(Vector3.ONE * sc), xf * Vector3(0.95, 1.2, 0.0))
+		var byaw := yaw + PI * 0.5
+		if int(f["side"]) < banner_yaw.size():
+			byaw = float(banner_yaw[int(f["side"])])
+		bn.transform = Transform3D(Basis(Vector3.UP, byaw).scaled(Vector3.ONE * sc), xf * Vector3(0.95, 1.2, 0.0))
 		bn.visible = sc > 0.05 and fall < 0.5
 	return xf
 
