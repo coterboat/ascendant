@@ -212,7 +212,7 @@ static func phase_title(phase: String) -> String:
 
 
 ## Fills the "What the computer was thinking" section under the events: one block per computer seat
-## ({"faction_name", "seat", "level", "notes"}, see AISeat.report_notes). An empty list hides it. Entries that are all
+## ({"faction_name", "seat", "level", "temperament", "notes"}, see AISeat.report_notes). An empty list hides it. Entries that are all
 ## "hidden": true (fog: the notes are kept back) show as one quiet line, without the header.
 func show_computer_notes(entries: Array) -> void:
 	_note_labels.clear()
@@ -235,7 +235,7 @@ func show_computer_notes(entries: Array) -> void:
 		line.add_theme_font_size_override("font_size", 15)
 		line.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
 		line.tooltip_text = TooltipText.plain("What the computer was thinking", "The computer's own reasons for the orders it gave this turn. Under the fog of war they would name its hidden armies and plans, so they are kept back until the game is over. %s" % AISeat.tag_help(
-			String(first.get("faction_name", "The computer")), String(first.get("level", ""))))
+			String(first.get("faction_name", "The computer")), String(first.get("level", "")), String(first.get("temperament", ""))))
 		CodexLink.attach(line, "computer_opponent", codex_requested.emit)
 		notes_body.add_child(line)
 		_note_labels.append(line)
@@ -262,7 +262,8 @@ func show_computer_notes(entries: Array) -> void:
 			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			l.add_theme_font_size_override("font_size", 17)
 			l.add_theme_color_override("font_color", UiPalette.TEXT_SECONDARY)
-			l.tooltip_text = TooltipText.plain("%s, %s" % [faction_name, AISeat.tag_text(level)], AISeat.tag_help(faction_name, level))
+			l.tooltip_text = TooltipText.plain("%s, %s" % [faction_name, AISeat.tag_text(level)], AISeat.tag_help(faction_name, level,
+				String(entry.get("temperament", ""))))
 			CodexLink.attach(l, "computer_opponent", codex_requested.emit)
 			notes_body.add_child(l)
 			_note_labels.append(l)
@@ -321,7 +322,8 @@ func _show_seats(session: GameSession, state: GameState) -> void:
 		name_label.add_theme_color_override("font_color", UiPalette.seat_color(i).lightened(0.3))
 		seat.add_child(name_label)
 		if session.is_computer(fid):
-			seat.add_child(VictoryScreen.computer_tag(faction_name, session.computer_level(fid), codex_requested.emit))
+			seat.add_child(VictoryScreen.computer_tag(faction_name, session.computer_level(fid), codex_requested.emit,
+				session.computer_temperament(fid)))
 	seats_box.visible = true
 
 

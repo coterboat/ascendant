@@ -7,7 +7,9 @@ extends SceneTree
 ## Options (all optional):
 ##   --games N        games to play (default 50), on seeds S, S+1, ... S+N-1
 ##   --seed S         first game seed (default 1)
-##   --p1 / --p2      policy of seat 1 / seat 2: greedy, random, turtle, ai or ai_easy (default greedy)
+##   --p1 / --p2      policy of seat 1 / seat 2: greedy, random, turtle, ai or ai_easy (default greedy); #184: ai_aggressive
+##                    (the aggressive temperament) or ai_roll (the temperament the new game screen rolls for a computer in
+##                    that seat on that seed, AIPlayer.choose_temperament)
 ##   --seat1 FACTION  faction in seat 1: kingdom (Aurel Crown, default) or beasts (Thornmane Clans);
 ##                    seat 2 gets the other one
 ##   --turn-cap T     turns before a game counts as unfinished (default 60)
@@ -72,7 +74,7 @@ extends SceneTree
 ##                    (default user://autoplay_matrix); the files are removed afterwards
 ##   --temperament T  with --matrix --sieges (#184), the computer's temperament in the siege games and their baseline (not
 ##                    band S8's): normal (the default), aggressive (both seats), mixed (seat 1 aggressive, seat 2 normal) or
-##                    roll (each seat rolls it as an AI seat does, AIPlayer.choose_temperament). With --p1/--p2 use the policies
+##                    roll (each seat rolls it as the new game screen does, AIPlayer.choose_temperament). With --p1/--p2 use the policies
 ##                    ai_aggressive and ai_roll instead
 ##   --save-results PATH  with --matrix --magic or --sieges, also write the games' raw results to PATH, so a run can be chunked
 ##                    (--only G:, --only GF:, --only GT:, --only GB:, --only P, and with & for both: --only "G:&+iron_crown";

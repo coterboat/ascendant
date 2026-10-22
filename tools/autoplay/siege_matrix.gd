@@ -168,7 +168,7 @@ static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Call
 
 ## #184 (autoplay --temperament): the policies the computer seats (POLICY) of a cell play. "aggressive": both seats play
 ## the aggressive temperament; "mixed": seat 1 aggressive, seat 2 normal (with both seat orders in the plan, each faction
-## plays it); "roll": each seat rolls its temperament as an AI seat does. Anything else, or a cell of band S8 (whose
+## plays it); "roll": each seat rolls its temperament as the new game screen does. Anything else, or a cell of band S8 (whose
 ## digests are the normal computer's), keeps `policies`.
 static func temperament_policies(policies: Array, temperament: String) -> Array:
 	var out := policies.duplicate()

@@ -23,8 +23,8 @@ extends RefCounted
 ##           anything that can reach it, masses armies, attacks on good odds, expands when it is safe.
 ##   ai_easy AIPlayer at "easy": sometimes lets good moves pass and recruits at random.
 ##   ai_aggressive (#184) AIPlayer at "normal" with the aggressive temperament (AIPlayer.set_temperament).
-##   ai_roll  (#184) AIPlayer at "normal" with the temperament an AI seat rolls for this seed and seat
-##           (AIPlayer.choose_temperament). Plain "ai" always plays the normal temperament, so its games stay the same.
+##   ai_roll  (#184) AIPlayer at "normal" with the temperament the new game screen rolls for a computer in this seat on
+##           this seed (AIPlayer.choose_temperament). Plain "ai" always plays the normal temperament, so its games stay the same.
 ##   ai_bleed (M5-11, #122) AIPlayer at "normal" playing Tithe of Blood the way a person who loves it might: every ritual a
 ##           Shaman's army can pay in blood is paid in blood, down to the last hit point each soldier can give
 ##           (the computer itself keeps two thirds of its hit points). The scripted build of band G9.
@@ -611,7 +611,7 @@ class AIPolicy extends Base:
 	var difficulty := "normal"
 	## M5-11: pay every ritual that can be paid in blood in blood (the scripted Tithe build, "ai_bleed").
 	var bleed := false
-	## #184: "" or "normal" (the default temperament), "aggressive", or "roll" (configure rolls it as an AI seat does).
+	## #184: "" or "normal" (the default temperament), "aggressive", or "roll" (configure rolls it as the new game screen does).
 	var temperament := ""
 	## Slowest single plan of the game, in microseconds (reporting only).
 	var slowest_usec := 0

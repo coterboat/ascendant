@@ -39,6 +39,10 @@ extends RefCounted
 ## Handoffs happen only where a cover is needed: before a human seat, and only when the game has more
 ## than one human seat. Otherwise end_turn() (and the resolution) go straight to the next seat's ORDERS
 ## phase. With no computer seats every seat is human, so a hotseat game flows exactly as before.
+## Temperaments (#184): the optional `computer_temperaments` ({faction id: "normal" or "aggressive"}) gives a computer
+## seat its style; AISeat hands it to the seat's AIPlayer. Only seats that play one other than "normal" are kept (and
+## recorded, as "temperaments"), so a game whose computers all play "normal" is the same game, record and all, as one
+## started without them.
 ##
 ## Saved games (SaveGame): a save holds record(); from_record() turns it back into a playable session at
 ## the start of the saved turn (a game with two people behind the handoff cover). Orders queued during a
@@ -70,6 +74,9 @@ const BATTLE_TYPES := ["battle", "border_battle"]
 const CODEX_KEYS := ["hotseat", "handoff", "victory", "simultaneous_capture", "computer_opponent"]
 ## The levels a computer seat can play at: AIPlayer.DIFFICULTIES (tests/test_ai_seat.gd checks they match).
 const COMPUTER_LEVELS := ["easy", "normal"]
+## The temperaments a computer seat can play with (#184): AIPlayer.TEMPERAMENTS (tests/test_ai_temperament.gd checks they
+## match). The first is every computer's unless the game says otherwise.
+const COMPUTER_TEMPERAMENTS := ["normal", "aggressive"]
 ## Players in a game: always two, any two of the three factions (CW-0, #251; design/CANDLEWAKE.md §1.1, §13).
 const SEATS := FactionData.SEATS
 ## How from_record() names a missing part of a saved game.
@@ -91,6 +98,7 @@ var _victory := {}
 var _setup_errors: Array = []
 var _start_builds := {}  # faction id -> RulerRules.build_of at the start; {} in a game without rulers
 var _computer := {}  # faction id -> level, for the seats the computer plays
+var _temperaments := {}  # #184: faction id -> temperament, for the computer seats that play one other than "normal"
 var _removed: Array = []  # M2-6: texts of the orders the last queue_order / cancel_order removed
 # --- fog of war (M5-1): kept only in a game with fog -------------------------------------------------
 var _before: GameState = null  # the true state at the start of the last resolved turn (null before turn 1)
@@ -103,7 +111,7 @@ var _fog_sight := {}  # faction id -> its sight of the current state (FogRules.s
 
 
 func _init(state: GameState = null, players: Array = [], game_seed: int = 0, battle_resolver: BattleResolver = null,
-		computer_seats: Dictionary = {}) -> void:
+		computer_seats: Dictionary = {}, computer_temperaments: Dictionary = {}) -> void:
 	_game_seed = game_seed
 	_battle_resolver = battle_resolver
 	if state == null:
@@ -116,12 +124,16 @@ func _init(state: GameState = null, players: Array = [], game_seed: int = 0, bat
 	if _state != null:
 		_check_players(players)
 		_check_computer_seats(players, computer_seats)
+		_check_temperaments(players, computer_seats, computer_temperaments)
 	if not _setup_errors.is_empty():
 		_phase = Phase.INVALID
 		return
 	_players = players.duplicate()
 	for fid in computer_seats:
 		_computer[String(fid)] = String(computer_seats[fid])
+	for fid in computer_temperaments:
+		if String(computer_temperaments[fid]) != COMPUTER_TEMPERAMENTS[0]:
+			_temperaments[String(fid)] = String(computer_temperaments[fid])
 	_start_dict = _state.to_dict()
 	for f in _state.factions:
 		if f.has_ruler():
@@ -186,6 +198,18 @@ func is_computer(faction_id: String) -> bool:
 ## The level ("easy" or "normal") the computer plays `faction_id` at, or "" for a human seat.
 func computer_level(faction_id: String) -> String:
 	return String(_computer.get(faction_id, ""))
+
+
+## #184: the temperament the computer plays `faction_id` with ("normal" or "aggressive"), or "" for a human seat.
+func computer_temperament(faction_id: String) -> String:
+	if not _computer.has(faction_id):
+		return ""
+	return String(_temperaments.get(faction_id, COMPUTER_TEMPERAMENTS[0]))
+
+
+## #184: {faction id: temperament} for the computer seats that play one other than "normal" ({} when none does).
+func computer_temperaments() -> Dictionary:
+	return _temperaments.duplicate()
 
 
 ## How many seats people play.
@@ -466,8 +490,8 @@ func builds() -> Dictionary:
 
 ## Everything replay() needs to rebuild this game: JSON-safe. A game with rulers also carries
 ## "builds" (see builds()) for reports; replay() doesn't need it, since builds live in "start_state".
-## A game with computer seats adds "ai": {faction id: level}. replay() never runs the AI: its orders
-## are in history() like anyone's.
+## A game with computer seats adds "ai": {faction id: level}, and #184 "temperaments" (computer_temperaments) when a
+## computer plays one other than "normal". replay() never runs the AI: its orders are in history() like anyone's.
 func record() -> Dictionary:
 	var rec := {"start_state": _start_dict.duplicate(true), "players": _players.duplicate(),
 		"game_seed": Serial.int64_to_str(_game_seed), "history": history()}
@@ -475,6 +499,8 @@ func record() -> Dictionary:
 		rec["builds"] = builds()
 	if not _computer.is_empty():
 		rec["ai"] = _computer.duplicate()
+	if not _temperaments.is_empty():
+		rec["temperaments"] = _temperaments.duplicate()
 	return rec
 
 
@@ -660,8 +686,9 @@ static func from_record(game_record, battle_resolver: BattleResolver = null) -> 
 	var state := GameState.from_dict(game_record.start_state, errors)
 	var players = Serial.expect(game_record, "players", TYPE_ARRAY, errors, "the saved game", [])
 	var ai = Serial.expect(game_record, "ai", TYPE_DICTIONARY, errors, "the saved game", {})
+	var temperaments = Serial.expect(game_record, "temperaments", TYPE_DICTIONARY, errors, "the saved game", {})  # #184
 	var history = Serial.expect_dicts(game_record, "history", errors, "the saved game", "turn")
-	if state == null or players == null or ai == null or history == null:
+	if state == null or players == null or ai == null or temperaments == null or history == null:
 		return {"session": null, "errors": errors}
 	var seats := []
 	for fid in players:
@@ -669,8 +696,11 @@ static func from_record(game_record, battle_resolver: BattleResolver = null) -> 
 	var computer := {}
 	for fid in ai:
 		computer[str(fid)] = str(ai[fid])
+	var styles := {}
+	for fid in temperaments:
+		styles[str(fid)] = str(temperaments[fid])
 	var game_seed := Serial.to_int(game_record.game_seed)
-	var session := GameSession.new(state, seats, game_seed, battle_resolver, computer)
+	var session := GameSession.new(state, seats, game_seed, battle_resolver, computer, styles)
 	if session.phase() == Phase.INVALID:
 		return {"session": null, "errors": session.setup_errors()}
 	for i in history.size():
@@ -795,6 +825,18 @@ func _check_computer_seats(players: Array, computer_seats: Dictionary) -> void:
 			continue
 		if not COMPUTER_LEVELS.has(String(computer_seats[fid])):
 			_setup_errors.append("Player %d is set to be played by the computer at a level this game does not have. The levels are Easy and Normal." % (seat + 1))
+
+
+## #184: a temperament is for a seat the computer plays, and one AIPlayer knows.
+func _check_temperaments(players: Array, computer_seats: Dictionary, temperaments: Dictionary) -> void:
+	var computers := computer_seats.keys().map(func(k): return String(k))
+	for fid in temperaments:
+		var seat := players.find(String(fid))
+		if seat < 0 or not computers.has(String(fid)):
+			_setup_errors.append("A computer style is set for a faction the computer does not play in this game.")
+			continue
+		if not COMPUTER_TEMPERAMENTS.has(String(temperaments[fid])):
+			_setup_errors.append("Player %d is set to a computer style this game does not have. The styles are Steady and Aggressive." % (seat + 1))
 
 
 ## "" in the ORDERS phase, otherwise why `action` isn't possible now.
