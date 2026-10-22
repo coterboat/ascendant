@@ -211,6 +211,7 @@ const ENTRIES := {
 		"text": "The Thornmane Clans' siege engine, %d gold. " % FortData.ENGINES.beasts.cost + FortData.ENGINES.beasts.text,
 	},
 	"unit_guttering_ram": {
+		"faction": "candlewake",
 		"title": "Guttering Ram",
 		"text": "The Candlewake's siege engine, %d gold. " % FortData.ENGINES.candlewake.cost + FortData.ENGINES.candlewake.text,
 	},
@@ -487,18 +488,22 @@ const ENTRIES := {
 	},
 	# --- the Candlewake (CW-2, #253; design/CANDLEWAKE.md §2, §4): their traits' words are AutoBattleResolver's
 	"trait_pall": {
+		"faction": "candlewake",
 		"title": "Pall (Wickwardens)",
 		"text": AutoBattleResolver.TRAIT_TEXT["Pall"] + " A wall of wax shields and hoods: every point of attack still counts, but every swing finds less to hit.",
 	},
 	"trait_siphon": {
+		"faction": "candlewake",
 		"title": "Siphon (Gleaners)",
 		"text": AutoBattleResolver.TRAIT_TEXT["Siphon"] + " It heals after the round's damage lands, after any Flare, and before morale is checked, so a Gleaner that falls that round heals nothing.",
 	},
 	"trait_flare": {
+		"faction": "candlewake",
 		"title": "Flare (the Hundred-Wick)",
 		"text": AutoBattleResolver.TRAIT_TEXT["Flare"] + " The Flares of one round go one after another, after the round's deaths: a fighter one Flare fells is gone before the next picks. Commanders behind the line and the second rank are out of its reach.",
 	},
 	"trait_toll": {
+		"faction": "candlewake",
 		"title": "Toll (the Lamplighter)",
 		"text": AutoBattleResolver.TRAIT_TEXT["Toll"] + " The count goes on all battle, counted before each round's morale check; it lifts the line only while the Lamplighter stands. A fallen ruler or commander counts like any fighter.",
 	},
@@ -710,40 +715,49 @@ const ENTRIES := {
 	},
 	# --- the Candlewake (CW-2, #253; design/CANDLEWAKE.md §2, §4): Wick, its harbours, the rulers and their mandates
 	"wick": {
+		"faction": "candlewake",
 		"title": "Wick",
 		"text": "The Candlewake's own rule. Every army of theirs except a ruler's burns at a flame, from 0 to %d, shown on its banner. Its regular units fight at the flame minus 1 attack: -1 at flame 0, +1 at flame 2, +2 at flame 3. Commanders, rulers, mages and summoned creatures never do." % FactionData.PREVIEW_FACTIONS[0].wick.cap
 			+ " A battle is fought at the flame the army had when the battles began. In the Wick step at the end of the turn, after the wake and before income, an army that won a battle this turn gains 1 flame; one that fought no battle loses 1, unless it ends the turn in a harbour; an army raised this turn keeps its flame."
 			+ " A new army starts at flame %d (2 with Kindling); recruits that join an army bring it down to their flame, and a split keeps its flame on both parts while a merge takes the lower. At flame 0 an army gutters. See Harbour and Guttering." % FactionData.PREVIEW_FACTIONS[0].wick.start,
 	},
 	"harbour": {
+		"faction": "candlewake",
 		"title": "Harbour",
 		"text": "Where a Candlewake army can wait without its flame falling: a fort you own, and (with the Wake) a province of yours on the Wake-Line or in Deep Wake, or a cold wake of your own. A siege camp is not a harbour: it wants the storm, not the wait. An army in a harbour that fights no battle keeps its flame in the Wick step.",
 	},
 	"guttering": {
+		"faction": "candlewake",
 		"title": "Guttering",
 		"text": "A Candlewake army at flame 0 gutters: in each Wick step its regular units lose 2 hit points, never below 1, until it wins a battle. It is never destroyed this way, and its rulers and commanders never gutter.",
 	},
 	"ruler_half_death": {
+		"faction": "candlewake",
 		"title": "Half-Death",
 		"text": "Ruler of the Candlewake, a god. What is left of the Wright, who died at noon, mid-stroke. It fights in the front rank. When its body falls it comes back at the Candlewake's capital after 1 turn, 3 kept power smaller. Its province ability is Harvest.",
 	},
 	"ruler_mother_tallow": {
+		"faction": "candlewake",
 		"title": "Mother Tallow",
 		"text": "Ruler of the Candlewake, a mortal line: the Ninth Chandler, the one living woman among the dead, her taper burning gold. She fights in the second rank. When she dies, the Tenth Chandler takes up the taper at the capital 2 turns later, with half her kept power. Her province ability is Vigil.",
 	},
 	"ability_harvest": {
+		"faction": "candlewake",
 		"title": "Harvest",
 		"text": "Half-Death's province ability. Once a turn, when Half-Death wins a battle in a province against an army of another player, Wickwardens rise from the dead there: 1 at ability ranks 1 and 2, 2 at ranks 3 and 4. A win over only a Free Hold raises 1 at any rank. They join the lowest-numbered Candlewake army that fought there, at its flame (they rose in the fire, so they don't cool it), or form a new army. A fort's chain of battles counts once, and it never raises the enemy's dead.",
 	},
 	"ability_vigil": {
+		"faction": "candlewake",
 		"title": "Vigil",
 		"text": "Mother Tallow's province ability. In the Wick step, after an idle army's loss and before guttering, your armies in her province burn at least at flame 1 at ability ranks 1 and 2, flame 2 at ranks 3 and 4. Vigil never lifts a flame above 3.",
 	},
 	"mandate_kindling": {
+		"faction": "candlewake",
 		"title": "Kindling",
 		"text": "Candlewake mandate, 3 power. Your new armies and your recruits start at flame 2 instead of 1.",
 	},
 	"mandate_tallow_levy": {
+		"faction": "candlewake",
 		"title": "Tallow Levy",
 		"text": "Candlewake mandate, 3 power. Wickwardens cost %d gold" % MandateData.PREVIEW_MANDATES[1].unit_cost.wickwardens
 			+ " instead of %d." % FactionData.PREVIEW_FACTIONS[0].unit_types[0].cost,
@@ -1224,6 +1238,18 @@ const ENTRIES := {
 		"text": "Key 6. Why do I see what I see? Warm lantern rings on the land your sources see, brightest at the source: your provinces, your forts and your armies (a ruler, a commander or a scout sees further), each plate saying what it sees, and a target where your Far Sight looks. A dashed ring shows land your queued marches will bring into sight next turn. The legend lists the four looks of sight. Only in a game with fog of war. This lens is provisional: the veil on the land already shows sight, and the lens is here to explain it.",
 	},
 }
+
+
+## The faction an entry belongs to (#285: "candlewake" for the preview faction's own rules), or "" for the game's shared rules.
+static func entry_faction(id: String) -> String:
+	return String(ENTRIES.get(id, {}).get("faction", ""))
+
+
+## Whether entry `id` belongs in the codex of a game that seats `factions` (#285): a faction's own entries only where that
+## faction plays, every shared entry always. A codex outside a game passes the factions a new game can seat.
+static func shown_for(id: String, factions: Array) -> bool:
+	var fid := entry_faction(id)
+	return fid.is_empty() or factions.has(fid)
 
 
 static func entry(id: String) -> Dictionary:

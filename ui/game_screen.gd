@@ -604,6 +604,8 @@ func close_turn_report() -> void:
 func open_codex(key: String = "") -> void:
 	_bind()
 	_raise(codex)
+	if session != null and session.state() != null:
+		codex.set_factions(session.state().factions.map(func(f): return f.id))  # #285: this game's factions' own entries
 	codex.open(key)
 
 
