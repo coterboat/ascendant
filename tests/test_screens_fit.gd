@@ -241,6 +241,9 @@ func test_the_table_shows_every_button_at_both_sizes() -> void:
 		assert_true(_shown(g, "menu") and _inside(_rect(g, "menu"), viewport), "%s: Menu is on screen (%s)" % [where, _rect(g, "menu")])
 		assert_true(_shown(g, "hint") and _inside(_rect(g, "hint"), viewport), "%s: the tray's hint is on screen (%s)" % [where, _rect(g, "hint")])
 		assert_true(_rect(g, "hint").size.x >= 300.0, "%s: the hint has room (%d px)" % [where, _rect(g, "hint").size.x])
+		# #277: and its whole text shows: it stopped mid-sentence ("Recruit: click your capital, then"), three lines needed and two shown.
+		var lines: Array = g.rects.get("hint_lines", [0, 0])
+		assert_true(int(lines[0]) >= 1 and int(lines[0]) <= int(lines[1]), "%s: the tray's hint wraps to %d lines and shows %d" % [where, lines[0], lines[1]])
 		for button in ["research", "magic", "ruler", "chronicle", "report", "lenses", "codex", "help"]:
 			assert_true(_shown(g, button) and _inside(_rect(g, button), viewport), "%s: %s is on screen (%s)" % [where, button, _rect(g, button)])
 		# The board fills the window: no bar over it, no panel beside it.
