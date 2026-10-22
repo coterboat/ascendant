@@ -38,6 +38,7 @@ var message: Label = null
 var _board: GameState = null
 var _preview_key := ""
 var _preview: Dictionary = {}
+var _render_queued := false  # the forecast's lines are rebuilt once the mouse event that changed them is over (_show_preview)
 
 
 static func make(host: MapScreen, army: Army) -> MusterBoard:
@@ -76,7 +77,12 @@ func _build() -> void:
 	partner_id = String(map.orders.muster_partners.get(army_id, ""))
 	if not candidates.has(partner_id):
 		partner_id = String(candidates[0]) if not candidates.is_empty() else ""
-	# The forecast sits right under the heading, where the pointer travelling from the card's portraits to a row passes it.
+	# The actions and New army come before the other armies' rows: they are what most orders use, and what a squeezed card must not hide.
+	# The actions come first, above the forecast: a hovered button's forecast grows below it, so the button never moves away from the
+	# pointer (CRASH-1, #249: Split, pushed down by its own forecast, left the click on a line of that forecast).
+	_add_engines(me)
+	_add_buttons(me)
+	# The forecast sits under them, where the pointer travelling from the card's portraits to New army or a row passes it.
 	forecast_box = PanelContainer.new()
 	forecast_box.name = "MusterForecast"
 	forecast_box.custom_minimum_size = Vector2(0, RESERVED_H)
@@ -85,9 +91,6 @@ func _build() -> void:
 	forecast_lines = VBoxContainer.new()
 	forecast_lines.add_theme_constant_override("separation", 3)
 	forecast_box.add_child(forecast_lines)
-	# The actions and New army come before the other armies' rows: they are what most orders use, and what a squeezed card must not hide.
-	_add_engines(me)
-	_add_buttons(me)
 	new_zone = DropZone.make(self)
 	add_child(new_zone)
 	for id in ids:
@@ -404,13 +407,30 @@ func preview(order: MusterOrder) -> void:
 		return
 	_preview_key = key
 	_preview = MusterForecast.of(map.orders.state, _fid(), order, map.orders.orders())
-	_render(_preview)
+	_show_preview()
 
 
 func clear_preview() -> void:
 	_preview_key = ""
 	_preview = {}
-	_render({})
+	_show_preview()
+
+
+## CRASH-1 (#249): the forecast's lines change after the mouse event that asked for them, never inside it. Godot 4.5 picks the control
+## the pointer moves onto before it sends the old one mouse_exited, and keeps that control as hovered even when the handler freed it:
+## Split's mouse_exited rebuilt the forecast and freed the very line the pointer had moved onto, and the next mouse event read it freed
+## and crashed the game. Off the tree (a headless test) no pointer can be over it, so the lines change at once.
+func _show_preview() -> void:
+	if not is_inside_tree():
+		_render(_preview)
+	elif not _render_queued:
+		_render_queued = true
+		_render_after_event.call_deferred()
+
+
+func _render_after_event() -> void:
+	_render_queued = false
+	_render(_preview)
 
 
 func _render(f: Dictionary) -> void:

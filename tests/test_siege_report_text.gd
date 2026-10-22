@@ -40,6 +40,11 @@ func test_reader_turn_words() -> void:
 	assert_eq(TurnReportText.reader_end(8, 8), "at the end of this turn (8)")
 	assert_eq(TurnReportText.reader_end(9, 8), "at the end of next turn (9)")
 	assert_eq(TurnReportText.reader_end(10, 8), "in 3 turns (end of turn 10)")
+	# #279: after "from", a far turn leads with its number, so the wait is one phrase.
+	assert_eq(TurnReportText.reader_from(8, 8), "from this turn (8)")
+	assert_eq(TurnReportText.reader_from(9, 8), "from next turn (9)")
+	assert_eq(TurnReportText.reader_from(10, 8), "from turn 10 (in 3 turns)")
+	assert_eq(TurnReportText.reader_from(12, 8), "from turn 12 (in 5 turns)")
 
 
 func test_a_siege_start_speaks_in_the_readers_turns() -> void:
@@ -117,10 +122,10 @@ func test_a_capture_says_the_fort_came_with_it() -> void:
 	var now := int(result.new_state.current_turn) + 1
 	var line := _line(result, "captured")
 	assert_true(line.begins_with("Stonegate fell to Aurel Crown"), "the #55 line: %s" % line)
-	assert_true(line.ends_with(" It came with its keep (walls %d of %d): the Aurel Crown can recruit there from %s." % [int(e.numbers.walls),
-		int(FortData.LEVELS[2].walls), TurnReportText.reader_turn(int(e.numbers.recruit_from), now)]), line)
+	assert_true(line.ends_with(" It came with its keep (walls %d of %d): the Aurel Crown can recruit there %s." % [int(e.numbers.walls),
+		int(FortData.LEVELS[2].walls), TurnReportText.reader_from(int(e.numbers.recruit_from), now)]), line)
 	assert_eq(int(e.numbers.recruit_from), now + FortData.CAPTURE_WAIT, "a capture waits CAPTURE_WAIT turns")
-	assert_true(line.contains("from %s" % TurnReportText.reader_turn(now + FortData.CAPTURE_WAIT, now)), "a capture waits %d turns: %s" % [
+	assert_true(line.contains(TurnReportText.reader_from(now + FortData.CAPTURE_WAIT, now)), "a capture waits %d turns: %s" % [
 		FortData.CAPTURE_WAIT, line])
 	# A fort retaken within the window recruits at once.
 	var s2 := Fx.state([["kingdom-3", CROWN, "westwatch", Fx.units("knights", 2)]], {"westwatch": CROWN, "stonegate": CLANS})
@@ -131,6 +136,22 @@ func test_a_capture_says_the_fort_came_with_it() -> void:
 	var line2 := _line(r2, "captured")
 	assert_true(line2.contains("can recruit there from this turn (%d), since they retook it within %d turns of losing it." % [
 		int(r2.new_state.current_turn) + 1, FortData.RETAKE_TURNS]), line2)
+
+
+## #279: a captured fort's wait reads as one phrase, its first recruit turn first: "the Aurel Crown can recruit there from turn 4 (in 3
+## turns)", never "from in 3 turns (turn 4)". The count is the reader's (the turn they are playing counts as one), from the event's numbers.
+func test_a_captured_forts_wait_reads_as_one_phrase() -> void:
+	var s := Fx.state([["kingdom-3", CROWN, "westwatch", Fx.units("knights", 2)]], {"westwatch": CROWN})
+	var result := Fx.resolve(s, {CROWN: [MoveOrder.new("kingdom-3", "stonegate")]})
+	var e := _event(result, "captured")
+	var now := int(result.new_state.current_turn) + 1
+	var from := int(e.numbers.recruit_from)
+	var wait := from - now + 1
+	assert_true(wait >= 3, "a capture waits CAPTURE_WAIT (%d) turns, so its first recruit turn is past next turn: %d" % [FortData.CAPTURE_WAIT, wait])
+	var line := _line(result, "captured")
+	assert_true(line.ends_with(": the Aurel Crown can recruit there from turn %d (in %d turns)." % [from, wait]), line)
+	assert_false(line.contains("from in "), line)
+	assert_true(String(e.text).ends_with("can recruit there from turn %d." % from), "the event's own text is unchanged: %s" % e.text)
 
 
 # --- battles at forts ----------------------------------------------------------------------------------

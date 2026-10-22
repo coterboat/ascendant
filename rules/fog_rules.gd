@@ -1365,7 +1365,7 @@ static func _rebuilt_move(e: Dictionary, army_ids: Array, before_sight: Dictiona
 	var total := exact_count(n) if String(before_sight.get(from)) == CLEAR else round_count(n)
 	var numbers := {"faction": fid, "from": from, "to": to, "total": total, "types": type_list}
 	var away := String(after_sight.get(to, VEILED)) == VEILED
-	var text := String(FogData.TEXT.move_away if away else FogData.TEXT.move).format(_move_params(numbers, before))
+	var text := RulerRules.cap_sentences(String(FogData.TEXT.move_away if away else FogData.TEXT.move).format(_move_params(numbers, before)))
 	return {"type": "army_moved", "phase": e.phase, "provinces": [from, to], "factions": [fid], "armies": [], "cause": "seen",
 		"numbers": numbers, "text": text, "codex": "move", "rebuilt": true, "view_from": from, "view_to": to}
 
@@ -1395,7 +1395,8 @@ static func safe_key(e: Dictionary) -> String:
 
 
 ## The text of a rebuilt event (§2.8), from its FogData.TEXT template filled in with its safe `numbers` and the
-## public names of `provinces` and `factions` (read from `state`), and nothing else.
+## public names of `provinces` and `factions` (read from `state`), and nothing else. Every sentence starts with a
+## capital (#284): most templates open with {faction}, "the Aurel Crown", and the line reads "The Aurel Crown swore ...".
 static func text_for(t: String, numbers: Dictionary, provinces: Array, factions: Array, state: GameState) -> String:
 	var p := {}
 	for k in numbers:
@@ -1435,7 +1436,7 @@ static func text_for(t: String, numbers: Dictionary, provinces: Array, factions:
 					"new_name": String(names.get("to", old))})
 			var new_unit := String(numbers.get("new_unit", ""))
 			if not new_unit.is_empty():
-				p["new_unit_name"] = String(PathData.NEW_UNITS.get(new_unit, {}).get("name", new_unit))
+				p["new_unit_name"] = String(AscensionRules.new_unit_data(new_unit).get("name", new_unit))
 				text += String(FogData.TEXT.transformed_new_unit)
 			var opens := String(numbers.get("opens_mandate", ""))
 			if not opens.is_empty():
@@ -1451,7 +1452,7 @@ static func text_for(t: String, numbers: Dictionary, provinces: Array, factions:
 		"mark_stage", "scar_formed", "scar_consumed":  # CW-1: the marks on the land; a sentence may start with the province
 			p["Province"] = RulerRules._cap(String(p.province))
 			p["stage_name"] = MarkRules.stage_name(String(factions[0]) if not factions.is_empty() else "", int(numbers.get("stage", 0)))
-	return text.format(p)
+	return RulerRules.cap_sentences(text.format(p))
 
 
 ## A unit type's name for players, from `fid`'s roster, commander or ruler (renamed by a transformation, if so).
@@ -1619,9 +1620,10 @@ static func synthetic_events(view_before: GameState, view_after: GameState, show
 		var state: GameState = view_after if view_after != null else view_before
 		var template := "army_gone" if own and gone else t
 		var total_text := String(note.get("total", {}).get("text", str(total))) if not note.is_empty() else str(total)
-		var text := String(FogData.TEXT.get(template, "")).format({"faction": _the_faction(state, String(entry.owner)),
+		# #284: "{province} is out of your sight now" opens with a name, "the Long Vigil" among them
+		var text := RulerRules.cap_sentences(String(FogData.TEXT.get(template, "")).format({"faction": _the_faction(state, String(entry.owner)),
 			"province": _province_name(state, String(entry.location)), "total": total_text, "fighters": fighters_words(total_text),
-			"level": String(FogData.LEVEL_NAMES.get(String(entry.level), entry.level)), "turn": int(numbers.turn)})
+			"level": String(FogData.LEVEL_NAMES.get(String(entry.level), entry.level)), "turn": int(numbers.turn)}))
 		out.append({"type": t, "phase": "view", "provinces": [String(entry.location)], "factions": [String(entry.owner)],
 			"armies": [id], "cause": "view", "numbers": numbers, "text": text, "codex": String(FogData.SYNTHETIC_CODEX.get(t, "sight")),
 			"synthetic": true})

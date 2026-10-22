@@ -164,3 +164,86 @@ const ECONOMY_RULES := {
 	"beasts_oath_grove": {"name": "Bounty of the Wild", "codex": "bounty_of_the_wild"},
 	"beasts_oath_blood": {"name": "Blood Levy", "codex": "blood_levy"},
 }
+
+
+## CW-4 (#255, design/CANDLEWAKE.md §6): the Candlewake's path, behind their faction's preview (FactionData.PREVIEW_FACTIONS),
+## kept apart from PATHS, BRANCHES, NEW_UNITS, PROVINCE_RULES and ECONOMY_RULES so the shipped tables, and everything that walks
+## them, stay exactly as they are. AscensionRules reads both (path_data, node_data, branch_data, branches_for, new_unit_data,
+## province_rule_data, economy_rule_name). As in M4 (§1, §3), each Oath brings its side's economy rule whole and at once: the
+## Oath of the Kept Meadow Wake, the Oath of the Snuffed Pyre Roads. The transformation brings the rest, with the mandate it
+## forswears (the director, Q CW-4 1). The path's name, "the Pouring", is the director's, provisional until Alex names it.
+## Effects beyond §3.2's vocabulary, read by MarkRules, WickRules and the battle:
+##   wake_sooner      n: the Wake-Line comes n turns sooner (MarkRules.threshold; never before 1 turn held)
+##   wake_gold        n: a Wake stage that changes a province's gold changes it by n instead (Meadow Wake: +1, not -1)
+##   risen            {"from": a stage id, "every": n}: the dead rise from that stage on, every n turns (the Long Sleep)
+##   flare_damage     n: a Hundred-Wick's Flare deals n more (Brighter Flare)
+##   siphon_heal      {unit type id: n}: those units' Siphon heals n (Red Gleaners: 2)
+##   flame_cap        n: the flame's cap (the Red Wake: 4); above the row's cap an army that doesn't win drops to it
+##   idle_loss        n: what an army idle outside a harbour loses (the Red Wake: 2)
+##   harvest_bonus    n: every Harvest raises n more (the Swelling)
+##   pyre_roads       n: a win in a province of yours that stood at the Wake-Line or deeper when the battles began gives n flame
+##                    instead of 1, never above the flame's cap (Pyre Roads)
+const PREVIEW_BRANCHES := {
+	"golden_wake": {"name": "Golden Wake", "ref": "the Golden Wake", "faction": "candlewake", "oath": "wake_oath_kept",
+		"transformation": "wake_golden_wake", "colour": "honey"},
+	"red_wake": {"name": "Red Wake", "ref": "the Red Wake", "faction": "candlewake", "oath": "wake_oath_snuffed",
+		"transformation": "wake_red_wake", "colour": "cherry"},
+}
+
+const PREVIEW_PATHS := {
+	"candlewake": {
+		"id": "the_pouring", "name": "the Pouring", "codex": "path_candlewake",
+		"nodes": [
+			{"id": "wake_thicker_tallow", "name": "Thicker Tallow", "kind": "tier1", "cost": 10, "requires": [], "requires_any": 0,
+				"branch": "", "effects": {"unit": {"wickwardens": {"hp": 3}}}, "codex": "node_wake_thicker_tallow",
+				"text": "Wickwardens +3 maximum hit points."},
+			{"id": "wake_sitting_up_early", "name": "Sitting Up Early", "kind": "tier1", "cost": 10, "requires": [], "requires_any": 0,
+				"branch": "", "effects": {"wake_sooner": 1}, "codex": "node_wake_sitting_up_early",
+				"text": "The Wake-Line comes 1 turn sooner."},
+			{"id": "wake_brighter_flare", "name": "Brighter Flare", "kind": "tier2", "cost": 15, "requires": ["wake_thicker_tallow"],
+				"requires_any": 0, "branch": "", "effects": {"flare_damage": 1}, "codex": "node_wake_brighter_flare",
+				"text": "A Hundred-Wick's Flare deals 1 more damage to each enemy it burns."},
+			{"id": "wake_hungry_gleaners", "name": "Hungry Gleaners", "kind": "tier2", "cost": 15, "requires": ["wake_sitting_up_early"],
+				"requires_any": 0, "branch": "", "effects": {"unit": {"gleaners": {"attack": 2}}}, "codex": "node_wake_hungry_gleaners",
+				"text": "Gleaners +2 attack."},
+			{"id": "wake_oath_kept", "name": "Oath of the Kept", "kind": "oath", "cost": 20, "requires": [], "requires_any": 2,
+				"branch": "golden_wake", "effects": {"wake_gold": 1, "wake_sooner": 1}, "codex": "node_wake_oath_kept",
+				"text": "Swears to the Golden Wake. Meadow Wake: your Wake pays 1 gold where it cost 1, and the Wake-Line comes 1 turn sooner."},
+			{"id": "wake_golden_wake", "name": "Golden Wake", "kind": "transformation", "cost": 30,
+				"requires": ["wake_oath_kept"], "requires_any": 0, "branch": "golden_wake",
+				"effects": {"unit": {"wickwardens": {"hp": 2, "morale": 1}}, "rename": {"wickwardens": "Combwardens"},
+					"new_unit": "amber_saints", "province_rule": {"id": "the_long_sleep", "value": 3},
+					"risen": {"from": "wake_line", "every": 3}, "forswears": "muster_grounds"},
+				"codex": "node_wake_golden_wake",
+				"text": "Wickwardens become Combwardens (+2 maximum hit points, +1 morale), Amber Saints join the roster, and the dead rise from the Wake-Line too, every 3 turns (the Long Sleep)."},
+			{"id": "wake_oath_snuffed", "name": "Oath of the Snuffed", "kind": "oath", "cost": 20, "requires": [], "requires_any": 2,
+				"branch": "red_wake", "effects": {"pyre_roads": 2}, "codex": "node_wake_oath_snuffed",
+				"text": "Swears to the Red Wake. Pyre Roads: a win in your own Wake gives +2 flame instead of +1, never above the flame's cap."},
+			{"id": "wake_red_wake", "name": "Red Wake", "kind": "transformation", "cost": 30,
+				"requires": ["wake_oath_snuffed"], "requires_any": 0, "branch": "red_wake",
+				"effects": {"unit": {"gleaners": {"attack": 2, "hp": -2}}, "rename": {"gleaners": "Red Gleaners"},
+					"siphon_heal": {"gleaners": 2}, "new_unit": "pyre_walkers", "flame_cap": 4, "idle_loss": 2, "harvest_bonus": 1,
+					"forswears": "iron_discipline"},
+				"codex": "node_wake_red_wake",
+				"text": "Gleaners become Red Gleaners (+2 attack, 2 fewer maximum hit points, Siphon heals 2), Pyre-Walkers join the roster, your flame burns to 4 (above 3 it drops to 3 unless it wins, and idle outside a harbour it loses 2), and every Harvest raises one more (the Swelling)."},
+		],
+	},
+}
+
+## The units the Candlewake's transformations add (§6.2, §6.3), with reused traits.
+const PREVIEW_NEW_UNITS := {
+	"amber_saints": {"id": "amber_saints", "name": "Amber Saints", "hp": 24, "attack": 11, "defense": 9, "morale": 11, "cost": 22, "trait": "Iron Hide"},
+	"pyre_walkers": {"id": "pyre_walkers", "name": "Pyre-Walkers", "hp": 16, "attack": 13, "defense": 5, "morale": 9, "cost": 18, "trait": "Berserk"},
+}
+
+## The Golden Wake's province rule (§6.2, §3.6): the Long Sleep ("value" the turns between risers). The Red Wake's
+## transformation has none: the Swelling is Harvest's and the flame's cap is Wick's.
+const PREVIEW_PROVINCE_RULES := {
+	"the_long_sleep": {"name": "the Long Sleep", "codex": "the_long_sleep"},
+}
+
+## The economy rules the Candlewake's Oaths bring, by node id (as ECONOMY_RULES): Meadow Wake and Pyre Roads.
+const PREVIEW_ECONOMY_RULES := {
+	"wake_oath_kept": {"name": "Meadow Wake", "codex": "meadow_wake"},
+	"wake_oath_snuffed": {"name": "Pyre Roads", "codex": "pyre_roads"},
+}

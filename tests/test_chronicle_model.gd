@@ -18,7 +18,8 @@ const FIELDS := ["row", "place", "from", "to", "who", "Who", "factions", "order"
 	"kept_before", "kept_after", "ritual", "caster", "from_terrain",
 	# an event's own numbers (the fog's safe ones and the resolver's)
 	"income", "gold", "gold_before", "gold_after", "cost", "gained", "walls", "walls_before", "walls_max", "turn_of_siege", "battle_turn",
-	"recruit_from", "successor_turn", "successor_power", "kept_power", "until_turn", "budget", "mandate_name", "ruler_name"]
+	"recruit_from", "successor_turn", "successor_power", "kept_power", "until_turn", "budget", "mandate_name", "ruler_name",
+	"battle_when"]  # #279: a breach's battle turn in the reader's words
 
 
 # --- the table ------------------------------------------------------------------------------------------
@@ -229,6 +230,21 @@ func _check_item(it: Dictionary, where: String) -> void:
 	assert_false(String(it.headline).contains("{") or String(it.detail).contains("{"), "%s: no placeholder left in the text" % where)
 	assert_true(String(it.headline).substr(0, 1) == String(it.headline).substr(0, 1).to_upper(), "%s: begins with a capital: %s" % [where, it.headline])
 	assert_eq(JSON.stringify(ChronicleModel.pin_payload(it)).length() > 10, true, "%s: a pin payload serialises" % where)
+
+
+## #279: a breach card counts turns as its report line does. The report of turn 3 is read on turn 4, so the battle the record says comes
+## "next turn (4)" is due this turn: the card says "this turn (4)", the same words as the row beside it.
+func test_a_breach_card_speaks_in_the_readers_turns() -> void:
+	var s := _state()
+	s.current_turn = 3  # the state after turn 3, as the report of turn 3 is shown with
+	var e := _event("walls_breached", ["blackwood"], [CLANS, CROWN], ["beasts-1"], {"besieger": CLANS, "owner": CROWN, "walls_max": 6, "battle_turn": 4},
+		"The walls of Blackwood are down (breached). If both sides are still there next turn (4), they fight there in the open, with no order.")
+	var items := ChronicleModel.build({"turn": 3, "events": [e]}, s, CROWN)
+	assert_eq(items.size(), 1, "one card")
+	if items.size() == 1:
+		assert_eq(String(items[0].detail), "If both sides are still there %s, they fight in the open." % TurnReportText.reader_turn(4, 4))
+		assert_true(String(items[0].detail).contains("this turn (4)"), items[0].detail)
+		assert_true(String(items[0].source_rows[0]).contains("still there this turn (4),"), "the row says the same: %s" % items[0].source_rows[0])
 
 
 func test_a_future_event_type_falls_back_to_a_generic_announcement() -> void:

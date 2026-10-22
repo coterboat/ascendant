@@ -101,10 +101,11 @@ func queue_sacrifice(mandate_id: String) -> String:
 
 
 ## Queues a cast order (M5-6, design/M5_MAGIC_FOG.md §6.1): `army_id`'s caster casts `ritual` on `target`, paid in
-## `pay` (gold, or blood under Tithe of Blood), with Call the Pack's `size`. Returns "" when accepted, otherwise the
-## rules' reason. A move given to that army is removed (the army holds): see last_removed().
-func queue_cast(ritual: String, army_id: String, target: String, pay: String = CastOrder.GOLD, size: int = 0) -> String:
-	return _queue(CastOrder.new(ritual, army_id, target, pay, size))
+## `pay` (gold, or blood under Tithe of Blood), with Call the Pack's `size`; CW-5: `target_army` the army of yours a one-army
+## ritual lands on ("" for the rules' pick). Returns "" when accepted, otherwise the rules' reason. A move given to that army is
+## removed (the army holds): see last_removed().
+func queue_cast(ritual: String, army_id: String, target: String, pay: String = CastOrder.GOLD, size: int = 0, target_army: String = "") -> String:
+	return _queue(CastOrder.new(ritual, army_id, target, pay, size, target_army))
 
 
 ## What the cast dialog offers `army_id` (M5-6): one row per ritual of the faction's schools it knows, and Far Sight in a fog
@@ -150,8 +151,9 @@ func cast_options(army_id: String) -> Array:
 
 
 ## The cast dialog's forecast (MagicRules.forecast_ritual) for one choice, with this faction's queued orders.
-func cast_preview(ritual: String, army_id: String, target: String, pay: String = CastOrder.GOLD, size: int = 0) -> Dictionary:
-	var order := CastOrder.new(ritual, army_id, target, pay, size)
+func cast_preview(ritual: String, army_id: String, target: String, pay: String = CastOrder.GOLD, size: int = 0,
+		target_army: String = "") -> Dictionary:
+	var order := CastOrder.new(ritual, army_id, target, pay, size, target_army)
 	var list := orders()
 	list.append(order)
 	return MagicRules.forecast_ritual(state, faction_id, order, list, Forecast.veiled_provinces(view_state(), faction_id))

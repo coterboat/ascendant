@@ -289,8 +289,8 @@ static func casters_text(state: GameState, fid: String) -> String:
 static func number_words(b: Dictionary) -> String:
 	var label := String(b.total_label)
 	var unit := label.get_slice("(", 1).trim_suffix(")") if label.contains("(") else ""
-	if unit == "most wolves":
-		return "up to %d wolves" % int(b.total)
+	if unit.begins_with("most "):  # CW-5: a pack's most bodies, wolves or Snuffed
+		return "up to %d %s" % [int(b.total), unit.trim_prefix("most ")]
 	return "%d %s" % [int(b.total), unit] if not unit.is_empty() else str(int(b.total))
 
 
@@ -496,7 +496,11 @@ static func chip(state: GameState, fid: String, orders: Array = []) -> Dictionar
 	if casts > 0:
 		parts.append("%s queued: each holds its army this turn. %s" % [TooltipText.count(casts, "ritual"), String(Forecast.cast_budget(state, fid, orders).text)])
 	for e in view.enchantments:
-		if String(e.kind) == "global":
+		if String(e.kind) == "global" and int(MagicRules.spell_data(String(e.ritual)).get("flame_bonus", 0)) > 0:  # CW-5: Bonfire Night
+			parts.append("%s (%s) is up through turn %d: in every battle %s regulars fight %d flame hotter." % [
+				MagicRules.spell_name(String(e.ritual)), MagicRules._faction_display(view, String(e.faction)), int(e.until_turn),
+				"your" if String(e.faction) == fid else "its", int(MagicRules.spell_data(String(e.ritual)).flame_bonus)])
+		elif String(e.kind) == "global":
 			parts.append("%s (%s) is up through turn %d: in every battle %s fighters heal back %s of the damage they deal." % [
 				MagicRules.spell_name(String(e.ritual)), MagicRules._faction_display(view, String(e.faction)), int(e.until_turn),
 				"your" if String(e.faction) == fid else "its", MagicRules.moon_share_word()])
@@ -616,5 +620,6 @@ static func _change_words(before: GameState, after: GameState, fid: String, spel
 		"ward":
 			return "%s lasts %d turns instead of %d." % [name, int(mage_now.duration) + 1, int(mage_was.duration) + 1]
 		"summon":
-			return "%s calls up to %d wolves instead of %d." % [name, int(mage_now.count), int(mage_was.count)]
+			return "%s calls up to %d %s instead of %d." % [name, int(mage_now.count), String(MagicRules.pack_words(spell_id).get("many", "wolves")),
+				int(mage_was.count)]  # CW-5
 	return ""

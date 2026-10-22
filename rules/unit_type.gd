@@ -17,6 +17,10 @@ var is_ruler: bool = false
 ## A summoned creature's type (M5 magic, design/M5_MAGIC_FOG.md §6.2): never recruited, and skipped by mandates
 ## and path parts as rulers are. Only in a game with magic (MagicRules.validate); saved only when true.
 var summoned: bool = false
+## CW-12 (#263, design/CANDLEWAKE.md §4.5): the stage of its faction's own mark (MarkData) a province must stand at, or deeper,
+## for the unit to be recruited there ("deep_wake": the candlebeasts, poured only in Deep Wake; MarkRules.pour_reason), or ""
+## for none. From the row's "requires_mark_stage"; saved only when set.
+var mark_stage: String = ""
 
 # Short plain-language descriptions for tooltips/codex. Matches acceptance criterion for every stat.
 static func describe(stat: String) -> String:
@@ -53,6 +57,8 @@ func to_dict() -> Dictionary:
 		d["is_ruler"] = true  # only rulers carry the key, so M1 data saves exactly as before
 	if summoned:
 		d["summoned"] = true  # M5: only summoned creatures carry the key
+	if not mark_stage.is_empty():
+		d["mark_stage"] = mark_stage  # CW-12: only a unit poured in its own mark carries the key
 	return d
 
 ## Returns null when a field has the wrong type, with a plain-language reason in `errors` (Serial load
@@ -61,7 +67,7 @@ static func from_dict(data: Dictionary, errors = null, who: String = "") -> Unit
 	if who.is_empty():
 		who = Serial.label("unit type", data)
 	var text := {}
-	for key in ["id", "name", "trait", "trait_description", "trait_desc"]:
+	for key in ["id", "name", "trait", "trait_description", "trait_desc", "mark_stage"]:
 		text[key] = Serial.expect(data, key, TYPE_STRING, errors, who, "")
 		if text[key] == null:
 			return null
@@ -83,4 +89,5 @@ static func from_dict(data: Dictionary, errors = null, who: String = "") -> Unit
 	ut.is_commander = flags.is_commander
 	ut.is_ruler = flags.is_ruler
 	ut.summoned = flags.summoned
+	ut.mark_stage = text.mark_stage  # CW-12
 	return ut

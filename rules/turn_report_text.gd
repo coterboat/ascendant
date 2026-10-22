@@ -8,6 +8,10 @@ class_name TurnReportText
 ## lines here, when it is shown, from each event's structured fields, the other events of the turn and the
 ## state after the turn. A loaded game reads exactly like a game just played.
 ##
+## Every sentence of every line starts with a capital, whoever wrote it (#284, RulerRules.cap_sentences): a line that
+## opens with a name written for running text ("the Long Vigil fell to ...", the fog's "the Aurel Crown swore ...")
+## or a sentence after one ("Gold: 17 -> 22. the Long Vigil paid nothing") reads "The ...". No word changes.
+##
 ##   rows(events, state, viewer = "", before = null) -> [{"event", "text"}]   the report, in display order
 ##   line(event, events, state, viewer = "", before = null) -> String         one event's line
 ##   display_order(events, state) -> Array        the events in report order, moves grouped by destination
@@ -43,9 +47,10 @@ class_name TurnReportText
 ##        as the garrison sallied", "... as a relief arrived";
 ##      - every turn word is the reader's: the report of turn T is read at the start of turn T + 1, the turn the top
 ##        bar shows, so a siege line says "this turn (T + 1)", "next turn (T + 2)", "in 3 turns (turn T + 3)"
-##        (reader_turn, reader_end), where the event's own text says "next turn (T + 1)". The phrase comes from the
-##        event's numbers (breach_turn, cut_off_from, battle_turn, recruit_from); the rest of the line is the
-##        resolver's own words, so the two never disagree on anything else.
+##        (reader_turn, reader_end), where the event's own text says "next turn (T + 1)"; after "from" a far turn leads
+##        with its number, "from turn T + 3 (in 3 turns)" (reader_from, #279). The phrase comes from the event's numbers
+##        (breach_turn, cut_off_from, battle_turn, recruit_from); the rest of the line is the resolver's own words, so
+##        the two never disagree on anything else.
 
 const BORDER := "border_battle"
 const BATTLE := "battle"
@@ -60,18 +65,18 @@ const NAMES_HINT := "Every army keeps one name until it is gone: a ruler's army 
 # --- the report -----------------------------------------------------------------------------------
 
 ## The report's lines in display order: [{"event": the event, "text": its line}]. Without a state the
-## lines are the events' own text, in resolver order.
+## lines are the events' own text, in resolver order. Every sentence starts with a capital (#284).
 static func rows(events: Array, state: GameState, viewer: String = "", before: GameState = null) -> Array:
 	var out := []
 	if state == null:
 		for e in events:
 			if not is_beat(e, events):
-				out.append({"event": e, "text": own_text(e, viewer)})
+				out.append({"event": e, "text": _sentences(own_text(e, viewer))})
 		return out
 	var ctx := _context(events, state, before, viewer)
 	var texts := {}
 	for i in events.size():
-		texts[i] = _line_at(i, ctx)
+		texts[i] = _sentences(_line_at(i, ctx))
 	var shown := []
 	for i in _order(events, state):
 		if not is_beat(events[i], events):
@@ -88,7 +93,7 @@ static func rows(events: Array, state: GameState, viewer: String = "", before: G
 			out.append({"event": events[shown[k]], "text": texts[shown[k]]})
 		else:
 			var merged := _merged_recruits(group.map(func(g): return events[g]))
-			out.append({"event": merged, "text": _recruited_line(merged, ctx)})
+			out.append({"event": merged, "text": _sentences(_recruited_line(merged, ctx))})
 		k += group.size()
 	return out
 
@@ -141,10 +146,10 @@ static func is_beat(e: Dictionary, events: Array) -> bool:
 
 
 ## One event's line. `events` is the whole turn's report it belongs to (it reads the other events: who
-## moved where, who died, the faction's income).
+## moved where, who died, the faction's income). Every sentence starts with a capital (#284).
 static func line(e: Dictionary, events: Array, state: GameState, viewer: String = "", before: GameState = null) -> String:
 	if state == null:
-		return own_text(e, viewer)
+		return _sentences(own_text(e, viewer))
 	var all := events
 	var index := -1
 	for i in events.size():
@@ -154,7 +159,7 @@ static func line(e: Dictionary, events: Array, state: GameState, viewer: String 
 		all = events.duplicate()
 		all.append(e)
 		index = all.size() - 1
-	return _line_at(index, _context(all, state, before, viewer))
+	return _sentences(_line_at(index, _context(all, state, before, viewer)))
 
 
 ## The events in display order: the resolver's order, except that the moves of the movement phase are
@@ -505,6 +510,8 @@ static func _line_at(i: int, ctx: Dictionary) -> String:
 			text = MusterRules.event_sentence(ctx.state, e)  # ARM-1: names for life, the owner's report only
 		"siege_started", "walls_damaged", "walls_breached", "siege_lifted", "fort_built":
 			text = _siege_line(e, ctx)  # M3c: the reader's turn words
+		"research_gained":
+			text = AscensionRules.gained_line(e)  # #281: "(Fangridge 5)" while no other province pays research
 	return text if not text.is_empty() else own_text(e, ctx.viewer)
 
 
@@ -1165,6 +1172,16 @@ static func reader_turn(turn: int, now: int) -> String:
 	return "in %d turns (turn %d)" % [n, turn]
 
 
+## "from this turn (8)", "from next turn (9)", "from turn 10 (in 3 turns)": from `turn` on, as someone reading at the start of
+## turn `now` counts it (reader_turn's count). A far turn leads with its number, so the wait reads as one phrase (#279: a
+## captured fort's line read "can recruit there from in 3 turns (turn 10)").
+static func reader_from(turn: int, now: int) -> String:
+	var n := turn - now + 1
+	if n <= 2:
+		return "from %s" % reader_turn(turn, now)
+	return "from turn %d (in %d turns)" % [turn, n]
+
+
 ## "at the end of this turn (8)", "at the end of next turn (9)", "in 3 turns (end of turn 10)": the end of `turn`, as
 ## someone reading at the start of turn `now` counts it.
 static func reader_end(turn: int, now: int) -> String:
@@ -1221,21 +1238,21 @@ static func _siege_line(e: Dictionary, ctx: Dictionary) -> String:
 				text = text.replace("The walls reach 0 %s," % SiegeRules.report_when(end, reported), "The walls reach 0 %s," % reader_end(end, now))
 			if int(numbers.get("cut_off_from", 0)) > 0:
 				var from := int(numbers.cut_off_from)
-				text = text.replace("From next turn (%d) " % from, "From %s " % reader_turn(from, now))
+				text = text.replace("From next turn (%d) " % from, "%s " % _cap(reader_from(from, now)))
 		"walls_breached":
 			var battle := int(numbers.get("battle_turn", now))
 			text = text.replace("still there next turn (%d)," % battle, "still there %s," % reader_turn(battle, now))
 		"siege_lifted":
-			text = text.replace("from next turn (%d)." % now, "from %s." % reader_turn(now, now))
+			text = text.replace("from next turn (%d)." % now, "%s." % reader_from(now, now))
 		"fort_built":
 			var from := int(numbers.get("recruit_from", now))
-			text = text.replace("from next turn (%d)," % from, "from %s," % reader_turn(from, now))
+			text = text.replace("from next turn (%d)," % from, "%s," % reader_from(from, now))
 	return text
 
 
 ## A capture's fort clause (rule 8), from the event's numbers: " It came with its keep (walls 2 of 6): the Aurel Crown
-## can recruit there from next turn (9)." A fort retaken within FortData.RETAKE_TURNS recruits at once. "" when no
-## fort came with the province.
+## can recruit there from turn 11 (in 3 turns)." (reader_from). A fort retaken within FortData.RETAKE_TURNS recruits at
+## once ("from this turn (9), since they retook it ..."). "" when no fort came with the province.
 static func _fort_came_with(e: Dictionary, fname: String, ctx: Dictionary) -> String:
 	var numbers: Dictionary = e.get("numbers", {})
 	var level := int(numbers.get("fort_level", 0))
@@ -1243,7 +1260,7 @@ static func _fort_came_with(e: Dictionary, fname: String, ctx: Dictionary) -> St
 		return ""
 	var now := int((ctx.state as GameState).current_turn) + 1
 	var from := int(numbers.get("recruit_from", now + 1))
-	var when := "from %s" % reader_turn(from, now)
+	var when := reader_from(from, now)
 	if from <= now:
 		when += ", since they retook it within %d turns of losing it" % FortData.RETAKE_TURNS
 	return " It came with its %s (walls %d of %d): the %s can recruit there %s." % [SiegeRules.level_word(level), int(numbers.get("walls", 0)),
@@ -1400,3 +1417,8 @@ static func _possessive(name: String) -> String:
 
 static func _cap(text: String) -> String:
 	return RulerRules._cap(text)
+
+
+## `text` with every sentence starting with a capital (#284).
+static func _sentences(text: String) -> String:
+	return RulerRules.cap_sentences(text)

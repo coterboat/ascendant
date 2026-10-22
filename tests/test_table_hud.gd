@@ -131,6 +131,7 @@ func test_after_game_over_the_plaque_has_no_gap_where_gold_was_and_results_takes
 			assert_false((c as Label).text.strip_edges().is_empty(), "no visible empty label in the plaque: %s" % c.name)
 	assert_true(map.hint_label.text.begins_with("The game is over."), map.hint_label.text)
 	_assert_fits(map, "game over")
+	_assert_hint_reads_whole(map, "game over")  # #277: it stopped at "Turn report shows the last"
 	game.free()
 
 
@@ -453,6 +454,54 @@ func test_the_tray_shows_the_hint_until_an_order_is_queued_and_a_token_brings_it
 	assert_true(card.visible and card.mode == "order", "an opened order card stays while nothing is selected")
 	map.cancel_order(0)
 	assert_true(hud.hint_label.visible and hud.tray_slot().tokens().is_empty(), "the hint is back once the order is cancelled")
+	game.free()
+
+
+## #277: the tray's hint stopped mid-sentence ("Recruit: click your capital, then") at every size: a fixed 300 px and two lines, the rest
+## cut with no sign of it. Every hint the game gives (against the computer, in a hotseat game, while watching, a refusal; game over is in
+## the game-over test) reads whole at both logical sizes, with the Chronicle shut and open.
+func test_the_trays_hint_reads_whole_at_every_size() -> void:
+	var game := _game()
+	_assert_hint_reads_whole(game.map, "against the computer")
+	game.free()
+	game = _hotseat()
+	_assert_hint_reads_whole(game.map, "hotseat")
+	assert_eq(game.end_turn(), "")
+	assert_ne(game.end_turn(), "", "player 2 has not taken the computer yet: the turn can't end")
+	assert_true(game.map.hint_label.text.begins_with("You can't"), "the refusal is the tray's hint: %s" % game.map.hint_label.text)
+	_assert_hint_reads_whole(game.map, "a refusal")
+	game.free()
+	game = _game({"players": [CROWN, CLANS], "seed": 4242, "ai": {CROWN: "normal", CLANS: "normal"}})
+	assert_true(game.is_watching())
+	_assert_hint_reads_whole(game.map, "watching")
+	game.free()
+
+
+## #277: a hint too long for the widest tray (none the game gives today) still says there is more: it shows its two lines, ends in "…",
+## keeps those two lines' height, and its tooltip has the whole text.
+func test_a_hint_too_long_for_the_tray_ends_in_an_ellipsis_with_the_whole_text_on_hover() -> void:
+	var game := _game()
+	var map := game.map
+	var hud := map.table()
+	var long := " ".join([ControlsHelp.QUICK, ControlsHelp.QUICK, ControlsHelp.QUICK, ControlsHelp.QUICK])
+	map.set_hint(long)
+	hud.viewport_override = WIDE
+	hud.relayout()
+	_refresh_theme(hud)
+	var hint := map.hint_label
+	assert_eq(hint.custom_minimum_size.x, TableHud.HINT_MAX_W, "as wide as the tray's hint gets")
+	assert_true(_wrapped_lines(hint, hint.custom_minimum_size.x) > hint.max_lines_visible, "and still too long for its two lines")
+	assert_eq(hint.max_lines_visible, TableHud.HINT_LINES)
+	assert_eq(hint.text_overrun_behavior, TextServer.OVERRUN_TRIM_WORD_ELLIPSIS, "so it ends in an ellipsis")
+	var font := hint.get_theme_font("font")
+	var size := hint.get_theme_font_size("font_size")
+	var two_lines := 2.0 * font.get_height(size) + hint.get_theme_constant("line_spacing")
+	assert_true(hint.custom_minimum_size.y >= two_lines - 0.5, "and keeps its two lines' height (%d px for %d)" % [hint.custom_minimum_size.y, two_lines])
+	assert_eq(hint.tooltip_text.replace("\n", " ").strip_edges(), long, "the tooltip has it whole")
+	map.set_hint(ControlsHelp.QUICK)
+	assert_eq(hint.text_overrun_behavior, TextServer.OVERRUN_NO_TRIMMING, "a hint that fits is never trimmed")
+	assert_eq(hint.custom_minimum_size.y, 0.0, "and asks for its own height")
+	hud.viewport_override = Vector2.ZERO
 	game.free()
 
 
@@ -837,6 +886,44 @@ func _assert_fits(map: MapScreen, where: String, viewports: Array = [WIDE, NARRO
 				assert_eq(label.text_overrun_behavior, TextServer.OVERRUN_NO_TRIMMING, "%s: '%s' is never trimmed" % [tag, label.text])
 	hud.viewport_override = Vector2.ZERO
 	hud.relayout()
+
+
+## #277: at both logical sizes, with the Chronicle shut and open, the tray's hint shows its whole text: laid out at the width the tray gives
+## it (its minimum: the bottom row is as wide as it needs, and the hint is alone in the tray while it shows), it wraps to no more lines than
+## it shows, untrimmed, and no wider than HINT_MAX_W. (The live probes, tests/screen_fit_probe.gd and tests/table_probe.gd, hold the tray and
+## the seal to the bottom band, laid out for real.)
+func _assert_hint_reads_whole(map: MapScreen, where: String) -> void:
+	var hud := map.table()
+	var hint := map.hint_label
+	assert_true(hint.visible and not hint.text.is_empty(), "%s: the tray shows a hint" % where)
+	for viewport: Vector2 in [WIDE, NARROW]:
+		for chronicle: bool in [false, true]:
+			hud.viewport_override = viewport
+			hud.chronicle_open = chronicle
+			hud.relayout()
+			_refresh_theme(hud)
+			var tag := "%s at %dx%d%s" % [where, viewport.x, viewport.y, ", the Chronicle open" if chronicle else ""]
+			# The width the tray gives it: its minimum (get_combined_minimum_size() is a cache that only a live tree refreshes).
+			var width := maxf(hint.custom_minimum_size.x, hint.get_minimum_size().x)
+			var lines := _wrapped_lines(hint, width)
+			assert_true(lines <= hint.max_lines_visible, "%s: the hint wraps to %d lines in %d px and shows %d: %s" % [
+				tag, lines, width, hint.max_lines_visible, hint.text])
+			assert_eq(hint.text_overrun_behavior, TextServer.OVERRUN_NO_TRIMMING, "%s: and is never trimmed" % tag)
+			assert_true(width >= TableHud.HINT_MIN_W and width <= TableHud.HINT_MAX_W, "%s: between the hint's least and most width (%d px)" % [tag, width])
+	hud.viewport_override = Vector2.ZERO
+	hud.chronicle_open = false
+	hud.relayout()
+
+
+## How many lines `label`'s text wraps to when the label is `width` wide: its font and size, less its style's padding, broken at words
+## (inside a word only when it is wider than the line), as AUTOWRAP_WORD_SMART breaks it. (A Label counts its own lines only inside a live
+## tree, and the runner's tests run before the tree is live: tests/screen_fit_probe.gd has the Label's own count, laid out for real.)
+func _wrapped_lines(label: Label, width: float) -> int:
+	var para := TextParagraph.new()
+	para.break_flags = TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND | TextServer.BREAK_ADAPTIVE
+	para.add_string(label.text, label.get_theme_font("font"), label.get_theme_font_size("font_size"))
+	para.width = width - label.get_theme_stylebox("normal").get_minimum_size().x
+	return para.get_line_count()
 
 
 func _refresh_theme(n: Node) -> void:

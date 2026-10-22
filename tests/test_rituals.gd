@@ -193,9 +193,10 @@ func test_the_rituals_phase_goes_by_kind_then_faction_then_the_order_given() -> 
 	}
 	var r := _resolve(s, orders)
 	var cast: Array = _of(r, "ritual_cast").map(func(e): return String(e.numbers.ritual))
-	# wards, curses, blessings, summons, raisings, global, sight.
+	# wards, curses, blessings, (CW-5) the Candlewake's flame, summons, raisings, global, sight; tests/test_cw5_magic.gd pins Kindle
+	# among the Crown's and the Clans' kinds.
 	assert_eq(cast, ["sanctum_ward", "bloodrot", "call_the_pack", "bastion"], "the fixed order of kinds")
-	assert_eq(MagicRules.KIND_ORDER, ["ward", "curse", "blessing", "summon", "raising", "global", "sight"])
+	assert_eq(MagicRules.KIND_ORDER, ["ward", "curse", "blessing", "flame", "summon", "raising", "global", "sight"])
 	var first_ritual := -1
 	var first_move := -1
 	for i in r.events.size():

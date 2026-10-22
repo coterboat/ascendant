@@ -26,7 +26,7 @@ static func make(unit_type_id: String, faction_id: String, colour: String, card_
 	p.custom_minimum_size = card_size
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var initial := String(PathData.NEW_UNITS.get(unit_type_id, {}).get("name", ""))
+	var initial := String(AscensionRules.new_unit_data(unit_type_id).get("name", ""))
 	p.card = Art.portrait_card(unit_type_id, card_size, faction_id, Art.Crop.FULL, PathView.FORK_COLOURS.get(colour, UiPalette.GILT))
 	var variant := Art.variant_portrait(unit_type_id, faction_id, transformation_of(faction_id, colour))
 	if variant != null:
@@ -48,11 +48,11 @@ func has_art() -> bool:
 	return card != null and card.has_art()
 
 
-## The transformation of `faction_id`'s side of the fork in `colour` (PathData.BRANCHES), or "".
+## The transformation of `faction_id`'s side of the fork in `colour` (PathData.BRANCHES, the preview's too), or "".
 static func transformation_of(faction_id: String, colour: String) -> String:
-	for side in PathData.BRANCHES:
-		var b: Dictionary = PathData.BRANCHES[side]
-		if String(b.get("faction", "")) == faction_id and String(b.get("colour", "")) == colour:
+	for side in AscensionRules.branches_for(faction_id):
+		var b: Dictionary = AscensionRules.branch_data(side)
+		if String(b.get("colour", "")) == colour:
 			return String(b.get("transformation", ""))
 	return ""
 
@@ -89,6 +89,15 @@ class Frame extends Control:
 				draw_polyline(pts, c, 2.5, true)
 				for i in range(2, 20, 5):
 					draw_circle(pts[i] + Vector2(0, -s * 0.03), maxf(2.5, s * 0.028), c.lightened(0.2))
+			"honey":  # CW-4, the Golden Wake: golden wax pooling along the bottom edge, two drops gathering
+				draw_line(Vector2(size.x * 0.08, size.y - s * 0.07), Vector2(size.x * 0.92, size.y - s * 0.07), c, 3.5, true)
+				for x in [0.3, 0.7]:
+					draw_circle(Vector2(size.x * x, size.y - s * 0.07 - s * 0.03), maxf(3.0, s * 0.035), c.lightened(0.2))
+			"cherry":  # CW-4, the Red Wake: a wick flame at the top right
+				var at := Vector2(size.x - s * 0.2, s * 0.24)
+				draw_colored_polygon(PackedVector2Array([at + Vector2(0, -s * 0.13), at + Vector2(s * 0.05, 0), at + Vector2(0, s * 0.045),
+					at + Vector2(-s * 0.05, 0)]), c.lightened(0.2))
+				draw_line(at + Vector2(0, s * 0.045), at + Vector2(0, s * 0.11), c.darkened(0.5), 2.5)
 			"crimson":  # drips from the top edge
 				for x in [0.2, 0.42, 0.66, 0.85]:
 					var len := s * (0.08 + 0.05 * fmod(x * 7.0, 1.0))

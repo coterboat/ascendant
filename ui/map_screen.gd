@@ -33,6 +33,8 @@ extends Control
 ##   hud                        the TableHud: add_system_button, add_plaque_item, add_seal_item (it replaces the old
 ##                              add_top_bar_control), the notification and tray slots, the safe area
 ##   set_hint(text, tooltip)    the one line of "what to do now" in the tray (at most two lines; the tooltip can say more)
+##   add_over_table(piece)      #282: a piece of the host's over the board and the Table but under this screen's own panels (the ruler
+##                              panel, the sacrifice and cast dialogs, the preview's codex), which cover it when they open: the guide
 ##
 ## The host seams (UX-1, §1.1): later tickets plug into these instead of editing this file.
 ##   selection_host (SelectionHost)  "show this army or province" and "selection cleared"; the selection cards are its presenter
@@ -322,6 +324,19 @@ func table() -> TableHud:
 	return hud
 
 
+## #282: puts `piece` (the game screen's first-game guide) right over the Table, so it draws over the board and the Table's pieces but
+## under every panel this screen opens later (each opens on top: the ruler panel, the sacrifice and cast dialogs, the preview's codex), as
+## it is under the game screen's overlays. It sat over the whole map screen, so the guide covered the Rulers panel's heading and portrait.
+## The piece's place is still the Table's to set (TableHud.hang): this screen covers the window as the game screen does.
+func add_over_table(piece: Control) -> void:
+	_bind()
+	if piece.get_parent() != self:
+		if piece.get_parent() != null:
+			piece.get_parent().remove_child(piece)
+		add_child(piece)
+	move_child(piece, hud.get_index() + 1)
+
+
 ## Faction ids in seat order, which pick the player colours: the session's players, or without a
 ## session the state's faction order (UiPalette.seat_order).
 func seat_order() -> Array:
@@ -480,8 +495,8 @@ func close_cast_dialog() -> void:
 
 ## M5-6: queues a cast order for the viewing faction. Returns "" or the rules' reason (also in the status line). A move
 ## given to the casting army is removed, and the status line says so.
-func queue_cast(ritual: String, army_id: String, target: String, pay: String = CastOrder.GOLD, size: int = 0) -> String:
-	var reason := orders.queue_cast(ritual, army_id, target, pay, size)
+func queue_cast(ritual: String, army_id: String, target: String, pay: String = CastOrder.GOLD, size: int = 0, target_army: String = "") -> String:
+	var reason := orders.queue_cast(ritual, army_id, target, pay, size, target_army)
 	if reason.is_empty():
 		GameAudio.sfx("sacrifice")
 		status_text = "Ritual ordered: %s. It is cast before anyone moves when the turn ends, and the army holds; Cancel order on its card, or the cross on its tray token, takes it back." % \
@@ -493,8 +508,8 @@ func queue_cast(ritual: String, army_id: String, target: String, pay: String = C
 	return reason
 
 
-func _on_cast_confirmed(ritual: String, army_id: String, target: String, pay: String, size: int) -> void:
-	queue_cast(ritual, army_id, target, pay, size)
+func _on_cast_confirmed(ritual: String, army_id: String, target: String, pay: String, size: int, target_army: String = "") -> void:
+	queue_cast(ritual, army_id, target, pay, size, target_army)
 
 
 ## M5-8 (§11.2): the cast dialog lights every province in the ritual's range (a gilt wash and a dashed ring) and rings the

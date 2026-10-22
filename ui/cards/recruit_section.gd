@@ -64,7 +64,8 @@ func _build() -> void:
 			link(b, "recruit")
 			b.pressed.connect(map.queue_recruit.bind(ut.id))
 			add_child(b)
-			_add_rank_warning(ut.id, "")  # M5-8
+			if not _grey_if_unpoured(b, ut, f.capital):  # CW-12: a candlebeast greys where it can't be poured
+				_add_rank_warning(ut.id, "")  # M5-8
 	_add_ruler_recruit_section()
 	add_gold_after(self)
 
@@ -129,6 +130,21 @@ func _add_ruler_recruit_section() -> void:
 		b.disabled = info.left <= 0
 		b.pressed.connect(map.queue_recruit_with_ruler.bind(ut.id))
 		add_child(b)
+		_grey_if_unpoured(b, ut, String(info.province))  # CW-12
+
+
+## CW-12 (design/CANDLEWAKE.md §4.5): greys recruit button `b` for `ut` when it can't be poured at `pid` (a candlebeast outside
+## Deep Wake), with the rules' reason at the head of its tooltip and under it, as a fort's refusals read. True when it did.
+func _grey_if_unpoured(b: Button, ut: UnitType, pid: String) -> bool:
+	var poured := MarkRules.pour_reason(orders.view_state(), viewing_faction_id, ut, pid)
+	if poured.is_empty():
+		return false
+	b.disabled = true
+	b.tooltip_text = TooltipText.plain("Can't recruit %s here" % ut.name, poured) + "\n\n" + b.tooltip_text
+	var why := add_text(poured, TooltipText.plain("Why not", poured), UiPalette.NEGATIVE.lightened(0.25))
+	why.name = "RecruitReason_%s" % ut.id.validate_node_name()
+	why.add_theme_font_size_override("font_size", 15)
+	return true
 
 
 ## A recruit button: the unit's portrait (its face) at the left, then "Recruit <unit> (<cost> gold)",
