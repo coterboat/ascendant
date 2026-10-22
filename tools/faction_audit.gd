@@ -51,6 +51,7 @@ const MARKS := {
 	"ui/battle/battle_backdrop.gd": [1, "safe: a border's two province names"],
 	"ui/battle/battle_host.gd": [1, BATTLES],
 	"ui/battle/battle_simple_view.gd": [1, BATTLES],
+	"ui/battle/battle_layout.gd": [1, "lane 3D (ui/battle/, handed over from CW-7 #258): a roster's rank order from FactionData.FACTIONS; FactionData.rows() has the Candlewake's"],
 	"ui/chronicle/chronicle_model.gd": [6, "safe: an event's own faction list (who acted first), not the game's"],
 	"ui/fort_panel.gd": [1, "safe: 'both of your armies' for two armies"],
 	"ui/map_layout.gd": [2, "safe: the 2D map's positions and its west-east mirror, by province"],

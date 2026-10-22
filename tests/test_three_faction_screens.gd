@@ -4,7 +4,7 @@ extends "res://tests/test_case.gd"
 ## twice; a faction that can't play a ticked system yet says so in plain words and disables Start; each seat's line names
 ## its capital, the Candlewake's as the Long Vigil and which map capital it is this game; a rematch of a Candlewake game
 ## ticks the box again. The title hangs a preview faction's banner only with the box ticked and its art in, three as a
-## triptych. The art, report and victory lookups find the Candlewake's units and name.
+## triptych. The art, report and victory lookups find the Candlewake's units and name (the battle views' are lane 3D's).
 ## The engine side (the factory, the derived capitals, Quick start's draw) is tests/test_three_factions.gd's (CW-0).
 
 const SCENE := "res://ui/new_game_screen.tscn"
@@ -250,5 +250,3 @@ func test_the_art_report_and_victory_lookups_find_the_candlewake() -> void:
 	var e := {"type": "recruited", "factions": [WAKE], "text": "The %s recruited %s at the Long Vigil." % [_wake_name(), first.name]}
 	assert_eq(TurnReportPanel.recruited_unit(e), String(first.id), "a recruit line finds its unit")
 	assert_eq(VictoryScreen._faction_name(WAKE, null), _wake_name(), "a name without a state")
-	var roster := BattleLayout._roster(WAKE)
-	assert_eq(roster.size(), row.unit_types.size() + 1, "a battle's roster order has their units and commander")
