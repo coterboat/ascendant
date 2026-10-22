@@ -10,7 +10,8 @@ extends Control
 ## order books (OrdersController in session mode), and every forecast comes from Forecast.
 ##
 ## Layers, bottom to top:
-##   the map (this Control)
+##   the map (this Control): the board, the Table, the first-game guide (#282: over the Table, under the map's own panels, such
+##             as the Rulers panel, which cover it when they open)
 ##   Overlays (CanvasLayer 10): victory screen, turn report, battle report viewer, codex, setup errors,
 ##             quit confirmation, the game menu, the save dialog, the load screen and settings. Each opens
 ##             on top of whatever is already open (_raise), so the codex opened from a report's "?" sits
@@ -1266,9 +1267,9 @@ func _bind() -> void:
 	_build_hud()
 	_build_overlays()
 	_register_cancel_layers()
-	first_game_guide = FirstGameGuide.new()  # over the map, under every overlay layer
+	first_game_guide = FirstGameGuide.new()  # over the board and the Table, under the map's own panels and every overlay layer
 	first_game_guide.codex_requested.connect(open_codex)
-	add_child(first_game_guide)
+	map.add_over_table(first_game_guide)  # #282: the Rulers panel (and the map's other panels) cover it when they open
 	map.table().hang("guide", first_game_guide)  # the Table places it under the realm plaque, inside the safe area
 
 
