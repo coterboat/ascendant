@@ -695,6 +695,8 @@ func _classify(c: Control, vis: Rect2, cls: String, tags: Array) -> void:
 					way = true
 					w *= 3.0
 					break
+	if focus.has("battles") and c is BaseButton and String(c.get("text")).strip_edges() == "March":
+		w *= 4.0  # the way into a battle above all: march the army you selected
 	if c.has_method("_can_drop_data"):
 		drops.append({"rect": vis, "what": _label(c, cls)})
 	var kind := ""
