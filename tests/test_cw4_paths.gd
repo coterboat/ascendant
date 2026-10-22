@@ -28,6 +28,8 @@ func _game(flags: Dictionary = {}, game_seed: int = 23) -> GameState:
 func _with(s: GameState, ids: Array) -> GameState:
 	var out := AscensionRules.with_nodes(s, WAKE, ids)
 	assert_true(out != null, "the nodes apply: %s" % [ids])
+	var errors := []
+	assert_true(out.validate(errors), "%s is a legal order: %s" % [ids, errors])
 	return out
 
 
@@ -126,7 +128,7 @@ func test_brighter_flare_burns_hotter_in_battle() -> void:
 
 func test_the_oath_of_the_kept_brings_meadow_wake_whole() -> void:
 	var s := _game()
-	var oath := _with(s, ["wake_thicker_tallow", "wake_hungry_gleaners", "wake_oath_kept"])
+	var oath := _with(s, ["wake_thicker_tallow", "wake_brighter_flare", "wake_oath_kept"])
 	assert_eq(AscensionRules.economy_rule_name("wake_oath_kept"), "Meadow Wake")
 	assert_eq(MarkRules.threshold(oath, WAKE, 2), _row_held(2) - 1, "the Wake-Line a turn sooner")
 	oath.current_turn = 6
