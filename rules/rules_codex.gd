@@ -745,7 +745,8 @@ const ENTRIES := {
 	},
 	"mandate_tallow_levy": {
 		"title": "Tallow Levy",
-		"text": "Candlewake mandate, 3 power. Wickwardens cost 5 gold instead of 7.",
+		"text": "Candlewake mandate, 3 power. Wickwardens cost %d gold" % MandateData.PREVIEW_MANDATES[1].unit_cost.wickwardens
+			+ " instead of %d." % FactionData.PREVIEW_FACTIONS[0].unit_types[0].cost,
 	},
 	# --- M4-1 (#66): research and the paths of ascension (design/M4_ASCENSION.md §2, §3, §9.3). One contiguous
 	# block. The numbers match data/paths.gd; tests/test_research.gd checks them. M4-2 adds the rules of the

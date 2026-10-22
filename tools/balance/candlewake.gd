@@ -4,12 +4,13 @@ extends SceneTree
 ##
 ##   godot --headless --path . -s tools/balance/candlewake.gd -- --seeds 200 [--out PATH]
 ##
-## Rows: each Candlewake unit against each Crown and Clans unit at equal gold (about PAIR_GOLD a side, whole units, a commander
-## counting as its own line), mixed armies at MIXED_GOLD a side, and the Clans' Tuskers with Blood Frenzy (a mandate). Columns:
+## Rows: the start armies with their commanders, each Candlewake unit type against each Crown and Clans unit type at equal gold
+## (counts picked as Balance.equal_gold picks them, about PAIR_GOLD a side), mixed armies at MIXED_GOLD a side, and the Clans'
+## Tuskers with Blood Frenzy (a mandate). Columns:
 ## flames 0 to 3 on open ground, then flame 1 on each ground with each side defending (forest, hills, a fort). The Red Wake's
 ## flame 4 waits for CW-4, Iron Hide for paths (CW-4's Amber Saints and the Crown's Iron Knights), Shield Wall is in every pair
 ## with two or more Spearmen. The gate (§9): at flame 1, equal-gold pairs between PAIR_BAND and mixed armies within MIXED_BAND,
-## on open ground. tests/test_cw2_benchmarks.gd runs the gate with fewer seeds.
+## on open ground. tests/test_cw2_benchmarks.gd runs the gate with fewer seeds, and holds the start armies within START_BAND.
 
 const Balance := preload("res://tools/balance/balance.gd")
 const WAKE := "candlewake"
@@ -18,15 +19,18 @@ const PAIR_GOLD := 100
 const MIXED_GOLD := 100
 const PAIR_BAND := [20.0, 80.0]
 const MIXED_BAND := [30.0, 70.0]
+## The start armies' band, as the Crown's and the Clans' (tests/test_balance.gd): in the report, held by tests/test_cw2_benchmarks.gd.
+const START_BAND := [40.0, 60.0]
 const FLAMES := [0, 1, 2, 3]
 ## Grounds: [key, label, province, who defends ("wake", "foe" or "")].
 const GROUNDS := [["open", "Open", "rivermarch", ""], ["forest_wake", "Forest, Candlewake defend", "greenglade", "wake"],
 	["forest_foe", "Forest, foe defends", "greenglade", "foe"], ["hills_wake", "Hills, Candlewake defend", "highcrag", "wake"],
 	["hills_foe", "Hills, foe defends", "highcrag", "foe"], ["fort_wake", "Fort, Candlewake defend", "", "wake"],
 	["fort_foe", "Fort, foe defends", "", "foe"]]
+## Mixed armies fill to their gold in this order (line, second, elite, line, second, line), the Crown's and the Clans' as the
+## shipped harness fills them (Balance.MIX_CYCLE).
 const MIX := {"candlewake": ["wickwardens", "gleaners", "wickwardens", "hundred_wick", "gleaners", "wickwardens"],
-	"kingdom": ["spearmen", "crossbowmen", "knights", "spearmen", "crossbowmen", "spearmen"],
-	"beasts": ["tuskers", "fangthrowers", "war_bear", "tuskers", "fangthrowers", "tuskers"]}
+	"kingdom": Balance.MIX_CYCLE.kingdom, "beasts": Balance.MIX_CYCLE.beasts}
 
 
 func _initialize() -> void:
@@ -57,7 +61,30 @@ static func state_for(foe: String, builds: Dictionary = {}) -> GameState:
 ## Whole units of `type_id` for about `gold` (at least 1), at `owner`'s prices in `state`.
 static func units_for(state: GameState, owner: String, type_id: String, gold: int) -> Array:
 	var price := TurnResolver.recruit_cost(state, owner, type_id)
-	var n := maxi(1, roundi(float(gold) / maxi(1, price)))
+	return _repeat(type_id, maxi(1, roundi(float(gold) / maxi(1, price))))
+
+
+## Equal-gold counts of `a_type` (the Candlewake's) and `b_type` (`foe`'s) for about `budget` a side, as Balance.equal_gold picks
+## them: both within 25% of the budget, the two sides' gold as close as can be.
+static func equal_counts(state: GameState, foe: String, a_type: String, b_type: String, budget: int) -> Array:
+	var ca := TurnResolver.recruit_cost(state, WAKE, a_type)
+	var cb := TurnResolver.recruit_cost(state, foe, b_type)
+	var best := [maxi(1, roundi(float(budget) / ca)), maxi(1, roundi(float(budget) / cb))]
+	var best_score := INF
+	for na in range(1, 40):
+		for nb in range(1, 40):
+			var ga := na * ca
+			var gb := nb * cb
+			if ga < budget * 0.75 or ga > budget * 1.25 or gb < budget * 0.75 or gb > budget * 1.25:
+				continue
+			var score := absf(ga - gb) / maxf(ga, gb) * 1000.0 + absf(ga + gb - 2.0 * budget) / budget
+			if score < best_score:
+				best_score = score
+				best = [na, nb]
+	return [_repeat(a_type, best[0]), _repeat(b_type, best[1])]
+
+
+static func _repeat(type_id: String, n: int) -> Array:
 	var out := []
 	for k in n:
 		out.append(type_id)
@@ -126,26 +153,41 @@ static func win_pct(state: GameState, foe: String, wake_ids: Array, foe_ids: Arr
 	return 100.0 * wins / maxi(1, seeds)
 
 
-## Every row: [{"label", "foe", "kind" ("pair" | "mixed" | "frenzy"), "wake", "them", "cells": {"<flame>": pct on open ground,
-## "<ground key>": pct at flame 1}}].
-static func rows(seeds: int, grounds: bool = true) -> Array:
-	var out := []
-	for foe in FOES:
-		var s := state_for(foe)
-		var mine: Array = FactionData.row(WAKE).unit_types.map(func(u): return String(u.id)) + [String(FactionData.row(WAKE).commander.id)]
-		var theirs: Array = FactionData.row(foe).unit_types.map(func(u): return String(u.id)) + [String(FactionData.row(foe).commander.id)]
-		for w in mine:
-			for t in theirs:
-				out.append(_row(s, foe, "pair", units_for(s, WAKE, w, PAIR_GOLD), units_for(s, foe, t, PAIR_GOLD), seeds, grounds))
-		out.append(_row(s, foe, "mixed", mixed(s, WAKE, MIXED_GOLD), mixed(s, foe, MIXED_GOLD), seeds, grounds))
-	var fs := state_for("beasts", {"beasts": {"ruler": "fang_chieftain", "mandates": ["blood_frenzy"]}})
-	out.append(_row(fs, "beasts", "frenzy", mixed(fs, WAKE, MIXED_GOLD), units_for(fs, "beasts", "tuskers", MIXED_GOLD), seeds, grounds))
+## The start army of `owner` (§4.1), with its commander: the Candlewake's from its row, the others' one of each unit type
+## (Balance.starting_army).
+static func start_army(state: GameState, owner: String) -> Array:
+	if owner != WAKE:
+		return Balance.starting_army(state, owner)
+	var row := FactionData.row(WAKE)
+	var out: Array = row.start_army.duplicate()
+	out.append(String(row.commander.id))
 	return out
 
 
-static func _row(s: GameState, foe: String, kind: String, wake_ids: Array, foe_ids: Array, seeds: int, grounds: bool) -> Dictionary:
+## Every row: [{"label", "foe", "kind" ("start" | "pair" | "mixed" | "frenzy"), "wake", "them", "cells": {"<flame>": pct on open ground,
+## "<ground key>": pct at flame 1}}], at each of `flames` on open ground and, with `grounds`, at flame 1 on every other ground.
+static func rows(seeds: int, flames: Array = FLAMES, grounds: bool = true) -> Array:
+	var out := []
+	for foe in FOES:
+		var s := state_for(foe)
+		var mine: Array = s.find_faction(WAKE).unit_types.map(func(u): return String(u.id))
+		var theirs: Array = s.find_faction(foe).unit_types.map(func(u): return String(u.id))
+		out.append(_row(s, foe, "start", start_army(s, WAKE), start_army(s, foe), seeds, flames, grounds))
+		for w in mine:
+			for t in theirs:
+				var n := equal_counts(s, foe, w, t, PAIR_GOLD)
+				out.append(_row(s, foe, "pair", n[0], n[1], seeds, flames, grounds))
+		out.append(_row(s, foe, "mixed", mixed(s, WAKE, MIXED_GOLD), mixed(s, foe, MIXED_GOLD), seeds, flames, grounds))
+	var fs := state_for("beasts", {"beasts": {"ruler": "fang_chieftain", "mandates": ["blood_frenzy"]}})
+	out.append(_row(fs, "beasts", "frenzy", mixed(fs, WAKE, MIXED_GOLD), units_for(fs, "beasts", "tuskers", MIXED_GOLD), seeds, flames,
+		grounds))
+	return out
+
+
+static func _row(s: GameState, foe: String, kind: String, wake_ids: Array, foe_ids: Array, seeds: int, flames: Array,
+		grounds: bool) -> Dictionary:
 	var cells := {}
-	for fl in FLAMES:
+	for fl in flames:
 		cells[str(fl)] = win_pct(s, foe, wake_ids, foe_ids, fl, GROUNDS[0], seeds)
 	if grounds:
 		for g in GROUNDS.slice(1):
@@ -154,10 +196,13 @@ static func _row(s: GameState, foe: String, kind: String, wake_ids: Array, foe_i
 		"wake": wake_ids, "them": foe_ids, "cells": cells}
 
 
-## The rows that miss the gate at flame 1 on open ground (§9): [{"label", "pct", "band"}].
+## The rows that miss the gate at flame 1 on open ground (§9): [{"label", "pct", "band"}]. The gate is the pairs and the mixed
+## armies; the start armies and the Blood Frenzy row are in the report only.
 static func misses(all: Array) -> Array:
 	var out := []
 	for r in all:
+		if not ["pair", "mixed"].has(String(r.kind)):
+			continue
 		var band: Array = PAIR_BAND if String(r.kind) == "pair" else MIXED_BAND
 		var pct := float(r.cells["1"])
 		if pct < float(band[0]) or pct > float(band[1]):
@@ -179,7 +224,7 @@ static func report(seeds: int) -> String:
 	L.append(head)
 	L.append(rule)
 	for r in all:
-		var line := "| %s%s |" % [r.label, " (Blood Frenzy)" if String(r.kind) == "frenzy" else ""]
+		var line := "| %s%s |" % [r.label, {"start": " (start armies)", "frenzy": " (Blood Frenzy)"}.get(String(r.kind), "")]
 		for fl in FLAMES:
 			line += " %.1f |" % float(r.cells[str(fl)])
 		for g in GROUNDS.slice(1):

@@ -51,16 +51,6 @@ func _play(start: GameState, seats: Array, game_seed: int, turns: int) -> Dictio
 	return {"session": session, "computer": computer, "events": events}
 
 
-func _row_cost(fid: String, unit_ids: Array) -> int:
-	var row := FactionData.row(fid)
-	var total := 0
-	for uid in unit_ids:
-		for u in row.unit_types:
-			if String(u.id) == String(uid):
-				total += int(u.cost)
-	return total
-
-
 # --- the faction row (§1.3) -----------------------------------------------------------------------
 
 func test_the_candlewake_row_sits_behind_the_preview() -> void:
@@ -86,13 +76,9 @@ func test_the_candlewake_row_sits_behind_the_preview() -> void:
 	assert_eq((row.unit_types + [row.commander]).map(func(u): return String(u.trait)), AutoBattleResolver.WICK_TRAITS)
 	for u in row.unit_types + [row.commander]:
 		assert_false(String(AutoBattleResolver.TRAIT_TEXT.get(String(u.trait), "")).is_empty(), "%s's trait has its words" % u.name)
-	# The start army: 2 Wickwardens, the Gleaners and the Hundred-Wick, with the Lamplighter, the cheapest of the three.
+	# The start army: 2 Wickwardens, the Gleaners and the Hundred-Wick, with the Lamplighter. CW-2's prices make it cost more
+	# than the others' (§9 moved them); tests/test_cw2_benchmarks.gd holds it to fighting them evenly instead.
 	assert_eq(row.start_army, ["wickwardens", "wickwardens", "gleaners", "hundred_wick"])
-	var own := _row_cost(WAKE, row.start_army) + int(row.commander.cost)
-	for fid in [CROWN, CLANS]:
-		var other: Dictionary = FactionData.row(fid)
-		var ids: Array = other.unit_types.map(func(u): return String(u.id))
-		assert_true(own <= _row_cost(fid, ids) + int(other.commander.cost), "the Candlewake's start army costs no more than the %s's" % other.name)
 
 
 func test_create_factions_keeps_the_legacy_pair_by_default() -> void:

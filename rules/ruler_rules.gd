@@ -1086,7 +1086,7 @@ static func price_mods(state: GameState, faction_id: String, ut: UnitType) -> Ar
 		if divisor > 0:
 			out.append({"mandate": mid, "key": AutoBattleResolver.MANDATE_PREFIX + mid, "name": md.name,
 				"value": -floori(float(ut.cost) / divisor)})
-		var fixed: Dictionary = md.get("unit_cost", {})  # CW-2: Tallow Levy, Wickwardens at 5 instead of 7
+		var fixed: Dictionary = md.get("unit_cost", {})  # CW-2: Tallow Levy, Wickwardens at 5 whatever their price
 		if fixed.has(ut.id):
 			out.append({"mandate": mid, "key": AutoBattleResolver.MANDATE_PREFIX + mid, "name": md.name,
 				"value": int(fixed[ut.id]) - ut.cost})

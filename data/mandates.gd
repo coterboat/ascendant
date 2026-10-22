@@ -150,7 +150,7 @@ const PREVIEW_MANDATES: Array[Dictionary] = [
 	},
 	{
 		"id": "tallow_levy", "name": "Tallow Levy", "faction": "candlewake", "cost": 3, "area": "economy",
-		"effect": "Wickwardens cost 5 gold instead of 7.",
+		"effect": "Wickwardens cost 5 gold instead of %d." % FactionData.PREVIEW_FACTIONS[0].unit_types[0].cost,
 		"codex": "mandate_tallow_levy", "unit_cost": {"wickwardens": 5},
 	},
 ]
