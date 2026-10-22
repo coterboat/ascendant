@@ -97,8 +97,8 @@ func _r_rect(r: Rect2) -> Array:
 	return [r.position.x, r.position.y, r.size.x, r.size.y, true]
 
 
-## Where a TextureRect that keeps its art's shape, centred (the title's banners), draws it.
-func _drawn(t: TextureRect) -> Rect2:
+## CW-7 (#258): where a TextureRect that keeps its art's shape, centred (the title's banners), draws its art.
+func _art_drawn(t: TextureRect) -> Rect2:
 	var r := t.get_global_rect()
 	if t.texture == null:
 		return r
@@ -172,7 +172,7 @@ func _rects(screen: Control) -> Dictionary:
 			"continue": _r(screen.continue_button), "map_preview": _r(screen.map_preview_button)}
 		for c in screen.get_children():  # CW-7 (#258): each banner that hangs, as its art is drawn, and its caption
 			if c is TextureRect and String(c.name).ends_with("Banner") and c.visible:
-				rects["banner:" + String(c.name)] = _r_rect(_drawn(c))
+				rects["banner:" + String(c.name)] = _r_rect(_art_drawn(c))
 				rects["caption:" + String(c.name)] = _r(c.get_child(0) as Control)
 	elif screen is BuildScreen:
 		rects = {"lock_in": _r(screen.lock_button), "back": _r(screen.back_button),
