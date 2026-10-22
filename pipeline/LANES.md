@@ -5,7 +5,7 @@ work: it takes that shape's tickets in order, one at a time, and keeps what it l
 to the next. The director cuts tickets, verifies, merges, and holds the slot. Alex plays, decides, and can talk to any lane directly.
 
 Session names are the addresses: **`ascendant director`**, **`ascendant lane UI`**, **`ascendant lane Art`**, **`ascendant lane AI`**,
-**`ascendant lane Candlewake`**, **`ascendant lane QA`**. Past the MVP, work lands on the `next` branch: read "Past the MVP" at the end
+**`ascendant lane Candlewake`**, **`ascendant lane QA`**, **`ascendant lane 3D`**. Past the MVP, work lands on the `next` branch: read "Past the MVP" at the end
 first, because it changes the base branch, the slot and what READY needs.
 
 ## The director
@@ -77,12 +77,18 @@ Milestone C's rules (`design/CANDLEWAKE.md`, the third faction): CW-0, CW-1, CW-
 - Every Crown–Clans game stays byte-identical: records, digests and fixtures for every old feature combination (CW-0's gate).
 - The faction ships behind the "Candlewake (preview)" box, off by default, until CW-11's bands pass.
 
+### 3D: `ascendant lane 3D`
+The board, the battle stage and the turn's playback: `world3d/` (except `board_overlay.gd`, lane UI's) and `ui/battle/`. #265 (battles with
+three sides), CW-8 #259 (the Candlewake on the board), the `qa` findings filed for `3d`, then the battle feel.
+- Every ticket: shots of the board and the stage before and after, windowed with `--always-on-top`, looked at before READY, and boots
+  with `-- --world3d` and `-- --battle3d`. The playback never changes the outcome (GAME_BRIEF: battle presentation).
+
 ### QA: `ascendant lane QA`
 Plays the game the way a player does and files what breaks: crashes, script errors, stuck states, clipped or overlapping UI, numbers
 that don't explain themselves, slow frames.
 - Owns `tools/qa/` (the crash-hunting harness) and nothing else; it files issues instead of fixing game code.
 - Every finding is one GitHub issue labelled `qa`, with the steps, the seed, a shot and the log lines, and the lane that owns it
-  (`ui`, `rules`, `ai`, `art`) in the title. A crash or a lost game is `P0` in the title.
+  (`ui`, `3d`, `rules`, `ai`, `art`) in the title. A crash or a lost game is `P0` in the title.
 
 ## Past the MVP: the `next` branch (from 2026-10-22)
 Alex walked the MVP on 10-21 ("the core foundation is solid") and asked for refinement, polish and the rest of the game. Main stays
@@ -98,10 +104,12 @@ the build he plays; everything new lands on **`next`**, an integration branch th
 - **The slot is a lock directory**, so nobody waits for a message: `mkdir /private/tmp/ascendant-slot` succeeds only for one
   process. Write `<lane> <ticket> <what> <sha> <time>` into `/private/tmp/ascendant-slot/owner`, run, then `rm -rf` it. If `mkdir`
   fails, keep working and wait with a background until-loop (`until mkdir /private/tmp/ascendant-slot 2>/dev/null; do sleep 30;
-  done`). The slot covers full suites, autoplay matrices and QA harness runs longer than 10 minutes. A lock older than 2 hours whose
-  owner's process is gone is stale: remove it and say so to the director.
-- **CPU:** jobsnearme's lanes run Playwright on this Mac too. Before anything heavy, check `uptime`; above a 1-minute load of 14,
-  wait (the same until-loop) unless it's a focused run under a minute.
+  done`). The slot covers full suites and autoplay matrices. A lock older than 2 hours whose owner's process is gone is stale:
+  remove it and say so to the director.
+- **CPU:** jobsnearme's lanes run Playwright on this Mac too, and alone they hold the 1-minute load at 20-24 (10-22), so waiting
+  for a quiet machine means never running. Instead, every Godot run longer than a minute runs at low priority, so jobsnearme's
+  e2e keeps the CPU it needs: `nice -n 10 <godot ...>`. Only multi-process work (autoplay matrices) also waits for a 1-minute
+  load under 28, and then runs with `--jobs 2`. Lane QA runs one harness window at a time; its runs don't take the slot.
 - **The main checkout** (`/Users/coterboat/Documents/GitHub/ascendant`) is Alex's: never edit, switch, commit or import there.
   Read from it only.
 - **Questions don't stop a lane:** send `Q` to the director, take your pick provisionally, write it under "Decisions I made on my
