@@ -480,8 +480,8 @@ func close_cast_dialog() -> void:
 
 ## M5-6: queues a cast order for the viewing faction. Returns "" or the rules' reason (also in the status line). A move
 ## given to the casting army is removed, and the status line says so.
-func queue_cast(ritual: String, army_id: String, target: String, pay: String = CastOrder.GOLD, size: int = 0) -> String:
-	var reason := orders.queue_cast(ritual, army_id, target, pay, size)
+func queue_cast(ritual: String, army_id: String, target: String, pay: String = CastOrder.GOLD, size: int = 0, target_army: String = "") -> String:
+	var reason := orders.queue_cast(ritual, army_id, target, pay, size, target_army)
 	if reason.is_empty():
 		GameAudio.sfx("sacrifice")
 		status_text = "Ritual ordered: %s. It is cast before anyone moves when the turn ends, and the army holds; Cancel order on its card, or the cross on its tray token, takes it back." % \
@@ -493,8 +493,8 @@ func queue_cast(ritual: String, army_id: String, target: String, pay: String = C
 	return reason
 
 
-func _on_cast_confirmed(ritual: String, army_id: String, target: String, pay: String, size: int) -> void:
-	queue_cast(ritual, army_id, target, pay, size)
+func _on_cast_confirmed(ritual: String, army_id: String, target: String, pay: String, size: int, target_army: String = "") -> void:
+	queue_cast(ritual, army_id, target, pay, size, target_army)
 
 
 ## M5-8 (§11.2): the cast dialog lights every province in the ritual's range (a gilt wash and a dashed ring) and rings the

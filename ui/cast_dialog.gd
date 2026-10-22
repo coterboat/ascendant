@@ -16,8 +16,11 @@ extends Control
 ## asks MagicRules.ritual_targets), so a target out of range is never a choice.
 ## UI-POLISH-1 (#239): the panel is as tall as what it shows, from under the opponent plaque and Menu down to the top of the tray and
 ## seal's band at most (it scrolls past that), so it never covers End turn and has no empty space under a short choice.
+## CW-5 (#256): a ritual that lands on one army (MagicRules.lands_on_army: Kindle, Candlemass) gets an army row under its target:
+## every army of yours there, greyed with the rules' reason where it can't take it, and "As the rules pick" (CastOrder.target_army
+## left empty: the lowest-numbered there it fits, a ruler's own army last), which names the army it would be.
 
-signal confirmed(ritual: String, army_id: String, target: String, pay: String, size: int)
+signal confirmed(ritual: String, army_id: String, target: String, pay: String, size: int, target_army: String)
 signal cancelled
 signal codex_requested(key: String)
 ## The provinces in range of the ritual shown, and the one chosen ("" for none): the map lights and rings them.
@@ -36,12 +39,15 @@ var ritual := ""  # the ritual shown
 var target := ""
 var pay := CastOrder.GOLD
 var wolves := 0  # Call the Pack's size
+var target_army := ""  # CW-5: the army a one-army ritual lands on ("" for the rules' pick)
 var forecast := {}  # MagicRules.forecast_ritual for the choice shown
 var budget := {}  # Forecast.cast_budget for it
 var ritual_buttons := {}  # ritual id -> Button
 var target_buttons := {}  # province id ("" for none) -> Button
 var pay_buttons := {}  # CastOrder.GOLD / CastOrder.BLOOD -> Button
 var size_buttons := {}  # wolves -> Button
+var army_buttons := {}  # CW-5: army id ("" for the rules' pick) -> Button
+var army_box: HFlowContainer = null  # CW-5: the army row of a one-army ritual
 var options_box: HFlowContainer
 var choice_box: VBoxContainer
 var intro_label: Label
@@ -236,6 +242,7 @@ func select_ritual(ritual_id: String) -> void:
 		ritual_buttons[rid].set_pressed_no_signal(rid == ritual_id)
 	var targets: Array = o.targets
 	target = String(targets[0]) if not targets.is_empty() else ""
+	target_army = ""
 	pay = CastOrder.GOLD
 	wolves = int(o.sizes[0]) if not o.sizes.is_empty() else 0
 	_fill_choices(o)
@@ -244,6 +251,13 @@ func select_ritual(ritual_id: String) -> void:
 
 func select_target(province_id: String) -> void:
 	target = province_id
+	target_army = ""  # CW-5: a named army stands at the target, so a new target starts from the rules' pick
+	_refresh()
+
+
+## CW-5: the army a one-army ritual lands on ("" for the rules' pick).
+func select_army(p_army_id: String) -> void:
+	target_army = p_army_id
 	_refresh()
 
 
@@ -283,7 +297,7 @@ func confirm() -> void:
 		return
 	visible = false
 	rings_changed.emit([], "")
-	confirmed.emit(ritual, army_id, target, pay, wolves)
+	confirmed.emit(ritual, army_id, target, pay, wolves, target_army)
 
 
 func close() -> void:
@@ -316,6 +330,8 @@ func _fill_choices(o: Dictionary) -> void:
 	target_buttons.clear()
 	pay_buttons.clear()
 	size_buttons.clear()
+	army_buttons.clear()
+	army_box = null
 	forecast_box = null
 	numbers_box = null
 	budget_label = null
@@ -334,6 +350,13 @@ func _fill_choices(o: Dictionary) -> void:
 			b.pressed.connect(select_target.bind(String(pid)))
 			row.add_child(b)
 			target_buttons[pid] = b
+	if MagicRules.lands_on_army(ritual):  # CW-5: Kindle, Candlemass; filled for the target chosen (_fill_armies)
+		var al := _label("The army it lands on", 15, UiPalette.TEXT_PRIMARY)
+		al.name = "ArmiesHeading"
+		choice_box.add_child(al)
+		army_box = HFlowContainer.new()
+		army_box.name = "Armies"
+		choice_box.add_child(army_box)
 	if not o.sizes.is_empty() and int(o.sizes[0]) != int(o.sizes[1]):
 		var wl := _label("%s (%d gold each)" % [String(MagicRules.pack_words(ritual).get("many", "wolves")).capitalize(),  # CW-5: or Snuffed
 			int(MagicRules.spell_data(ritual).cost)], 15, UiPalette.TEXT_PRIMARY)
@@ -388,7 +411,8 @@ func _refresh() -> void:
 		pay_buttons[how].set_pressed_no_signal(how == pay)
 	for n in size_buttons:
 		size_buttons[n].set_pressed_no_signal(n == wolves)
-	forecast = orders.cast_preview(ritual, army_id, target, pay, wolves)
+	_fill_armies()
+	forecast = orders.cast_preview(ritual, army_id, target, pay, wolves, target_army)
 	_forecast_lines = Array(forecast.get("lines", [])).duplicate()
 	_fill_forecast()
 	_fill_numbers()
@@ -398,6 +422,46 @@ func _refresh() -> void:
 		else String(forecast.get("reason", "")))
 	rings_changed.emit(lit_provinces(), target)
 	_queue_fit()
+
+
+## CW-5: the army row for the target chosen: "As the rules pick (<the army they pick>)", then every army of yours there, each
+## greyed with the rules' reason when the ritual can't land on it (MagicRules.unfit_reason: Kindle never warms an army at 3 or
+## more, or one with no regulars).
+func _fill_armies() -> void:
+	if army_box == null:
+		return
+	for c in army_box.get_children():
+		army_box.remove_child(c)
+		c.queue_free()
+	army_buttons.clear()
+	var view := orders.view_state()
+	var pick := MagicRules.one_army(view, orders.faction_id, ritual, target, "")
+	var picked := TurnReportText.army_name(view, String(pick.get("army", "")), orders.faction_id) if pick.has("army") else ""
+	var rules := _button("Army_rules", "As the rules pick%s" % (" (%s)" % picked if not picked.is_empty() else ""),
+		"With no army named, %s lands on the lowest-numbered army of yours there that it can take, your ruler's own army last%s." % [
+			MagicRules.spell_name(ritual), ": %s" % picked if not picked.is_empty() else ""])
+	rules.toggle_mode = true
+	rules.pressed.connect(select_army.bind(""))
+	army_box.add_child(rules)
+	army_buttons[""] = rules
+	var mine := []
+	for a in view.armies:
+		if a.owner == orders.faction_id and a.location == target:
+			mine.append(a.id)
+	for aid in TurnReportText.sort_ids(mine):
+		var a := view.find_army(String(aid))
+		var why := MagicRules.unfit_reason(view, ritual, a)
+		var name := TurnReportText.army_name(view, a.id, orders.faction_id)
+		var flame := " · flame %d" % a.flame if a.flame >= 0 and String(MagicRules.spell_data(ritual).get("kind", "")) == "flame" else ""
+		var b := _button("Army_%s" % String(aid).validate_node_name(), "%s (%s%s)" % [RulerRules._cap(name), MagicRules.fighters_words(view, a), flame],
+			why if not why.is_empty() else "%s lands on %s." % [MagicRules.spell_name(ritual), name])
+		b.toggle_mode = true
+		b.disabled = not why.is_empty()
+		b.pressed.connect(select_army.bind(String(aid)))
+		army_box.add_child(b)
+		army_buttons[String(aid)] = b
+	for aid in army_buttons:
+		army_buttons[aid].set_pressed_no_signal(aid == target_army)
 
 
 ## The forecast under its headings: the rules' sentences, each with what it is (MagicRules.forecast_sections).
@@ -475,7 +539,7 @@ func _fill_budget() -> void:
 		return
 	var list := orders.orders()
 	if forecast.get("ok", false):
-		list.append(CastOrder.new(ritual, army_id, target, pay, wolves))
+		list.append(CastOrder.new(ritual, army_id, target, pay, wolves, target_army))
 	budget = Forecast.cast_budget(orders.view_state(), orders.faction_id, list)
 	budget_label.text = String(budget.text)
 	budget_label.set_meta("breakdown", budget.breakdown)
