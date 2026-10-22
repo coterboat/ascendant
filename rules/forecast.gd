@@ -1373,6 +1373,7 @@ static func recruit_at(state: GameState, faction_id: String, unit_type_id: Strin
 		out.text = "%s: they %s %s." % [head, verb, TurnReportText.army_title(view, joins, false)]
 	else:
 		out.text = "%s: they form a new army there." % head
+	out.text += WickRules.recruit_words(view, faction_id, joins, ut)  # CW-2 (§2.5): what joining does to its flame
 	return out
 
 

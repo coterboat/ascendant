@@ -225,6 +225,54 @@ static func harvest(state: GameState, kind: String, province_ids: Array, sides: 
 	events.append(e)
 
 
+# --- the words (§2.5) ------------------------------------------------------------------------------------
+
+## The army card's and the banner's line (§2.5): "Flame 2: its regulars fight at +1 attack. If it doesn't win this turn and
+## isn't in a harbour, it drops to 1." "" for an army with no flame. In a player's view, a rival's army out of clear sight
+## shows "flame unknown" (FogRules shows exact flame only in clear sight).
+static func flame_text(state: GameState, army: Army) -> String:
+	if army == null or not has_wick(army.owner) or army.ruler != null:
+		return ""
+	if army.flame < 0:
+		return "Flame unknown: only an army in clear sight shows its flame."
+	var cap_ := cap(state, army.owner)
+	var line := "Flame %d: its regulars fight at %s attack." % [army.flame, "%+d" % (army.flame - 1) if army.flame != 1 else "+0"]
+	if army.flame == 0:
+		line += " It is guttering: its regulars lose %d hp a turn, never below 1, until it wins." % GUTTER_HP
+	if army.flame < cap_:
+		line += " A win this turn raises it to %d." % (army.flame + 1)
+	if army.flame > 0:
+		line += " If it doesn't win this turn and isn't in a harbour, it drops to %d." % (army.flame - 1)
+	return line
+
+
+## The orders forecast's line for `army` ending the turn at `destination` (§2.5): "the Candlewake's 2nd: flame 2 → 3 if it
+## wins; → 1 if it fights no battle (Thornvale is no harbour)." "" for an army with no flame.
+static func forecast_line(state: GameState, army: Army, destination: String = "") -> String:
+	if army == null or army.flame < 0:
+		return ""
+	var where := destination if not destination.is_empty() else army.location
+	var name := TurnReportText.army_name(state, army.id, army.owner)
+	var won := mini(army.flame + 1, cap(state, army.owner))
+	var sheltered := harbour(state, army.owner, where)
+	var idle := army.flame if sheltered else maxi(0, army.flame - 1)
+	return "%s: flame %d → %d if it wins; → %d if it fights no battle (%s %s a harbour)." % [RulerRules._cap(name), army.flame, won, idle,
+		TurnResolver._province_name(state, where), "is" if sheltered else "is not"]
+
+
+## The recruit forecast's words (§2.5): " Joining the Candlewake's 2nd cools it from flame 3 to 1." or " A new army starts at
+## flame 1." "" for a faction that keeps no flame, or a commander (it cools nothing).
+static func recruit_words(state: GameState, faction_id: String, joins: Army, ut: UnitType) -> String:
+	if not has_wick(faction_id) or ut == null or ut.is_commander or SiegeRules.is_engine(ut):
+		return ""
+	var start := start_flame(state, faction_id)
+	if joins == null:
+		return " A new army starts at flame %d." % start
+	if joins.flame > start:
+		return " Joining %s cools it from flame %d to %d." % [TurnReportText.army_name(state, joins.id, faction_id), joins.flame, start]
+	return ""
+
+
 ## Checks every flame (GameState.validate): only a Wick faction's armies carry one, every one of theirs but a ruler's does,
 ## and none is above its cap. In a player's view a rival's stand-in shows its flame only in clear sight (FogRules), so a
 ## rival's army without one is allowed there. Plain reasons in `errors` (push_error when it isn't an Array).

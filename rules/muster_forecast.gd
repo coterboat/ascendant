@@ -314,6 +314,10 @@ static func _text(board: GameState, faction_id: String, candidate: MusterOrder, 
 	for row in f.outside:
 		parts.append(RulerRules._cap(String(row.text)) + ".")
 	var info: Dictionary = f.info
+	if info.has("flame"):
+		# CW-2 (design/CANDLEWAKE.md §2.1, the director's ARM-1 rule): a merge or transfer takes the lower flame.
+		parts.append("%s flame falls from %d to %d: a merge takes the lower flame." % [RulerRules._cap(TurnReportText._possessive(
+			TurnReportText.army_name(board, String(info.to), faction_id))), int(info.flame.from), int(info.flame.to)])
 	if bool(info.get("commander_left", false)):
 		parts.append("Both armies have a commander, so the commander of %s stays behind as an army of its own." % TurnReportText.army_name(board, String(info.from), faction_id))
 	for d in f.dropped:
