@@ -343,12 +343,15 @@ func test_the_plate_band_is_sized_as_its_page_opens() -> void:
 	for sizes in [[Vector2(1600, 900), Vector2(956, 696)], [Vector2(1280, 720), Vector2(636, 516)], [Vector2(1280, 720), Vector2(200, 516)]]:
 		panel.set_size(sizes[0])  # set_size, not `size =`: the panel is anchored full-rect, and the property warns before _ready
 		page.set_size(sizes[1])
+		var band_for := {}  # plate size -> its band's height: the same on every page turn between plates of one size
 		for key in plated:
 			assert_true(panel.show_entry(key), key)
 			var tex := Art.codex_plate(key)
 			# The band's own minimum (what its column lays it out at); the combined one is a cache only a live tree refreshes.
 			var h: float = band.custom_minimum_size.y
 			assert_true(h > 0.0, "%s's band has its height as the page opens (%s)" % [key, sizes[0]])
+			assert_eq(h, float(band_for.get(tex.get_size(), h)), "%s: a page turn from a plate of its size moves nothing" % key)
+			band_for[tex.get_size()] = h
 			assert_eq(h, CodexPanel.plate_height(tex.get_size(), page.size.x, panel.size.y), "%s: from the page's width" % key)
 			assert_true(h <= page.size.x * tex.get_size().y / tex.get_size().x + 0.01, "%s: no taller than the page's width allows" % key)
 			assert_true(h <= panel.size.y * CodexPanel.PLATE_MAX_SHARE, "%s: no taller than its share of the panel" % key)

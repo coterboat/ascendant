@@ -432,7 +432,7 @@ void fragment() {
 		var tex_size := texture.get_size()
 		# The band is the plate's own parchment: its corner under everything, then its side columns (EDGE in, clear of any filtering
 		# seam) drawn on outwards, so the paper runs on unbroken whatever its shading; the shader eases the plate's sides into it.
-		var edge := floorf(tex_size.x * EDGE)
+		var edge := maxf(2.0, floorf(tex_size.x * EDGE))
 		draw_texture_rect_region(texture, r, Rect2(edge, edge, 1.0, 1.0))
 		if at.position.x > inner.position.x + 0.5:
 			draw_texture_rect_region(texture, Rect2(inner.position.x, at.position.y, at.position.x - inner.position.x, at.size.y),
