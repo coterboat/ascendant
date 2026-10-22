@@ -69,6 +69,17 @@ const PREVIEW_FACTIONS: Array[Dictionary] = [
 			{"id": "wickwardens", "name": "Wickwardens", "hp": 7, "attack": 9, "defense": 8, "morale": 8, "cost": 8, "trait": "Pall"},
 			{"id": "gleaners", "name": "Gleaners", "hp": 10, "attack": 11, "defense": 4, "morale": 6, "cost": 9, "trait": "Siphon"},
 			{"id": "hundred_wick", "name": "Hundred-Wick", "hp": 26, "attack": 13, "defense": 9, "morale": 9, "cost": 22, "trait": "Flare"},
+			# CW-12 (#263, §4.5): the candlebeasts, poured only in a province at the Wake's Deep Wake ("requires_mark_stage", the
+			# stage's id in MarkData; MarkRules.pour_reason). After the host: rules read the host by its place in this list. CW-2's gate
+			# (tools/balance/candlewake.gd, 20-80% at equal gold) moved §4.5's numbers: the Wax Hounds are 5/10/5/10, not 5/9/4/7 (at
+			# 5/9/4/7 the Crown's units and the War Bear beat them 82-97% of the time; hollow wax doesn't flee); the Tallow Stag is 10/11/4/7 for 11,
+			# not 9/11/4/8 for 10 (at 10 gold its charge broke the War Bear 88% of the time); the Guttering Bear costs 14, not 13.
+			{"id": "wax_hounds", "name": "Wax Hounds", "hp": 5, "attack": 10, "defense": 5, "morale": 10, "cost": 6, "trait": "Skirmish",
+				"requires_mark_stage": "deep_wake"},
+			{"id": "tallow_stag", "name": "Tallow Stag", "hp": 10, "attack": 11, "defense": 4, "morale": 7, "cost": 11, "trait": "Charge",
+				"requires_mark_stage": "deep_wake"},
+			{"id": "guttering_bear", "name": "Guttering Bear", "hp": 14, "attack": 11, "defense": 8, "morale": 9, "cost": 14, "trait": "Berserk",
+				"requires_mark_stage": "deep_wake"},
 		],
 		"commander": {"id": "lamplighter", "name": "Lamplighter", "hp": 22, "attack": 9, "defense": 9, "morale": 12, "cost": 30, "trait": "Toll"},
 		"start_army": ["wickwardens", "wickwardens", "gleaners", "hundred_wick"],
@@ -162,6 +173,7 @@ static func create_factions(faction_ids: Array = LEGACY_PAIR) -> Array[Faction]:
 			ut.cost = u.cost
 			ut.trait_id = u.trait
 			ut.trait_description = AutoBattleResolver.TRAIT_TEXT.get(u.trait, "")
+			ut.mark_stage = String(u.get("requires_mark_stage", ""))  # CW-12: the candlebeasts' Deep Wake
 			faction.unit_types.append(ut)
 
 		var cmd := UnitType.new()

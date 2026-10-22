@@ -30,7 +30,7 @@ const MARKS := {
 	# --- the engine: tests/test_faction_audit.gd checks these counts ---
 	"ai/ai_paths.gd": [6, "safe: the Crown's and the Clans' path plans by preset; the Candlewake's are CW-6 (#257, lane AI), after their path (CW-4)"],
 	"data/build_presets.gd": [3, "safe: presets by faction; the Candlewake's three (CW-2, #253) wait behind the preview (PREVIEW_PRESETS)"],
-	"data/factions.gd": [19, "fixed: the faction rows themselves, the Candlewake's behind the preview (PREVIEW_FACTIONS), LEGACY_PAIR, and capitals derived from the seated factions (capitals_for)"],
+	"data/factions.gd": [22, "fixed: the faction rows themselves, the Candlewake's behind the preview (PREVIEW_FACTIONS; CW-12 #263 adds the candlebeasts' three rows), LEGACY_PAIR, and capitals derived from the seated factions (capitals_for)"],
 	"data/fog.gd": [1, "fixed: the Gleaners are the Candlewake's scouts (SCOUTS, CW-2 #253, §4.1)"],
 	"data/forts.gd": [3, "fixed: one siege engine per faction, the Candlewake's Guttering Ram with CW-2 (#253); a faction with no engine row would recruit none (SiegeRules.engine_type is null)"],
 	"data/magic.gd": [23, "safe: the Crown's and the Clans' schools, mages, spellbooks and summons by faction; the Candlewake's Wick and Wax are CW-5 (#256). Fixed: the Thornwolves' row says it is a pack (summons from data) CW-5 (#256): the Candlewake's Wick and Wax wait behind the preview (MagicData's PREVIEW_ tables)."],
@@ -45,7 +45,7 @@ const MARKS := {
 	"rules/battle_log.gd": [1, "safe: a hit-chance range [least, most], not factions"],
 	"rules/faction.gd": [1, "safe: a comment's example enchantment id"],
 	"rules/fog_rules.gd": [12, "safe: an event's own faction list (who acted first, who it was done to second; CW-1: whose mark), not the game's factions"],
-	"rules/rules_codex.gd": [51, "safe: each faction's own entries (engines, rulers, units in prose), the Candlewake's Guttering Ram and Tallow Levy's price with CW-2 (#253), the Wake's numbers with CW-3 (#254), the Pouring's with CW-4 (#255), the Wick's and Wax's with CW-5 (#256); their other entries come with their mechanics, CW-2 to CW-5. #285: each Candlewake entry names its faction, so a codex lists it only in a game that seats them (RulesCodex.shown_for)"],
+	"rules/rules_codex.gd": [52, "safe: each faction's own entries (engines, rulers, units in prose), the Candlewake's Guttering Ram and Tallow Levy's price with CW-2 (#253), the Wake's numbers with CW-3 (#254), the Pouring's with CW-4 (#255), the Wick's and Wax's with CW-5 (#256), the candlebeasts' with CW-12 (#263); their other entries come with their mechanics, CW-2 to CW-5. #285: each Candlewake entry names its faction, so a codex lists it only in a game that seats them (RulesCodex.shown_for)"],
 	"rules/turn_report_text.gd": [11, "safe: an event's own faction list (who acted first), and 'both' for a two-faction battle with 'all of them' for more"],
 	# --- the screens, the board and the tools: in the report for their lanes, not checked by the test ---
 	"ui/art.gd": [3, "lane UI, CW-7 (#258): unit names and portraits found by id in FactionData.FACTIONS; the Candlewake's art is CW-10, and these read FactionData.rows() then"],

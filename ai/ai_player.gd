@@ -1308,6 +1308,8 @@ func _plan_recruits(base: Array) -> Array:
 	var roster: Array = []
 	for ut in _me.unit_types:
 		if ut.cost > 0 and not (MagicRules.is_mage(ut) and not MagicRules.knows_a_spell(_state, _fid)):  # M5-5: the mage gate
+			if MarkRules.is_poured(ut) and not MarkRules.pour_reason(_state, _fid, ut, cap.id).is_empty():
+				continue  # CW-12: a candlebeast only where its Deep Wake runs (the capital's, from the start)
 			roster.append(ut)
 	var cmd: UnitType = _me.commander_type if _me.commander_type != null and _me.commander_type.cost > 0 else null
 	var gold := _me.gold - _gold_reserved - _ritual_gold  # M3c: less what Fortify and engines take (0 without sieges); M5-10: and the rituals (0 without magic)

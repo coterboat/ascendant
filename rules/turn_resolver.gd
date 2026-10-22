@@ -328,6 +328,13 @@ static func check_recruit(state: GameState, faction_id: String, order, gold_avai
 			var fort := SiegeRules.check_recruit_at(state, faction_id, faction.capital, ut, at_count, start_state)
 			if not fort.is_empty():
 				return fort
+	if MarkRules.is_poured(ut):  # CW-12 (design/CANDLEWAKE.md §4.5): poured only where its own mark runs deep enough
+		var place := faction.capital if at.is_empty() else at
+		if at == RecruitOrder.AT_RULER:
+			place = muster_province(start_state if start_state != null else state, faction_id)
+		var poured := MarkRules.pour_reason(state, faction_id, ut, place)
+		if not poured.is_empty():
+			return _reject("needs_mark_stage", poured)
 	var price := RulerRules.recruit_price(state, faction_id, ut)
 	if price > gold_available:
 		return _reject("not_enough_gold", "%s cost %d gold, but you only have %d gold left." % [ut.name, price, gold_available])
