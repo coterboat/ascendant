@@ -152,6 +152,30 @@ func test_a_fallen_hundred_wick_flares_on_the_healthiest_front_rank_enemies() ->
 	assert_true(flares > 0, "the Hundred-Wick fell and flared")
 
 
+func test_a_candlewake_battle_plays_back_to_its_log() -> void:
+	# The battle views (lane UI) play these logs before they have a beat of their own for a flare: every beat is one the player
+	# knows, and playing to the end reaches the timeline's end state without changing the log.
+	var played := 0
+	for game_seed in 6:
+		var s := _state()
+		var wake := _army(s, WAKE, "thornvale", ["hundred_wick", "gleaners", "gleaners", "wickwardens", "lamplighter"], 2)
+		var foe := _army(s, CROWN, "thornvale", ["knights", "spearmen", "spearmen", "spearmen", "crossbowmen", "knight_captain"])
+		var r := _battle(s, wake, foe, 600 + game_seed)
+		var before := JSON.stringify(r.log)
+		var p := BattlePlayer.new(r.log, r.report)
+		for b in p.beats():
+			assert_true(BattlePlayer.KINDS.has(b.kind), "a known beat kind: %s" % b.kind)
+		p.play()
+		var guard := 0
+		while p.next_beat() < p.beats().size() and guard < 100000:
+			p.advance(0.05)
+			guard += 1
+		assert_eq(p.state(), p.timeline().final_state(), "seed %d: the end state" % game_seed)
+		assert_eq(JSON.stringify(r.log), before, "seed %d: the log is unchanged by playback" % game_seed)
+		played += 1 if r.log.events.any(func(e): return String(e.t) == "flare") else 0
+	assert_true(played > 0, "at least one of them flared")
+
+
 func test_toll_lifts_morale_for_each_fallen_enemy_while_the_lamplighter_stands() -> void:
 	var tolled := 0
 	for game_seed in SEEDS:
