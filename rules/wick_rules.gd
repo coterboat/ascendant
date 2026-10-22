@@ -153,11 +153,12 @@ static func harvest_count(state: GameState, faction_id: String, beat_player: boo
 
 
 ## The flame `army` fights a battle at (§2.2): its flame (the one the battle phase began with: nothing changes a flame
-## during the battle phase), with any battle bonus (Bonfire Night, CW-5), never above its cap. -1 for an army with none.
+## during the battle phase), with any battle bonus (CW-5: Bonfire Night's, MagicRules.flame_bonus), never above its cap. -1 for
+## an army with none. Only battles read it: the bonus never touches Army.flame, so the Wick step, the cards and saves don't see it.
 static func battle_flame(state: GameState, army: Army) -> int:
 	if army == null or army.flame < 0:
 		return -1
-	return mini(army.flame, cap(state, army.owner))
+	return mini(army.flame + MagicRules.flame_bonus(state, army.owner), cap(state, army.owner))
 
 
 ## The highest flame `faction_id`'s armies reach (§2.1: 3; §6.3, the Red Wake: 4).
@@ -213,16 +214,22 @@ static func wick_step(state: GameState, events: Array, start: GameState = null) 
 				events.append(gutter_event(state, a, units, lost))
 		var from: int = before.flame if before != null else a.flame
 		if from >= 0 and from != a.flame:
-			events.append(flame_event(state, a, from, a.flame, why if not why.is_empty() else "joined"))
+			if why.is_empty():
+				why = "kindled" if facts.kindled.has(a.id) else "joined"  # CW-5: Kindle warmed it in the rituals phase
+			events.append(flame_event(state, a, from, a.flame, why))
 
 
 ## The turn's per-army facts (§2.1), read from its battle events: {"fought": {army id: true}, "won": {army id: true}}. Losing
-## armies are destroyed, so an army that fought and was not destroyed in that battle won it.
+## armies are destroyed, so an army that fought and was not destroyed in that battle won it. CW-5: "kindled" {army id: true},
+## the army a Kindle warmed this turn (its ritual_cast event).
 static func battle_facts(events: Array) -> Dictionary:
 	var fought := {}
 	var won := {}
 	var won_at := {}  # CW-4: {army id: [province ids]}, the province battles it won (Pyre Roads)
+	var kindled := {}
 	for e in events:
+		if String(e.get("type", "")) == "ritual_cast" and e.get("numbers", {}).has("kindled"):
+			kindled[String(e.numbers.kindled.get("army", ""))] = true
 		if not BATTLE_TYPES.has(String(e.get("type", ""))):
 			continue
 		var destroyed: Array = e.get("numbers", {}).get("destroyed", [])
@@ -234,7 +241,7 @@ static func battle_facts(events: Array) -> Dictionary:
 					var at: Array = won_at.get(String(aid), [])
 					at.append(String(e.provinces[0]))
 					won_at[String(aid)] = at
-	return {"fought": fought, "won": won, "won_at": won_at}
+	return {"fought": fought, "won": won, "won_at": won_at, "kindled": kindled}
 
 
 ## Whether `province_id` is a harbour for `faction_id`'s armies (§2.2): a fort it owns, or a mark of its own at a stage that
@@ -354,18 +361,21 @@ static func flame_text(state: GameState, army: Army) -> String:
 
 
 ## The orders forecast's line for `army` ending the turn at `destination` (§2.5): "the Candlewake's 2nd: flame 2 → 3 if it
-## wins; → 1 if it fights no battle (Thornvale is no harbour)." "" for an army with no flame.
-static func forecast_line(state: GameState, army: Army, destination: String = "") -> String:
+## wins; → 1 if it fights no battle (Thornvale is no harbour)." "" for an army with no flame. CW-5: `kindled`, the flame this
+## turn's Kindle leaves it at (MagicRules.kindled_flames), when one warms it: "flame 1, 2 after Kindle → 3 if it wins; ...".
+static func forecast_line(state: GameState, army: Army, destination: String = "", kindled: int = -1) -> String:
 	if army == null or army.flame < 0:
 		return ""
 	var where := destination if not destination.is_empty() else army.location
 	var name := TurnReportText.army_name(state, army.id, army.owner)
+	var flame := kindled if kindled >= 0 else army.flame
 	var pyre := pyre_road(state, army.owner, where)  # CW-4: the orders' state is the land as the battles begin
-	var won := next_flame(state, army.owner, army.flame, true, pyre, false, false)
-	var plain := next_flame(state, army.owner, army.flame, true, false, false, false)
+	var won := next_flame(state, army.owner, flame, true, pyre, false, false)
+	var plain := next_flame(state, army.owner, flame, true, false, false, false)
 	var sheltered := harbour(state, army.owner, where)
-	var idle := next_flame(state, army.owner, army.flame, false, false, sheltered, false)
-	return "%s: flame %d → %d if it wins%s; → %d if it fights no battle (%s %s a harbour)." % [RulerRules._cap(name), army.flame, won,
+	var idle := next_flame(state, army.owner, flame, false, false, sheltered, false)
+	var now := str(army.flame) if kindled < 0 else "%d, %d after Kindle" % [army.flame, kindled]
+	return "%s: flame %s → %d if it wins%s; → %d if it fights no battle (%s %s a harbour)." % [RulerRules._cap(name), now, won,
 		" (Pyre Roads)" if won > plain else "", idle, TurnResolver._province_name(state, where), "is" if sheltered else "is not"]
 
 

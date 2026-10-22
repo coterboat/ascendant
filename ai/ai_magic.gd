@@ -749,7 +749,7 @@ func _pay(ritual: String, army: Army, caster: Dictionary, sized: bool) -> Dictio
 	var most := 0
 	var each := int(MagicRules.spell_data(ritual).get("cost", 0))
 	if sized:
-		var sizes := MagicRules.pack_sizes(st, fid, army)
+		var sizes := MagicRules.pack_sizes(st, fid, army, ritual)  # CW-5: the pack's own ritual (Raise the Snuffed too)
 		least = int(sizes[0])
 		most = int(sizes[1])
 	var tithe: bool = String(caster.kind) == MagicRules.MAGE and RulerRules.has_mandate(st, fid, MagicRules.TITHE_OF_BLOOD)
@@ -821,7 +821,7 @@ func _report(ritual: String, order: CastOrder, best: Dictionary, why: String) ->
 		price = "paid in blood (%d hit points from the army)" % hp
 	else:
 		price = "%d gold" % int(best.pay.gold)
-	var size := ", %d wolves" % order.size if order.size > 0 else ""
+	var size := ", %d %s" % [order.size, String(MagicRules.pack_words(ritual).get("many", "wolves"))] if order.size > 0 else ""  # CW-5
 	ai._note_top("Casting %s%s%s, from %s, %s: %s." % [name, where, size, from, price, why])
 	ai._stats["rituals"] = int(ai._stats.get("rituals", 0)) + 1
 	var key := "cast_" + ritual

@@ -740,12 +740,12 @@ const ENTRIES := {
 	"ruler_half_death": {
 		"faction": "candlewake",
 		"title": "Half-Death",
-		"text": "Ruler of the Candlewake, a god. What is left of the Wright, who died at noon, mid-stroke. It fights in the front rank. When its body falls it comes back at the Candlewake's capital after 1 turn, 3 kept power smaller. Its province ability is Harvest.",
+		"text": "Ruler of the Candlewake, a god. What is left of the Wright, who died at noon, mid-stroke. It fights in the front rank. When its body falls it comes back at the Candlewake's capital after 1 turn, 3 kept power smaller. Its province ability is Harvest. In a game with magic it casts Draw the Warmth in battle from turn 1, and the Wick's rituals once researched (Kindle, Bonfire Night), never Wax's.",
 	},
 	"ruler_mother_tallow": {
 		"faction": "candlewake",
 		"title": "Mother Tallow",
-		"text": "Ruler of the Candlewake, a mortal line: the Ninth Chandler, the one living woman among the dead, her taper burning gold. She fights in the second rank. When she dies, the Tenth Chandler takes up the taper at the capital 2 turns later, with half her kept power. Her province ability is Vigil.",
+		"text": "Ruler of the Candlewake, a mortal line: the Ninth Chandler, the one living woman among the dead, her taper burning gold. She fights in the second rank. When she dies, the Tenth Chandler takes up the taper at the capital 2 turns later, with half her kept power. Her province ability is Vigil. In a game with magic she casts Wax's rituals once researched (Raise the Snuffed, Candlemass), never in battle.",
 	},
 	"ability_harvest": {
 		"faction": "candlewake",
@@ -862,6 +862,68 @@ const ENTRIES := {
 		"faction": "candlewake",
 		"title": "The Long Sleep",
 		"text": "The province rule of the Golden Wake. The dead rise from your provinces on the Wake-Line too, not only Deep Wake, and every 3 turns instead of 4: a Wickwarden at the end of the third turn past the Wake-Line, then every 3 turns. They join your lowest-numbered army there, or form a new one. See The Wake.",
+	},
+	# --- CW-5 (#256, design/CANDLEWAKE.md §7): the Candlewake's magic, the Wick and Wax schools, behind their preview. The numbers
+	# match MagicData's PREVIEW_ tables; tests/test_cw5_magic.gd checks them.
+	"school_wick": {
+		"faction": "candlewake",
+		"title": "School of the Wick",
+		"text": "A Candlewake school: warmth drawn from the living, and the flame fed. Its battle spell is Draw the Warmth, its ritual Kindle, its greater working Bonfire Night, which only the Oath of the Snuffed opens. The Red Wake adds +1 mastery in the Wick. Each point of mastery adds 1 damage to Draw the Warmth. Half-Death casts the Wick's spells, never Wax's.",
+	},
+	"school_wax": {
+		"faction": "candlewake",
+		"title": "School of Wax",
+		"text": "A Candlewake school: wax that hardens, raises and keeps. Its battle spell is Wax Skin, its ritual Raise the Snuffed, its greater working Candlemass, which only the Oath of the Kept opens. The Golden Wake adds +1 mastery in Wax. Each point of mastery has Wax Skin cover 1 more unit and lets Raise the Snuffed raise 1 more. Mother Tallow casts Wax's rituals.",
+	},
+	"spell_draw_the_warmth": {
+		"faction": "candlewake",
+		"title": "Draw the Warmth",
+		"text": "Wick battle spell, tier I, 10 research. A bolt: 3 sure damage to the enemy unit or creature it can reach with the fewest hit points left that isn't already going to die this round. Rulers and commanders only when nothing else is in reach. The caster bleeds nothing. +1 damage per point of Wick mastery. Half-Death casts it in battle from turn 1.",
+	},
+	"spell_kindle": {
+		"faction": "candlewake",
+		"title": "Kindle",
+		"text": "Wick ritual, tier II, 15 research, 10 gold. Cast on a province within 2 where an army of yours stands, whoever owns it: one army of yours there gains 1 flame at once, in the rituals phase, so it fights this turn's battles at its new flame. Never above 3, even with the Red Wake's flame 4, and it never lowers a flame. The order can name the army; without one it warms the lowest-numbered of yours there that it can. It warms regulars only, so an army of summoned creatures or mages alone can't take it. A rival's Sanctum Ward on the province turns it aside, as it does any ritual aimed there.",
+	},
+	"spell_bonfire_night": {
+		"faction": "candlewake",
+		"title": "Bonfire Night",
+		"text": "The Wick's greater working, tier III, 25 research, 30 gold, opened only by the Oath of the Snuffed. Through turn T + 2, your regulars fight every battle as if 1 flame hotter, never above your cap (3, or 4 with the Red Wake): an army at flame 1 fights at +1 attack instead of +0. Battles only: the flames themselves don't move, so the Wick step, guttering and Pyre Roads read them as they are. Only one global ritual can be up at a time, so it can't be cast while the Blood Moon is up, nor the moon while it is.",
+	},
+	"spell_wax_skin": {
+		"faction": "candlewake",
+		"title": "Wax Skin",
+		"text": "Wax battle spell, tier I, 10 research. A shield: +4 defense this round for up to 6 of your front-rank units of one type, the most numerous with units not yet shielded, that have no terrain or fort bonus. A field spell, like Shield of Law: it does nothing for defenders in a fort, forest or hills. +1 unit per point of Wax mastery.",
+	},
+	"spell_raise_the_snuffed": {
+		"faction": "candlewake",
+		"title": "Raise the Snuffed",
+		"text": "Wax ritual, tier II, 15 research, 4 gold a body. Raises 3 Snuffed, up to 3 plus your Wax mastery, as a new army of their own at the caster's province, which holds that turn. They fade at the end of turn T + 4. A new band can be raised only once the last has faded or fallen.",
+	},
+	"spell_candlemass": {
+		"faction": "candlewake",
+		"title": "Candlemass",
+		"text": "Wax's greater working, tier III, 25 research, 25 gold, opened only by the Oath of the Kept. Cast on a province you own within 2 where an army of yours stands, through turn T + 4: one army of yours there is blessed, wherever it then goes (the army the order names, or the lowest-numbered of yours there, your ruler's own army last). It heals 12 hit points in each enchantments phase, one at a time to its most wounded fighter, and a side gets +1 morale in a battle when at least half its fighters are blessed. Mastery never changes a greater working.",
+	},
+	"node_wick_mastery": {
+		"faction": "candlewake",
+		"title": "Wick Mastery",
+		"text": "Wick mastery node, 20 research, after Kindle. +1 mastery in the Wick for every caster of yours: Draw the Warmth deals 1 more damage. Kindle stays at 1 flame. Mastery is at most +3.",
+	},
+	"node_wax_mastery": {
+		"faction": "candlewake",
+		"title": "Wax Mastery",
+		"text": "Wax mastery node, 20 research, after Raise the Snuffed. +1 mastery in Wax for every caster of yours: Wax Skin covers 1 more unit and the band can be 1 Snuffed bigger. Mastery is at most +3.",
+	},
+	"unit_snuffed": {
+		"faction": "candlewake",
+		"title": "Snuffed",
+		"text": "Raised by Raise the Snuffed: 7 hit points, attack 9, defense 8, morale 8, Pall. Never recruited; mandates, path parts and flame leave them alone. They fade at the end of the turn their card names, and a band that falls can be raised again the next turn, at 4 gold each.",
+	},
+	"mage_candlewake": {
+		"faction": "candlewake",
+		"title": "Chandler's Apprentices",
+		"text": "The Candlewake's mage: 8 hit points, attack 7, defense 5, morale 9, 17 gold, the trait Mage. In a game with magic they are on the roster from turn 1, but can be recruited only once the Candlewake knows a spell; Half-Death's own Draw the Warmth doesn't count. They cast the Wick's and Wax's battle spells and rituals, and Far Sight. Flame never touches them: they fight at no flame and never gutter.",
 	},
 	# --- M4-1 (#66): research and the paths of ascension (design/M4_ASCENSION.md §2, §3, §9.3). One contiguous
 	# block. The numbers match data/paths.gd; tests/test_research.gd checks them. M4-2 adds the rules of the

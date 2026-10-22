@@ -452,7 +452,8 @@ static func spell_number(state: GameState, faction_id: String, spell_id: String,
 		if per.has(key):
 			field = key
 	var words := {"value": "damage" if String(sp.get("kind", "")) == "bolt" else ("hit points a turn" if not bool(sp.get("battle", false)) else "part"),
-		"count": "units" if bool(sp.get("battle", false)) else "most wolves", "duration": "turns after the cast turn"}
+		"count": "units" if bool(sp.get("battle", false)) else "most %s" % String(MagicRules.pack_words(spell_id).get("many", "wolves")),  # CW-5
+		"duration": "turns after the cast turn"}
 	var base := int(MagicRules.spell_numbers(spell_id, 0, forest)[field])
 	var now := int(MagicRules.spell_numbers(spell_id, bonus, forest)[field])
 	var lines := [_line("%s base" % MagicRules.spell_name(spell_id), base, String(words[field]))]

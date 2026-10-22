@@ -12,9 +12,9 @@ const CROWN := "kingdom"
 const CLANS := "beasts"
 const WAKE := "candlewake"
 const PAIRINGS := [[CROWN, CLANS], [CLANS, CROWN], [CROWN, WAKE], [WAKE, CROWN], [CLANS, WAKE], [WAKE, CLANS]]
-## The systems the Candlewake play with: none, forts with independents and fog, and (CW-2) rulers.
+## The systems the Candlewake play with: none, forts with independents and fog, and (CW-2) rulers, (CW-4) paths, (CW-5) magic.
 const SYSTEM_SETS := [{}, {"sieges": true, "independents": true, "fog": true}, {"rulers": true, "sieges": true, "independents": true},
-	{"paths": true, "fog": true}]
+	{"paths": true, "fog": true}, {"magic": true, "independents": true}]
 const PLAY_TURNS := 5
 
 

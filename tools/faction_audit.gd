@@ -45,7 +45,7 @@ const MARKS := {
 	"rules/battle_log.gd": [1, "safe: a hit-chance range [least, most], not factions"],
 	"rules/faction.gd": [1, "safe: a comment's example enchantment id"],
 	"rules/fog_rules.gd": [12, "safe: an event's own faction list (who acted first, who it was done to second; CW-1: whose mark), not the game's factions"],
-	"rules/rules_codex.gd": [39, "safe: each faction's own entries (engines, rulers, units in prose), the Candlewake's Guttering Ram and Tallow Levy's price with CW-2 (#253), the Wake's numbers with CW-3 (#254), the Pouring's with CW-4 (#255); their other entries come with their mechanics, CW-2 to CW-5. #285: each Candlewake entry names its faction, so a codex lists it only in a game that seats them (RulesCodex.shown_for)"],
+	"rules/rules_codex.gd": [51, "safe: each faction's own entries (engines, rulers, units in prose), the Candlewake's Guttering Ram and Tallow Levy's price with CW-2 (#253), the Wake's numbers with CW-3 (#254), the Pouring's with CW-4 (#255), the Wick's and Wax's with CW-5 (#256); their other entries come with their mechanics, CW-2 to CW-5. #285: each Candlewake entry names its faction, so a codex lists it only in a game that seats them (RulesCodex.shown_for)"],
 	"rules/turn_report_text.gd": [11, "safe: an event's own faction list (who acted first), and 'both' for a two-faction battle with 'all of them' for more"],
 	# --- the screens, the board and the tools: in the report for their lanes, not checked by the test ---
 	"ui/art.gd": [3, "lane UI, CW-7 (#258): unit names and portraits found by id in FactionData.FACTIONS; the Candlewake's art is CW-10, and these read FactionData.rows() then"],

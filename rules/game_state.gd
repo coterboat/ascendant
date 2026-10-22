@@ -241,9 +241,7 @@ static func system_problems(faction_id: String, flags: Dictionary, builds: Dicti
 	var name := "The %s" % String(FactionData.row(faction_id).get("name", faction_id))
 	var rulers := not RulerRules.rulers_for(faction_id).is_empty()
 	var paths := rulers and not AscensionRules.path_data(faction_id).is_empty()
-	# CW-5 (#256): MagicRules reads the Candlewake's mage from MagicData.PREVIEW_MAGES now, but their magic opens for play only
-	# once its new effects are built (Kindle, Bonfire Night, Candlemass), so a preview mage doesn't open it yet.
-	var magic := paths and MagicRules.mage_type(faction_id) != null and not MagicData.PREVIEW_MAGES.has(faction_id)
+	var magic := paths and MagicRules.mage_type(faction_id) != null  # CW-5: the Candlewake's mage is in MagicData.PREVIEW_MAGES
 	if on.magic and not magic:
 		return ["%s can't play with magic yet: their magic isn't ready. Play them without Magic." % name]
 	if on.paths and not paths:

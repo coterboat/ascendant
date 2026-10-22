@@ -222,9 +222,10 @@ const BLOOD_PER_GOLD := 1
 ## CW-5 (#256, design/CANDLEWAKE.md §7): the Candlewake's magic, behind their faction's preview (FactionData.PREVIEW_FACTIONS),
 ## kept apart from the tables above so they, and everything that walks them, stay exactly as they are; MagicRules reads both.
 ## Two schools, the Wick (aligned with the Red Wake) and Wax (the Golden Wake). New in kind: Kindle, a "flame" ritual (+value
-## flame to the lowest-numbered army of yours in the target province that is below the row's cap, never above it); Bonfire
-## Night's "flame_bonus" (a global: your regulars fight that much hotter, in battle only: WickRules.battle_flame); Candlemass's
-## "one_army" (a blessing on one army, the lowest-numbered of yours there, not every army there).
+## flame to one army of yours in the target province that is below the row's cap, never above it); Bonfire Night's "flame_bonus"
+## (a global: your regulars fight that much hotter, in battle only: WickRules.battle_flame); Candlemass's "one_army" (a blessing on
+## one army of yours there, not every army there). A one-army ritual lands on the army its order names (CastOrder.target_army), or
+## on the lowest-numbered army of yours there it fits, a ruler's own army last (MagicRules.one_army).
 const PREVIEW_SCHOOLS := {
 	"wick": {"id": "wick", "name": "Wick", "ref": "the Wick", "faction": "candlewake", "aligned_branch": "red_wake",
 		"nodes": ["draw_the_warmth", "kindle", "wick_mastery", "bonfire_night"], "codex": "school_wick",
@@ -241,7 +242,7 @@ const PREVIEW_SPELLS := {
 		"text": "3 sure damage (+1 per Wick mastery) to the weakest enemy in reach. The caster bleeds nothing."},
 	"kindle": {"id": "kindle", "name": "Kindle", "school": "wick", "tier": "II", "kind": "flame", "battle": false,
 		"cost": 10, "range": 2, "target": "own_flame_army", "duration": 0, "value": 1, "per_bonus": {}, "codex": "spell_kindle",
-		"text": "Raises one army of yours within 2 by 1 flame at once (the lowest-numbered there below 3), never above 3."},
+		"text": "One army of yours within 2 gains 1 flame at once, before the battles, never above 3."},
 	"bonfire_night": {"id": "bonfire_night", "name": "Bonfire Night", "school": "wick", "tier": "III", "kind": "global", "battle": false,
 		"cost": 30, "range": 0, "target": "none", "duration": 2, "flame_bonus": 1, "per_bonus": {}, "codex": "spell_bonfire_night",
 		"text": "Through turn T + 2, your regulars fight every battle as if 1 flame hotter (never above the cap). Battles only: the Wick step never sees it."},
