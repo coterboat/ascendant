@@ -621,6 +621,18 @@ static func _apply_roster(f: Faction, node_id: String) -> Dictionary:
 			if ut.id == String(type_id):
 				renamed[ut.id] = {"from": ut.name, "to": String(names[type_id])}
 				ut.name = String(names[type_id])
+	# CW-4: a node that changes Flare or Siphon rewrites those units' trait words with the new number (Brighter Flare's 3, Red
+	# Gleaners' 2), so the roster says what the battle does.
+	if fx.has("flare_damage") or fx.has("siphon_heal"):
+		var burn := AutoBattleResolver.FLARE_DAMAGE
+		for r in f.researched:
+			burn += int(node_effects(String(r.get("node", ""))).get("flare_damage", 0))
+		var heal: Dictionary = fx.get("siphon_heal", {})
+		for ut in f.unit_types:
+			if ut.trait_id == AutoBattleResolver.FLARE and fx.has("flare_damage"):
+				ut.trait_description = AutoBattleResolver.flare_words(burn)
+			elif ut.trait_id == AutoBattleResolver.SIPHON and heal.has(ut.id):
+				ut.trait_description = AutoBattleResolver.siphon_words(int(heal[ut.id]))
 	var added := ""
 	var new_id := String(fx.get("new_unit", ""))
 	if not new_id.is_empty() and TurnResolver.recruitable_type(f, new_id) == null:
@@ -859,6 +871,7 @@ static func _effects_now(state: GameState, faction_id: String, node_id: String, 
 		else:
 			clauses.append("%s earns %d more gold for every province you own (%s, %+d now)" % [cap_name,
 				int(fx.tithe_per_province), rule, income])
+	clauses.append_array(_wake_clauses(state, faction_id, node_id, past))  # CW-4: the Candlewake's path, in numbers
 	if clauses.is_empty() or fx.has("capture_gold") or fx.has("blood_levy") or fx.has("forest_stride") or fx.has("new_unit"):
 		var text := String(node_data(node_id).get("text", "")).trim_suffix(".")
 		if is_oath(node_id):
@@ -871,6 +884,58 @@ static func _effects_now(state: GameState, faction_id: String, node_id: String, 
 			text = text.substr(0, 1).to_lower() + text.substr(1)
 		clauses.append(text)
 	return "; ".join(clauses)
+
+
+## CW-4 (design/CANDLEWAKE.md §6.4): the clauses of a Candlewake node's own effects, every number read from `state` (where the
+## node is researched) against what it was without it: the Wake's gold and the Wake-Line's threshold (Meadow Wake, Sitting Up
+## Early), Pyre Roads' flame, the Long Sleep's risers, the Red Wake's flame and burn-down, Siphon, Flare and the Swelling.
+static func _wake_clauses(state: GameState, faction_id: String, node_id: String, past: bool) -> Array:
+	var fx := node_effects(node_id)
+	var out := []
+	var your := "their" if past else "your"
+	var rule := economy_rule_name(node_id)
+	var head := "%s: " % rule if not rule.is_empty() else ""
+	if fx.has("wake_gold") or fx.has("wake_sooner"):
+		var bits := []
+		if fx.has("wake_gold"):
+			var was := int(MarkData.stage(faction_id, MarkData.stage_index(faction_id, WickRules.PYRE_STAGE)).get("gold", 0))
+			bits.append("%s Wake pays %+d gold a province instead of %d" % [your, int(fx.wake_gold), was])
+		if fx.has("wake_sooner"):
+			var line := MarkData.stage_index(faction_id, WickRules.PYRE_STAGE)
+			var now := MarkRules.threshold(state, faction_id, line)
+			var was := mini(int(MarkData.stage(faction_id, line).held), now + int(fx.wake_sooner))
+			bits.append("%s reach the Wake-Line after %d %s held instead of %d" % ["they" if past else "you", now,
+				"turn" if now == 1 else "turns", was])
+		out.append(head + ", and ".join(bits))
+	if fx.has("pyre_roads"):
+		out.append("%sa win in a province of %s at the Wake-Line or deeper gives %+d flame instead of +1, never above flame %d" % [
+			head, "theirs" if past else "yours", int(fx.pyre_roads), WickRules.cap(state, faction_id)])
+	var sleep: Dictionary = fx.get("risen", {})
+	if not sleep.is_empty():
+		var base: Dictionary = MarkData.row(faction_id).get("risen", {})
+		var rid := String(Dictionary(fx.get("province_rule", {})).get("id", ""))
+		var name := String(province_rule_data(rid).get("name", "")) if not rid.is_empty() else ""
+		out.append("%sthe dead rise from %s too, every %d turns instead of %d" % ["%s: " % name if not name.is_empty() else "",
+			MarkRules.stage_name(faction_id, MarkData.stage_index(faction_id, String(sleep.get("from", "")))), int(sleep.every),
+			int(base.get("every", 0))])
+	if fx.has("flame_cap"):
+		var base_cap := WickRules.base_cap(faction_id)
+		out.append("%s flame burns to flame %d instead of %d: above %d it drops to %d unless it wins, even in a harbour" % [your,
+			int(fx.flame_cap), base_cap, base_cap, base_cap])
+	if fx.has("idle_loss"):
+		out.append("an army of %s idle outside a harbour loses %d flame instead of 1" % ["theirs" if past else "yours", int(fx.idle_loss)])
+	var siphon: Dictionary = fx.get("siphon_heal", {})
+	for type_id in siphon:
+		var ut := TurnResolver.recruitable_type(state.find_faction(faction_id), String(type_id))
+		var who := ut.name if ut != null else String(type_id)
+		out.append("%s %s%s Siphon heals %d instead of %d" % [your, who, "'" if who.ends_with("s") else "'s", int(siphon[type_id]),
+			AutoBattleResolver.SIPHON_HEAL])
+	if fx.has("flare_damage"):
+		out.append("a Hundred-Wick's Flare deals %d damage instead of %d" % [WickRules.flare_damage(state, faction_id),
+			WickRules.flare_damage(state, faction_id) - int(fx.flare_damage)])
+	if fx.has("harvest_bonus"):
+		out.append("every Harvest raises %s more (the Swelling)" % ("one" if int(fx.harvest_bonus) == 1 else str(int(fx.harvest_bonus))))
+	return out
 
 
 # --- transformations on the map (M4-2, #67; design/M4_ASCENSION.md §3.4, §4, §6) -------------------

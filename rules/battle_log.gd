@@ -76,6 +76,14 @@ class_name BattleLog
 ##   morale     "bled": hp the side's own casters bled so far, which lost_pct leaves out
 ##   heal       "spell": "blood_moon" in place of "trait" when the moon's share was the one used
 ##   bleed_closed {side, closed: [[fighter, from, to]]}: after the end, before feast, the winner's bled hp come back
+##
+## The Candlewake (CW-2, CW-4; design/CANDLEWAKE.md §4.1, §6). A battle with a flame or a Candlewake trait writes "wick": true at
+## the top level and these additions (every other log is unchanged, byte for byte):
+##   attack     "pall": Pall's cut from the hit chance, inside the clamp, on an attack on a fighter with Pall
+##   flare      {n, f (the fallen fighter with Flare), targets (fighter ids), damage}: after the round's deaths; its wounds and
+##              deaths follow, by the flaring fighter
+##   heal       "trait": "Siphon" for a heal of a fighter with Siphon that landed a hit that round
+##   fighter    "flare_damage" and "siphon_heal" where a path changes them from the trait's own (Brighter Flare, Red Gleaners)
 
 const VERSION := 1
 ## M3c: what a battle at a fort can be (the siege block's "kind"), and the "why" each kind allows (§3.9).
@@ -861,6 +869,9 @@ static func cross_check(battle_log: Dictionary, report: Dictionary) -> Array:
 				var fw := int(e.f)
 				if state.fighters[fw].alive or String(fighters[fw].trait) != AutoBattleResolver.FLARE:
 					_add(r, "Round %d, event %d: fighter %d flares, but only a fallen fighter with Flare does." % [int(e.n), i, fw])
+				elif int(e.damage) != int(fighters[fw].get("flare_damage", AutoBattleResolver.FLARE_DAMAGE)):
+					_add(r, "Round %d, event %d: fighter %d's Flare deals %d, but its Flare deals %d." % [int(e.n), i, fw, int(e.damage),
+						int(fighters[fw].get("flare_damage", AutoBattleResolver.FLARE_DAMAGE))])
 				for x in e.targets:
 					var tx := int(x)
 					if not state.fighters[tx].alive or state.fighters[tx].fled or int(fighters[tx].side) == int(fighters[fw].side) \
@@ -886,10 +897,10 @@ static func cross_check(battle_log: Dictionary, report: Dictionary) -> Array:
 					# CW-2: Siphon heals a standing fighter that landed a hit this round SIPHON_HEAL, up to its maximum.
 					if String(hf.trait) != AutoBattleResolver.SIPHON or not state.fighters[int(e.f)].alive or drunk <= 0:
 						_add(r, "Round %d: fighter %d siphons, but only a standing fighter with Siphon that landed a hit this round does." % [int(e.n), int(e.f)])
-					elif int(e.from) != int(state.fighters[int(e.f)].hp) or int(e.to) != mini(int(hf.max_hp), int(e.from) + AutoBattleResolver.SIPHON_HEAL) \
+					elif int(e.from) != int(state.fighters[int(e.f)].hp) or int(e.to) != mini(int(hf.max_hp), int(e.from) + int(hf.get("siphon_heal", AutoBattleResolver.SIPHON_HEAL))) \
 							or int(e.dealt) != drunk:
 						_add(r, "Round %d: fighter %d siphons from %d to %d, but it had %d hp and Siphon heals %d." % [int(e.n), int(e.f),
-							int(e.from), int(e.to), int(state.fighters[int(e.f)].hp), AutoBattleResolver.SIPHON_HEAL])
+							int(e.from), int(e.to), int(state.fighters[int(e.f)].hp), int(hf.get("siphon_heal", AutoBattleResolver.SIPHON_HEAL))])
 				elif (by_moon and not moon) or (not by_moon and String(hf.trait) != AutoBattleResolver.LIFEDRINKER) or not state.fighters[int(e.f)].alive:
 					_add(r, "Round %d: fighter %d heals, but only a standing fighter with Lifedrinker, or under the Blood Moon, does." % [int(e.n), int(e.f)])
 				elif int(e.from) != int(state.fighters[int(e.f)].hp) or int(e.to) != want or int(e.dealt) != drunk:

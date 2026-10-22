@@ -9,6 +9,9 @@ class_name RulesCodex
 
 ## CW-3: the Candlewake's mark (MarkData), whose numbers the Wake's entry reads.
 const _WAKE_ROW := MarkData.ROWS.candlewake
+## CW-4: the Candlewake's host and path, whose numbers the path's entries read.
+const _WAKE_UNITS := FactionData.PREVIEW_FACTIONS[0].unit_types
+const _POURING := PathData.PREVIEW_PATHS.candlewake.nodes
 
 const ENTRIES := {
 	# --- the basic terms (#8): the map, gold, armies, units and their stats. The map's tooltips link here
@@ -767,6 +770,70 @@ const ENTRIES := {
 	"marks_on_the_land": {
 		"title": "Marks on the land",
 		"text": "Some peoples change the land they hold, and the change outlasts their hold on it. The longer they keep a province, the deeper their mark; when they lose it, the mark lingers a while before it fades. Everyone sees the marks, as they see owners and terrain, so the map tells who held what, for how long, and who took it from them. The Candlewake's mark is the Wake; other peoples' marks are coming.",
+	},
+	# CW-4 (#255, design/CANDLEWAKE.md §6): the Candlewake's path, the Pouring (the director's provisional name, for Alex to
+	# rename), its nodes and their rules. The numbers are the host's and the path's data.
+	"path_candlewake": {
+		"title": "The Pouring",
+		"text": "The Candlewake's path is the Pouring: wax poured into a new mould, where they become something else. Tier I: Thicker Tallow (Wickwardens +3 maximum hit points) and Sitting Up Early (the Wake-Line a turn sooner). Tier II: Brighter Flare (a Hundred-Wick's Flare deals 1 more; needs Thicker Tallow) and Hungry Gleaners (Gleaners +2 attack; needs Sitting Up Early). The fork, each Oath needing any two ordinary nodes: the Oath of the Kept leads to the Golden Wake, who cool down into land and money, and the Oath of the Snuffed to the Red Wake, who burn hot and swell through battle. Swearing one closes the other for the rest of the game. Each Oath brings its economy rule at once (Meadow Wake, Pyre Roads); the transformation after it brings the rest.",
+	},
+	"node_wake_thicker_tallow": {
+		"title": "Thicker Tallow",
+		"text": "Candlewake path, tier I, %d research, no prerequisite." % _POURING[0].cost
+			+ " Wickwardens have 3 more maximum hit points (%d" % _WAKE_UNITS[0].hp + " to %d). The Wickwardens already on the map gain 3 hit points at once, and recruits arrive at the new maximum." % (_WAKE_UNITS[0].hp + 3),
+	},
+	"node_wake_sitting_up_early": {
+		"title": "Sitting Up Early",
+		"text": "Candlewake path, tier I, %d research, no prerequisite." % _POURING[1].cost
+			+ " Your provinces reach the Wake-Line a turn sooner: after %d turns held" % (_WAKE_ROW.stages[1].held - 1) + " instead of %d. Deep Wake stays where it is. See The Wake." % _WAKE_ROW.stages[1].held,
+	},
+	"node_wake_brighter_flare": {
+		"title": "Brighter Flare",
+		"text": "Candlewake path, tier II, %d research, needs Thicker Tallow." % _POURING[2].cost
+			+ " A Hundred-Wick's Flare deals 1 more damage to each enemy it burns: %d" % (AutoBattleResolver.FLARE_DAMAGE + 1) + " instead of %d." % AutoBattleResolver.FLARE_DAMAGE,
+	},
+	"node_wake_hungry_gleaners": {
+		"title": "Hungry Gleaners",
+		"text": "Candlewake path, tier II, %d research, needs Sitting Up Early." % _POURING[3].cost
+			+ " Gleaners have 2 more attack (%d" % _WAKE_UNITS[1].attack + " to %d)." % (_WAKE_UNITS[1].attack + 2),
+	},
+	"node_wake_oath_kept": {
+		"title": "Oath of the Kept",
+		"text": "Candlewake path, Oath, %d research, needs any two ordinary nodes." % _POURING[4].cost
+			+ " Swearing it leads to the Golden Wake and closes the Oath of the Snuffed and the Red Wake for the rest of the game. Its economy rule, Meadow Wake, starts at once: your Wake pays gold instead of costing it, and the Wake-Line comes a turn sooner. See Meadow Wake.",
+	},
+	"node_wake_golden_wake": {
+		"title": "Golden Wake",
+		"text": "Candlewake transformation, %d research, needs the Oath of the Kept." % _POURING[5].cost
+			+ " The Kept win: they feed on hives and meadows instead of people, and the wax turns honey-gold. Wickwardens become Combwardens: 2 more maximum hit points and 1 more morale. Amber Saints join the roster: %d hit points" % PathData.PREVIEW_NEW_UNITS.amber_saints.hp
+			+ ", attack %d" % PathData.PREVIEW_NEW_UNITS.amber_saints.attack + ", defense %d" % PathData.PREVIEW_NEW_UNITS.amber_saints.defense
+			+ ", morale %d" % PathData.PREVIEW_NEW_UNITS.amber_saints.morale + ", %d gold, trait Iron Hide." % PathData.PREVIEW_NEW_UNITS.amber_saints.cost
+			+ " The Long Sleep: the dead rise from the Wake-Line too, and every 3 turns instead of 4. Forswears Muster Grounds.",
+	},
+	"node_wake_oath_snuffed": {
+		"title": "Oath of the Snuffed",
+		"text": "Candlewake path, Oath, %d research, needs any two ordinary nodes." % _POURING[6].cost
+			+ " Swearing it leads to the Red Wake and closes the Oath of the Kept and the Golden Wake for the rest of the game. Its economy rule, Pyre Roads, starts at once: a win in your own Wake gives 2 flame instead of 1, never above the flame's cap. See Pyre Roads.",
+	},
+	"node_wake_red_wake": {
+		"title": "Red Wake",
+		"text": "Candlewake transformation, %d research, needs the Oath of the Snuffed." % _POURING[7].cost
+			+ " They stop apologising, and the wax runs cherry-red. Gleaners become Red Gleaners: 2 more attack, 2 fewer maximum hit points, and Siphon heals 2. Pyre-Walkers join the roster: %d hit points" % PathData.PREVIEW_NEW_UNITS.pyre_walkers.hp
+			+ ", attack %d" % PathData.PREVIEW_NEW_UNITS.pyre_walkers.attack + ", defense %d" % PathData.PREVIEW_NEW_UNITS.pyre_walkers.defense
+			+ ", morale %d" % PathData.PREVIEW_NEW_UNITS.pyre_walkers.morale + ", %d gold, trait Berserk." % PathData.PREVIEW_NEW_UNITS.pyre_walkers.cost
+			+ " The flame burns to 4: an army above 3 that doesn't win drops to 3 the same turn, even in a harbour, and an army idle outside a harbour loses 2. Kindling and Vigil still never lift a flame above 3. The Swelling: every Harvest raises one more Wickwarden, against players and Free Holds alike; the Risen keep their rate. Forswears Iron Discipline.",
+	},
+	"meadow_wake": {
+		"title": "Meadow Wake",
+		"text": "The economy rule of the Oath of the Kept. A province of yours on the Wake-Line or in Deep Wake pays you 1 gold instead of costing you 1, and your provinces reach the Wake-Line a turn sooner, never before 1 turn held (with Sitting Up Early, after 1). It shows in each province's income and on its card. See The Wake.",
+	},
+	"pyre_roads": {
+		"title": "Pyre Roads",
+		"text": "The economy rule of the Oath of the Snuffed. A Candlewake army that wins a battle in a province of yours that stood at the Wake-Line or deeper when the battles began gains 2 flame in the Wick step instead of 1, once a turn, never above the flame's cap (4 once you are the Red Wake). A cold wake you retake that turn doesn't count: it wasn't yours when the battles began. The orders forecast says when a move is on Pyre Roads. See Wick.",
+	},
+	"the_long_sleep": {
+		"title": "The Long Sleep",
+		"text": "The province rule of the Golden Wake. The dead rise from your provinces on the Wake-Line too, not only Deep Wake, and every 3 turns instead of 4: a Wickwarden at the end of the third turn past the Wake-Line, then every 3 turns. They join your lowest-numbered army there, or form a new one. See The Wake.",
 	},
 	# --- M4-1 (#66): research and the paths of ascension (design/M4_ASCENSION.md §2, §3, §9.3). One contiguous
 	# block. The numbers match data/paths.gd; tests/test_research.gd checks them. M4-2 adds the rules of the
