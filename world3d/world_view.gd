@@ -47,7 +47,7 @@ var owner_img: Image ## WIDTH x 1 RGBA8: rgb the owner's colour, a owned
 var owner_tex: ImageTexture
 var mark_img: Image ## WIDTH x 1 RGBA8: r a King's Roads destination, g a legal move target, b a focus flash, a a forest the rules grew
 var mark_tex: ImageTexture
-var wake_img: Image ## CW-8: WIDTH x 1 RGBA8, WakeLook.texels: r a live Wake's tint, g a cold wake's, b the melt, a lit
+var wake_img: Image ## CW-8: WIDTH x 1 RGBA8, WakeLook.texels: r a live Wake's tint, g a cold wake's, b the melt, a the reach
 var wake_tex: ImageTexture
 var wake_lights: Node3D = null ## CW-8: the Wake's window flames and candle-posts (WakeLights), made when a Wake first shows
 var _wake_look := {}
@@ -311,7 +311,7 @@ func set_prop_outlines(on: bool) -> void:
 		return
 	prop_outlines = on
 	for m in _prop_mats:
-		(m as ShaderMaterial).next_pass = _own_outline.get(m, outline_mat) if on and look == "cel" else null  # CW-8: a melting village keeps its own ink
+		(m as ShaderMaterial).next_pass = _own_outline.get(m, outline_mat) if on and look == "cel" else null ## CW-8: a melting village keeps its own ink
 
 
 ## Effects on/off for the performance probe: SSAO, glow, fog, shadows, MSAA/FXAA together.

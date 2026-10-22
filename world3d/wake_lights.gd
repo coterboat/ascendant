@@ -64,16 +64,15 @@ func sync(wv, look: Dictionary, lad: Dictionary) -> void:
 	_fill(flames, glows, posts, bool(lad.sway))
 
 
-static var _windows := {} ## mesh instance id -> its window spots
+static var _windows := {} ## mesh -> its window spots
 
 
 ## A building mesh's windows, in its own space: on each of its four sides, the outermost wall facing that way near the middle of the
 ## side, at WINDOW_AT of its height and a little out from the wall. Read once a mesh from its vertices (a side with no wall there has
 ## none); a mesh without vertex data gets the middle of its bounding box's sides.
 static func windows_of(mesh: Mesh) -> Array:
-	var key := mesh.get_instance_id()
-	if _windows.has(key):
-		return _windows[key]
+	if _windows.has(mesh):
+		return _windows[mesh]
 	var box := mesh.get_aabb()
 	var c := box.get_center()
 	var y0 := box.position.y + box.size.y * 0.12
@@ -113,7 +112,7 @@ static func windows_of(mesh: Mesh) -> Array:
 			continue
 		var p := c + d * (out_at - c.dot(d) + size_d * 0.03)
 		out.append(Vector3(p.x, y, p.z))
-	_windows[key] = out
+	_windows[mesh] = out
 	return out
 
 
