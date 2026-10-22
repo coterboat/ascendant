@@ -7,6 +7,9 @@ class_name RulesCodex
 ## retuned number shows up here by itself. StubBattleResolver is a test-only stand-in and has no
 ## entry: players never see its rules.
 
+## CW-3: the Candlewake's mark (MarkData), whose numbers the Wake's entry reads.
+const _WAKE_ROW := MarkData.ROWS.candlewake
+
 const ENTRIES := {
 	# --- the basic terms (#8): the map, gold, armies, units and their stats. The map's tooltips link here
 	# (TooltipText.CODEX). The terrain and fort numbers match AutoBattleResolver.TERRAIN and FORT_DEFENSE;
@@ -761,6 +764,25 @@ const ENTRIES := {
 		"title": "Tallow Levy",
 		"text": "Candlewake mandate, 3 power. Wickwardens cost %d gold" % MandateData.PREVIEW_MANDATES[1].unit_cost.wickwardens
 			+ " instead of %d." % FactionData.PREVIEW_FACTIONS[0].unit_types[0].cost,
+	},
+	# CW-3 (#254, design/CANDLEWAKE.md §3): the Wake, the Candlewake's mark on the land, and marks in general. The numbers are
+	# MarkData's row.
+	"the_wake": {
+		"faction": "candlewake",
+		"title": "The Wake",
+		"text": "The Candlewake's mark on the land they hold: every household keeps a candle in its window all night, as you do for the dead. Nobody is hurt; the wax is the receipt."
+			+ " A province they take sits up at once (Sitting Up), reaches the Wake-Line after %d turns held" % _WAKE_ROW.stages[1].held
+			+ " and Deep Wake after %d. Their capital stands in Deep Wake from the start." % _WAKE_ROW.stages[2].held
+			+ " On the Wake-Line and in Deep Wake their armies keep their flame there (a harbour), and the province pays them %d gold less: the living sit up all night." % -_WAKE_ROW.stages[1].gold
+			+ " Lose a marked province and the mark becomes a cold wake for %d turns for each stage it had reached." % _WAKE_ROW.scar_turns
+			+ " A cold wake still shelters Candlewake armies, and if they retake the province before it fades, it relights at once at the stage it had."
+			+ " In Deep Wake the dead rise: one Wickwarden every %d turns, joining the lowest-numbered Candlewake army there at its flame, or forming a new army at the start flame. It is a trickle, never their recruitment." % _WAKE_ROW.risen.every
+			+ " Marks are public, like owners and terrain. See Harbour and Marks on the land.",
+	},
+	"marks_on_the_land": {
+		"faction": "candlewake",
+		"title": "Marks on the land",
+		"text": "Some peoples change the land they hold, and the change outlasts their hold on it. The longer they keep a province, the deeper their mark; when they lose it, the mark lingers a while before it fades. Everyone sees the marks, as they see owners and terrain, so the map tells who held what, for how long, and who took it from them. The Candlewake's mark is the Wake; other peoples' marks are coming.",
 	},
 	# --- M4-1 (#66): research and the paths of ascension (design/M4_ASCENSION.md §2, §3, §9.3). One contiguous
 	# block. The numbers match data/paths.gd; tests/test_research.gd checks them. M4-2 adds the rules of the

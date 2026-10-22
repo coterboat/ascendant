@@ -62,6 +62,9 @@ func _samples(s: GameState) -> Array:
 	# and a Harvest are their owner's alone; the marks on the land are public, rebuilt from their numbers.
 	for t in ["flame_changed", "guttered", "harvest"]:
 		with.call(t, ["fangridge"], [CLANS], ["beasts-1"], {"army": "beasts-1", "from": 1, "to": 2})
+	# CW-3 (#254): the dead rising from Deep Wake are their owner's news alone, as a Harvest is.
+	with.call("risen", ["fangridge"], [CLANS], ["beasts-1"], {"province": "fangridge", "army": "beasts-1", "unit": "tuskers", "count": 1,
+		"joined": true})
 	with.call("mark_stage", ["deepwood"], [CLANS], [], {"province": "deepwood", "stage": 2})
 	with.call("scar_formed", ["deepwood"], [CLANS], [], {"province": "deepwood", "stage": 2, "until_turn": 9})
 	with.call("scar_consumed", ["deepwood"], [CLANS], [], {"province": "deepwood", "stage": 2})
