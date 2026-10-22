@@ -2,7 +2,7 @@
 
 Made by batch `asc-mvp-batch` (2026-10-04) as reference for the coming 3D models. Each image is a Ludo still, picked from 3 candidates; prompts, request ids and picks are in `tools/ludo/batches/asc-mvp-batch.json`, per-call costs in `studio/ledgers/asc-mvp-batch.jsonl`, the contact sheet is `studio/contact-sheets/asc-mvp-concept.png`.
 
-Not wired into the game. Nothing here is a final model; it is the source image the 3D job feeds to Ludo `model3d` (image to GLB), and art for the codex and lore pages.
+Not wired into the game, except the codex plates (below). Nothing here is a final model; it is the source image the 3D job feeds to Ludo `model3d` (image to GLB), and art for the codex and lore pages.
 
 ## Fortresses (`fortresses/`)
 1024×1024 webp with real alpha (removeBackground, `creative_edit: false`), structure centred with about 6% margin. One whole structure in a high three-quarter view, on its own patch of ground.
@@ -33,8 +33,12 @@ The four rulers have portraits only (`assets/portraits/rulers/`); their full-bod
 ## Codex plates (`codex/`)
 768×768 webp (opaque), a small landscape vignette that fades into a pale parchment border. For the in-game codex terrain entries and lore pages; not a 3D source.
 
-| file | terrain |
-|---|---|
-| `plains.webp` | open grassland, dirt road and fence, a lone oak |
-| `forest.webp` | bold round canopies over a sunlit path, mossy rocks and ferns |
-| `hills.webp` | ochre rolling hills, rock outcrops, a watchtower on the far crest |
+**In the game (#272):** each plate is named for the codex page it illustrates, `<RulesCodex key>.webp` (`terrain_forest.webp` for the Forest page), and that page shows it at the top, on a band of its own parchment as wide as the page (`Art.codex_plate`, `ui/codex_panel.gd`). A new plate named that way shows with no code change; `tests/test_codex_panel.gd` fails on a plate whose name is no codex page, since no page would ever show it. Import plates with mipmaps on: the page draws them at about a third of their size.
+
+| file | codex page | what it shows |
+|---|---|---|
+| `terrain_plains.webp` | Plains | open grassland, dirt road and fence, a lone oak |
+| `terrain_forest.webp` | Forest | bold round canopies over a sunlit path, mossy rocks and ferns |
+| `terrain_hills.webp` | Hills | ochre rolling hills, rock outcrops, a watchtower on the far crest |
+
+The three were `plains.webp`, `forest.webp` and `hills.webp` until #272 named them for their pages; `tools/ludo/batches/asc-mvp-batch.json` keeps the names the batch wrote.

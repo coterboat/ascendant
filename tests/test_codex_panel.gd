@@ -1,6 +1,8 @@
 extends "res://tests/test_case.gd"
 ## In-game codex panel (#8): lists every RulesCodex entry by title, shows text, search, links, no raw
 ## ids. Also the #8 criterion: every codex key the rules and session code link to exists in RulesCodex.
+## #272: a page whose key has a plate on disk shows it at the top of the page, sized as the page opens; a page without one is
+## laid out as before. Which pages have plates is read from the files.
 
 const PANEL_SCENE := "res://ui/codex_panel.tscn"
 
@@ -257,6 +259,120 @@ func _esc() -> InputEventAction:
 	esc.action = "ui_cancel"
 	esc.pressed = true
 	return esc
+
+
+# --- #272: a page's plate ----------------------------------------------------------------------------
+
+## The names of the plates on disk: every file in Art.CODEX_PLATE_PATH's folder with its extension (an export lists the .import),
+## without the extension. Read from the files, so a plate that lands is tested here with no change.
+func _plate_files() -> Array[String]:
+	var out: Array[String] = []
+	for file in DirAccess.get_files_at(Art.CODEX_PLATE_PATH.get_base_dir()):
+		var name := file.trim_suffix(".import")
+		if name.get_extension() == Art.CODEX_PLATE_PATH.get_extension() and not out.has(name.get_basename()):
+			out.append(name.get_basename())
+	return out
+
+
+## The codex keys whose page has a plate on disk.
+func _plated_keys() -> Array[String]:
+	var out: Array[String] = []
+	for name in _plate_files():
+		if RulesCodex.ENTRIES.has(name):
+			out.append(name)
+	return out
+
+
+## The page column's shown children, top to bottom, by name.
+func _shown_on_page(panel) -> Array[String]:
+	var out: Array[String] = []
+	for c in (panel.get_node("%EntryTitle") as Control).get_parent().get_children():
+		if (c as Control).visible:
+			out.append(String(c.name))
+	return out
+
+
+## A plate is named for the codex page it illustrates (assets/concept/codex/<RulesCodex key>.webp, the one lookup Art.codex_plate
+## makes): a plate named anything else would never be shown. The terrain plates are there, so the check sees files.
+func test_every_plate_is_named_for_a_codex_page() -> void:
+	var names := _plate_files()
+	assert_true(not names.is_empty(), "plates are on disk in %s" % Art.CODEX_PLATE_PATH.get_base_dir())
+	for name in names:
+		assert_true(RulesCodex.ENTRIES.has(name), "plate %s is named for a codex page (a RulesCodex key), or no page shows it" % name)
+
+
+## A page with a plate shows it at the top of the page, above its title; a page without one shows none, and its column holds
+## exactly what it did before plates (the icon of a spell's page, the title, the text). Every entry, in the codex's order, so a
+## plated page followed by a bare one is covered too.
+func test_a_page_with_a_plate_shows_it_and_one_without_does_not() -> void:
+	var panel = _make_panel()
+	var plated := _plated_keys()
+	assert_true(not plated.is_empty(), "some page has a plate (from the files on disk)")
+	var with_plate := 0
+	for key in RulesCodex.ENTRIES:
+		assert_true(panel.show_entry(key), key)
+		var before_plate: Array[String] = []
+		if panel.shown_icon() != null:
+			before_plate.append("EntryIcon")
+		before_plate.append_array(["EntryTitle", "EntryText"])
+		if plated.has(key):
+			with_plate += 1
+			assert_true(panel.shown_plate() != null, "%s shows its plate" % key)
+			assert_true(panel.shown_plate() == Art.codex_plate(key), "%s's own plate" % key)
+			var expected: Array[String] = ["EntryPlate"]
+			expected.append_array(before_plate)
+			assert_eq(_shown_on_page(panel), expected, "%s: the plate at the top of the page, above the title" % key)
+		else:
+			assert_true(panel.shown_plate() == null, "%s has no plate and shows none" % key)
+			assert_eq(_shown_on_page(panel), before_plate, "%s: the page as it was" % key)
+	assert_eq(with_plate, plated.size(), "every plated page was shown with its plate")
+	_free(panel)
+
+
+## No layout jump: the plate's band has its height the moment its page is shown (no layout pass needed), from the page's width:
+## the plate scaled to the page's width with its aspect kept, no taller than PLATE_MAX_SHARE of the panel. A page turn between
+## plates keeps the band; a resized page refits it; a bare page gives its room back. The card draws the plate whole and centred.
+func test_the_plate_band_is_sized_as_its_page_opens() -> void:
+	var panel = _make_panel()
+	var plated := _plated_keys()
+	assert_true(not plated.is_empty(), "some page has a plate")
+	var page: Control = (panel.get_node("%EntryTitle") as Control).get_parent()
+	var band: Art.PlateCard = page.get_node("EntryPlate")
+	# [the panel's size, the page column's size]: about the panel's layout in a 1600x900 window and in 1280x720 (or 1600x900 at
+	# 125%), where the panel's share bounds a square plate, and a narrow page, where the page's width does.
+	for sizes in [[Vector2(1600, 900), Vector2(956, 696)], [Vector2(1280, 720), Vector2(636, 516)], [Vector2(1280, 720), Vector2(200, 516)]]:
+		panel.set_size(sizes[0])  # set_size, not `size =`: the panel is anchored full-rect, and the property warns before _ready
+		page.set_size(sizes[1])
+		for key in plated:
+			assert_true(panel.show_entry(key), key)
+			var tex := Art.codex_plate(key)
+			# The band's own minimum (what its column lays it out at); the combined one is a cache only a live tree refreshes.
+			var h: float = band.custom_minimum_size.y
+			assert_true(h > 0.0, "%s's band has its height as the page opens (%s)" % [key, sizes[0]])
+			assert_eq(h, CodexPanel.plate_height(tex.get_size(), page.size.x, panel.size.y), "%s: from the page's width" % key)
+			assert_true(h <= page.size.x * tex.get_size().y / tex.get_size().x + 0.01, "%s: no taller than the page's width allows" % key)
+			assert_true(h <= panel.size.y * CodexPanel.PLATE_MAX_SHARE, "%s: no taller than its share of the panel" % key)
+			assert_true(is_equal_approx(h, floorf(page.size.x * tex.get_size().y / tex.get_size().x))
+				or is_equal_approx(h, floorf(panel.size.y * CodexPanel.PLATE_MAX_SHARE)), "%s: as big as those allow" % key)
+			# As the page's column lays it out: the band as wide as the page, the plate inside it whole, its aspect kept, centred.
+			band.set_size(Vector2(page.size.x, h))
+			var drawn: Rect2 = band.plate_rect()
+			assert_true(absf(drawn.size.x / drawn.size.y - tex.get_size().x / tex.get_size().y) < 0.01, "%s keeps its aspect" % key)
+			assert_true(Rect2(Vector2.ZERO, band.size).encloses(drawn), "%s is drawn whole, inside its band" % key)
+			assert_true(absf(drawn.get_center().x - band.size.x / 2.0) < 0.5, "%s sits centred on its band" % key)
+		# The window or the interface size changes: the page column says resized (by hand here: the runner's tree isn't live).
+		var held: float = band.custom_minimum_size.y
+		page.set_size(Vector2(page.size.x * 0.5, page.size.y))
+		page.resized.emit()
+		var tex := Art.codex_plate(panel.current_key())
+		assert_eq(band.custom_minimum_size.y, CodexPanel.plate_height(tex.get_size(), page.size.x, panel.size.y),
+			"a resized page refits the band (it was %d)" % int(held))
+	for key in RulesCodex.ENTRIES:
+		if not plated.has(key):
+			panel.show_entry(key)
+			assert_eq(band.custom_minimum_size.y, 0.0, "a page without a plate gives the band's room back (%s)" % key)
+			break
+	_free(panel)
 
 
 func test_close_button_emits_closed() -> void:
