@@ -912,6 +912,7 @@ static func place_summon(state: GameState, faction_id: String, summon_id: String
 	a.id = state.new_army_id(faction_id)
 	a.owner = faction_id
 	a.location = province_id
+	WickRules.light(state, a)  # CW-1: a new army of a faction that keeps a flame starts at its start flame
 	for _i in count:
 		var u := Unit.new(ut, faction_id)
 		u.until = until

@@ -61,6 +61,9 @@ var is_view: bool = false  # one player's view of the game (FogRules, §2.7), ne
 ## checks for the other factions of a view, its rivals (view_relaxes); "" in a true state.
 var view_of: String = ""
 var independents: bool = false  # IND-1: neutral provinces hold Free Holds garrisons (IndependentData); saved only when true
+## CW-1 (#252, design/CANDLEWAKE.md §3.1): the marks on the land, {province id: {"mark", "scar"}} (MarkRules), only non-empty
+## entries; saved only in a game where a seated faction marks its land (MarkRules.in_play), so every other game saves as before.
+var marks: Dictionary = {}
 var _free_holds: Faction = null  # IND-1: the Free Holds' faction object, made on first find_faction; never saved
 
 func _init(map_seed: int = 12345) -> void:
@@ -105,6 +108,7 @@ func place_starting_armies(errors = null) -> bool:
 			army.units.append(Unit.new(ut, f.id))
 		if f.commander_type:
 			army.commander = Unit.new(f.commander_type, f.id)
+		WickRules.light(self, army)  # CW-1: a Wick faction's start army burns at its start flame
 		armies.append(army)
 	return ok
 
@@ -666,6 +670,11 @@ func validate(errors = null) -> bool:
 	# Per-unit statuses (ARM-1): UnitStatus owns those rules; a game with none costs one pass over its units.
 	if not UnitStatus.validate(self, errors):
 		ok = false
+	# Flames and the marks on the land (CW-1): WickRules and MarkRules own those rules; a game without them carries none.
+	if not WickRules.validate(self, errors):
+		ok = false
+	if not MarkRules.validate(self, errors):
+		ok = false
 	if not _validate_views(errors):
 		ok = false
 	return ok
@@ -746,6 +755,8 @@ func to_dict() -> Dictionary:
 		d["enchantments"] = enchantment_dicts
 	if independents:
 		d["independents"] = true  # IND-1: only a game with independents carries the key
+	if MarkRules.in_play(self):
+		d["marks"] = MarkRules.marks_copy(marks)  # CW-1: only a game where a faction marks its land carries the key
 	if is_view:
 		d["is_view"] = true  # M5: only a player's view carries the key
 		d["view_of"] = view_of  # M5-1: whose view it is
@@ -863,6 +874,10 @@ static func from_dict(data, errors = null) -> GameState:
 			return null
 		state.armies.append(army)
 
+	var mark_data = Serial.expect(data, "marks", TYPE_DICTIONARY, errors, WHO, {})  # CW-1: games where a faction marks its land
+	if mark_data == null:
+		return null
+	state.marks = MarkRules.marks_copy(mark_data)
 	# #94: each faction's army count; a save from before it goes on from the faction's highest army id.
 	state.next_army_ids = state._next_ids_from_armies()
 	for fid in next_ids:

@@ -232,6 +232,22 @@ const TABLE := {
 	"sighting_changed": {"default": ["abroad", "sighting", "abroad", "Sighted at {place}", "{row}", "r"]},
 	"sighting_lost": {"default": ["abroad", "sighting", "abroad", "Lost sight at {place}", "{row}", "r"]},
 	"memory_added": {"default": ["abroad", "sighting", "abroad", "Out of sight at {place}", "{row}", "r"]},
+	# CW-1 (#252, design/CANDLEWAKE.md §2.5, §3.4): Wick's lines are their army's owner's alone; the marks on the land are public.
+	"flame_changed": {"default": ["realm", "muster", "realm_minor", "Flame {to} at {place}", "{row}", "or"]},
+	"guttered": {"default": ["realm", "healing", "realm", "Guttering at {place}", "{row}", "o"]},
+	"harvest": {"default": ["battles", "recruits_raised", "fought_minor", "The Harvest at {place}", "{row}", "o"]},
+	"mark_stage": {
+		"you": ["land", "terrain_changed", "your_land_minor", "{place} wakes", "{row}", "o"],
+		"rival": ["abroad", "terrain_changed", "abroad", "{place} wakes", "{row}", ""],
+	},
+	"scar_formed": {
+		"you": ["land", "terrain_changed", "your_land_minor", "A cold wake at {place}", "{row}", "o"],
+		"rival": ["abroad", "terrain_changed", "abroad", "A cold wake at {place}", "{row}", ""],
+	},
+	"scar_consumed": {
+		"you": ["land", "terrain_changed", "your_land_minor", "{place} relights", "{row}", "o"],
+		"rival": ["abroad", "terrain_changed", "abroad", "{place} relights", "{row}", ""],
+	},
 }
 ## The event types that make no announcement: the game's end (the victory screen tells it) and the fold of the viewer's own army counts
 ## (a fog bookkeeping line the full report keeps). The viewer's own moves are skipped too: the board shows them.
@@ -244,7 +260,8 @@ const EVENT_TYPES := ["army_moved", "order_rejected", "battle", "border_battle",
 	"oath_sworn", "mending", "fort_raised", "fort_built", "far_sight_reading", "enchantment_ended", "enchantment_began", "curse_bit",
 	"construction_started", "construction_razed", "construction_halted", "army_disbanded", "army_split", "units_transferred",
 	"armies_merged", "commanders_swapped", "blessing_healed", "blood_paid", "storm_called_off", "sally_called_off", "sally_found_nothing",
-	"game_over", "sighting_changed", "sighting_lost", "memory_added", "army_changed"]
+	"game_over", "sighting_changed", "sighting_lost", "memory_added", "army_changed",
+	"flame_changed", "guttered", "harvest", "mark_stage", "scar_formed", "scar_consumed"]  # CW-1: the Candlewake's
 ## A report phase's kind, for an event type that has no template yet.
 const PHASE_KINDS := {"orders": "needs_you", "movement": "abroad", "battles": "battles", "sieges": "battles", "capture": "land",
 	"recruitment": "realm", "income": "realm", "research": "realm", "rulers": "rulers", "sacrifice": "rulers", "rituals": "magic",
@@ -429,7 +446,8 @@ static func variant(e: Dictionary, ctx: Dictionary) -> String:
 			return "raider" if mine else ""
 		"siege_started", "walls_damaged":
 			return "besieged" if String(numbers.get("owner", "")) == viewer else "besieging"
-		"fort_built", "fort_raised", "wild_spread", "ruler_died", "ruler_arrived", "succession_waiting", "ritual_cast", "transformed", "oath_sworn":
+		"fort_built", "fort_raised", "wild_spread", "ruler_died", "ruler_arrived", "succession_waiting", "ritual_cast", "transformed", "oath_sworn", \
+				"mark_stage", "scar_formed", "scar_consumed":  # CW-1: the marks on the land are public
 			return "you" if mine else "rival"
 		"construction_razed":
 			return "owner" if factions.size() > 1 and String(factions[1]) == viewer else "razer"

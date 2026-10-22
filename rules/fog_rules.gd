@@ -530,10 +530,11 @@ static func stand_ins(state: GameState, viewer: String, view_sight: Dictionary, 
 			if level != VEILED:
 				if not by_place.has(pid):
 					continue
-				var pool := pool_now(state, f.id, by_place[pid], level, state.current_turn)
-				_add_stand_ins(out, f.id, pid, pool, _note(pool, level, state.current_turn), true)
-				if not pool.ruler.is_empty():
-					out.append(_ruler_stand_in(f.id, pid, int(pool.ruler.hp), level, state.current_turn, pool.ruler.from))
+				for group in flame_groups(by_place[pid], level):  # CW-1: one pool, or a Wick faction's in clear sight by flame
+					var pool := pool_now(state, f.id, group.armies, level, state.current_turn)
+					_add_stand_ins(out, f.id, pid, pool, _note(pool, level, state.current_turn), true, String(group.slot), int(group.flame))
+					if not pool.ruler.is_empty():
+						out.append(_ruler_stand_in(f.id, pid, int(pool.ruler.hp), level, state.current_turn, pool.ruler.from))
 				continue
 			var mem: Dictionary = mem_provinces.get(pid, {}).get("pools", {}).get(f.id, {})
 			if not mem.is_empty():
@@ -545,11 +546,37 @@ static func stand_ins(state: GameState, viewer: String, view_sight: Dictionary, 
 	return out
 
 
-static func _add_stand_ins(out: Array, fid: String, pid: String, pool: Dictionary, note: Dictionary, now: bool) -> void:
+## CW-1 (#252, design/CANDLEWAKE.md §2.4): the groups `armies` (one rival's, in one province) are pooled in: [{"armies", "slot",
+## "flame"}]. The exact flame is shown only in clear sight, so there a faction that keeps a flame (WickRules) is pooled once for
+## each flame, with "f<flame>" before each stand-in's slot ("f3", "f3b"), the way blessed fighters are pooled
+## apart from plain ones; its ruler's army, which carries no flame, is a group of its own. Every other faction, and every
+## faction glimpsed or remembered ("flame unknown"), is one group as before, with no flame.
+static func flame_groups(armies: Array, level: String) -> Array:
+	var wick := level == CLEAR and not armies.is_empty() and WickRules.has_wick(String(armies[0].owner))
+	if not wick:
+		return [{"armies": armies, "slot": "", "flame": -1}]
+	var by_flame := {}
+	for a in armies:
+		if not by_flame.has(a.flame):
+			by_flame[a.flame] = []
+		by_flame[a.flame].append(a)
+	var flames := by_flame.keys()
+	flames.sort()
+	var out := []
+	for flame in flames:
+		out.append({"armies": by_flame[flame], "slot": "f%d" % flame if int(flame) >= 0 else "", "flame": int(flame)})
+	return out
+
+
+static func _add_stand_ins(out: Array, fid: String, pid: String, pool: Dictionary, note: Dictionary, now: bool, prefix: String = "",
+		flame: int = -1) -> void:
 	for s in pool.stand_ins:
-		out.append({"id": view_id(fid, pid, String(s.slot)), "owner": fid, "location": pid, "units": s.units.duplicate(true),
+		var stand_in := {"id": view_id(fid, pid, prefix + String(s.slot)), "owner": fid, "location": pid, "units": s.units.duplicate(true),
 			"commander": s.commander.duplicate(), "ruler": null, "engines": int(s.get("engines", 0)), "note": note.duplicate(true),
-			"from": s.get("from", []).duplicate() if now else []})
+			"from": s.get("from", []).duplicate() if now else []}
+		if flame >= 0:
+			stand_in["flame"] = flame  # CW-1: clear sight only (flame_groups)
+		out.append(stand_in)
 
 
 static func _ruler_stand_in(fid: String, pid: String, hp: int, level: String, turn: int, from: Array) -> Dictionary:
@@ -639,6 +666,8 @@ static func build_view(state: GameState, viewer: String, memory: Dictionary = {}
 			ad["ruler"] = {"type_id": String(rf.ruler_type), "current_hp": max_hp if hp < 0 else clampi(hp, 1, max_hp), "owner": s.owner}
 		if int(s.engines) > 0:
 			ad["engines"] = int(s.engines)
+		if int(s.get("flame", -1)) >= 0:
+			ad["flame"] = int(s.flame)  # CW-1: a Wick faction's stand-in in clear sight shows its exact flame
 		ad["seen"] = s.note.duplicate(true)
 		armies.append(ad)
 	if state.sieges:
@@ -667,6 +696,8 @@ static func build_view(state: GameState, viewer: String, memory: Dictionary = {}
 	if state.magic:
 		d["magic"] = true
 		d["enchantments"] = _view_enchantments(state, viewer, view_sight, ins)
+	if MarkRules.in_play(state):
+		d["marks"] = MarkRules.marks_copy(state.marks)  # CW-1: marks and scars are public, like terrain and owners (§3.1)
 	d["is_view"] = true
 	d["view_of"] = viewer
 	var errors := []
@@ -1417,6 +1448,9 @@ static func text_for(t: String, numbers: Dictionary, provinces: Array, factions:
 			p["name"] = RulerRules._cap(String(numbers.get("name", "")))
 		"ritual_cast", "ritual_fell", "curse_bit":
 			p["ritual"] = MagicRules.spell_name(String(numbers.get("ritual", "")))  # M5-6: the spell's name, never its id
+		"mark_stage", "scar_formed", "scar_consumed":  # CW-1: the marks on the land; a sentence may start with the province
+			p["Province"] = RulerRules._cap(String(p.province))
+			p["stage_name"] = MarkRules.stage_name(String(factions[0]) if not factions.is_empty() else "", int(numbers.get("stage", 0)))
 	return text.format(p)
 
 

@@ -99,6 +99,14 @@ const AUDIENCE := {
 	# ritual event (ritual_fell to the land's owner, the caster's own casts, payments, readings, heals) goes to its
 	# first faction alone, the default.
 	"curse_bit": {"whole": "actor", "others": "rebuilt_named"},
+	# CW-1 (#252, design/CANDLEWAKE.md §2.4, §3.1): flames are their owner's alone (a rival never learns which unseen army found
+	# harbour where), and so is a Harvest (a rival sees the risen through its sight); the marks on the land are public
+	"flame_changed": {"whole": "actor", "others": "none"},
+	"guttered": {"whole": "actor", "others": "none"},
+	"harvest": {"whole": "actor", "others": "none"},
+	"mark_stage": {"whole": "actor", "others": "rebuilt"},
+	"scar_formed": {"whole": "actor", "others": "rebuilt"},
+	"scar_consumed": {"whole": "actor", "others": "rebuilt"},
 	# the end of the game: the fog lifts (§2.1)
 	"game_over": {"whole": "all", "others": "none"},
 }
@@ -122,6 +130,9 @@ const SAFE_NUMBERS := {
 	"ritual_cast": ["ritual", "until_turn"],
 	"ritual_fell": ["ritual", "faction", "until_turn", "budget"],
 	"curse_bit": ["ritual", "until_turn", "budget", "province"],
+	"mark_stage": ["province", "stage"],  # CW-1
+	"scar_formed": ["province", "stage", "until_turn"],
+	"scar_consumed": ["province", "stage"],
 	"move": ["faction", "from", "to", "total", "types"],
 }
 
@@ -149,6 +160,10 @@ const TEXT := {
 	"ritual_cast": "{faction} cast {ritual}, in effect through turn {until_turn}.",
 	"ritual_fell": "{ritual} fell on {province} ({faction}), through turn {until_turn}.",
 	"curse_bit": "Your {ritual} bit {faction}'s fighters at {province}: it takes up to {budget} hit points a turn from them, through turn {until_turn}.",
+	# CW-1: the same words MarkRules.event_sentence gives the marks' owner (they are public)
+	"mark_stage": "{Province} wakes: {stage_name}.",
+	"scar_formed": "A cold wake forms at {province}.",
+	"scar_consumed": "{Province} relights.",
 	"move": "An army of {faction} ({fighters}: {types}) marched from {from} to {to}.",
 	"move_away": "An army of {faction} ({fighters}: {types}) marched out of {from} toward {to}, out of your sight.",
 	# synthetic events (§2.8): what is left over between the view before the turn and the view after it

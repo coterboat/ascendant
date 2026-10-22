@@ -98,6 +98,7 @@ static func apply(state: GameState, faction_id: String, order: MusterOrder) -> D
 		to.id = state.new_army_id(faction_id)
 		to.owner = faction_id
 		to.location = from.location
+		to.flame = from.flame  # CW-1: a split's new army keeps its source's flame (design/CANDLEWAKE.md §2.1, after ARM-1)
 		state.armies.append(to)
 		info["created"] = true
 	info["to"] = to.id
