@@ -94,7 +94,10 @@ func test_new_game_screen_offers_human_or_computer_per_seat() -> void:
 	assert_true(screen.computer_label.visible, "the screen explains how the computer plays")
 	assert_true(screen.computer_title.visible)
 	assert_false(screen.hotseat_label.visible, "in place of the hotseat explanation, which doesn't apply")
-	assert_true(screen.faction_labels[1].text.ends_with("The computer plays this seat at the Normal level."), screen.faction_labels[1].text)
+	assert_true(screen.faction_labels[1].text.contains("The computer plays this seat at the Normal level."), screen.faction_labels[1].text)
+	# #184: then its style, the seat's roll from the seed.
+	assert_true(screen.faction_labels[1].text.ends_with("Its style, from the seed: %s." % AIPlayer.temperament_name(
+		AIPlayer.choose_temperament(screen.config().seed, 1))), screen.faction_labels[1].text)
 	assert_true(screen.faction_labels[0].text.begins_with("Plays in Vermilion"), "seat 1's line is unchanged")
 	screen.level_pickers[1].select(0)
 	screen.level_pickers[1].item_selected.emit(0)

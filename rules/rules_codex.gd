@@ -282,7 +282,10 @@ const ENTRIES := {
 			+ " In a game with fog of war it plays from its own view of the map, the one you would have in its place: it never sees an army you could not see, it plans its attacks against the numbers it has glimpsed, it counts the top of each estimate when it guards its capital, it forgets an army it saw more than %d turns ago, and it sends a scout to look at a target it cannot see. Its notes in the turn report say so, once the game is over." % AIFog.MEMORY_TRUST
 			# M5-10 (#121, design/M5_MAGIC_FOG.md §10.2): what the computer does with magic.
 			+ " In a game with magic it researches its faction's spells along a plan of its own, starting with the first spell of the school its Oath will open, recruits mages (never more than one for every %d regular units, so their second rank is not exposed) and casts rituals from armies that were going to hold anyway, never from an army it has sent to attack." % AIMagic.MAGE_PER
-			+ " Its rituals take at most %d%% of the gold left after the troops it cannot do without; it wards its capital ahead of a rival that can curse it, and the Thornmane Clans' computer pays a ritual in blood when its Shamans' army can spare the hit points. Its notes in the turn report say what it cast and why." % AIMagic.RITUAL_SHARE_PCT,
+			+ " Its rituals take at most %d%% of the gold left after the troops it cannot do without; it wards its capital ahead of a rival that can curse it, and the Thornmane Clans' computer pays a ritual in blood when its Shamans' army can spare the hit points. Its notes in the turn report say what it cast and why." % AIMagic.RITUAL_SHARE_PCT
+			# #184: each computer seat's style (AIPlayer.TEMPERAMENTS), rolled from the seed by the new game screen and Quick start.
+			+ " Each computer also has a style, rolled from the seed with its seat and shown on the new game screen beside its level, so a new seed can give another. Steady: "
+			+ AIPlayer.STEADY_HELP + " Aggressive: " + AIPlayer.AGGRESSIVE_HELP + " An aggressive computer says so in its first notes. Neither style cheats.",
 	},
 	# --- the pre-game build screen (M2-5, #33): BuildScreen. The rules it shows are in the ruler block below. ---
 	"build_screen": {

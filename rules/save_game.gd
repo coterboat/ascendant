@@ -8,7 +8,8 @@ extends RefCounted
 ## computer seats' dice:
 ##   {"format": "ascendant-save", "version": 1,
 ##    "header": {"version", "kind" ("auto" or "manual"), "name", "saved_at" (unix seconds, UTC), "turn",
-##               "seed" (text), "rulers", "over", "seats": [{"faction", "faction_name", "kind", "level"}],
+##               "seed" (text), "rulers", "over", "seats": [{"faction", "faction_name", "kind", "level", and #184's
+##               "temperament" for a computer seat whose style isn't Steady}],
 ##               "factions": [faction names in seat order], "summary": one plain line},
 ##    "record": GameSession.record(),
 ##    "computer": {"rng": AISeat.rng_state() at the start of the turn, "turn": the last resolved turn,
@@ -65,8 +66,11 @@ static func header(session: GameSession, kind: String, save_name: String, unix_t
 		var f := state.find_faction(fid) if state else null
 		var faction_name := f.faction_name if f else "An unknown faction"
 		names.append(faction_name)
-		seats.append({"faction": fid, "faction_name": faction_name,
-			"kind": "computer" if session.is_computer(fid) else "human", "level": session.computer_level(fid)})
+		var seat := {"faction": fid, "faction_name": faction_name,
+			"kind": "computer" if session.is_computer(fid) else "human", "level": session.computer_level(fid)}
+		if session.computer_temperaments().has(fid):
+			seat["temperament"] = session.computer_temperament(fid)  # #184: only a style other than Steady, so older headers stay as they were
+		seats.append(seat)
 	if record.is_empty():
 		record = session.record()
 	return {"version": VERSION, "kind": kind, "name": save_name, "saved_at": unix_time, "turn": session.turn_number(),
@@ -109,7 +113,8 @@ static func when_text(unix_time: int) -> String:
 	return "%d %s %d, %02d:%02d" % [d.day, MONTHS[clampi(int(d.month) - 1, 0, 11)], d.year, d.hour, d.minute]
 
 
-## "Aurel Crown (you) vs Thornmane Clans (Computer, Normal)", from a header's seats. With two people:
+## "Aurel Crown (you) vs Thornmane Clans (Computer, Normal)", from a header's seats ("(Computer, Normal, Aggressive)" for a
+## computer that plays that style, #184). With two people:
 ## "Aurel Crown vs Thornmane Clans, two players at one computer". With nobody: "...: watching the computer".
 static func seats_text(header_data: Dictionary) -> String:
 	var seats: Array = header_data.get("seats", []) if header_data.get("seats") is Array else []
@@ -123,7 +128,8 @@ static func seats_text(header_data: Dictionary) -> String:
 			continue
 		var who := String(s.get("faction_name", "An unknown faction"))
 		if String(s.get("kind", "")) == "computer":
-			who += " (Computer, %s)" % AISeat.level_name(String(s.get("level", "normal")))
+			var style := ", %s" % AIPlayer.temperament_name(String(s.temperament)) if s.has("temperament") else ""  # #184
+			who += " (Computer, %s%s)" % [AISeat.level_name(String(s.get("level", "normal"))), style]
 		elif humans == 1:
 			who += " (you)"
 		parts.append(who)
@@ -190,13 +196,15 @@ static func restore(save, battle_resolver: BattleResolver = null) -> Dictionary:
 	return out
 
 
-## The GameScreen config of a loaded game ({"players", "seed"}, "ai" for computer seats, "rulers" and
-## "builds" in a game with rulers, and "paths", "sieges", "magic", "fog", "independents" for the systems it has), which is
-## what a rematch (NewGameScreen.prefill) starts from.
+## The GameScreen config of a loaded game ({"players", "seed"}, "ai" for computer seats, "temperaments" (#184) for computers
+## that aren't Steady, "rulers" and "builds" in a game with rulers, and "paths", "sieges", "magic", "fog", "independents" for
+## the systems it has), which is what a rematch (NewGameScreen.prefill) starts from (it rolls new styles with its new seed).
 static func config_for(session: GameSession, game_seed: int) -> Dictionary:
 	var config := {"players": session.players(), "seed": game_seed}
 	if not session.computer_seats().is_empty():
 		config["ai"] = session.computer_seats()
+	if not session.computer_temperaments().is_empty():
+		config["temperaments"] = session.computer_temperaments()  # #184: the styles other than Steady
 	var builds := session.builds()
 	if not builds.is_empty():
 		config["rulers"] = true
