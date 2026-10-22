@@ -1377,6 +1377,23 @@ static func recruit_at(state: GameState, faction_id: String, unit_type_id: Strin
 	return out
 
 
+## CW-2 (design/CANDLEWAKE.md §2.5): the orders forecast's flame line for every army of `faction_id` that keeps a flame, where it
+## ends the turn under `orders` (its move's destination, or where it stands): [{"army", "text"}], in id order. [] for a faction
+## that keeps no flame.
+static func wick(state: GameState, faction_id: String, orders: Array = []) -> Array:
+	var out := []
+	if not WickRules.has_wick(faction_id):
+		return out
+	var ends := {}
+	for o in orders:
+		if o is MoveOrder:
+			ends[o.army_id] = o.to
+	for a in TurnResolver._sorted_armies(state):
+		if a.owner == faction_id and a.flame >= 0:
+			out.append({"army": a.id, "text": WickRules.forecast_line(state, a, String(ends.get(a.id, a.location)))})
+	return out
+
+
 ## The forts `faction_id` besieges now, in id order.
 static func _sieges_of(state: GameState, faction_id: String) -> Array:
 	var out := []
@@ -1649,6 +1666,8 @@ static func _veiled_move_text(state: GameState, faction_id: String, dest: Provin
 ## Sight in `move` (§2.10, §11.1): adds to a fog move forecast "sees" (the provinces it will see next turn that are out
 ## of your sight now, by id), "sight_range" and the sentence. Unchanged without fog, or when the move can't be given.
 static func _with_sight(state: GameState, faction_id: String, order: MoveOrder, army: Army, out: Dictionary) -> Dictionary:
+	if bool(out.get("ok", false)) and army.flame >= 0:
+		out["text"] = "%s %s" % [String(out.text), WickRules.forecast_line(state, army, order.to)]  # CW-2 (§2.5): its flame
 	if not is_fog_view(state) or not bool(out.get("ok", false)):
 		return out
 	var s := FogRules.army_sight(army)
