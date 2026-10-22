@@ -28,8 +28,10 @@ class_name MagicRules
 ##   spell_numbers(spell, bonus, forest)       {"value", "count", "duration"} with mastery added
 ## Rituals and their orders (§6.1, §7.1):
 ##   distances(state, from), ritual_targets(state, fid, ritual, army id), check_target(...)
-##   price(state, fid, ritual, size)           {"gold", "parts"}; only the wolves' price scales
-##   pack_sizes(state, fid, army)              [least, most] wolves Call the Pack may call
+##   price(state, fid, ritual, size)           {"gold", "parts"}; only a pack's price scales
+##   pack_sizes(state, fid, army, ritual)      [least, most] bodies a pack ritual (Call the Pack) may call
+##   is_pack(ritual), pack_words(ritual)       CW-0: whether its summon is a pack (MagicData.SUMMONS "pack"), and its words
+##   price_words(ritual)                       "5 gold a wolf" for a pack, "%d gold" for any other ritual
 ##   blood_plan(state, army id, amount)        Tithe of Blood: who bleeds what, one soldier at a time
 ##   check_cast(state, fid, order, existing)   {} or {"code", "reason"}, with the running budget
 ##   pinned_armies(state, fid, orders)         {army id: ritual} for every legal cast in the list: those hold
@@ -561,20 +563,40 @@ static func check_target(state: GameState, faction_id: String, ritual: String, a
 	return {}
 
 
-## The wolves Call the Pack may call from `army` (§6.2): [3, 3 + the best caster's Wild mastery].
-static func pack_sizes(state: GameState, faction_id: String, army: Army) -> Array:
-	var least := int(spell_data("call_the_pack").get("count", 3))
-	return [least, least + army_bonus(state, faction_id, army, "wild")]
+## The bodies a pack ritual may call from `army` (§6.2): [its count, its count with the best caster's mastery in its school].
+## Call the Pack: [3, 3 + the best caster's Wild mastery].
+static func pack_sizes(state: GameState, faction_id: String, army: Army, ritual: String = "call_the_pack") -> Array:
+	var sp := spell_data(ritual)
+	var least := int(sp.get("count", 3))
+	return [least, int(spell_numbers(ritual, army_bonus(state, faction_id, army, String(sp.get("school", "")))).count)]
 
 
-## A ritual's price in gold (§6.2): its cost, or Call the Pack's 5 a wolf. Mastery changes no price but the pack's
-## size. {"gold", "parts": [{"label", "value", "note"}]}.
+## CW-0 (#251, summons from data): whether ritual `spell_id` summons a pack, a creature whose MagicData.SUMMONS row has
+## "pack": the caster picks how many come (pack_sizes) and pays the spell's cost for each one. Call the Pack's Thornwolves.
+static func is_pack(spell_id: String) -> bool:
+	return not pack_words(spell_id).is_empty()
+
+
+## A pack's words, {"one", "many"} ("wolf", "wolves"), or {} for a ritual that summons no pack.
+static func pack_words(spell_id: String) -> Dictionary:
+	return MagicData.SUMMONS.get(String(spell_data(spell_id).get("summon", "")), {}).get("pack", {})
+
+
+## A ritual's price in words: "5 gold a wolf" for a pack, "%d gold" for any other.
+static func price_words(spell_id: String) -> String:
+	var cost := int(spell_data(spell_id).get("cost", 0))
+	return "%d gold a %s" % [cost, String(pack_words(spell_id).one)] if is_pack(spell_id) else "%d gold" % cost
+
+
+## A ritual's price in gold (§6.2): its cost, or a pack's cost a body (Call the Pack's 5 a wolf). Mastery changes no price
+## but the pack's size. {"gold", "parts": [{"label", "value", "note"}]}.
 static func price(state: GameState, faction_id: String, ritual: String, size: int = 0) -> Dictionary:
 	var sp := spell_data(ritual)
 	var cost := int(sp.get("cost", 0))
-	if String(sp.get("summon", "")) == "thornwolves":
-		var wolves := maxi(size, int(sp.get("count", 3)))
-		return {"gold": cost * wolves, "parts": [{"label": "%d Thornwolves" % wolves, "value": cost * wolves, "note": "%d gold a wolf" % cost}]}
+	if is_pack(ritual):
+		var bodies := maxi(size, int(sp.get("count", 3)))
+		return {"gold": cost * bodies, "parts": [{"label": "%d %s" % [bodies, String(MagicData.SUMMONS[String(sp.summon)].name)],
+			"value": cost * bodies, "note": price_words(ritual)}]}
 	return {"gold": cost, "parts": [{"label": spell_name(ritual), "value": cost, "note": "the ritual's price"}]}
 
 
@@ -666,13 +688,15 @@ static func check_cast(state: GameState, faction_id: String, order, existing: Ar
 	var target := check_target(state, faction_id, order.ritual, army, order.target)
 	if not target.is_empty():
 		return target
-	if String(sp.get("summon", "")) == "thornwolves":
-		var sizes := pack_sizes(state, faction_id, army)
+	if is_pack(order.ritual):
+		var sizes := pack_sizes(state, faction_id, army, order.ritual)
 		if order.size < int(sizes[0]) or order.size > int(sizes[1]):
-			return _refusal("pack_size", "You can call %s Thornwolves from your army at %s (3, +1 for each point of Wild mastery)." % [
-				str(sizes[0]) if sizes[0] == sizes[1] else "%d to %d" % [sizes[0], sizes[1]], _province_name(state, army.location)])
+			return _refusal("pack_size", "You can call %s %s from your army at %s (%d, +%d for each point of %s mastery)." % [
+				str(sizes[0]) if sizes[0] == sizes[1] else "%d to %d" % [sizes[0], sizes[1]], String(MagicData.SUMMONS[String(sp.summon)].name),
+				_province_name(state, army.location), int(sp.get("count", 3)), int(sp.get("per_bonus", {}).get("count", 0)),
+				school_name(String(sp.school)).trim_prefix("the ")])
 	elif order.size != 0:
-		return _refusal("no_size", "Only Call the Pack takes a size: how many wolves to call.")
+		return _refusal("no_size", _no_size_text())
 	var cost := int(price(state, faction_id, order.ritual, order.size).gold)
 	match order.pay:
 		CastOrder.BLOOD:
@@ -1792,7 +1816,7 @@ static func done_own_text(state: GameState, faction_id: String, node_id: String,
 			int(MagicData.MASTERY.node), school_ref(school), int(MagicData.MASTERY.cap), String(n.get("text", "")).get_slice(": ", 1)]
 	var sp := spell_data(node_id)
 	if is_ritual(node_id):
-		var price := "%d gold a wolf" % int(sp.cost) if String(sp.get("summon", "")) == "thornwolves" else "%d gold" % int(sp.cost) if int(sp.get("cost", 0)) > 0 else "no price"
+		var price := price_words(node_id) if is_pack(node_id) or int(sp.get("cost", 0)) > 0 else "no price"
 		return "You researched %s, a ritual of %s. Cast it from any army that holds a caster (its panel has Cast a ritual…), for %s. %s" % [
 			AscensionRules.node_name(node_id), school_ref(school), price, String(sp.text)]
 	var text := "You researched %s, a battle spell of %s." % [AscensionRules.node_name(node_id), school_ref(school)]
@@ -2200,7 +2224,7 @@ static func _faction_display(state: GameState, faction_id: String) -> String:
 	var f: Faction = state.find_faction(faction_id) if state != null else null
 	if f != null and not f.faction_name.is_empty():
 		return f.faction_name
-	for d in FactionData.FACTIONS:
+	for d in FactionData.rows():
 		if d.id == faction_id:
 			return String(d.name)
 	return faction_id
@@ -2237,6 +2261,15 @@ static func _text(e: Dictionary, key: String) -> String:
 
 static func _refusal(code: String, reason: String) -> Dictionary:
 	return {"code": code, "reason": reason}
+
+
+## Why a cast that is not a pack's gives a size: "Only Call the Pack takes a size: how many wolves to call." (CW-0: the packs
+## come from MagicData.SUMMONS, so a later faction's pack is named here too.)
+static func _no_size_text() -> String:
+	var packs: Array = MagicData.SPELLS.keys().filter(func(sid): return is_pack(String(sid)))
+	if packs.size() == 1:
+		return "Only %s takes a size: how many %s to call." % [spell_name(String(packs[0])), String(pack_words(String(packs[0])).many)]
+	return "Only %s take a size: how many to call." % RulerRules._and_list(packs.map(func(sid): return spell_name(String(sid))))
 
 
 static func _report(errors, msg: String) -> void:

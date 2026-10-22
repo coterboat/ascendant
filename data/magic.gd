@@ -175,10 +175,12 @@ const MAGES := {
 
 ## The summoned creatures (§6.2): never recruited, never on a roster; in a magic game GameState.from_dict loads
 ## their types. "fades": the creature leaves at the end of the turn its Unit.until names (Thornwolves); the
-## Greenwrath stays until it falls (until 0). "faction": who summons it.
+## Greenwrath stays until it falls (until 0). "faction": who summons it. "pack" (CW-0, #251: summons from data): the caster
+## picks how many come, from the spell's count up to the count with its mastery, and pays the spell's cost for each one; its
+## words name one body and many ("wolf", "wolves"). MagicRules.is_pack reads it.
 const SUMMONS := {
 	"thornwolves": {"id": "thornwolves", "name": "Thornwolves", "hp": 9, "attack": 11, "defense": 4, "morale": 8, "trait": "Skirmish",
-		"faction": "beasts", "fades": true, "codex": "unit_thornwolves"},
+		"faction": "beasts", "fades": true, "codex": "unit_thornwolves", "pack": {"one": "wolf", "many": "wolves"}},
 	"greenwrath": {"id": "greenwrath", "name": "Greenwrath", "hp": 40, "attack": 15, "defense": 9, "morale": 14, "trait": "Rooted",
 		"faction": "beasts", "fades": false, "codex": "unit_greenwrath"},
 }

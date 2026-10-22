@@ -772,7 +772,7 @@ static func _roster_types(fid: String, state) -> Array:
 		var f: Faction = state.find_faction(fid)
 		if f != null:
 			return f.unit_types
-	for f in FactionData.FACTIONS:
+	for f in FactionData.rows():
 		if f.id == fid:
 			return f.unit_types.map(func(u): return UnitType.from_dict(u))
 	return []
@@ -2861,7 +2861,7 @@ static func _choose(factors: Array, wi: int) -> Array:
 static func _faction_name(fid: String, state) -> String:
 	if state is GameState:
 		return TurnResolver._faction_name(state, fid)
-	for f in FactionData.FACTIONS:
+	for f in FactionData.rows():
 		if f.id == fid:
 			return f.name
 	return "an unknown faction"
@@ -2979,7 +2979,7 @@ static func _node_words(node_id: String) -> String:
 static func _type_name(s: Dictionary, type_id: String) -> String:
 	if s.type_names.has(type_id):
 		return String(s.type_names[type_id])
-	for f in FactionData.FACTIONS:
+	for f in FactionData.rows():
 		for u in f.unit_types:
 			if u.id == type_id:
 				return String(u.name)

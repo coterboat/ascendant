@@ -70,9 +70,11 @@ extends Control
 ##   set_all_systems(on)             every box at once (cleared: the basic game)
 ##   systems_ticked() -> Array       the SYSTEMS keys whose box is ticked, in screen order
 ##   default_systems() -> Dictionary (static) the config keys every system starts with: {"rulers": true, ...}
-##   quick_start_config(rng) -> Dictionary   Quick start's config (static): a random faction for the person
+##   quick_start_config(rng, preview) -> Dictionary   Quick start's config (static): a random faction for the person
 ##                                   in seat 1, the computer at Normal in seat 2, every system on (default_systems)
-##                                   with the balanced preset for the person, and a random seed
+##                                   with the balanced preset for the person, and a random seed. CW-0: the factions are
+##                                   quick_start_factions(preview, default_systems()): with the preview off, the dice are
+##                                   exactly as before
 ##   build_screen                    the BuildScreen Start opens while rulers are on (null until then);
 ##                                   build_screen_open() -> bool
 ##   seat_faction(seat) -> String, faction_ids() -> Array[String]
@@ -491,14 +493,15 @@ func build_screen_open() -> bool:
 ## and a random seed. The person gets their faction's balanced preset and the
 ## computer the preset its seeded dice pick (BuildScreen.computer_build, the same roll AISeat makes), so
 ## the game starts at once, without the build screen. The same as Start with this screen's defaults.
-static func quick_start_config(rng: RandomNumberGenerator = null) -> Dictionary:
+## CW-0 (#251): `preview` is the Candlewake's preview box (CW-7, #258; design/CANDLEWAKE.md §12). The two factions come from quick_start_factions, so
+## with the preview off they are the Crown and the Clans and the dice fall exactly as before; with it on, the Candlewake can
+## come up once they play every system Quick start turns on.
+static func quick_start_config(rng: RandomNumberGenerator = null, preview: bool = false) -> Dictionary:
 	var dice := rng
 	if dice == null:
 		dice = RandomNumberGenerator.new()
 		dice.randomize()
-	var ids := []
-	for f in FactionData.FACTIONS:
-		ids.append(f.id)
+	var ids := quick_start_factions(preview, default_systems())
 	var human: String = ids[dice.randi_range(0, ids.size() - 1)]
 	var others := ids.filter(func(fid): return fid != human)
 	var opponent: String = others[dice.randi_range(0, others.size() - 1)]
@@ -508,6 +511,12 @@ static func quick_start_config(rng: RandomNumberGenerator = null) -> Dictionary:
 	var out := {"players": [human, opponent], "seed": game_seed, "ai": {opponent: DEFAULT_LEVEL}, "builds": builds}
 	out.merge(default_systems())
 	return out
+
+
+## The factions Quick start may seat (CW-0): those a player may pick (FactionData.playable, the preview ones only with
+## `preview` on) that can play every system in `systems` (GameState.system_problems), in data order.
+static func quick_start_factions(preview: bool, systems: Dictionary) -> Array:
+	return FactionData.playable(preview).filter(func(fid): return GameState.system_problems(fid, systems).is_empty())
 
 
 func _open_builds() -> void:

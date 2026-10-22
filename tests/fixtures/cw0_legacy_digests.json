@@ -1,0 +1,4909 @@
+{
+	"games": {
+		"magic_balanced_presets": {
+			"dice": "14803199023bd3ff02c066889d61e524",
+			"final": "449eaa921d0ff7986bab97c8dfff7d2a",
+			"record": "421fcb413735f6d351c1d93caad60cfa",
+			"refused": 0,
+			"start": "cbc333b73a2695d361961676568486fa",
+			"turns": [
+				{
+					"dice": "2a53f4caa0845cfcf73294bb93e6b786",
+					"events": "61f1f8312ae6f172d4dbc5f5e879d29f",
+					"state": "f3c09e0a208184de1573399ee943b4f5"
+				},
+				{
+					"dice": "bf36a0025e5500ee09326b7938ed00ff",
+					"events": "6b7751b213c06ff7c28baf31387ddec4",
+					"state": "cfefd2255619e64c922a7a7e0e7c0e1c"
+				},
+				{
+					"dice": "ca1da27cae11cb9b3ff4851d9abfbe5d",
+					"events": "c5af3340fcb85812ff177a7f404866e7",
+					"state": "7cd7f26d29f5cc38e6421e72b7a93092"
+				},
+				{
+					"dice": "245a3173400ffb2ff179aed95a67a183",
+					"events": "d96642e962fc08ede17f54e7f90ba530",
+					"state": "c44581eb9a188467ce711a8a587dfbec"
+				},
+				{
+					"dice": "a3cd993d8e3185aa707bbbf141d0867d",
+					"events": "58809075c8713a5dc70697a6bcf81c39",
+					"state": "15905937c32441c2dfd17441d6aef1d3"
+				},
+				{
+					"dice": "338877248657301c24417deb700cdf5a",
+					"events": "0cc4060aec07343c384aadcb15f3ef4a",
+					"state": "8efa00284091cfb2bb692e30ecb47022"
+				},
+				{
+					"dice": "ae1b1ef1c9c8d3d17b6d16db6f69d65a",
+					"events": "52e8faf5d887e25090ca14874acf6005",
+					"state": "93cd67338982dde93876cb2656128d32"
+				},
+				{
+					"dice": "a52f4e358de957a1de3c7863f3aed9c3",
+					"events": "ee59ff2362bac7bb222418e39f1a79d3",
+					"state": "af49b98bdcaca93cb3206dcb4947047f"
+				},
+				{
+					"dice": "a52f4e358de957a1de3c7863f3aed9c3",
+					"events": "27ce2b80fd908b44f06d07753da9b40f",
+					"state": "294224063381de6521dcf7937e205b37"
+				},
+				{
+					"dice": "3bddd2d06473581e83ca8cd4cb060d8e",
+					"events": "bd3b13dcaac9fd344c2a96e5577a768f",
+					"state": "1f25e5a34fd4205853cae22be63d30a1"
+				},
+				{
+					"dice": "8c3155ff4d90c4cce3df17fcfe632373",
+					"events": "1fde4e603633028181a59986b03f5452",
+					"state": "c34316a7b63ad6c62498ce8ea5314e4b"
+				},
+				{
+					"dice": "5c450ab7b9b11e3f59714f5e7fd6bbc5",
+					"events": "ef02b3f863ca3eda0c95ceb34a3acd44",
+					"state": "449eaa921d0ff7986bab97c8dfff7d2a"
+				}
+			]
+		},
+		"magic_clans_first": {
+			"dice": "648e59ef7f8a118838d7cd686d45312d",
+			"final": "7ae38b4665b3c9742732be646ee0cf31",
+			"record": "041f4385b21d3722c848fa3eb242843d",
+			"refused": 0,
+			"start": "762352227d66953cac433b193f6ea1b9",
+			"turns": [
+				{
+					"dice": "52166d09a4d4046cf88c3a984cca104c",
+					"events": "1e15397c8a8b648f5c8d3ab168466219",
+					"state": "7708f7887e2e228ec7a44dce86054e4b"
+				},
+				{
+					"dice": "70a9bf7f78aec7508ee846e936643e41",
+					"events": "29dd4c97ea120983c28dd4202eeafacf",
+					"state": "b4fc2fa8b9d5a292ea0d26145e42003a"
+				},
+				{
+					"dice": "8ab18fc4cceaf094ed5951e7079972b6",
+					"events": "af58b762282d2aff8a84003ccfc5513a",
+					"state": "c129fd4ba9467670aabd17de5163d032"
+				},
+				{
+					"dice": "581f07e2257065084178d5f16d73a51d",
+					"events": "f6a7e605daf5e81726805e19b055c45d",
+					"state": "09471d558671b72e10c695abcc08b758"
+				},
+				{
+					"dice": "499c5f0d58f5a66a47ce956e00068e64",
+					"events": "5a6f2bbd883f5ad76fa41f681176f190",
+					"state": "b107be06d3e6527bafaa3c1b52455e42"
+				},
+				{
+					"dice": "7ad1c12c91516c3af88a33a24dcb3fcf",
+					"events": "1dc5088d05c345582795e13c0dd6d46a",
+					"state": "56abc4e7d100956891d01ea8011f1ff0"
+				},
+				{
+					"dice": "78f2ae225966ece3805272b2bee27859",
+					"events": "8e8399f0a5131587d430c74e368da772",
+					"state": "cf0909586faf23b1fd2f7a2e3da3a5c7"
+				},
+				{
+					"dice": "78f2ae225966ece3805272b2bee27859",
+					"events": "5e956fd7b335fe3307f00383eb18490f",
+					"state": "96590008df746506b08d097157071f10"
+				},
+				{
+					"dice": "60e2a3d076c952e37fe98e2394a0532e",
+					"events": "12178b475d4b4b9cfe78da0db9bb02a3",
+					"state": "4152a0407c0303868e538f4c15b4cc2d"
+				},
+				{
+					"dice": "71fc7e3dd1f5858f12ad591ee1fcb172",
+					"events": "a9182370cc67a583157c856dac403396",
+					"state": "e18c753df431e1c983598c6decb2b00a"
+				},
+				{
+					"dice": "2c2667405e8290f4bd7c3fe469f28cf8",
+					"events": "123b7aeae9d7268d2c40f698b23ce039",
+					"state": "e341a357d9565452f7677bc8e5af88b1"
+				},
+				{
+					"dice": "c337b050d7f60a8a5662b5e4a3370a75",
+					"events": "1aaf0f087ec2005788d3d517e3e1f87d",
+					"state": "7ae38b4665b3c9742732be646ee0cf31"
+				}
+			]
+		},
+		"magic_crown_first": {
+			"dice": "b1244545ead9b29825ed0dbb4baecf28",
+			"final": "ac4aee5655ad5925190a1d9bb5103a53",
+			"record": "34896182ac4d07751c83f65fdf2a518e",
+			"refused": 0,
+			"start": "072f41dbf0c0db500ca1c4b326563d82",
+			"turns": [
+				{
+					"dice": "fac9c056fbb407413f49cfbd220edcef",
+					"events": "cbc657b4e5b1e4451c3d2a9bdece3b4b",
+					"state": "085dd6859868371213710d4850b5dad2"
+				},
+				{
+					"dice": "d15794d03c4086b00f6b36d551f53e9d",
+					"events": "ef4cf61181e9e9b8a2b30bfb6e02a3c7",
+					"state": "178367471260ba4833b47f973c3d04bc"
+				},
+				{
+					"dice": "06ca808fea555eb85f653896f2746169",
+					"events": "60ea3e21c357227fdc53ae56d14f4be4",
+					"state": "f7d83471f59a0f575b54acae5b65dec2"
+				},
+				{
+					"dice": "90588c96e4f71af0fd213bad14172dc8",
+					"events": "21c6769c5166e4d4f15f09af555b8637",
+					"state": "83c4a1fedfd78bc464eeb7f959d57b60"
+				},
+				{
+					"dice": "3138a79c01ff62bbdb6c2983d53ac2af",
+					"events": "403ad8594343170c916d2bd53a8e3d7f",
+					"state": "5048c3ce89f7b6b80d695a9d6c6bfd5e"
+				},
+				{
+					"dice": "29d6491686287394ea173d04c00191b2",
+					"events": "7aa95e21b0633e00acdfec92ff2d9de4",
+					"state": "4c00610f3d7e2d675c75ade4981110fe"
+				},
+				{
+					"dice": "643d13431629f230f9889b7840c29bdb",
+					"events": "0ffcf7885fdf5ad67115bdcc4baf930f",
+					"state": "07f480571be0e643e7b7e04b567b386b"
+				},
+				{
+					"dice": "3a2aa01a75cc80bc9d24e435ef7a1a42",
+					"events": "7d5e168078a1fb61bbd00b87c4867add",
+					"state": "fe032714a2008b4ec18f472faca6a1fe"
+				},
+				{
+					"dice": "2332fa59f81ce0831e87d7dfce9c6bda",
+					"events": "c1a739766d704f75862bf2e6c1b74738",
+					"state": "26e5b8e20cd2c374e1ad5a8f4bf42bc6"
+				},
+				{
+					"dice": "f61d9a81967eba9310f2c40924c21663",
+					"events": "8970748b72ee354a109820bf9022af4e",
+					"state": "1d6130be21a7fc4d1f0c8bc899c58681"
+				},
+				{
+					"dice": "de307a104c80ce5077507102cf6c166b",
+					"events": "35883e3bd95ec7a2e2dbcff55c91359c",
+					"state": "ac4aee5655ad5925190a1d9bb5103a53"
+				}
+			]
+		},
+		"magic_fog_clans_first": {
+			"dice": "211dde00addb110003814908fe76659f",
+			"final": "5d067173d0f90c809aa1b8f3d7144f75",
+			"record": "de055350ad8a6e2ebecefe210e7cee61",
+			"refused": 0,
+			"start": "acb7d736e2fdcf0946a61f60919210bd",
+			"turns": [
+				{
+					"dice": "62880cfa0486ebbef99f42369e73a42d",
+					"events": "f50714d1bbf7b4b57032b08088faaf30",
+					"state": "77e4cc61871d78c6da9cb704210a39ca"
+				},
+				{
+					"dice": "3e12f5055d8c1431d683a193acd5fca3",
+					"events": "91ecb30c64c936608fa5441fb52138ec",
+					"state": "b6552ad7a4bee66ce28ae243c07f7113"
+				},
+				{
+					"dice": "43be138fbe945fc8d488323850eef82a",
+					"events": "945ceb56bb7d4409e4ebaac8dd94f3a7",
+					"state": "223770d8eefc2227fd01ba41a1cc6c36"
+				},
+				{
+					"dice": "74ff5c38bddb0ab4740f8dfa9c4fb8b7",
+					"events": "9db13f7e3734aaa8a67729d528cbbfea",
+					"state": "75fd055161129b7623e17d8fd86e37de"
+				},
+				{
+					"dice": "e8c77aae9858fc23a07fe9d47baa9f0b",
+					"events": "2a8b605310bf7b05fef4418ea76e31b2",
+					"state": "049d54584b6c3b2334e5dee97ea832fb"
+				},
+				{
+					"dice": "6f1c8f2bd65acc85ef37c475385cb8be",
+					"events": "b962938672a2626b71eff54b9aa3146d",
+					"state": "1900fdac75469981668f4f2bb20bdbe2"
+				},
+				{
+					"dice": "6f1c8f2bd65acc85ef37c475385cb8be",
+					"events": "1d3618ca494d7659b49dd25c1d2d6750",
+					"state": "e0ae6d90133f0ac101f5806fa67f0d9f"
+				},
+				{
+					"dice": "6f1c8f2bd65acc85ef37c475385cb8be",
+					"events": "d56ec7e06e8ffb2a70aa77ac646b067b",
+					"state": "e04c35dabeac2666b3045b80d57dfd27"
+				},
+				{
+					"dice": "6f1c8f2bd65acc85ef37c475385cb8be",
+					"events": "1f9c989dbc4baeee0ef5b5a527129760",
+					"state": "c1e03be6efc1d2db823007a0908057a8"
+				},
+				{
+					"dice": "6f1c8f2bd65acc85ef37c475385cb8be",
+					"events": "e4363409e43b6901d22deed64e1152ed",
+					"state": "ae155fab2f0d644c8146be57ecad79cf"
+				},
+				{
+					"dice": "6f1c8f2bd65acc85ef37c475385cb8be",
+					"events": "5132e5c18243936e3d143f4a6d4ea5e1",
+					"state": "58964e6aebc8f505cf805ba10f6b3d11"
+				},
+				{
+					"dice": "6f1c8f2bd65acc85ef37c475385cb8be",
+					"events": "a0efbc110e757ef115427921be86c8bf",
+					"state": "5d067173d0f90c809aa1b8f3d7144f75"
+				}
+			]
+		},
+		"magic_fog_crown_first": {
+			"dice": "ffb1c70bcc6f6e2118fb35e08a51faa9",
+			"final": "f02c7b412d36def70b93429f99b39fe7",
+			"record": "77a60dc883df9a6dedf1e8ec7e40d9ed",
+			"refused": 0,
+			"start": "e0e43548566061e58855a1a1549d50ef",
+			"turns": [
+				{
+					"dice": "4df4177e5f3c08804b34ab01e5580cfc",
+					"events": "0e4ac448ff6731c88993203ee9a8f70f",
+					"state": "1c75487b7d6d45c73ad351b996feaf21"
+				},
+				{
+					"dice": "209bfcbcd5f9e81cce69e0b27ee64d19",
+					"events": "6ad6618bfb2c78effbeba4202ba6d877",
+					"state": "ae274e7b1b81ad9c9267339815570693"
+				},
+				{
+					"dice": "91c9f4b50b628c76b4fc19dc5ae84fdc",
+					"events": "3856107d8b51ca411ba77938d85c76d8",
+					"state": "0ed030060b5c094352ecc65f200ee044"
+				},
+				{
+					"dice": "54d5c962c0bf055016fd06fab576b7dd",
+					"events": "e0a18d297a65898eaa341d366be1a228",
+					"state": "d60dc1de8f4a477a195f8feefd7df395"
+				},
+				{
+					"dice": "85d1a0032af5646215c4b1c909a1c151",
+					"events": "64c5e62aa1376b95a829bd090b710a52",
+					"state": "f766b91bbe49002b4ad95aa24020e27c"
+				},
+				{
+					"dice": "5a03101e3844fa9ce9b54eaa00b44fda",
+					"events": "d5dd90a1545780ae7a74fc63fb4ab29b",
+					"state": "712ed053c37d9527a62b7fdd26237caa"
+				},
+				{
+					"dice": "318d6337fc7e5dcbb87f8120aa1da9ae",
+					"events": "1d1ae44ced56d6f62e0c4bca1b7ceeae",
+					"state": "4c9d0cb0881d2f6de5157e443d0fb416"
+				},
+				{
+					"dice": "be5a3795960732d805083304dfbd9d43",
+					"events": "53008ace0df25ee348f2831be5e8dfef",
+					"state": "3692889a9f9d3251a851c6fb64a6de5f"
+				},
+				{
+					"dice": "2201dfcb56b0840e34eff616c3e520d4",
+					"events": "4d71287b50aa6fb9cc35b3a08d76b2ab",
+					"state": "2d4de47c907429130e5a1e7df904452f"
+				},
+				{
+					"dice": "12148d220ab5882b1c46b650390d8217",
+					"events": "11c62d29f695b88f3f618d3e4c6cb2a5",
+					"state": "2b27b44859d58ad864ee63f51c666242"
+				},
+				{
+					"dice": "5d8948380d6e1a195a10cb5399c8a8c1",
+					"events": "2702809d70012ab4c80e32232123a614",
+					"state": "f35c3acd095b16159e410ce70e0cd413"
+				},
+				{
+					"dice": "1622b8df3277b4bbc18c9ab0312f8554",
+					"events": "12b190d03710811e10d76d506b992e21",
+					"state": "f02c7b412d36def70b93429f99b39fe7"
+				}
+			]
+		},
+		"magic_ind_clans_first": {
+			"dice": "3965416afa5ad5e768640d0adea8da5f",
+			"final": "3b4d36394ca9bb1006ff7fd9f3a4d248",
+			"record": "7beca1ddf7425cc702cd8d043274f859",
+			"refused": 0,
+			"start": "1b910734c2b936889cd48680fe6d270c",
+			"turns": [
+				{
+					"dice": "258e84831e39d3285dd34d8e6cbf775f",
+					"events": "a649e9363d04c708dc5760dada28e9bb",
+					"state": "6656e1d50445840f7582e3f9f51fa69c"
+				},
+				{
+					"dice": "c67ac8bdb98dce879e97884bf821dcc7",
+					"events": "12a3b73718a73e16cfe886b02b80ce99",
+					"state": "a8116a083386a78e284f8cf4015b31ea"
+				},
+				{
+					"dice": "bf3fee891da22d1548d76343bc9e9472",
+					"events": "3d806de87d226b86747d53ac13fc9f45",
+					"state": "d6fac99dfa2670e5243bab96109dfc18"
+				},
+				{
+					"dice": "bf3fee891da22d1548d76343bc9e9472",
+					"events": "daff36ffddbd6eeb9f1c61f699ef9921",
+					"state": "03e5fbd1543de4d8419b5ab8f1c8c029"
+				},
+				{
+					"dice": "35b03f6150d6e0114d80f5b1e92e74dd",
+					"events": "55afc0c4f40befbab50a01ddcf375186",
+					"state": "494665f8d2b9d0d2576736bd22030787"
+				},
+				{
+					"dice": "740d66c5e140446a0cb7fe0f86da0671",
+					"events": "abe4d96ddd7c15c02e474d3dab17caf4",
+					"state": "505001abbc7f22a831a6760337baf35e"
+				},
+				{
+					"dice": "834b77711c5a2c533d6058a5988f3623",
+					"events": "41efcc3851d606e68121a239a46d0009",
+					"state": "5ba62f25a28e28b758474d3fc0f8d718"
+				},
+				{
+					"dice": "6f88bf624887fd2f0e0f4630ca594c14",
+					"events": "3489e8de82c00a2363aeded9abc19447",
+					"state": "2a37fba696d109976357725809d75896"
+				},
+				{
+					"dice": "dce81fdd706e02a29f446a2ba992b550",
+					"events": "075779151a13b5e61fd2dfeb8baf6bd3",
+					"state": "fa61e224abca94fa885611b5da39584e"
+				},
+				{
+					"dice": "4e5e2f0c72f8c451c34f0fa3c5e5658f",
+					"events": "7db93f86e5ed939bf21b5330a45b235e",
+					"state": "0f34de1c8f15471dba8465cfb6ff1341"
+				},
+				{
+					"dice": "3a85add793b4d96fcec525eb156112b9",
+					"events": "45383896122ef52cb2358a92d551a08d",
+					"state": "afb39d0f43a83500ea370a67523f9b41"
+				},
+				{
+					"dice": "71953950e8684bc5d866a52229c5bc18",
+					"events": "299875f7234dbf0cb0d574bf98f53564",
+					"state": "3b4d36394ca9bb1006ff7fd9f3a4d248"
+				}
+			]
+		},
+		"magic_ind_crown_first": {
+			"dice": "b40625a46c6c9cc57326a56dd1974533",
+			"final": "47cfd250af31e95d5593ac149298772e",
+			"record": "faacb3aed52354d505eef9488aaeac5e",
+			"refused": 0,
+			"start": "ec4e346627a75ac847352861969a0100",
+			"turns": [
+				{
+					"dice": "fff2396fa91698d40e8923473f733110",
+					"events": "9dc1b881834242cac1d30d4ca10adfec",
+					"state": "968d2439760ac0e67ad952e69d72c2fc"
+				},
+				{
+					"dice": "0c5d547f27e364cebcb73de1c862dbce",
+					"events": "8c7ef6921701fe2e084f53924273d004",
+					"state": "b44e299e6464b1490e4e3af25980e8bd"
+				},
+				{
+					"dice": "a66e607a76242e8b9f00f9d309b2e8d2",
+					"events": "b1b29f14547015b239d671d09b378e43",
+					"state": "8db922cb8599db251eb864afd18b09ab"
+				},
+				{
+					"dice": "2bec1778ae6cac68f1fbcf13e5bd8002",
+					"events": "3bdb5d4f68601700888843ad5f81ca37",
+					"state": "3bbee27d85bfbbd976e6bd4432e58db5"
+				},
+				{
+					"dice": "880ca422508949ac910ebf9674b42690",
+					"events": "c617f4eb2b6c1e9427e6ddc97e897272",
+					"state": "3a19e141a8c44c4ed73613d21e61e441"
+				},
+				{
+					"dice": "578b6b4ea2d01a490725125bdfd7aee2",
+					"events": "a8222b3acf5dc1e983244109529140a9",
+					"state": "a4b0329d579ef53a5e045ddeb5ec54bf"
+				},
+				{
+					"dice": "4c4147b7f87ededfbbde1335f2a192b7",
+					"events": "1f472a6aab953fac9df57fa87e60dd24",
+					"state": "6597868a6e8c40c5d5728ec66dae72ca"
+				},
+				{
+					"dice": "bdc77d6ff4d4d62c1ab2fde21dbb580e",
+					"events": "803daba27b6c62637b4fcdb7808dc2b8",
+					"state": "6633f056d60d38f0dae2f57463efdaef"
+				},
+				{
+					"dice": "47798ad48110ba51547be7f3d3b1de95",
+					"events": "5ef2f680f42ba130d7f896b585c73183",
+					"state": "17983b6314c48ee6a2fe74fa1c641168"
+				},
+				{
+					"dice": "8b4f9600dfc0ff1a1a50f6630eb034d2",
+					"events": "43efa0727d67e63a276ecadd7fb12bfb",
+					"state": "ec01415a578351e5e5dce30ed27ce912"
+				},
+				{
+					"dice": "30ecbb77742beb33cea5fa8b3e4dc01d",
+					"events": "f90303cc2002f894bd8dcfb822d6e594",
+					"state": "d1366efbf38d7e7363b5162d215621b8"
+				},
+				{
+					"dice": "4296b826e8ae0619a6c7394db013e8a4",
+					"events": "1d3ac31921298255e449c13658c2db8c",
+					"state": "47cfd250af31e95d5593ac149298772e"
+				}
+			]
+		},
+		"magic_ind_fog_clans_first": {
+			"dice": "e3d519f366a6d89d2c6daf0a8e5a9a98",
+			"final": "c0237fd4d9ecbaa5b5554e40c9047cfb",
+			"record": "45e156995ff0e510e804331f1937815c",
+			"refused": 0,
+			"start": "c2b6ffd2a0afed7b8705e9eec9f35225",
+			"turns": [
+				{
+					"dice": "002395a777b24071d995e3aa846c72f4",
+					"events": "d8ce2cec7a8b31a270bd104f4a14512e",
+					"state": "f6f6f9eaf6d8ef758b26673cd11d27d0"
+				},
+				{
+					"dice": "10c0e85bcb1d29e550b064c1a51ddc85",
+					"events": "77956d24d428557a5466ef8c9dd47529",
+					"state": "36592f1beb61bc33008b1d373c11a50c"
+				},
+				{
+					"dice": "26cb6e235af8a46392df77c040d89fef",
+					"events": "0753102ca1fdf3b3dc990dd5e7c77cb0",
+					"state": "a8b91a757f904aec93e1296b05c5bea4"
+				},
+				{
+					"dice": "715fe0b91014b7f57d48b54a2c9c154e",
+					"events": "e0542d89b0e898694b4478def91fa5f4",
+					"state": "d5ba842c6d9dd17d624133652f936760"
+				},
+				{
+					"dice": "991c5b523a05bd267814dea2dc9f5d10",
+					"events": "f44587f1938de453c3817e2050ec6c26",
+					"state": "e7a8bdba2ad2586bc49056bd092ed043"
+				},
+				{
+					"dice": "f4f64b0c0f13de2d96c4b2d7b21ab31d",
+					"events": "2e930e543e90a2270c3b98c081e67fa7",
+					"state": "f7d7dacc761a30b2d5279f577f6040aa"
+				},
+				{
+					"dice": "4b7cf2604f6f2b75a07b9fcc69c554ca",
+					"events": "441c2a5cf497c996dba03366647c7473",
+					"state": "1749a0ca36b9a5050275ceb1778a90df"
+				},
+				{
+					"dice": "2429c83238b57e7e3d0a2f6c298d207e",
+					"events": "93edc9e37c3710234170ee6f53c12bc2",
+					"state": "3bfd54a96abfd56acfb11cf505bf726d"
+				},
+				{
+					"dice": "e364284dd5842d448488ee5773c8b685",
+					"events": "d59d0dd328b2fe088b71606135d52465",
+					"state": "c83a8058410f6af66f6a8dd5472324e1"
+				},
+				{
+					"dice": "5032bb7335539bb6c4153c3fd7d289fc",
+					"events": "1d69db320527f97cc03b70c3b5640b08",
+					"state": "927868b7dc2cdb363f27146e48af51c4"
+				},
+				{
+					"dice": "5a3e9ae363ff495fd98dd0f29688cf94",
+					"events": "acc50816706e13b746a27a503d205e1a",
+					"state": "7795cd13611e8a968cd3e8043ea438f3"
+				},
+				{
+					"dice": "e80abad82801471451890689e2d88bbd",
+					"events": "8a373592d98bc7f472ffdc27b27f9b6f",
+					"state": "c0237fd4d9ecbaa5b5554e40c9047cfb"
+				}
+			]
+		},
+		"magic_ind_fog_crown_first": {
+			"dice": "b77cbb8482e4143f4a3b9b2c21b5b8fc",
+			"final": "1ed0a801553c27ee17fb1d40002d3027",
+			"record": "f3a89ad4792d075436c5ff0a5ec27b11",
+			"refused": 0,
+			"start": "6ecc1975390da324e2b5150992de305a",
+			"turns": [
+				{
+					"dice": "a4f0d54a4cc37f5514713aee62fde57f",
+					"events": "560c742c3d891413d82028b95fc12270",
+					"state": "4aa3d4307336cc2fa49e4f141f80cddd"
+				},
+				{
+					"dice": "eebb5cdb0c874a3f241f5d6a479746e8",
+					"events": "ef5a84e340599df78afd95bc3ddf8ab6",
+					"state": "79a985ee84df4fb4dfa66edeb1c4f594"
+				},
+				{
+					"dice": "76863871f9e90de53ec3ce368130f2e0",
+					"events": "6f5daf885d60cf802e1445dd28ed8423",
+					"state": "147f3adf965fde940414ae6fd5f80bba"
+				},
+				{
+					"dice": "74cae0e76c48db86732c2dc52a331232",
+					"events": "2f698f69cc334a4374727c8013d49635",
+					"state": "013eef56fe1e56a221a3508e74c892d3"
+				},
+				{
+					"dice": "682f5e5f952f6f4717c6950bc61037f1",
+					"events": "dba55a4713af13ef555d8d2b0da4c7b8",
+					"state": "0765f902ae4e7c46db9c550079fa989c"
+				},
+				{
+					"dice": "77e78bef419189e5bd1c36268d1311fd",
+					"events": "b60f2d40152a48b28a380562f26a1943",
+					"state": "cb823f863996e4f6a86fabcb4db7a87a"
+				},
+				{
+					"dice": "3ab29f277e2c479cda07ed6aa0da2f0b",
+					"events": "aabb02bc8582e9f9bcb262aa4db728bf",
+					"state": "95095b7a2c79fae9c6c1ee54534f7a80"
+				},
+				{
+					"dice": "e7a1ecac5930bfba0344d674cc1788c9",
+					"events": "7f8945de4a281ddab10988eaa2f53ab3",
+					"state": "2aa931d7e3ce94e25c01a2e85c4f0e5c"
+				},
+				{
+					"dice": "ddd5c3d943d3499d00b911af988cb654",
+					"events": "400ab0a870c563e377412ad6843d3648",
+					"state": "4f326eab433b2c7eb01bf2b6524d0326"
+				},
+				{
+					"dice": "b4c6eae0c1b7153efd52b34ec6f9235d",
+					"events": "061b1c89ce2933a134753587a3e7ab1d",
+					"state": "0d1a167383c0f42424edb0ee78dbcb7c"
+				},
+				{
+					"dice": "0a6355126270195dd0f48436f236fa6d",
+					"events": "31a2bfd735f0f2c9664d628e18f9ff71",
+					"state": "8d0d9aba3190d75d049a2a837ce34e0b"
+				},
+				{
+					"dice": "88e9a2b09e305db1790c1ec39cd5d22d",
+					"events": "3c3e607feb1b21df1a8607a203ec8a8d",
+					"state": "1ed0a801553c27ee17fb1d40002d3027"
+				}
+			]
+		},
+		"magic_preset_ids": {
+			"dice": "a1f7d5e398576660c388d6f760dc1c08",
+			"final": "72ed768829dbf0628b35044b58f6692d",
+			"record": "a16264a846667182f75372c9549e745d",
+			"refused": 0,
+			"start": "8bfbf9e402f7567d1670bbe7f8251054",
+			"turns": [
+				{
+					"dice": "90e8b687de19cb1570a47b1379fc0872",
+					"events": "940d2b6d309448cdf879e0ea31739df0",
+					"state": "b10b66f4f95e36307a18d5a645cef16b"
+				},
+				{
+					"dice": "d1b097206319bbb1b75bd25b5f73b160",
+					"events": "927e6c5e6b23ad8abcf39152a906dd47",
+					"state": "15adc776d3d892146dccde344e481234"
+				},
+				{
+					"dice": "426e8175d13bb25bd9bd97a4e55df5b6",
+					"events": "647ac201aaef63f4e150ec26768943d9",
+					"state": "342e62b0d96eaeaaa011f086aff952aa"
+				},
+				{
+					"dice": "669465a31524ac42a01e35c78bdfd38b",
+					"events": "3d32068db07afcf2be7ecde934b9dfb4",
+					"state": "0a16a460136da57837283002530a45c9"
+				},
+				{
+					"dice": "02be20d68530764491f42061f2300141",
+					"events": "f16ee7e6e7c778e50c2df72e2a360b4d",
+					"state": "fb36f5ec7a6a26fcf636a2d637e61c38"
+				},
+				{
+					"dice": "a3a099af42a0d89e56470559c45b8ec1",
+					"events": "5177d2639539cbecaa3e2bdd74a66d06",
+					"state": "d2d9e7eec63a55892892e6b8e198e1da"
+				},
+				{
+					"dice": "9443f73de3e551593f7b48fa8aad8cf5",
+					"events": "a5cda6ee24bf28c520513b490ee28cbe",
+					"state": "b80403dbb9a2b4aad05d8eb810f27c95"
+				},
+				{
+					"dice": "73a1b1741fdd980ca446fb5fd8a33dad",
+					"events": "1eaf7a4d5a7ac95aad58c759563a1136",
+					"state": "7c217e290b8887488654f38620eb3db1"
+				},
+				{
+					"dice": "0cc8b3e3bde8265abd853244ae2325e3",
+					"events": "44e1e09dcd70f92acffc810ccf3374cf",
+					"state": "12c32d6d1f91ed102bf42b0a7705f08c"
+				},
+				{
+					"dice": "59eab160947fd0f4197ad7dc6ab26e58",
+					"events": "6639213c96d8e3c00a307b6d5b5b3307",
+					"state": "5c0a8d49205f171724770239f6859bed"
+				},
+				{
+					"dice": "0cc8097635a20120b7482d166303e2b9",
+					"events": "776c61e39b927713389c00052b526991",
+					"state": "febb48e1f0092440f5dba6766dc2fb5f"
+				},
+				{
+					"dice": "5707133da99732694c5f4bae50d472ed",
+					"events": "fd409211e4baff6f32611da823a01953",
+					"state": "72ed768829dbf0628b35044b58f6692d"
+				}
+			]
+		},
+		"magic_sieges_clans_first": {
+			"dice": "d62dd99f708a22f6ad9d8191ac1a5502",
+			"final": "82c7ccc0d08837ee7daecf6016b4d3df",
+			"record": "c7e7c6ffbdbe7577656d7ac19122c6f2",
+			"refused": 0,
+			"start": "ac9d49bde158c778d3b4d67a56ce7407",
+			"turns": [
+				{
+					"dice": "27555c6f4dc9ff80feb40cdd8b077cf5",
+					"events": "0b804cdc3addc26256f33c8ee2cf2dcd",
+					"state": "80ea2b3462381b6a0deb46500b7c915e"
+				},
+				{
+					"dice": "b8d9453daaf378c6abb37ac46417d35f",
+					"events": "0862149e1026d65e97405a3269fc17af",
+					"state": "6fa32a0e97d73db19255fc21ed3ad792"
+				},
+				{
+					"dice": "385ef19377afd2626c7cf8603c6d6b57",
+					"events": "4a5cff94fc9d34df865efd807ea5dfb4",
+					"state": "c724442433c973655ed480ee87bdc10b"
+				},
+				{
+					"dice": "1d4ee7e420cd77bdc3fc96002b54ea9e",
+					"events": "229e9510c93b04dae5356fc97f7aee4d",
+					"state": "e2d44b8459ef28debd4886e7ae439ced"
+				},
+				{
+					"dice": "0a3e9de59ab994018590881e5e7ee593",
+					"events": "d831d2abd0107d563687f5f07564ad20",
+					"state": "0177254dd0ad074f73fd696fe1fc53db"
+				},
+				{
+					"dice": "528ebc634873d816c8d6ada1cddcc0a4",
+					"events": "57074beab8d74037a52dfc81512c46c6",
+					"state": "d07493f695a2dbd71c087fbed763b7c8"
+				},
+				{
+					"dice": "80f7a5983e004df32ae6147b64969a1e",
+					"events": "0561696d0dc278ea1532f9b901f5682b",
+					"state": "7ae29549b728964af075c051394d9e9f"
+				},
+				{
+					"dice": "bfe9f4995d55afe4543a075b74f6f66f",
+					"events": "8a58d214bbd7d5aabe24c5e3821c5b93",
+					"state": "6ac16a0b096b1b9a7abb19f05e28f6b3"
+				},
+				{
+					"dice": "24bba11d05278dcee9a25e3b352d467b",
+					"events": "a1a9e09a77d518d0e38a76a0beb13ae9",
+					"state": "2e4af9806e335ebec71eccd95824d61f"
+				},
+				{
+					"dice": "c284e9ab082fe5056ee2b01f3d0fad9a",
+					"events": "020a7aaad9696b7f7cbcadab402341ed",
+					"state": "3413d4f720b74e8cde85e5fea97e32c8"
+				},
+				{
+					"dice": "6181330f1741c9b46b1201161746b99c",
+					"events": "c23c8fe760d94516d2376d42a78e696d",
+					"state": "eb61b339fce712890ea0b9d5ebbd89a6"
+				},
+				{
+					"dice": "3f857073e13f7f92ca657e733c3a43ab",
+					"events": "6949f39f92c41285b6be13415dc4c1f7",
+					"state": "82c7ccc0d08837ee7daecf6016b4d3df"
+				}
+			]
+		},
+		"magic_sieges_crown_first": {
+			"dice": "fef85df445f14afb1b332923ac678fe0",
+			"final": "a6a493a48e8405411229c2d3a2f7bf1a",
+			"record": "c81c346ae519f68af5bccced916ec7f8",
+			"refused": 0,
+			"start": "d7702963f81592ba05217ad55c0c09d0",
+			"turns": [
+				{
+					"dice": "db822ea524a0cf62b378d0682b9ae243",
+					"events": "ac37fe490d186b692eeecca38ff1a628",
+					"state": "0f684fb2bc1c26a4306c89932087be98"
+				},
+				{
+					"dice": "df9e666f0f485020ca6e84a4514e0200",
+					"events": "3f7ba92c98b134c6095e569396639258",
+					"state": "592715d7c51a4c06e835b097c4937d31"
+				},
+				{
+					"dice": "df9e666f0f485020ca6e84a4514e0200",
+					"events": "6211dd95b882af53e627201e5c2c879c",
+					"state": "ea25910afa6c5c4a08fdbfbb0a930912"
+				},
+				{
+					"dice": "003ca9161f22fe3f309e14eabfe4ba59",
+					"events": "4272b213c0f2bfbdd737affe23ee7b21",
+					"state": "f01801ff8e7844e6dca10082c803f0db"
+				},
+				{
+					"dice": "66067e6fa0f7956781a1faa858deb568",
+					"events": "9eddc1670257c91eb19d6decc27c398d",
+					"state": "5127fc455f30b65742d07d4a0e85859b"
+				},
+				{
+					"dice": "6b28282c915126f7c370626541fa6047",
+					"events": "91ba220fe46fe2057d96f86fef485974",
+					"state": "02d760b9f45bd16094a564b5a6aed3a1"
+				},
+				{
+					"dice": "fcfceeec4853d5fde3a763b4b5761568",
+					"events": "3ff254ff418f0e30f3261a76c704b922",
+					"state": "67a2a438b042274b617ab039691a1c29"
+				},
+				{
+					"dice": "e6dd8ffd518c3cad519b14a005c0b060",
+					"events": "da600a06acc83fe065fef3ee4ee32a0a",
+					"state": "8217679796a7c0503d30ae5c28a0f23d"
+				},
+				{
+					"dice": "b0bdad21d925de3baf88afef077d458b",
+					"events": "ea05dc1a66950011e30e080fa85352f7",
+					"state": "677fff5e1e3e71b85ba7f18c47c655c1"
+				},
+				{
+					"dice": "517be76f9e5f6254d7750b1a2aceb49e",
+					"events": "8ebeb9ee8951fba404e9cf21bd60e1b9",
+					"state": "c5a3fbac7951e795a463f34848462bdb"
+				},
+				{
+					"dice": "ac6f0a25c2801e82c4d76afafbc73833",
+					"events": "ab1ed14c191b40f5d38bff460e4d2b25",
+					"state": "b15ebc0554c0b9dfe78b6a0ad64396e1"
+				},
+				{
+					"dice": "7589411c2e4c2fc698c45f435b4674a3",
+					"events": "d76bdf557a779bd393e876c89d80f9d9",
+					"state": "a6a493a48e8405411229c2d3a2f7bf1a"
+				}
+			]
+		},
+		"magic_sieges_fog_clans_first": {
+			"dice": "8b800e1dcca2f815dee54e9a5987aa2f",
+			"final": "e9a024b5bf48489ccc670b0d77542ca6",
+			"record": "ecaf32d0704739e84f3070f019fba58e",
+			"refused": 0,
+			"start": "3226d7ba92ef7ff51c765fb3ed2cc896",
+			"turns": [
+				{
+					"dice": "7c61339f6feb4f2224391de1d713daac",
+					"events": "a3df1e31dd1f8b0251448361c9807fb6",
+					"state": "1b24a918f94d2beecd970fa4658e243c"
+				},
+				{
+					"dice": "dc61436a854bed66ca9e86210eb3efab",
+					"events": "babe3025c4611630bcbedcf6901e79eb",
+					"state": "dcbe5bb30855c6d09d03542d2247c787"
+				},
+				{
+					"dice": "e08898d4f96663635dacdd53f4349d94",
+					"events": "62af4d1eab873573bbb7211d06617e8e",
+					"state": "74ca038b2ae35be50424995491b0aaad"
+				},
+				{
+					"dice": "2272bd944092ef3af576894f50375550",
+					"events": "e0f9c7c80ab19d7b778e76f837454843",
+					"state": "188048905b41650c9583dd342789678f"
+				},
+				{
+					"dice": "432e7436d4219ad1f451e380ef43e1db",
+					"events": "bcb3b779e2d992fe6a7d0b9c237c8d25",
+					"state": "e1fe3314762db444cde50f1f537ba39c"
+				},
+				{
+					"dice": "cd74a50a3cd304f5fdaca306375cf31c",
+					"events": "d8ef053cf440e78681065eca8296081f",
+					"state": "678928d3743491ea8931a567e87a48e3"
+				},
+				{
+					"dice": "397c03b70dd550c878dd382e913ee9b3",
+					"events": "24faf30985afb3f47003c73bfaaa336a",
+					"state": "b824d9c86b17dd6362faa92ec8c6f989"
+				},
+				{
+					"dice": "5a029b44e768b7ab39b5f0e97e9ed5d6",
+					"events": "adb0fb1ee09b66a8cc50d86e487cd628",
+					"state": "7e0ebead22120ab1ebada944e9d3bc1f"
+				},
+				{
+					"dice": "d70014042aec637c6b0e1388f4a1e4b6",
+					"events": "e65cc1d3c017f69254884f2d418d79da",
+					"state": "e2f9ccd3628032a3ebc937f336a355cd"
+				},
+				{
+					"dice": "a7ef0d328bb18f02609c0c0d20af21ee",
+					"events": "86834b02d759ecccd78310a80163a9fc",
+					"state": "4543dd98bda313ca4c3ccbc61b0b6536"
+				},
+				{
+					"dice": "8fbb4433fe91f8d11c7b1f2825c5a8da",
+					"events": "5bcf1bb4ea19e1bcf86567b0ca4987b9",
+					"state": "013c9209c344e8ee252afd85ed17d122"
+				},
+				{
+					"dice": "8fbb4433fe91f8d11c7b1f2825c5a8da",
+					"events": "9998ef0949ee08a8bd3468d252a11b25",
+					"state": "e9a024b5bf48489ccc670b0d77542ca6"
+				}
+			]
+		},
+		"magic_sieges_fog_crown_first": {
+			"dice": "48bcf63910eb355827bce8848a6483fe",
+			"final": "979ba9666bc00b8766f5834ba29083ed",
+			"record": "cdb54509d201f508e3d2d8dc9e82ed74",
+			"refused": 0,
+			"start": "5a1c03562823f01ecc1c4c08ebab2cd9",
+			"turns": [
+				{
+					"dice": "a806f44df441235f2e562bc4b4f5de69",
+					"events": "a3df1e31dd1f8b0251448361c9807fb6",
+					"state": "cf073e4276671ca360184bb176d701aa"
+				},
+				{
+					"dice": "e08b6a00c9e5a879c3c59870eff1ca72",
+					"events": "babe3025c4611630bcbedcf6901e79eb",
+					"state": "454915449049e53485b7db6595db2d65"
+				},
+				{
+					"dice": "49b4d3adf0b1f7c230c60de30befaf78",
+					"events": "a0d4dd8353ced652a8150b446a679e8f",
+					"state": "df942a4c8bad69e358c937d83ea69c4c"
+				},
+				{
+					"dice": "27947599193c24f18b22882b76f8f4b3",
+					"events": "e0f9c7c80ab19d7b778e76f837454843",
+					"state": "72f24e9ea1074c1a13726c89fa440a90"
+				},
+				{
+					"dice": "a5cd978c7881ce228473a306be2e3727",
+					"events": "bcb3b779e2d992fe6a7d0b9c237c8d25",
+					"state": "42bf3a2bf4f523ce009a74e97098fca1"
+				},
+				{
+					"dice": "22184f740e54c36cf3bd975f4cae6f53",
+					"events": "369a13e9abefdd72277e15301622e590",
+					"state": "16e20dd6cd43f003f43a89d20ee854d7"
+				},
+				{
+					"dice": "d65011e1b668c8e9a6354ada5766c0fe",
+					"events": "04e7c13e40fb1d1e40440907b6642687",
+					"state": "8de62b207dc73deca25271cf7599742a"
+				},
+				{
+					"dice": "f206e093ae9912c27f1f404460099dca",
+					"events": "9219ff91a2c6281d1bc42995a822a5be",
+					"state": "23e31e37a9ee1bd52edb20634dbf568c"
+				},
+				{
+					"dice": "033a18ec88145d7ea95fcd5776cafd8e",
+					"events": "ebbb24c4742af906e7c7942a63083a54",
+					"state": "724c5c27a0c43041827b31a991df50ae"
+				},
+				{
+					"dice": "357c645dcb6deb35028f5f17fc66c99c",
+					"events": "ade51b020a215e77dff945d1f3803651",
+					"state": "6d9f78a4a3d754a08c77d31517338d7a"
+				},
+				{
+					"dice": "67d842b2d85ff4ab53869b186de094fb",
+					"events": "38fbd978f527c99ccbdaa4373fab2496",
+					"state": "bbcbd26e579875bb72ec49c5a00da9a9"
+				},
+				{
+					"dice": "67d842b2d85ff4ab53869b186de094fb",
+					"events": "88c9514d34951957ed55d7494f8c4c8c",
+					"state": "979ba9666bc00b8766f5834ba29083ed"
+				}
+			]
+		},
+		"magic_sieges_ind_clans_first": {
+			"dice": "b8fddc1c6fcc741e260eca47972960b7",
+			"final": "470b760335f400d6a28350db2fbb2c80",
+			"record": "eae8683ae0c1da4e7f717fa0217294f4",
+			"refused": 0,
+			"start": "c50053bef9474d3eac7c821813121fee",
+			"turns": [
+				{
+					"dice": "f0a4cfa7b84af1debed80a83f9d67e12",
+					"events": "6378e4b17570bec403b4974a7844e48c",
+					"state": "65188e4f23cf426678d53da7e1dba95e"
+				},
+				{
+					"dice": "c97782318664ce3bb7aaceb4dded3a09",
+					"events": "d2745278f3dcb0e839faac0bc8cb287d",
+					"state": "3e6d9de4546752ca769fc59011d9ae53"
+				},
+				{
+					"dice": "9615b9db02637060109b882ef592ebda",
+					"events": "9ccd3606af15f000750e15d8d35f8b3e",
+					"state": "64389dca8dd085291a42ca50f47b0d08"
+				},
+				{
+					"dice": "d4d3f8b5a2f88e1b48f1f6cb7509474d",
+					"events": "2f43c77661cd9dfde071073b7b607ded",
+					"state": "e2b800126e1b26c63b4cf356cb0a2bee"
+				},
+				{
+					"dice": "71b996e0eef21cba077852078bfa2ac3",
+					"events": "087588573cee3b58c8f4af69e8fcf72b",
+					"state": "d38d1fe3f76867606070211a6e7e1294"
+				},
+				{
+					"dice": "56d04a58e915fab4932dfa708bd375fb",
+					"events": "fec9b0256a605039e66703e83578c41c",
+					"state": "f3e85f57712e8310a5d5905e7e616fc6"
+				},
+				{
+					"dice": "66d763e6e5047cafefbf93f8a69ccd2e",
+					"events": "4201708a7f736beb02bcca0502658c99",
+					"state": "f564d18debafb8eba668031ca068d4b5"
+				},
+				{
+					"dice": "9e266d43973904107ee31206085a2524",
+					"events": "01ac8999907a5926926ead5be291bbec",
+					"state": "0e2119a2a6a2c0f76d86ef53240991f0"
+				},
+				{
+					"dice": "63cc98a45169d07880ce87d22d3a0689",
+					"events": "3cfb943e629bdc442d09e00c9ddac3d7",
+					"state": "f4c4535b271030a1742df6f824314c21"
+				},
+				{
+					"dice": "3235e52dcb36735cc5c325fbd5926c01",
+					"events": "62d4e4d33ac6cf09652559392d7f0e13",
+					"state": "de2c6c5f48dfefc352c35ea63fe591b8"
+				},
+				{
+					"dice": "af1407f1e366e50b4ca9dbc046f57231",
+					"events": "882c591fb3d9518305d3fdaa2ddb6e24",
+					"state": "193e54ce586d1950e8e9e1f6aa8969fb"
+				},
+				{
+					"dice": "fc38274ecac869d78040c90f41e0b1e1",
+					"events": "7037e24e3e0b8bc21de6cfbd77e9cca9",
+					"state": "470b760335f400d6a28350db2fbb2c80"
+				}
+			]
+		},
+		"magic_sieges_ind_crown_first": {
+			"dice": "e37e7f43c249997eb1b14e0041bcde27",
+			"final": "9b2ba5fc6b981d04fa9fe3444f73a867",
+			"record": "33a2b56c589de7dcc48258a9f5eab80a",
+			"refused": 0,
+			"start": "1ad2554ec7e9bffc4022b942aeb98405",
+			"turns": [
+				{
+					"dice": "be1f69ff7bddebe47718e4589fb3fba2",
+					"events": "20e8758a98a0ad6c0fe22af4b5f9f226",
+					"state": "88625ddac01457d2b8b71dc0137a94d3"
+				},
+				{
+					"dice": "322e4850357ba5ee4bae9cf2622152b8",
+					"events": "131e16ee156345f7130042bd2eb0ac48",
+					"state": "3194bf6d64d749d06e4074abb4ba7f6a"
+				},
+				{
+					"dice": "aa9b8e86a7908e779946c0d00bdff17b",
+					"events": "a6d7aa392523c0b978992f51611a37a9",
+					"state": "674ce00bbc9b29f237964175855cbd65"
+				},
+				{
+					"dice": "12e8aec79aee86a3763994d07b1e53e3",
+					"events": "d15d64da28c3589dc87e52771c9a1338",
+					"state": "43fea5b48ea2c1c7f24b6027d4c98dec"
+				},
+				{
+					"dice": "b0f937fdf9ab4fadf6e6c0e0d77410b9",
+					"events": "9f6fd29c2a2059447425e3d4f2b8e3d5",
+					"state": "d870d44579e7c6cb9617a3b179796333"
+				},
+				{
+					"dice": "b51b9bee2f55ab09face5bf8985f9fd9",
+					"events": "a54114d7a6e272f888f9fd926132b4f7",
+					"state": "d1a3aa67e604d602b176a9592d0fe72f"
+				},
+				{
+					"dice": "eb9463bc4304bacd980520f3721261dd",
+					"events": "0aa552eb57f8403cd434a7d8ee77e889",
+					"state": "a978c673850d99bf49be456d9412a18c"
+				},
+				{
+					"dice": "424ba7cb5153d51c791782ae77d73835",
+					"events": "56e4d215f79f4c3e19d490c836ce4b43",
+					"state": "8bbb97acf840ec32d0b4dcd0e0e7982e"
+				},
+				{
+					"dice": "c646663464e35bf0e6fcc14c30a455a5",
+					"events": "ea2d5ec4e8cf50992b91718c0c36a99c",
+					"state": "b512de25ad0ce141c6f330677a799730"
+				},
+				{
+					"dice": "fb989fb61cc0c47b98f80cc1a08a7a18",
+					"events": "3882359723776d7b7c3d25b50f4a8e2d",
+					"state": "2499e99997ac8fbd7a63a4763a8dd03e"
+				},
+				{
+					"dice": "fee6df86cc9b17039254ba86c67eac2f",
+					"events": "74f617bd15d2a915e4ec891d303610af",
+					"state": "e7775b710ab6eab74cbe2dd91c3bff5c"
+				},
+				{
+					"dice": "dc6072995bb325b4a34065119996d042",
+					"events": "d51ca68bdcc1f10d0f41d6db0f9c07aa",
+					"state": "9b2ba5fc6b981d04fa9fe3444f73a867"
+				}
+			]
+		},
+		"magic_sieges_ind_fog_clans_first": {
+			"dice": "dd5fa223b8306ce9c542db5d4e9c6835",
+			"final": "95d98947d17cff28aa8e59784e2004e4",
+			"record": "ef22231a6176314153c0d5167d1ce01b",
+			"refused": 0,
+			"start": "e147bef1a042a647e0f9a76817a516af",
+			"turns": [
+				{
+					"dice": "2951d5354b9bcc8f7125dbc0bade414a",
+					"events": "adcc630058beb1d27e86dab970991126",
+					"state": "a673d974faa4bddef5d45a6ea1c05b36"
+				},
+				{
+					"dice": "8c63cc836916a13980effee2b6a1414c",
+					"events": "ef3564cd735d6907b5ad707b3a216a8a",
+					"state": "42bcd535e3dc4a77d566cd0f2dbf53c9"
+				},
+				{
+					"dice": "6e9da1c0b94ca33f0b07afc2b641a7a8",
+					"events": "23dadec4eb6058b2449b45bc2ee86ac2",
+					"state": "3aff9ee5ede7ce1fae809f6974fe6c05"
+				},
+				{
+					"dice": "47d34748971fb41f9853aae624b7972e",
+					"events": "ae0f0f2dc333ecef7d870b6ef7d3a586",
+					"state": "fd606f0e29ea9d31e7b5f7586e503182"
+				},
+				{
+					"dice": "c29da3c94077cad6f689f59510fab14e",
+					"events": "5cd2af565a669baa9123a3615c206637",
+					"state": "ada313c0d8879af2b79e4c8ef2abf32a"
+				},
+				{
+					"dice": "02a4189d506e0711702e99f06d4d343d",
+					"events": "d74ddc8f123c948a252e8b18a069fea6",
+					"state": "89fde737ba32724ebd2d1bc23379a03b"
+				},
+				{
+					"dice": "1016f7f4b2edc1c4a8246c41790f96b7",
+					"events": "21605cc8ba6851408b8865d1840090d5",
+					"state": "92ee5994d82530caa593dcb5094289fe"
+				},
+				{
+					"dice": "99823d1a96f97fecf6ad12c03b389ccd",
+					"events": "558b72dd3721fd059512a82858cd6ddc",
+					"state": "f968daf7fbd4157bd17f7d699864be19"
+				},
+				{
+					"dice": "99823d1a96f97fecf6ad12c03b389ccd",
+					"events": "da646183b441ac7871936b24b0160229",
+					"state": "f6536717fb080e3aa8a96b6a0c5831f0"
+				},
+				{
+					"dice": "dfa8529a791d286d97c9f139bdcb9b5f",
+					"events": "eb64ca5a4b9c56015fb5d8b40d5cb8f5",
+					"state": "86bf71c46de772d33d8c6269718389f3"
+				},
+				{
+					"dice": "f414baef5f03a1e6a348e60072df5065",
+					"events": "5e3043f6edc7da390462548c72608771",
+					"state": "d4ddc7ba62dc0eb5fa1a698fce5d3f75"
+				},
+				{
+					"dice": "95b7cc3898ab538eff4ce2d41cfc734b",
+					"events": "ab7c93f0fe6dfc606c7394a74be4e12f",
+					"state": "95d98947d17cff28aa8e59784e2004e4"
+				}
+			]
+		},
+		"magic_sieges_ind_fog_crown_first": {
+			"dice": "c1d866119233c2d04a411c39d8d30f7d",
+			"final": "55acd19481107767cec1eec99ca227f7",
+			"record": "1fb6ccf797c6cb7a4eb51f6d2cde911c",
+			"refused": 0,
+			"start": "dad85c590788daa62a852119923ea1b9",
+			"turns": [
+				{
+					"dice": "04eed28f9dac82d519d84f670a2d3a25",
+					"events": "213a308da1d8969bc91386f710506d78",
+					"state": "d69f0f23274094f32815e76e67ebdf08"
+				},
+				{
+					"dice": "d0c9bb4c1606fc8eda7d4e46341a0055",
+					"events": "92263d32e43d9e47c5e2891d4657e4e0",
+					"state": "5bfad88a152af9cf0305f9dce2ee79fc"
+				},
+				{
+					"dice": "b4694003240867d08ff340932aca97e8",
+					"events": "5fda02080118d0f82de03cd486e867cf",
+					"state": "04209e98fc430addb9470095cff0d9fa"
+				},
+				{
+					"dice": "f6e074be0bbeed46190d9586166f4d08",
+					"events": "0b4f0a62249fefda23270805748fd2fa",
+					"state": "109f7e2654e2eb069930477b3a891137"
+				},
+				{
+					"dice": "9f68ab7dff98c2fbfa9495fa3117f557",
+					"events": "82ba7d5e49bfdb8b60ca83ae043d9102",
+					"state": "2be5a64557b882e3e7e7566f59f10618"
+				},
+				{
+					"dice": "6734c8c5f7df4edda624b1257ce32e97",
+					"events": "726c2af809484ec4fb0bdd50f0a8000c",
+					"state": "bbb27e58c3e68b93c54f5b4d60829d37"
+				},
+				{
+					"dice": "e1fedc7bc5d2f812e0d2bfcb3135ddc5",
+					"events": "27deecd9d4b6fe07adb19505bd5859f2",
+					"state": "b80c3f13d7d7a34afa1aec60e035c7a6"
+				},
+				{
+					"dice": "57f333cca8c5a1fa43c78a2b4fd21132",
+					"events": "5bd74c29cc751a1c90d3e767b582912b",
+					"state": "53fdf8992833f82f149744772665d442"
+				},
+				{
+					"dice": "032eb4c1e74e26caf6d31a5e42d7a1d8",
+					"events": "c7479088beae9b260d28dcf3f9a5b6eb",
+					"state": "239e4f7da23d0ac0ebe05aac6e51f6ec"
+				},
+				{
+					"dice": "d035cb94f163f9c1cf40a40f3802de98",
+					"events": "8d3cf670db6340dd2c9366ffb7582ba8",
+					"state": "e0758bb4ed29a43c472960d45f2b9dee"
+				},
+				{
+					"dice": "7f5299092864d70440929a19e30e5348",
+					"events": "7b30d88b5d127c003f9bf8a18c25ed6f",
+					"state": "55acd19481107767cec1eec99ca227f7"
+				}
+			]
+		},
+		"magic_tithe": {
+			"dice": "39659dc4ce6a98113145f0eb9d1caa9a",
+			"final": "7060919ec1ed9e8892810914cb014099",
+			"record": "c6318d647602a7b57ce7a82479110660",
+			"refused": 0,
+			"start": "240a608eb4d079003d451d0c656019f0",
+			"turns": [
+				{
+					"dice": "074d10db7c3c3bcf5c2777489442f1ee",
+					"events": "2411df9fd3ceca9e0eeeeaf12deebca5",
+					"state": "280473d3b27f6c739a93f0b01c97ceb5"
+				},
+				{
+					"dice": "4c1de64716f6045db97f08907f86d000",
+					"events": "b4ef3e8e3e49dc26d75c5d67c0ce3488",
+					"state": "57e62646db122601d4fc46184b80784e"
+				},
+				{
+					"dice": "4c1de64716f6045db97f08907f86d000",
+					"events": "f33dbb79f6e2fd098bedbd38a4f6d319",
+					"state": "2e32c702d0783aeb27ca6b97db2f3f38"
+				},
+				{
+					"dice": "4c1de64716f6045db97f08907f86d000",
+					"events": "13b2adf2d2c0905258f70bf201533d7a",
+					"state": "aec292463f817e4bea3554fbcbdee4a4"
+				},
+				{
+					"dice": "4c1de64716f6045db97f08907f86d000",
+					"events": "6922d116e2aa7cf09b4f39455651fa5f",
+					"state": "b630a31beba899a3dfd9beedad38a96c"
+				},
+				{
+					"dice": "4c1de64716f6045db97f08907f86d000",
+					"events": "782288d2c87782e795a4bf3746ff5adc",
+					"state": "206b4372c31b86642ebd2652d467bc72"
+				},
+				{
+					"dice": "4c1de64716f6045db97f08907f86d000",
+					"events": "12b44392fb7d03919b9a9aa4725d6a78",
+					"state": "7f90aa369b0591edd9a0d1313f689c02"
+				},
+				{
+					"dice": "4c1de64716f6045db97f08907f86d000",
+					"events": "40bcbf2187f4c772ba3efe6f7815617f",
+					"state": "2a07fbf89e817f7cfaaa1636bac05207"
+				},
+				{
+					"dice": "4c1de64716f6045db97f08907f86d000",
+					"events": "0c17d3c373ce3c6614012b37ea219ced",
+					"state": "4a3be263ebbb5e9632dd6fdb4f993f9d"
+				},
+				{
+					"dice": "4c1de64716f6045db97f08907f86d000",
+					"events": "66f468d270037f9550257652fdfe0790",
+					"state": "1ce792c7285c1418f6f0f48bbb565374"
+				},
+				{
+					"dice": "4c1de64716f6045db97f08907f86d000",
+					"events": "79eabbf39f0172837b8b0cbcaf67e52c",
+					"state": "583d8aebb251f03cd00d71ff61ae5a6b"
+				},
+				{
+					"dice": "4c1de64716f6045db97f08907f86d000",
+					"events": "2284648243f4fbbc57d1231bf926b109",
+					"state": "7060919ec1ed9e8892810914cb014099"
+				}
+			]
+		},
+		"magic_tithe_sieges": {
+			"dice": "7f92956d6d0643684171f2326f9baca9",
+			"final": "c1fd0c4e73bc99a7480e4c96ced55124",
+			"record": "b44ae6cea80d72bc5d23960358db17cd",
+			"refused": 0,
+			"start": "53a85c261cbd702df9cade6ab0ba38b1",
+			"turns": [
+				{
+					"dice": "ba83e2abd016be69bffee0bc10419a4d",
+					"events": "cd876904f5202bdae1aa70d95233a81d",
+					"state": "98b0013da82c31995bc1f007ee73f050"
+				},
+				{
+					"dice": "7e083d1eec1f3cea34f24d3c94f21974",
+					"events": "8a0858c69e37817d2825974701b5e0b8",
+					"state": "c4b66edccf0b168423a932edc54f0319"
+				},
+				{
+					"dice": "bcfc69c036b984d40b3de19e11ac9842",
+					"events": "5ecf008ff5562b110271628a0735ea38",
+					"state": "8930b5f1124595e4ebaf7290ca57f0dc"
+				},
+				{
+					"dice": "c4919b18d0a9e3fc1900d6311b87f5bf",
+					"events": "61809f9c9824ff3788fc989f8ced950a",
+					"state": "aedaea64a3a7b02716a6b4720ddc8200"
+				},
+				{
+					"dice": "768fd8736015e878c00950a170eb13d3",
+					"events": "b405e3665b7f4cac9c2eaa4b64ce177f",
+					"state": "94c366bd98ec89598b0f3aedae522610"
+				},
+				{
+					"dice": "e491ab0920d413ea5cbaddaadca73515",
+					"events": "5ac980bd94a6ee321e78f4c3361a37cf",
+					"state": "f19b35e43fc01d2f48d4a5be5214a7e2"
+				},
+				{
+					"dice": "bcfd55c90be3f92fe0034301e4e58c3e",
+					"events": "a5867d71c6b5833896282cec1f71b7bc",
+					"state": "76e29291cc818f4f7d36fe0bc063af2b"
+				},
+				{
+					"dice": "1bc4734ed68b06ac6208a7153afeb1de",
+					"events": "47ae3af18d213b537386d86dd54ba03c",
+					"state": "d1b9bf02e8db55eccc0c508d5c59238b"
+				},
+				{
+					"dice": "a1c3a83db44a69bcabc00796e4168491",
+					"events": "817e78fe0b3efa3fd383f0e5a1dce6a0",
+					"state": "e863f309f2651b3841dedffec02bfa47"
+				},
+				{
+					"dice": "70b82fb6047db618b15e8b4d395c34cf",
+					"events": "52c76f4a0f66d37afca0ed944a734405",
+					"state": "63ff6a3a463e6cf19f39b521b3943168"
+				},
+				{
+					"dice": "e5307818b6746f06f08435717a749aa3",
+					"events": "b7b24a95a2bf7e7b3be1f7a9a71fa70c",
+					"state": "76cd9a3165dd40cf4127fc3ae2e677c7"
+				},
+				{
+					"dice": "e5307818b6746f06f08435717a749aa3",
+					"events": "181dabbb9a85ba1d341ea07692c64ec4",
+					"state": "c1fd0c4e73bc99a7480e4c96ced55124"
+				}
+			]
+		},
+		"none_clans_first": {
+			"dice": "36654e7e4f822195ff474a383faf60a0",
+			"final": "0171f2e257fe2fd89904e1d1dc8e7014",
+			"record": "f5db45929e69dbce72ccf60adc13355e",
+			"refused": 0,
+			"start": "93d501e55c5dce3f469d0c088e267d1c",
+			"turns": [
+				{
+					"dice": "b41608e64c77b91e510af203c1adc413",
+					"events": "01b302c5b3f04f77ff3dcd7b7a98e859",
+					"state": "0a3277f5f80a8a9792804f883e22fbc1"
+				},
+				{
+					"dice": "b7575a3dca814faf035e3d56c094b0a2",
+					"events": "5ee48e16b27c6a19f0b4c5f5ff594c3b",
+					"state": "68fb5413f73082d1f7196a3f48465d73"
+				},
+				{
+					"dice": "f376ee5ea09e8e9bfe3e8ac5bd3c98a0",
+					"events": "05e8aaaa02ba4bff8d40d5e6850bd995",
+					"state": "973c9fdc34d6e5f8c0afe3caa4d4792a"
+				},
+				{
+					"dice": "f376ee5ea09e8e9bfe3e8ac5bd3c98a0",
+					"events": "ad4e2dc0634cc2e71284aa68c6f08415",
+					"state": "b09f72fb8528a9f78f501a900a407b53"
+				},
+				{
+					"dice": "7f5f08adcc8be22b50859d8e8429a364",
+					"events": "86d80489c85e0703a0963cdd362d07e6",
+					"state": "9d7c65f3b5d0ed192d10206337085923"
+				},
+				{
+					"dice": "04bc78a6e51c65687c0db3cb2182cd97",
+					"events": "cde91ba7e5995f02dd377a6cd8fc8bac",
+					"state": "342fb2c043328394eec45a15606f3445"
+				},
+				{
+					"dice": "8876c247f579ab3f930c815aeac325db",
+					"events": "7148f318a65bd2872e3fcae9a1164253",
+					"state": "2dd1c5db608aafd705047f891d08d9f9"
+				},
+				{
+					"dice": "c6cedcfbda37f18286d23387f85362a0",
+					"events": "cc4369c71ca64fe0ce76715a81ef6867",
+					"state": "e0e386960db2371f761dc073070e908a"
+				},
+				{
+					"dice": "209e180464598abd986002e88c5d592a",
+					"events": "2f3c196821c2eb3cfa16a52c06a8a1f8",
+					"state": "74c7f1af49e680565af73e90fc12020d"
+				},
+				{
+					"dice": "4c867e31084946f4708b929c6e984580",
+					"events": "e350f5737b468e664b639c3324850ba3",
+					"state": "622948c85142c04e824ef3b8ecad9cb5"
+				},
+				{
+					"dice": "9c2c21b4383a45db6f36458f6fa61029",
+					"events": "2ab0a89c9577f2f3eb7d50700d20932e",
+					"state": "a9105a94d6a6e2346472c4fdff14b12d"
+				},
+				{
+					"dice": "aaa8bc32603952347d6b0d2e6a054e08",
+					"events": "2c95705888dcee789640012680307c8c",
+					"state": "0171f2e257fe2fd89904e1d1dc8e7014"
+				}
+			]
+		},
+		"none_crown_first": {
+			"dice": "8ee42a21df1bce1f7136c06e5f72bc9f",
+			"final": "df26afb6aed566ee68db75412908d9fc",
+			"record": "fc25f6c1fe117199ca3d7d84f26f3a2e",
+			"refused": 0,
+			"start": "582ba3cd3241e6c076ed429e5ca881ca",
+			"turns": [
+				{
+					"dice": "7f6c99b4977dcecc821452274a6385ed",
+					"events": "01b302c5b3f04f77ff3dcd7b7a98e859",
+					"state": "c59f32ba166990f8a5277e7009378ce9"
+				},
+				{
+					"dice": "51d1bc519990dc7e79434de834136847",
+					"events": "5ee48e16b27c6a19f0b4c5f5ff594c3b",
+					"state": "581d826d9c16f93ebc384e806baadf13"
+				},
+				{
+					"dice": "f68735beb13c1461fad1ffdf25329193",
+					"events": "05e8aaaa02ba4bff8d40d5e6850bd995",
+					"state": "3a0f2cf1355eb3cea0bed643b5378bb7"
+				},
+				{
+					"dice": "f68735beb13c1461fad1ffdf25329193",
+					"events": "ad4e2dc0634cc2e71284aa68c6f08415",
+					"state": "6d90c97c460ea3890b7fef976ea58901"
+				},
+				{
+					"dice": "4ea43322bd815a9e353f0582f5427cb2",
+					"events": "86d80489c85e0703a0963cdd362d07e6",
+					"state": "c4ac4183595aafaf8434233d28daf3db"
+				},
+				{
+					"dice": "19903e2dfa104bce66b89aeaf3883a02",
+					"events": "cde91ba7e5995f02dd377a6cd8fc8bac",
+					"state": "01082ed4291ad32d7d18c0f00219e544"
+				},
+				{
+					"dice": "2e1eea7093381b17dd55541f1aabafd2",
+					"events": "7148f318a65bd2872e3fcae9a1164253",
+					"state": "284b8f25d335ed042e041e43b87e51fe"
+				},
+				{
+					"dice": "0e5b73efd1a6a8fb43c55d4ffa6ad23b",
+					"events": "cc4369c71ca64fe0ce76715a81ef6867",
+					"state": "da3281fa30edb6be6712899d06be8948"
+				},
+				{
+					"dice": "a2131ab7815ddd3d8302b82ed3a4bfca",
+					"events": "2f3c196821c2eb3cfa16a52c06a8a1f8",
+					"state": "caa1ba3607671b4e5dd94c95da0b30f1"
+				},
+				{
+					"dice": "00428c23d09e7a7571a25ed4d0567764",
+					"events": "e350f5737b468e664b639c3324850ba3",
+					"state": "f57d7823dc33303573f23e13c346e4fe"
+				},
+				{
+					"dice": "e76957c9365662d72b3740e676a5c529",
+					"events": "2ab0a89c9577f2f3eb7d50700d20932e",
+					"state": "ae70c467d193fe44bd7c827ac409cefd"
+				},
+				{
+					"dice": "aa99a9eb5d9225d9ae12aedefb97f9a1",
+					"events": "2c95705888dcee789640012680307c8c",
+					"state": "df26afb6aed566ee68db75412908d9fc"
+				}
+			]
+		},
+		"none_fog_clans_first": {
+			"dice": "13e37581c17317d6e07dc90236cb29c8",
+			"final": "6b7eb9197e45c113851c421fcf900d5d",
+			"record": "30fe653f6be31a58388f833dae0c1024",
+			"refused": 0,
+			"start": "e01f2c20ea291c327d97062ec1cafd52",
+			"turns": [
+				{
+					"dice": "2bedd9416e3ee3009141dba38a16417b",
+					"events": "01b302c5b3f04f77ff3dcd7b7a98e859",
+					"state": "947ff2fc932ebb1acc1c79cb44a1c053"
+				},
+				{
+					"dice": "734fc9c7b28b9a7b454bf1f433d2bf0a",
+					"events": "88dc2515d66cfc601b80a903c837b068",
+					"state": "0f17ffceb5977d1781efd06c9e436ce3"
+				},
+				{
+					"dice": "756eb468b69322f5239183120bef9fd8",
+					"events": "db4c69bcbecee75cdb567ef3dd41c85a",
+					"state": "98507485793c35cda52538128a43aaae"
+				},
+				{
+					"dice": "116df3dde704523507cb7e4a20d98f9b",
+					"events": "35c7690c1bfa085ca16b023471332a78",
+					"state": "e55e6f07dd8dd4f94c7f24078201ceef"
+				},
+				{
+					"dice": "75a73845e995c7963ed74bc856432406",
+					"events": "6a46e86302ab84ad2b7235f181826bd2",
+					"state": "173b42661bdf356a69841dc0e28df94f"
+				},
+				{
+					"dice": "f3448274988ad9d1745b6ef31a66df9e",
+					"events": "3ccd722e2e27bca32128429a85d0b516",
+					"state": "0c5e115dfcafa5b1deb4db8793bf0005"
+				},
+				{
+					"dice": "1e19c1d342ad8380e519ed5407f8710a",
+					"events": "ed161486dce73b779aab8dfce521ef5b",
+					"state": "7973b301fc7d3649efa16e195776d34e"
+				},
+				{
+					"dice": "67bcb2b9923f35400b3fc7de71292a09",
+					"events": "bbfca459e5055fbe1605023a18e03eca",
+					"state": "83cf1e069cdbac78486bc70e2ef523e2"
+				},
+				{
+					"dice": "e1820719251259d0cccaefef32834090",
+					"events": "c196210d7d2263a6e0269c9e15f1c70b",
+					"state": "976653aceae1e5da842b0095356381c2"
+				},
+				{
+					"dice": "d243ebfc302d6a7dbe7ca2d3672df58c",
+					"events": "2154e9a1589a82fa1aa2e2fee8c6f7f2",
+					"state": "e1056f04514f5c678baed004be1b5924"
+				},
+				{
+					"dice": "f4b344de8e0544e8b6c435920e80ac24",
+					"events": "db71d4bda4d88dde0c1c6dd66f7ceedc",
+					"state": "1c506c7b698bfc01aeb1342032b22ca0"
+				},
+				{
+					"dice": "99461122874a0bbeb3259a77d568ac50",
+					"events": "eb7b94ee671f54c43e2d7c65dafdc099",
+					"state": "6b7eb9197e45c113851c421fcf900d5d"
+				}
+			]
+		},
+		"none_fog_crown_first": {
+			"dice": "f174c33c4f8fc7092905ec6e81489712",
+			"final": "cfb5d2fc160020cf846ba3291f452c08",
+			"record": "94dd612530732eb0fd1ecffe18f75055",
+			"refused": 0,
+			"start": "e4968248232aa56037922178064b7a9f",
+			"turns": [
+				{
+					"dice": "ea47bdd72da86d758a9e66caaf1c92aa",
+					"events": "01b302c5b3f04f77ff3dcd7b7a98e859",
+					"state": "d3543387c8e0e721701929ac452d9038"
+				},
+				{
+					"dice": "4c76666a063e760c9e59049abed45ff9",
+					"events": "88dc2515d66cfc601b80a903c837b068",
+					"state": "8722f930d8696fd3e67e79708359154b"
+				},
+				{
+					"dice": "e9e5e5783d246f5249e5af5cccfde146",
+					"events": "db4c69bcbecee75cdb567ef3dd41c85a",
+					"state": "f7236eaed3c121b22797d94f4adbf6d7"
+				},
+				{
+					"dice": "b362d11e4039d1ec207e4ae087be5ed5",
+					"events": "35c7690c1bfa085ca16b023471332a78",
+					"state": "516928d499466fcd797c3e6e6c07a0d2"
+				},
+				{
+					"dice": "d0e7ecadaf4b4c0ea7d6863fac08ff53",
+					"events": "8f726deeecff01e9266ad524f7cea943",
+					"state": "2d06ebaf40cf57dacad0fdff8e33fe2f"
+				},
+				{
+					"dice": "8e02f518779392ec82af0fc7b0bc70f3",
+					"events": "3ccd722e2e27bca32128429a85d0b516",
+					"state": "a8ee8db085da46147140c421e281b761"
+				},
+				{
+					"dice": "c1103315d361a60f9693f1a364d12a4e",
+					"events": "ed161486dce73b779aab8dfce521ef5b",
+					"state": "ce8e30fbf8ffca19599dc3b089864b05"
+				},
+				{
+					"dice": "f3bab19bbb96f6f782b6efe9a5b69d1d",
+					"events": "bbfca459e5055fbe1605023a18e03eca",
+					"state": "6eabb86ddade3a7a4909eef1a508488c"
+				},
+				{
+					"dice": "794f81b3dcbc77785c25fab2bfa175d4",
+					"events": "c196210d7d2263a6e0269c9e15f1c70b",
+					"state": "a6520fe7c0d93b9a35c6c53f83182ea5"
+				},
+				{
+					"dice": "c47a35e5a553b04e8d20be22c9230546",
+					"events": "2154e9a1589a82fa1aa2e2fee8c6f7f2",
+					"state": "984849ec9e38385731af6bf7b91ce9f2"
+				},
+				{
+					"dice": "4ea493ed8e615e70486e2c6c23b90ed9",
+					"events": "db71d4bda4d88dde0c1c6dd66f7ceedc",
+					"state": "d86526784b709fce25333ce430564a11"
+				},
+				{
+					"dice": "9c9cb1128284194f55c54ecc513647f2",
+					"events": "eb7b94ee671f54c43e2d7c65dafdc099",
+					"state": "cfb5d2fc160020cf846ba3291f452c08"
+				}
+			]
+		},
+		"none_ind_clans_first": {
+			"dice": "a72173ea5c847263ffae739bda17c835",
+			"final": "0571e96e4955a0106d9e44f17221c82f",
+			"record": "3ddf761ade8d4fa0a229f2a6a3bb0eae",
+			"refused": 0,
+			"start": "c76fb8f3eccaaf22ced55430147ff1e2",
+			"turns": [
+				{
+					"dice": "fe6059e85eb1c4f1d929c5a8eaff7454",
+					"events": "21869be6b33dca7a820b99b80f2c5fd5",
+					"state": "aa1dcb132e3bca117530bfd4ae4ba820"
+				},
+				{
+					"dice": "05a0af9320243d770b1cc48b833f6a56",
+					"events": "70f19761db1f8a6c14c9bc6fcba3cafd",
+					"state": "c383848cf278f2456fa663e41453c775"
+				},
+				{
+					"dice": "dccce392f8c22d628ade45c666c5c0b3",
+					"events": "c288ffef029e28d47757f5bfc86cb7d7",
+					"state": "790de34db25322077201e8125d4ad0bf"
+				},
+				{
+					"dice": "636bdc475d3edaa4ea03a782bc6f271f",
+					"events": "ff47f2ccbc907f4f10a9a60f1e7d4ab5",
+					"state": "7b8d6067d0dc4c966f3cfb99ee769db4"
+				},
+				{
+					"dice": "70f70a6c7dc6e76f469acabcf4cb2814",
+					"events": "49e5ba4bbe68c9591be75cb63c804b2b",
+					"state": "c06b39ad60cb62365bc87e345a8b826b"
+				},
+				{
+					"dice": "12d43886312b3b74f865bd673e76a135",
+					"events": "9c4db2f36cc72df4eead06333c9bc6cd",
+					"state": "643ed4e178eddab71836a649082ac9e7"
+				},
+				{
+					"dice": "dfedfc7e6ba13428ae05dbc568659a7f",
+					"events": "abba5ff45e148b89c7d3f081b2a4401c",
+					"state": "57911d1d05d8131e7cd8664763d8d0e5"
+				},
+				{
+					"dice": "5f1da14963900d77746c1c7bff9c450a",
+					"events": "e9e31febc0fbef80746e5a21c663db72",
+					"state": "053f589dbcd8a7b47a642d29823b0842"
+				},
+				{
+					"dice": "7bd504026a90d9eae384055062ea06f5",
+					"events": "cbe8969b28f71541314be02c658ee7be",
+					"state": "f6105663c273f16238a59f89c423ee16"
+				},
+				{
+					"dice": "2f6e0251b94968a4b6e9444994bb89c5",
+					"events": "b4aeb0c970e468d15c869088e301d2d3",
+					"state": "683ef2decc41319ae312c4c7f88ae0c1"
+				},
+				{
+					"dice": "2e75eec784a75d221d4a37db1d9f4a29",
+					"events": "669a21f5b20f7d6b72b0dbb3e75220b1",
+					"state": "96cc56e4034b70009543047031ae7075"
+				},
+				{
+					"dice": "e5e62852921f3435fb5eb532aefc5562",
+					"events": "363f32ac7d86d009c19a0924f982dccc",
+					"state": "0571e96e4955a0106d9e44f17221c82f"
+				}
+			]
+		},
+		"none_ind_crown_first": {
+			"dice": "2b4c7e5d5dbb1892db0425f20876cf4c",
+			"final": "a1ea83fd02189b397eebd1fc94160682",
+			"record": "dabe9e059decb80bab1c879059623d47",
+			"refused": 0,
+			"start": "e8d349ea01bf994d755a848d1e16f0f7",
+			"turns": [
+				{
+					"dice": "adc97613b9cc49fb3e2f10d5e1c454b8",
+					"events": "e38a900f831f5fa327c76ff1c9c4c46b",
+					"state": "122becbba504ef474dfd52a2dc19c845"
+				},
+				{
+					"dice": "029597b13fddeca253b687e8a7c5e650",
+					"events": "6cf52cbcd7805a53a2e470407e7748d5",
+					"state": "1bcef4d0fde9a6bc22af57b9432ca326"
+				},
+				{
+					"dice": "2e98d5611f89a203deec99f8a576d055",
+					"events": "448e92d3730855b3b2187946428041e4",
+					"state": "35990cafafca8d6f1e4c343f3a3df023"
+				},
+				{
+					"dice": "1c347205c05efa12f5eedddc7ad6c4be",
+					"events": "57907a30d51fbcbeef0d5d61756649f8",
+					"state": "1479bb3b953214d9e39cfa39022e21d4"
+				},
+				{
+					"dice": "8cec66a48b780791bcad7a5385e700e7",
+					"events": "5f4f448afa89428169aab2df0c552f0c",
+					"state": "d077fe6a3aee3f7a0cad069014f8d387"
+				},
+				{
+					"dice": "82f21167af2772d35629592570645ff6",
+					"events": "a437201b0ab1f1f0509763450b794bc6",
+					"state": "63589ba2ed21fa6c57ad53bfc1dddd74"
+				},
+				{
+					"dice": "078d419c100b249046eb671bf98e36d3",
+					"events": "10dd1e1e2b26ee0d140ef4eabf6760d1",
+					"state": "e0d77d516709986766e6baa80b76d5df"
+				},
+				{
+					"dice": "82aeba8ab30e2d6d2aa2bc9313e02af5",
+					"events": "5140aef4e8ea07f2bbc499c314f69c50",
+					"state": "b53c1ba1a3e893e931bb9f3e6faa8b96"
+				},
+				{
+					"dice": "5a66a6b19cccb68d0ac5ade3a738aa84",
+					"events": "b52bb130b087398b21834f08624374dd",
+					"state": "cbb1586e35d9a3c7a471b418754c3f2d"
+				},
+				{
+					"dice": "dc91c7753a80f4ba90221aee1294886b",
+					"events": "2cd3080838cb9df649df0ca456ca7dc3",
+					"state": "ad4564759c9393d643418094ec766507"
+				},
+				{
+					"dice": "e03452528bd5d0f84b350d9fe4bbdcbe",
+					"events": "a83eefe0f4405d932c8d99ec9d783f4f",
+					"state": "2da499a6ae445b5b3c6cc8ce72887d5f"
+				},
+				{
+					"dice": "e239199833c27565318c42a59a8a14f4",
+					"events": "1c636e3af521f8b083feb18a5f03b7f3",
+					"state": "a1ea83fd02189b397eebd1fc94160682"
+				}
+			]
+		},
+		"none_ind_fog_clans_first": {
+			"dice": "fb9afe3bc9690ad5bdbe105d54ed13d1",
+			"final": "cafd3bc9e7929312d678de3fc3bd4e93",
+			"record": "0ef1aaf4dae477f0eaacf8ab53641bc4",
+			"refused": 0,
+			"start": "bc08d5dab7c46971692d6d74353ddae1",
+			"turns": [
+				{
+					"dice": "44e128cd42dbc5c537ae6616e0b649f0",
+					"events": "b617ef0ec2c1877e534c09c5689822a7",
+					"state": "d1e2b9b644e15e0898c215d54e111c6c"
+				},
+				{
+					"dice": "333e100d0f8a3f2e3f80bde61d5bf306",
+					"events": "60ec908af14c8378c22d60285f1c5790",
+					"state": "316d1431c81856db12250dd9ddc5f46e"
+				},
+				{
+					"dice": "47118cdb8177a959f1c3df60f06f82a1",
+					"events": "354bedaea27e5a4343c8fbe99248810f",
+					"state": "cb0d991d1fc9792cdbef572f6310310d"
+				},
+				{
+					"dice": "692ab54e98b964d568318fb13302ef16",
+					"events": "98177386f74bb8faa9646188c929d1b1",
+					"state": "d3f0810d17313104bc21f1985f8b88d6"
+				},
+				{
+					"dice": "37bf016115c2c705fcc19948196ec646",
+					"events": "f92fb0b1172373a4c80fceba9eab4349",
+					"state": "2f0dadc1c07b134ac10b2bba9161ba8e"
+				},
+				{
+					"dice": "31d2c0fdf50aec10c9a12460364feb09",
+					"events": "b9a7a914c15b20429ce99cec9eb1addc",
+					"state": "081f01e7482c703a4d114cec0db68630"
+				},
+				{
+					"dice": "9b1f5cc12befd48c28d59188f6cd117c",
+					"events": "f1e5aa55149fb1e1fa823d31cdb24097",
+					"state": "0ff95fa21aefa2514b34689d3eb9b969"
+				},
+				{
+					"dice": "a5aa2a9b1dfaedfc56cd7fb95353b56b",
+					"events": "4777f1346aa4ca841fb34e1b5c4012da",
+					"state": "6ea39e9ec0d917c73ddab88112b07e49"
+				},
+				{
+					"dice": "2bd151b997548d89aa56a70def7c4d87",
+					"events": "2434ec75da528cc03134defd0c45d569",
+					"state": "4cfd144e84f4be290238be086f900817"
+				},
+				{
+					"dice": "4244163cb3b391fc83debc2d57782212",
+					"events": "14fde4c713f5d22e3d73d88e41b67c30",
+					"state": "598e3cb9ae7a46af0e2925bb6d12aa34"
+				},
+				{
+					"dice": "86cb7c6da8a8e24c5e4731906aa36047",
+					"events": "c3afe76630f9d8be05bb87a8534653b0",
+					"state": "382f877298e05380f94669d86169b61f"
+				},
+				{
+					"dice": "e932011c5da82fda0724f20e166846c0",
+					"events": "231586690fbca892e068db6f7d9a2aeb",
+					"state": "cafd3bc9e7929312d678de3fc3bd4e93"
+				}
+			]
+		},
+		"none_ind_fog_crown_first": {
+			"dice": "68c97a6a0ab6dd4ac52745439c66a1af",
+			"final": "79bc30ddb4fdd2ebf907e736bc432099",
+			"record": "ec8bb6928dd1bd891c0fd639f708c96f",
+			"refused": 0,
+			"start": "880a6c4e17bcb5fd44f77fff963d97a3",
+			"turns": [
+				{
+					"dice": "4e7e49cff1f06feeaef5828ee6ec794f",
+					"events": "0dbea4d89c8cba97cdd8427e041c2f1e",
+					"state": "4ed192efc20735dd34dde21fc60e5b55"
+				},
+				{
+					"dice": "babfd8c020417e86784f5950d505968c",
+					"events": "677c33a63267031e390769855dfcfd7e",
+					"state": "26bb3126b448ffac0424777647412943"
+				},
+				{
+					"dice": "98af2a5ec333e71b2b32a478bd25217d",
+					"events": "04940d5e2ce0fbad70fbfbff959f9a0a",
+					"state": "8466b7c326f6cb6224b71e0cc0b894ae"
+				},
+				{
+					"dice": "ed13e6532e98254b93cc61a24766991f",
+					"events": "190345823f28d49bdd13550e68148d27",
+					"state": "29e4991132d348bf68dfd4615ce494b7"
+				},
+				{
+					"dice": "1246b71f2c06c84fd1b476513188ba4d",
+					"events": "db647fc932e3531fc25b3111a28786e7",
+					"state": "0d420c908bebe750b2d0a1323ec4bf51"
+				},
+				{
+					"dice": "ecfffea270f0ce76053342eb6a8584bc",
+					"events": "405cec43d2040ffa5b25cd33ac8b38e8",
+					"state": "683220a8c1a0cf636418fafc85ab0ef6"
+				},
+				{
+					"dice": "7d6fe82e3230c04d253aa7f5a49d719f",
+					"events": "9c426d2550c3b451786b1c4883b92f1b",
+					"state": "66935715a46b0462a71030ee65717d1a"
+				},
+				{
+					"dice": "84d7d2edbc3ff08092b4f67b015fa91f",
+					"events": "d86464288feecb12aa31e27d7a42bcd7",
+					"state": "ba73098e06b5644a9ed4e3829fa86ad3"
+				},
+				{
+					"dice": "73283e9cce13786ed1a0a5574583faa3",
+					"events": "0f7df2842b758337fff29e8bb8efd5bd",
+					"state": "5fbae503b97857f61f5c87001e3a24b8"
+				},
+				{
+					"dice": "ad73b690bb0d40e7cf11af02890d3bd3",
+					"events": "4626f17f8d3e2c2a2449af6dfd07f21e",
+					"state": "209bc07551f1b1ebde2f1fcad1221432"
+				},
+				{
+					"dice": "3897adac39d840abaef90d928ad81808",
+					"events": "3af29b6a092e8078dd3df96d8d813503",
+					"state": "b41189cc847908406ae3aaa1a806dab1"
+				},
+				{
+					"dice": "5206cccbc0bd4b2f44b40aefc019679b",
+					"events": "c1c995cdfeed05897aec06eb6b9aa9b3",
+					"state": "79bc30ddb4fdd2ebf907e736bc432099"
+				}
+			]
+		},
+		"none_sieges_clans_first": {
+			"dice": "9929f3af05a69cd1d69e2a8e9caf1cfa",
+			"final": "8a954a8849ec5cd9d1b3e5efa9efc3b3",
+			"record": "e335f35ffdb0b0442a0125e159e355e3",
+			"refused": 0,
+			"start": "39d4112b02033730dc7e5cf8f90f6c27",
+			"turns": [
+				{
+					"dice": "75ecbfe27fd4502d51b49b9b487784be",
+					"events": "63adc957dc34430086812de5e3a27bdf",
+					"state": "e718d5c8417cfafc27c748166166f4cc"
+				},
+				{
+					"dice": "3600d3e384b8ceadc4cce4f87a3f48ed",
+					"events": "5007df477677e749d8f85e9e7ccfaa4b",
+					"state": "4338b88a39b5ec3ccc83cfd6e72406c2"
+				},
+				{
+					"dice": "96d26d816a9e00f977f84be7cfb2df9c",
+					"events": "ccbd01af8b9cccfd832022aabc0c5325",
+					"state": "9aaf5b29c8cd5957b053040c431010ac"
+				},
+				{
+					"dice": "7bdc1c612f9508f45fe0c1b9f55e20cc",
+					"events": "0454c366c719759fff1d6051c83d190f",
+					"state": "1087c71313c6c43d0a6229cc488c5f17"
+				},
+				{
+					"dice": "0b1dc474d9fa96e5d76b012b6b29140f",
+					"events": "bfee3c6d8bfe6c259bc3a416c8885df9",
+					"state": "790b9a4ab487c2789a8759c44175a85b"
+				},
+				{
+					"dice": "54a8fd5996c970272a50ab46da2dd2ba",
+					"events": "b95e081d324bdb12caf8c700427d1ca2",
+					"state": "5f96b97c7665d7be4ea2e0b097afd9bd"
+				},
+				{
+					"dice": "221c5d5dc0de68621b686dde3b65844a",
+					"events": "28608d941a0741061d6d8e7bfa9a117a",
+					"state": "424dacb59bae9d578bfca2c467c1a847"
+				},
+				{
+					"dice": "ff813e86f3df2cf9b7c3f5264d11bd90",
+					"events": "b55b764b2474fc49801ef0ccfbbb49e0",
+					"state": "84327633f7341a8fa6bf11a75027e5e5"
+				},
+				{
+					"dice": "57e04a44b118e7a0257e5a122d3d3d3b",
+					"events": "a8ec78a91bce31ce5d81244ff221ec2d",
+					"state": "7cc05f0e6bbe7f419ab48e1c9f587724"
+				},
+				{
+					"dice": "f800c730f6be08e3d6ddae22955ba88e",
+					"events": "01830460074165d7fbf5486d34f652db",
+					"state": "dc65204cda5f48d72537047c471054fd"
+				},
+				{
+					"dice": "e00d49ecedd34fc70bb84310ad288108",
+					"events": "f6e7068d9fe7224298c704808fbdefb9",
+					"state": "09c98dda31f2e7582693456743b12e3c"
+				},
+				{
+					"dice": "a2088c2ad42113c2b465d953be54fab8",
+					"events": "1148e089a8a625714adfd4a005cd0a8d",
+					"state": "8a954a8849ec5cd9d1b3e5efa9efc3b3"
+				}
+			]
+		},
+		"none_sieges_crown_first": {
+			"dice": "a86c5f978f4fa89ea4893c0fa75c6310",
+			"final": "95c9ceb72d6224bf575140f2fda92ab8",
+			"record": "8194ae2bf5168c476be77956b3fddba9",
+			"refused": 0,
+			"start": "1c6e1ca8bdccfd0acf8fa7867e82db05",
+			"turns": [
+				{
+					"dice": "8795461383e3f970a8e7b97c5ed21943",
+					"events": "63adc957dc34430086812de5e3a27bdf",
+					"state": "634d9b9c3fd82f9f18f7da3f4a754209"
+				},
+				{
+					"dice": "20fc15af98cd9062ba3586038e6407b2",
+					"events": "5007df477677e749d8f85e9e7ccfaa4b",
+					"state": "97e5d56dbf5835d43dad10efd22e4351"
+				},
+				{
+					"dice": "269523ea01e398aa4b241310bc4295e6",
+					"events": "ccbd01af8b9cccfd832022aabc0c5325",
+					"state": "e2ce67aa83b4ec126208044a6487d109"
+				},
+				{
+					"dice": "53ecd0232461878e3f72a0ce84128c81",
+					"events": "0454c366c719759fff1d6051c83d190f",
+					"state": "1fa4b016c73ff0c97e0af799d86827a0"
+				},
+				{
+					"dice": "47cb15fd5175776806f5a1c7fb9a2fe1",
+					"events": "f3af9bdd17519be158e3c624980df932",
+					"state": "5278f1c7d3b86e62540e9cbf0909e2e8"
+				},
+				{
+					"dice": "b832ebfb7f6d11ef12fe294e7a38c027",
+					"events": "a0480295147adb12b6606385260ef380",
+					"state": "386a8acffb62dcf760b5448b77e6d264"
+				},
+				{
+					"dice": "21c2462cfb2e2b81d0bbc0d73cec105a",
+					"events": "5779a98821256f730782b4cf70f29934",
+					"state": "f5546ba1a1f97a73c3037a34b8d0afd8"
+				},
+				{
+					"dice": "42e54c3565ad610447774c656a1cb1da",
+					"events": "d66a9b7c00b3f7a410239e393bff5392",
+					"state": "c0f07529785cfccb80175248b1db4713"
+				},
+				{
+					"dice": "68c8000f2bae99d3c0c51d2d9dff92d9",
+					"events": "f8b3be42ed4a483b3d282e415bb75053",
+					"state": "c6ef2cabc2af7ae8bbca75f7f1693bfb"
+				},
+				{
+					"dice": "350a1a65f42ce296d767097bc390777a",
+					"events": "28ee928538d28ab9f24a861436110e6e",
+					"state": "95c9ceb72d6224bf575140f2fda92ab8"
+				}
+			]
+		},
+		"none_sieges_fog_clans_first": {
+			"dice": "76d1d27268ef1374091bb80deab250c6",
+			"final": "708139c292c252e40caab05f29c90118",
+			"record": "5e1171d9eee33f1fd642bfc93ad31e49",
+			"refused": 0,
+			"start": "c076ddd3bd649014855920425219e7e5",
+			"turns": [
+				{
+					"dice": "44e6e317f74b280a1c10f7fe86c3c9df",
+					"events": "63adc957dc34430086812de5e3a27bdf",
+					"state": "1f30b73533710136a90f367503e2d30b"
+				},
+				{
+					"dice": "20da9343aef6fe5cdf0b3484abb3b935",
+					"events": "ae1a5b14c9fafdbc86bf89458eb6fc40",
+					"state": "bf7b86d6a180f96d986c0a1d1bebe34c"
+				},
+				{
+					"dice": "a36251f5b715532b0d1fb3fd2456a22d",
+					"events": "d82d934ce57236576a70b899d7bc9d70",
+					"state": "a180e5e9d63d519e8324a67596cd6a51"
+				},
+				{
+					"dice": "d9273cbb20bacf81fa04b2d92d88a82b",
+					"events": "2cc4b5c27cf1dca63b9ff364b7051542",
+					"state": "a59475c8170fc515ca6387b024f9ee9f"
+				},
+				{
+					"dice": "4764ac2bbeea9303d8bf4fcefdf879fc",
+					"events": "ed87be8eaf22a98c5a7f14badbbd6c53",
+					"state": "a2ebadec61165b9cba5304eeea44f042"
+				},
+				{
+					"dice": "41de89ad5a84e9fdaf03cc5aa583b0e3",
+					"events": "26a5787ba2048b0b8aaca403cc7d1791",
+					"state": "aaca3a4f613fc665ad81ac3a093960e2"
+				},
+				{
+					"dice": "1d7353c59ba4f110609785e7b8fe11a5",
+					"events": "ca2b10c5e222879ce4e433d444b6c686",
+					"state": "c67f7c524173f3fd6cee13e4723aad5f"
+				},
+				{
+					"dice": "ea9b0fc32071ebddf531d4fbf3292894",
+					"events": "34e19bff31eb13075e96c97fa09e6e5f",
+					"state": "b16128241224629729149b9a7576381d"
+				},
+				{
+					"dice": "3c2e3d80b0f7596b4ae2d3f617dabd94",
+					"events": "004c2b02a33d7c1f1a42da72bf9d17ae",
+					"state": "bbf5e3b5a3f93086cdc04b4cb4a2ab6d"
+				},
+				{
+					"dice": "3c2e3d80b0f7596b4ae2d3f617dabd94",
+					"events": "34eea6021d637afd58120e80cab0caa1",
+					"state": "9d317f374e97285e035b24c13b930cce"
+				},
+				{
+					"dice": "bd5a3786608823bdc8fa3b569ee87fe4",
+					"events": "db54df9302f54138d9614e9e088871de",
+					"state": "b2cd5275abc9aa0b1ea8c9b79d6ce231"
+				},
+				{
+					"dice": "24001e66cfb160ac95685a83007c31c0",
+					"events": "a947ff5b106e3ba912646f0a51f985f9",
+					"state": "708139c292c252e40caab05f29c90118"
+				}
+			]
+		},
+		"none_sieges_fog_crown_first": {
+			"dice": "747618be282f03745575400902b9e7bb",
+			"final": "aacd97bc9e10c914a226605b36b0b028",
+			"record": "129d93056a3d027c19ec8ac4d40dafc5",
+			"refused": 0,
+			"start": "63f5626a328007387da3eb8870bc1cf0",
+			"turns": [
+				{
+					"dice": "ac9719d41b0f0216f488ea6165971ffa",
+					"events": "63adc957dc34430086812de5e3a27bdf",
+					"state": "caf84b07761ec661e234cf7fc6b4571d"
+				},
+				{
+					"dice": "bebba7df1592021aa55d0729427889c8",
+					"events": "36c18efbe320c0d3cdb1347e6b7dc0c2",
+					"state": "15c8e17f2514f94878b4f80e370e1d55"
+				},
+				{
+					"dice": "aa96d28c62aa2cecd3a71a6a328d551f",
+					"events": "7696caf51ea8d727b59e7d1aa396cf6f",
+					"state": "88b44eb93a6b28a3e97e5d6d75c7813f"
+				},
+				{
+					"dice": "dc752fbea14a3e0bcf013ce4e29baee7",
+					"events": "2bd13f54f45e6bb513382c836cdcfd7a",
+					"state": "68dd9aebd8acd2507c7126f471873243"
+				},
+				{
+					"dice": "8a5fea04b55f5cf3e128fe1f09298e1f",
+					"events": "9ae9e7572a0c1869a59e21cd7ab7ea7d",
+					"state": "706253e34e93f4daf2a19a474eb02e0e"
+				},
+				{
+					"dice": "0445561efb3c9dc8d4279fb894c3823a",
+					"events": "495828ca013325f9fdb68799ce34177e",
+					"state": "9956b0a354ba0ae8ebede95f8df750f4"
+				},
+				{
+					"dice": "0445561efb3c9dc8d4279fb894c3823a",
+					"events": "22b3bb3a171bb51c110fa143275e2afa",
+					"state": "082dc75e1f909274a24d64099076e434"
+				},
+				{
+					"dice": "e4af41d861d587519776d4a1e9c74229",
+					"events": "ad0eebdbd6e5f04e12837e5a15957030",
+					"state": "7f5d1f7d04f18d3a2adc21ced7e926a7"
+				},
+				{
+					"dice": "d615ff437a82f6f3aed818f6bd119046",
+					"events": "227caf06d6b346ad06b648a3bdad8150",
+					"state": "467ed55f899421708338bfc6af774a44"
+				},
+				{
+					"dice": "1f2fd03bd5cf4806d857e5b5c44a1a3d",
+					"events": "8ae132fd2b59ff4d7f67f638a3fb2fa5",
+					"state": "6f28c0df56c6a55c96f24655e7ec5450"
+				},
+				{
+					"dice": "34322722eb101d5d9c64cdc985f00aff",
+					"events": "ad53a6563241912b3edcc11ad7b97b15",
+					"state": "aacd97bc9e10c914a226605b36b0b028"
+				}
+			]
+		},
+		"none_sieges_ind_clans_first": {
+			"dice": "26ee06e2289c5e56de81c3b0bfb1d811",
+			"final": "ef8a53cc6df4807b7eb00fa2f8094434",
+			"record": "e659e263b17a25c10f6f5eae11342ac3",
+			"refused": 0,
+			"start": "e24785c0db2dfdb796797eab661c908e",
+			"turns": [
+				{
+					"dice": "14f459d318c7576ed045e9c4ce0a597a",
+					"events": "fa8fd7b6653ce8c6f406b2a00c415419",
+					"state": "f284a5a14bce4787ffca08c45f7fcb64"
+				},
+				{
+					"dice": "88878f29b8b2f4ea772270fb767f3f8a",
+					"events": "eb00fa6deab1043e6b4b1db0a7d4192d",
+					"state": "72e09900b4f4ca0a0570ddfb51c084f6"
+				},
+				{
+					"dice": "52f85ae8352dac02ecd2a2bc3c19ce85",
+					"events": "0127f072e99efa2e87809246ea594c58",
+					"state": "cbdb31b064853b7ab0767ca7d9cb33d7"
+				},
+				{
+					"dice": "233e73e1885506667c788800024d9a2b",
+					"events": "408d710448cf5d349282ffb9f0cdf251",
+					"state": "0de28af262ba79f59c96f121801f5d54"
+				},
+				{
+					"dice": "267ade4e0e6333df6358c296121c702b",
+					"events": "732ed43586d589adf5612613949ef54b",
+					"state": "74811d7848f4f851f3d29aea787bd92e"
+				},
+				{
+					"dice": "5fd268c8a80237f7b7e9c56ede7ba01a",
+					"events": "1decbba80ff7a86667529916eab3aa0a",
+					"state": "95f503f3ccdbe5f140412bc6fa441f9f"
+				},
+				{
+					"dice": "24f8f7f05d8c8b3ea2917041eb0fef6b",
+					"events": "2d945b58f4445dfab31b9b9015113176",
+					"state": "adbb6ac36cd7d95b4f66712238f118a1"
+				},
+				{
+					"dice": "a1931ca1f02259d4c94023db5761ce67",
+					"events": "51785281b85b774f526aaa2c5bdd74b0",
+					"state": "804ef0ce870cb36ac4b8d635b560bf98"
+				},
+				{
+					"dice": "57f4952f93692758926d847783f27ccc",
+					"events": "614edbda3c8e3004a6163a2914c05086",
+					"state": "f16fafcf9ca560728057c9469e7311b6"
+				},
+				{
+					"dice": "1fc9b3b908f282a5b4ef25273c07b7d9",
+					"events": "0480de1b4b9818ad4d29ab9c797b94e5",
+					"state": "c9087bf952f4a633c1e84f03c1e46481"
+				},
+				{
+					"dice": "2f287abf39092f75a07f96f7df462b60",
+					"events": "faf26ff8455b485e6bd4bf855546638d",
+					"state": "dc44585303cf77a3ee279e44cb8a117b"
+				},
+				{
+					"dice": "cfb36610c73de3e936f08b49c74dd769",
+					"events": "a3e17279e69f46b7869daeb95308f7ad",
+					"state": "ef8a53cc6df4807b7eb00fa2f8094434"
+				}
+			]
+		},
+		"none_sieges_ind_crown_first": {
+			"dice": "493c9843ab3b30baab4927bd62432146",
+			"final": "c936a184e4bda4c8f7ee3d493008bb4a",
+			"record": "f7720c480ea261d8a252f7c3b746193a",
+			"refused": 0,
+			"start": "8955d12240e7e5a703b6a4007f7eaa1c",
+			"turns": [
+				{
+					"dice": "8f2c35c0511307b7ee5af25aef820480",
+					"events": "9f5e8c6438df876f674d7f7ab03c9778",
+					"state": "ef81b54d997f249566f51437818bd60a"
+				},
+				{
+					"dice": "b873393612ae6deebd26ec54766d4d29",
+					"events": "b255f6c75cef2e0f5b28193210087fbe",
+					"state": "fcff473dc27fb5157db1c05cb18c4f35"
+				},
+				{
+					"dice": "d332db2370330f0fa4648a8a9778e410",
+					"events": "0aefdb6756a92a86cd6065ad5c6d2e7e",
+					"state": "9a3d6a61048ebd680737fc00c15c76e0"
+				},
+				{
+					"dice": "7a88c6d7cc650cbce3de6d121660e55d",
+					"events": "831ff446ab9cc887d0496abb756a30f9",
+					"state": "e06f2f47e1f337e28faa0e9582404653"
+				},
+				{
+					"dice": "3218d6f149daf63428993a2fddd5cc48",
+					"events": "cc11457de1b108111fe7db789a675276",
+					"state": "b8d4b52e488b3a724305b16742632e9c"
+				},
+				{
+					"dice": "ad6f0269ebab85ffc141bcc1fd3b79b9",
+					"events": "683b5a98b145e60120cd892f24be393e",
+					"state": "714837215c4522cf0a37ec6b0afd6c56"
+				},
+				{
+					"dice": "88cfbb95e379477915c819a29066a758",
+					"events": "69210c2f5e75b4922a121d7f5c98d2c6",
+					"state": "26127beaa3a978594a6d92e08a9d46c4"
+				},
+				{
+					"dice": "f973e9eca7a2d2976c1c5f97718c9064",
+					"events": "0be21d5fe265c85378eb10bd1b620fa2",
+					"state": "9f663d6b995977b3488c8de6ba84ccc1"
+				},
+				{
+					"dice": "b080fd96ef324c30604f0345b62ebc20",
+					"events": "971648a1fb4fcc2f79fd7ee7414508f1",
+					"state": "f398869de6c3c9b38bea479069e249d3"
+				},
+				{
+					"dice": "a3661bdb0f5d34cb71092468aa045091",
+					"events": "c3315b5bca135f8e144ed0b8bda5d081",
+					"state": "2eb05d84d7c3421dcd7cd68b4386e403"
+				},
+				{
+					"dice": "714321e1d1e8911ff45e49ed22e05acb",
+					"events": "93723984b7e9f19f601e13e5ba8f2a78",
+					"state": "d344abe95e7056d84c162974ba95e1e0"
+				},
+				{
+					"dice": "730ad5c77084dd527d7ffc55e8f9094c",
+					"events": "1dea674c3c6b72234655f0acf636d788",
+					"state": "c936a184e4bda4c8f7ee3d493008bb4a"
+				}
+			]
+		},
+		"none_sieges_ind_fog_clans_first": {
+			"dice": "00b5035ce31e292f75ae913105e503d8",
+			"final": "b0ea217a3162d12ae821837fff5a9cab",
+			"record": "a0348994d4f2408aaa05613364a4fe4e",
+			"refused": 0,
+			"start": "05e9465b25d18cd3b9fecfa4155a1517",
+			"turns": [
+				{
+					"dice": "3dc5d469ccd36ef8ac71a1af7e021796",
+					"events": "e7df3ef7897ef5e62f523582eb74b903",
+					"state": "c0b17b5241249d0d7ca3afaf00a6b0c5"
+				},
+				{
+					"dice": "6823f0e7f07c1e84e4ca71b7dd78f213",
+					"events": "e21dce8afd3583b9062e02868751943e",
+					"state": "135b03aab475132c4f6122feb3922f6c"
+				},
+				{
+					"dice": "e196ae75bf053565a6175a3a93757714",
+					"events": "c08e4a477dafde86f8bd29e48b586d8b",
+					"state": "e48c3a4e48999fefce24a5c65fd0f8d1"
+				},
+				{
+					"dice": "b47e39389bde0f2ac95a5198176ce109",
+					"events": "d0587d4c1e946b8dd3c434dc5a5088b1",
+					"state": "5cb860d334749f8fd84d85b29c124e03"
+				},
+				{
+					"dice": "ff4be7aac7efeaa90da7a0eb79815282",
+					"events": "967503c274057cc02723d27d878fe2da",
+					"state": "26b80f8bca95f7332f856b96aedc9be9"
+				},
+				{
+					"dice": "b2142a3a7132ece4c1e51d86f6d1131a",
+					"events": "156bef6dc7e6c102a81de0369d23cb52",
+					"state": "2eb8b053b5866cfbce587a7f275f37eb"
+				},
+				{
+					"dice": "8eaa520ddafa73bc1aea92501d5ca5a7",
+					"events": "e279ac504baa5023004e0b14095ae29b",
+					"state": "89378e54252520dce3726b111c29777e"
+				},
+				{
+					"dice": "2d74e0b03d2fa57d96db585a0112704a",
+					"events": "5a609884cb3543838abab5016e2a0226",
+					"state": "e4abad5eee326d434cfdfc5dbd48376d"
+				},
+				{
+					"dice": "46a3b8a06cb3c8beded17b330629942d",
+					"events": "fe9e79a63c74ce7ff131b0255d200b74",
+					"state": "b60a158eb9b8c453b51d8f9ed436d1b8"
+				},
+				{
+					"dice": "fef8ba52450d4037c9920a957dbb8926",
+					"events": "214b89675870cbcc3894600d53de5b8a",
+					"state": "8abb1b0143a6505ea2dec7230955dd1f"
+				},
+				{
+					"dice": "9db86bf6f1bb16211db455ca18cdcdb1",
+					"events": "1911bea4f4185fd8ba0c9c4c56f3339b",
+					"state": "e2463f2f873bc4a8588db34cbde49078"
+				},
+				{
+					"dice": "680da3d039551671fb26aa873ebacc12",
+					"events": "890f0c6aeb3c4396f2ecac12d76fb9a8",
+					"state": "b0ea217a3162d12ae821837fff5a9cab"
+				}
+			]
+		},
+		"none_sieges_ind_fog_crown_first": {
+			"dice": "5a3864c6a045dd43cd992f03c217ef8a",
+			"final": "772b7d82368f82669d86d70c093d35f1",
+			"record": "57bae90efb93c10867c6dfa50efc53b4",
+			"refused": 0,
+			"start": "de6553c4910ff05d345cd2d0b15357a2",
+			"turns": [
+				{
+					"dice": "9ba628ac861ab2dfb1350f392058712a",
+					"events": "68a4955417812186c2a6b0aface6a35d",
+					"state": "52a3534bb040a3d0fe0bbeba7839a7e9"
+				},
+				{
+					"dice": "ef191a9e31a5fa586f624a01459cf3dc",
+					"events": "c92735fef295fc7b88793fff06b715ec",
+					"state": "6d19a83904835724d678d164fe91b599"
+				},
+				{
+					"dice": "b564330c48305cff2590e61ead0fa595",
+					"events": "8631d827b639ac5e9ce0e6f36d119e59",
+					"state": "e00258ec89249dfc5325ba3a347e9e0d"
+				},
+				{
+					"dice": "1576a91df37cc3ae41b11063895c63ea",
+					"events": "b922f095d5f42e1a32b21c2cca11d5f9",
+					"state": "b86e504ff4f55cd290a4455d29c7d800"
+				},
+				{
+					"dice": "1bb4b0161af15b6241b81c79586d5e84",
+					"events": "cb655078b85e0c33f37146cee2fadfd4",
+					"state": "daa4cd53b49c2f58976ed8d2f357e014"
+				},
+				{
+					"dice": "be0de94058e6110ae7771ee15bea34b7",
+					"events": "756636b63904267342313983b217ca0d",
+					"state": "c18a501e2616a6f725c6b015e278eecf"
+				},
+				{
+					"dice": "be0de94058e6110ae7771ee15bea34b7",
+					"events": "d0391909b13d34f2ce55c77ff87b08a9",
+					"state": "800c46cacaa8f031e1da5cb6c4fc39be"
+				},
+				{
+					"dice": "be0de94058e6110ae7771ee15bea34b7",
+					"events": "411e3b0887f84549b59fe70d14817e1b",
+					"state": "a311cbac4a24733f2e34642e25a0923e"
+				},
+				{
+					"dice": "be0de94058e6110ae7771ee15bea34b7",
+					"events": "11e4b4913f5f1f79dfc3cb27c5010dec",
+					"state": "ca9b164299f6def71608d9d610f9c5e8"
+				},
+				{
+					"dice": "be0de94058e6110ae7771ee15bea34b7",
+					"events": "e27e1490b4f31b9bdf7a3c6967eb4df6",
+					"state": "fb526237de17063819d4014a752e0573"
+				},
+				{
+					"dice": "be0de94058e6110ae7771ee15bea34b7",
+					"events": "dc056c319208abd06676a281e72c845a",
+					"state": "232a9dd21357ef460480dc544a5bcf60"
+				},
+				{
+					"dice": "be0de94058e6110ae7771ee15bea34b7",
+					"events": "99f2418861e07d5ff1c4602936ec19f7",
+					"state": "772b7d82368f82669d86d70c093d35f1"
+				}
+			]
+		},
+		"paths_balanced_presets": {
+			"dice": "14803199023bd3ff02c066889d61e524",
+			"final": "8d03515cd8967caa0b0622ba20551dc3",
+			"record": "7612eb704527e4e4a3efb88f4b770107",
+			"refused": 0,
+			"start": "f6b1a5455835dbbd20e1651a585129ec",
+			"turns": [
+				{
+					"dice": "2a53f4caa0845cfcf73294bb93e6b786",
+					"events": "0b804cdc3addc26256f33c8ee2cf2dcd",
+					"state": "7eb16102f7f90357748fde73cc2b3094"
+				},
+				{
+					"dice": "cb6024af8fe393bebe5183dedb087d7e",
+					"events": "0862149e1026d65e97405a3269fc17af",
+					"state": "56684cf095a0411a152d9e93a124d580"
+				},
+				{
+					"dice": "ac7b1267535a10abfe3646503009bc51",
+					"events": "87f1717debb8f030dc43a1d9ba35256e",
+					"state": "bb2f4077cf4e77cedf520fd562ec5d11"
+				},
+				{
+					"dice": "245a3173400ffb2ff179aed95a67a183",
+					"events": "ce20275bda192682ffc86765a1b5c94b",
+					"state": "5a37f618d232b5513b95da111bc3847d"
+				},
+				{
+					"dice": "88d25f2ce8c884ba88d8b787aedf41bf",
+					"events": "3c841905cd16728c767083abfdd464f7",
+					"state": "578e7fc3ba96e16310da6a6b267eb58c"
+				},
+				{
+					"dice": "ae731a5ac36d5db79b1f62db1267a26c",
+					"events": "96eb150f87ecaef9fb810cb4066f5fdc",
+					"state": "e1321e8c13dabf36653620597b42d523"
+				},
+				{
+					"dice": "32a68f8ed84fde872b6deead56a91aa7",
+					"events": "8692aa3d90c9bc238848e49b1c474284",
+					"state": "1b74bcd2654f5007d844b462f93949fe"
+				},
+				{
+					"dice": "ccfa3ba0a255eef37a091830e6c49dbd",
+					"events": "f7b7d95537d532560b04ea10c397d44a",
+					"state": "4f208b58cea5953ab7ca4953c9b6e18f"
+				},
+				{
+					"dice": "6af9903978803ccf1f15b1dda68bd66f",
+					"events": "20e0519788fb128aa5e66ca18dc4061d",
+					"state": "b6a3c58cc61ffefacf61d7aee2632dd6"
+				},
+				{
+					"dice": "cf819d499ae11eb717a0f060fa2a0269",
+					"events": "e1227b5a3f90564d29953f135854c8b6",
+					"state": "692784dc53c03e8dd07b030db0c8cb1b"
+				},
+				{
+					"dice": "fc1f0baaba7bf6e410576ebcf9a79ef7",
+					"events": "c7e82033a0c7dc4618e847794609e0d4",
+					"state": "8b5c7a12165bf961c6a0d679f70c883e"
+				},
+				{
+					"dice": "dfea8856d5c783b489e8ca00af9bd62f",
+					"events": "c2043055b7afb960aab5a1576f1cda5f",
+					"state": "8d03515cd8967caa0b0622ba20551dc3"
+				}
+			]
+		},
+		"paths_clans_first": {
+			"dice": "3fa2e4e57dcd66d8060985b3c151b7a6",
+			"final": "2ae697be6c738a1c3c3692143e932073",
+			"record": "08789f948de6acc711ebef24516bcf0d",
+			"refused": 0,
+			"start": "fe6c91c95c928d37d5cdcb3ae2beebb5",
+			"turns": [
+				{
+					"dice": "9defe77c54171775a89bfc5f8f88d9ef",
+					"events": "4d68ea4384ff0e03602acbb5d7f82111",
+					"state": "94c85452108eaa1b2d3d440145bdea2b"
+				},
+				{
+					"dice": "3f2a6db4147b4ed6283007cf666732bc",
+					"events": "f12adb93a500b0b19e8ff9fc9412faa6",
+					"state": "e5011f04c80be60537b106a1b11f4762"
+				},
+				{
+					"dice": "d90597b154a7ae7657c80c5605d1a472",
+					"events": "f12d10a965bc8841e8b0ad37a74720c7",
+					"state": "cabae0f0dc9612790e5a9c32ddbf211f"
+				},
+				{
+					"dice": "a7a868d2dcfb1600375c641eeae78a8e",
+					"events": "ef83c56cdc404644eb99d17c7bf6b751",
+					"state": "a316a4e4915b48952b87387354e8cbcf"
+				},
+				{
+					"dice": "993438ec494ae33ad4d376aa30c5bb13",
+					"events": "8c8cc405f280432d30eff6f83ce9d007",
+					"state": "131440ff012a0f7740234d13b55eaf39"
+				},
+				{
+					"dice": "83724016b80c16a382fcd9bec02ee8df",
+					"events": "e15a27db1c00fdf9e50a7e7d0493eba0",
+					"state": "96ab368723c6e5e5f5409f642eb21502"
+				},
+				{
+					"dice": "5ef38c2c5e7be9cf916be5ba3bc26591",
+					"events": "33f980ff81795c1fc5bc809fa65329c8",
+					"state": "fcb0159d7cfbb5b1bf875a8db7b79ba1"
+				},
+				{
+					"dice": "8680e9a0b015f9030eeaf6cee02dcf95",
+					"events": "9f8d8fdbe2ddea33a9a1b6b2bdaaf609",
+					"state": "801462ea7f9e8d4804f029e641494ca1"
+				},
+				{
+					"dice": "89f444f5f74383c0ac83d27788bb2aa8",
+					"events": "66aee9289ff8e829a44bfd0053dbd2ac",
+					"state": "c697ee5a0514458ff77de8c1564c1a69"
+				},
+				{
+					"dice": "5d0227f3e216d1a289dd9acf9817d424",
+					"events": "9e7e422e72c67972f2d0268669ea03ff",
+					"state": "a447063a62f583897ee06146c3fd5926"
+				},
+				{
+					"dice": "eb029e2b0c610c9972a0d1e977dbd937",
+					"events": "37363090b9d5b3a7de7d52a137c77bc6",
+					"state": "e0b942377d5a80cde3fbf98558a3282c"
+				},
+				{
+					"dice": "fed4af732fefeb4d0bd9ac5a233c1aa5",
+					"events": "c476ed4a2075434380eab68ebd525f16",
+					"state": "2ae697be6c738a1c3c3692143e932073"
+				}
+			]
+		},
+		"paths_crown_first": {
+			"dice": "65333aa2c1f4e28779f926c0212c8148",
+			"final": "a51bdf59927eb7df62962f2524a8675a",
+			"record": "c5f2d4e2e6b9ecc88f11e081183f3868",
+			"refused": 0,
+			"start": "7cead7c791e9e708df14437318627bbd",
+			"turns": [
+				{
+					"dice": "69eb7427449620fc122410bad0782eee",
+					"events": "d8561f507bfd3c0c895ec93ab9b07743",
+					"state": "58469ad751ee26ceedacec56f91fd2bf"
+				},
+				{
+					"dice": "f5717e0520b90216c98923e13df8540b",
+					"events": "fa39d599eaab86396141b09c883d295b",
+					"state": "b75704e0311b2bc8145a1ab4140bf2b0"
+				},
+				{
+					"dice": "3eebab8309691fff4241f8e7baf5a738",
+					"events": "755fca5cd390c5c60ab7fe5241f42244",
+					"state": "125a0bf6c0d7871a634a54e615e02a21"
+				},
+				{
+					"dice": "81cbed35aaca54aa41fea4ac4fce9036",
+					"events": "50ea7c80ea8e325aa7cc2e8b26880493",
+					"state": "9e4dd0b9e289072e59bf77a91d499e43"
+				},
+				{
+					"dice": "75457d05351897d8eeb08ac41527bcef",
+					"events": "05c215fa1dc301d82b985ed8c7358cb3",
+					"state": "c5c7ea0549a0ba8eb3820aaef65b8174"
+				},
+				{
+					"dice": "3934465fd4089479cc6c47aab9d10733",
+					"events": "55d5f4127cf2be571061499a141398a5",
+					"state": "dd6c5fbc039d9f244d0580600fed1058"
+				},
+				{
+					"dice": "bf443e30562e7ac8d20d944fc427a3aa",
+					"events": "7c39428229683f5e27bc305c2805876d",
+					"state": "018c3c58b6b88166a24bf9393d4cae57"
+				},
+				{
+					"dice": "c1376e10063290e6a0d797b539a63187",
+					"events": "786578afd3047238c719b3abad87881c",
+					"state": "7a47eba1459b85a0a0297650be82d883"
+				},
+				{
+					"dice": "cd2dbc89943c6f0f97f71b4d82709b9c",
+					"events": "a1bc241154ed913f6cefa1a5dfc3bfa0",
+					"state": "dce126abbf94e26b9a0d7d4e2bc9dc11"
+				},
+				{
+					"dice": "cd2dbc89943c6f0f97f71b4d82709b9c",
+					"events": "3c4857aba9f1a93f7d31d9c25fdd05a1",
+					"state": "6e3634869739f55a948890fd6565eb71"
+				},
+				{
+					"dice": "51a324367365a18beb66b99ca8189ac0",
+					"events": "78976857a5ee27a27c930df55b2740a3",
+					"state": "18cdd5ab8e706b2255178c471b511014"
+				},
+				{
+					"dice": "ce98bd2b714525b40d8e280d6406da33",
+					"events": "ce6877b21b6b1ce51c356f8e8ab03a92",
+					"state": "a51bdf59927eb7df62962f2524a8675a"
+				}
+			]
+		},
+		"paths_fog_clans_first": {
+			"dice": "8f66fe59a0d771632d767e592a51cafd",
+			"final": "01584c770a742d6ec55e7d1960aaaaad",
+			"record": "e27071926a29c62753be297e40afd1eb",
+			"refused": 0,
+			"start": "e338a14b706e10c869bab31663dad23d",
+			"turns": [
+				{
+					"dice": "797762ff29248009166db018fc39090e",
+					"events": "d8561f507bfd3c0c895ec93ab9b07743",
+					"state": "dc4fa06ef5edf16dc1bd760577400f84"
+				},
+				{
+					"dice": "e5aa961c10ea0a6647e4624db2048a2a",
+					"events": "fa39d599eaab86396141b09c883d295b",
+					"state": "d9ed95fa121af1b3a0ac184f76dd8a1a"
+				},
+				{
+					"dice": "bd37e5700015c6fad7556a3cbc060cfe",
+					"events": "dae48d2793ef3c6105a82dd002dc5edc",
+					"state": "2e98008f269791d559f04b5010c9acef"
+				},
+				{
+					"dice": "201a94f087e88b19ca0eedb7ec132d32",
+					"events": "474481a8465ba3867476bfd8a33a2d6a",
+					"state": "9adda767b531e17c25630ca45ec9c305"
+				},
+				{
+					"dice": "028662749ed45bd426aeb095c2f6f2fd",
+					"events": "4a2a3939b0fb42c611a535d060b06add",
+					"state": "f3777e4f40e8369fb6580f775eba3149"
+				},
+				{
+					"dice": "37e2a88a8b579e20baeeb0f6b53064c8",
+					"events": "43e13824c763d163174720dc18dc0868",
+					"state": "f6dcbff938454507737ff0f4fab2b649"
+				},
+				{
+					"dice": "fc4a471962d541b90f33b4efb2348ce0",
+					"events": "d1b529aae74896578f97ea081d9d9638",
+					"state": "2b181647f5e09e8e1f48abc49171a378"
+				},
+				{
+					"dice": "30451a54bb4c35055a5198e15cdec2af",
+					"events": "98839d309301dd5f942bc5acbf39bf06",
+					"state": "3063632a14c85ab44cce005408b44803"
+				},
+				{
+					"dice": "349d1750bec99430a27543e122eba869",
+					"events": "71df35d9174c3b2b67f925710c9e84d3",
+					"state": "cb84c2549a13251e39927522b8acd0f0"
+				},
+				{
+					"dice": "22e8d3099fe3613d1dd24af02fcdb953",
+					"events": "57760ceb38176719077718c1a9089e59",
+					"state": "61fb4f0b0c8688a0951c573b7b36dc7f"
+				},
+				{
+					"dice": "d2cc8b9ba3a43d34fdadec880651153c",
+					"events": "ef6a357a9f71c9bda262e82b31b93ca6",
+					"state": "7f287bd9f9687da077484395b34f50ed"
+				},
+				{
+					"dice": "4491e03040d8cc05e5c9df3b413d69c8",
+					"events": "8ccb9c48690af5e1606e38ee4d1769d3",
+					"state": "01584c770a742d6ec55e7d1960aaaaad"
+				}
+			]
+		},
+		"paths_fog_crown_first": {
+			"dice": "d215fb16d201668279ddad5cb60de470",
+			"final": "2ca66f2b9d4bc86018274ddd1d6c9777",
+			"record": "ca6d53349429fd2d2320af1f76b179fa",
+			"refused": 0,
+			"start": "0a6ef192ce8837226ad240a8e712660f",
+			"turns": [
+				{
+					"dice": "3bf36ba3cb934076850514436733b14b",
+					"events": "b39ede860dc6ff278c150014e0ce81da",
+					"state": "04f804c920fc310989221377833bbc10"
+				},
+				{
+					"dice": "088ba27c3f84eeea82ce390bd5d7ba51",
+					"events": "4b259811762150b5a2bafe981a3893cc",
+					"state": "4968c28e41664cb4ec97fc9db5d6dc2e"
+				},
+				{
+					"dice": "d4a1d483b1196b92588eab8cbb044317",
+					"events": "780b0cc726cd5ec0130655697714e361",
+					"state": "affcdad5d363c420da60572bb01cf166"
+				},
+				{
+					"dice": "19bebffb3184f2e954534102fca79b13",
+					"events": "b1ac10d4b80ceafae521d88342dc0396",
+					"state": "dec38053167bbe37646231bd7d2206e9"
+				},
+				{
+					"dice": "fb0cea495423592a8730807b7beebcaf",
+					"events": "6fb635d7d9350a91a92160eb339ba923",
+					"state": "330ba3a0c2c95e3284894be17af1b9a6"
+				},
+				{
+					"dice": "b971c1f1da3c3a8bfa3c4df0abf67939",
+					"events": "2da529da0a3253d9e1275734c85b4ada",
+					"state": "6091b33b8446c63bd39f2dd096658f4f"
+				},
+				{
+					"dice": "d6435a6bcecf1db0a2f850f52ed468b7",
+					"events": "a1b10c3fa8cd05738f808530ea8c5d31",
+					"state": "bd1414f7777e1fd527576651c21ff824"
+				},
+				{
+					"dice": "2354e7b5de146074597e5f5642b0aaf5",
+					"events": "a66236f612101f8193ead487191b8cc7",
+					"state": "833058e09d43c2fdaaee8891fe919282"
+				},
+				{
+					"dice": "6a1c7718a69932aedc9d385aca882bb0",
+					"events": "ab38adbdaf32aea17b3e12c541dfabac",
+					"state": "077df4481482a3b5aba72a48971cc6ab"
+				},
+				{
+					"dice": "aa29029f23b16deade9c047c73cb4be3",
+					"events": "41c8d2173a1933f9c17ebb32730fc5ff",
+					"state": "d34c2f1a313385bfbf865ff9f5883871"
+				},
+				{
+					"dice": "75390280f7b8bb2f43f8af4f698c6c2f",
+					"events": "e269c57e8063af2e6ee3a3e9b50bac82",
+					"state": "d74f196c8417bb7de229ed25c2fa6da1"
+				},
+				{
+					"dice": "f7d0bd518d715d4d703d9defe2532f0f",
+					"events": "7c92bc740df4183d32780f61999187fa",
+					"state": "2ca66f2b9d4bc86018274ddd1d6c9777"
+				}
+			]
+		},
+		"paths_ind_clans_first": {
+			"dice": "fa4ceb261d026cf774219e6c673dc2d6",
+			"final": "75a21432c9dd58735c068699c36f7288",
+			"record": "80851613a4290093d8a496890994b36b",
+			"refused": 0,
+			"start": "71088f13b338ec4712a11457a2fe9d99",
+			"turns": [
+				{
+					"dice": "45e4aab7e0e99eb413168c6c47e68535",
+					"events": "29273359bdd1a985a8dadacd8630aeed",
+					"state": "ed835bb4f43220c60b65d50673a25377"
+				},
+				{
+					"dice": "7c71c03e5b60fc6ad9cda44ef2854c21",
+					"events": "b8adba6e3228cbe269e86065f859f5e9",
+					"state": "42af4c19f0c084b30519cdc22ee18f0d"
+				},
+				{
+					"dice": "ca2203c27d8db3947098d6e1ff44347b",
+					"events": "5ab4390b2361cb3768f361739659aa3e",
+					"state": "2df962bf721c3de4d3253afd79f7bdd5"
+				},
+				{
+					"dice": "f74555602383e1a68acfc45e0aec5247",
+					"events": "4266710e29e60918febfd18d76412a6a",
+					"state": "0d7cbd7b1bb9e278e380f8bbb3c4244d"
+				},
+				{
+					"dice": "40aa2da14fb3af6e885c4fdaf38fa243",
+					"events": "7e9db80a9120160b5d09980655a578a4",
+					"state": "78a8d79225ef6e5120842951dce5cfb2"
+				},
+				{
+					"dice": "80bb86a99040b1d29dc5ee07db0d2919",
+					"events": "917ec95408b72820f1af9a572e04d43d",
+					"state": "480a9687c18f68b58a2c21198d78a67f"
+				},
+				{
+					"dice": "168bdfeeea1ae9709a633567a3ddfd72",
+					"events": "ca319b216725218d0560c1c10b410619",
+					"state": "9ea6545d4f520293f7d9ac26e5121224"
+				},
+				{
+					"dice": "340cd836e4c590294f00864a48eb6a87",
+					"events": "9c175e177ff31a3f765f3bd64c0e4b19",
+					"state": "e0159b6e37c75ad7b46285b87e8949d7"
+				},
+				{
+					"dice": "75e5f2ac2a1dd7694cf2e2cfe81971c4",
+					"events": "fe759e2c346ca3dbbe39a7b857a9ae89",
+					"state": "27379c00e75d39fa713cb32d81651544"
+				},
+				{
+					"dice": "85dc34636cc05725c05b34c3e72052cb",
+					"events": "19784dddbdb86a1c777e5c95aa1b9567",
+					"state": "75a21432c9dd58735c068699c36f7288"
+				}
+			]
+		},
+		"paths_ind_crown_first": {
+			"dice": "09c55129a1d0bae2ec885f304cf5bd7d",
+			"final": "7b1b2696efbea1523b4a6779343d613c",
+			"record": "e142fb30ad84f5302f02be2395b2d878",
+			"refused": 0,
+			"start": "96c51bbcc2b8f716bb37c01c858c9ac2",
+			"turns": [
+				{
+					"dice": "29cf3da8c4306e29941266381c6c2870",
+					"events": "aa459295774032eb7869809f82a850a9",
+					"state": "7d7bc138a890c9dad5d65ad5369a2637"
+				},
+				{
+					"dice": "cc43fa7e94c9172c48a1e5bfa54e9a52",
+					"events": "9ca890de893e8eb130ed71cb8a06af87",
+					"state": "fee4a1d2b7acea46f805c2de2f5922c2"
+				},
+				{
+					"dice": "cd1a7ab7bb1798a896e5d9c6b6c6c663",
+					"events": "6e5abbf1d29b8a6d052f60d4285e2c4c",
+					"state": "0dbae68725f27a875b5346f2a6f1f008"
+				},
+				{
+					"dice": "20ff34fef9019b52286d171483fefa56",
+					"events": "38eab31cb2b21f61feb0a344ef30a28f",
+					"state": "6234d354df0d5375c2bb8381ce36c19c"
+				},
+				{
+					"dice": "4fba3ccbd178e5287890d041a228e80f",
+					"events": "a4e52a1af7076b0c9cad4189eb3c498e",
+					"state": "95ce7f5ced022ad6935f67e2c80e7404"
+				},
+				{
+					"dice": "a330cd36443b09b2a65533c0907a7dfe",
+					"events": "76347134428b288709ca00b923112315",
+					"state": "bdb3afc4fc04531aca142bf4e64872a7"
+				},
+				{
+					"dice": "c19ab8a4e53e7f3dfb02d9fa9d588b57",
+					"events": "fd127f6a5237e7e056c98955fdba0586",
+					"state": "4daf67188d383b9387ae49590ed183cb"
+				},
+				{
+					"dice": "de3feb81fa46c91e4e6c447c83cd0394",
+					"events": "c9e7b2debdc3ff38880db803bcd7fd3b",
+					"state": "af62d112b0b284712d3745585d1af6a7"
+				},
+				{
+					"dice": "997ee58662f6c6dce0305c084592c010",
+					"events": "eb1e0881359eb576414e57b35d79ddd1",
+					"state": "7b5c6d4cee58bda8762f7e86da906646"
+				},
+				{
+					"dice": "b2bda7bd39821e2875612b056f50d13b",
+					"events": "1071749923992bfbbc754c646bcde4d0",
+					"state": "2d9d413649904bcbc81cb294673061df"
+				},
+				{
+					"dice": "fedf1bd900f1bd1f9a12223954724299",
+					"events": "81260b2cd57ac1ed21f590a6e5fc52de",
+					"state": "bfacc13e8414d193cce8bd988e3b0092"
+				},
+				{
+					"dice": "f7fa98903665de6d2a8db656ce5689c7",
+					"events": "4f21da677b0ba34d48d68be3be33bd06",
+					"state": "7b1b2696efbea1523b4a6779343d613c"
+				}
+			]
+		},
+		"paths_ind_fog_clans_first": {
+			"dice": "e7ea4601a0222d27d4e90a33ea5c06a5",
+			"final": "1a89eaf074cb1cfd0cf9f904c955fe48",
+			"record": "e357980527dffeb44bd87d4d09e4ea00",
+			"refused": 0,
+			"start": "4fc520a4d9192051aa89d9f7967e672f",
+			"turns": [
+				{
+					"dice": "7a214727b21496083a42a33651ee3a18",
+					"events": "0837368f2f1c5d4363722995f219115e",
+					"state": "9c0ab94820f85adbfdbd83292dd36a9a"
+				},
+				{
+					"dice": "4af16005fbcbed5f5b3dd8ba64607002",
+					"events": "84cd7829aa27bdeafc198252ab81676a",
+					"state": "2b144b599430438c4780c43e0d37528c"
+				},
+				{
+					"dice": "219c5d4e7ce27f263d08981fca0588aa",
+					"events": "c2c1a3643dd344777fb49fa090956184",
+					"state": "d3d5d2433edae9bf4c57abbf980e181b"
+				},
+				{
+					"dice": "5498f0e2443a3d70b2caae441ff9d792",
+					"events": "87b135220d0b3dedda32ba38be84a3a6",
+					"state": "a4560b01766f9b597b39b0e7ad235c88"
+				},
+				{
+					"dice": "193817e9681abf704342ab24a1069274",
+					"events": "0708cf1d046c3cc51c82129208b6f2a8",
+					"state": "1d2392ae258f997ae2886cffddcd6766"
+				},
+				{
+					"dice": "47be8dbb1b88d17c98570fa9a72a723b",
+					"events": "7ca04dc06094c3cd93d266b83821eb9b",
+					"state": "0d3f00263ca4fe1b43fb98d60529a757"
+				},
+				{
+					"dice": "7474f716fe9bde268c9709998e5c608e",
+					"events": "91ce18b74cdf21a17f597174d4bb6b24",
+					"state": "0440884c0020e98a28dac7b758dfb400"
+				},
+				{
+					"dice": "70257ae1208b848171541483fbc9ef6d",
+					"events": "877cde5ad37fe67d64c6d51f15a2da9e",
+					"state": "e650631803e9ad2347637117772c7741"
+				},
+				{
+					"dice": "bca33be4bf8d1e7c934c5fa375ac7726",
+					"events": "0f7d39824e14d158e4af7f98f6dcd6b9",
+					"state": "29fadac17959cd7c97286e83ce9b9f3e"
+				},
+				{
+					"dice": "1400285926208673d7f7a7adb30a8214",
+					"events": "b46903704248c48796bdaaa1129c07c9",
+					"state": "94a8df696abdd3a9a8b7bc4e61ba0a87"
+				},
+				{
+					"dice": "4d29905c9df93ed6253e6a36225ae78e",
+					"events": "544e3922d3c2dbd7016d6333cc8d6d6d",
+					"state": "9dc0b39e138c438079d085956c3716cf"
+				},
+				{
+					"dice": "92ebe834a0f1b435486ee655703b74cc",
+					"events": "ccec98e7be1adeb02aa1ac50da8acb02",
+					"state": "1a89eaf074cb1cfd0cf9f904c955fe48"
+				}
+			]
+		},
+		"paths_ind_fog_crown_first": {
+			"dice": "d3f0d657b0b112e8655c6ae07d2effad",
+			"final": "e30f1b7f9f9426ddd45e3404b40fed80",
+			"record": "9b68b9be425f2bb9dcf0a5f76db99365",
+			"refused": 0,
+			"start": "8d4d5314259ce2add8250d953ec49bf0",
+			"turns": [
+				{
+					"dice": "32e9f72baf03a2cb592036181b0e4479",
+					"events": "4e64f3d8078311be364f757890ee3071",
+					"state": "481fa208aea54623f6aacd5612945371"
+				},
+				{
+					"dice": "38dc9e694c65269e4fe78dc127feccda",
+					"events": "80c117850c78a0ba89b1c23eed2a4a5d",
+					"state": "e7f447f82a479404e1c08a5630f53c5d"
+				},
+				{
+					"dice": "0ed2c7e1e52547efecb1d75b2a982d05",
+					"events": "906e4a8018c07a84bbdf9d4ff5aa8caa",
+					"state": "7d5913a47216cfded88910e2cc9704d0"
+				},
+				{
+					"dice": "0ed2c7e1e52547efecb1d75b2a982d05",
+					"events": "011b1030b9b37d87b69d883da0a532f7",
+					"state": "272641b173ebaaa646d3862f024a8173"
+				},
+				{
+					"dice": "7a482c7a0ca3b7a21c15cde0d98ff4cb",
+					"events": "67c9611ba739d54e2be75a437e8b2b88",
+					"state": "7ba26d86047a11dd7e1e76d45d78ebac"
+				},
+				{
+					"dice": "8eda18b316dffebaa86bce734b5369ae",
+					"events": "e31eec959e1f65f39b8019917593388e",
+					"state": "899ebe32fa44edb7593e7c3edbae6f6b"
+				},
+				{
+					"dice": "5201d25e6924ca356c59bb1cd4d7d682",
+					"events": "69dfb80ad9c46ed8a4c7a90f4cafba77",
+					"state": "cadc0560c13b7e3a5779b0d0c171e954"
+				},
+				{
+					"dice": "7f8d67e942f2288f749e123faf6cabe3",
+					"events": "c544be4e438ab45a76d897c4c9e1028c",
+					"state": "64d24068e9723a545a9a3daa09d7f4e5"
+				},
+				{
+					"dice": "7f8d67e942f2288f749e123faf6cabe3",
+					"events": "2fc6321f0c3f234a46e0c5a3c66fe3df",
+					"state": "c0eb18e24d66f8d16240f367d7ab5246"
+				},
+				{
+					"dice": "159e381d3bf724312450564ceb852937",
+					"events": "bfa7efce27342a5349b072c77af9eb36",
+					"state": "cc26efffc7dfe84e7b31e06b3c131300"
+				},
+				{
+					"dice": "a262dffa7a5ec934b414d54bda412b0f",
+					"events": "430646ee40ec746de441246c0fe66b0c",
+					"state": "1568c363c3270fe25443b2e0eea990df"
+				},
+				{
+					"dice": "f44a6d56d0c2c1cbd190e0d53268b958",
+					"events": "b08f996a332ededaf483f7eea2ce1c01",
+					"state": "e30f1b7f9f9426ddd45e3404b40fed80"
+				}
+			]
+		},
+		"paths_preset_ids": {
+			"dice": "a1f7d5e398576660c388d6f760dc1c08",
+			"final": "b38c330d459178a4a28f5548d0baf0bf",
+			"record": "3244d8810d2d5f7bb90a05823d038d8b",
+			"refused": 0,
+			"start": "7cc3beac83b0f4ac7c26eccecb9db4b3",
+			"turns": [
+				{
+					"dice": "90e8b687de19cb1570a47b1379fc0872",
+					"events": "43dfdbd24d1f6ac3d78da74e1c47b00d",
+					"state": "49e447ed017c9e26041944058c0d6fe0"
+				},
+				{
+					"dice": "d1b097206319bbb1b75bd25b5f73b160",
+					"events": "5e96fa77902c991109a6fea49f87bbb2",
+					"state": "419a97b531147b348d4ed014770dce40"
+				},
+				{
+					"dice": "96b8f055a3994c897316c2b69822eb3b",
+					"events": "e6fd5236523f4b6bf9191001c0c5ff09",
+					"state": "4da401616f67252fd6aa6ed9ecb73d8e"
+				},
+				{
+					"dice": "b7defd48e7b3be84307c49f3d94b6ad9",
+					"events": "6185cf362bd2630d3031453005545bdb",
+					"state": "49b7a2ba21c02ba5ed3cdfa44b5f6022"
+				},
+				{
+					"dice": "aacd899cdd9d98d2a2c49c796c4bcdd0",
+					"events": "5460907b4ef823036baf369885da4a02",
+					"state": "02246948a7c80fb6d333a55edea6af05"
+				},
+				{
+					"dice": "aae19da070665feb554360bdd16e89b0",
+					"events": "1394611fa3536033a7986467ec3a1239",
+					"state": "9b6f739ffa81ae66adc0ef8559972678"
+				},
+				{
+					"dice": "d778817654ecbf6a2f1982738b348305",
+					"events": "2bb9ca2b2b37426dc01c0d48a4fd2c8d",
+					"state": "53a7f49900a198878df86da5cb94fd50"
+				},
+				{
+					"dice": "c3a6d2d0576a9ca6c04472b759519bec",
+					"events": "d73612bf3ccbc3b32c18fd17c0d88674",
+					"state": "00768f63abb6dd3f2e75797da56869bd"
+				},
+				{
+					"dice": "2abe9672435bb444ce67eac1157b2b02",
+					"events": "7ceb0b4ac7088cd0bbc70903a83b30df",
+					"state": "f67d744d70b395b632d58c7166c7fe6d"
+				},
+				{
+					"dice": "d2eef56f22f5b90797b6de6ef0cf1bac",
+					"events": "766bbe9d8b4a4c0754b26324432c50c1",
+					"state": "704526f26c9ef96125649a7a468b0564"
+				},
+				{
+					"dice": "a2ae8b65b4fbd21ce8d2c737d5a4cc3d",
+					"events": "8de4c261ecec732a80556b8e5d44e182",
+					"state": "ee232ef3c4b1151c5f185750eae5f7ed"
+				},
+				{
+					"dice": "e4ad6bc8213711ecb16d1ffd51ee2bcc",
+					"events": "ac2fa16d43ac7b084494902a5efdcf3d",
+					"state": "b38c330d459178a4a28f5548d0baf0bf"
+				}
+			]
+		},
+		"paths_sieges_clans_first": {
+			"dice": "ce9895cd8046889ad0a21f27095bce85",
+			"final": "a06e29e6f310f5955063dfc2e1a4110a",
+			"record": "531aa1cfb7b7d81476d6f9dfdcd7ca31",
+			"refused": 0,
+			"start": "4cafb9a1deac58e74a843d93cfeb2a5e",
+			"turns": [
+				{
+					"dice": "ccabf614d3354d0e996d0fe2b95cb5fd",
+					"events": "f9883fb01f5793d4b5802f91d4cfa863",
+					"state": "b091b22aa74e182a36140f51b29a3164"
+				},
+				{
+					"dice": "2d05c6d9e88e20bfabb0027e71f3cec8",
+					"events": "71cf194027ea3994f3ce345e1d4ce634",
+					"state": "de21936bc8dd98779984dc96cf9fdb71"
+				},
+				{
+					"dice": "2d05c6d9e88e20bfabb0027e71f3cec8",
+					"events": "d1d9a1e936853701d7805bff8fffbe5f",
+					"state": "d2ce3dac7dcdc5fb5e7b3eff4cb8ed0b"
+				},
+				{
+					"dice": "c2da6120771ff89e9526bf44f5a508a8",
+					"events": "8df7e38ed83410d9c24bef834868656e",
+					"state": "a4b1903f6915f8975f9f749006503b31"
+				},
+				{
+					"dice": "7288bbd533f983d01c90dfed82ea952d",
+					"events": "caba502eb8b1f7ffe4d4e84cdd4402af",
+					"state": "789df9d4f225469790f3b0c53ea667eb"
+				},
+				{
+					"dice": "99c9edc9f5d83a7112f17a5747fbbdd2",
+					"events": "df433812a179a87aa37de3b552cfec5e",
+					"state": "c5682b46b8006b96e87b7f6d898faed4"
+				},
+				{
+					"dice": "99c9edc9f5d83a7112f17a5747fbbdd2",
+					"events": "b8562aec2f96aa81c00033267bcf39ce",
+					"state": "50a77b6d099e869f885c9e7ae3b5078e"
+				},
+				{
+					"dice": "99c9edc9f5d83a7112f17a5747fbbdd2",
+					"events": "85c355f372c173fc44ccf0228a850554",
+					"state": "a18b187054cce08f923368fb131e6ac8"
+				},
+				{
+					"dice": "ec4748213a1e3db462cd7549661baa68",
+					"events": "46f67f48fc18d864e89b98cb782fe832",
+					"state": "df877348d3dbf7d6bb4b16b40213ce6a"
+				},
+				{
+					"dice": "52b8405d390d693d23ec8ddfff730269",
+					"events": "3c683dd15594abce25d7db3178711943",
+					"state": "b74aaa43310077ceb5d1b08c807afb9b"
+				},
+				{
+					"dice": "056c2d98968e674576ccaec3ed16cd35",
+					"events": "7019375da850c0f9d38a6d38ce3135ed",
+					"state": "77c3ba41d59b89df054b843616f487db"
+				},
+				{
+					"dice": "2402c33b4bf7dfdc16b5dfffd852a53b",
+					"events": "cdd8d4c8404b90e5490c916b95f44fdf",
+					"state": "a06e29e6f310f5955063dfc2e1a4110a"
+				}
+			]
+		},
+		"paths_sieges_crown_first": {
+			"dice": "f776f6e506693fe3b4d43b9c26f1315d",
+			"final": "1c52aedca804870fc205e8f53d08b890",
+			"record": "0ffdab2c18b3b9483fd596bfd3ce3cfb",
+			"refused": 0,
+			"start": "966cc50ef9b7e6a430d5622b3c5bdfef",
+			"turns": [
+				{
+					"dice": "b83f6393359fccb66b9ba59183ba3422",
+					"events": "6b347b01302e12e5da69e573cb65d4fb",
+					"state": "754f29c67cecae2e0cce0f06bae29762"
+				},
+				{
+					"dice": "f0911bb9e6a5da404f0860031375b2b7",
+					"events": "feec35d1ac28c30a0f73bc6217efe9e3",
+					"state": "198e55f349469f7fcc7e05d4f8ca315a"
+				},
+				{
+					"dice": "f0911bb9e6a5da404f0860031375b2b7",
+					"events": "1ee6bc6cd3b790a5618ebb7fc31ab153",
+					"state": "31a31db903dd59253b96eab93394ec48"
+				},
+				{
+					"dice": "7388b6b0cf6ee26e5565250d29d9e904",
+					"events": "62980abe7fd47106cfe87fe243127465",
+					"state": "5faaf7113469a4d3c1ad879741f4bbd6"
+				},
+				{
+					"dice": "b26fb234c5d01ba91eb269f1106da7fd",
+					"events": "593be4ebe355eaeb67ee38e3a2dce0c2",
+					"state": "59e17d3b1dc769785fbccf4bb578ec42"
+				},
+				{
+					"dice": "a62dc5cebf78a68f593211c984bca91d",
+					"events": "91885e03dfaedc5bbfd008a238dbd307",
+					"state": "11dff3a0369d9664b417435a717610de"
+				},
+				{
+					"dice": "4cca04500df990be13fa196cb2c1f697",
+					"events": "4949fd1da7a7e0c7e809ac1f5b0b48a4",
+					"state": "1b5b641b35522cd7d9e27abe2f309793"
+				},
+				{
+					"dice": "d0ef29f51524ab522060ec9ada6feafa",
+					"events": "c54ef9aad33cb0138b3e51afd781b79d",
+					"state": "b8cd0e909cdf99146fbe1ef5744d3e63"
+				},
+				{
+					"dice": "c2b575b5d57a876a3b7d5078528e8954",
+					"events": "78b0b3f6034be6a92c4701bdf52d56d7",
+					"state": "407e8ce244b16fbb07b6cd331252c84a"
+				},
+				{
+					"dice": "44b744d8abd7c88643fc0eaf3ddef2e1",
+					"events": "e69f8b3806d20c57e96fcc5bcaff2d98",
+					"state": "4293a226c49e027668c4519db77227ee"
+				},
+				{
+					"dice": "596768b51f79839d81f9d41773790c43",
+					"events": "99fdaece292af000fec86f35cbe41b91",
+					"state": "1e1c451fcc4d48c02b32a127c1142e9a"
+				},
+				{
+					"dice": "e492da17d3f1c1191438b9752b3f7e94",
+					"events": "8137a30d48a57d9afffa38cc60489a62",
+					"state": "1c52aedca804870fc205e8f53d08b890"
+				}
+			]
+		},
+		"paths_sieges_fog_clans_first": {
+			"dice": "4fe7815583ca689b3317536f55a28fe0",
+			"final": "22170402866083fc5f7fb4eb33842d19",
+			"record": "6e630d4b724902b1ea316b29bf9399a7",
+			"refused": 0,
+			"start": "65c14f23db2566afd079928844a5e8c7",
+			"turns": [
+				{
+					"dice": "ad9495f65c9c95f2a172c61f39809a8e",
+					"events": "ac37fe490d186b692eeecca38ff1a628",
+					"state": "62e9beb43630c140e2a3d7c70de2d3d4"
+				},
+				{
+					"dice": "cff85e6b9cf944db4ca428790bd8359b",
+					"events": "ade1b27499ecce19780739d601c2315b",
+					"state": "1691f94d50f627e44d22795a9c425fab"
+				},
+				{
+					"dice": "009af3ba29539c359275722f9aa1a95a",
+					"events": "27236415778555b06c6ca691294d93f4",
+					"state": "9e3c522a939bbebe65d19e8b4fdb694c"
+				},
+				{
+					"dice": "54d8c41f75ecd051553ae16871c9ae2d",
+					"events": "94aff7d4ddc98d6e6e7cd1a248a5d10e",
+					"state": "1cbf5ada64c430a542203931d3af5cda"
+				},
+				{
+					"dice": "8bdcac7e88d277d56dea8f2674de2a4c",
+					"events": "e486aa968b709337151177c6f16a8022",
+					"state": "babe35e8a7799e6e81f6e0e6f97b966d"
+				},
+				{
+					"dice": "ae228aa499f709c76a6a07107e61cfdf",
+					"events": "96eaaf2216d894e8f85d30b58f4e29f6",
+					"state": "857d8d4caad459c97ba9b6c7b0b9898f"
+				},
+				{
+					"dice": "f89a3c8b505a3dcbb7afb23a5aa00891",
+					"events": "1d8bbb011e4d21e192d9239babc63d41",
+					"state": "2f55317acd2aa011025a91b6ef362671"
+				},
+				{
+					"dice": "a4e05ac206a67507f5ecab36e9820779",
+					"events": "bc3f69c84cf76fc8032e1327f3c46db0",
+					"state": "5f4ac778b71485a14d8e3f3f43789712"
+				},
+				{
+					"dice": "78f1eb044860e44e5f8d77a22ab26665",
+					"events": "00532a7b2d282d868dbe2ff4c3ecf6a5",
+					"state": "437532c8001b10afe4e6cc87f2c59f01"
+				},
+				{
+					"dice": "a79c1ec63320cff1417add21fe35e8e8",
+					"events": "7236a727955b421a05706405d817b1b5",
+					"state": "f7f829f1ba123a203f370e347fb7ff13"
+				},
+				{
+					"dice": "82be2afeaeaec0af1070a429b04df913",
+					"events": "020141e05d42556826b6449424be9863",
+					"state": "a9b6a4cf6db306fa2656eab1c8b37b0b"
+				},
+				{
+					"dice": "82be2afeaeaec0af1070a429b04df913",
+					"events": "f69453d7dca9ebb00b87f4a00640c6c4",
+					"state": "22170402866083fc5f7fb4eb33842d19"
+				}
+			]
+		},
+		"paths_sieges_fog_crown_first": {
+			"dice": "b92712444245901c61b593f9dc23e79b",
+			"final": "94814a34e34bf4201593525c61066523",
+			"record": "f0eaffc243d881d5228c372d64797d9a",
+			"refused": 0,
+			"start": "963d0015ca0cd8ba7549359fd234c1bb",
+			"turns": [
+				{
+					"dice": "b0f467d63aea94ad06fc8a9e5cf3e905",
+					"events": "ea4e081fe8ea03702ceb2eda51698397",
+					"state": "f3eda4e04a4abcabccfc0d24558b83f9"
+				},
+				{
+					"dice": "e6054382abe73345be7642c892110b00",
+					"events": "b8cb5e7eb802e69ab5657a8ef281a521",
+					"state": "5950ec67763cc46c77898925e2667a56"
+				},
+				{
+					"dice": "3d94aa0bdef369ff6f0bed61b7f7e920",
+					"events": "8d5310dd8cb8163a7d739d1d620e7c8d",
+					"state": "cb3ad48cea4c39fe0765b4aab4409e44"
+				},
+				{
+					"dice": "0139b3d2a4daf21fb8c6811e6634ad51",
+					"events": "aa0bda1c8349071d9a22a8497f192204",
+					"state": "e65044508a554c9231ea3606d5ebf2cf"
+				},
+				{
+					"dice": "1373c3efe38dfe74e4b0b31639c9217f",
+					"events": "b9b1e4a267556b36ad263da01246ea9c",
+					"state": "028a08aa5a3105a3e19d50c73ed9d78c"
+				},
+				{
+					"dice": "1373c3efe38dfe74e4b0b31639c9217f",
+					"events": "a2497a89a1962dede87fbcd052033821",
+					"state": "823927262c287eafc407ceda66164a24"
+				},
+				{
+					"dice": "1373c3efe38dfe74e4b0b31639c9217f",
+					"events": "88b0b92b09ab4d74704e920cd71f1f81",
+					"state": "71215695ae2ea74c204e2ebf70f1edba"
+				},
+				{
+					"dice": "5e9b21ade98f0da0e425d732e8540fa0",
+					"events": "47349d23fa60596d68f8ea39456baebe",
+					"state": "281281f4c92183edc48abf20f840ad6f"
+				},
+				{
+					"dice": "ad238e7081342ba0d99694ab68c85bc8",
+					"events": "50a34ff77ae9290a59a9b740346d74d0",
+					"state": "136d3edc0e0f71b00976e2bd02544e0d"
+				},
+				{
+					"dice": "731c869054e389e3b00ba27032eb6074",
+					"events": "ba58eab35ab95fe9f081ed6557f685fe",
+					"state": "e5ca89f4ea86e9fd7af4047d75751731"
+				},
+				{
+					"dice": "731c869054e389e3b00ba27032eb6074",
+					"events": "8bee966607b7f6001eed5225f6a2fdb4",
+					"state": "c1c4d1a41d88ba7a1031d35da527a257"
+				},
+				{
+					"dice": "4abee3df7108560247e4ccfa1df0159e",
+					"events": "bb79282227480e28628a5e1b5f777dcd",
+					"state": "94814a34e34bf4201593525c61066523"
+				}
+			]
+		},
+		"paths_sieges_ind_clans_first": {
+			"dice": "ce695a08eed632fac0c0e155d1b73edd",
+			"final": "6b0c1355ff7aa574cfd7ee4399d4d3d0",
+			"record": "d786819dd059b428a1585da56b07e585",
+			"refused": 0,
+			"start": "da617ead2322d0ae8f42b7c37ef71a68",
+			"turns": [
+				{
+					"dice": "c8518ccb074191a9904152ea327aa1d6",
+					"events": "2ab657e78c023be43a5916307ee0f3b2",
+					"state": "63816f4c5178687187d73827710bcd8b"
+				},
+				{
+					"dice": "ccfe3935247183b7efbf3580e1dea495",
+					"events": "edfee03beeab58a332001dfd29fb431a",
+					"state": "e4b72166007f90d61ee8221d938929f5"
+				},
+				{
+					"dice": "ab8617adfe9ad3459d166d5b67578726",
+					"events": "55495719633d03de5a6e79810d314a3f",
+					"state": "59307d1c0be95257c66025ecae02e204"
+				},
+				{
+					"dice": "411697d6999cc624ca9d25a09cd1d5f6",
+					"events": "82df42ac046728a49ff25f4fc6088d01",
+					"state": "c3cba0ea74fb98bc3f5aa90af67f16bc"
+				},
+				{
+					"dice": "9b6f8de6ba6028728889bb9012410c37",
+					"events": "2498a2759f43c63937aa8a1a0017c80c",
+					"state": "17a1d32a13062d3e20ea27e59e9b7be9"
+				},
+				{
+					"dice": "e4f431f999896092cc7a149b0bf2b710",
+					"events": "1a1d1604cf5d2f8c72bce21a75002203",
+					"state": "a912e128edefbcf507bdb5ad6673349d"
+				},
+				{
+					"dice": "12aafce06d48eb87231ae1d619970b0d",
+					"events": "6134267d42226312c64621c1a46fe491",
+					"state": "8ace847583a07a3b14e02db5d71d6ceb"
+				},
+				{
+					"dice": "8540f053d9cf0ea8d9987f8b8eac8064",
+					"events": "32c434591de8f7afc83e9b90fe5725f6",
+					"state": "5b3d982dfcca07a0faeb5ebdc74bad25"
+				},
+				{
+					"dice": "90b38c2afda360b5d3a0f139d5433495",
+					"events": "9b89804f84aa7276df3b378f89f0c247",
+					"state": "b496e4035709d9c865690758c47b8197"
+				},
+				{
+					"dice": "a0b3c3ed99daa0049a2b76a975eb6ecc",
+					"events": "df9eedcf03f8d1167f2c891bc3f4150a",
+					"state": "05b7ea9032926b3e44b673b708136f4f"
+				},
+				{
+					"dice": "c70a992165bffe71929ed69df47adda4",
+					"events": "a02dfa38e325507d48d4106edce9ce95",
+					"state": "3d0db84f0ad8cf9654fcc761df53c3f6"
+				},
+				{
+					"dice": "6c2070f2646c9951fd9943d3bf49aa39",
+					"events": "0c8d083c8b7b9b542a6a99aaeb478892",
+					"state": "6b0c1355ff7aa574cfd7ee4399d4d3d0"
+				}
+			]
+		},
+		"paths_sieges_ind_crown_first": {
+			"dice": "4e293754c7120ec8329415a5423540e6",
+			"final": "f848c7121b0e1126036f8a9bf28ce8e6",
+			"record": "d7a13dcf17cb4832b1b01810e9513ca5",
+			"refused": 0,
+			"start": "fadacf367fabace58a4b981032d0c8a2",
+			"turns": [
+				{
+					"dice": "50e5bdd648a92d78fdc6d457ab80f9ac",
+					"events": "58266ec62ddada69447b69b975c6a0b3",
+					"state": "dabb38539fe1ecde2be74241056050ab"
+				},
+				{
+					"dice": "adf1f7482965faf1832a790449479763",
+					"events": "29d1a75608a1ec19233fcdf8686643df",
+					"state": "c0c3c18870d5fe8c8fda60859cd4caa8"
+				},
+				{
+					"dice": "51197196aeb2381158b76e138e24b798",
+					"events": "d5921ce55d346d333cd9cabd2fbf7a82",
+					"state": "0c6c1db7aad5e9030e45d2c050379d4b"
+				},
+				{
+					"dice": "ab20bbb21c67a4be4f5619c22a5ac566",
+					"events": "1c9c4592ba6c9a091ba31fbee3d30f7a",
+					"state": "5dcd5047bafa974c9d527ab462a6f563"
+				},
+				{
+					"dice": "296aa6443e81db91665b34399a960a15",
+					"events": "7e2a83e91656133f236722f7fbd91169",
+					"state": "411685113ee75c3af65dccb5fe6d4a5c"
+				},
+				{
+					"dice": "296aa6443e81db91665b34399a960a15",
+					"events": "2b9c706e3f4842a02677018939894b6b",
+					"state": "0bc219c50769fb9e7b5fd471f3db2484"
+				},
+				{
+					"dice": "b4693ff78c0f71386ae98eb17e9de37a",
+					"events": "84d9ff699efef8664d8be77dc284bec9",
+					"state": "3b06d15d3783f34943a462049b612153"
+				},
+				{
+					"dice": "6348e4cd7193e2c3d2d29d429a8805ad",
+					"events": "19395fc03a0afab00c4c19a23964bab3",
+					"state": "fb86589526713e6a50dc2c1682156030"
+				},
+				{
+					"dice": "dca42ecc3cc06eecf126fb1f12a599b3",
+					"events": "5bdc50544722f8a9b3902d6992d43a9f",
+					"state": "013ec6921a980a9cbb4f1c40f2b3caf1"
+				},
+				{
+					"dice": "5690bcf1302adf128a572b616b590123",
+					"events": "28b1f58de2244c2d1b220e77ae832376",
+					"state": "75a78ed904a2f1c706fc4f309a9c0479"
+				},
+				{
+					"dice": "83d6c4202e4fffa830a005eae220deae",
+					"events": "22b471069e8968b91896f74c407c7b70",
+					"state": "fdaaec32c50f2b8803c33310a896597a"
+				},
+				{
+					"dice": "cbc7537f5ab37d891525181ac43927b6",
+					"events": "ac7d3d1ad8cc2a903fa1d7ced519b987",
+					"state": "f848c7121b0e1126036f8a9bf28ce8e6"
+				}
+			]
+		},
+		"paths_sieges_ind_fog_clans_first": {
+			"dice": "c63048eff3a319fc0c1293e3d3fc8413",
+			"final": "1c0727d1f7a1b673e4c743fba01fee31",
+			"record": "6e360a17a628ec5c9498c9b00ca43237",
+			"refused": 0,
+			"start": "7a51b62c87fae9fa4e2a7ffa97172227",
+			"turns": [
+				{
+					"dice": "97c0a337a18bb079414c5d222d765952",
+					"events": "3297c6affebf292c34f45b313ab5d055",
+					"state": "d51635b834cf1d65b17aeab2c81aaa9a"
+				},
+				{
+					"dice": "eaf222a597733392d5d4d4d4bd3cf280",
+					"events": "0920bf684c9f79e497b945a0b5cc1102",
+					"state": "19998f8ff165e31c14231db13e858d31"
+				},
+				{
+					"dice": "3cc71c864b0442b902b71b8aaf6c0109",
+					"events": "77998f1b4208526c5023c9e814d76f9a",
+					"state": "a456ba31136b7ea55ce22f821e52177d"
+				},
+				{
+					"dice": "0947ba9e3d137ee61cc43ef815cda21a",
+					"events": "42fa8cbb33c971ef59d0f467c89360c4",
+					"state": "921da3d0c5d944610af38d6b07e7928a"
+				},
+				{
+					"dice": "c0984b71eb23ecaada7ba2ba6da925dd",
+					"events": "a58dd267d08666ce99d913089a81a561",
+					"state": "be81a429c475f32a61c6de14d4baf487"
+				},
+				{
+					"dice": "37479d2baadb7d505a376f8d5fe618a2",
+					"events": "eadbd1633f4d96e4b7c5ecd24ef00940",
+					"state": "40885474f1a06c4e57b1dd04efa35def"
+				},
+				{
+					"dice": "7166bec5bca0d68682de630234fe6158",
+					"events": "de1cc5ae2ddf6bdcb534ab12bd794325",
+					"state": "ad506c23838d599041d24cc2bbb3982e"
+				},
+				{
+					"dice": "d3131ec58b2287587cc228c519259a71",
+					"events": "77bfab1b9be0b4176630bcec70261930",
+					"state": "cfdbbfe0258bef2cbe9f79f825e64643"
+				},
+				{
+					"dice": "51f91b8f43cddec88066ecc917509daa",
+					"events": "1b9140e037f96ef1faa452829e54a9b8",
+					"state": "262add804c8238b585b4d605214c24ae"
+				},
+				{
+					"dice": "931cea14ed2fe55e7c61c6bee10802c5",
+					"events": "a4240965d51d02d03acc4bf217d95da2",
+					"state": "ad2cdb1a6b83b02cda460cc4c82db22a"
+				},
+				{
+					"dice": "6384e2731991767b1c0a0e9b7f79422e",
+					"events": "4b3589bd943874c646f032b6a2a33bf9",
+					"state": "8f298528cb74346f33ff737501679570"
+				},
+				{
+					"dice": "7e4d6a4b61831ba18d65c364e8e023dc",
+					"events": "0402be6ea40a36ea833b2b6e96a2fe2d",
+					"state": "1c0727d1f7a1b673e4c743fba01fee31"
+				}
+			]
+		},
+		"paths_sieges_ind_fog_crown_first": {
+			"dice": "ec212eb9bcfc32d327f337ca49ccd3aa",
+			"final": "0ca67d3e6152953f011e182cc3a691d1",
+			"record": "8acfe395a7a640ef8b014ddc9153aceb",
+			"refused": 0,
+			"start": "0376493dbab2f7aa044184a97761ece4",
+			"turns": [
+				{
+					"dice": "92960f750ae76bf6dccd7b54811975ed",
+					"events": "b3b4ce403970d5994fd785986674c644",
+					"state": "edc331cfdf93809589cc75728e78a1d0"
+				},
+				{
+					"dice": "65ed0a8b3e2bb64b51c60e1a1565aa1a",
+					"events": "7dc070c337e5b25aba3343dfd32fa003",
+					"state": "642c0fb2eb256281c8a494f053a3be1b"
+				},
+				{
+					"dice": "df6588ff0c271278873e75fa7a9fd374",
+					"events": "2fff88fbdc870d68a748abbc7d5f6420",
+					"state": "5e20144e0e227810335366e48148a091"
+				},
+				{
+					"dice": "a26090e381c7e48a2f97665b3160cfc1",
+					"events": "ab85d97fadbcf053853eefa25609b26d",
+					"state": "6df3783242127231a04d0c4c0515754e"
+				},
+				{
+					"dice": "d7b9c4e6eecc2bd6981ebb3db21089cb",
+					"events": "fd0edbe05de8db36eb658b00176ce581",
+					"state": "f4ac2d54f815e15b5aaf11aaa0324bb9"
+				},
+				{
+					"dice": "73c08811eda551aa9adea839ac90854c",
+					"events": "8127619e70a36b755f8ea930a866f6d9",
+					"state": "2a0d8694fa16ffe0fd6944dea4fa8436"
+				},
+				{
+					"dice": "cfd85f2a9a68a428fec60cf54195fe76",
+					"events": "fe4cdf5fea0ec51b9c61af31b4c8cdf8",
+					"state": "6df3bfe358226b61e519cc9561248336"
+				},
+				{
+					"dice": "1aed2e1addea6dadedb8469ed0bc4d58",
+					"events": "e0659da186d0045e379a76a713295894",
+					"state": "946c71918f359604ca2683dd36cf1196"
+				},
+				{
+					"dice": "b8f0419c15826045dc36bd7b7c8b13fb",
+					"events": "aed2a464445ca75bb575b9ebe2afb1cb",
+					"state": "f5dff95a32df9b54871d20e041f38a15"
+				},
+				{
+					"dice": "b659379d5fbc89caa87b37ad23d2a0f7",
+					"events": "98e472a7a61c0bc344ea709add54cbee",
+					"state": "e88cd5726776257bbb04e979e70c0a20"
+				},
+				{
+					"dice": "d7682f87ee984e5ecc2a1262b2cc7a05",
+					"events": "c6fe2a07e674ddaf6733fc24e049b95b",
+					"state": "785634afdd20e99d970250fa5c60bca5"
+				},
+				{
+					"dice": "51295892f8436718dd2ed251b9e91482",
+					"events": "b3d2f3ea631ac0964d562cf3c1caa18a",
+					"state": "0ca67d3e6152953f011e182cc3a691d1"
+				}
+			]
+		},
+		"rulers_balanced_presets": {
+			"dice": "993613970f7970b09cc072c12f49d9c9",
+			"final": "86093a4036f5ae052be4783022da35a8",
+			"record": "a41d6bcd751297928aef2574a83919d2",
+			"refused": 0,
+			"start": "cefa5d17e7cd4c9874d085c2404ad141",
+			"turns": [
+				{
+					"dice": "89bc281f5c2b34ba5bde517f9f95e34a",
+					"events": "08f127190e1882759554e322b4ec73f5",
+					"state": "e006440285461364c6cc60af95aca318"
+				},
+				{
+					"dice": "1f71d0984ce3ea50b0dcf56fda49308c",
+					"events": "cab98e09b40c7f0d9e14d03bf4dbab7b",
+					"state": "3fcdaa5f6a606a84cc64ff22e52e1dbc"
+				},
+				{
+					"dice": "e8c08fe82ca5520bc4b2630e2118f4d6",
+					"events": "d0e41f4e0907241d757281f8aca6c56a",
+					"state": "80d515fae38d2e87a58f28f6b671d49d"
+				},
+				{
+					"dice": "df3e58c0afc956c6a1bd4951b7368180",
+					"events": "3c6fabd272c6b373e522c618ca4e33ac",
+					"state": "a97966d9fe958d4673a1c3678d6ee75f"
+				},
+				{
+					"dice": "d5ccee6df062d40ea2cca7d9e0221acc",
+					"events": "f45cdd559e140471bf564655be556e0f",
+					"state": "8c45606c5bf4a77bf07e947ab102f31a"
+				},
+				{
+					"dice": "1ace842997f28ca3adc10a440fac4ad1",
+					"events": "12463993e54654ed6aa57fbc2ef6a7e9",
+					"state": "50218b11d58ff1d0e7b2763453e1fc66"
+				},
+				{
+					"dice": "269295347f7386bdc4a682c7b5bd7f2a",
+					"events": "0729293735c508afbb90176943bed918",
+					"state": "341824b36749f92cde4a2031e7942237"
+				},
+				{
+					"dice": "c41ef95ec122c4e374f35461f3c6fe9b",
+					"events": "e4fabe5eda2aa83976b2f4127fd6ad3b",
+					"state": "43741d42c2677c9d5b1a52744463e5d5"
+				},
+				{
+					"dice": "93afad48aeddc2d56e7e3561bb9acf1e",
+					"events": "bff13375fdaf5698553cf759b75feadc",
+					"state": "a68817158182bac108966a237c855a4d"
+				},
+				{
+					"dice": "62e7c10ffc0f623226aff475d801a548",
+					"events": "33a12eab2aaec2b251aad979db1319ac",
+					"state": "f9a7458f05fda34e3cadd1fad3fc540d"
+				},
+				{
+					"dice": "3c3223edeca6bebba9c85633e41f92cf",
+					"events": "6d61d6e206fc06114e33c7d468c70aa0",
+					"state": "94083708916cfd15d9970759f9cc7bbb"
+				},
+				{
+					"dice": "d061ab60230232eee20c4978961c36f2",
+					"events": "a2a8b582a131ee94f1304cbfcff946ec",
+					"state": "86093a4036f5ae052be4783022da35a8"
+				}
+			]
+		},
+		"rulers_clans_first": {
+			"dice": "73b474fdc7c8a0f66ef131f8f3102243",
+			"final": "87e8e876257f84760465edbe0ec28499",
+			"record": "db02e1d109b878aac4d42ac32bd583b3",
+			"refused": 0,
+			"start": "dec1dce3afec440c96c4b4e0439fb93a",
+			"turns": [
+				{
+					"dice": "1627d96212c47754aca9df5cba4ae1c1",
+					"events": "781e2182209444752500b36e54afe63b",
+					"state": "8f2738b0c5ba5233df41337dc5bac39e"
+				},
+				{
+					"dice": "3b707af7a489eff6f364a8cee5e8cbad",
+					"events": "2aea5ca6777d95a704753150f87d52d7",
+					"state": "d66743e9397831141af5012ccfeda8f2"
+				},
+				{
+					"dice": "b5b6dc758bb0dd7deb2a3e8924910b4e",
+					"events": "c69f1b1eea09d78777be05f910c60958",
+					"state": "9fda03f7257f177854404fd8f3663714"
+				},
+				{
+					"dice": "514eb6443567e92872057b1fdf08e851",
+					"events": "7af9f396442ea44cafcc5f4f21f09441",
+					"state": "67af7e591f3f199266d8be22f6393b81"
+				},
+				{
+					"dice": "2df1ee388c65108f0cbacdef6b265eb1",
+					"events": "2690689e2bb39931b891f12ea669cfbc",
+					"state": "629bab4f9e4e41a4b438d0cc335e1279"
+				},
+				{
+					"dice": "d38dedf922e0c9ef74ab4a8b2c71a1d5",
+					"events": "09f1663cda524104ce1dbb7e9afca481",
+					"state": "92cc0966bd9491f89f8e50b8eb234267"
+				},
+				{
+					"dice": "d38dedf922e0c9ef74ab4a8b2c71a1d5",
+					"events": "579ceecf745bbdd9d90c69b799440445",
+					"state": "653793f52aa059ec9c150029c46cbe3f"
+				},
+				{
+					"dice": "d38dedf922e0c9ef74ab4a8b2c71a1d5",
+					"events": "1899ed5faff9137a8b11fecb859ede0c",
+					"state": "198732ddb82691b5a8cb32ff5e84331e"
+				},
+				{
+					"dice": "d38dedf922e0c9ef74ab4a8b2c71a1d5",
+					"events": "ceaad47e3dc99b886bc375797d942253",
+					"state": "319147976949a74ad7d0d4f6c627ef5a"
+				},
+				{
+					"dice": "d38dedf922e0c9ef74ab4a8b2c71a1d5",
+					"events": "e21b57d05b6557afde6e1eefa49e3db3",
+					"state": "39320b9c060e8f9685292a687f6fe43f"
+				},
+				{
+					"dice": "d38dedf922e0c9ef74ab4a8b2c71a1d5",
+					"events": "7c7299ea12451543e852eb3622ac7833",
+					"state": "04e2613afd5e7e00c3b7bb5a262ee7f0"
+				},
+				{
+					"dice": "d38dedf922e0c9ef74ab4a8b2c71a1d5",
+					"events": "6a0604cc74392f5a3ac7a4996ed8278f",
+					"state": "87e8e876257f84760465edbe0ec28499"
+				}
+			]
+		},
+		"rulers_crown_first": {
+			"dice": "38dbace12a68fbe1e0fd0c676a5d0a12",
+			"final": "bcf747c34894717ed08d814e1345291e",
+			"record": "851b73bf6425f7e099de8154216e40d2",
+			"refused": 0,
+			"start": "d7b58ba6c84d85efa1304aa02179da8d",
+			"turns": [
+				{
+					"dice": "254b125679b2155a7a0ba20baa1d26a5",
+					"events": "f37b3c74da4325e3e55ff7fe186ed2ea",
+					"state": "a1aa0739e51e71ec5a5077a65e780d6e"
+				},
+				{
+					"dice": "d45a377a9c3b2888bbe17d1f9dbf4d38",
+					"events": "709025b90d0e2b1b53215596f7b77d93",
+					"state": "ab53dcfa1fc1d2c72be5b8f666f69a39"
+				},
+				{
+					"dice": "6565d44f4fab1b1b9efc703067163901",
+					"events": "389bf1594c23434c9a1e6dac86faf6e7",
+					"state": "226539a5128c93bf4479d72b9a158d34"
+				},
+				{
+					"dice": "b27b07b66bf6476eb683ef5d70adf6e0",
+					"events": "5c420026d11c005306a5c3d29692d04e",
+					"state": "71b2d1c65cc563018eb3a5d8bdb9496d"
+				},
+				{
+					"dice": "026e6c30650059415789279fd7664065",
+					"events": "e96b8c7518c0144141f738f50074cc84",
+					"state": "be9ad3c514f639146eeb57a630fec5ab"
+				},
+				{
+					"dice": "84923c74ea1b5f8b520e410673e56b02",
+					"events": "b8f3317e9a9fee3a8f48339be5f7a8af",
+					"state": "6e3212244d1aa6582ee9fae62981c0c3"
+				},
+				{
+					"dice": "7ab2e0429374ea3e2ce0121f31cc0d50",
+					"events": "f5fd4682edfcc958434a0de3a2294662",
+					"state": "9f2d903287368c13ff6c0b015b1ddf0f"
+				},
+				{
+					"dice": "de36104f8fdcc889caf6e99e3e1dd1e7",
+					"events": "f42a48884a5d7ddda012e4530a275e23",
+					"state": "0d49298cfc88045f0811e411987ef377"
+				},
+				{
+					"dice": "98c44c77298df0a35cb25f14d0841692",
+					"events": "5cad360b2eef4374dcad181f1317e951",
+					"state": "6f14caf7cb425b2440a474ad867303e5"
+				},
+				{
+					"dice": "26d55787177a088236b35c4b8882c5be",
+					"events": "a5cfd8930fcbb3f2ba6c76dbbdf789f9",
+					"state": "1c4fc58b742dbf662316b7fb140e6d06"
+				},
+				{
+					"dice": "30dd9a4148b1a4a7f8ea3b12e91b3b82",
+					"events": "06c5cd1147369f61fe5996477fa9778e",
+					"state": "5878694c44dcb290e3d130d65fd887aa"
+				},
+				{
+					"dice": "30dd9a4148b1a4a7f8ea3b12e91b3b82",
+					"events": "0e15119dc7f0e412f812a6f2dfa22394",
+					"state": "bcf747c34894717ed08d814e1345291e"
+				}
+			]
+		},
+		"rulers_fog_clans_first": {
+			"dice": "6ee78b220ea623ecca31b4e6d6ad8456",
+			"final": "63cda83a65cb1c70766fe9713344dcd9",
+			"record": "a7314ed8b70fb11044f9c71b871f84c5",
+			"refused": 0,
+			"start": "6f3019073cdff8fb81ebe9c405eb872e",
+			"turns": [
+				{
+					"dice": "e12336e40821cc14773b14d7d056fa01",
+					"events": "39584a5c6e4956563f4fbfa25e3ac539",
+					"state": "12cc5f603f887803c181472560f3906d"
+				},
+				{
+					"dice": "1fa63a3253813e53770b8fc4db0b0156",
+					"events": "65fcb4676d863e87b3c00e2ef0377465",
+					"state": "6330f3a9f3aa8f84449b74b5c2009333"
+				},
+				{
+					"dice": "4651251b303030b910171ba3240257c4",
+					"events": "f4592a895987147bef9e66df59529318",
+					"state": "7b1ce77ea1f52f349f3f6fec9022cf54"
+				},
+				{
+					"dice": "ba2aae2fe62a1b0880452f7ccf4993ad",
+					"events": "5837857d4f52896580528498811652a9",
+					"state": "cdf27b705e7b8c96ec182308473457f8"
+				},
+				{
+					"dice": "6ff3663a9451bf74d799588deb9b69af",
+					"events": "b926c58624b66a381296cb941beb9571",
+					"state": "c915ec2df75b0deefe29993d87e8dbdc"
+				},
+				{
+					"dice": "2de7925401c9d4a8b3d60a4bf3ed84a6",
+					"events": "2c181c43f8f167fd136461b4707d1567",
+					"state": "47fd56011ed463cf1c839e5156f1ea73"
+				},
+				{
+					"dice": "62bdec4720d66a54771fdf7df88d97f7",
+					"events": "547b72d8bc5095ceb83c155a3ba6fef9",
+					"state": "804bb24261695204c995f412fdf5c8b2"
+				},
+				{
+					"dice": "db3caa25614cc8549e6791dfc2b9e08f",
+					"events": "d2d42569ec90753a308f798f96bba487",
+					"state": "59e65a044caa5119fce2b9b897bc2e2f"
+				},
+				{
+					"dice": "6cf6bf9fee1578c1a6d696e165561530",
+					"events": "8c3778e2e9101f5f7b74d41edd1bd25a",
+					"state": "1fb4c3d19c2c0a34003a16b8fbb77890"
+				},
+				{
+					"dice": "b1a0c18f936133f4fce313536c90413a",
+					"events": "8b71eb5a1648ea70157218b5e67bcc2e",
+					"state": "0227af917f6f754d9bc897982a58078e"
+				},
+				{
+					"dice": "0682806b00c878d4fabf51184725f957",
+					"events": "40b84b85733a32caa15b655dbe6cd4f7",
+					"state": "3da745b08c4356d82f5f7ea5efd98c2e"
+				},
+				{
+					"dice": "86a96d9e4bcd5b8fc47f68997c540fb2",
+					"events": "cbee4cf0ec78485f01be6867f28d6987",
+					"state": "63cda83a65cb1c70766fe9713344dcd9"
+				}
+			]
+		},
+		"rulers_fog_crown_first": {
+			"dice": "73fb8d929a0088a5a16b1e2a8d2fde7e",
+			"final": "1fbb302c63454587d03542d85d9560d8",
+			"record": "e207751750e917452e2d493c4587058f",
+			"refused": 0,
+			"start": "162dd4ec9d28eb73d9853db9c7e62ff0",
+			"turns": [
+				{
+					"dice": "45359abeda28ca1f6d7d85ce415fadd4",
+					"events": "781e2182209444752500b36e54afe63b",
+					"state": "50ee9c7525235a3d0a5ad1aecc033c15"
+				},
+				{
+					"dice": "0ad8762a75446f9ccc9f97385c83d51f",
+					"events": "0daa133a889f3acd3976a15f2fe113c9",
+					"state": "30879f9acf07ba4ed21c1259c1389d8b"
+				},
+				{
+					"dice": "c798d8ee5b4da29df9c9fa6aa083ce3c",
+					"events": "4846042310fa8f343d5a563c437eb7d4",
+					"state": "f5fb5d743d491f2bc8eff9d2c1d73963"
+				},
+				{
+					"dice": "fef49065b8be48577f8f3216641c4242",
+					"events": "0588f04710ec77ff17a1f939c1b8c921",
+					"state": "ce5fe412d7fc3ee2b3f58a3f90751312"
+				},
+				{
+					"dice": "ec4c0deb98ac23687d580e644c33a76c",
+					"events": "13b2f7c29562c7c142fa2454077060b8",
+					"state": "c6000d5960cedc76dc968542142e23b8"
+				},
+				{
+					"dice": "c9177231ed3a2d634f4d8de512667611",
+					"events": "daac393c8df4b38615b881732e1d70f2",
+					"state": "68335b8838483a0cc3d7cefd98be17d6"
+				},
+				{
+					"dice": "aa89df0f54817f733ba0cc4639c1490c",
+					"events": "8e139281a9ea79105b38246407e74790",
+					"state": "11a52d9b36ea33532ba8e43ef4844808"
+				},
+				{
+					"dice": "c15243af54b674a4c753e389d7f4806a",
+					"events": "d63c8202d68035a866fb4cbc0da1d6d5",
+					"state": "6600485e47578bb3369dbad93380cfa0"
+				},
+				{
+					"dice": "a1520cc56a55f512919e1c3a996ff460",
+					"events": "bb418a8c8e32e2bfe4e0dd17ee277535",
+					"state": "a6deed462444e68c093e37dbd682b4e2"
+				},
+				{
+					"dice": "2e4d4cd30d090bf3812f12fea175ea1e",
+					"events": "5c06b67e110f4ef590535d24c6ac166e",
+					"state": "03f2a21ebd72af5164ed999bae7d7aaa"
+				},
+				{
+					"dice": "493795974d773fea2e533ca615c2ede5",
+					"events": "87d02521b5194b2ef93f52e6bd0f32fb",
+					"state": "dc514d4f19fe15e36acf1fbd26dfd398"
+				},
+				{
+					"dice": "22d40d2674e72609549a2598e657ca94",
+					"events": "79b5dea9708d3b26a2c19cb4818ce45b",
+					"state": "1fbb302c63454587d03542d85d9560d8"
+				}
+			]
+		},
+		"rulers_ind_clans_first": {
+			"dice": "823bd1c11164323554c1929930a1226e",
+			"final": "8dafef5d7d399ee16d4265e84a37d1f1",
+			"record": "fefa5583d5304ecae3098f227481208f",
+			"refused": 0,
+			"start": "eb84b755809122fda06e950061b6bf5b",
+			"turns": [
+				{
+					"dice": "8e3c48d146ef52cef425c3b9f45d6433",
+					"events": "e5740cdcd0dffa258073dd1d88a98950",
+					"state": "a0eb294c6d85bbd3b055caac62e3d83e"
+				},
+				{
+					"dice": "c0fc429ac7bb1e094b7fde5fa7820a31",
+					"events": "0c3bc4f07cc27bd50e793cbfbe2e6817",
+					"state": "3cb3219a3cc7070dc5d308bf7cf6f450"
+				},
+				{
+					"dice": "4ca48c03d14ea5fc8e75cae897b48738",
+					"events": "f0135f4e9a75e0c6697ee24040ffb084",
+					"state": "22cd49ddce7162e8162de565a106a05e"
+				},
+				{
+					"dice": "e81bcd2d067de0ccdaccbed3fc6b9736",
+					"events": "c3cbb62da89da032c88693df453e9df3",
+					"state": "65d1569bedae1457673d6b5157c4f88a"
+				},
+				{
+					"dice": "5ce09c125dd34d5e112328e3e0d21a1b",
+					"events": "4d2e850ed515628d5d61b1e924252eae",
+					"state": "2c0208f0ed7c7cf2f7c4ed3cc9322b2d"
+				},
+				{
+					"dice": "ee1c5fa09cc49cfb41a4973c807fa972",
+					"events": "cf93a88c4e3b473f64c44abc8dcb21f9",
+					"state": "56bc1b7e582a03dfd88615a7589259a9"
+				},
+				{
+					"dice": "45650bbfeedad6a42e95fd1fadd381c1",
+					"events": "b691f58eb85b62b03b3247f5e40d62e8",
+					"state": "ce3f8a7779833fa7f97710272705231a"
+				},
+				{
+					"dice": "7487d0b48ad2798d1c976a86f8eb6cf0",
+					"events": "8cea271871b01d49bdf91c0c858c9188",
+					"state": "0f5c47b3954a0addd335fc6b48e26486"
+				},
+				{
+					"dice": "1541d8b110582aeac509d2984b93f86f",
+					"events": "1b8bb66f4b6e3103cde7c776e920c2a5",
+					"state": "fbaf125ae20b63635b3428a80938a9f4"
+				},
+				{
+					"dice": "7649d214da5da3991a01dba5d212c196",
+					"events": "6bf1804d28b35886d8d7d227ad0af17e",
+					"state": "d1e7015951afc6e19c93fc4a30cb389d"
+				},
+				{
+					"dice": "186ad7ba3d28479cc749c772b0619c38",
+					"events": "4df8f2c51167907891f935796e4ee38c",
+					"state": "8dafef5d7d399ee16d4265e84a37d1f1"
+				}
+			]
+		},
+		"rulers_ind_crown_first": {
+			"dice": "a10165f820157b2ead7d16c8bc9d55d5",
+			"final": "505395cc773c697c9cb0ec941757c0ba",
+			"record": "2dc9679cfac6361cdb98b18033d00a48",
+			"refused": 0,
+			"start": "794406d4073e4c5d4a75b929a2a9cb01",
+			"turns": [
+				{
+					"dice": "2707bfc61909ffa9335937d77cb8c865",
+					"events": "f56a61de36858fcb1441d35142c969c4",
+					"state": "f2c59f12828159b0ce5307fa77366a32"
+				},
+				{
+					"dice": "d338ed5d5dab2e5f55a8b92445119dba",
+					"events": "47f29882e08656d11b8b948ef3b32cc4",
+					"state": "03e5c14fc160fd8671225d7d7799e22c"
+				},
+				{
+					"dice": "c80870ddcc9780bb36d7fa55f8152344",
+					"events": "a31c11e701b04453b86a472d7b8dc785",
+					"state": "0de391e8339df8758e8e17205165a5b2"
+				},
+				{
+					"dice": "372061b3b8a2b03b2a07f1ca9400f365",
+					"events": "a31728c5b24c36887ad30cc5a8d6ee5c",
+					"state": "194edb345b27751165d52af62d003423"
+				},
+				{
+					"dice": "5a79ff87e6b661bf76a7aebd9afa2c9c",
+					"events": "0b9d32b81557faf9b950d460bf13d073",
+					"state": "6f5d745591d8b870dcff600d1644891d"
+				},
+				{
+					"dice": "0513259ed3d07a08dc54659dccee9c4f",
+					"events": "a3ca9fc27cc3000e89a227126a716570",
+					"state": "1fadd8466f87486dedc9336584b839f2"
+				},
+				{
+					"dice": "a8858c65c384c9286b28810877873bb1",
+					"events": "2ee0181dddcf751dfd941a5cd459b9c6",
+					"state": "ab7b65bf34c4e39d39499b84abcbf6e6"
+				},
+				{
+					"dice": "87122552eef991b93f44d7b81421a9a6",
+					"events": "db34f4931e137771c70484a0720cd7e9",
+					"state": "d4e6aa1df330b5c972bfa3301073afcc"
+				},
+				{
+					"dice": "47ba8d698cc2e19b23ac0f82377f1f86",
+					"events": "e899d4e1ffa670d8e2b519d689f80f0e",
+					"state": "6583083b86c1a8ef942ea4f87c8a6aa6"
+				},
+				{
+					"dice": "9c08ecf3378cd37c91b8bdc5a7cfcb2d",
+					"events": "64ad6025e05de997be2227dbdd1eb736",
+					"state": "04c26332f3e74ab07e0349b7d13f7cd2"
+				},
+				{
+					"dice": "b7817c45805ad41b8ef8f2b862b72851",
+					"events": "82620a84164b31b0f0a2e1c026fed880",
+					"state": "f8fa90564e0f0c59a44d68fdb1f17c1b"
+				},
+				{
+					"dice": "44adf537cfd6c899950deb7b15c210b0",
+					"events": "d5744535225a32c3371d4b6845d719b2",
+					"state": "505395cc773c697c9cb0ec941757c0ba"
+				}
+			]
+		},
+		"rulers_ind_fog_clans_first": {
+			"dice": "ffedb10e9b52860797889165042dae2c",
+			"final": "f1c00e6270241d30859f4f786b9e05f6",
+			"record": "86cd08ab79cb96c6826a7e9bfa3efc6a",
+			"refused": 0,
+			"start": "55aee8b5dea3ac53ff3beb1bcdb03bba",
+			"turns": [
+				{
+					"dice": "ea189cea16eb19f9ae659da8e6ddf4f5",
+					"events": "80f98abd2432e032e36b9b9c51439d56",
+					"state": "bbdfd96a07c31656afaafa00f5a7145e"
+				},
+				{
+					"dice": "4e68e65d5be8a64a2e8ba9412068ca6c",
+					"events": "bae575aa07a899f06b11a3e9dc4bde7f",
+					"state": "7859c82d498f7989f2183d90dcb2c359"
+				},
+				{
+					"dice": "4e68e65d5be8a64a2e8ba9412068ca6c",
+					"events": "ed591ace0037812adca118c63353bfbf",
+					"state": "6eb1323d58e7f999110b5422506afc20"
+				},
+				{
+					"dice": "4e68e65d5be8a64a2e8ba9412068ca6c",
+					"events": "c4b2fff66e4055823c0b2118dd056c6b",
+					"state": "62742b549fd37a906b5a62b5f7db5fa3"
+				},
+				{
+					"dice": "4e68e65d5be8a64a2e8ba9412068ca6c",
+					"events": "56e78879aaf45a261fa4fc5ff115d0a0",
+					"state": "8ca5249ac464aac07dd7bf22cb2fd45d"
+				},
+				{
+					"dice": "4e68e65d5be8a64a2e8ba9412068ca6c",
+					"events": "79b251e9e9475cfe999d6dd72aabf163",
+					"state": "0bf6a36b490dc1fa3add82c5c4c26a1d"
+				},
+				{
+					"dice": "4e68e65d5be8a64a2e8ba9412068ca6c",
+					"events": "ec6b3085de354a1cad0cd6e58c44a28e",
+					"state": "71bb3086b59671a960cfc86f14a25c73"
+				},
+				{
+					"dice": "4e68e65d5be8a64a2e8ba9412068ca6c",
+					"events": "a813523a3a722676032a871c1a758e82",
+					"state": "56b64b1551027351093de270c214fa00"
+				},
+				{
+					"dice": "4e68e65d5be8a64a2e8ba9412068ca6c",
+					"events": "a17f22a92cd81777440fdca3ca219a37",
+					"state": "a587bf0e45469731978bfef97394079b"
+				},
+				{
+					"dice": "4e68e65d5be8a64a2e8ba9412068ca6c",
+					"events": "751bd102aa4519f0ba2104713bae110d",
+					"state": "adef86bf1181bfa775a08718e5ccbe63"
+				},
+				{
+					"dice": "4e68e65d5be8a64a2e8ba9412068ca6c",
+					"events": "0e91a1fc895e30fdde9bccb5c0c5bf0e",
+					"state": "9785e52297502010d72d4e8d13506c97"
+				},
+				{
+					"dice": "4e68e65d5be8a64a2e8ba9412068ca6c",
+					"events": "19e0489dc952c0c8ec5c89d02818d1c7",
+					"state": "f1c00e6270241d30859f4f786b9e05f6"
+				}
+			]
+		},
+		"rulers_ind_fog_crown_first": {
+			"dice": "ce849894a9e28755f7e1de0fd05bca44",
+			"final": "2161af2992626919275a14198fbb6e92",
+			"record": "fff511225fa4732729ed17822b1b9365",
+			"refused": 0,
+			"start": "abbf484fc268b2fcac1b9417c6443fd6",
+			"turns": [
+				{
+					"dice": "fb5ebb02f11bb07762d87811c3e489e0",
+					"events": "d943f1dae4812458da945f72d729bf0d",
+					"state": "fabb07daccb70bfca122601fad2a6e30"
+				},
+				{
+					"dice": "5adbe4b14c4013de1373bad4a918d7bc",
+					"events": "c841ea298754399d064d57e5dcecd77b",
+					"state": "038be32d2610608d2251326b2541dc96"
+				},
+				{
+					"dice": "41f7e8cedbe9527230321bd694b337ea",
+					"events": "a63b1ade3b21de9119406b0ce840e888",
+					"state": "f370ad02b064185b0a4273313bfc8394"
+				},
+				{
+					"dice": "9c2ac4779c735aeefd289b1d235d4063",
+					"events": "b894ac86fa04b17a90815d102b9cd07c",
+					"state": "825abd285d55878c7f85768c7865a005"
+				},
+				{
+					"dice": "a5b26fc25d923a0e0e5b50a4085cf85f",
+					"events": "4caef41e50ed10e7e44059830e59038d",
+					"state": "3729d89dd8b5f7ef80c650a8b44b6e48"
+				},
+				{
+					"dice": "549582b59409ae7497dbefb2c515b79e",
+					"events": "550cb712bae76856c208b118fad51ff5",
+					"state": "496838162de3616a8459716c9a39327a"
+				},
+				{
+					"dice": "9c2a042e4f1b3cd46be934112f7f3cbe",
+					"events": "8ae54c3c307c31da53010437c0c62c2f",
+					"state": "77701ff5f9fd31632c19c6414c88b00f"
+				},
+				{
+					"dice": "db1d6dd824a8feaa456b7266b8a2e4b2",
+					"events": "2051167df8de7142a958deaa2c4412ee",
+					"state": "7b1c328e4b1441c3cb794df392796b32"
+				},
+				{
+					"dice": "26b5d9e2861e7fb20df5ce40695e5243",
+					"events": "17b1aa8c29febf0eec06ad4537e51b4d",
+					"state": "2161af2992626919275a14198fbb6e92"
+				}
+			]
+		},
+		"rulers_preset_ids": {
+			"dice": "d341fcffe4795d3c361a4c706e238da0",
+			"final": "03a1479f2b64c5d67a9876676c4a12be",
+			"record": "4c44c3afd2d706f4416ee58d8e043476",
+			"refused": 0,
+			"start": "340887ed5ac92210af10f8972f642618",
+			"turns": [
+				{
+					"dice": "c7770562acbccec7a72e8383349c72d9",
+					"events": "08f127190e1882759554e322b4ec73f5",
+					"state": "9b6690302758275523f446d79dc48fa0"
+				},
+				{
+					"dice": "ebb8fe568eaab27289ace009d3c0953f",
+					"events": "fe9f7bdf5b5c6b5bc4085decd3da709a",
+					"state": "4d29f3363d5715f6576245c43bfcbcfb"
+				},
+				{
+					"dice": "1c485c963e5b4fa63bf2721e0a21b227",
+					"events": "6e30eb390b3bfdf0db469353a2b3219f",
+					"state": "dfa4a7557f376d1620d0fb5029d9ccd6"
+				},
+				{
+					"dice": "e9aa76bffc857bc5e7eaefa8e25faacd",
+					"events": "386fab26772aad3572fba09d0c8c9f9f",
+					"state": "fcc46aab81d46c579eceebd60b41b7db"
+				},
+				{
+					"dice": "8dec6cdfadd9e855fd71d0598b24e895",
+					"events": "f5c57495f5e9ceefeb731a5273d715d9",
+					"state": "fc22f058c62c59d23104fc75b4084c14"
+				},
+				{
+					"dice": "ce75b0553d6740005e83bd9d1ff1b933",
+					"events": "3a2ce1384e25e398dd9a84d3fd1e739a",
+					"state": "54699a1d80b7e2a457f908fd642e3def"
+				},
+				{
+					"dice": "acba868314bffd1667cba905c0367d05",
+					"events": "26d72b9d0164992bf01bfb759fc87262",
+					"state": "801dffcfbe90579403c9185e3db9db91"
+				},
+				{
+					"dice": "c5b88df9f06be6c23397d637a264e259",
+					"events": "b6da1a8d62ee19fde60233597d3eb5d0",
+					"state": "07d0328c5764af802672f8b51e7dca83"
+				},
+				{
+					"dice": "93364acda05965dbd3fe81a1593e8c19",
+					"events": "320f2542dafc8dd3371f70a3644e9cdb",
+					"state": "56170ecd2c8b4e3e818544fcff496963"
+				},
+				{
+					"dice": "8c7f91dad0f62a65f77e60ae33c50a93",
+					"events": "2f1c338b233f373cc309c75d34a18813",
+					"state": "ff5ef4533b492c16cbe77805faa237db"
+				},
+				{
+					"dice": "069f47bf205ae9dc859a5fd20a596e33",
+					"events": "a3e44656c4df65c673d2d954e3c44c34",
+					"state": "b7554d0e4a1583922386093a4fecbfb7"
+				},
+				{
+					"dice": "2f16fead73b1bc04b66a36e235ed35e1",
+					"events": "fc9feae6c818892f9266d350048d0137",
+					"state": "03a1479f2b64c5d67a9876676c4a12be"
+				}
+			]
+		},
+		"rulers_sieges_clans_first": {
+			"dice": "3cf3afdaa1500b7595e1e37ab1ae21f0",
+			"final": "45cc824ac4d5d9b7556092c682403913",
+			"record": "a736d5d1d08fcdd8fbc34dafe66d1b4f",
+			"refused": 0,
+			"start": "155be0e53c41c053cc48e3e861d9028b",
+			"turns": [
+				{
+					"dice": "b7cf0786d5c6beaa9e27f21173a740bf",
+					"events": "cd13970fcca73a75dc108bebac153636",
+					"state": "6ddc65f78f2714e93a7257db1c787ad7"
+				},
+				{
+					"dice": "71b97474966343b93ef9fa06570f6a7a",
+					"events": "57ef2f25619316a74fd13a65e51f192b",
+					"state": "eb878c95c23ca7d573cf353410fe4107"
+				},
+				{
+					"dice": "71b97474966343b93ef9fa06570f6a7a",
+					"events": "ce248db73ffba71bac4d57bfddc549fc",
+					"state": "70b5377819765efb70595c17cf77d882"
+				},
+				{
+					"dice": "70f1217b8aa7998bdd714ac937ac99d8",
+					"events": "b876fb38824d61684cd4b91c4c6fce5c",
+					"state": "8ddc01bdc03ab4075135234ebc53963c"
+				},
+				{
+					"dice": "4e9a64423a09d78bb17ad3427cde964c",
+					"events": "669e35ca3f5846feaa7e79c2dfed1368",
+					"state": "207485f92c973e2b5d7c70071ca60130"
+				},
+				{
+					"dice": "f84a1d9292fa91b23fc6de59bad6e67a",
+					"events": "1d63b57e1dc83f7441b68796810d5ec5",
+					"state": "001d292af7cae8b7c8ef3a3cb1e460fd"
+				},
+				{
+					"dice": "d441aa9fdac9c8624ef968ad27d45bf5",
+					"events": "e7a751ce3ed36c183f7588d3f7539eca",
+					"state": "e6cdda003057bcd3da5c51e4a56a854c"
+				},
+				{
+					"dice": "6e67597e7a0ce0fa04fe9da52ff7eacf",
+					"events": "92c99a732895cc918c7b16604acedcf0",
+					"state": "9703ad3e8c6e6267c55c0e42c55850fe"
+				},
+				{
+					"dice": "e1ef5f499ed1242378e6a96e8a044c56",
+					"events": "397af5042529ec6cc0186ef5a06ebba5",
+					"state": "6519078c59371b5beb64e6ca8098b6a3"
+				},
+				{
+					"dice": "4256d7ae638623e8448309820ab234db",
+					"events": "3f55618a9a4478028eba7bf9864d03be",
+					"state": "13403cee79811e6faa02a9bf19d8f5eb"
+				},
+				{
+					"dice": "57573356cfd2ad452c619c000fa68f63",
+					"events": "3ac7967002f3b9dce63d9ed85a6b04e2",
+					"state": "6c71a5ab3feef985004735f52c0bff6e"
+				},
+				{
+					"dice": "e7393e401eae4b425da91305c2c6436b",
+					"events": "0219849ec9402762748411efffe34cdc",
+					"state": "45cc824ac4d5d9b7556092c682403913"
+				}
+			]
+		},
+		"rulers_sieges_crown_first": {
+			"dice": "cab2fa87801eb9755ab22b6a6a35bace",
+			"final": "c8915bc0d4b7f9d64f015726967c4e25",
+			"record": "cd38b9f25d1affefa44393f478e1c94f",
+			"refused": 0,
+			"start": "aa40958552e89b5bef834d12ca960620",
+			"turns": [
+				{
+					"dice": "d819affa892f724c0cb7fe7e78c73fb7",
+					"events": "13deb98c5ba4888852c58d8f064e2281",
+					"state": "a4a0c8a59a94c6bba46362d08b69915e"
+				},
+				{
+					"dice": "28c017c275b3c709ae23a69b764b414d",
+					"events": "359eeb03e78c7cb5cd5993ffc3a7ad14",
+					"state": "3927782f95cd118283b9ee70707f7dcf"
+				},
+				{
+					"dice": "28c017c275b3c709ae23a69b764b414d",
+					"events": "b2135793af261cfa3ead5e5c3c74bb96",
+					"state": "f3173aa7e1b8c31eb115d8e06bf50368"
+				},
+				{
+					"dice": "6c9810c292b82a9cc658d149c178f890",
+					"events": "07d09321513f160a066ea16e8b2a7001",
+					"state": "0de2a5e0d122442b4a4010b423991932"
+				},
+				{
+					"dice": "0542ccabd02bd8108eee7e8a4fad539b",
+					"events": "f97a87d8a18a81d6332ee8a51ca6bea2",
+					"state": "d012871c429d78d6806c45a24169e59a"
+				},
+				{
+					"dice": "bfa06416dde410f0d09d360d162697f4",
+					"events": "7432ae802c1e678935ce80650ca76c86",
+					"state": "4a229112390af127f75841aa51212c1a"
+				},
+				{
+					"dice": "63a0ec10783b70cebce2fdc084579105",
+					"events": "a3cfc5c6b055687906a423517125a4d3",
+					"state": "3077ddeda822efca0c029f7e07902b23"
+				},
+				{
+					"dice": "ff5f460529ffe2f5bbb515bb2fc77ac5",
+					"events": "3adb0086db39d96af707594a95a009ac",
+					"state": "edee2e93b1ce2630e59412081cf34d87"
+				},
+				{
+					"dice": "fcb2696ceef1d916c9b2cd01c740e61f",
+					"events": "15cdfe24b278e33a6df1450514f22dcf",
+					"state": "d36df6c1d1464ce34553e68d3462ab22"
+				},
+				{
+					"dice": "fe099dff709c23458b8532c35ca26386",
+					"events": "426287966cb96605cc35a2898a0cadb4",
+					"state": "9751754b0c11af99d01061c3d0d87863"
+				},
+				{
+					"dice": "e81e14ccb31b86cf0cb1b4cca62e5f9a",
+					"events": "db56c9e9f7dae5efd55bd83722a2b868",
+					"state": "252bdfe7b69ad60daa992aa3d85ca802"
+				},
+				{
+					"dice": "852844892b4dbd99e46dfd183a3a3667",
+					"events": "defa0138d0ff7a05ac52798a8fb72626",
+					"state": "c8915bc0d4b7f9d64f015726967c4e25"
+				}
+			]
+		},
+		"rulers_sieges_fog_clans_first": {
+			"dice": "f01408fda63b4ec666a516da407594a2",
+			"final": "0eeefdce46f8947d639b6f933a2b82c2",
+			"record": "34038bbd329c79477d7bab51a6fd23d0",
+			"refused": 0,
+			"start": "3914781cd86d0d6b54eb2358956024b2",
+			"turns": [
+				{
+					"dice": "fa4ccaef48f6d1a67891d9f1b6ae0e8a",
+					"events": "019a2e1a691b953708647de214f4cd8c",
+					"state": "6f8552fd14a2dc3b9c38f5aa6a64b785"
+				},
+				{
+					"dice": "4afe1fc7a0739d121f704e81686d9f84",
+					"events": "d99cdc2b13e5ac39e36e604872dfd6c8",
+					"state": "20cd29211241740ccba9a5836830a3e4"
+				},
+				{
+					"dice": "f64c2cb9c99a31c561b0afbf09af39f8",
+					"events": "60b59c0dd33b3b9f0ae0da15e744b30c",
+					"state": "4ebd9d0bb5cdfd2151e0c43dfeaf5034"
+				},
+				{
+					"dice": "0912782d9c6942a0c8d828ba08baf3cf",
+					"events": "9891a98878c4143f439abd11758a557f",
+					"state": "220ac46a055f9beab9b747b0e476471b"
+				},
+				{
+					"dice": "55fecd02a0706589bd4a3a6fa9b63973",
+					"events": "0cc52777c042733aa9092209b32c3651",
+					"state": "ee72fcd1b168aeb0f7bbabc96b5e9ef7"
+				},
+				{
+					"dice": "bc0bc62c9d23b68838e2bdccde6a99f0",
+					"events": "8c861315c1d90bd1af667ada2aab329d",
+					"state": "a919603244b01e3466e491a36bc803df"
+				},
+				{
+					"dice": "ecb93ba1acda53c227a5e4ed4ec855f8",
+					"events": "2b6478e58f35021c0b6e26be1e4a0602",
+					"state": "16b0d9abaa6fdd71d0c2a38d17a87202"
+				},
+				{
+					"dice": "f7a13042826fcad88c131e49fadad67b",
+					"events": "d45c4bdc8dbaa8a28f1b2800247f9804",
+					"state": "8325d665f35992ec27bcf87873f68830"
+				},
+				{
+					"dice": "c755991627debc9806d223ebf759b495",
+					"events": "f9e381dcac591a5d4b8cb58c763f9893",
+					"state": "a928ec65a0b240b5d38bd3b91c284ae9"
+				},
+				{
+					"dice": "41e226e945a795c7952cb4e6a91ebbe6",
+					"events": "686867de831561a2e1be273bf4a3b571",
+					"state": "eb9f35cf1cb8991a4bb86fd571b30089"
+				},
+				{
+					"dice": "2de20692975439fd7335d823310e1180",
+					"events": "02dd7b5853c30a45bd8a810b28d8be24",
+					"state": "d7dd95d5e262ceb792fcdf67a34ee56b"
+				},
+				{
+					"dice": "c3858cf6b7cce1ce13cdb8db946d4e40",
+					"events": "b9e659b3e78defd8d79c2a18d0a6fe1e",
+					"state": "0eeefdce46f8947d639b6f933a2b82c2"
+				}
+			]
+		},
+		"rulers_sieges_fog_crown_first": {
+			"dice": "05aa7b807cf5e0860856a683fd06924c",
+			"final": "7e920c1e8c048adcc57bad7e2e8f5529",
+			"record": "c60cf123e36aa134bfad132d3d8aeeb6",
+			"refused": 0,
+			"start": "f2fb89c9cb0245d509f4641f1cd8bb17",
+			"turns": [
+				{
+					"dice": "396139da191ff8e8b66aeaed0df9fca9",
+					"events": "13deb98c5ba4888852c58d8f064e2281",
+					"state": "602bb71199632fdd46f1587bd6788eba"
+				},
+				{
+					"dice": "0c8738a8da0b0c0b752aaa8e27986794",
+					"events": "ec005c7dd46efe747944bda61ba5524f",
+					"state": "37ba628dba94b184af5bef1c97a60f59"
+				},
+				{
+					"dice": "62fed9ed34bd21423d50e3561ef3e6b5",
+					"events": "41e227dcf0754771a1509455ce0111c8",
+					"state": "fc66938cecc515db8a36f251dcd86841"
+				},
+				{
+					"dice": "79e66385491f095c408fad7a4f995065",
+					"events": "ae931e9f60aedee0bca2c92bd41b58de",
+					"state": "c8da1425766666c78b1446ccb060c793"
+				},
+				{
+					"dice": "4f072140225a821570db4ca7c9057efe",
+					"events": "b8761cb8f2bca0c8f4fbf14569de2913",
+					"state": "981c390a15ecb5583f697d67ae69451c"
+				},
+				{
+					"dice": "4f072140225a821570db4ca7c9057efe",
+					"events": "39c50a8418c8dbe72896fa7ad2b7796f",
+					"state": "2023bb20a2938a849cace6b5ba17153b"
+				},
+				{
+					"dice": "4f072140225a821570db4ca7c9057efe",
+					"events": "8f6e4a3d87172f997d2577a2b6ffe1f5",
+					"state": "27ad87330822b9df024e1ed8ee6536ac"
+				},
+				{
+					"dice": "5815c0b7ae74ec3ddf4184be5f0ad958",
+					"events": "150465860a5453e0213bbea403c54b8f",
+					"state": "7616bfe59ae3ca6a1e82473170d58d36"
+				},
+				{
+					"dice": "fdf93962d14d016847e05ade6a272cbe",
+					"events": "8dc3993c4baca19efabc9646394ddd8c",
+					"state": "d27ce827b8e7f1eab96729bd34a84dd9"
+				},
+				{
+					"dice": "fdf93962d14d016847e05ade6a272cbe",
+					"events": "ef222b0524afc7f2933d2333067a10dc",
+					"state": "d53fc65721bf160f667c38095a2fb018"
+				},
+				{
+					"dice": "fdf93962d14d016847e05ade6a272cbe",
+					"events": "3f632bab431c4898d5072a802d43ec4d",
+					"state": "747a18ff94796eedb9d5ca201ce3b73d"
+				},
+				{
+					"dice": "8b4f58e272c946da1845006019aa3fcb",
+					"events": "da9ab08b8a96c5156e7c72a991f91099",
+					"state": "7e920c1e8c048adcc57bad7e2e8f5529"
+				}
+			]
+		},
+		"rulers_sieges_ind_clans_first": {
+			"dice": "2d8afd717b589965b75490bf20184ffd",
+			"final": "a26814e24d287e720e371e1f0d88f48a",
+			"record": "998ef310ba0cf8e2021d905990327802",
+			"refused": 0,
+			"start": "e18f9255f6768ab9c28472d3a81a87ab",
+			"turns": [
+				{
+					"dice": "16551d670f8fed7d178a726cc187052e",
+					"events": "4b3b852a737d01ded3007420c88fcc6e",
+					"state": "99f701ac7b9fd247a115f4a43cb330b4"
+				},
+				{
+					"dice": "619ee833a4193b498c00834ea340abd2",
+					"events": "f598c911af6c0c10fd6d80dc70a8b769",
+					"state": "cb0df616e1322cf50a7993382645591d"
+				},
+				{
+					"dice": "a459a6e77e409a044ab14a6bb2e35fb2",
+					"events": "444b76088abfb834370475c57b4fb74f",
+					"state": "d801232ffab4277701d397a383fe6444"
+				},
+				{
+					"dice": "74d4e16c5f38bce9f9ec11e536e58be3",
+					"events": "2007c68dc8cf8d3d23d02a1c47377032",
+					"state": "6ec85634648176f096866536a25a4a40"
+				},
+				{
+					"dice": "198344d2dd94cd999e667a945937574a",
+					"events": "05be4dd6235cbb94677315041065d384",
+					"state": "a8f05879fd1caf79bf751203d91d1025"
+				},
+				{
+					"dice": "355be035ac4f0df721bdc3a0a8de5fdb",
+					"events": "5a2769b8a2404c39e3e9f404ad575b0f",
+					"state": "f4d2b5d2db65c7567593e4ddcd637326"
+				},
+				{
+					"dice": "3549ea49902a954ff55c45f94e618f48",
+					"events": "45027f3a21f18e8f9e69afdd5ffa3d52",
+					"state": "f8088da9b2c459a490a08441c1ef7dae"
+				},
+				{
+					"dice": "7fbe96e78950f1d8af9b4f2061ce8303",
+					"events": "b820bfe40589f36821b696a85c0eb7da",
+					"state": "141b0cab020afdf505cadf9eadf06027"
+				},
+				{
+					"dice": "8f0bfcb2d41c3a31036f93841c27a919",
+					"events": "20a4396ed7f5130960a604e546ea98b3",
+					"state": "3f59160c30135f7b1f60d1e3f89d624a"
+				},
+				{
+					"dice": "8f0bfcb2d41c3a31036f93841c27a919",
+					"events": "6333c2a30f9a9c6f114ff0293bdd98f9",
+					"state": "a26814e24d287e720e371e1f0d88f48a"
+				}
+			]
+		},
+		"rulers_sieges_ind_crown_first": {
+			"dice": "38a2839f572fdca71be02815aa4d826c",
+			"final": "b29bb697797feb7c85f12031c13c821d",
+			"record": "f680d31510305a1aae4c6e16a428951e",
+			"refused": 0,
+			"start": "e8e160cdc66aa1283419cad25484a69f",
+			"turns": [
+				{
+					"dice": "3c8b0d3cbe3112e874d1f40397f3a07b",
+					"events": "2e3bf4b9fc5d7708af30cf930dee5b17",
+					"state": "a2f880ce233ba29b0d21464727018340"
+				},
+				{
+					"dice": "5226032dd47ec914ce00d9b0a552a878",
+					"events": "5d8a9c190612ccc51fec73461536b189",
+					"state": "dec361aeb84eee79a74333ad87b2d015"
+				},
+				{
+					"dice": "5de82fbd6149f5b913c4df9186654a35",
+					"events": "bb615de87239a4149ca3d0663caa9b3a",
+					"state": "0a6d38f196aaf11f5f7e6a9375eb8d22"
+				},
+				{
+					"dice": "89b79456751204a9c22084a967270481",
+					"events": "ccf31c5bde2c3d2a32f13dfc83c1ea0f",
+					"state": "2a28a3b51d32679bb89d4b7291363285"
+				},
+				{
+					"dice": "90d6d9d303c1b134235b6985067234e2",
+					"events": "0c55528df5f649ccd0cc28b26d0fbdec",
+					"state": "3541489934f2be49d65770e5e5034548"
+				},
+				{
+					"dice": "66aaf199f05bc05923604e4c441d9835",
+					"events": "7555ac2ac7f633b525cb37b3a694aac9",
+					"state": "1c44082d4dae165ba79881146cc771b1"
+				},
+				{
+					"dice": "8a0529b6a37d9efbf8ebee278cfc2b3c",
+					"events": "53697b0b8185185500a917f0792d2f66",
+					"state": "de69e63729a7f0241233a666193aeef9"
+				},
+				{
+					"dice": "f64c1affbb23c1afe94c9840eac46587",
+					"events": "ce3a62ab8bc470d7909b3e0e392c2abf",
+					"state": "17c09763c07b5c1a592059730837fbee"
+				},
+				{
+					"dice": "b4ba10d76844e02ee08988dc7661fd72",
+					"events": "1e014e2c4a74c6aea332dd503ff092eb",
+					"state": "6e2473e159df8b0a07d220be4f5b37ab"
+				},
+				{
+					"dice": "4f37d64deb4d67d03ec98542775b3ca6",
+					"events": "231748d33d897a7eac600e9d4ed4772f",
+					"state": "4bf0cc10cb91c912791d6860261fd8fe"
+				},
+				{
+					"dice": "514384d923e7891e5a507c7593e7d722",
+					"events": "3feec3cd101a4e0cf570527e584b4b74",
+					"state": "5e7e7a224e04b8197694a46297d4b2e6"
+				},
+				{
+					"dice": "55629ba7f0fd1380ec801be05ed53386",
+					"events": "0857c39c5dd16e9f8cfc3ef67d642dd5",
+					"state": "b29bb697797feb7c85f12031c13c821d"
+				}
+			]
+		},
+		"rulers_sieges_ind_fog_clans_first": {
+			"dice": "2ec8af4413c971fc39f1b220d46c13b8",
+			"final": "b528695fb8c4082ec6a614eaaad34a1b",
+			"record": "22e232c6ed0eefba8134e73b8f5e0057",
+			"refused": 0,
+			"start": "1ede855760c4c0d514bd0ef720d32c53",
+			"turns": [
+				{
+					"dice": "7e2f54e8906a25c2b859e327940965f6",
+					"events": "77a7a814126bcbb42e9a34936ec4417d",
+					"state": "7734fed30d1b8f188a848e10c926024a"
+				},
+				{
+					"dice": "c2e642916bd49718c2a42994f3410ea2",
+					"events": "3f3e48f19428c9f22ee641e3764e3f3d",
+					"state": "5a5b84866dc5707d712d0d01ec3eb0bd"
+				},
+				{
+					"dice": "01261b41ad77faba86aa0e6784a1849e",
+					"events": "5ef55ce45833463952fdcf2a8afa7a18",
+					"state": "107a654a3b9489b1043e71456150568d"
+				},
+				{
+					"dice": "d5cee1520ed26c01d17f3bf7f55a1690",
+					"events": "ef04f3f4fa659221a86fb3a52b2d6597",
+					"state": "428144821e53d99f2d39ffe7c96d4ea1"
+				},
+				{
+					"dice": "fd315298085bb14016bbe97e3ed2ef9a",
+					"events": "1343ba9563dd233efcc88cfff1ef4492",
+					"state": "d55c753152a43fd2edb91f27b24e68e3"
+				},
+				{
+					"dice": "cd410c19ad2749f57ad3563ea62bef96",
+					"events": "c269f96e070f887d9b5756565096277e",
+					"state": "622aefbd44e43a901a0b1df74ff0b6bc"
+				},
+				{
+					"dice": "8e228158fdfe3b9661267b9e1039c65b",
+					"events": "34ede027c18f7b7c28269b777e74b0c2",
+					"state": "f1d74c9cf372e1ec97fb6c19a013f9dd"
+				},
+				{
+					"dice": "e9716a34e44deef90350da687c8f899c",
+					"events": "ff45ee7451ba2cb0f4ddf273c563ec6d",
+					"state": "62364ed9363a5d3c05bbe9075679fcd4"
+				},
+				{
+					"dice": "ba1e48eb511d6634e448e63d8cdefc8e",
+					"events": "e29b1749f5a750b8bad5cc258811c3fb",
+					"state": "28323ad99eb8a96d810e5164e5d6d41f"
+				},
+				{
+					"dice": "ca54a44b3493f8da0dd556af6f1c8445",
+					"events": "b8ee0cec07771b7aaa83aa29844f9498",
+					"state": "ac83afc4060074f10c0609995d07ec27"
+				},
+				{
+					"dice": "2568a405abc7edab79563755bc6e4deb",
+					"events": "9262b8dc5b41f9e2af86e7f7cbe1a532",
+					"state": "74289deccc3016d9a76ee04af3ba912d"
+				},
+				{
+					"dice": "2568a405abc7edab79563755bc6e4deb",
+					"events": "7a88f73f97442fff61245f767e59b52d",
+					"state": "b528695fb8c4082ec6a614eaaad34a1b"
+				}
+			]
+		},
+		"rulers_sieges_ind_fog_crown_first": {
+			"dice": "4c1799e6afd462efc34db13731a823a3",
+			"final": "fd13a308d23797261f382e63e0b22eaa",
+			"record": "643fd25f64d4c836d7fb9d1ee465c958",
+			"refused": 0,
+			"start": "f63b28d912d58cffc295f9059750cafe",
+			"turns": [
+				{
+					"dice": "3704ab64ba616e7606492d314379b44e",
+					"events": "a4cd90ffb10c3d9f25e5f863dc415ea0",
+					"state": "d965c49d689cd200adf11eca471c1fd9"
+				},
+				{
+					"dice": "92702f3ada1b30540e6556e9aee3c6bb",
+					"events": "f4c0d6bf96fb55ef68f33c55f14c7a61",
+					"state": "6efbad40607410b10665c5cfc4b82292"
+				},
+				{
+					"dice": "bea964c61897df40d705e95f97bfb944",
+					"events": "0566977a37c24603869ad1acdd7edc48",
+					"state": "b374a93cbe0f31c310adc44c17f67233"
+				},
+				{
+					"dice": "7cf22a506359d9cd10d988d4aaa6441e",
+					"events": "3b0671c88ebc3d799fe1c9480a7b9418",
+					"state": "75794a8c7b5cdeeaf66a6781180c58ac"
+				},
+				{
+					"dice": "8b7085be619381c0da54d4cd7388d05c",
+					"events": "7a47280bb5223bcffe9119c85f8cd170",
+					"state": "6052939a13d0c7db1c8ae3f83e2eca2e"
+				},
+				{
+					"dice": "87caca2e4c6aa655bb3880b0ac890a82",
+					"events": "c9dd6325e5fa24149b04f8c403a1630d",
+					"state": "ad7e45e0043405ea2d650e2e4221d81e"
+				},
+				{
+					"dice": "a86289137dfe0a464377d36fad23b3c4",
+					"events": "f0cae58c69664de507265ba57316f736",
+					"state": "42761231ec33e0c28a45bf4b3928cf5b"
+				},
+				{
+					"dice": "c009d2c0310bd0253532ba7db0529b1d",
+					"events": "a7c18c021925bac76b4f33c0f8aad303",
+					"state": "d4ab706389ad1f640e887735e5f4c3bf"
+				},
+				{
+					"dice": "f80df0d588ee4a5578c929ca469674d7",
+					"events": "3f1abb8fe6dbd3e853ff8715b7ee1c21",
+					"state": "dd3ae5abbd8c50431ba0643d9f83ee37"
+				},
+				{
+					"dice": "f80df0d588ee4a5578c929ca469674d7",
+					"events": "7a4f89be8b1953e58ff0ff7527201bf6",
+					"state": "77697ba1ae36705f65c9f98174c8af01"
+				},
+				{
+					"dice": "789b497774886c3ed13542e3f5c7de0d",
+					"events": "cd682b7d909034de4b05a4dbc81a21bc",
+					"state": "c99057e07b328e59236312b5e3c59af9"
+				},
+				{
+					"dice": "28aed0d381d1c2d813323426d451a53d",
+					"events": "08f3a7ba0ed10601585e74997b5a60fd",
+					"state": "fd13a308d23797261f382e63e0b22eaa"
+				}
+			]
+		}
+	},
+	"note": "Recorded on next (a40d43e) by tools/cw0_gate.gd for CW-0 (#251), before the engine took a third faction. Do not edit by hand.",
+	"turns": 12
+}

@@ -128,7 +128,7 @@ func cast_options(army_id: String) -> Array:
 	for rid in rituals:
 		var sp := MagicRules.spell_data(rid)
 		var targets := MagicRules.ritual_targets(view, faction_id, rid, army_id)
-		var sizes: Array = MagicRules.pack_sizes(view, faction_id, army) if String(sp.get("summon", "")) == "thornwolves" else []
+		var sizes: Array = MagicRules.pack_sizes(view, faction_id, army, rid) if MagicRules.is_pack(rid) else []
 		var probe := String(targets[0]) if not targets.is_empty() else ("" if String(sp.target) == "none" else army.location)
 		var caster := MagicRules.caster_for(view, faction_id, army, rid)
 		var blood: bool = RulerRules.has_mandate(view, faction_id, MagicRules.TITHE_OF_BLOOD) and String(caster.get("kind", "")) == MagicRules.MAGE
@@ -143,7 +143,7 @@ func cast_options(army_id: String) -> Array:
 		var line := "Covers every battle." if String(sp.target) == "none" else "Can be cast on %s." % RulerRules._and_list(names)
 		if names.size() > 4:
 			line = "Can be cast on %d provinces in reach." % names.size()
-		var price := "%d gold a wolf" % int(sp.cost) if not sizes.is_empty() else "%d gold" % int(sp.cost)
+		var price := MagicRules.price_words(rid)
 		out.append({"ritual": rid, "name": MagicRules.spell_name(rid), "price": price, "ok": check.is_empty(),
 			"reason": String(check.get("reason", "")), "line": line, "targets": targets, "sizes": sizes, "blood": blood})
 	return out

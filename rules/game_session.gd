@@ -70,6 +70,8 @@ const BATTLE_TYPES := ["battle", "border_battle"]
 const CODEX_KEYS := ["hotseat", "handoff", "victory", "simultaneous_capture", "computer_opponent"]
 ## The levels a computer seat can play at: AIPlayer.DIFFICULTIES (tests/test_ai_seat.gd checks they match).
 const COMPUTER_LEVELS := ["easy", "normal"]
+## Players in a game: always two, any two of the three factions (CW-0, #251; design/CANDLEWAKE.md §1.1, §13).
+const SEATS := FactionData.SEATS
 ## How from_record() names a missing part of a saved game.
 const LOAD_PARTS := {"start_state": "starting map", "players": "list of players", "game_seed": "game seed"}
 
@@ -708,6 +710,8 @@ static func from_record(game_record, battle_resolver: BattleResolver = null) -> 
 func _check_players(players: Array) -> void:
 	if players.size() < 2:
 		_setup_errors.append("A hotseat game needs at least two players.")
+	elif players.size() > SEATS:
+		_setup_errors.append("A game has two players, one for each of two factions, but this one has %d." % players.size())
 	var seen := {}
 	for i in players.size():
 		var fid := str(players[i])
