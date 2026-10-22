@@ -506,6 +506,8 @@ static func _line_at(i: int, ctx: Dictionary) -> String:
 			text = MusterRules.event_sentence(ctx.state, e)  # ARM-1: names for life, the owner's report only
 		"siege_started", "walls_damaged", "walls_breached", "siege_lifted", "fort_built":
 			text = _siege_line(e, ctx)  # M3c: the reader's turn words
+		"research_gained":
+			text = AscensionRules.gained_line(e)  # #281: "(Fangridge 5)" while no other province pays research
 	return text if not text.is_empty() else own_text(e, ctx.viewer)
 
 
