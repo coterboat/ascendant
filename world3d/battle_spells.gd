@@ -94,7 +94,7 @@ static func standing_groups(st: Dictionary) -> Array:
 	var out := []
 	for k in keys:
 		var g: Dictionary = groups[k]
-		g["kind"] = String(MagicData.SPELLS.get(g["spell"], {}).get("kind", ""))
+		g["kind"] = String(MagicRules.spell_data(String(g["spell"])).get("kind", ""))  # CW-5: the preview's spells too
 		out.append(g)
 	return out
 
