@@ -23,7 +23,7 @@ const EVENT_TYPES := ["flame_changed", "guttered", "harvest"]
 ## The phase the Wick step runs in (TurnResolver.phases): after "wake", before "income".
 const PHASE := "wick"
 ## The codex entry each event links (CW-2 writes them).
-const CODEX := {"flame_changed": "wick", "guttered": "guttering", "harvest": "harvest"}
+const CODEX := {"flame_changed": "wick", "guttered": "guttering", "harvest": "ability_harvest"}
 
 
 ## Whether `faction_id` keeps a flame on its armies (its FactionData row has "wick").
@@ -94,22 +94,22 @@ static func validate(state: GameState, errors = null) -> bool:
 
 ## A flame_changed event: `army`'s flame went from `from` to `to` this turn, for `why` (CW-2: "won", "idle", "vigil", ...).
 static func flame_event(state: GameState, army: Army, from: int, to: int, why: String) -> Dictionary:
-	return _event(state, "flame_changed", army, {"army": army.id, "from": from, "to": to, "why": why})
+	return _wick_event(state, "flame_changed", army, {"army": army.id, "from": from, "to": to, "why": why})
 
 
 ## A guttered event: `army`, at flame 0, lost `hp` hit points over `units` regulars.
 static func gutter_event(state: GameState, army: Army, units: int, hp: int) -> Dictionary:
-	return _event(state, "guttered", army, {"army": army.id, "units": units, "hp": hp})
+	return _wick_event(state, "guttered", army, {"army": army.id, "units": units, "hp": hp})
 
 
 ## A harvest event: `count` fighters of `unit_type` rose at `army`'s province and joined it (`joined`) or formed it.
 static func harvest_event(state: GameState, army: Army, unit_type: String, count: int, joined: bool) -> Dictionary:
-	var e := _event(state, "harvest", army, {"army": army.id, "unit": unit_type, "count": count, "joined": joined})
+	var e := _wick_event(state, "harvest", army, {"army": army.id, "unit": unit_type, "count": count, "joined": joined})
 	e.phase = "battles"
 	return e
 
 
-static func _event(state: GameState, type: String, army: Army, numbers: Dictionary) -> Dictionary:
+static func _wick_event(state: GameState, type: String, army: Army, numbers: Dictionary) -> Dictionary:
 	var e := {"type": type, "phase": PHASE, "provinces": [army.location], "factions": [army.owner], "armies": [army.id],
 		"numbers": numbers, "codex": String(CODEX[type])}
 	e["text"] = event_sentence(state, e)

@@ -162,20 +162,20 @@ static func _part_ok(state: GameState, part, kind: String, where: String, errors
 
 ## A mark_stage event: `faction_id`'s mark at `province_id` reached stage `stage`.
 static func stage_event(state: GameState, faction_id: String, province_id: String, stage: int) -> Dictionary:
-	return _event(state, "mark_stage", faction_id, province_id, {"province": province_id, "stage": stage})
+	return _mark_event(state, "mark_stage", faction_id, province_id, {"province": province_id, "stage": stage})
 
 
 ## A scar_formed event: `faction_id`'s mark at `province_id` became a scar at `stage`, lasting until `until_turn`.
 static func scar_event(state: GameState, faction_id: String, province_id: String, stage: int, until_turn: int) -> Dictionary:
-	return _event(state, "scar_formed", faction_id, province_id, {"province": province_id, "stage": stage, "until_turn": until_turn})
+	return _mark_event(state, "scar_formed", faction_id, province_id, {"province": province_id, "stage": stage, "until_turn": until_turn})
 
 
 ## A scar_consumed event: `faction_id` retook its scarred `province_id`, and the mark came back at `stage`.
 static func relit_event(state: GameState, faction_id: String, province_id: String, stage: int) -> Dictionary:
-	return _event(state, "scar_consumed", faction_id, province_id, {"province": province_id, "stage": stage})
+	return _mark_event(state, "scar_consumed", faction_id, province_id, {"province": province_id, "stage": stage})
 
 
-static func _event(state: GameState, type: String, faction_id: String, province_id: String, numbers: Dictionary) -> Dictionary:
+static func _mark_event(state: GameState, type: String, faction_id: String, province_id: String, numbers: Dictionary) -> Dictionary:
 	var e := {"type": type, "phase": PHASE, "provinces": [province_id], "factions": [faction_id], "armies": [],
 		"numbers": numbers, "codex": CODEX}
 	e["text"] = event_sentence(state, e)
