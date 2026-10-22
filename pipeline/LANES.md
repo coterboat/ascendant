@@ -98,10 +98,12 @@ the build he plays; everything new lands on **`next`**, an integration branch th
 - **The slot is a lock directory**, so nobody waits for a message: `mkdir /private/tmp/ascendant-slot` succeeds only for one
   process. Write `<lane> <ticket> <what> <sha> <time>` into `/private/tmp/ascendant-slot/owner`, run, then `rm -rf` it. If `mkdir`
   fails, keep working and wait with a background until-loop (`until mkdir /private/tmp/ascendant-slot 2>/dev/null; do sleep 30;
-  done`). The slot covers full suites, autoplay matrices and QA harness runs longer than 10 minutes. A lock older than 2 hours whose
-  owner's process is gone is stale: remove it and say so to the director.
-- **CPU:** jobsnearme's lanes run Playwright on this Mac too. Before anything heavy, check `uptime`; above a 1-minute load of 14,
-  wait (the same until-loop) unless it's a focused run under a minute.
+  done`). The slot covers full suites and autoplay matrices. A lock older than 2 hours whose owner's process is gone is stale:
+  remove it and say so to the director.
+- **CPU:** jobsnearme's lanes run Playwright on this Mac too, and alone they hold the 1-minute load at 20-24 (10-22), so waiting
+  for a quiet machine means never running. Instead, every Godot run longer than a minute runs at low priority, so jobsnearme's
+  e2e keeps the CPU it needs: `nice -n 10 <godot ...>`. Only multi-process work (autoplay matrices) also waits for a 1-minute
+  load under 28, and then runs with `--jobs 2`. Lane QA runs one harness window at a time; its runs don't take the slot.
 - **The main checkout** (`/Users/coterboat/Documents/GitHub/ascendant`) is Alex's: never edit, switch, commit or import there.
   Read from it only.
 - **Questions don't stop a lane:** send `Q` to the director, take your pick provisionally, write it under "Decisions I made on my
