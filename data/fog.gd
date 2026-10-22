@@ -107,6 +107,7 @@ const AUDIENCE := {
 	"mark_stage": {"whole": "actor", "others": "rebuilt"},
 	"scar_formed": {"whole": "actor", "others": "rebuilt"},
 	"scar_consumed": {"whole": "actor", "others": "rebuilt"},
+	"risen": {"whole": "actor", "others": "none"},  # CW-3: the dead rise in their owner's report; a rival sees the army when it sees the land
 	# the end of the game: the fog lifts (§2.1)
 	"game_over": {"whole": "all", "others": "none"},
 }
