@@ -56,6 +56,7 @@ func _screens() -> Array:
 		["game_research", _game_research],
 		["game_research_clans", _game_research_clans],
 		["game_report", _game_report],
+		["game_over_report", _game_over_report],
 		["game_cast", _game_cast],
 	]
 
@@ -138,6 +139,12 @@ func _rects(screen: Control) -> Dictionary:
 			rects["research_footer"] = _rt(rp.footer_label)
 			var more = rp.get("tree_more")
 			rects["research_more"] = _rt(more) if more is Control else []
+		if screen.report_overlay.visible:  # #286: the report's rows, its game-over banner and the computer's notes, as drawn
+			var panel: TurnReportPanel = screen.report_panel
+			rects["report_rows"] = _rt(panel.scroll)
+			rects["report_banner"] = _rt(panel.victory_box)
+			rects["report_notes"] = _rt(panel.notes_scroll)
+			rects["report_scale"] = [(screen.report_overlay.get_node("Center") as Control).scale.y]  # PanelFit's, on the box's centring layer
 		if map.cast_dialog != null and map.cast_dialog.visible:  # UI-POLISH-1 (#239): the cast dialog and what it shows
 			rects["cast_panel"] = _r(map.cast_dialog.panel)
 			rects["cast_want"] = map.cast_dialog.panel.get_combined_minimum_size().y
@@ -331,6 +338,29 @@ func _game_report() -> Control:
 	g.close_turn_report()
 	g.end_turn()
 	g.open_turn_report()
+	return g
+
+
+## #286: the report that ends a game, its worst case (QA's seed 13): the gold game-over banner five lines tall, a dozen rows under it,
+## and the computer's seven notes (the fog lifts at the end). The words are of the shapes the game writes, not a game's own.
+func _game_over_report() -> Control:
+	var g: GameScreen = _game()
+	g.close_turn_report()
+	g.end_turn()
+	g.open_turn_report()
+	var events := [{"type": "game_over", "phase": "victory", "text": "Aurel Crown captured Fangridge, the Thornmane Clans capital, on turn 10. "
+		+ "Aurel Crown wins after 10 turns and 11 battles. Provinces held: Thornmane Clans 0, Aurel Crown 12. Builds: Thornmane Clans, the Ninth "
+		+ "Fang (dead, 1 ruler lost), 5 kept power, mandates: Iron Discipline and Drilled Ranks. Aurel Crown, the Ever-Regent (alive), 5 kept "
+		+ "power, mandates: Royal Armories and King's Roads."}]
+	for i in 6:
+		events.append({"type": "move", "phase": "movement", "text": "The Crown's %dth (2 Iron Knights, 2 Crossbowmen) moved from Stonegate to Blackwood." % (i + 4)})
+	for i in 3:
+		events.append({"type": "capture", "phase": "capture", "text": "Aurel Crown captured Wildmoor %d from the Thornmane Clans." % i})
+	g.report_panel.show_report_data({"turn": 10, "header": "Turn 10 results", "events": events})
+	var notes := []
+	for i in 7:
+		notes.append("Storming Fangridge now: over walls of 8 (odds: likely win, 88%%, 21 of 24 test battles), with the main army %d." % i)
+	g.report_panel.show_computer_notes([{"faction_name": "Aurel Crown", "level": "normal", "seat": 0, "notes": notes}])
 	return g
 
 

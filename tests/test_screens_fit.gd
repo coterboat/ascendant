@@ -14,7 +14,7 @@ const PROBE := "res://tests/screen_fit_probe.gd"
 const SCRATCH := "user://screen_fit_probe"  # the probe's own settings and saves (tests/screen_fit_probe.gd)
 const SIZES := {"1600x900": Vector2(1600, 900), "1280x720": Vector2(1280, 720)}
 const SCREENS := ["title", "new_game", "new_game_full", "new_game_error", "victory", "victory_actions", "victory_everything",
-	"victory_draw", "build", "codex", "settings", "load", "guide", "game", "game_research", "game_research_clans", "game_report", "game_cast"]
+	"victory_draw", "build", "codex", "settings", "load", "guide", "game", "game_research", "game_research_clans", "game_report", "game_over_report", "game_cast"]
 const NEW_GAMES := ["new_game", "new_game_full", "new_game_error"]
 const VICTORIES := ["victory", "victory_actions", "victory_everything", "victory_draw"]
 ## A scroll container smaller than this is not a visible way to the content in it.
@@ -345,3 +345,25 @@ func test_the_research_trees_cards_end_above_its_status_and_footer_lines() -> vo
 				assert_true(absf(more.end.y - tree.end.y) <= 1.0 and more.position.y <= tree.position.y + 0.5,
 					"%s: over the tree's area, down to its edge (%s for %s)" % [where, more, tree])
 		assert_true(_shown(_screen(key, "game_research_clans"), "research_status"), "the Clans' tab shows its status line at %s" % key))
+
+
+## #286: the report that ends a game left its rows (what happened and why) a sliver half a line tall: the five-line game-over banner took
+## what it needed, the computer's notes 190 px, and the rows were the only thing that gave way. The rows keep ROWS_MIN_HEIGHT now (scaled as
+## PanelFit scales the box), the notes give way first but still show at least two lines, the three never overlap, and the box fits the
+## window at both sizes.
+func test_the_last_reports_rows_keep_their_room_under_the_banner_and_the_notes() -> void:
+	_each_size(func(key: String, viewport: Vector2):
+		var s := _screen(key, "game_over_report")
+		var where := "the last report at %s" % key
+		var box := _rect(s, "report_box")
+		var rows := _rect(s, "report_rows")
+		var banner := _rect(s, "report_banner")
+		var notes := _rect(s, "report_notes")
+		var scale: float = float(s.rects.report_scale[0])  # PanelFit's scale on the box (and all in it) to fit the window
+		assert_true(_shown(s, "report_banner") and _shown(s, "report_notes"), "%s: the banner and the notes are up" % where)
+		assert_true(rows.size.y >= TurnReportPanel.ROWS_MIN_HEIGHT * scale - 1.0, "%s: the rows keep %d px (%d at this scale), they have %d" % [
+			where, TurnReportPanel.ROWS_MIN_HEIGHT, TurnReportPanel.ROWS_MIN_HEIGHT * scale, rows.size.y])
+		assert_true(notes.size.y >= TurnReportPanel.NOTES_MIN_HEIGHT * scale - 1.0, "%s: the notes still show two lines (%d px)" % [where, notes.size.y])
+		assert_true(banner.end.y <= rows.position.y + 0.5 and rows.end.y <= notes.position.y + 0.5, "%s: banner, rows and notes in that order, apart (%s, %s, %s)" % [
+			where, banner, rows, notes])
+		assert_true(_inside(box, viewport), "%s: and the box fits the window (%s)" % [where, box]))
