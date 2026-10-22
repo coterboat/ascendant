@@ -217,3 +217,95 @@ const TURNED_ASIDE := 2
 const BASTION_CAP := 2
 ## Tithe of Blood (§7.1): hp paid for each gold of a ritual's price.
 const BLOOD_PER_GOLD := 1
+
+
+## CW-5 (#256, design/CANDLEWAKE.md §7): the Candlewake's magic, behind their faction's preview (FactionData.PREVIEW_FACTIONS),
+## kept apart from the tables above so they, and everything that walks them, stay exactly as they are; MagicRules reads both.
+## Two schools, the Wick (aligned with the Red Wake) and Wax (the Golden Wake). New in kind: Kindle, a "flame" ritual (+value
+## flame to the lowest-numbered army of yours in the target province that is below the row's cap, never above it); Bonfire
+## Night's "flame_bonus" (a global: your regulars fight that much hotter, in battle only: WickRules.battle_flame); Candlemass's
+## "one_army" (a blessing on one army, the lowest-numbered of yours there, not every army there).
+const PREVIEW_SCHOOLS := {
+	"wick": {"id": "wick", "name": "Wick", "ref": "the Wick", "faction": "candlewake", "aligned_branch": "red_wake",
+		"nodes": ["draw_the_warmth", "kindle", "wick_mastery", "bonfire_night"], "codex": "school_wick",
+		"flavour": "warmth drawn from the living, and the flame fed"},
+	"wax": {"id": "wax", "name": "Wax", "ref": "Wax", "faction": "candlewake", "aligned_branch": "golden_wake",
+		"nodes": ["wax_skin", "raise_the_snuffed", "wax_mastery", "candlemass"], "codex": "school_wax",
+		"flavour": "wax that hardens, raises and keeps"},
+}
+const PREVIEW_FACTION_SCHOOLS := {"candlewake": ["wick", "wax"]}
+
+const PREVIEW_SPELLS := {
+	"draw_the_warmth": {"id": "draw_the_warmth", "name": "Draw the Warmth", "school": "wick", "tier": "I", "kind": "bolt", "battle": true,
+		"value": 3, "per_bonus": {"value": 1}, "codex": "spell_draw_the_warmth",
+		"text": "3 sure damage (+1 per Wick mastery) to the weakest enemy in reach. The caster bleeds nothing."},
+	"kindle": {"id": "kindle", "name": "Kindle", "school": "wick", "tier": "II", "kind": "flame", "battle": false,
+		"cost": 10, "range": 2, "target": "own_flame_army", "duration": 0, "value": 1, "per_bonus": {}, "codex": "spell_kindle",
+		"text": "Raises one army of yours within 2 by 1 flame at once (the lowest-numbered there below 3), never above 3."},
+	"bonfire_night": {"id": "bonfire_night", "name": "Bonfire Night", "school": "wick", "tier": "III", "kind": "global", "battle": false,
+		"cost": 30, "range": 0, "target": "none", "duration": 2, "flame_bonus": 1, "per_bonus": {}, "codex": "spell_bonfire_night",
+		"text": "Through turn T + 2, your regulars fight every battle as if 1 flame hotter (never above the cap). Battles only: the Wick step never sees it."},
+	"wax_skin": {"id": "wax_skin", "name": "Wax Skin", "school": "wax", "tier": "I", "kind": "shield", "battle": true,
+		"value": 4, "stat": "defense", "count": 6, "per_bonus": {"count": 1}, "codex": "spell_wax_skin",
+		"text": "+4 defense for 6 of your front-rank units on open ground (+1 unit per Wax mastery), every round."},
+	"raise_the_snuffed": {"id": "raise_the_snuffed", "name": "Raise the Snuffed", "school": "wax", "tier": "II", "kind": "summon", "battle": false,
+		"cost": 4, "range": 0, "target": "caster", "duration": 4, "count": 3, "summon": "snuffed", "per_bonus": {"count": 1},
+		"codex": "spell_raise_the_snuffed",
+		"text": "Raises 3 Snuffed (up to 3 + your Wax mastery), 4 gold each, as a new army of their own at the caster's province, through turn T + 4. One band at a time."},
+	"candlemass": {"id": "candlemass", "name": "Candlemass", "school": "wax", "tier": "III", "kind": "blessing", "battle": false,
+		"cost": 25, "range": 2, "target": "own_with_army", "duration": 4, "value": 12, "morale": 1, "one_army": true,
+		"per_bonus": {"value": 4}, "codex": "spell_candlemass",
+		"text": "Blesses one army of yours within 2 through turn T + 4: it heals 12 hit points a turn and fights with +1 morale."},
+}
+
+const PREVIEW_SPELLBOOK := {"candlewake": ["draw_the_warmth", "wax_skin"]}
+
+const PREVIEW_ARCANA := {
+	"candlewake": [
+		{"id": "draw_the_warmth", "name": "Draw the Warmth", "kind": "spell", "tier": "I", "school": "wick", "cost": 10, "requires": [],
+			"requires_any": 0, "branch": "", "oath_branch": "", "codex": "spell_draw_the_warmth",
+			"text": "Battle spell (the Wick): 3 sure damage to the weakest enemy in reach, and the caster bleeds nothing."},
+		{"id": "kindle", "name": "Kindle", "kind": "spell", "tier": "II", "school": "wick", "cost": 15, "requires": ["draw_the_warmth"],
+			"requires_any": 0, "branch": "", "oath_branch": "", "codex": "spell_kindle",
+			"text": "Ritual (the Wick): one army of yours within 2 gains 1 flame at once, never above 3, for 10 gold."},
+		{"id": "wick_mastery", "name": "Wick Mastery", "kind": "mastery", "tier": "mastery", "school": "wick", "cost": 20,
+			"requires": ["kindle"], "requires_any": 0, "branch": "", "oath_branch": "", "codex": "node_wick_mastery",
+			"text": "+1 mastery in the Wick for every caster: Draw the Warmth +1 damage."},
+		{"id": "bonfire_night", "name": "Bonfire Night", "kind": "spell", "tier": "III", "school": "wick", "cost": 25,
+			"requires": ["kindle", "wake_oath_snuffed"], "requires_any": 0, "branch": "", "oath_branch": "red_wake",
+			"codex": "spell_bonfire_night",
+			"text": "Greater working (the Wick): for 3 turns your regulars fight as if 1 flame hotter, for 30 gold."},
+		{"id": "wax_skin", "name": "Wax Skin", "kind": "spell", "tier": "I", "school": "wax", "cost": 10, "requires": [],
+			"requires_any": 0, "branch": "", "oath_branch": "", "codex": "spell_wax_skin",
+			"text": "Battle spell (Wax): +4 defense for 6 of your front-rank units on open ground, every round."},
+		{"id": "raise_the_snuffed", "name": "Raise the Snuffed", "kind": "spell", "tier": "II", "school": "wax", "cost": 15,
+			"requires": ["wax_skin"], "requires_any": 0, "branch": "", "oath_branch": "", "codex": "spell_raise_the_snuffed",
+			"text": "Ritual (Wax): raises a band of 3 or more Snuffed for 4 gold each, for 5 turns."},
+		{"id": "wax_mastery", "name": "Wax Mastery", "kind": "mastery", "tier": "mastery", "school": "wax", "cost": 20,
+			"requires": ["raise_the_snuffed"], "requires_any": 0, "branch": "", "oath_branch": "", "codex": "node_wax_mastery",
+			"text": "+1 mastery in Wax for every caster: Wax Skin covers 1 more unit, the band can be 1 Snuffed bigger, Candlemass +4 hit points a turn."},
+		{"id": "candlemass", "name": "Candlemass", "kind": "spell", "tier": "III", "school": "wax", "cost": 25,
+			"requires": ["raise_the_snuffed", "wake_oath_kept"], "requires_any": 0, "branch": "", "oath_branch": "golden_wake",
+			"codex": "spell_candlemass",
+			"text": "Greater working (Wax): one army of yours heals 12 hit points a turn and fights with +1 morale, for 5 turns, for 25 gold."},
+	],
+}
+
+const PREVIEW_MAGES := {
+	"candlewake": {"id": "chandlers_apprentices", "name": "Chandler's Apprentices", "hp": 8, "attack": 7, "defense": 5, "morale": 9, "cost": 17,
+		"trait": "Mage"},
+}
+
+const PREVIEW_SUMMONS := {
+	"snuffed": {"id": "snuffed", "name": "Snuffed", "hp": 7, "attack": 9, "defense": 8, "morale": 8, "trait": "Pall", "faction": "candlewake",
+		"fades": true, "codex": "unit_snuffed", "pack": {"one": "Snuffed", "many": "Snuffed"}},
+}
+
+const PREVIEW_RULER_MAGIC := {
+	"half_death": {"schools": ["wick"], "battle": true, "own_spell": "draw_the_warmth",
+		"line": "Casts Draw the Warmth in battle from turn 1, and the Wick's rituals once you research them: Kindle and Bonfire Night."},
+	"mother_tallow": {"schools": ["wax"], "battle": false, "own_spell": "",
+		"line": "Casts Wax's rituals once you research them: Raise the Snuffed and Candlemass."},
+}
+
+const PREVIEW_MASTERY_NODES := {"wick": "wick_mastery", "wax": "wax_mastery"}
