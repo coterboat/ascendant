@@ -12,6 +12,11 @@ class_name BuildPresetData
 ##                      to lose, since mandates outlive it, and kept home it never fought
 ##   ai_sacrifices      mandates an AI seat sacrifices for, in this order (§6.3)
 ## The order inside each faction's list matters: an AI seat picks presets[faction][roll 0..2].
+##
+## #183 (design/M3C_SIEGES.md §11.4, band S6): Regent's Court was Royal Armories and King's Roads, keeping 5, and sacrificed
+## for Drilled Ranks, then Veteran Levies. With forts and sieges the Clan Moot won 73% of their games (64% without), so the
+## court now taxes instead of arming: Heavy Tithes and King's Roads, keeping 4 (the Ever-Regent's ability stays at rank 2),
+## and its computer buys Royal Armories, then Veteran Levies, by sacrifice. The PR for #183 has the runs behind it.
 
 const BALANCED := "balanced"
 
@@ -36,7 +41,7 @@ const PRESETS := {
 		{"id": "iron_crown", "name": "Iron Crown", "style": "spend", "ruler": "aurel_king",
 			"mandates": ["royal_armories", "heavy_tithes", "veteran_levies"], "ai_role": "field", "ai_sacrifices": []},
 		{"id": "regents_court", "name": "Regent's Court", "style": "balanced", "ruler": "ever_regent",
-			"mandates": ["royal_armories", "kings_roads"], "ai_role": "field", "ai_sacrifices": ["drilled_ranks", "veteran_levies"]},
+			"mandates": ["heavy_tithes", "kings_roads"], "ai_role": "field", "ai_sacrifices": ["royal_armories", "veteran_levies"]},
 	],
 	"beasts": [
 		{"id": "beast_god_unbound", "name": "Beast-God Unbound", "style": "keep", "ruler": "thornmane_avatar",
