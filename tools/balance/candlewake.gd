@@ -6,11 +6,11 @@ extends SceneTree
 ##
 ## Rows: the start armies with their commanders, each Candlewake unit type against each Crown and Clans unit type at equal gold
 ## (counts picked as Balance.equal_gold picks them, about PAIR_GOLD a side), mixed armies at MIXED_GOLD a side, and the Clans'
-## Tuskers with Blood Frenzy (a mandate). Columns:
-## flames 0 to 3 on open ground, then flame 1 on each ground with each side defending (forest, hills, a fort). The Red Wake's
-## flame 4 waits for CW-4, Iron Hide for paths (CW-4's Amber Saints and the Crown's Iron Knights), Shield Wall is in every pair
-## with two or more Spearmen. The gate (§9): at flame 1, equal-gold pairs between PAIR_BAND and mixed armies within MIXED_BAND,
-## on open ground. tests/test_cw2_benchmarks.gd runs the gate with fewer seeds, and holds the start armies within START_BAND.
+## Tuskers with Blood Frenzy (a mandate). Columns: flames 0 to 3 on open ground, then flame 1 on each ground with each side
+## defending (forest, hills, a fort). The Red Wake's flame 4 waits for CW-4, Iron Hide for paths (CW-4's Amber Saints and the
+## Crown's Iron Knights), and Shield Wall is in every pair with two or more Spearmen. The gate (§9): at flame 1 on open ground,
+## equal-gold pairs within PAIR_BAND and mixed armies within MIXED_BAND. tests/test_cw2_benchmarks.gd runs the gate with fewer
+## seeds, and holds the start armies within START_BAND.
 
 const Balance := preload("res://tools/balance/balance.gd")
 const WAKE := "candlewake"
