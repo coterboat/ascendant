@@ -1,0 +1,341 @@
+{
+ "cw_model_half_death__claude": {
+  "credits": 4,
+  "endpoint": "/assets/3d-model",
+  "file": "assets/_concept/candlewake/candidates/models/half_death__claude.glb",
+  "id": "cw_model_half_death__claude",
+  "job": "d19d24f2-1233-4217-be64-aa3b902293af",
+  "params": {
+   "image": "data:image/webp;base64,UklGRkimBABXRUJQV...(base64)",
+   "target_num_faces": 12000,
+   "texture_size": 1024,
+   "texture_type": "pbr"
+  },
+  "side_files": [
+   "assets/_concept/candlewake/candidates/models/half_death__claude_snap0.png",
+   "assets/_concept/candlewake/candidates/models/half_death__claude_snap1.png",
+   "assets/_concept/candlewake/candidates/models/half_death__claude_snap2.png",
+   "assets/_concept/candlewake/candidates/models/half_death__claude_snap3.png"
+  ],
+  "url": "https://storage.googleapis.com/ludo-assets/api/c0a34ef6ac3b37bc2367851c7e8b61f7.glb",
+  "v": 1
+ },
+ "cw_model_half_death__grok": {
+  "credits": 4,
+  "endpoint": "/assets/3d-model",
+  "file": "assets/_concept/candlewake/candidates/models/half_death__grok.glb",
+  "id": "cw_model_half_death__grok",
+  "job": "d357f8f5-a9ea-4952-9077-83ad55434cc1",
+  "params": {
+   "image": "data:image/png;base64,iVBORw0KGgoAAAANSU...(base64)",
+   "target_num_faces": 12000,
+   "texture_size": 1024,
+   "texture_type": "pbr"
+  },
+  "side_files": [
+   "assets/_concept/candlewake/candidates/models/half_death__grok_snap0.png",
+   "assets/_concept/candlewake/candidates/models/half_death__grok_snap1.png",
+   "assets/_concept/candlewake/candidates/models/half_death__grok_snap2.png",
+   "assets/_concept/candlewake/candidates/models/half_death__grok_snap3.png"
+  ],
+  "url": "https://storage.googleapis.com/ludo-assets/api/873fb32171162bd3e030358d5ddb1c11.glb",
+  "v": 1
+ },
+ "cw_model_lamplighter__claude": {
+  "credits": 4,
+  "endpoint": "/assets/3d-model",
+  "file": "assets/_concept/candlewake/candidates/models/lamplighter__claude.glb",
+  "id": "cw_model_lamplighter__claude",
+  "job": "b11d3226-077d-45c7-b3a0-5ae3a0b198fd",
+  "params": {
+   "image": "data:image/webp;base64,UklGRs4VBQBXRUJQV...(base64)",
+   "target_num_faces": 8000,
+   "texture_size": 1024,
+   "texture_type": "pbr"
+  },
+  "side_files": [
+   "assets/_concept/candlewake/candidates/models/lamplighter__claude_snap0.png",
+   "assets/_concept/candlewake/candidates/models/lamplighter__claude_snap1.png",
+   "assets/_concept/candlewake/candidates/models/lamplighter__claude_snap2.png",
+   "assets/_concept/candlewake/candidates/models/lamplighter__claude_snap3.png"
+  ],
+  "url": "https://storage.googleapis.com/ludo-assets/api/d5a215eac9e747b017a6e5ac8c10ec01.glb",
+  "v": 1
+ },
+ "cw_model_lamplighter__grok": {
+  "credits": 4,
+  "endpoint": "/assets/3d-model",
+  "file": "assets/_concept/candlewake/candidates/models/lamplighter__grok.glb",
+  "history": [
+   {
+    "credits": 4,
+    "endpoint": "/assets/3d-model",
+    "job": "a8971091-5f78-4a94-a38f-3ab804600b3b",
+    "url": "https://storage.googleapis.com/ludo-assets/api/745bf2064b5c668b07b87716c3d0ddb0.glb",
+    "v": 1
+   }
+  ],
+  "id": "cw_model_lamplighter__grok",
+  "job": "7cd31bf7-dbb0-476d-a5b4-e4026e8933fd",
+  "params": {
+   "image": "data:image/png;base64,iVBORw0KGgoAAAANSU...(base64)",
+   "target_num_faces": 8000,
+   "texture_size": 1024,
+   "texture_type": "pbr"
+  },
+  "side_files": [
+   "assets/_concept/candlewake/candidates/models/lamplighter__grok_snap0.png",
+   "assets/_concept/candlewake/candidates/models/lamplighter__grok_snap1.png",
+   "assets/_concept/candlewake/candidates/models/lamplighter__grok_snap2.png",
+   "assets/_concept/candlewake/candidates/models/lamplighter__grok_snap3.png"
+  ],
+  "url": "https://storage.googleapis.com/ludo-assets/api/7b686073147dc7e93960f446ccd1e071.glb",
+  "v": 2
+ },
+ "cw_model_mother_tallow__claude": {
+  "credits": 4,
+  "endpoint": "/assets/3d-model",
+  "file": "assets/_concept/candlewake/candidates/models/mother_tallow__claude.glb",
+  "id": "cw_model_mother_tallow__claude",
+  "job": "ed928407-2713-4344-b231-6ac204bfc260",
+  "params": {
+   "image": "data:image/webp;base64,UklGRjy9BABXRUJQV...(base64)",
+   "target_num_faces": 12000,
+   "texture_size": 1024,
+   "texture_type": "pbr"
+  },
+  "side_files": [
+   "assets/_concept/candlewake/candidates/models/mother_tallow__claude_snap0.png",
+   "assets/_concept/candlewake/candidates/models/mother_tallow__claude_snap1.png",
+   "assets/_concept/candlewake/candidates/models/mother_tallow__claude_snap2.png",
+   "assets/_concept/candlewake/candidates/models/mother_tallow__claude_snap3.png"
+  ],
+  "url": "https://storage.googleapis.com/ludo-assets/api/bac037b1e229aa53c1352625ed45c409.glb",
+  "v": 1
+ },
+ "cw_model_mother_tallow__grok": {
+  "credits": 4,
+  "endpoint": "/assets/3d-model",
+  "file": "assets/_concept/candlewake/candidates/models/mother_tallow__grok.glb",
+  "id": "cw_model_mother_tallow__grok",
+  "job": "4d8777fa-236d-47ad-b7f9-fab06dd0a768",
+  "params": {
+   "image": "data:image/png;base64,iVBORw0KGgoAAAANSU...(base64)",
+   "target_num_faces": 12000,
+   "texture_size": 1024,
+   "texture_type": "pbr"
+  },
+  "side_files": [
+   "assets/_concept/candlewake/candidates/models/mother_tallow__grok_snap0.png",
+   "assets/_concept/candlewake/candidates/models/mother_tallow__grok_snap1.png",
+   "assets/_concept/candlewake/candidates/models/mother_tallow__grok_snap2.png",
+   "assets/_concept/candlewake/candidates/models/mother_tallow__grok_snap3.png"
+  ],
+  "url": "https://storage.googleapis.com/ludo-assets/api/23acbcee17ecd6c546ba81c783be9658.glb",
+  "v": 1
+ },
+ "cw_model_wickwarden__claude": {
+  "credits": 4,
+  "endpoint": "/assets/3d-model",
+  "file": "assets/_concept/candlewake/candidates/models/wickwarden__claude.glb",
+  "id": "cw_model_wickwarden__claude",
+  "job": "f6456991-103b-4185-83c2-9c9f6cbcc285",
+  "params": {
+   "image": "data:image/webp;base64,UklGRhqaCQBXRUJQV...(base64)",
+   "target_num_faces": 6000,
+   "texture_size": 1024,
+   "texture_type": "pbr"
+  },
+  "side_files": [
+   "assets/_concept/candlewake/candidates/models/wickwarden__claude_snap0.png",
+   "assets/_concept/candlewake/candidates/models/wickwarden__claude_snap1.png",
+   "assets/_concept/candlewake/candidates/models/wickwarden__claude_snap2.png",
+   "assets/_concept/candlewake/candidates/models/wickwarden__claude_snap3.png"
+  ],
+  "url": "https://storage.googleapis.com/ludo-assets/api/e7d13874b05e40aae733622db5f0468b.glb",
+  "v": 1
+ },
+ "cw_model_wickwarden__codex": {
+  "credits": 4,
+  "endpoint": "/assets/3d-model",
+  "file": "assets/_concept/candlewake/candidates/models/wickwarden__codex.glb",
+  "id": "cw_model_wickwarden__codex",
+  "job": "ad399025-2e21-4969-b25f-56842fc40ff7",
+  "params": {
+   "image": "data:image/png;base64,iVBORw0KGgoAAAANSU...(base64)",
+   "target_num_faces": 6000,
+   "texture_size": 1024,
+   "texture_type": "pbr"
+  },
+  "side_files": [
+   "assets/_concept/candlewake/candidates/models/wickwarden__codex_snap0.png",
+   "assets/_concept/candlewake/candidates/models/wickwarden__codex_snap1.png",
+   "assets/_concept/candlewake/candidates/models/wickwarden__codex_snap2.png",
+   "assets/_concept/candlewake/candidates/models/wickwarden__codex_snap3.png"
+  ],
+  "url": "https://storage.googleapis.com/ludo-assets/api/2b633886e69873d4f2669988b3e4197b.glb",
+  "v": 1
+ },
+ "cw_model_wickwarden__grok": {
+  "credits": 4,
+  "endpoint": "/assets/3d-model",
+  "file": "assets/_concept/candlewake/candidates/models/wickwarden__grok.glb",
+  "id": "cw_model_wickwarden__grok",
+  "job": "5ba5877a-29d2-4ea8-9324-5c89dcb91aef",
+  "params": {
+   "image": "data:image/png;base64,iVBORw0KGgoAAAANSU...(base64)",
+   "target_num_faces": 6000,
+   "texture_size": 1024,
+   "texture_type": "pbr"
+  },
+  "side_files": [
+   "assets/_concept/candlewake/candidates/models/wickwarden__grok_snap0.png",
+   "assets/_concept/candlewake/candidates/models/wickwarden__grok_snap1.png",
+   "assets/_concept/candlewake/candidates/models/wickwarden__grok_snap2.png",
+   "assets/_concept/candlewake/candidates/models/wickwarden__grok_snap3.png"
+  ],
+  "url": "https://storage.googleapis.com/ludo-assets/api/4fb5c5f4accf3ee08948caf5133789ac.glb",
+  "v": 1
+ },
+ "cw_model_wickwarden_b__claude": {
+  "credits": 4,
+  "endpoint": "/assets/3d-model",
+  "file": "assets/_concept/candlewake/candidates/models/wickwarden_b__claude.glb",
+  "id": "cw_model_wickwarden_b__claude",
+  "job": "9ba6e7ce-e1a7-4b85-8292-7d1c06666503",
+  "params": {
+   "image": "data:image/webp;base64,UklGRraOCgBXRUJQV...(base64)",
+   "target_num_faces": 6000,
+   "texture_size": 1024,
+   "texture_type": "pbr"
+  },
+  "side_files": [
+   "assets/_concept/candlewake/candidates/models/wickwarden_b__claude_snap0.png",
+   "assets/_concept/candlewake/candidates/models/wickwarden_b__claude_snap1.png",
+   "assets/_concept/candlewake/candidates/models/wickwarden_b__claude_snap2.png",
+   "assets/_concept/candlewake/candidates/models/wickwarden_b__claude_snap3.png"
+  ],
+  "url": "https://storage.googleapis.com/ludo-assets/api/40072e94706c82df48ef86920800f275.glb",
+  "v": 1
+ },
+ "cw_ready_half_death": {
+  "credits": 0.5,
+  "endpoint": "/assets/image/edit",
+  "file": "assets/_concept/candlewake/candidates/claude/ready_half_death.webp",
+  "history": [
+   {
+    "credits": 0.5,
+    "endpoint": "/assets/image/edit",
+    "job": "35a6dca4-b759-470a-a31e-ef1e7a319cef",
+    "url": "https://storage.googleapis.com/ludo-assets/api/67bc3b2c14195d97f091c904c76aa295.webp",
+    "v": 1
+   }
+  ],
+  "id": "cw_ready_half_death",
+  "job": "0c2df82b-7bab-46e5-840f-e4f8d46250e0",
+  "params": {
+   "augment_prompt": false,
+   "image": "data:image/png;base64,iVBORw0KGgoAAAANSU...(base64)",
+   "n": 1,
+   "prompt": "Keep only the tall pale god in the tattered ivory robes on the left, exactly as drawn: the same long bald head, one half of the face smooth pale alabaster with a closed eye, the other half an empty lilac outline with darkness through it, the same soot-black high collar, tattered ivory robes over black, lilac sash and brass-buckled belt, soot-black hands, the same dark crooked staff with the brass lantern of lilac flame hanging from it. He stands tall in a calm ready stance, the staff held upright at arm's length with clear space between the staff and his body, his other hand held a little out from his side with the fingers open. Three-quarter view from slightly above, the whole figure centred with wide empty margin on every side and clear headroom, the same painted cel style with thick clean dark outlines, flat colours with one shadow tone and one highlight, matte finish, even soft light from the front, plain flat light grey background everywhere else."
+  },
+  "url": "https://storage.googleapis.com/ludo-assets/api/ac8e295284a0c159d850eb9fd2f284aa.webp",
+  "v": 2
+ },
+ "cw_ready_lamplighter": {
+  "credits": 0.5,
+  "endpoint": "/assets/image/edit",
+  "file": "assets/_concept/candlewake/candidates/claude/ready_lamplighter.webp",
+  "history": [
+   {
+    "credits": 0.5,
+    "endpoint": "/assets/image/edit",
+    "job": "5c2f2658-5bfc-4624-8cf4-ea1bb8a5e64e",
+    "url": "https://storage.googleapis.com/ludo-assets/api/1c3ef3596fc9f08fe859823e6d11d35c.webp",
+    "v": 1
+   }
+  ],
+  "id": "cw_ready_lamplighter",
+  "job": "5a1c073f-bed4-4722-9ecd-85e864552dee",
+  "params": {
+   "augment_prompt": false,
+   "image": "data:image/png;base64,iVBORw0KGgoAAAANSU...(base64)",
+   "n": 1,
+   "prompt": "Keep only the tall cloaked figure holding the very tall brass lantern pole, exactly as drawn: the same pale wax hood around a black hollow face with lilac light inside, the same short black wick stub on top of the head, bare and unlit, the same tall black high-collared cloak lined in plum with lilac edges, lilac bow at the throat, brass buckles and belts, the same very tall brass pole topped by a lantern of lilac flame. He stands in a stern ready stance with his feet apart, the pole held upright at arm's length with clear space between the pole and his body and cloak, the lantern rising well above his head, his other arm held a little away from his side. Three-quarter view from slightly above, the whole figure centred with wide empty margin on every side and clear headroom, the same painted cel style with thick clean dark outlines, flat colours with one shadow tone and one highlight, matte finish, even soft light from the front, plain flat light grey background everywhere else."
+  },
+  "url": "https://storage.googleapis.com/ludo-assets/api/c8887e89495e8aeaefedde177333c5c5.webp",
+  "v": 2
+ },
+ "cw_ready_mother_tallow": {
+  "credits": 0.5,
+  "endpoint": "/assets/image/edit",
+  "file": "assets/_concept/candlewake/candidates/claude/ready_mother_tallow.webp",
+  "history": [
+   {
+    "credits": 0.5,
+    "endpoint": "/assets/image/edit",
+    "job": "0246ed62-8a1c-4c00-af87-8c8aa07264cb",
+    "url": "https://storage.googleapis.com/ludo-assets/api/cd5bc1acfdf7d1040746a6f1da2be85e.webp",
+    "v": 1
+   }
+  ],
+  "id": "cw_ready_mother_tallow",
+  "job": "490d1225-0864-4a1a-9532-12d2786c2508",
+  "params": {
+   "augment_prompt": false,
+   "image": "data:image/png;base64,iVBORw0KGgoAAAANSU...(base64)",
+   "n": 1,
+   "prompt": "Keep only the living woman in the soot-black apron, exactly as drawn: the same warm brown skin and grey-streaked dark hair in a bun, white shirt with rolled sleeves, long soot-black apron over an ivory skirt dripping with wax at the hem, lilac ribbon, brass snuffing shears and leather pouch at her belt, the same lit white taper whose small flame is warm gold. She stands in a calm ready stance with her feet apart, holding the taper out a little in front of her in one hand, her other arm held a little away from her side. Three-quarter view from slightly above, the whole figure centred with wide empty margin on every side and clear headroom, the same painted cel style with thick clean dark outlines, flat colours with one shadow tone and one highlight, matte finish, even soft light from the front, plain flat light grey background everywhere else."
+  },
+  "url": "https://storage.googleapis.com/ludo-assets/api/4cb86bc5b84756c0621f28c5ffec5f93.webp",
+  "v": 2
+ },
+ "cw_ready_wickwarden": {
+  "credits": 0.5,
+  "endpoint": "/assets/image/edit",
+  "file": "assets/_concept/candlewake/candidates/claude/ready_wickwarden.webp",
+  "history": [
+   {
+    "credits": 0.5,
+    "endpoint": "/assets/image/edit",
+    "job": "0b0c5e28-6f8c-4063-91e0-d8e2fcb837ae",
+    "url": "https://storage.googleapis.com/ludo-assets/api/fe30cfceb2d96a726a6f45ac511d3c8c.webp",
+    "v": 1
+   }
+  ],
+  "id": "cw_ready_wickwarden",
+  "job": "4516b359-1677-4d69-b4cc-b45d84481138",
+  "params": {
+   "augment_prompt": false,
+   "image": "data:image/png;base64,iVBORw0KGgoAAAANSU...(base64)",
+   "n": 1,
+   "prompt": "Keep only the hooded wax soldier with the tall dripping wax shield and the long spear, exactly as drawn: the same thick dripping ivory wax hood around a pitch-black hollow face with one small lilac light deep inside, the same dripping wax tower shield with its round brass boss, the same long spear with its brass-fitted head, the same soot-black wrappings and lilac cloth showing through the wax, the same brass-buckled belt, soot-black hands and feet with wax cuffs. The short black wick on top of the hood is bare and unlit, ending in a plain black tip. He stands in a relaxed ready stance with his feet apart, the spear held upright at arm's length with clear space between the spear and his body, the shield held a little out from his side. Three-quarter view from slightly above, the whole figure centred with wide empty margin on every side and clear headroom, the same painted cel style with thick clean dark outlines, flat colours with one shadow tone and one highlight, matte finish, even soft light from the front, plain flat light grey background everywhere else."
+  },
+  "url": "https://storage.googleapis.com/ludo-assets/api/697139e323637da0e7d418eb1d823a1e.webp",
+  "v": 2
+ },
+ "cw_ready_wickwarden_b": {
+  "credits": 0.5,
+  "endpoint": "/assets/image/edit",
+  "file": "assets/_concept/candlewake/candidates/claude/ready_wickwarden_b.webp",
+  "history": [
+   {
+    "credits": 0.5,
+    "endpoint": "/assets/image/edit",
+    "job": "21e75b2d-a47f-4c03-917f-f248e80b558b",
+    "url": "https://storage.googleapis.com/ludo-assets/api/17f9e0191971b8430ac76efac0e44c65.webp",
+    "v": 1
+   }
+  ],
+  "id": "cw_ready_wickwarden_b",
+  "job": "195abd3a-e560-43af-9bbe-f17d37dd36a6",
+  "params": {
+   "augment_prompt": false,
+   "image": "data:image/png;base64,iVBORw0KGgoAAAANSU...(base64)",
+   "n": 1,
+   "prompt": "The same hooded wax soldier exactly as drawn: the same squared crenellated ivory wax hood dripping over a pitch-black hollow face with one small lilac flame-light deep inside, the same dripping wax tower shield with its round brass boss, the same long spear with its brass-fitted head, the same soot-black wrappings, brass-buckled belt and soot-black hands and feet with wax cuffs. He stands in a relaxed ready stance with his feet apart, the spear held upright at arm's length with clear space between the spear and his body, the shield held a little out from his side. Three-quarter view from slightly above, the whole figure centred with wide empty margin on every side and clear headroom, the same painted cel style with thick clean dark outlines, flat colours with one shadow tone and one highlight, matte finish, even soft light from the front, plain flat light grey background everywhere else."
+  },
+  "url": "https://storage.googleapis.com/ludo-assets/api/32b0f6dddc67fbf1995acd4c902a5df6.webp",
+  "v": 2
+ }
+}
