@@ -231,6 +231,9 @@ func _now(p: int, n: int, state: Dictionary, info: Dictionary, totals: Array, fe
 			return "The playback stops here: this battle's log was cut short."
 		var e: Dictionary = _log.events[end_i]
 		var rounds := int(e.rounds)
+		if _log.sides.size() > 2:
+			# #265: with more than two sides, who left the field, and when.
+			return "Battle over after %d %s: %s won (%s)." % [rounds, "round" if rounds == 1 else "rounds", _side_name(int(e.winner)), how_it_ended(_log)]
 		var how: String = {"rout": "the enemy broke", "destroyed": "no enemy was left standing",
 			"round_cap": "the last round ended with both sides standing", "mutual": "both sides broke, and it kept the field"}.get(String(e.how), "")
 		return "Battle over after %d %s: %s won (%s)." % [rounds, "round" if rounds == 1 else "rounds", _side_name(int(e.winner)), how]
@@ -238,6 +241,8 @@ func _now(p: int, n: int, state: Dictionary, info: Dictionary, totals: Array, fe
 		var parts := []
 		for si in _log.sides.size():
 			parts.append("%s with %d fighters" % [_side_name(si), _log.sides[si].fighters.size()])
+		if parts.size() > 2:
+			return "Before round 1: the armies deploy, each side against every other: %s." % RulerRules._and_list(parts)
 		return "Before round 1: the armies deploy, %s." % " against ".join(parts)
 	match String(state.beat):
 		"casts":
@@ -263,6 +268,59 @@ func _now(p: int, n: int, state: Dictionary, info: Dictionary, totals: Array, fe
 						"held": "is held by Iron Discipline"}.get(String(me.result), "")])
 			return "Round %d · morale: %s." % [n, ", ".join(checks) if not checks.is_empty() else "each side checks"]
 	return "Round %d." % n
+
+
+## #265: how a battle of more than two sides ended, naming each side: every side but the winner as it left the field, in
+## the order they left it ("Free Holds broke in round 3", "Thornmane Clans had no one left in round 4"; last, any "still
+## stood when the rounds ran out"), then, when the winner was not simply the last side standing, why it kept the field (a
+## mutual rout, the round cap). "" without an end event. Every word is the log's.
+static func how_it_ended(battle_log: Dictionary) -> String:
+	var end_i := BattleLog.find_event(battle_log, "end")
+	if end_i < 0:
+		return ""
+	var e: Dictionary = battle_log.events[end_i]
+	var sides: Array = battle_log.sides
+	var w := int(e.winner)
+	var left_at := {}  # side -> [event kind, round]
+	for ev in battle_log.events:
+		if (ev.t == "rout" or ev.t == "destroyed") and not left_at.has(int(ev.side)):
+			left_at[int(ev.side)] = [String(ev.t), int(ev.n)]
+	var losers := []
+	for si in sides.size():
+		if si != w:
+			losers.append(si)
+	losers.sort_custom(func(a, b):
+		var ra := int(left_at[a][1]) if left_at.has(a) else 1 << 20
+		var rb := int(left_at[b][1]) if left_at.has(b) else 1 << 20
+		return ra < rb or (ra == rb and a < b))
+	var parts := []
+	for si in losers:
+		var name := String(sides[si].name)
+		if left_at.has(si):
+			parts.append("%s %s in round %d" % [name, "broke" if left_at[si][0] == "rout" else "had no one left", int(left_at[si][1])])
+		else:
+			parts.append("%s still stood when the rounds ran out" % name)
+	var text := RulerRules._and_list(parts)
+	if w < 0 or w >= sides.size():
+		return text
+	var wname := String(sides[w].name)
+	match String(e.how):
+		"mutual":
+			text += "; %s broke in round %d too, but had lost the least, so it kept the field" % [wname, int(e.rounds)]
+		"round_cap":
+			text += "; the defender held" if sides[w].get("defender", false) else "; %s had the most of its strength left" % wname
+	return text
+
+
+## #265: the result of a battle of more than two sides in one sentence, naming each side: "Aurel Crown won after 4 rounds:
+## Free Holds broke in round 3 and Thornmane Clans broke in round 4." (how_it_ended). "" without an end event.
+static func result_sentence(battle_log: Dictionary) -> String:
+	var end_i := BattleLog.find_event(battle_log, "end")
+	if end_i < 0:
+		return ""
+	var e: Dictionary = battle_log.events[end_i]
+	var n := int(e.rounds)
+	return "%s won after %d %s: %s." % [String(battle_log.sides[int(e.winner)].name), n, "round" if n == 1 else "rounds", how_it_ended(battle_log)]
 
 
 func _totals_text(totals: Array) -> String:

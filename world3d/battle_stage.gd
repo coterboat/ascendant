@@ -571,8 +571,6 @@ func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array =
 	_hint_seen = bool(st.first_hint_seen)
 	visible = true
 	var problem := BattlePlayer.playback_problem(battle_log)
-	if problem.is_empty() and battle_log.get("sides", []).size() != 2:
-		problem = "Battles with more than two sides can't be watched yet."
 	if not problem.is_empty():
 		_show_message(problem)
 		return problem
@@ -587,7 +585,8 @@ func show_battle(battle_log: Dictionary, report: Dictionary = {}, seats: Array =
 	for s in _log.sides:
 		_side_seat.append(order.find(String(s.faction)))
 		_massed.append(s.fighters.size() > MASSED)
-	_held_by = [-1, -1]
+	_held_by = _per_side(-1)
+	_ensure_plates(_log.sides.size())
 	if player != null:
 		_disconnect_player()
 	player = BattlePlayer.new(_log, _report)
@@ -706,6 +705,52 @@ func _build_field() -> void:
 	var near: int = plan["near"]
 	var far: int = plan["far"]
 	layout = {"left": near if left_near else far, "right": far if left_near else near, "scale": 1.0, "slots": plan["slots"]}
+	if _log.sides.size() > 2:
+		_screen_groups(left_near)
+		## #265: the sides stand round the middle, so a cloth that follows its bearer could show the camera its edge: every
+		## banner's cloth turns to the framing instead (as one wind would blow them)
+		var cloth := []
+		for si in _log.sides.size():
+			cloth.append(deg_to_rad(float(goal.get("yaw", 0.0))))
+		figures.banner_yaw = cloth
+
+
+## #265: with more than two sides, which sides the framing shows on the screen's left half and which on its right, each half
+## top to bottom (the side plates over the land follow it: layout "groups" and "order"), and whether the near side is on the
+## left (what F keeps on its half when it frames the battle again: layout "near_left"). Each side counts where the middle of
+## its figures lands on screen.
+func _screen_groups(left_near: bool) -> void:
+	var at := []
+	var mid := 0.0
+	for si in _log.sides.size():
+		var sum := Vector2.ZERO
+		var n := 0
+		for fid in _log.sides[si].fighters:
+			var sl = plan["slots"][int(fid)]
+			if sl == null:
+				continue
+			var p: Vector2 = sl["pos"]
+			sum += Cam.project(goal, _view, Vector3(p.x, float(sl["y"]), p.y))
+			n += 1
+		at.append(sum / maxf(1.0, float(n)))
+		mid += (at[-1] as Vector2).x
+	mid /= float(at.size())
+	var order := range(_log.sides.size())
+	order.sort_custom(func(a, b): return (at[a] as Vector2).x < (at[b] as Vector2).x or ((at[a] as Vector2).x == (at[b] as Vector2).x and a < b))
+	## at least one side on each half: the leftmost sides up to the middle of the screen's spread
+	var on_left := 0
+	for si in order:
+		if (at[si] as Vector2).x < mid:
+			on_left += 1
+	on_left = clampi(on_left, 1, order.size() - 1)
+	var groups := [order.slice(0, on_left), order.slice(on_left)]
+	for g in groups:
+		(g as Array).sort_custom(func(a, b): return (at[a] as Vector2).y < (at[b] as Vector2).y or ((at[a] as Vector2).y == (at[b] as Vector2).y and a < b))
+	layout["groups"] = groups
+	layout["order"] = groups[0] + groups[1]
+	layout["left"] = int(groups[0][0])
+	layout["right"] = int(groups[1][0])
+	layout["near_left"] = left_near
 
 
 ## Side `si`'s faction's transformation (#125): from the game state play() was given, as the rules read it
@@ -824,7 +869,8 @@ static func place_fort(world: Node3D, faction: String, at: Vector2, yaw: float, 
 ## The field band the camera fills, in view pixels (the view is the field).
 func _band() -> Rect2:
 	var b := stage_band()
-	var r := Rect2(b.position.x + BAND_SIDE, b.position.y + BAND_TOP, b.size.x - BAND_SIDE * 2.0, maxf(40.0, b.size.y - BAND_TOP - BAND_BOTTOM))
+	var top := BAND_TOP + hud_drop() ## #265: with more plates the banner stands lower (hud_drop)
+	var r := Rect2(b.position.x + BAND_SIDE, b.position.y + top, b.size.x - BAND_SIDE * 2.0, maxf(40.0, b.size.y - top - BAND_BOTTOM))
 	return Rect2(r.position * _px, r.size * _px)
 
 
@@ -882,7 +928,7 @@ func _frame_all() -> Dictionary:
 	var opts := {"obstacles": _obstacles(), "defender_right": dr, "los": _points([], true)}
 	if layout.has("left") and layout.get("slots") == plan.get("slots"):
 		## the battle is on screen already: keep its sides where their strength bars are
-		opts["near_left"] = int(layout["left"]) == int(plan["near"])
+		opts["near_left"] = bool(layout["near_left"]) if layout.has("near_left") else int(layout["left"]) == int(plan["near"])
 	return Cam.frame(terrain, _points(), _band(), _view, plan["axis"], opts)
 
 
@@ -1053,6 +1099,11 @@ func tick(delta: float) -> void:
 
 
 
+## #265: a side plate added for a battle of more sides: its morale tag sits on the dark backing too.
+func _plate_added(k: int) -> void:
+	back_label(tag_labels[k])
+
+
 ## A label over the land on a dark backing (PANEL_BG at LABEL_BACKING, rounded), its outline off.
 static func back_label(l: Label) -> void:
 	var sb := StyleBoxFlat.new()
@@ -1069,7 +1120,8 @@ static func back_label(l: Label) -> void:
 
 
 ## Shrinks each label over the land to its words, so its backing is only as wide as they are: the banner and
-## the moment's line centred over the field, the morale tags at their side's edge.
+## the moment's line centred over the field, the morale tags at their side's edge (#265: with more than two sides, each
+## under its own plate, at most as wide as the plate, wrapping to a second line past that).
 func _fit_land_labels() -> void:
 	var fw := field_width()
 	for l in [banner_label, toast_label]:
@@ -1080,10 +1132,19 @@ func _fit_land_labels() -> void:
 		if absf(lab.size.x - w) > 0.5:
 			lab.size.x = w
 		lab.position.x = roundf((fw - w) / 2.0)
-	for k in 2:
+	var many := plates_used() > 2
+	for k in (plates_used() if many else 2):
 		var tag: Label = tag_labels[k]
 		tag.visible = not tag.text.is_empty()
 		if tag.text.is_empty():
+			continue
+		if many:
+			var pr := _tag_rect(k, fw)
+			var font := tag.get_theme_font("font")
+			var words: float = font.get_string_size(tag.text, HORIZONTAL_ALIGNMENT_LEFT, -1, tag.get_theme_font_size("font_size")).x + 22.0
+			var w3 := minf(words, pr.size.x)
+			tag.size.x = w3
+			tag.position.x = pr.position.x if not plate_on_right(k) else pr.end.x - w3
 			continue
 		var w2: float = tag.get_minimum_size().x
 		tag.size.x = w2
@@ -1365,6 +1426,9 @@ func _rout_figure(i: int, now: float, dur: float) -> void:
 		var back: Vector2 = f["back"]
 		var away: Vector2 = (back - home)
 		var axis: Vector2 = plan["axis"]
+		var dirs: Array = plan.get("dirs", [])
+		if int(f["side"]) < dirs.size():
+			axis = dirs[int(f["side"])] ## #265: a side of a battle of more sides runs out its own way, away from the middle
 		## straight back along the battle's axis, from where it stands
 		var depth: float = absf(away.dot(axis))
 		var to: Vector2 = home + axis * signf(away.dot(axis)) * depth
@@ -1815,8 +1879,8 @@ func _refresh_glyph_cache() -> void:
 
 # --- tab order, hover, selection -------------------------------------------------------------------------
 
-## Tab order (M3 5.3): the screen's left side first, then the right; each side front rank to back line,
-## each line file by file.
+## Tab order (M3 5.3): the screen's left side first, then the right (#265: with more sides, plate by plate); each side
+## front rank to back line, each line file by file.
 func _tab_order() -> Array:
 	var ids := []
 	for f in _log.fighters:
@@ -1829,8 +1893,8 @@ func _tab_order() -> Array:
 	ids.sort_custom(func(a, b):
 		var sa: Dictionary = slots[a]
 		var sb: Dictionary = slots[b]
-		var ka := [0 if int(sa.side) == left else 1, int(sa.tier), int(sa.line), int(sa.file), a]
-		var kb := [0 if int(sb.side) == left else 1, int(sb.tier), int(sb.line), int(sb.file), b]
+		var ka := [_slot_of_side(int(sa.side)), int(sa.tier), int(sa.line), int(sa.file), a]
+		var kb := [_slot_of_side(int(sb.side)), int(sb.tier), int(sb.line), int(sb.file), b]
 		for k in ka.size():
 			if ka[k] != kb[k]:
 				return ka[k] < kb[k]
@@ -2228,7 +2292,8 @@ func _draw_overlay(ci: CanvasItem) -> void:
 		var rect := _words_rect(font, String(n["text"]), int(n["size"]), shown)
 		if bool(n.get("tag", false)):
 			var band := stage_band()
-			rect = place_words(rect, placed, Rect2(Vector2(0.0, band.position.y + WORDS_TOP), Vector2(field_width(), band.size.y - WORDS_TOP)))
+			var top := WORDS_TOP + hud_drop() ## #265: under the banner and the moment's line, lower with more plates
+			rect = place_words(rect, placed, Rect2(Vector2(0.0, band.position.y + top), Vector2(field_width(), band.size.y - top)))
 			shown = Vector2(rect.position.x + rect.size.x * 0.5, rect.end.y - 4.0)
 			pos = shown + Vector2(0, rise)
 		placed.append(rect)

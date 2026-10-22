@@ -442,6 +442,17 @@ default (Settings > Battle view keeps Simple).
   the commander mid back line with the side's standard bearer and musician (cosmetic). Every fighter its own
   figure. The file count is the one that frames the battle biggest. The woods, rocks, villages and cottages on
   its ground are lifted off the table and put back after (`clear_for`).
+- **Three sides or more** (#265: a Free Holds garrison caught between two players, the Candlewake later): every
+  side stands on its own spoke round the battle's middle, the spokes evenly apart (a triangle for three), each
+  side's front line far enough from the middle that no two neighbours come nearer than two sides' front lines
+  (`spoke_gap`), each facing the middle. The near side (the defender, else side 0) takes the spoke where it
+  stands with two sides, so a defender still holds the stage, its gate or its fort. The others take the spokes
+  toward their roads home. The file count is the one that stands the battle most compactly (`compact_files`).
+  The plan adds `dirs` (each side's spoke) and `gap`, and a broken side runs off out along its own spoke. The
+  side plates follow where the framing shows each side (the screen's left half's sides, the centre, the
+  right's), and every banner's cloth turns to the framing, as one wind would blow them. At a fort
+  (`battle_walls.gd`) the near side stands where it would with two, and the others side by side outside the
+  walls in the far side's place. Two sides stand exactly as before.
 - **Figures** (`battle_figures.gd`): one MultiMesh per unit type and pose mesh (both sides share it: the base's
   colour and a hit's red tint ride in the instance custom data), a desaturated copy for the fallen. Motions keyed
   to the player's clock: deploy step, lunge and strike pose, release, Wings dive, recoil, topple then fallen
@@ -459,10 +470,12 @@ default (Settings > Battle view keeps Simple).
 - **Budget**: the woods round the battle are model trees in 28-unit cells (each its own LOD), primitives beyond;
   the fighters' ink width follows their size on screen. Quality ladder: `set_quality` (world_view.gd's rungs,
   then the fighters' shadows, the woods as primitives, no sun shadows).
-- **Run it**: `godot --path . -- --battle3d --fixture biggest` (or `path_wings`, `path_lifedrinker`, ...).
+- **Run it**: `godot --path . -- --battle3d --fixture biggest` (or `path_wings`, `path_lifedrinker`, ...; three
+  sides: `three_holds`, `three_fort`, `three_rivals`).
 - **Tests**: `tests/test_battle_stage3d.gd` (every fixture to the timeline's final state, beats to actions, seek
   and skip, the game unchanged, hover and click selection, raw ids, reduced motion, the flash limiter, the ground
-  plan, the camera, the legend rows, the creature scale, the host contract, the CPU budget).
+  plan, the camera, the legend rows, the creature scale, the host contract, the CPU budget);
+  `tests/test_three_sided_battles.gd` (#265: three-sided battles in both views and the host).
 
 ## Battles at walls (M3c S-5, #103)
 

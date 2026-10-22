@@ -8,6 +8,7 @@ extends "res://tests/test_case.gd"
 ## defaults; and nothing the host shows has a raw id.
 
 const Fx := preload("res://tests/battle_playback_fixtures.gd")
+const ThreeFx := preload("res://tests/three_side_fixtures.gd")
 const STAND_IN := "res://tests/battle_stage_stand_in.gd"
 const RECORDS := "res://tests/fixtures/main_records.json"
 ## m1_greedy_vs_ai's turn 5 has two battles: a border battle, then a province battle.
@@ -149,19 +150,18 @@ func test_battles_that_cant_be_watched_say_why() -> void:
 	var stub := {"type": "battle", "text": "A battle.", "numbers": {"winner": "kingdom"}}
 	var cut := good.duplicate(true)
 	cut.numbers.log.truncated = true
-	var three := good.duplicate(true)
-	three.numbers.log.sides.append(three.numbers.log.sides[0].duplicate(true))
+	var three: Dictionary = ThreeFx.battle("holds").event
 	var unkept := good.duplicate(true)
 	unkept.numbers.erase("log")
 	assert_eq(BattleHost.watch_problem(good), "")
 	assert_eq(BattleHost.watch_problem({"type": "captured"}), BattleHost.NOT_A_BATTLE)
 	assert_eq(BattleHost.watch_problem(stub), BattleHost.NO_LOG)
 	assert_eq(BattleHost.watch_problem(cut), "This battle is too big to play back. The report has everything.")
-	assert_eq(BattleHost.watch_problem(three), BattleHost.MORE_SIDES)
+	assert_eq(BattleHost.watch_problem(three), "", "#265: a battle of three sides is watched like any other")
 	assert_eq(BattleHost.watch_problem(unkept), BattleHost.NOT_KEPT, "a log that isn't kept, with nothing to rebuild it from")
 	assert_eq(BattleHost.watch_problem(unkept, true), "", "with the game record it can be rebuilt")
 	assert_true(BattleHost.needs_rebuild(unkept) and not BattleHost.needs_rebuild(good) and not BattleHost.needs_rebuild(stub))
-	assert_eq(BattleHost.watchable([stub, good, cut, three, unkept]).size(), 1)
+	assert_eq(BattleHost.watchable([stub, good, cut, three, unkept]).size(), 2)
 	# Opened anyway, the host says why and offers the next battle.
 	var h := _host()
 	h.open([stub, good])
@@ -421,7 +421,7 @@ func test_no_raw_ids_in_what_the_host_shows() -> void:
 			for id in ids:
 				assert_false(_has_word(text, id), "%s: no raw id '%s' in \"%s\"" % [names[i], id, text])
 		h.next()
-	for text in [BattleHost.FALLBACK_NOTE, BattleHost.NO_LOG, BattleHost.MORE_SIDES, BattleHost.NOT_KEPT, BattleHost.REBUILDING]:
+	for text in [BattleHost.FALLBACK_NOTE, BattleHost.NO_LOG, BattleHost.NOT_KEPT, BattleHost.REBUILDING]:
 		assert_true(snake.search(text) == null, text)
 	h.free()
 
