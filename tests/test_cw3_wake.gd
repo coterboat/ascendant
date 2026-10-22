@@ -375,6 +375,21 @@ func test_the_province_card_says_what_the_wake_does_and_when() -> void:
 	assert_eq(MarkRules.province_text(s, "westwatch"), [], "unmarked land says nothing")
 
 
+func test_the_province_card_shows_the_wake_to_everyone() -> void:
+	var s := _game()
+	var cap := s.find_faction(WAKE).capital
+	for viewer in [WAKE, CROWN]:
+		var map: MapScreen = load("res://ui/map_screen.tscn").instantiate()
+		map.set_state(s, viewer)
+		map.select_province(cap)
+		var lines := map.details.find_children("Wake_*", "", true, false)
+		var said := MarkRules.province_text(s, cap)
+		assert_eq(lines.map(func(l): return (l as Label).text), said, "%s sees the Wake's lines on the card" % viewer)
+		map.select_province("westwatch")
+		assert_true(map.details.find_children("Wake_*", "", true, false).is_empty(), "unmarked land shows none")
+		map.free()
+
+
 func test_the_codex_explains_the_wake() -> void:
 	for key in [MarkRules.CODEX, "marks_on_the_land"]:
 		assert_true(RulesCodex.ENTRIES.has(key), "the codex has %s" % key)
