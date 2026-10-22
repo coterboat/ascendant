@@ -91,6 +91,105 @@ Bible portrait class (§4), C-portrait block, `generateWithStyle` with `image_ty
 | `asc_mvp_ruler_thornmane_avatar` | portrait | #37: the Great Thornmane (Clans, god); build screen ruler card, ruler panel, battle report | → 384×512, 1 frame | webp q90 | `assets/portraits/rulers/thornmane_avatar.webp` | Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: The Great Thornmane, beast-god of the Thornmane Clans, a colossal primal beast with a broad heavy-jawed lion-like head, a great mane of twisting green briars and thorny vines dotted with small pale blossoms, tawny fur mottled with moss, two curling antlers of dark thorny wood, crimson war-paint marks on its brow, softly glowing jade-green eyes, calm ancient fearsome expression, eyes on the viewer. | 3 (generateWithStyle, style = `assets/_anchors/portrait_beasts.webp`) | in-pr (asc-mvp-batch, v1 c2) | Head and shoulders, eyes 35–41% from the top; the named held item visible; faction reads from materials and palette at 96×128; reads as who the ruler is at 96×128 (#37 playtest); same series look as the faction's anchor (side by side on the contact sheet). |
 | `asc_mvp_ruler_fang_chieftain` | portrait | #37: the Ninth Fang (Clans, mortal line); build screen ruler card, ruler panel, battle report | → 384×512, 1 frame | webp q90 | `assets/portraits/rulers/fang_chieftain.webp` | Cel-shaded portrait of bright high fantasy: head and shoulders, three-quarter view facing left, face in the upper half of the frame, thick clean dark outline, flat saturated colours with one hard shadow tone and one highlight tone, bold simple shapes, plain softly graded deep indigo background. Subject: The Ninth Fang, high chieftain of the Thornmane Clans, a grizzled black-furred wolf-headed beastman with a scarred muzzle streaked with white, a circlet of nine long bone fangs on his brow, crimson war paint across the eyes, a heavy cloak of grey wolf pelts over moss-green leather and bone armour, the bone hilt of a broad greatblade resting against his right shoulder, fierce proud expression, eyes on the viewer. | 3 (generateWithStyle, style = `assets/_anchors/portrait_beasts.webp`) | in-pr (asc-mvp-batch, v1 c3) | Head and shoulders, eyes 35–41% from the top; the named held item visible; faction reads from materials and palette at 96×128; reads as who the ruler is at 96×128 (#37 playtest); same series look as the faction's anchor (side by side on the contact sheet). |
 
+## Milestone C: the Candlewake (CW-9 #260 rows, made by CW-10 #261)
+
+The faction's art is specced from its canon, the concept art Alex accepted in the Review Table (`assets/_concept/lore/candlewake/CANON.md`), and from `design/CANDLEWAKE.md` §4–§7, §10 and §11. The canon is the reference every picture below starts from: a row names its canon image, and its prompt sends that image as the reference (base64 from the canon folder). Ids follow the spec's names; if CW-2's data picks other ids, the rows follow the data (as M1's did). Faction id `candlewake`.
+
+**The look, for every row** (§10, Alex's verdicts on art rounds 3 to 3f):
+- **Hollow shells, eyeless** (§15 item 4, settled): every rank-and-file figure is pure poured wax, ivory tallow over soot-black wrappings, no armour, skulls or bones. A thick wax hood or helm gives shape to a face that is nothing: a pitch-black hollow with one small lilac wick-light deep inside. Warlike, not sad. Hood and helm shapes vary by unit so the host reads as an army: the six studies in `candlewake_shells_heads.png` and the five Wickwarden hoods in `candlewake_wickwardens.png` are the shape library.
+- **The palette:** ivory tallow, soot-black wicks and wrappings, lilac flame, brass snuffers and fittings. Lilac only in the wick-light, the flames and lanterns, never the body wax. Mother Tallow is the one warm face and her taper burns gold. Golden Wake rows add honey-gold to the wax; Red Wake rows turn it cherry-red.
+- **The crown wick is a black stub with no flame** on every model and model picture. The flame is the army's flame (0 to 3, 4 on the Red Wake), so CW-8 draws it in code on the figure, from smoke at 0 to a tall lilac flame at 3. A flame baked into the mesh would show at flame 0. Portraits and 2D art may show a small lilac crown flame, as the canon does.
+- **Lookalike guards** (§10): no candlesticks with faces, flaming skulls, grim reapers, oath-bound dead, or green and black; no black riders on black horses, spiked iron crowns or pale-blade daggers; dark but not grim (no mounds of wax heads).
+- **3D rules as every faction** (STYLE_BIBLE §8): the C-model picture (one full figure, arms a little away from the body, both hands and what they hold visible, three-quarter view from slightly above, plain light grey), `model3d` at the §8.4 budgets, the `piece` material, no player colour in the art.
+- **Portraits as the M5 row** (Alex 10-12, M52D-1: Codex): 3:4, head and shoulders, three-quarter view facing left, eyes (here: the hollow's wick-light) 35–41% from the top, thick even outline, flat colour with one hard shadow and one highlight, on the shared deep indigo ground (`#333052` to `#1C1B2A`).
+
+**Seats and credits.** Pictures and portraits are made by the Codex and Grok seats (no Ludo credits) and by Ludo where a cutout or an edit is needed; every model is Ludo `model3d` (3.0). Rates as §11: a model 3.0, a 3-candidate picture 1.5, a pose edit 0.5, a cutout 0.5. Every batch logs its spend in `studio/CREDITS.md`.
+
+**Base first** (Alex 10-8, `tools/review/README.md` "Base batches"). Each family's ready picture is its base; its model of that picture shows Alex the base in the orbit viewer. Nothing derived (march, strike, fallen, cheer, looks, portraits of derived units) is made before its base is Good. The Wickwarden is the faction's base: the rest of the host is made from its approved look (wax, hood, palette), and the candlebeasts after the host.
+
+### C.1 Figure families (models, 4 poses; rulers 5)
+Ready picture → model; then march / strike / fallen (rulers also cheer) as edits of the approved ready picture, each to a model. Pictures go to `assets/_concept/candlewake/<id>_<pose>.webp`, models to `assets/models/units/candlewake/<id>_<pose>.glb` (rulers: `assets/models/rulers/<id>_<pose>.glb`), each with its row in `assets/models/models.json` and the board table.
+
+| id | unit (§4) | class (§8.4) | canon source | the figure | credits | status |
+|---|---|---|---|---|---|---|
+| `wickwardens` | Wickwardens, front, Pall | regular, 6,000 faces, 1.0 men | `candlewake_host_war.png` (4th figure), `candlewake_wickwardens.png` | the line: a hooded wax shell with a dripping wax tower shield (a brass boss) and a long spear upright, ragged soot wrappings showing through the wax | 15.0 | `requested` (base: CW-10 batch `cw_base`) |
+| `gleaners` | Gleaners, front, Siphon, scouts | regular, 6,000, 1.0 | `candlewake_host_war.png` (5th, the crescent hook) | lean and stooped, a long crescent harvesting hook, a swept crescent-rim hood | 15.0 | `spec` (after the Wickwarden base) |
+| `hundred_wick` | the Hundred-Wick, front, Flare | large, 8,000, 2.0 men | `candlewake_hundred_wick__codex.png` and `__grok.png` (Alex: "codex is great as is") | one fused mass of hooded shells, two planted legs, long fused arms, a crest of many black wicks; never a pile of heads | 15.0 | `spec` |
+| `lamplighter` | the Lamplighter, commander, back, Toll | commander, 8,000, 1.1 | `candlewake_host_war.png` (3rd), `candlewake_lineup.png` | a stern wax figure in a tall black high-collared cloak with plum lining, a very tall brass lantern pole with a lilac lantern; the standard read (§8.2) is the lantern ≥ 25% of the height above the head | 15.0 | `requested` (base sample in `cw_base`) |
+| `chandlers_apprentices` | Chandler's Apprentices, mage, second | regular, 6,000, 1.0 | `candlewake_lineup.png` (palette only: no canon figure) | a caster's bell robe (§2.3) of soot cloth under a wax mantle, a short taper held up as the glowing focus, a squat rounded drooping cowl | 15.0 | `spec` (needs a concept round first: no canon figure) |
+| `half_death` | Half-Death, god ruler, front, Harvest | ruler, 12,000, 1.25 | `candlewake_host_war.png` (1st), `candlewake_march__codex.png` and `__grok.png` | tall and unhooded; one half of the long face smooth pale alabaster with a closed eye, the other half an empty lilac outline with darkness through it; tattered ivory robes, soot-black collar, a brass lantern on a crook | 17.5 (5 poses) | `requested` (base sample in `cw_base`) |
+| `mother_tallow` | Mother Tallow, the Ninth Chandler, mortal ruler, second, Vigil | ruler, 12,000, 1.25 | `candlewake_host_war.png` (2nd), `candlewake_lineup.png` | the one living woman: warm brown skin, grey-streaked hair, white shirt, soot apron, brass snuffing shears at the belt, a lit taper whose flame burns gold | 17.5 (5 poses) | `requested` (base sample in `cw_base`) |
+
+The Snuffed (Raise the Snuffed, §7) share the Wickwardens' stats and draw with the Wickwarden models; a code tint marks them as summoned. No row.
+
+### C.2 Paths (§6): looks and new units, 4 poses each
+Made only after the base unit's family is approved; a look is an edit of that unit's approved pose pictures with the STYLE_BIBLE §5 block (as `asc-3d-paths`).
+
+| id | what | base | the look | credits | status |
+|---|---|---|---|---|---|
+| `wickwardens__candlewake_golden_wake` | Combwardens (look) | `wickwardens` | honey-gold wax in comb-cell patterns over the shell, beeswax drips, the hollow's light warm amber-lilac | 14.0 | `spec` |
+| `amber_saints` | Amber Saints (new unit, Iron Hide) | `wickwardens` | big, upright, encased in clear amber-honey wax like resin over a soot body, a tall saint's hood, a heavy brass-bound mace | 15.0 | `spec` |
+| `gleaners__candlewake_red_wake` | Red Gleaners (look) | `gleaners` | cherry-red wax running hot and thin, the hook blackened, the wick-light cherry-red | 14.0 | `spec` |
+| `pyre_walkers` | Pyre-Walkers (new unit, Berserk) | `gleaners` | half-melted, leaning forward, red wax sloughing off a soot frame, short hooked blades in both hands | 15.0 | `spec` |
+
+### C.3 Candlebeasts (§4.5, CW-12), base first, then 4 poses
+Recruited only in Deep Wake. The look: the host's wax, animal-shaped, hollow where the eyes would be, a black wick on the spine (code flame, as C.1). Each canon item was kept as a fusion of two takes; Alex's notes: the Grok takes' small candles set into the rotted openings are "a nice touch", and both bear takes "nail the vibe".
+
+| id | form | class | canon source | credits | status |
+|---|---|---|---|---|---|
+| `wax_hounds` | Wax Hounds, Skirmish | large, 8,000, 1.0 men long | `candlebeast_wax_hounds__codex.png` and `__grok.png` (one hound of the three per figure: the dorsal-wick one) | 15.0 | `spec` (after the host) |
+| `tallow_stag` | the Tallow Stag, Charge | large, 8,000, 1.6 | `candlebeast_tallow_stag__codex.png` and `__grok.png` | 15.0 | `spec` |
+| `guttering_bear` | the Guttering Bear, Berserk | large, 8,000, 1.8, mid-melt | `candlebeast_guttering_bear__codex.png` and `__grok.png` | 15.0 | `spec` |
+
+### C.4 Portraits
+`assets/portraits/candlewake/<id>.webp` (rulers: `assets/portraits/rulers/<id>.webp`), 384×512 webp q90, made from the approved ready picture of the family and the canon. §11 counts 11 (the 5 units, 2 rulers, 4 path units); the 3 candlebeasts add 3 under CW-12.
+
+| ids | count | credits | status |
+|---|---|---|---|
+| `wickwardens`, `half_death`, `mother_tallow`, `lamplighter` | 4 | 0 (Codex seat) | `requested` (base samples in `cw_base`) |
+| `gleaners`, `hundred_wick`, `chandlers_apprentices` | 3 | 0–1.5 | `spec` |
+| `wickwardens__candlewake_golden_wake`, `amber_saints`, `gleaners__candlewake_red_wake`, `pyre_walkers` | 4 | 0–1.5 | `spec` |
+| `wax_hounds`, `tallow_stag`, `guttering_bear` | 3 | 0–1.5 | `spec` (CW-12) |
+
+### C.5 Forts, the capital, camp and army extras
+| id | what | canon source | credits | status |
+|---|---|---|---|---|
+| `fort_candlewake`, `fortress_candlewake` and the third tier | the fort kit (§5): stepped towers of melted candles, three tiers | `candlewake_melt.png` (stage three) | 10.5 | `spec` |
+| `capital_candlewake` | the Long Vigil: a ring of candle towers around one candle as tall as a keep, in a city of the dead | `candlewake_capital__art_r3b.png` (Good), `candlewake_capital.png` (its note: "these are the dead not the living") | 3.5 | `spec` |
+| `camp_candlewake` | the war camp (siege camp, not a harbour) | the host's palette | 3.5 | `spec` (not in §11: +3.5) |
+| `standard_bearer_candlewake`, `musician_candlewake` | army extras: a lantern-standard bearer; a procession bell-ringer | `candlewake_lineup.png` (the bell and hand-lantern bearer) | 7.0 | `spec` (not in §11: +7.0) |
+
+The Guttering Ram (§5) uses the Siege Ram's numbers; it has no model row until siege engines get one for every faction.
+
+### C.6 Building melts (§3.5, CW-8), 3 stages
+Each melt stage is an edit of the shipped building's picture (`assets/_concept/world/`), stage 1 to 3 as `candlewake_melt.png`, to a model at `assets/models/buildings/<building>_melt<n>.glb`. §11 counts 15: villages a and b, mill, watchtower, fort. The shipped villages come per terrain (plains, forest, hills, each a and b); melting each would be 27 pieces (≈ 95 cr), so the 15 melt the plains pair for every terrain, and the terrain question waits for CW-8's shots.
+
+| ids | count | credits | status |
+|---|---|---|---|
+| `village_plains_a_melt1..3`, `village_plains_b_melt1..3`, `mill_melt1..3`, `watchtower_melt1..3`, `fort_melt1..3` | 15 | 45.0 | `spec` |
+
+### C.7 Banner, emblem, spell icons, effects
+| id | what | where | seat | credits | status |
+|---|---|---|---|---|---|
+| `banner_candlewake` | §10: lilac with a soot border, a hem cut into wax drips, an ivory candle ringed by flames | `assets/banners/candlewake.webp` | Codex | 0 | `spec` |
+| emblem | the slot emblem (STYLE_BIBLE §8.6) | code | – | 0 | `spec` |
+| spell icons | Draw the Warmth, Kindle, Bonfire Night (Wick); Wax Skin, Raise the Snuffed, Candlemass (Wax); the cel style Alex picked for M5 (M52D-2) | `assets/ui/spells/<spell id>.png` | Codex | 0 | `spec` |
+| `flame_snuff`, `flare_burst`, `wax_skin` | effect sheets: the Wick step's flame going out, the Hundred-Wick's Flare, Wax Skin's shield (STYLE_BIBLE §4.2, normal alpha) | `assets/vfx/<id>/` | Ludo | 15.0 | `spec` |
+
+The notice medallions in the Candlewake's dress are UX-ART's (#222, UXART-8), not rows here.
+
+### C.8 Totals
+| part | credits |
+|---|---|
+| C.1 figure families | 110.0 |
+| C.2 paths | 58.0 |
+| C.3 candlebeasts | 45.0 |
+| C.4 portraits | ≈ 6 (Codex free; cutouts) |
+| C.5 forts, capital, camp, extras | 24.5 |
+| C.6 melts | 45.0 |
+| C.7 icons, banner, effects | 15.0 |
+| **total** | **≈ 304** (§11: ≈ 305, 375 with reserve; re-rolls of near-black models come out of the reserve) |
+
 ## Later (not specced, no credits)
 - **M2:** the ruler-present ring (code-drawn). Ruler portraits: specced above (#37).
 - **M3:** base frames and 5-state sheets for the M1 units (23.0 cr per unit, ×1.5 for re-rolls: 8 units ≈ 275 cr), plus VFX (5.5 cr each).
