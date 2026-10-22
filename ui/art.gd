@@ -72,7 +72,7 @@ static func texture(path: String) -> Texture2D:
 ## ("adepts", "thornwolves") from the magic data; "" if none.
 static func unit_faction(unit_type_id: String) -> String:
 	if _unit_factions.is_empty():
-		for f in FactionData.FACTIONS:
+		for f in FactionData.rows():  # CW-7: the preview factions' units too
 			for u in f.unit_types:
 				_unit_factions[String(u.id)] = String(f.id)
 			_unit_factions[String(f.commander.id)] = String(f.id)
@@ -201,7 +201,7 @@ static func banner_card(faction_id: String, height: float) -> BannerCard:
 
 
 static func _unit_name(unit_type_id: String) -> String:
-	for f in FactionData.FACTIONS:
+	for f in FactionData.rows():
 		for u in f.unit_types:
 			if u.id == unit_type_id:
 				return String(u.name)
@@ -211,7 +211,7 @@ static func _unit_name(unit_type_id: String) -> String:
 
 
 static func _is_commander(unit_type_id: String) -> bool:
-	for f in FactionData.FACTIONS:
+	for f in FactionData.rows():
 		if f.commander.id == unit_type_id:
 			return true
 	return false

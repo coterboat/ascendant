@@ -41,6 +41,13 @@ extends Control
 ## Independents (IND-1, #142): the "Independents" box, independent of every other box. Ticked, config() adds
 ## "independents": true (GameScreen.starting_state then calls GameState.setup_independents: a Free Holds garrison in
 ## every neutral province).
+## Three factions, two seats (CW-7, #258; design/CANDLEWAKE.md §1, §12): the Candlewake's preview box beside the seats (preview_label),
+## off by default and remembered in the settings (GameSettings.preview_factions_on), lets either seat pick the factions still
+## being built (FactionData.PREVIEW_FACTIONS). Unticked, the pickers list the Crown and the Clans as before. The same faction
+## still can't be picked twice. A seated faction that can't play a ticked system yet (GameState.system_problems: the
+## Candlewake have no rulers, paths or magic until CW-2, CW-4 and CW-5) says so in plain words and disables Start, the
+## deepest box first, so one line names every box to untick. Each seat's line names its capital: the Candlewake take the
+## capital the other seat doesn't hold and call it the Long Vigil (the row's capital_name), so the line says which one.
 ## Layout (MVP-1, #141): it fits the default window (1600x900) and 1280x720. The title sits above, the error
 ## line and the Start and Back buttons below (always on screen), and the body scrolls between them when it is taller than
 ## the window leaves room for. The six boxes sit in two columns. tests/test_screens_fit.gd checks it at both sizes.
@@ -79,7 +86,8 @@ extends Control
 ##                                   exactly as before. #184: the computer's style is its seat's roll ("temperaments")
 ##   build_screen                    the BuildScreen Start opens while rulers are on (null until then);
 ##                                   build_screen_open() -> bool
-##   seat_faction(seat) -> String, faction_ids() -> Array[String]
+##   seat_faction(seat) -> String, faction_ids() -> Array[String]   faction_ids: the factions the pickers list now
+##   set_preview(on), preview_on()   CW-7: the preview box (saved to the settings file); preview_label() its words
 ##   start() -> bool                 emits start_requested when valid (the Start button, Enter in the seed);
 ##                                   with rulers on, opens the build screen instead, which emits it later
 ##   back()                          emits back_requested (the Back button, Esc)
@@ -152,12 +160,14 @@ var sieges_toggle: CheckBox  # M3c: "Forts & sieges": on by default; independent
 var magic_toggle: CheckBox  # M5-5: "Magic": on by default; needs paths
 var fog_toggle: CheckBox  # M5-1: "Fog of war": on by default; works with any game
 var independents_toggle: CheckBox  # IND-1: "Independents": on by default; works with any game
+var preview_toggle: CheckBox  # CW-7: the preview box (preview_label): off by default, remembered in the settings file
 var systems_label: Label  # MVP-2: which systems this game plays with, and how the boxes lean on each other
 var defaults_label: Label  # MVP-2: shown once to a settings file from before the flip: every system starts ticked now
 var settings_file := ""  # the settings file the defaults notice reads ("" = GameSettings.default_path); tests set it
 var build_screen: BuildScreen = null  # opened by Start while rulers are on; built on first use
 var _last_builds := {}  # faction id -> the last game's build of a human seat (rematch)
-var _model: GameState
+var _model: GameState  # the map's provinces, for the capitals' names
+var _factions: Array[Faction] = []  # every faction row, the preview ones too (FactionData.create_factions)
 var _rng := RandomNumberGenerator.new()
 var _digits := RegEx.create_from_string("^[0-9]+$")
 
@@ -167,10 +177,11 @@ func _init() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_model = GameState.new()
+	_factions = FactionData.create_factions(FactionData.ids())
 	_rng.randomize()
 	_build()
 	for i in SEAT_COUNT:
-		seat_pickers[i].select(i % _model.factions.size())
+		seat_pickers[i].select(i % seat_pickers[i].item_count)
 		kind_pickers[i].select(KINDS.find(DEFAULT_KINDS[i]))
 	new_seed()
 
@@ -180,6 +191,8 @@ func _ready() -> void:
 	if GameSettings.defaults_notice_due(settings_file):
 		defaults_label.visible = true
 		GameSettings.mark_defaults_noticed(settings_file)
+	# CW-7: the preview box as the player last left it.
+	_show_preview(GameSettings.preview_factions_on(settings_file))
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -243,14 +256,18 @@ func new_seed(avoid: int = -1) -> int:
 
 
 ## Seats every player at once: `players` holds faction ids in seat order. Returns false, changing
-## nothing, unless there is one known faction per seat.
+## nothing, unless there is one known faction per seat. A preview faction ticks the preview box (CW-7: a rematch of a
+## Candlewake game seats them again).
 func set_seats(players: Array) -> bool:
 	if players.size() != seat_pickers.size():
 		return false
-	var ids := faction_ids()
+	var known := FactionData.ids()
 	for fid in players:
-		if not ids.has(String(fid)):
+		if not known.has(String(fid)):
 			return false
+	if not preview_on() and players.any(func(fid): return FactionData.is_preview(String(fid))):
+		set_preview(true)
+	var ids := faction_ids()
 	for i in seat_pickers.size():
 		seat_pickers[i].select(ids.find(String(players[i])))
 	_refresh()
@@ -315,7 +332,8 @@ func swap_seats() -> void:
 	_refresh()
 
 
-## Sets the faction of `seat` (1-based). Returns false, changing nothing, for an unknown seat or faction.
+## Sets the faction of `seat` (1-based). Returns false, changing nothing, for an unknown seat or a faction the pickers don't
+## list (a preview faction while the preview box is clear).
 func select_faction(seat: int, faction_id: String) -> bool:
 	var index := faction_ids().find(faction_id)
 	if seat < 1 or seat > seat_pickers.size() or index < 0:
@@ -365,12 +383,56 @@ func seat_faction(seat: int) -> String:
 	return _seat_ids()[seat - 1]
 
 
-## Every faction that can be picked, in the order the pickers list them.
+## Every faction that can be picked, in the order the pickers list them: the Crown and the Clans, and the preview factions
+## while the preview box is ticked (FactionData.playable).
 func faction_ids() -> Array[String]:
 	var out: Array[String] = []
-	for f in _model.factions:
-		out.append(f.id)
+	for fid in FactionData.playable(preview_on()):
+		out.append(String(fid))
 	return out
+
+
+## CW-7: ticks or clears the preview box and remembers it in the settings file (so Quick start and the title
+## follow it). Cleared, a seat that held a preview faction takes the first faction the other seat doesn't hold.
+func set_preview(on: bool) -> void:
+	GameSettings.set_preview_factions(on, settings_file)
+	_show_preview(on)
+
+
+func preview_on() -> bool:
+	return preview_toggle != null and preview_toggle.button_pressed
+
+
+## The box as `on`, the pickers listing what it allows, without touching the settings file.
+func _show_preview(on: bool) -> void:
+	preview_toggle.set_pressed_no_signal(on)
+	_fill_pickers()
+	_refresh()
+
+
+## Lists faction_ids() in every seat's picker, keeping each seat's faction when it is still listed; a seat whose faction
+## went takes the first one listed that no earlier seat holds.
+func _fill_pickers() -> void:
+	var ids := faction_ids()
+	var held := []
+	for i in seat_pickers.size():
+		var picker := seat_pickers[i]
+		var was := String(picker.get_item_metadata(picker.selected)) if picker.selected >= 0 else ""
+		picker.clear()
+		for fid in ids:
+			var f := _faction(fid)
+			picker.add_item(f.faction_name + (" (preview)" if FactionData.is_preview(fid) else ""))
+			var idx := picker.item_count - 1
+			picker.set_item_metadata(idx, fid)
+			picker.get_popup().set_item_tooltip(idx, _faction_tooltip(f))
+		var keep := was if ids.has(was) else ""
+		if keep.is_empty():
+			for fid in ids:
+				if not held.has(fid):
+					keep = fid
+					break
+		picker.select(ids.find(keep))
+		held.append(keep)
 
 
 ## Emits start_requested(config()) when the setup is valid. Returns whether it did. With rulers on, it
@@ -584,6 +646,12 @@ func _problems() -> Array[String]:
 			if not String(ids[i]).is_empty() and ids[i] == ids[j]:
 				out.append("Player %d and Player %d both picked %s. Each player needs a different faction." % [
 					i + 1, j + 1, _faction(ids[i]).faction_name])
+	var told := []
+	for fid in ids:
+		var why := system_problem(String(fid))
+		if not why.is_empty() and not told.has(fid):
+			out.append(why)
+			told.append(fid)
 	var seed_problem := _seed_problem(seed_edit.text)
 	if not seed_problem.is_empty():
 		out.append(seed_problem)
@@ -672,7 +740,74 @@ static func _names_list(names: Array[String]) -> String:
 
 
 func _faction(fid: String) -> Faction:
-	return _model.find_faction(fid)
+	for f in _factions:
+		if f.id == fid:
+			return f
+	return null
+
+
+## CW-7: why `faction_id` can't play the systems ticked now, in plain words, or "". The deepest box goes first (Rulers, then
+## Paths, then Magic): its words name every box to untick (GameState.system_problems).
+func system_problem(faction_id: String) -> String:
+	if faction_id.is_empty() or independents_toggle == null:  # the boxes are built last
+		return ""
+	for key in ["rulers", "paths", "magic"]:
+		if bool(call(key + "_on")):
+			var why := GameState.system_problems(faction_id, {key: true})
+			if not why.is_empty():
+				return String(why[0])
+	var rest := GameState.system_problems(faction_id, _system_flags())
+	return String(rest[0]) if not rest.is_empty() else ""
+
+
+func _system_flags() -> Dictionary:
+	var out := {}
+	for sys in SYSTEMS:
+		out[sys.key] = bool(call(String(sys.key) + "_on"))
+	return out
+
+
+## The names of the boxes `faction_id` can't play yet ("Rulers", "Paths", "Magic"), in screen order (GameState.system_problems).
+static func systems_not_ready(faction_id: String) -> Array[String]:
+	var out: Array[String] = []
+	for sys in SYSTEMS:
+		if not GameState.system_problems(faction_id, {sys.key: true}).is_empty():
+			out.append(String(sys.name))
+	return out
+
+
+## The preview box's tooltip: what ticking it does, the Long Vigil, and the boxes the preview factions can't play yet.
+static func preview_tooltip() -> String:
+	var parts := []
+	for f in FactionData.PREVIEW_FACTIONS:
+		var fid := String(f.id)
+		var text := "The %s are a faction still being built: ticked, either seat can pick them." % String(f.name)
+		if not String(f.get("capital_name", "")).is_empty():
+			text += " They take the capital the other player doesn't hold and call it %s." % String(f.capital_name)
+		var missing := systems_not_ready(fid)
+		if not missing.is_empty():
+			text += " Until theirs are ready they play without %s." % _names_list(missing)
+		parts.append(text)
+	parts.append("Remembered for Quick start and your next new game. Clear it to see only the finished factions.")
+	return TooltipText.plain(preview_label(), " ".join(parts))
+
+
+## The preview box's words: the names of the factions still being built, marked as a preview (the Candlewake's, today).
+static func preview_label() -> String:
+	return " and ".join(FactionData.PREVIEW_FACTIONS.map(func(f): return String(f.name))) + " (preview)"
+
+
+## The capital a faction plays from, in words: its own ("Crownkeep"), or for a faction that takes the free one (the
+## Candlewake), its name and, once both seats are set, which of the map's capitals it is this game.
+func _capital_words(f: Faction) -> String:
+	var shown := String(FactionData.row(f.id).get("capital_name", ""))
+	if shown.is_empty():
+		var capital := _model.find_province(f.capital)
+		return capital.name if capital else "unknown"
+	var ids := _seat_ids()
+	var cap := String(FactionData.capitals_for(ids).get(f.id, "")) if ids.has(f.id) else ""
+	var province := _model.find_province(cap) if not cap.is_empty() else null
+	return "%s (%s this game)" % [shown, province.name] if province else shown
 
 
 func _computer_short() -> String:
@@ -687,28 +822,39 @@ func _faction_summary(f: Faction) -> String:
 	var units: String = ", ".join(names)
 	if names.size() > 1:
 		units = "%s and %s" % [", ".join(names.slice(0, names.size() - 1)), names.back()]
-	var capital := _model.find_province(f.capital)
-	var text := "Capital %s, %d gold to start. %s" % [capital.name if capital else "unknown", f.gold, units]
+	var text := "Capital %s, %d gold to start. %s" % [_capital_words(f), f.gold, units]
 	if f.commander_type:
 		text += ", led by a %s" % f.commander_type.name
-	return text + "."
+	text += "."
+	if FactionData.is_preview(f.id):
+		text += " A preview: still being built."
+	return text
 
 
 func _faction_tooltip(f: Faction) -> String:
 	var lines := PackedStringArray()
-	lines.append(f.faction_name)
+	lines.append(f.faction_name + (" (preview)" if FactionData.is_preview(f.id) else ""))
 	lines.append(TooltipText.wrap_text("Starting gold %d: %s" % [f.gold, Faction.describe("gold")]))
+	var shown := String(FactionData.row(f.id).get("capital_name", ""))
 	var capital := _model.find_province(f.capital)
-	if capital:
+	if not shown.is_empty():
+		lines.append(TooltipText.wrap_text("Capital %s: they take the capital the other player doesn't hold and call it %s. %s" % [
+			shown, shown, Province.describe("capital")]))
+	elif capital:
 		lines.append(TooltipText.wrap_text("Capital %s: %s" % [capital.name, Province.describe("capital")]))
+	var missing := systems_not_ready(f.id)
+	if not missing.is_empty():
+		lines.append(TooltipText.wrap_text("Still being built: they play without %s until theirs are ready." % _names_list(missing)))
 	lines.append("")
 	var types: Array = f.unit_types.duplicate()
 	if f.commander_type:
 		types.append(f.commander_type)
 	for ut in types:
-		lines.append(TooltipText.wrap_text("%s%s: %d hit points, attack %d, defense %d, morale %d, costs %d gold. %s: %s." % [
-			ut.name, " (commander)" if ut.is_commander else "", ut.hp, ut.attack, ut.defense, ut.morale, ut.cost,
-			ut.trait_id, AutoBattleResolver.TRAIT_SHORT.get(ut.trait_id, ut.get_trait_desc())]))
+		var line := "%s%s: %d hit points, attack %d, defense %d, morale %d, costs %d gold." % [
+			ut.name, " (commander)" if ut.is_commander else "", ut.hp, ut.attack, ut.defense, ut.morale, ut.cost]
+		if not String(ut.trait_id).is_empty():
+			line += " %s: %s." % [ut.trait_id, AutoBattleResolver.TRAIT_SHORT.get(ut.trait_id, ut.get_trait_desc())]
+		lines.append(TooltipText.wrap_text(line))
 	return "\n".join(lines)
 
 
@@ -828,6 +974,15 @@ func _build() -> void:
 	var seats_heading := _label("SeatsHeading", "Who plays which faction", 24, UiPalette.GILT)
 	seats_heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	seats_head.add_child(seats_heading)
+	# CW-7: the factions still being built join the pickers only while this box is ticked.
+	preview_toggle = CheckBox.new()
+	preview_toggle.name = "PreviewToggle"
+	preview_toggle.text = preview_label()
+	preview_toggle.focus_mode = Control.FOCUS_NONE
+	preview_toggle.add_theme_font_size_override("font_size", 18)
+	preview_toggle.tooltip_text = preview_tooltip()
+	preview_toggle.toggled.connect(func(on: bool): set_preview(on))
+	seats_head.add_child(preview_toggle)
 	for i in SEAT_COUNT:
 		var seat_box := VBoxContainer.new()
 		seat_box.name = "Seat%d" % (i + 1)
@@ -847,11 +1002,6 @@ func _build() -> void:
 		picker.name = "FactionPicker"
 		picker.custom_minimum_size = Vector2(320, 44)
 		picker.add_theme_font_size_override("font_size", 22)
-		for f in _model.factions:
-			picker.add_item(f.faction_name)
-			var idx := picker.item_count - 1
-			picker.set_item_metadata(idx, f.id)
-			picker.get_popup().set_item_tooltip(idx, _faction_tooltip(f))
 		picker.item_selected.connect(func(_index: int): _refresh())
 		# The picked faction reads in the seat's colour, the colour it will have in the game.
 		for state_name in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
@@ -865,6 +1015,7 @@ func _build() -> void:
 		summary.mouse_filter = Control.MOUSE_FILTER_PASS
 		seat_box.add_child(summary)
 		faction_labels.append(summary)
+	_fill_pickers()
 
 	swap_button = Button.new()
 	swap_button.name = "SwapButton"

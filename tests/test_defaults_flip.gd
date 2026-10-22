@@ -105,6 +105,9 @@ func test_every_system_box_starts_ticked_with_no_preview_label() -> void:
 	assert_eq(screen.seat_kind(2), "computer", "against the computer: the other defaults are as they were")
 	assert_eq(screen.start_button.text, "Choose builds", "with rulers on Start goes to the build screen")
 	var text := _all_text(screen)
+	# CW-7 (#258): the one preview left is a faction's, the Candlewake's box beside the seats (design/CANDLEWAKE.md §12). No system
+	# box has one, and with the box clear (the default) no picker lists a preview faction.
+	text = text.replace(screen.preview_toggle.tooltip_text, "").replace(screen.preview_toggle.text, "")
 	for old in ["M2 preview", "M3c preview", "M4 preview", "M5 preview", "(preview)", "preview of", "still being built"]:
 		assert_false(text.contains(old), "no '%s' anywhere on the screen, tooltips included" % old)
 	assert_false(screen.defaults_label.visible, "no settings file, nothing to say about the old defaults")

@@ -131,7 +131,7 @@ static func _ordered_tiers(battle_log: Dictionary, si: int) -> Array:
 
 
 static func _roster(faction_id: String) -> Array:
-	for f in FactionData.FACTIONS:
+	for f in FactionData.rows():  # CW-7: the preview factions' rosters too
 		if f.id == faction_id:
 			var ids := []
 			for u in f.unit_types:

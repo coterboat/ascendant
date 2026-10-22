@@ -17,6 +17,9 @@ extends RefCounted
 ##   new_game_defaults    MVP-2 (#163): which new-game defaults this file has seen (DEFAULTS_VERSION). Written whenever
 ##                        this game creates the file; a file without it is from before the defaults flip, and the new
 ##                        game screen says once that every system starts ticked now (defaults_notice_due).
+##   preview_factions     CW-7 (#258): false by default. The new game screen's preview box (NewGameScreen.preview_label): ticked, a seat may
+##                        pick the factions still being built (FactionData.PREVIEW_FACTIONS), Quick start may seat them, and
+##                        the title hangs their banners once their art is in (preview_factions_on, set_preview_factions).
 ## A missing or unreadable file, or a value this game doesn't know, gives the defaults for those values.
 ## apply(tree) puts window_mode, ui_scale and the volumes into effect (the title screen does it once at
 ## start-up, and the settings panel after every change); apply_audio() does the volumes alone (the
@@ -225,6 +228,32 @@ static func _set_hint(key: String, seen: bool, file_path: String) -> String:
 		cfg.set_value(HINTS, key, true)
 	elif cfg.has_section_key(HINTS, key):
 		cfg.erase_section_key(HINTS, key)
+	var folder := p.get_base_dir()
+	if not folder.is_empty() and not DirAccess.dir_exists_absolute(folder):
+		DirAccess.make_dir_recursive_absolute(folder)
+	return "" if cfg.save(p) == OK else "Your settings could not be saved."
+
+
+const PREVIEW_KEY := "preview_factions"
+
+
+## CW-7 (#258): whether the new game screen's preview box is ticked (off when the file or the key is missing).
+static func preview_factions_on(file_path: String = "") -> bool:
+	var cfg := ConfigFile.new()
+	if cfg.load(file_path if not file_path.is_empty() else default_path) != OK:
+		return false
+	return cfg.get_value(SECTION, PREVIEW_KEY, false) == true
+
+
+## Ticks or clears the preview box in the file, keeping the rest of it. Returns "" or why it could not be saved.
+static func set_preview_factions(on: bool, file_path: String = "") -> String:
+	var p := file_path if not file_path.is_empty() else default_path
+	var cfg := ConfigFile.new()
+	var existed := FileAccess.file_exists(p)
+	if existed:
+		cfg.load(p)
+	stamp_new_file(cfg, existed)
+	cfg.set_value(SECTION, PREVIEW_KEY, on)
 	var folder := p.get_base_dir()
 	if not folder.is_empty() and not DirAccess.dir_exists_absolute(folder):
 		DirAccess.make_dir_recursive_absolute(folder)

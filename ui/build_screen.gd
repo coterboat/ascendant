@@ -119,7 +119,7 @@ var _roster_cells := {}  # unit type id -> {stat: [value Label, old value Label,
 var _economy := {}  # "gold" / "income" -> Label
 var _starting_label: Label
 var _changes := {}  # mandate id -> what it alone changes for this faction (tooltip lines), per builder
-var _model: GameState  # data only: faction names, capitals, rosters
+var _model: GameState  # data only: faction names, capitals, rosters (CW-7: of the factions this game seats)
 var _first_use_state: GameState = null  # M5-8: a magic start on this land, for Tithe of Blood's "first use" line
 var _first_use_key := ""
 var _ruler_group: ButtonGroup
@@ -152,6 +152,7 @@ func _input(event: InputEvent) -> void:
 func begin(config: Dictionary, last_builds: Dictionary = {}) -> void:
 	game_config = config.duplicate(true)
 	game_config.erase("builds")
+	_model = _seated_model()
 	locked = {}
 	remembered = {}
 	for fid in last_builds:
@@ -432,14 +433,22 @@ func _seed() -> int:
 	return int(game_config.get("seed", 0))
 
 
+## CW-7 (#258): the factions, capitals and rosters of the game this config seats (GameState.create: the Crown and the Clans
+## exactly as GameState.new, the Candlewake with the capital they take, the Long Vigil), or the Crown and the Clans when it
+## seats nobody it can (GameScreen.seated_players).
+func _seated_model() -> GameState:
+	var s := GameState.create(_seed(), GameScreen.seated_players(game_config), {}, {}, [])
+	return s if s != null else GameState.new()
+
+
 # --- what the build gives: every number from RulerRules and Breakdown --------------------------------
 
 ## The starting state this build gives (what GameScreen.starting_state builds), or null. M5-5: in a game with magic,
-## the magic game (GameState.with_magic), where a mandate of magic such as Tithe of Blood is legal.
+## the magic game, where a mandate of magic such as Tithe of Blood is legal. CW-7: the game's own two factions
+## (GameState.create, which gives the Crown and the Clans GameState.with_rulers' and with_magic's bytes).
 func _state_for(build: Dictionary) -> GameState:
-	if _magic_on():
-		return GameState.with_magic(_seed(), {faction_id: build}, [])
-	return GameState.with_rulers(_seed(), {faction_id: build}, [])
+	return GameState.create(_seed(), GameScreen.seated_players(game_config), {"rulers": true, "magic": _magic_on()},
+		{faction_id: build}, [])
 
 
 ## M5-8 (§7.1): when a mandate of magic first gets used ("First use: Far Sight once you have Shamans ..."), from the research

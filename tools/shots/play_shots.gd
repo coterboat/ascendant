@@ -10,6 +10,11 @@ extends SceneTree
 ##   --out=DIR          where the PNGs and walk.md go (default user://shots)
 ##   --seed=N           the game seed (default 4242)
 ##   --human=ID         the faction the bot plays for the person (default kingdom); the other seat is the computer
+##   --foe=ID           CW-7 (#258): the computer's faction (default: the other shipped faction). A faction still being built
+##                      (the Candlewake) ticks the preview box (--preview), and the walk plays without the systems a seated
+##                      faction can't play yet (GameState.system_problems), saying so in walk.md
+##   --preview          CW-7: the "Candlewake (preview)" box ticked in the walk's settings file before the title shot (with --fresh;
+##                      otherwise the player's own file would be written), so the title and the new game screen show it
 ##   --turns=N          stop after N turns (default 40) or when the game ends
 ##   --every=K          a map shot every K turns, plus every turn with a battle the person fought (default 5)
 ##   --battles=N        watch up to N of the person's battles in the battle host, one shot each (default 3)
@@ -57,6 +62,8 @@ const H := 900
 var out := "user://shots"
 var game_seed := 4242
 var human := "kingdom"
+var foe_id := ""  # --foe: the computer's faction ("" = the other shipped one)
+var preview := false
 var max_turns := 40
 var every := 5
 var max_battles := 3
@@ -91,6 +98,8 @@ func _initialize() -> void:
 			"out": out = kv[1]
 			"seed": game_seed = int(kv[1])
 			"human": human = kv[1]
+			"foe": foe_id = kv[1]
+			"preview": preview = true
 			"turns": max_turns = int(kv[1])
 			"every": every = maxi(1, int(kv[1]))
 			"battles": max_battles = int(kv[1])
@@ -133,6 +142,11 @@ func _initialize() -> void:
 		root.content_scale_factor = ui_scale / 100.0
 	if not battle_view.is_empty():
 		BattleFx.save_settings({"view": battle_view}, GameSettings.default_path if fresh else "")
+	if FactionData.is_preview(foe_id) or FactionData.is_preview(human):
+		preview = true  # a preview faction is picked behind its box
+	if preview and fresh:
+		GameSettings.set_preview_factions(true, GameSettings.default_path)
+	_drop_systems_not_ready()
 	# The window stays as launched: `--resolution WxH` (see the header) takes a walk at another size, 1280x720 for
 	# instance (MVP-1, #141: every screen fits both), and without it the window is the project's default, W x H.
 	print("window: ", DisplayServer.window_get_size(), " (default ", Vector2i(W, H), ")")
@@ -166,10 +180,26 @@ func _shot(name: String, note: String = "") -> void:
 
 
 func _opponent() -> String:
+	if not foe_id.is_empty():
+		return foe_id
 	for f in FactionData.FACTIONS:
 		if f.id != human:
 			return f.id
 	return ""
+
+
+## CW-7: the walk plays without the systems a seated faction can't play yet (the Candlewake's rulers, paths and magic before
+## CW-2, CW-4 and CW-5): the deepest first, since Paths need Rulers and Magic needs Paths.
+func _drop_systems_not_ready() -> void:
+	for fid in [human, _opponent()]:
+		for key in ["rulers", "paths", "magic"]:
+			if flags[key] and not GameState.system_problems(String(fid), {key: true}).is_empty():
+				var dropped := ["rulers", "paths", "magic"].slice(["rulers", "paths", "magic"].find(key))
+				for k in dropped:
+					flags[k] = false
+				walk.append("- %s can't play %s yet: the walk plays without %s" % [String(FactionData.row(String(fid)).get("name", fid)),
+					key, ", ".join(dropped)])
+				break
 
 
 func _config() -> Dictionary:
@@ -481,7 +511,11 @@ func _menus() -> void:
 	root.add_child(ng)
 	await _frames(2)
 	ng.set_seat_kind(2, "computer")
-	if not defaults:  # --defaults leaves every box as the screen ships it
+	if preview:  # CW-7: the seats as the walk plays them, the preview box ticked
+		ng.set_seats([human, _opponent()])
+		if defaults:  # every box as the screen ships it: a faction that can't play one yet says so and Start waits
+			await _shot("new_game_preview", "The preview box ticked, every box as it ships: %s" % ng.error_text().replace("\n", " "))
+	if not defaults or preview:  # --defaults leaves every box as the screen ships it (with --preview, after its own shot)
 		ng.set_rulers(flags.rulers)
 		ng.set_paths(flags.paths)
 		ng.set_sieges(flags.sieges)
