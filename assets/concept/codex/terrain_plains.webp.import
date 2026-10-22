@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://60kkkd815lj5"
-path="res://.godot/imported/hills.webp-3d0aab457a8426f1f187a9d6b3845606.ctex"
+uid="uid://cy77jowhadcv6"
+path="res://.godot/imported/terrain_plains.webp-d5ae83103613940bad17dc94e14fe507.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/concept/codex/hills.webp"
-dest_files=["res://.godot/imported/hills.webp-3d0aab457a8426f1f187a9d6b3845606.ctex"]
+source_file="res://assets/concept/codex/terrain_plains.webp"
+dest_files=["res://.godot/imported/terrain_plains.webp-d5ae83103613940bad17dc94e14fe507.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

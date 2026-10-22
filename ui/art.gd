@@ -20,6 +20,9 @@ class_name Art
 ##   title_backdrop()                           assets/ui/title_backdrop.webp (the title screen's job wires it)
 ##   spell_icon(key)                            assets/ui/spells/<key>.png (256x256): a spell's or ritual's icon by
 ##                                              its data/magic.gd SPELLS id, or Tithe of Blood's (ART-M5-2D, #224)
+##   codex_plate(codex_key)                     assets/concept/codex/<codex key>.webp (768x768, a vignette on parchment):
+##                                              the plate at the top of that codex page (#272), so a plate named after a
+##                                              RulesCodex key shows on its page with no code change
 ## Audio will live under AUDIO_DIR with an audio.json map; the audio job wires it, not this file.
 ##
 ## Widgets (Controls that draw themselves, so they cost one node each and never lay out wrongly):
@@ -30,6 +33,8 @@ class_name Art
 ##        without art, a plain drawn pennant
 ##   face(texture)                                                           a square crop around the face
 ##        (eyes sit 35-41% from the top in every portrait), for icons smaller than 96x128
+##   PlateCard                                                               a codex plate whole, at its own aspect and centred
+##        on a band of its own parchment as wide as the card (the codex page's plate, #272)
 
 enum Crop { FULL, FACE }
 
@@ -40,6 +45,7 @@ const BANNER_PATH := "res://assets/banners/%s.webp"
 const TERRAIN_PATH := "res://assets/terrain/%s.webp"
 const TITLE_BACKDROP_PATH := "res://assets/ui/title_backdrop.webp"
 const SPELL_ICON_PATH := "res://assets/ui/spells/%s.png"
+const CODEX_PLATE_PATH := "res://assets/concept/codex/%s.webp"
 const AUDIO_DIR := "res://assets/audio/"
 ## Portraits are 3:4 (384x512).
 const PORTRAIT_ASPECT := 0.75
@@ -146,6 +152,13 @@ static func spell_icon(key: String) -> Texture2D:
 	if key.is_empty():
 		return null
 	return texture(SPELL_ICON_PATH % key)
+
+
+## The plate of the codex page `codex_key` (a RulesCodex.ENTRIES key: "terrain_forest"), or null when that page has none.
+static func codex_plate(codex_key: String) -> Texture2D:
+	if codex_key.is_empty():
+		return null
+	return texture(CODEX_PLATE_PATH % codex_key)
 
 
 ## A square crop of a portrait around the face (FACE_REGION), for small icons. Cached per texture.
@@ -358,3 +371,74 @@ class BannerCard extends Control:
 		closed.append(cloth[0])
 		draw_polyline(closed, UiPalette.KEYLINE_INK, 2.0, true)
 		draw_line(r.position + Vector2(w * 0.08, h * 0.08), r.position + Vector2(w * 0.92, h * 0.08), UiPalette.GILT, maxf(2.0, h * 0.04), true)
+
+
+## A codex plate (#272) on the page it illustrates: the plate whole, at its own aspect, as large as the card allows and centred, on
+## a band of the plate's own parchment as wide as the card (its edge drawn on outwards), so the vignette spreads across the page as
+## one picture, in a keyline. Nothing is cropped or stretched; without a texture it draws nothing. Takes no mouse.
+class PlateCard extends Control:
+	## The column, as a share of the plate's width in from each side, whose colour is the parchment's on that row.
+	const EDGE := 1.0 / 128.0
+	## A plate's parchment lightens towards its middle, so on a band of its edge colour its square would show. Within FEATHER of the
+	## plate's width from each side, a pixel close to its row's edge colour is drawn as that colour, easing out inwards; a painted
+	## pixel (far from the parchment's colour) is left as it is. The band's own draws sample the edge, so they are unchanged.
+	const FEATHER := 0.3
+	const SHADER := """shader_type canvas_item;
+uniform float edge = 0.0078125;
+uniform float feather = 0.3;
+void fragment() {
+	vec4 rim = textureLod(TEXTURE, vec2(UV.x < 0.5 ? edge : 1.0 - edge, UV.y), 0.0);
+	float near_side = 1.0 - smoothstep(0.0, feather, min(UV.x, 1.0 - UV.x));
+	float paper = 1.0 - smoothstep(0.02, 0.12, distance(COLOR.rgb, rim.rgb));
+	COLOR.rgb = mix(COLOR.rgb, rim.rgb, near_side * paper);
+}
+"""
+	static var _blend: ShaderMaterial = null
+	var texture: Texture2D = null:
+		set(value):
+			texture = value
+			queue_redraw()
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		if _blend == null:
+			var shader := Shader.new()
+			shader.code = SHADER
+			_blend = ShaderMaterial.new()
+			_blend.shader = shader
+			_blend.set_shader_parameter("edge", EDGE)
+			_blend.set_shader_parameter("feather", FEATHER)
+		material = _blend
+
+	func has_art() -> bool:
+		return texture != null
+
+	## Where the plate itself is drawn: inside the keyline, as large as fits with its aspect kept, centred.
+	func plate_rect() -> Rect2:
+		if texture == null:
+			return Rect2()
+		var inner := Rect2(Vector2.ZERO, size).grow(-2.0)
+		var tex_size := texture.get_size()
+		var s := minf(inner.size.x / maxf(tex_size.x, 1.0), inner.size.y / maxf(tex_size.y, 1.0))
+		var drawn := tex_size * maxf(s, 0.0)
+		return Rect2(inner.position + (inner.size - drawn) / 2.0, drawn)
+
+	func _draw() -> void:
+		if texture == null:
+			return
+		var r := Rect2(Vector2.ZERO, size)
+		var inner := r.grow(-2.0)
+		var at := plate_rect()
+		var tex_size := texture.get_size()
+		# The band is the plate's own parchment: its corner under everything, then its side columns (EDGE in, clear of any filtering
+		# seam) drawn on outwards, so the paper runs on unbroken whatever its shading; the shader eases the plate's sides into it.
+		var edge := maxf(2.0, floorf(tex_size.x * EDGE))
+		draw_texture_rect_region(texture, r, Rect2(edge, edge, 1.0, 1.0))
+		if at.position.x > inner.position.x + 0.5:
+			draw_texture_rect_region(texture, Rect2(inner.position.x, at.position.y, at.position.x - inner.position.x, at.size.y),
+				Rect2(edge, 0.0, 1.0, tex_size.y))
+			draw_texture_rect_region(texture, Rect2(at.end.x, at.position.y, inner.end.x - at.end.x, at.size.y),
+				Rect2(tex_size.x - edge - 1.0, 0.0, 1.0, tex_size.y))
+		draw_texture_rect(texture, at, false)
+		draw_rect(r.grow(-1.0), UiPalette.PANEL_BORDER.lightened(0.15), false, 2.0)
