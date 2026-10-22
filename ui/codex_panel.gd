@@ -102,12 +102,25 @@ func is_on_top() -> bool:
 	return true
 
 
-## Every codex key, in RulesCodex order.
+## The factions whose own entries the list holds (#285): the game's seated factions (GameScreen.open_codex sets them), or the
+## factions a new game can seat (the title's codex). Shared entries are always listed.
+var factions: Array = FactionData.playable(false)
+
+
+## Lists the entries for a game seating `ids` (#285), keeping the search.
+func set_factions(ids: Array) -> void:
+	factions = ids.duplicate()
+	if _search != null:
+		filter(_search.text)
+
+
+## Every codex key the list can hold, in RulesCodex order: the shared entries and the seated factions' own (#285).
 func entry_keys() -> Array[String]:
 	_bind()
 	var keys: Array[String] = []
 	for key in RulesCodex.ENTRIES:
-		keys.append(String(key))
+		if RulesCodex.shown_for(String(key), factions):
+			keys.append(String(key))
 	return keys
 
 

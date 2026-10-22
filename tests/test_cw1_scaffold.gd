@@ -273,8 +273,8 @@ func test_the_marks_events_are_public_with_the_same_words() -> void:
 		assert_eq(theirs.size(), 1, "the rival sees %s too" % e.type)
 		assert_eq(String(theirs[0].text), String(e.text), "%s: the rival reads the same words" % e.type)
 		assert_true(bool(theirs[0].get("rebuilt", false)), "rebuilt from its public numbers")
-	assert_eq(MarkRules.stage_of(WAKE, 0), 1, "held 0: the first stage")
+	assert_eq(MarkRules.stage_of(null, WAKE, 0), 1, "held 0: the first stage")
 	for i in MarkData.stage_count(WAKE):
 		var threshold := int(MarkData.stage(WAKE, i + 1).held)
-		assert_eq(MarkRules.stage_of(WAKE, threshold), i + 1, "held %d reaches stage %d" % [threshold, i + 1])
-	assert_eq(MarkRules.stage_of(WAKE, -1), 0, "not yet held")
+		assert_eq(MarkRules.stage_of(null, WAKE, threshold), i + 1, "held %d reaches stage %d" % [threshold, i + 1])
+	assert_eq(MarkRules.stage_of(null, WAKE, -1), 0, "not yet held")

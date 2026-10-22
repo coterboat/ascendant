@@ -383,9 +383,9 @@ static func order_from_dict(data: Dictionary, errors = null):
 			var action := str(data.get("action", ""))
 			var target := str(data.get("province", "")) if action == SiegeOrder.STORM else str(data.get("army", ""))
 			return SiegeOrder.new(action, target, str(data.get("with", "")))
-		"cast":  # M5-5; "size" only for Call the Pack
+		"cast":  # M5-5; "size" only for Call the Pack; CW-5: "target_army" only for a one-army ritual that names its army
 			return CastOrder.new(str(data.get("ritual", "")), str(data.get("army", "")), str(data.get("target", "")),
-				str(data.get("pay", CastOrder.GOLD)), Serial.to_int(data.get("size", 0)))
+				str(data.get("pay", CastOrder.GOLD)), Serial.to_int(data.get("size", 0)), str(data.get("target_army", "")))
 		"spellbook":  # M5-5
 			return SpellbookOrder.new(Serial.to_string_array(data.get("order", [])), Serial.to_string_array(data.get("off", [])))
 		"muster":  # ARM-1 (design/ARM1_SPLIT_MERGE.md §1): STRICT, unlike the lenient parsers above

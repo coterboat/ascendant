@@ -50,15 +50,61 @@ static func end_clock(state: GameState) -> int:
 	return state.current_turn + 1
 
 
-## The stage (1-based) of `faction_id`'s mark held for `held` turns: the last stage whose threshold it has reached, or 0 before
-## the first (a since_turn in the future).
-static func stage_of(faction_id: String, held: int) -> int:
+## The stage (1-based) of `faction_id`'s mark held for `held` turns in `state`: the last stage whose threshold (threshold: the
+## path can bring the Wake-Line sooner) it has reached, or 0 before the first (a since_turn in the future).
+static func stage_of(state: GameState, faction_id: String, held: int) -> int:
 	var out := 0
-	var stages: Array = MarkData.row(faction_id).get("stages", [])
-	for i in stages.size():
-		if held >= int(stages[i].held):
+	for i in MarkData.stage_count(faction_id):
+		if held >= threshold(state, faction_id, i + 1):
 			out = i + 1
 	return out
+
+
+## The turns held a mark of `faction_id` needs to reach stage `stage_number` in `state` (CW-4, §6): the row's "held"; a stage
+## marked "sooner" (the Wake-Line) comes sooner by the faction's "wake_sooner" path effects (Sitting Up Early, Meadow Wake),
+## never before 1 turn held. Deep Wake stays put.
+static func threshold(state: GameState, faction_id: String, stage_number: int) -> int:
+	var st := MarkData.stage(faction_id, stage_number)
+	var held := int(st.get("held", 0))
+	if bool(st.get("sooner", false)):
+		held = maxi(1, held - AscensionRules.effect_int(state, faction_id, "wake_sooner"))
+	return held
+
+
+## What stage `stage_number` changes its province's income by for its own faction (§3.2, §6.2): the row's "gold", or Meadow
+## Wake's "wake_gold" in its place where the row's isn't 0 (the Oath of the Kept: +1 where it cost 1).
+static func stage_gold(state: GameState, faction_id: String, stage_number: int) -> int:
+	var gold := int(MarkData.stage(faction_id, stage_number).get("gold", 0))
+	var meadow := AscensionRules.effect_int(state, faction_id, "wake_gold")
+	return meadow if gold != 0 and meadow != 0 else gold
+
+
+## The name of the rule that turned the Wake's gold (Meadow Wake), or "".
+static func _gold_rule(state: GameState, faction_id: String) -> String:
+	for nid in AscensionRules.researched(state, faction_id):
+		if AscensionRules.node_effects(nid).has("wake_gold"):
+			return AscensionRules.economy_rule_name(nid)
+	return ""
+
+
+## Where and how often the dead rise for `faction_id` in `state` (§3.6, §6.2): the row's "risen" ({"unit", "every", "count"}) with
+## "stage", the first stage they rise from: the row's first "risen" stage, or the Long Sleep's (from the Wake-Line, every 3).
+## {} for a faction whose dead never rise.
+static func risen_rule(state: GameState, faction_id: String) -> Dictionary:
+	var row: Dictionary = MarkData.row(faction_id).get("risen", {})
+	if row.is_empty():
+		return {}
+	var out := row.duplicate()
+	out["stage"] = 0
+	for i in MarkData.stage_count(faction_id):
+		if bool(MarkData.stage(faction_id, i + 1).get("risen", false)):
+			out["stage"] = i + 1
+			break
+	var sleep := AscensionRules.effect_dict(state, faction_id, "risen")
+	if not sleep.is_empty():
+		out["stage"] = MarkData.stage_index(faction_id, String(sleep.get("from", "")))
+		out["every"] = int(sleep.get("every", out.every))
+	return out if int(out.stage) > 0 and int(out.get("every", 0)) > 0 else {}
 
 
 ## A new game's marks (GameState._seat, CW-3): only each marking faction's capital, held since its row's "capital" end clock, so
@@ -73,7 +119,7 @@ static func seed_capitals(state: GameState) -> void:
 ## The stage of the mark at `province_id` on end clock `e` (0 with no mark there).
 static func stage_at(state: GameState, province_id: String, e: int) -> int:
 	var mark: Dictionary = Dictionary(state.marks.get(province_id, {})).get("mark", {})
-	return 0 if mark.is_empty() else stage_of(String(mark.faction), e - int(mark.since_turn))
+	return 0 if mark.is_empty() else stage_of(state, String(mark.faction), e - int(mark.since_turn))
 
 
 ## The stage of the mark at `province_id` as the land looks now: the last wake step's (E - 1), what the board and the card show.
@@ -111,7 +157,7 @@ static func wake_step(state: GameState, events: Array, start: GameState = null) 
 			var entry: Dictionary = state.marks.get(p.id, {})
 			var mark: Dictionary = entry.get("mark", {})
 			if not mark.is_empty() and String(mark.faction) == before.owner:
-				var stage := maxi(1, stage_of(before.owner, e - 1 - int(mark.since_turn)))
+				var stage := maxi(1, stage_of(state, before.owner, e - 1 - int(mark.since_turn)))
 				var until := e + int(MarkData.row(before.owner).get("scar_turns", 0)) * stage
 				entry.erase("mark")
 				entry["scar"] = {"faction": before.owner, "stage": stage, "until_turn": until}
@@ -120,7 +166,7 @@ static func wake_step(state: GameState, events: Array, start: GameState = null) 
 				var scar: Dictionary = entry.get("scar", {})
 				if not scar.is_empty() and String(scar.faction) == p.owner:
 					entry.erase("scar")
-					entry["mark"] = {"faction": p.owner, "since_turn": e - int(MarkData.stage(p.owner, int(scar.stage)).get("held", 0))}
+					entry["mark"] = {"faction": p.owner, "since_turn": e - threshold(state, p.owner, int(scar.stage))}
 					events.append(relit_event(state, p.owner, p.id, int(scar.stage)))
 				else:
 					entry["mark"] = {"faction": p.owner, "since_turn": e}
@@ -131,8 +177,8 @@ static func wake_step(state: GameState, events: Array, start: GameState = null) 
 		if mark.is_empty() or fresh.has(pid):
 			continue
 		var fid := String(mark.faction)
-		var now := stage_of(fid, e - int(mark.since_turn))
-		if now > stage_of(fid, e - 1 - int(mark.since_turn)):
+		var now := stage_of(state, fid, e - int(mark.since_turn))
+		if now > stage_of(state, fid, e - 1 - int(mark.since_turn)):
 			events.append(stage_event(state, fid, pid, now))
 	for pid in _sorted_ids(state.marks):
 		_rise(state, pid, e, events)
@@ -162,11 +208,12 @@ static func _rise(state: GameState, province_id: String, e: int, events: Array) 
 	if mark.is_empty() or p == null or p.owner != String(mark.faction):
 		return
 	var fid := String(mark.faction)
-	var risen: Dictionary = MarkData.row(fid).get("risen", {})
-	var from := MarkData.risen_threshold(fid)
-	var every := int(risen.get("every", 0))
-	var past := e - int(mark.since_turn) - from
-	if risen.is_empty() or from < 0 or every <= 0 or past < every or past % every != 0:
+	var risen := risen_rule(state, fid)
+	if risen.is_empty():
+		return
+	var every := int(risen.every)
+	var past := e - int(mark.since_turn) - threshold(state, fid, int(risen.stage))
+	if past < every or past % every != 0:
 		return
 	var ut := TurnResolver.recruitable_type(state.find_faction(fid), String(risen.get("unit", "")))
 	var count := int(risen.get("count", 1))
@@ -193,11 +240,12 @@ static func income_parts(state: GameState, p: Province) -> Array:
 	if mark.is_empty() or String(mark.faction) != p.owner:
 		return []
 	var stage := stage_at(state, p.id, end_clock(state))
-	var gold := int(MarkData.stage(p.owner, stage).get("gold", 0))
+	var gold := stage_gold(state, p.owner, stage)
 	if gold == 0:
 		return []
-	return [{"key": INCOME_KEY, "name": RulerRules._cap(stage_name(p.owner, stage)), "value": gold,
-		"note": "the Wake: the living sit up all night"}]
+	var rule := _gold_rule(state, p.owner) if gold > 0 else ""  # CW-4: Meadow Wake pays
+	return [{"key": INCOME_KEY, "name": rule if not rule.is_empty() else RulerRules._cap(stage_name(p.owner, stage)), "value": gold,
+		"note": ("%s: the Wake pays" % rule) if not rule.is_empty() else "the Wake: the living sit up all night"}]
 
 
 ## The one-sentence rule behind the Wake's income part (Breakdown._modifier_rule), from MarkData's rows.
@@ -231,25 +279,27 @@ static func province_text(state: GameState, province_id: String) -> Array:
 	if not mark.is_empty():
 		var fid := String(mark.faction)
 		var held := e - 1 - int(mark.since_turn)
-		var stage := maxi(1, stage_of(fid, held))
+		var stage := maxi(1, stage_of(state, fid, held))
 		var row := MarkData.stage(fid, stage)
 		var who := String(FactionData.row(fid).name)
+		var gold := stage_gold(state, fid, stage)
 		var line := "%s (held %s):" % [RulerRules._cap(String(row.name)), _turns(held)]
 		if bool(row.get("harbour", false)):
 			line += " %s armies keep their flame here." % who
-		if int(row.get("gold", 0)) != 0:
-			line += " The living sit up all night: %d gold." % int(row.gold)
-		if not bool(row.get("harbour", false)) and int(row.get("gold", 0)) == 0:
+		if gold < 0:
+			line += " The living sit up all night: %d gold." % gold
+		elif gold > 0:
+			line += " %s: +%d gold." % [_gold_rule(state, fid), gold]  # CW-4: Meadow Wake
+		if not bool(row.get("harbour", false)) and gold == 0:
 			line += " A lilac flame in every window."
-		var next := MarkData.stage(fid, stage + 1)
-		if not next.is_empty():
-			line += " %s in %s." % [RulerRules._cap(String(next.name)), _turns(int(next.held) - held)]
+		if stage < MarkData.stage_count(fid):
+			line += " %s in %s." % [RulerRules._cap(stage_name(fid, stage + 1)), _turns(threshold(state, fid, stage + 1) - held)]
 		out.append(line)
-		var risen: Dictionary = MarkData.row(fid).get("risen", {})
+		var risen := risen_rule(state, fid)
 		var ut := TurnResolver.recruitable_type(state.find_faction(fid), String(risen.get("unit", "")))
-		if bool(row.get("risen", false)) and ut != null and int(risen.get("every", 0)) > 0:
+		if not risen.is_empty() and stage >= int(risen.stage) and ut != null:
 			var every := int(risen.every)
-			var past := held + 1 - MarkData.risen_threshold(fid)  # past the threshold at this turn's end
+			var past := held + 1 - threshold(state, fid, int(risen.stage))  # past the threshold at this turn's end
 			var due := maxi(every, ceili(float(past) / every) * every)
 			out.append("%s: the dead rise here. Next %s in %s." % [RulerRules._cap(String(row.name)), _one_name(String(ut.name)),
 				_turns(due - past + 1)])
@@ -275,7 +325,7 @@ static func harbour(state: GameState, faction_id: String, province_id: String) -
 	var mark: Dictionary = entry.get("mark", {})
 	var p := state.find_province(province_id)
 	if not mark.is_empty() and String(mark.faction) == faction_id and p != null and p.owner == faction_id:
-		var stage := stage_of(faction_id, end_clock(state) - int(mark.since_turn))
+		var stage := stage_of(state, faction_id, end_clock(state) - int(mark.since_turn))
 		if bool(MarkData.stage(faction_id, stage).get("harbour", false)):
 			return true
 	var scar: Dictionary = entry.get("scar", {})

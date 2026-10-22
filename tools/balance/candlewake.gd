@@ -7,10 +7,11 @@ extends SceneTree
 ## Rows: the start armies with their commanders, each Candlewake unit type against each Crown and Clans unit type at equal gold
 ## (counts picked as Balance.equal_gold picks them, about PAIR_GOLD a side), mixed armies at MIXED_GOLD a side, and the Clans'
 ## Tuskers with Blood Frenzy (a mandate). Columns: flames 0 to 3 on open ground, then flame 1 on each ground with each side
-## defending (forest, hills, a fort). The Red Wake's flame 4 waits for CW-4, Iron Hide for paths (CW-4's Amber Saints and the
-## Crown's Iron Knights), and Shield Wall is in every pair with two or more Spearmen. The gate (§9): at flame 1 on open ground,
-## equal-gold pairs within PAIR_BAND and mixed armies within MIXED_BAND. tests/test_cw2_benchmarks.gd runs the gate with fewer
-## seeds, and holds the start armies within START_BAND.
+## defending (forest, hills, a fort). Shield Wall is in every pair with two or more Spearmen. A second table (CW-4, paths): every
+## Candlewake unit type of the Red Wake against every Crown and Clans unit type at flame 1 and at the Red Wake's flame 4, and
+## Iron Hide both ways (the Golden Wake's Amber Saints against every unit type; every Candlewake unit type against Living Iron's
+## Iron Colossus) at flame 1. The gate (§9): at flame 1 on open ground, equal-gold pairs within PAIR_BAND and mixed armies within
+## MIXED_BAND. tests/test_cw2_benchmarks.gd runs the gate with fewer seeds, and holds the start armies within START_BAND.
 
 const Balance := preload("res://tools/balance/balance.gd")
 const WAKE := "candlewake"
@@ -31,6 +32,13 @@ const GROUNDS := [["open", "Open", "rivermarch", ""], ["forest_wake", "Forest, C
 ## shipped harness fills them (Balance.MIX_CYCLE).
 const MIX := {"candlewake": ["wickwardens", "gleaners", "wickwardens", "hundred_wick", "gleaners", "wickwardens"],
 	"kingdom": Balance.MIX_CYCLE.kingdom, "beasts": Balance.MIX_CYCLE.beasts}
+## CW-4: the paths the second table researches (two ordinary nodes, the Oath, the transformation), and rulers without mandates
+## so its numbers are the units' and the paths' alone.
+const RED_WAKE := ["wake_thicker_tallow", "wake_brighter_flare", "wake_oath_snuffed", "wake_red_wake"]
+const GOLDEN_WAKE := ["wake_thicker_tallow", "wake_sitting_up_early", "wake_oath_kept", "wake_golden_wake"]
+const LIVING_IRON := ["crown_drillyard", "crown_charters", "crown_oath_forge", "crown_living_iron"]
+const PLAIN_RULERS := {"kingdom": {"ruler": "aurel_king", "mandates": []}, "beasts": {"ruler": "fang_chieftain", "mandates": []},
+	"candlewake": {"ruler": "half_death", "mandates": []}}
 
 
 func _initialize() -> void:
@@ -164,6 +172,39 @@ static func start_army(state: GameState, owner: String) -> Array:
 	return out
 
 
+## A game of the Candlewake and `foe` with paths and plain rulers, each faction in `nodes` ({faction id: node ids}) with those
+## researched (CW-4), and no armies.
+static func path_state(foe: String, nodes: Dictionary) -> GameState:
+	var s := GameState.create(1, [foe, WAKE], {"paths": true}, {foe: PLAIN_RULERS[foe], WAKE: PLAIN_RULERS[WAKE]}, [])
+	for fid in nodes:
+		s = AscensionRules.with_nodes(s, String(fid), nodes[fid])
+	s.armies.clear()
+	return s
+
+
+## The second table's rows (CW-4): [{"label", "cells": {"1": pct, "4": pct (the Red Wake's rows only)}}], all on open ground.
+static func path_rows(seeds: int) -> Array:
+	var out := []
+	for foe in FOES:
+		var red := path_state(foe, {WAKE: RED_WAKE})
+		for w in red.find_faction(WAKE).unit_types.map(func(u): return String(u.id)):
+			for t in red.find_faction(foe).unit_types.map(func(u): return String(u.id)):
+				var n := equal_counts(red, foe, w, t, PAIR_GOLD)
+				out.append({"label": "Red Wake: %s vs %s" % [Balance.describe(red, WAKE, n[0]), Balance.describe(red, foe, n[1])],
+					"cells": {"1": win_pct(red, foe, n[0], n[1], 1, GROUNDS[0], seeds), "4": win_pct(red, foe, n[0], n[1], 4, GROUNDS[0], seeds)}})
+		var golden := path_state(foe, {WAKE: GOLDEN_WAKE})
+		for t in golden.find_faction(foe).unit_types.map(func(u): return String(u.id)):
+			var n := equal_counts(golden, foe, "amber_saints", t, PAIR_GOLD)
+			out.append({"label": "Golden Wake: %s vs %s" % [Balance.describe(golden, WAKE, n[0]), Balance.describe(golden, foe, n[1])],
+				"cells": {"1": win_pct(golden, foe, n[0], n[1], 1, GROUNDS[0], seeds)}})
+	var iron := path_state("kingdom", {"kingdom": LIVING_IRON})
+	for w in iron.find_faction(WAKE).unit_types.map(func(u): return String(u.id)):
+		var n := equal_counts(iron, "kingdom", w, "iron_colossus", PAIR_GOLD)
+		out.append({"label": "Living Iron: %s vs %s" % [Balance.describe(iron, WAKE, n[0]), Balance.describe(iron, "kingdom", n[1])],
+			"cells": {"1": win_pct(iron, "kingdom", n[0], n[1], 1, GROUNDS[0], seeds)}})
+	return out
+
+
 ## Every row: [{"label", "foe", "kind" ("start" | "pair" | "mixed" | "frenzy"), "wake", "them", "cells": {"<flame>": pct on open ground,
 ## "<ground key>": pct at flame 1}}], at each of `flames` on open ground and, with `grounds`, at flame 1 on every other ground.
 static func rows(seeds: int, flames: Array = FLAMES, grounds: bool = true) -> Array:
@@ -236,4 +277,11 @@ static func report(seeds: int) -> String:
 		int(MIXED_BAND[0]), int(MIXED_BAND[1]), "every row holds" if miss.is_empty() else "%d miss" % miss.size()])
 	for m in miss:
 		L.append("- %s: %.1f%% (band %d-%d%%)" % [m.label, float(m.pct), int(m.band[0]), int(m.band[1])])
+	L.append("")
+	L.append("## Paths (CW-4): the Red Wake at flame 4, and Iron Hide (open ground, Candlewake win %)")
+	L.append("")
+	L.append("| Matchup (gold a side) | flame 1 | flame 4 |")
+	L.append("|---|---|---|")
+	for r in path_rows(seeds):
+		L.append("| %s | %.1f | %s |" % [r.label, float(r.cells["1"]), "%.1f" % float(r.cells["4"]) if r.cells.has("4") else "-"])
 	return "\n".join(L) + "\n"

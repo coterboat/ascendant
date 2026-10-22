@@ -75,9 +75,8 @@ static func plan_for(preset_id: String, faction_id: String) -> Dictionary:
 		if AscensionRules.node_kind(nid) == PathData.TIER1:
 			before.append(nid)
 	var weights := []
-	for b in PathData.BRANCHES:
-		if String(PathData.BRANCHES[b].faction) == faction_id:
-			weights.append([b, 1])
+	for b in AscensionRules.branches_for(faction_id):  # CW-4: the Candlewake's sides too, until CW-6 gives them plans
+		weights.append([b, 1])
 	return {"faction": faction_id, "before": before, "weights": weights}
 
 

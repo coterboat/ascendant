@@ -335,7 +335,8 @@ func _fill_choices(o: Dictionary) -> void:
 			row.add_child(b)
 			target_buttons[pid] = b
 	if not o.sizes.is_empty() and int(o.sizes[0]) != int(o.sizes[1]):
-		var wl := _label("Wolves (%d gold each)" % int(MagicRules.spell_data(ritual).cost), 15, UiPalette.TEXT_PRIMARY)
+		var wl := _label("%s (%d gold each)" % [String(MagicRules.pack_words(ritual).get("many", "wolves")).capitalize(),  # CW-5: or Snuffed
+			int(MagicRules.spell_data(ritual).cost)], 15, UiPalette.TEXT_PRIMARY)
 		wl.set_meta("rule_text", true)
 		choice_box.add_child(wl)
 		var row := HBoxContainer.new()
@@ -345,7 +346,8 @@ func _fill_choices(o: Dictionary) -> void:
 			var size_bd := Breakdown.ritual_price(orders.view_state(), orders.faction_id, ritual, n)
 			var b := _button("Size_%d" % n, "%d" % n, "")
 			b.set_meta("breakdown", size_bd)
-			b.tooltip_text = "%s\n\n%s" % [TooltipText.from_breakdown(size_bd), TooltipText.wrap_text("Call %d Thornwolves, %d gold." % [n, n * int(MagicRules.spell_data(ritual).cost)])]
+			b.tooltip_text = "%s\n\n%s" % [TooltipText.from_breakdown(size_bd), TooltipText.wrap_text("%s %d %s, %d gold." % [MagicRules.spell_name(ritual).get_slice(" ", 0), n,
+				String(MagicRules.summon_data(String(MagicRules.spell_data(ritual).get("summon", ""))).get("name", "")), n * int(MagicRules.spell_data(ritual).cost)])]  # CW-5
 			b.toggle_mode = true
 			b.pressed.connect(set_wolves.bind(n))
 			row.add_child(b)
