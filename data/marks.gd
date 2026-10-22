@@ -10,8 +10,10 @@ class_name MarkData
 ##                 its flame), "gold" (the change to the province's income), "risen" (the dead rise there, §3.6)}
 ##   "scar_turns"  a lost mark lingers as a scar this many turns for each stage it had (§3.3)
 ##   "capital"     a capital counts as held since this end clock, so it stands at the last stage from the start
-## CW-1 ships the shape and the numbers; the wake step that reads them (stages, scars, harbours, gold, the Risen) is CW-3
-## (#254). Every number is a starting point that CW-11 (#262) tunes.
+##   "risen"       the dead rise (§3.6) where the mark stands at a stage whose "risen" is true: "count" of the roster's "unit"
+##                 every "every" turns past that stage's threshold (held = threshold + every, threshold + 2 × every, ...)
+## CW-1 shipped the shape and the numbers, and CW-3 (#254) the wake step that reads them (MarkRules: stages, scars, harbours,
+## gold, the Risen). Every number is a starting point that CW-11 (#262) tunes.
 
 const ROWS := {
 	"candlewake": {
@@ -22,6 +24,7 @@ const ROWS := {
 		],
 		"scar_turns": 2,
 		"capital": -6,
+		"risen": {"unit": "wickwardens", "every": 4, "count": 1},
 	},
 }
 
@@ -34,6 +37,15 @@ static func row(faction_id: String) -> Dictionary:
 ## How many stages `faction_id`'s mark has (0 without a row).
 static func stage_count(faction_id: String) -> int:
 	return Array(row(faction_id).get("stages", [])).size()
+
+
+## The turns a mark of `faction_id` is held before the dead rise there: the threshold of its first stage whose "risen" is true,
+## or -1 when they never do.
+static func risen_threshold(faction_id: String) -> int:
+	for st in row(faction_id).get("stages", []):
+		if bool(st.get("risen", false)):
+			return int(st.held)
+	return -1
 
 
 ## Stage `stage` (1-based) of `faction_id`'s mark, or {}.
