@@ -52,6 +52,8 @@ var wake_tex: ImageTexture
 var wake_lights: Node3D = null ## CW-8: the Wake's window flames and candle-posts (WakeLights), made when a Wake first shows
 var _wake_look := {}
 var wake_reach_tex: ImageTexture = null ## CW-8: the reach mask (wake_reach_of), made when a Wake first shows
+var _wake_sig: Array = [] ## CW-8: what set_wake last drew from (the look, the rung, reduced motion, the buildings standing)
+var _cottages_at := {} ## CW-8: province id -> [{"mesh", "xf"}]: the cottages round its stage (made on first use)
 var vision_img: Image ## M5-3, WIDTH x 1 R8 beside the owner wash: 0 never seen, 85 remembered, 170 glimpsed, 255 in clear sight (Vision)
 var vision_tex: ImageTexture
 var lens_img: Image ## UX-7, WIDTH x 2 RGBA8: the active map lens (MapLens.texels): row 0 its tint and strength, row 1 its mark and flag
@@ -402,16 +404,29 @@ func set_owners(colours: Dictionary) -> void:
 ## prop_drips, prop_wake, its mesh's melt_pivot and melt_h, and its own ink outline's) and the window flames and candle-posts
 ## (WakeLights), each thinned on the quality ladder (WakeLook.ladder). A game with no mark draws none of it and pays for none of it.
 func set_wake(look: Dictionary) -> void:
+	var reduced := bool(BattleFx.settings().get("reduced_motion", false))
+	var sig := [look, quality, reduced, _wake_sites()]
+	if sig == _wake_sig:
+		return ## nothing changed since the last paint
+	_wake_sig = sig
 	_wake_look = look
+	if look.is_empty() and wake_reach_tex == null:
+		return ## never a Wake: the ground's texture stays blank and nothing else is touched
 	wake_img = Image.create_from_data(Vision.WIDTH, 1, false, Image.FORMAT_RGBA8, WakeLook.texels(look, terrain.ids, Vision.WIDTH))
 	wake_tex.update(wake_img)
-	if wake_reach_tex == null and not look.is_empty():
+	if wake_reach_tex == null:
 		wake_reach_tex = ImageTexture.create_from_image(wake_reach_of(terrain))
 		gmat.set_shader_parameter("wake_reach", wake_reach_tex)
 		gmat.set_shader_parameter("wake_reach_max", WakeLook.REACH_MAX)
-	var lad := WakeLook.ladder(quality, bool(BattleFx.settings().get("reduced_motion", false)))
+		gmat.set_shader_parameter("wake_on", 1.0)
+	var lad := WakeLook.ladder(quality, reduced)
 	var melts := 1.0 if bool(lad.melt) and not look.is_empty() else 0.0
 	var drips := 1.0 if bool(lad.drips) else 0.0
+	for pid in fortresses: ## the gate towers' banners come down with the melting towers (the melt is about the fortress's foot)
+		var sag := 1.0 - float((look.get(pid, {}) as Dictionary).get("melt", 0.0)) * melts * 0.22
+		for ch in (fortresses[pid]["node"] as Node3D).get_children():
+			if ch.has_meta("wake_y"):
+				(ch as Node3D).position.y = float(ch.get_meta("wake_y")) * sag
 	for pair in _melt_targets():
 		var pm: ShaderMaterial = pair[0]
 		var box: AABB = (pair[1] as Mesh).get_aabb()
@@ -434,37 +449,49 @@ func set_wake(look: Dictionary) -> void:
 		wake_lights.sync(self, look, lad)
 
 
-## CW-8: every building's [model material, its mesh] as the board stands now: the villages and landmarks (a material for each model,
-## shared by its instances, which melt by the province under each one's foot), the forts and the capitals' fortresses.
+## CW-8: every building's [model material, its mesh] as the board stands now: the villages, landmarks and cottages (a material for
+## each model, shared by its instances, which melt by the province under each one's foot), the forts and the capitals' fortresses
+## (their own models and a palisade, never a banner).
 func _melt_targets() -> Array:
 	var out: Array = []
-	if _wake_look.is_empty() and wake_reach_tex == null:
-		return out ## never a Wake: nothing to set or to clear
 	for ch in buildings.get_children():
-		if ch is MultiMeshInstance3D and String(ch.name).begins_with("Village_") and _is_model_mat(ch.material_override):
+		if ch is MultiMeshInstance3D and (String(ch.name).begins_with("Village_") or String(ch.name).begins_with("Cottages")) \
+				and ch.material_override is ShaderMaterial:
 			out.append([ch.material_override, (ch as MultiMeshInstance3D).multimesh.mesh])
 	for table in [forts, fortresses]:
 		for pid in table.keys():
-			for mi in _model_meshes(table[pid].get("node")):
+			for mi in _wake_meshes(table[pid].get("node"), false):
 				out.append([mi.material_override, mi.mesh])
 	return out
 
 
-func _is_model_mat(m: Material) -> bool:
-	return m is ShaderMaterial and ((m as ShaderMaterial).shader == SH_MODEL_CEL or (m as ShaderMaterial).shader == SH_MODEL_LIT)
-
-
-## The MeshInstance3Ds under `root` (itself too) drawn with a model material.
-func _model_meshes(root) -> Array:
+## The fort's or fortress's own meshes under `root` (marked "wake" where they are made: _place_fort, _place_fortress, _fort_piece):
+## those with windows, or with `all` the palisade too.
+func _wake_meshes(root, all: bool) -> Array:
 	var out: Array = []
 	if root == null or not is_instance_valid(root):
 		return out
 	var stack: Array = [root]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
-		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null and _is_model_mat((n as MeshInstance3D).material_override):
+		var mark := String(n.get_meta("wake", ""))
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null and (mark == "windows" or (all and mark == "melt")):
 			out.append(n)
 		stack.append_array(n.get_children())
+	return out
+
+
+## What the buildings' part of the Wake hangs on: each fort's and fortress's own meshes as they stand (a fort built, razed or
+## battered swaps them), and which villages a fort has cleared away.
+func _wake_sites() -> Array:
+	var out: Array = []
+	for table in [forts, fortresses]:
+		for pid in table.keys():
+			for mi in _wake_meshes(table[pid].get("node"), true):
+				out.append([mi.get_instance_id(), (mi as MeshInstance3D).mesh.get_instance_id()])
+	for pid in _village_at.keys():
+		for v in _village_at[pid]:
+			out.append((v["mm"] as MultiMesh).get_instance_transform(int(v["k"])).basis.get_scale().x < 0.01)
 	return out
 
 
@@ -479,9 +506,26 @@ func wake_buildings(province_id: String) -> Array:
 		out.append({"mesh": mm.mesh, "xf": _in_view(buildings) * (v["xf"] as Transform3D)})
 	for table in [forts, fortresses]:
 		if table.has(province_id):
-			for mi in _model_meshes(table[province_id].get("node")):
+			for mi in _wake_meshes(table[province_id].get("node"), false):
 				out.append({"mesh": (mi as MeshInstance3D).mesh, "xf": _in_view(mi)})
+	out.append_array(_cottages_in(province_id))
 	return out
+
+
+## The cottages round `province_id`'s stage: [{"mesh", "xf"}] (they never move: sorted by province once).
+func _cottages_in(province_id: String) -> Array:
+	if _cottages_at.is_empty():
+		_cottages_at[""] = [] ## sorted, even with no cottages anywhere
+		for ch in buildings.get_children():
+			if ch is MultiMeshInstance3D and String(ch.name).begins_with("Cottages"):
+				var mm := (ch as MultiMeshInstance3D).multimesh
+				for k in mm.instance_count:
+					var xf := _in_view(ch) * mm.get_instance_transform(k)
+					var at := String(terrain.province_at(Vector2(xf.origin.x, xf.origin.z)))
+					if not _cottages_at.has(at):
+						_cottages_at[at] = []
+					_cottages_at[at].append({"mesh": mm.mesh, "xf": xf})
+	return _cottages_at.get(province_id, [])
 
 
 ## `n`'s transform in this view's space (walked up the parents, so it holds outside the tree too).
@@ -493,6 +537,23 @@ func _in_view(n: Node3D) -> Transform3D:
 			xf = (p as Node3D).transform * xf
 		p = p.get_parent()
 	return xf
+
+
+## CW-8: where the land's buildings stand, [centre, radius]: the planned villages and landmarks, the forts and the capitals'
+## fortresses (pure, kept in the land's plan). The Wake's wax spreads from them (wake_reach_of) and no candle-post stands in them.
+static func wake_seats(t) -> Array:
+	if not t.plan.has("wake_seats"):
+		var seats: Array = []
+		for v in plan_of(t)["villages"]:
+			seats.append([v["pos"], float(v["r"])])
+		for i in t.ids.size():
+			if t.is_capital[i]:
+				seats.append([t.centres[i], FORTRESS_SIDE * 0.5])
+			elif t.has_fort[i]:
+				var fs: Array = fort_spot(t, i)
+				seats.append([fs[0], float(fs[1])])
+		t.plan["wake_seats"] = seats
+	return t.plan["wake_seats"]
 
 
 ## CW-8: the reach mask (R8, at half the land's grid): how far each spot of land lies from its nearest road or building, of
@@ -512,16 +573,7 @@ static func wake_reach_of(t) -> Image:
 		var row: int = mini(y * 2, int(t.h) - 1) * int(t.w)
 		for x in w2:
 			d[y * w2 + x] = minf(far, float(t.road_d[row + mini(x * 2, int(t.w) - 1)]))
-	var seats: Array = [] ## [centre, radius]
-	for v in plan_of(t)["villages"]:
-		seats.append([v["pos"], float(v["r"])])
-	for i in t.ids.size():
-		if t.is_capital[i]:
-			seats.append([t.centres[i], FORTRESS_SIDE * 0.5])
-		elif t.has_fort[i]:
-			var fs: Array = fort_spot(t, i)
-			seats.append([fs[0], float(fs[1])])
-	for seat in seats:
+	for seat in wake_seats(t):
 		var c: Vector2 = seat[0]
 		var r: float = seat[1]
 		var x0 := maxi(0, int((c.x - r - Terrain3D.ORIGIN.x) / step))
@@ -1035,6 +1087,7 @@ func _place_fort(id: String, i: int, gate: Vector2) -> void:
 		mi.rotation.y = PI
 		mat = model_mat(Color.WHITE, null, -1.0, false, 0.9, Color.WHITE, BUILDING_GRADE)
 	mi.material_override = mat
+	mi.set_meta("wake", "windows") ## CW-8: a building of the Wake's (wake_buildings)
 	root.add_child(mi)
 	forts[id] = {"node": root, "mat": mat}
 
@@ -1265,6 +1318,7 @@ func _place_fortress(id: String, c: Vector2, gate: Vector2) -> void:
 		mat = model_mat(Color.WHITE, glb["tex"], float(row.get("key_hue", -1.0)), false, tint, stone, float(row.get("grade", BUILDING_GRADE)))
 		_give_own_outline(mat)
 		mi.material_override = mat
+		mi.set_meta("wake", "windows") ## CW-8: the fortress's own model melts and lights in the Wake
 		var aabb: AABB = glb["aabb"]
 		var s: float = side / maxf(aabb.size.x, aabb.size.z)
 		mi.scale = Vector3.ONE * s
@@ -1291,6 +1345,7 @@ func _place_fortress(id: String, c: Vector2, gate: Vector2) -> void:
 		mat = model_mat(Color.WHITE, null, -1.0, false, 0.86 * tint, stone, float(row.get("grade", BUILDING_GRADE)))
 		_give_own_outline(mat)
 		mi.material_override = mat
+		mi.set_meta("wake", "windows") ## CW-8: the fortress's own model melts and lights in the Wake
 		root.add_child(mi)
 	var pal_mat: ShaderMaterial = null
 	if bool(row.get("palisade", false)):
@@ -1300,11 +1355,13 @@ func _place_fortress(id: String, c: Vector2, gate: Vector2) -> void:
 		pal_mat = model_mat(Color.WHITE)
 		_give_own_outline(pal_mat)
 		pal.material_override = pal_mat
+		pal.set_meta("wake", "melt") ## CW-8: the stakes melt with the walls (no windows)
 		root.add_child(pal)
 	## banners on the gate towers, in the owner's colour
 	for gx in [-1.0, 1.0]:
 		var bn := make_banner(Color.WHITE, 0, 8.0, Vector2(4.0, 2.6))
 		bn.position = Vector3(gx * banner_at.x, banner_at.y, gate_z.x - 8.0 if not glb.is_empty() else -side * 0.5 + 1.0)
+		bn.set_meta("wake_y", bn.position.y) ## CW-8: it comes down with the melting towers (set_wake)
 		root.add_child(bn)
 		banners.append(bn.get_child(1).material_override)
 	var model_h := 24.0
@@ -1676,6 +1733,7 @@ func _fort_piece(kind: String, kit: String) -> Dictionary:
 		h = mi.mesh.get_aabb().size.y * k
 	_give_own_outline(mat)
 	mi.material_override = mat
+	mi.set_meta("wake", "windows") ## CW-8: a building of the Wake's (wake_buildings)
 	return {"mi": mi, "mat": mat, "h": h}
 
 

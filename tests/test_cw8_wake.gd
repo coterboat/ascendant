@@ -49,9 +49,10 @@ func _scar(s: GameState, pid: String, n: int) -> void:
 	s.marks[pid] = {"scar": {"faction": WAKE, "stage": n, "until_turn": e + int(MarkData.row(WAKE).scar_turns) * n}}
 
 
+## The villages', landmarks' and cottages' materials.
 func _village_mats(wv) -> Array:
-	return wv.buildings.get_children().filter(func(c): return c is MultiMeshInstance3D and String(c.name).begins_with("Village_")) \
-		.map(func(c): return c.material_override)
+	return wv.buildings.get_children().filter(func(c): return c is MultiMeshInstance3D and (String(c.name).begins_with("Village_")
+		or String(c.name).begins_with("Cottages"))).map(func(c): return c.material_override)
 
 
 # --- the look, pure ------------------------------------------------------------------------------------------------
@@ -169,15 +170,46 @@ func test_the_wake_on_the_board() -> void:
 	for pid in look:
 		if bool(look[pid].lit):
 			for bld in wv.wake_buildings(String(pid)):
-				windows += WakeLights.windows_of(bld["mesh"]).size()
+				var wide: float = maxf(bld["mesh"].get_aabb().size.x, bld["mesh"].get_aabb().size.z) * (bld["xf"] as Transform3D).basis.get_scale().y
+				windows += WakeLights.windows_of(bld["mesh"], 3 if wide > WakeLights.BIG else 1).size()
 	assert_eq(int(lights.counts.windows), windows, "a flame in every window of every lit province, none on the cold wake")
+	var fortress_mesh: Mesh = wv.fortresses[cap]["node"].get_child(0).mesh
+	assert_true(WakeLights.windows_of(fortress_mesh, 3).size() > 4, "the fortress has windows all along its walls")
+	for st in WorldView.wake_seats(t):
+		for p in lights._posts.multimesh.instance_count:
+			var at: Vector3 = lights._posts.multimesh.get_instance_transform(p).origin
+			assert_true(Vector2(at.x, at.z).distance_to(st[0]) > float(st[1]), "no candle-post stands inside a building: %s" % at)
 	assert_true(WakeLights.windows_of(wv.wake_buildings(String(built[2]))[0]["mesh"]).size() > 0, "the cold wake has windows to leave dark")
 	assert_true(int(lights.counts.posts) > 0, "candle-posts along the Wake-Line's and Deep Wake's roads")
+	var drawn: MultiMesh = lights._flames.multimesh
+	wv.set_wake(look.duplicate(true))
+	assert_true(lights._flames.multimesh == drawn, "a repaint with nothing changed draws nothing again")
+	## the fortress: its own model has windows; its banners and any palisade never do, and a banner never melts on its own
+	var fortress: Node3D = wv.fortresses[cap]["node"]
+	var own: Array = wv.wake_buildings(cap).map(func(bld): return bld["mesh"])
+	var staffs := 0
+	var stack: Array = [fortress]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		if n is MeshInstance3D and (n as MeshInstance3D).material_override is ShaderMaterial and not n.has_meta("wake"):
+			staffs += 1
+			assert_false(own.has((n as MeshInstance3D).mesh), "%s is no building with windows" % n.name)
+			var melts = (n as MeshInstance3D).material_override.get_shader_parameter("prop_melts")
+			assert_true(melts == null or float(melts) == 0.0, "%s doesn't melt on its own" % n.name)
+	assert_true(staffs >= 2, "the gate towers' banners stand on the fortress")
+	assert_true(own.has(wv.fortresses[cap]["node"].get_child(0).mesh), "the fortress's own model has windows")
+	var banners: Array = fortress.get_children().filter(func(ch): return ch.has_meta("wake_y"))
+	assert_eq(banners.size(), 2)
+	for bn in banners:
+		assert_true(absf(bn.position.y - float(bn.get_meta("wake_y")) * (1.0 - float(look[cap].melt) * 0.22)) < 0.001,
+			"a banner comes down with its melting tower")
 	lights.sync(wv, {String(built[0]): look[built[0]]}, WakeLook.ladder(0))
 	assert_eq(int(lights.counts.posts), 0, "none for a province only Sitting Up")
 	assert_true(int(lights.counts.windows) > 0, "though its windows burn")
+	wv.set_wake({})
 	wv.set_wake(look)
-	## the melt: every village's material and its own ink, a fort's and the fortress's; never the outline every model shares
+	## the melt: every village's and cottage's material and its own ink, a fort's and the fortress's; never the shared outline
 	var mats: Array = _village_mats(wv) + [wv.fortresses[cap].mat]
 	assert_true(mats.size() > 1)
 	for m in mats:
@@ -198,6 +230,8 @@ func test_the_wake_on_the_board() -> void:
 		assert_eq(float(m.get_shader_parameter("prop_melts")), 0.0, "the low rung draws no melt")
 	assert_eq(int(lights.counts.posts), 0, "nor posts")
 	assert_eq(int(lights.counts.windows), lit_windows, "and keeps the window flames")
+	for bn in banners:
+		assert_eq(bn.position.y, float(bn.get_meta("wake_y")), "and the banners stand where they were")
 	assert_true(float(Armies.wick_material().get_shader_parameter("min_px")) > 0.0, "far out the army's flames grow to be seen")
 	b.map.free()
 
@@ -216,7 +250,8 @@ func test_the_windows_are_on_the_walls_and_the_wax_spreads_from_the_roads() -> v
 		var box := mesh.get_aabb()
 		var spots := WakeLights.windows_of(mesh)
 		assert_true(spots.size() >= 2 and spots.size() <= 4, "a window on each side it has walls: %s" % [spots])
-		assert_eq(WakeLights.windows_of(mesh), spots, "found once, the same every time")
+		assert_eq(WakeLights.windows_of(mesh), spots, "the same every time")
+		assert_true(WakeLights.windows_of(mesh, 3).size() <= 12, "three at most a side on a big one")
 		for p in spots:
 			assert_true(box.grow(maxf(box.size.x, box.size.z) * 0.1).has_point(p), "%s is on the building %s" % [p, box])
 			assert_true(absf((p as Vector3).y - (box.position.y + box.size.y * WakeLights.WINDOW_AT)) < 0.001, "at window height")
@@ -244,6 +279,21 @@ func test_the_codex_says_how_to_read_the_wake_on_the_land() -> void:
 		assert_true(text.contains(words), "the Wake's page says %s" % words)
 
 
+func test_the_long_vigil_has_its_page() -> void:
+	var row := FactionData.row(WAKE)
+	var e := RulesCodex.entry("long_vigil")
+	assert_eq(String(e.get("faction", "")), WAKE, "a Candlewake page")
+	assert_eq(String(e.get("title", "")).to_lower(), String(row.capital_name).to_lower(), "named as the capital is on the map")
+	var text := RulesCodex.text("long_vigil")
+	var deep := MarkData.stage(WAKE, MarkData.stage_count(WAKE))
+	assert_true(text.contains(String(deep.name)) and text.contains("harbour"), "it stands in %s from the start, a harbour" % deep.name)
+	assert_true(text.contains("every %d turns" % int(MarkData.row(WAKE).risen.every)), "the dead rise there: %s" % text)
+	assert_true(text.contains("cold wake that lasts %d turns for every stage" % int(MarkData.row(WAKE).scar_turns)), "and it cools if it falls")
+	assert_true(RulesCodex.text(MarkRules.CODEX).contains(String(row.capital_name)), "the Wake's page names it, so it links there")
+	assert_true(RulesCodex.shown_for("long_vigil", [CROWN, WAKE]) and not RulesCodex.shown_for("long_vigil", [CROWN, CLANS]),
+		"shown only where the Candlewake play")
+
+
 func test_a_crown_clans_game_draws_no_wake() -> void:
 	var errors := []
 	var s := GameState.create(23, [CROWN, CLANS], {}, {}, errors)
@@ -256,6 +306,8 @@ func test_a_crown_clans_game_draws_no_wake() -> void:
 	assert_eq(wv.wake_bytes(), blank, "the ground's Wake texture is blank")
 	assert_true(wv.wake_lights == null, "no lights made")
 	assert_true(wv.wake_reach_tex == null, "no reach mask worked out")
+	var on = wv.gmat.get_shader_parameter("wake_on")
+	assert_true(on == null or float(on) == 0.0, "and the ground never reads the Wake")
 	for m in _village_mats(wv):
 		var melts = m.get_shader_parameter("prop_melts")
 		assert_true(melts == null or float(melts) == 0.0, "no building melts")

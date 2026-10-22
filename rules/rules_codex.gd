@@ -778,7 +778,7 @@ const ENTRIES := {
 		"title": "The Wake",
 		"text": "The Candlewake's mark on the land they hold: every household keeps a candle in its window all night, as you do for the dead. Nobody is hurt; the wax is the receipt."
 			+ " A province they take sits up at once (Sitting Up), reaches the Wake-Line after %d turns held" % _WAKE_ROW.stages[1].held
-			+ " and Deep Wake after %d. Their capital stands in Deep Wake from the start." % _WAKE_ROW.stages[2].held
+			+ " and Deep Wake after %d. Their capital, the Long Vigil, stands in Deep Wake from the start." % _WAKE_ROW.stages[2].held
 			+ " On the Wake-Line and in Deep Wake their armies keep their flame there (a harbour), and the province pays them %d gold less: the living sit up all night." % -_WAKE_ROW.stages[1].gold
 			+ " Lose a marked province and the mark becomes a cold wake for %d turns for each stage it had reached." % _WAKE_ROW.scar_turns
 			+ " A cold wake still shelters Candlewake armies, and if they retake the province before it fades, it relights at once at the stage it had."
@@ -791,6 +791,16 @@ const ENTRIES := {
 		"faction": "candlewake",
 		"title": "Marks on the land",
 		"text": "Some peoples change the land they hold, and the change outlasts their hold on it. The longer they keep a province, the deeper their mark; when they lose it, the mark lingers a while before it fades. Everyone sees the marks, as they see owners and terrain, so the map tells who held what, for how long, and who took it from them. The Candlewake's mark is the Wake; other peoples' marks are coming.",
+	},
+	# CW-8 (#259, design/CANDLEWAKE.md §3.1, §5): the Candlewake's capital, a page of its own (lane Art's codex plate goes here). The
+	# numbers are MarkData's row.
+	"long_vigil": {
+		"faction": "candlewake",
+		"title": "The Long Vigil",
+		"text": "The Candlewake's capital, a city of the dead round one candle as tall as a keep. It stands in %s from the start, so it is the harbour that never cools: an army of theirs that waits there keeps its flame." % _WAKE_ROW.stages[2].name
+			+ " The dead rise there every %d turns from the first, and the candlebeasts can be poured there from turn 1." % _WAKE_ROW.risen.every
+			+ " If it falls, its mark becomes a cold wake that lasts %d turns for every stage it had reached; retake it before that fades and it relights at once." % _WAKE_ROW.scar_turns
+			+ " On the board it stands pale with wax, a flame in every window. See The Wake, Harbour and Candlebeasts.",
 	},
 	# CW-12 (#263, design/CANDLEWAKE.md §4.5): the candlebeasts, the roster's last three rows (FactionData); the gate is MarkData's.
 	"candlebeasts": {

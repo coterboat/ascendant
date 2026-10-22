@@ -17,6 +17,7 @@ uniform sampler2D vision_tex : filter_nearest, repeat_disable; // M5-3 WIDTH x 1
 uniform sampler2D wake_tex : filter_nearest, repeat_disable; // CW-8 WIDTH x 1: r a live Wake's tint, g a cold wake's, b the melt, a the reach (WakeLook)
 uniform sampler2D wake_reach : filter_linear, repeat_disable; // CW-8: r the land's distance to its nearest road or building, of wake_reach_max
 uniform float wake_reach_max = 60.0;
+uniform float wake_on = 0.0; // CW-8: 1 once a Wake has shown (WorldView.set_wake); 0, a game without marks, is one branch and no fetch
 // UX-7 (design/UX_WAR_TABLE.md 4.0), the map lenses (ui/map_lens.gd): lens_tex is WIDTH x 2 RGBA8, row 0 the lens tint (rgb) and its
 // strength (a), row 1 the mark (r: Threat's hatch density, Magic's sigils, Sight's ring), the flag (g: Threat's amber pulse, Sight's
 // dashed ring for next turn) and a = 255 where a province has an entry. lens_mode is the lens's number (0 none, 1 Owner, 2 Income,
@@ -149,7 +150,7 @@ Ground paint_ground() {
 	// CW-8 (#259, design/CANDLEWAKE.md §3.5): the Wake, one pale-wax tint over a marked province at three strengths (its stage),
 	// spreading from its roads and buildings through the reach mask (wake_reach), further with each stage, with a ragged edge from the
 	// grain; a cold wake's is a little greyer and fades back toward the roads over its turns
-	vec4 wk = texture(wake_tex, vec2(prov_u(g.id), 0.5));
+	vec4 wk = wake_on > 0.5 ? texture(wake_tex, vec2(prov_u(g.id), 0.5)) : vec4(0.0);
 	if (g.id < 255 && wk.r + wk.g > 0.0) {
 		float reach = wk.a * wake_reach_max;
 		float d = texture(wake_reach, uv).r * wake_reach_max + (gn.r - 0.5) * 12.0 + (gn.g - 0.5) * 6.0;
