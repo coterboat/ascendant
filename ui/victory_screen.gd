@@ -25,7 +25,7 @@ extends Control
 ##
 ## API:
 ##   show_for(session) -> bool    shows session.victory(); false (and hidden) while the game runs
-##   show_victory(victory, state = null, players = [], computer_seats = {})
+##   show_victory(victory, state = null, players = [], computer_seats = {}, temperaments = {})
 ##       victory  GameSession.victory() / VictoryCheck.summary()
 ##       state    the final GameState: display names, and the provinces listed in the tooltips.
 ##                Without it, names come from the faction and map data.
@@ -34,6 +34,8 @@ extends Control
 ##       computer_seats  GameSession.computer_seats() ({faction id: level}): each computer faction's
 ##                row gets its "Computer (Normal)" tag (#35), and the seat line says who won in
 ##                human-vs-computer terms.
+##       temperaments  #184: GameSession.computer_temperaments() ({faction id: temperament}): the tag's tooltip names each
+##                computer's style ("normal" for a computer seat it doesn't list).
 ##   computer_tag(faction_name, level, open_codex) -> Label   the tag itself, shared with the game
 ##                               screen's top bar and the turn report header
 ##   signal new_game_requested   the "New game" button
@@ -101,12 +103,13 @@ func show_for(session: GameSession) -> bool:
 	if session == null or not session.is_over():
 		visible = false
 		return false
-	show_victory(session.victory(), session.state(), session.players(), session.computer_seats())
+	show_victory(session.victory(), session.state(), session.players(), session.computer_seats(), session.computer_temperaments())
 	return true
 
 
 ## Shows a victory summary dictionary (see GameSession.victory()).
-func show_victory(summary: Dictionary, state: GameState = null, players: Array = [], computer_seats: Dictionary = {}) -> void:
+func show_victory(summary: Dictionary, state: GameState = null, players: Array = [], computer_seats: Dictionary = {},
+		temperaments: Dictionary = {}) -> void:
 	victory = summary.duplicate(true)
 	var is_draw: bool = summary.get("draw", false)
 	var winner := String(summary.get("winner", ""))
@@ -174,7 +177,8 @@ func show_victory(summary: Dictionary, state: GameState = null, players: Array =
 		_link(l, "provinces_held")
 		row.add_child(l)
 		if computer_seats.has(fid):
-			row.add_child(computer_tag(_faction_name(fid, state), String(computer_seats[fid]), codex_requested.emit))
+			row.add_child(computer_tag(_faction_name(fid, state), String(computer_seats[fid]), codex_requested.emit,
+				String(temperaments.get(fid, GameSession.COMPUTER_TEMPERAMENTS[0]))))
 		provinces_box.add_child(row)
 		_province_labels.append(l)
 
@@ -363,9 +367,9 @@ static func _computer_game_line(winner: String, seat: int, seats: Array, compute
 
 
 ## The small "Computer (Normal)" tag shown next to a computer faction (#35): a chip in the panel style.
-## Its tooltip says who plays the seat and how, and links to the codex entry "computer_opponent";
-## `open_codex` gets the key on a right-click (or F1, through the host).
-static func computer_tag(faction_name: String, level: String, open_codex: Callable = Callable()) -> Label:
+## Its tooltip says who plays the seat and how (#184: with its `temperament`, its style too), and links to the codex entry
+## "computer_opponent"; `open_codex` gets the key on a right-click (or F1, through the host).
+static func computer_tag(faction_name: String, level: String, open_codex: Callable = Callable(), temperament: String = "") -> Label:
 	var tag := Label.new()
 	tag.name = "ComputerTag"
 	tag.text = AISeat.tag_text(level)
@@ -383,7 +387,7 @@ static func computer_tag(faction_name: String, level: String, open_codex: Callab
 	chip.content_margin_bottom = 3
 	tag.add_theme_stylebox_override("normal", chip)
 	tag.mouse_filter = Control.MOUSE_FILTER_PASS
-	tag.tooltip_text = TooltipText.plain(tag.text, AISeat.tag_help(faction_name, level))
+	tag.tooltip_text = TooltipText.plain(tag.text, AISeat.tag_help(faction_name, level, temperament))
 	if open_codex.is_valid():
 		CodexLink.attach(tag, "computer_opponent", open_codex)
 	else:

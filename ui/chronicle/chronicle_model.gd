@@ -150,7 +150,7 @@ const TABLE := {
 		"besieged": ["battles", "siege_begun", "fought", "Walls at {place}: {walls} of {walls_max}", "Siege turn {turn_of_siege}: the walls dropped from {walls_before} to {walls}.", "o"],
 		"besieging": ["battles", "siege_begun", "fought", "Walls at {place}: {walls} of {walls_max}", "Siege turn {turn_of_siege}: the walls dropped from {walls_before} to {walls}.", "o"],
 	},
-	"walls_breached": {"default": ["battles", "walls_breached", "fought", "Walls of {place} are down", "If both sides are still there next turn ({battle_turn}), they fight in the open.", "o"]},
+	"walls_breached": {"default": ["battles", "walls_breached", "fought", "Walls of {place} are down", "If both sides are still there {battle_when}, they fight in the open.", "o"]},
 	"siege_lifted": {"default": ["battles", "siege_ended", "fought_minor", "Siege of {place} lifted", "{row}", "o"]},
 	"siege_ended": {"default": ["battles", "siege_ended", "fought", "{place} fell", "{row}", "o"]},
 	"storm_called_off": {"default": ["battles", "order_void", "fought_minor", "Storm called off at {place}", "{row}", "o"]},
@@ -475,7 +475,8 @@ static func _own_destroyed(numbers: Dictionary, viewer: String) -> Array:
 
 # --- fields and templates -------------------------------------------------------------------------
 
-## `{name}` placeholders of `template` filled from `fields`; "" when any has no value (the caller falls back).
+## `{name}` placeholders of `template` filled from `fields`; "" when any has no value (the caller falls back). Every sentence
+## starts with a capital (#284): "{place} is yours now." reads "The Long Vigil is yours now."
 static func _fill(template: String, fields: Dictionary) -> String:
 	var out := ""
 	var i := 0
@@ -494,7 +495,7 @@ static func _fill(template: String, fields: Dictionary) -> String:
 			return ""
 		out += str(fields[key])
 		i = close + 1
-	return _cap(out)
+	return RulerRules.cap_sentences(out)
 
 
 ## Placeholders that may be empty (an optional sentence tail).
@@ -553,6 +554,9 @@ static func fields_of(e: Dictionary, row_text: String, ctx: Dictionary) -> Dicti
 			f["provinces"] = TooltipText.count(n, "province") if n > 0 else "your land"
 		"siege_started", "walls_damaged":
 			f["Besieger"] = _cap(_short(state, String(numbers.get("besieger", ""))))
+		"walls_breached":
+			if numbers.has("battle_turn"):  # the reader's words, as the report's line says them (#279): "this turn (9)", not the record's "next turn (9)"
+				f["battle_when"] = TurnReportText.reader_turn(int(numbers.battle_turn), int(ctx.turn) + 1)
 		"fort_built", "construction_started":
 			f["fort"] = SiegeRules.level_word(int(numbers.get("level", numbers.get("to", 1))))
 		"walls_repaired":
@@ -670,7 +674,7 @@ static func _join_capture(card: Dictionary, e: Dictionary, row_text: String, ctx
 	var lost := variant_key == "lost"
 	var tail := "province taken" if taken else ("province lost" if lost else "province taken by %s" % fields.get("who", "a rival"))
 	card.headline = "%s · %s" % [card.headline, tail]
-	var sentence := "%s is yours now." % place if taken else ("%s passes to %s." % [place, fields.get("who", "a rival")])
+	var sentence := _cap("%s is yours now." % place if taken else ("%s passes to %s." % [place, fields.get("who", "a rival")]))  # #284: the Long Vigil
 	card.detail = "%s %s%s" % [card.detail, sentence, String(fields.get("capital", ""))]
 	card.source_rows.append(row_text)
 	if taken:
@@ -752,7 +756,7 @@ static func need_items(list: Array, state: GameState, turn: int) -> Array:
 			"storm":
 				headline = "You besiege %s" % place
 		out.append({"id": "need.%s.t%d" % [String(n.key), turn], "turn": turn, "kind": "needs_you", "image": "needs_you",
-			"rank": int(RANKS["needs_you"]), "headline": headline, "detail": String(n.text), "province": pid, "place": place,
+			"rank": int(RANKS["needs_you"]), "headline": _cap(headline), "detail": String(n.text), "province": pid, "place": place,
 			"codex": String(n.codex) if RulesCodex.ENTRIES.has(String(n.codex)) else "orders", "battle": {}, "source_rows": [String(n.text)],
 			"important": true, "routine": false, "own": true, "type": "need", "index": -1, "facts": {}, "variant": String(n.variant),
 			"need": String(n.key)})

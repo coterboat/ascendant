@@ -50,7 +50,9 @@ extends Control
 ##
 ## API:
 ##   start_game(config)   config = {"players": [faction ids in seat order], "seed": int, "ai": {faction id:
-##                        level}}. "ai" is optional (absent: every seat is human). Missing keys get
+##                        level}}. "ai" is optional (absent: every seat is human). #184: "temperaments" ({faction id:
+##                        "normal" or "aggressive"}, AISeat.temperaments_for) gives computer seats their style; without it
+##                        every computer plays "normal", as before. Missing keys get
 ##                        default_config() values: the Crown and the Clans, and a random seed. A game seats two of the
 ##                        three factions (CW-0, #251): starting_state builds it through GameState.create.
 ##                        A system is in the game only when the config asks for it (MVP-2, #163: the new game screen and
@@ -241,6 +243,12 @@ func start_game(game_config: Dictionary = {}) -> void:
 		config.erase("ai")  # a hotseat game's config stays {"players", "seed"}
 	else:
 		config.ai = ai
+	var temperaments := {}  # #184: each computer seat's style (NewGameScreen rolls it from the seed); none: every one Steady
+	if config.get("temperaments") is Dictionary:
+		for fid in config.temperaments:
+			temperaments[String(fid)] = String(config.temperaments[fid])
+	elif config.get("temperaments") != null:
+		ai_errors.append("The computer's styles must be listed as faction and style, like Thornmane Clans: Aggressive.")
 	_reset_screens()
 	_start_audio()
 	loaded_header = {}
@@ -253,7 +261,8 @@ func start_game(game_config: Dictionary = {}) -> void:
 	chronicle = SiegeChronicle.new()
 	# The state's seed and the game seed are the same, so GameSession's turn seeds match TurnResolver's.
 	var state_errors := []  # CW-0: why GameState.create could not seat these players with these systems, if it couldn't
-	session = GameSession.new(starting_state(config, state_errors), config.players, config.seed, AutoBattleResolver.new(), ai)
+	session = GameSession.new(starting_state(config, state_errors), config.players, config.seed, AutoBattleResolver.new(), ai,
+		temperaments)
 	computer = AISeat.new(session, config.seed)
 	map.session = session
 	_build_opponent_tag()
@@ -547,7 +556,8 @@ func _computer_notes() -> Array:
 	for fid in session.computer_seats():
 		var f := map.state.find_faction(String(fid))
 		out.append({"faction": fid, "faction_name": f.faction_name if f else "The computer", "seat": players.find(fid),
-			"level": session.computer_level(String(fid)), "notes": [FogView.NOTES_HIDDEN], "hidden": true})
+			"level": session.computer_level(String(fid)), "temperament": session.computer_temperament(String(fid)),
+			"notes": [FogView.NOTES_HIDDEN], "hidden": true})
 	return out
 
 
@@ -1394,7 +1404,8 @@ func _refresh_opponents() -> void:
 		name_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		name_label.add_theme_font_size_override("font_size", 15)
 		name_label.add_theme_color_override("font_color", UiPalette.seat_color(i).lightened(0.3))
-		name_label.set_meta("seat_help", TooltipText.plain("%s is played by the computer" % faction_name, AISeat.tag_help(faction_name, session.computer_level(fid)))
+		name_label.set_meta("seat_help", TooltipText.plain("%s is played by the computer" % faction_name, AISeat.tag_help(faction_name,
+			session.computer_level(fid), session.computer_temperament(fid)))
 			if computer_seat else TooltipText.plain("%s is played by a person" % faction_name,
 				"Player %d, at the same screen: orders stay hidden between turns behind the cover. %s" % [i + 1, RulesCodex.text("hotseat")]))
 		name_label.tooltip_text = String(name_label.get_meta("seat_help"))
@@ -1402,7 +1413,7 @@ func _refresh_opponents() -> void:
 		line.add_child(name_label)
 		var tag: Label
 		if computer_seat:
-			tag = VictoryScreen.computer_tag(faction_name, session.computer_level(fid), open_codex)
+			tag = VictoryScreen.computer_tag(faction_name, session.computer_level(fid), open_codex, session.computer_temperament(fid))
 		else:
 			tag = _player_tag(i, faction_name)
 		tag.add_theme_font_size_override("font_size", 15)

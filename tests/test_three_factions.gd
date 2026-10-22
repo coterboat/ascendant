@@ -224,13 +224,22 @@ static func _old_quick_start(dice: RandomNumberGenerator) -> Dictionary:
 	return out
 
 
+## #184 added the computer's style to Quick start's config ("temperaments", AISeat.temperaments_for: a roll of the seed and
+## seat on a stream of its own, so the dice are untouched). Everything else is compared with the frozen copy as it was.
+func _without_temperaments(config: Dictionary) -> Dictionary:
+	var out := config.duplicate(true)
+	assert_eq(out.get("temperaments"), AISeat.temperaments_for(out.players, out.ai, out.seed), "the computer's style is its seat's roll")
+	out.erase("temperaments")
+	return out
+
+
 func test_quick_start_picks_two_and_keeps_todays_dice() -> void:
 	for n in 40:
 		var a := RandomNumberGenerator.new()
 		a.seed = 1000 + n
 		var b := RandomNumberGenerator.new()
 		b.seed = 1000 + n
-		assert_eq(NewGameScreen.quick_start_config(a), _old_quick_start(b), "seed %d: the preview off, as before" % n)
+		assert_eq(_without_temperaments(NewGameScreen.quick_start_config(a)), _old_quick_start(b), "seed %d: the preview off, as before" % n)
 	# CW-5: the Candlewake play every default system now, so with the preview on Quick start may seat them; the same dice, the
 	# same config, and every config it gives can be seated.
 	var seated := 0
@@ -241,6 +250,7 @@ func test_quick_start_picks_two_and_keeps_todays_dice() -> void:
 		d.seed = 1000 + n
 		var config := NewGameScreen.quick_start_config(c, true)
 		assert_eq(config, NewGameScreen.quick_start_config(d, true), "seed %d: the same dice give the same config" % n)
+		assert_false(_without_temperaments(config).has("temperaments"), "seed %d: the computer's style is its seat's roll" % n)
 		var players: Array = config.players
 		assert_true(players.size() == 2 and players[0] != players[1] and players.all(func(fid): return [CROWN, CLANS, WAKE].has(fid)),
 			"seed %d: two of the three: %s" % [n, players])

@@ -44,6 +44,8 @@ extends SceneTree
 ##                      never (the medallions only, to see them lit and unread) or report (today's modal report)
 ##   --fullmap          UX-2: after each orders shot, frame the whole map (the F key) and shoot it again as tNN_fullmap, then put the
 ##                      camera back, so the four veil looks and the three fort levels can be named without hovering
+##   --army-card        CRASH-1 (#249): on turn 1, after its orders shot, the person's first army's card scrolled to Armies here, with Split's
+##                      forecast up as a hover shows it, shot as t01_army_card (the actions above the forecast, which grows under them)
 ##   --lenses           UX-7: on the last turn, after its orders shot, turn each map lens on in turn (as keys 1 to 6 do) and shoot it as
 ##                      tNN_lens_N_<id> (and framed whole with --fullmap), its legend's totals in walk.md; then the lens goes off again
 ## Windowed only: headless has no renderer, so the shots would be blank. walk.md lists every shot with the
@@ -63,6 +65,7 @@ var menus := true
 var fast := false
 var fullmap := false
 var lenses := false
+var army_card := false
 var stage := false
 var board_kind := "3d"
 var battle_view := ""
@@ -95,6 +98,7 @@ func _initialize() -> void:
 			"fast": fast = true
 			"fullmap": fullmap = true
 			"lenses": lenses = true
+			"army-card": army_card = true
 			"stage": stage = true
 			"board": board_kind = kv[1]
 			"battle-view": battle_view = kv[1]
@@ -233,6 +237,8 @@ func _run() -> void:
 					await _fullmap_shot(game, "t%02d_fullmap_staged" % turn, "Turn %d, the whole map framed, the view staged: %s" % [turn, staged])
 			if plan:
 				await _plan_shot(game, turn)
+			if army_card and turn == 1:
+				await _army_card_shot(game, turn)
 		if lenses and turn == max_turns:
 			await _lens_shots(game, turn)
 		print("turn %d: end turn" % turn)
@@ -395,6 +401,30 @@ func _stage_view(game: GameScreen) -> String:
 		notes.append("%s's keep damaged (walls %d of %d)" % [keep.name, keep.walls, SiegeRules.walls_max(2)])
 	map.set_state(st, map.viewing_faction_id)
 	return "; ".join(notes)
+
+
+## --army-card: the person's first army with fighters to split, its card scrolled so Armies here shows, and Split's forecast up as the
+## pointer over Split shows it (its mouse_entered: the walk takes no input). Then the army is unselected again.
+func _army_card_shot(game: GameScreen, turn: int) -> void:
+	var map = game.map
+	for a in map.state.armies:
+		if a.owner == human and a.ruler == null and a.units.size() >= 2:
+			map.select_army(a.id)
+			break
+	await _frames(4)
+	var found: Array = map.details.find_children("ArmiesHere", "", true, false)
+	var board := found[0] as MusterBoard if not found.is_empty() else null
+	if board == null:
+		walk.append("- turn %d: no army card with Armies here to shoot" % turn)
+		return
+	board.split_button.mouse_entered.emit()
+	await _frames(4)
+	map.cards.scroll.scroll_vertical += int(board.global_position.y - map.cards.scroll.global_position.y)
+	await _shot("t%02d_army_card" % turn, "Turn %d: %s's card at Armies here, with Split's forecast up as a hover shows it: %s" % [turn, board.army_id,
+		" | ".join(board.forecast_lines.get_children().map(func(l): return String(l.text)))])
+	board.split_button.mouse_exited.emit()
+	map.dismiss_selection_card()
+	await _frames(2)
 
 
 ## UX-7 (--lenses): each map lens on in turn, as its key does (the board's texture, the plates' values, the legend card), shot, and
