@@ -29,6 +29,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -189,9 +190,13 @@ def check(fam):
 
 
 def _webp(src, dst):
+    """src as a webp of at most 1024 px wide, q90. Homebrew's plain ffmpeg has no WebP encoder, so cwebp writes it."""
     os.makedirs(os.path.dirname(dst), exist_ok=True)
-    subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", src, "-vf",
-                    "scale='min(1024,iw)':-2", "-quality", "90", dst], check=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        png = os.path.join(tmp, "in.png")
+        subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", src, "-vf", "scale='min(1024,iw)':-2", png],
+                       check=True)
+        subprocess.run(["cwebp", "-quiet", "-q", "90", png, "-o", dst], check=True)
 
 
 def rows_for(fam, st, prepare=True):
