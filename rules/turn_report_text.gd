@@ -243,11 +243,12 @@ static func ordinal(n: int) -> String:
 	return "%d%s" % [n, suffix]
 
 
-## A faction's short name in running text: the last word of its name, with "the" ("the Crown", "the Clans").
+## A faction's short name in running text: the last word of its name, with "the" ("the Crown", "the Clans"; CW-0: a one-word
+## name too, "the Candlewake").
 static func faction_short(state: GameState, fid: String) -> String:
 	var name := _faction_name(state, fid)
 	var words := name.split(" ", false)
-	return "the %s" % words[words.size() - 1] if words.size() > 1 else name
+	return "the %s" % words[words.size() - 1] if not words.is_empty() else name
 
 
 ## Army ids in number order (numbers sort as numbers: 9 before 10).
@@ -1365,7 +1366,7 @@ static func _faction_name(s: GameState, fid: String) -> String:
 	var f: Faction = s.find_faction(fid) if s != null else null
 	if f != null:
 		return f.faction_name
-	for d in FactionData.FACTIONS:
+	for d in FactionData.rows():
 		if String(d.id) == fid:
 			return String(d.name)
 	return "an unknown faction"
@@ -1386,7 +1387,7 @@ static func _unit_type_name(s: GameState, type_id: String) -> String:
 		var name := TurnResolver._unit_type_name(s, type_id)
 		if name != "an unknown unit type":
 			return name
-	for f in FactionData.FACTIONS:
+	for f in FactionData.rows():
 		for u in f.unit_types + [f.commander]:
 			if String(u.id) == type_id:
 				return String(u.name)

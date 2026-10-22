@@ -51,7 +51,8 @@ extends Control
 ## API:
 ##   start_game(config)   config = {"players": [faction ids in seat order], "seed": int, "ai": {faction id:
 ##                        level}}. "ai" is optional (absent: every seat is human). Missing keys get
-##                        default_config() values: every faction in data order and a random seed.
+##                        default_config() values: the Crown and the Clans, and a random seed. A game seats two of the
+##                        three factions (CW-0, #251): starting_state builds it through GameState.create.
 ##                        A system is in the game only when the config asks for it (MVP-2, #163: the new game screen and
 ##                        Quick start ask for all six, NewGameScreen.default_systems; a config without the keys is the
 ##                        basic game, byte for byte as before): "rulers": true, or "builds": {faction id: build or preset
@@ -215,13 +216,11 @@ func _ready() -> void:
 	_apply_board_setting()
 
 
-## Every faction in data order, and a random seed: the basic game, with no system. It is what a game screen shown with no
-## game starts (the editor's Run Current Scene, tests); a player's defaults live in the new game screen and Quick start.
+## The Crown and the Clans (FactionData.LEGACY_PAIR: a game seats two, CW-0) and a random seed: the basic game, with no
+## system. It is what a game screen shown with no game starts (the editor's Run Current Scene, tests); a player's defaults
+## live in the new game screen and Quick start.
 static func default_config() -> Dictionary:
-	var players := []
-	for f in FactionData.FACTIONS:
-		players.append(f.id)
-	return {"players": players, "seed": randi()}
+	return {"players": FactionData.LEGACY_PAIR.duplicate(), "seed": randi()}
 
 
 ## Starts a new hotseat game. See the class comment for `game_config`.
@@ -253,12 +252,13 @@ func start_game(game_config: Dictionary = {}) -> void:
 	_auto_watched = {}
 	chronicle = SiegeChronicle.new()
 	# The state's seed and the game seed are the same, so GameSession's turn seeds match TurnResolver's.
-	session = GameSession.new(starting_state(config), config.players, config.seed, AutoBattleResolver.new(), ai)
+	var state_errors := []  # CW-0: why GameState.create could not seat these players with these systems, if it couldn't
+	session = GameSession.new(starting_state(config, state_errors), config.players, config.seed, AutoBattleResolver.new(), ai)
 	computer = AISeat.new(session, config.seed)
 	map.session = session
 	_build_opponent_tag()
 	if session.phase() == GameSession.Phase.INVALID or not ai_errors.is_empty():
-		_show_setup_errors(ai_errors + session.setup_errors())
+		_show_setup_errors(ai_errors + state_errors + session.setup_errors())
 		return
 	_turn_start_turns = -1
 	_check_turn_start()  # the turn-1 autosave, before a computer in seat 1 plans
@@ -401,36 +401,34 @@ func _cue_report(delay_s: float) -> void:
 ## "paths": true or the game was launched with `-- --paths`; with forts and sieges (M3c) when it has "sieges": true or
 ## the game was launched with `-- --sieges`; with magic (M5-5, paths and rulers included) when it has "magic": true or
 ## the game was launched with `-- --magic`; and with fog of war (M5-1) on top of any of these when it has "fog": true
-## or the game was launched with `-- --fog`. Factions without a
-## build get their balanced preset. Null when a build is illegal (the session then explains).
-static func starting_state(game_config: Dictionary) -> GameState:
-	var state := _starting_state(game_config)
-	if state != null and (game_config.get("independents", false) or OS.get_cmdline_user_args().has("--independents")):
-		state.setup_independents([])  # IND-1 (#142): Free Holds garrisons in every neutral province
-	if state != null and (game_config.get("fog", false) or OS.get_cmdline_user_args().has("--fog")):
-		state.setup_fog([])  # M5-1: fog is a lens on whichever game the other boxes make
-	return state
-
-
-static func _starting_state(game_config: Dictionary) -> GameState:
-	var seed_value := int(game_config.get("seed", 0))
+## or the game was launched with `-- --fog`; and with Free Holds garrisons (IND-1) when it has "independents": true or the
+## game was launched with `-- --independents`. Factions without a build get their balanced preset. Null when a build is
+## illegal (the session then explains).
+## CW-0 (#251, design/CANDLEWAKE.md §1.1): the game seats the config's players (seated_players) through GameState.create,
+## which builds the Crown and the Clans with the frozen legacy constructors exactly as this did before, and any other pair
+## through its generic path. A config whose players can't be seated together gets the Crown and the Clans, as every game did
+## before, and GameSession says what is wrong with the list in its own words. When GameState.create refuses (a faction that
+## can't play a system yet), the reasons go to `errors`.
+static func starting_state(game_config: Dictionary, errors = []) -> GameState:
 	var args := OS.get_cmdline_user_args()
-	if game_config.get("magic", false) or args.has("--magic"):
-		# M5-5 (#116): magic needs paths (GameState.with_magic), and works with forts and sieges too.
-		var state := GameState.with_magic(seed_value, game_config.get("builds", {}), [])
-		if state != null and (game_config.get("sieges", false) or args.has("--sieges")):
-			state.setup_sieges([])
-		return state
-	if game_config.get("sieges", false) or args.has("--sieges"):
-		# M3c S-1a (#98): forts and sieges, with or without rulers and paths (GameState.with_sieges).
-		var paths: bool = game_config.get("paths", false) or args.has("--paths")
-		var rulers: bool = paths or game_config.get("rulers", false) or game_config.has("builds") or args.has("--rulers")
-		return GameState.with_sieges(seed_value, game_config.get("builds", {}), {"rulers": rulers, "paths": paths}, [])
-	if game_config.get("paths", false) or OS.get_cmdline_user_args().has("--paths"):
-		return GameState.with_paths(seed_value, game_config.get("builds", {}), [])  # M4-1: paths need rulers
-	if game_config.get("rulers", false) or game_config.has("builds") or OS.get_cmdline_user_args().has("--rulers"):
-		return GameState.with_rulers(seed_value, game_config.get("builds", {}), [])
-	return GameState.new(seed_value)
+	var flags := {}
+	for key in ["rulers", "paths", "sieges", "magic", "fog", "independents"]:
+		flags[key] = (true if game_config.get(key, false) else false) or args.has("--" + key)
+	if game_config.has("builds"):
+		flags.rulers = true  # builds, even none, ask for rulers, as they always have
+	var builds = game_config.get("builds", {})
+	return GameState.create(int(game_config.get("seed", 0)), seated_players(game_config), flags,
+		builds if builds is Dictionary else {}, errors)
+
+
+## The players `game_config` seats (CW-0): its "players" when they can be seated together (GameState.seating_problems: two
+## different factions this game has), otherwise the Crown and the Clans (FactionData.LEGACY_PAIR).
+static func seated_players(game_config: Dictionary) -> Array:
+	var players = game_config.get("players")
+	if players is Array and players.all(func(fid): return fid is String or fid is StringName) \
+			and GameState.seating_problems(players).is_empty():
+		return players.map(func(fid): return String(fid))
+	return FactionData.LEGACY_PAIR.duplicate()
 
 
 ## UX-5: the End turn seal. With review before sealing on, it opens the Plan first (PlanHud.seal). Returns "" or why it could not.

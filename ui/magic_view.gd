@@ -175,8 +175,7 @@ static func who_casts_text(state: GameState, fid: String, spell_id: String) -> S
 	var casters := "your %s" % mage
 	if rm.get("schools", []).has(school):
 		casters += " or %s" % ruler
-	var cost := "%d gold a wolf" % int(MagicRules.spell_data(spell_id).cost) if String(MagicRules.spell_data(spell_id).get("summon", "")) == "thornwolves" \
-		else "%d gold" % int(price.gold)
+	var cost := MagicRules.price_words(spell_id) if MagicRules.is_pack(spell_id) else "%d gold" % int(price.gold)
 	return "Cast on the map with a cast order by %s, for %s. The casting army holds that turn." % [casters, cost]
 
 

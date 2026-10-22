@@ -1743,7 +1743,7 @@ static func _cap(text: String) -> String:
 
 
 static func _faction_display(faction_id: String) -> String:
-	for f in FactionData.FACTIONS:
+	for f in FactionData.rows():
 		if f.id == faction_id:
 			return f.name
 	return "that faction"

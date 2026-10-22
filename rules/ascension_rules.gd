@@ -849,7 +849,7 @@ static func new_unit_type(unit_id: String) -> UnitType:
 ## The roster name a unit type had before any transformation ("Spearmen" for "spearmen"), from the faction
 ## data; the new units' own names; or the id.
 static func base_unit_name(faction_id: String, type_id: String) -> String:
-	for f in FactionData.FACTIONS:
+	for f in FactionData.rows():
 		if f.id != faction_id:
 			continue
 		for u in f.unit_types:

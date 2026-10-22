@@ -29,6 +29,13 @@ class_name GameState
 ## puts a Free Holds garrison army in every neutral province, and `independents` turns true (saved only when set, so
 ## every other game saves byte-identically). The Free Holds are never in `factions`: find_faction() hands out their
 ## faction object for names and unit types, and every loop over the players never sees them.
+##
+## Three factions, two seats (CW-0, #251; design/CANDLEWAKE.md §1.1): GameState.create(seed, faction_ids, flags, builds) is a
+## game of the factions its players chose, the one door every config goes through (GameScreen.starting_state). The Crown and
+## the Clans are still built by the frozen legacy constructors above, byte for byte (tests/test_cw0_byte_gate.gd); any other
+## pair is seated by create_seated, which gives the legacy bytes on the Crown and the Clans too. Capitals are derived from the
+## seated factions (FactionData.capitals_for) before armies, rulers, paths, forts and independents exist, and nothing new is
+## saved: a Crown–Candlewake game saves the Candlewake's capital as their `capital` and the Long Vigil as that province's name.
 
 var provinces: Array[Province] = []
 var factions: Array[Faction] = []
@@ -69,6 +76,7 @@ func _load_data() -> void:
 
 ## Gives each faction the province named by its `capital` field (never map order) and one starting
 ## army there with one of each unit type and its commander. Returns false if a capital is missing.
+## CW-0: a faction whose row names a `start_army` (FactionData) starts with those units instead, in that order.
 func place_starting_armies(errors = null) -> bool:
 	armies.clear()
 	next_army_ids = {}
@@ -84,12 +92,203 @@ func place_starting_armies(errors = null) -> bool:
 		army.id = new_army_id(f.id)
 		army.owner = f.id
 		army.location = capital.id
-		for ut in f.unit_types:
+		var start: Array = FactionData.row(f.id).get("start_army", [])
+		if start.is_empty():
+			for ut in f.unit_types:
+				army.units.append(Unit.new(ut, f.id))
+		for type_id in start:
+			var ut := TurnResolver.recruitable_type(f, String(type_id))
+			if ut == null or ut.is_commander:
+				_report(errors, "The starting army of %s names '%s', which is not one of its unit types." % [f.faction_name, type_id])
+				ok = false
+				continue
 			army.units.append(Unit.new(ut, f.id))
 		if f.commander_type:
 			army.commander = Unit.new(f.commander_type, f.id)
 		armies.append(army)
 	return ok
+
+
+## CW-0 (#251, design/CANDLEWAKE.md §1.1): a game of the factions its players chose. `faction_ids` are the two seated
+## factions in seat order (the state lists them in FactionData.rows() order whatever the seat order); `flags` the systems,
+## {"rulers", "paths", "magic", "sieges", "independents", "fog"}, each true when on (magic brings paths, paths bring rulers,
+## and any build brings rulers: systems()); `builds` as with_rulers takes them. Every config that names its players goes
+## through here (GameScreen.starting_state). The Crown and the Clans, in either seat order, are built by the frozen legacy
+## constructors in the order GameScreen.starting_state used them before CW-0, so their games stay byte-identical; any other
+## pair goes through create_seated. Returns null, with plain reasons in `errors`, when the factions can't be seated together
+## (seating_problems) or one of them can't play a system yet (system_problems).
+static func create(map_seed: int, faction_ids: Array, flags: Dictionary = {}, builds: Dictionary = {}, errors = null) -> GameState:
+	var problems := seating_problems(faction_ids, flags, builds)
+	for msg in problems:
+		_report(errors, msg)
+	if not problems.is_empty():
+		return null
+	if not _is_legacy_pair(faction_ids):
+		return create_seated(map_seed, faction_ids, flags, builds, errors)
+	var on := systems(flags, builds)
+	var state: GameState
+	if on.magic:
+		state = with_magic(map_seed, builds, errors)
+		if state != null and on.sieges and not state.setup_sieges(errors):
+			return null
+	elif on.sieges:
+		state = with_sieges(map_seed, builds, {"rulers": on.rulers, "paths": on.paths}, errors)
+	elif on.paths:
+		state = with_paths(map_seed, builds, errors)
+	elif on.rulers:
+		state = with_rulers(map_seed, builds, errors)
+	else:
+		state = GameState.new(map_seed)
+	return _finish(state, on, errors)
+
+
+## The generic path of create, for any two factions: a fresh game seats them (_seat), then the systems are set up in the order
+## the legacy constructors set them up: rulers (holding back mandates of magic, as with_magic does), paths, magic and the
+## held-back builds, forts and sieges, independents, fog. create takes it for every pair but the Crown and the Clans; on those
+## two it gives the legacy constructors' bytes for every old combination (tests/test_cw0_byte_gate.gd), which is what makes it
+## the path to trust for the Candlewake.
+static func create_seated(map_seed: int, faction_ids: Array, flags: Dictionary = {}, builds: Dictionary = {}, errors = null) -> GameState:
+	var problems := seating_problems(faction_ids, flags, builds)
+	for msg in problems:
+		_report(errors, msg)
+	if not problems.is_empty():
+		return null
+	var on := systems(flags, builds)
+	var state := GameState.new(map_seed)
+	if not state._seat(faction_ids, errors):
+		return null
+	if on.rulers:
+		var split := _magic_split(builds) if on.magic else [builds, {}]
+		if not state.setup_rulers(split[0], errors):
+			return null
+		if on.paths and not state.setup_paths(errors):
+			return null
+		if on.magic:
+			if not state.setup_magic(errors):
+				return null
+			var later: Dictionary = split[1]
+			var build_problems := []
+			for fid in later:
+				build_problems.append_array(RulerRules.apply_build(state, String(fid), later[fid]))
+			for msg in build_problems:
+				_report(errors, msg)
+			if not build_problems.is_empty() or not state.validate(errors):
+				return null
+	if on.sieges and not state.setup_sieges(errors):
+		return null
+	return _finish(state, on, errors)
+
+
+## Independents and fog of war on top of whatever create built, as GameScreen.starting_state added them before CW-0.
+static func _finish(state: GameState, on: Dictionary, errors) -> GameState:
+	if state == null:
+		return null
+	if on.independents and not state.setup_independents(errors):
+		return null
+	if on.fog and not state.setup_fog(errors):
+		return null
+	return state
+
+
+## The systems `flags` asks for, with what each needs (create): {"rulers", "paths", "magic", "sieges", "independents",
+## "fog"}, each a bool. Magic brings paths, paths bring rulers, and a build brings rulers.
+static func systems(flags: Dictionary, builds: Dictionary = {}) -> Dictionary:
+	var magic := true if flags.get("magic", false) else false
+	var paths := magic or (true if flags.get("paths", false) else false)
+	var rulers := paths or (true if flags.get("rulers", false) else false) or not builds.is_empty()
+	var out := {"rulers": rulers, "paths": paths, "magic": magic}
+	for key in ["sieges", "independents", "fog"]:
+		out[key] = true if flags.get(key, false) else false
+	return out
+
+
+## Why `faction_ids` (in seat order) can't be seated together with `flags`, in plain words, or []: a game has two players
+## (FactionData.SEATS), each a faction this game has, no faction twice, and every faction able to play the systems
+## (system_problems).
+static func seating_problems(faction_ids: Array, flags: Dictionary = {}, builds: Dictionary = {}) -> Array:
+	var problems := []
+	if faction_ids.size() != FactionData.SEATS:
+		problems.append("A game has two players, one for each of two factions, but %d %s chosen." % [faction_ids.size(),
+			"was" if faction_ids.size() == 1 else "were"])
+	var seen := {}
+	for i in faction_ids.size():
+		var fid := str(faction_ids[i])
+		var row := FactionData.row(fid)
+		if row.is_empty():
+			problems.append("Player %d is set to '%s', which is not a faction in this game." % [i + 1, fid])
+		elif seen.has(fid):
+			problems.append("%s is chosen twice: each faction can have only one player." % String(row.name))
+		seen[fid] = true
+	if not problems.is_empty():
+		return problems
+	if FactionData.capitals_for(faction_ids).size() != faction_ids.size():
+		problems.append("This map has no free capital for every faction chosen.")
+	for fid in faction_ids:
+		problems.append_array(system_problems(str(fid), flags, builds))
+	return problems
+
+
+## Why faction `faction_id` can't play with the systems `flags` asks for yet, in plain words, or []: a faction plays with
+## rulers once it has a ruler (RulerData), with paths once it has a path too (PathData), and with magic once it has a mage
+## too (MagicData); forts and sieges, independents and fog of war are for every faction. In CW-0 the Candlewake have none of
+## the three: their rulers come in CW-2, their path in CW-4 and their magic in CW-5.
+static func system_problems(faction_id: String, flags: Dictionary, builds: Dictionary = {}) -> Array:
+	var on := systems(flags, builds)
+	var name := "The %s" % String(FactionData.row(faction_id).get("name", faction_id))
+	var rulers := not RulerRules.rulers_for(faction_id).is_empty()
+	var paths := rulers and not AscensionRules.path_data(faction_id).is_empty()
+	var magic := paths and MagicRules.mage_type(faction_id) != null
+	if on.magic and not magic:
+		return ["%s can't play with magic yet: their magic isn't ready. Play them without Magic." % name]
+	if on.paths and not paths:
+		return ["%s can't play with paths yet: their path isn't ready. Play them without Paths and Magic." % name]
+	if on.rulers and not rulers:
+		return ["%s can't play with rulers yet: their rulers aren't ready. Play them without Rulers, Paths and Magic." % name]
+	return []
+
+
+## Whether `faction_ids` are the Crown and the Clans, in either order: the pair the legacy constructors build.
+static func _is_legacy_pair(faction_ids: Array) -> bool:
+	var ids := faction_ids.map(func(fid): return str(fid))
+	ids.sort()
+	var legacy := FactionData.LEGACY_PAIR.duplicate()
+	legacy.sort()
+	return ids == legacy
+
+
+## `builds` split as with_magic splits them: [each build without its mandates of magic, the builds that hold one (applied
+## whole once magic is on)]. with_magic keeps its own copy: it is frozen.
+static func _magic_split(builds: Dictionary) -> Array:
+	var plain := {}
+	var later := {}
+	for fid in builds:
+		var b := RulerRules.normalize_build(builds[fid])
+		var kept: Array = b.mandates.filter(func(m): return RulerRules.mandate_data(String(m)).get("magic", false) != true)
+		if kept.size() == b.mandates.size():
+			plain[fid] = builds[fid]
+		else:
+			plain[fid] = {"ruler": b.ruler, "mandates": kept}
+			later[fid] = builds[fid]
+	return [plain, later]
+
+
+## CW-0: seats `faction_ids` in this fresh game instead of the Crown and the Clans, before turn 1 and before any system: the
+## map's provinces afresh, those factions with their derived capitals (FactionData.capitals_for), each capital shown by its
+## faction's `capital_name` when the row has one ("the Long Vigil"; ids never change), and their starting armies. Returns
+## false, with plain reasons in `errors`, when a capital is missing or the state doesn't validate.
+func _seat(faction_ids: Array, errors = null) -> bool:
+	if current_turn != 0:
+		_report(errors, "Factions are seated before the game starts.")
+		return false
+	provinces = MapData.create_provinces()
+	factions = FactionData.create_factions(faction_ids)
+	_free_holds = null
+	for f in factions:
+		var shown := String(FactionData.row(f.id).get("capital_name", ""))
+		var cap := find_province(f.capital)
+		if cap != null and not shown.is_empty():
+			cap.name = shown
+	return place_starting_armies(errors) and validate(errors)
 
 ## The M1 starting state plus a ruler for every faction (design/M2_RULER.md §1.5). `builds` maps a
 ## faction id to its build, {"ruler": ruler id, "mandates": [mandate ids]}, or to a preset id
