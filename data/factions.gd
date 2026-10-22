@@ -20,7 +20,8 @@ class_name FactionData
 ## order, and GameState.new(seed) and the with_* constructors stay the Crown and the Clans (LEGACY_PAIR) byte for byte.
 ## Capitals are derived from the seated factions (capitals_for): a row with a `capital` keeps it, and a row without one (the
 ## Candlewake) takes the map's free capital and shows it by its `capital_name` ("the Long Vigil"). A row's optional
-## `start_army` names its starting units; without it the start army is one of each unit type. Names are bare proper nouns
+## `start_army` names its starting units; without it the start army is one of each unit type. A row's `wick` (CW-1) gives its
+## armies a flame (WickRules). Names are bare proper nouns
 ## ("Candlewake", as "Aurel Crown"): the sentences add "the" ("the Candlewake capital", "the Candlewake's 1st").
 
 const FACTIONS: Array[Dictionary] = [
@@ -67,6 +68,8 @@ const PREVIEW_FACTIONS: Array[Dictionary] = [
 		],
 		"commander": {"id": "lamplighter", "name": "Lamplighter", "hp": 22, "attack": 11, "defense": 9, "morale": 12, "cost": 30, "trait": ""},
 		"start_army": ["wickwardens", "wickwardens", "gleaners", "hundred_wick"],
+		# CW-1 (#252, §2.1): every army but a ruler's burns at a flame from 0 to "cap", starting at "start" (WickRules)
+		"wick": {"start": 1, "cap": 3},
 	},
 ]
 

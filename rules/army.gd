@@ -19,6 +19,9 @@ var engines: int = 0
 ## "blessed": n}, where a round count is {"shown", "low", "high", "text"} (FogRules.round_count). A true state
 ## never has one (GameState.validate); saved only when set.
 var seen: Dictionary = {}
+## CW-1 (#252, design/CANDLEWAKE.md §2.1): the army's flame, from 0 to its faction's cap, on every army of a faction that keeps a
+## flame except a ruler's (WickRules); -1 for none. Saved only when it has one, so every other army saves exactly as before.
+var flame: int = -1
 
 ## The view note's keys, in the order they are saved.
 const SEEN_KEYS := ["level", "turn", "counts", "total", "blessed"]
@@ -52,6 +55,8 @@ func to_dict() -> Dictionary:
 		d["engines"] = engines  # M3c: only armies carrying siege engines have the key
 	if not seen.is_empty():
 		d["seen"] = seen_copy(seen)  # M5: only stand-ins in a view carry a note
+	if flame >= 0:
+		d["flame"] = flame  # CW-1: only the armies of a faction that keeps a flame carry the key
 	return d
 
 ## Returns null when the army is in an unknown province, holds an unknown unit type, or a field has the
@@ -98,6 +103,7 @@ static func from_dict(data: Dictionary, all_unit_types: Dictionary, province_ids
 			return null
 
 	a.engines = Serial.to_int(data.get("engines", 0))  # M3c; GameState.validate checks the count
+	a.flame = Serial.to_int(data.get("flame", -1), -1)  # CW-1; WickRules.validate checks it
 	var note = Serial.expect(data, "seen", TYPE_DICTIONARY, errors, who, {})  # M5: views only; GameState.validate checks it
 	if note == null:
 		return null

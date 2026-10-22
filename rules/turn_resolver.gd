@@ -115,13 +115,18 @@ const MAGIC_PHASES := ["sacrifice", "orders", "rituals", "movement", "battles", 
 
 
 ## The phases of `state`'s game, in order: PHASES, PATH_PHASES with paths, MAGIC_PHASES with magic, and "sieges"
-## after "battles" when sieges are on (M3c, §6).
+## after "battles" when sieges are on (M3c, §6). CW-1 (#252, design/CANDLEWAKE.md §2.2): in a game where a faction marks its
+## land, "wake" after "recruitment", and where a faction keeps a flame, "wick" after it, both before "income".
 static func phases(state: GameState) -> Array:
 	var out: Array = (PATH_PHASES if state != null and state.paths else PHASES).duplicate()
 	if state != null and state.magic:
 		out = MAGIC_PHASES.duplicate()
 	if state != null and state.sieges:
 		out.insert(out.find("battles") + 1, SIEGES_PHASE)
+	if MarkRules.in_play(state):
+		out.insert(out.find("income"), MarkRules.PHASE)
+	if WickRules.in_play(state):
+		out.insert(out.find("income"), WickRules.PHASE)
 	return out
 
 
@@ -156,6 +161,8 @@ static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: 
 	_sieges_phase(s, battle_sites, events)  # M3c: games with sieges only
 	_capture(s, battle_sites, events)
 	_recruitment(s, recruits, events, state)  # Warband Muster gathers where the ruler started the turn
+	MarkRules.wake_step(s, events)  # CW-1: games where a faction marks its land only; CW-3 gives it its rules
+	WickRules.wick_step(s, events)  # CW-1: games where a faction keeps a flame only; CW-2 gives it its rules
 	_income(s, events)
 	_research_phase(s, events)  # M4: games with paths only
 	_rulers_phase(s, events)
@@ -1743,6 +1750,7 @@ static func _add_recruit(s: GameState, faction: Faction, ut: UnitType, location:
 		army.id = s.new_army_id(faction.id)
 		army.owner = faction.id
 		army.location = where
+		WickRules.light(s, army)  # CW-1: recruits forming a new army start it at its start flame (§2.1)
 		s.armies.append(army)
 		created = true
 	var unit := Unit.new(ut, faction.id)

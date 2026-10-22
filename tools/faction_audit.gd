@@ -35,6 +35,7 @@ const MARKS := {
 	"data/forts.gd": [2, "safe until CW-2 (#253) adds the Guttering Ram: a faction with no engine row recruits none (SiegeRules.engine_type is null and the computer plans no engines; tests/test_three_factions.gd)"],
 	"data/magic.gd": [16, "safe: the Crown's and the Clans' schools, mages, spellbooks and summons by faction; the Candlewake's Wick and Wax are CW-5 (#256). Fixed: the Thornwolves' row says it is a pack (summons from data)"],
 	"data/mandates.gd": [10, "safe: mandates by faction; Kindling and Tallow Levy are CW-2 (#253)"],
+	"data/marks.gd": [1, "safe: the Candlewake's mark (MarkData): the engine is generic, and only the Candlewake mark the land in this milestone"],
 	"data/map.gd": [8, "safe: the map's two capitals and their neighbours; the Candlewake take whichever is free (FactionData.capitals_for)"],
 	"data/paths.gd": [15, "safe: the Crown's and the Clans' paths by faction and unit; the Candlewake's is CW-4 (#255)"],
 	"data/rulers.gd": [5, "safe: rulers by faction (one hit is the word 'kingdom' in a ruler's flavour); Half-Death and Mother Tallow are CW-2 (#253)"],
@@ -43,7 +44,7 @@ const MARKS := {
 	"rules/battle_captions.gd": [1, "safe: 'both sides' for two routing sides and 'every side' for more: already N-sided"],
 	"rules/battle_log.gd": [1, "safe: a hit-chance range [least, most], not factions"],
 	"rules/faction.gd": [1, "safe: a comment's example enchantment id"],
-	"rules/fog_rules.gd": [11, "safe: an event's own faction list (who acted first, who it was done to second), not the game's factions"],
+	"rules/fog_rules.gd": [12, "safe: an event's own faction list (who acted first, who it was done to second; CW-1: whose mark), not the game's factions"],
 	"rules/rules_codex.gd": [7, "safe: the Crown's and the Clans' own entries (engines, rulers, units in prose); the Candlewake's come with their mechanics, CW-2 to CW-5"],
 	"rules/turn_report_text.gd": [11, "safe: an event's own faction list (who acted first), and 'both' for a two-faction battle with 'all of them' for more"],
 	# --- the screens, the board and the tools: in the report for their lanes, not checked by the test ---
