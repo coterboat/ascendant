@@ -72,9 +72,14 @@ func test_the_candlewake_row_sits_behind_the_preview() -> void:
 	assert_ne(WAKE, IndependentData.FACTION_ID)
 	assert_false(WAKE.begins_with("free"), "Free Holds army ids begin with 'free'")
 	# The §4.1 host, ids from the CW-9 manifest, each with its trait and the trait's words (CW-2).
-	assert_eq(row.unit_types.map(func(u): return String(u.id)), ["wickwardens", "gleaners", "hundred_wick"])
+	# CW-12 (§4.5): then the candlebeasts, poured only in Deep Wake, each with a trait the engine already has.
+	assert_eq(row.unit_types.map(func(u): return String(u.id)), ["wickwardens", "gleaners", "hundred_wick", "wax_hounds", "tallow_stag",
+		"guttering_bear"])
 	assert_eq(String(row.commander.id), "lamplighter")
-	assert_eq((row.unit_types + [row.commander]).map(func(u): return String(u.trait)), AutoBattleResolver.WICK_TRAITS)
+	var host: Array = row.unit_types.filter(func(u): return not u.has("requires_mark_stage"))
+	assert_eq((host + [row.commander]).map(func(u): return String(u.trait)), AutoBattleResolver.WICK_TRAITS)
+	var beasts: Array = row.unit_types.filter(func(u): return u.has("requires_mark_stage"))
+	assert_eq(beasts.map(func(u): return String(u.trait)), [AutoBattleResolver.SKIRMISH, AutoBattleResolver.CHARGE, AutoBattleResolver.BERSERK])
 	for u in row.unit_types + [row.commander]:
 		assert_false(String(AutoBattleResolver.TRAIT_TEXT.get(String(u.trait), "")).is_empty(), "%s's trait has its words" % u.name)
 	# The start army: 2 Wickwardens, the Gleaners and the Hundred-Wick, with the Lamplighter. CW-2's prices make it cost more
