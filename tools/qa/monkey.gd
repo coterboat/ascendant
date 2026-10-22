@@ -687,6 +687,8 @@ func _classify(c: Control, vis: Rect2, cls: String, tags: Array) -> void:
 	var w := 1.0
 	var way := false
 	for area in focus:
+		if area == "battles" and not (c is BaseButton):
+			continue  # the way to a battle is a button (March, Watch the battles), not the hint that mentions one
 		if OPENERS.has(area):
 			for o in OPENERS[area]:
 				if words.contains(o):
@@ -764,7 +766,10 @@ func _add_board(win: Rect2) -> void:
 			continue
 		var sr := (xf * r).intersection(win)
 		var lead := (focus.has("muster") and a.owner == mine) or (focus.has("battles"))
-		_add("board_army", sr, b, "army %s (%s, %d units)" % [a.id, a.owner, a.units.size()], 2.0 * (3.0 if lead else 1.0), false, lead)
+		var w := 2.0 * (3.0 if lead else 1.0)
+		if focus.has("battles") and a.owner != mine and not focus.has("muster"):
+			w = 3.0  # with battles, your own armies first (select one, then March), the others less
+		_add("board_army", sr, b, "army %s (%s, %d units)" % [a.id, a.owner, a.units.size()], w, false, lead)
 
 
 ## A province on screen next to the selected army's (where its March can go), or {}.
