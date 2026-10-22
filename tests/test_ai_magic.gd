@@ -413,6 +413,46 @@ func test_a_mage_is_worth_recruiting_for_what_it_adds() -> void:
 	assert_eq(ctx.casts[CROWN].book, ["sunlance"], "the Crown's is Sunlance (Sunburst is a greater working)")
 
 
+func test_a_mage_is_valued_for_the_fight_its_army_will_join() -> void:
+	# #182: the Crown's capital is a fort, where Shield of Law covers nothing. While no enemy army is within RECRUIT_THREAT
+	# moves, the recruits march out to the field army, whose fights are attacks (an attacker never has a terrain or fort
+	# bonus), so the shield counts, and the Ever-Regent marching with that army casts Sunlance first, leaving the Adept the
+	# shield (§5.1); with an enemy army that close, they stay to defend the capital behind its fort.
+	var nodes := {CROWN: ["sunlance", "shield_of_law"]}
+	var far := _board([["beasts-9", CLANS, "fangridge", _many("tuskers", 6)]], nodes)
+	var home: String = far.find_faction(CROWN).capital
+	assert_false(AIMagic.shield_ok(far, home), "the Crown's capital has a fort: the shield never covers there")
+	var near_at := ""
+	for p in far.provinces:
+		if p.neighbors.has(home):
+			near_at = p.id
+			break
+	var near := _board([["beasts-9", CLANS, near_at, _many("tuskers", 6)]], nodes)
+	var values := {}
+	for case in [["far", far], ["near", near]]:
+		var s: GameState = case[1]
+		var ai := AIPlayer.new()
+		ai.configure(7, 0)
+		ai._begin(s, CROWN, SeededRNG.new(1), "normal")
+		assert_eq(ai._capital_threatened(), case[0] == "near", "%s: the threat is read from the enemy army's distance" % case[0])
+		assert_eq(bool(ai._ctx.shield_ok), case[0] == "far", "%s: Shield of Law counts only for the field army's fight" % case[0])
+		assert_eq(ai._ctx.ruler_with, {CROWN: true} if case[0] == "far" else {}, "%s: the field ruler casts first only there" % case[0])
+		assert_eq(ai._ctx.casts[CROWN].ruler_book[0], String(MagicRules.ruler_magic(s.find_faction(CROWN).ruler_type).own_spell),
+			"the ruler's own spell leads its book")
+		var base := ai._units([_army(s, CROWN, home, _many("spearmen", 8) + _many("crossbowmen", 2))])
+		var foes := _units(s, CLANS, _many("tuskers", 8))
+		var adept := ai._recruit_unit(TurnResolver.recruitable_type(s.find_faction(CROWN), "adepts", s))
+		var with_one := base.duplicate()
+		with_one.append(adept)
+		values[case[0]] = float(ai._recruit_value(with_one, foes)) - float(ai._recruit_value(base, foes))
+		# The gain is exactly what the rough guess makes of the summaries with the shield on or off, from the rules' numbers.
+		var ctx: Dictionary = ai._ctx
+		var expect := AIPlayer._value_of(AIPlayer._side_summary(with_one, ctx), AIPlayer._side_summary(foes, ctx)) \
+			- AIPlayer._value_of(AIPlayer._side_summary(base, ctx), AIPlayer._side_summary(foes, ctx))
+		assert_true(absf(float(values[case[0]]) - expect) < 0.000001, "%s: the gain is the summaries' own" % case[0])
+	assert_true(float(values.far) > float(values.near), "an Adept is worth more to an army heading out to fight (%.4f) than behind the walls (%.4f)" % [values.far, values.near])
+
+
 func test_at_most_one_mage_for_every_so_many_regular_units() -> void:
 	var s := _board([], {CROWN: ["sunlance"], CLANS: ["bloodbolt"]})
 	for fid in SEATS:
@@ -1182,7 +1222,8 @@ func test_the_magic_plan_ignores_what_the_view_hides() -> void:
 
 func test_the_codex_says_how_the_computer_plays_magic() -> void:
 	var text := RulesCodex.text("computer_opponent")
-	for part in ["In a game with magic", "researches its faction's spells", "recruits mages", "one for every %d regular units" % AIMagic.MAGE_PER,
+	for part in ["In a game with magic", "researches its faction's spells", "recruits mages", "for the fight their army is heading to",
+			"one for every %d regular units" % AIMagic.MAGE_PER,
 			"at most %d%% of the gold" % AIMagic.RITUAL_SHARE_PCT, "never from an army it has sent to attack", "wards its capital ahead",
 			"pays a ritual in blood", "what it cast and why"]:
 		assert_true(text.contains(part), "the entry says '%s': %s" % [part, text])

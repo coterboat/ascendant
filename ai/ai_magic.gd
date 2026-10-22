@@ -95,7 +95,8 @@ static func sacrifice_picks(state: GameState, preset_id: String, picks: Array) -
 # --- mages as recruits (§10.2) ----------------------------------------------------------------------------
 
 ## Every faction's battle spells for the plan's rough guesses: {faction id: {"book": [spell ids, in the order its
-## casters try them], "bonus": {school: mastery bonus of a mage}}} for each faction with a mage. The book is the
+## casters try them], "bonus": {school: mastery bonus of a mage}, "ruler_book": [the spells its ruler casts in battle, in
+## the same order; #182]}} for each faction with a mage. The book is the
 ## spellbook with its switched-off spells and the spells not yet researched left out; a faction whose research is
 ## hidden (a rival in a fog view) casts the first tier I spell of its default spellbook, as the forecasts assume (§2.6).
 static func cast_profiles(state: GameState) -> Dictionary:
@@ -119,7 +120,17 @@ static func cast_profiles(state: GameState) -> Dictionary:
 		var bonus := {}
 		for school in MagicRules.schools(f.id):
 			bonus[String(school)] = int(MagicRules.mastery_bonus(state, f.id, String(school), MagicRules.MAGE).value)
-		out[f.id] = {"book": book, "bonus": bonus}
+		# #182: the ruler's battle spells (the Ever-Regent's Sunlance and its schools' researched ones), its own spell first
+		# as the spellbook's locked row, then the book's order without the switched-off ones.
+		var ruler_spells := MagicRules.battle_spells(state, f.id, MagicRules.RULER)
+		var ruler_book := []
+		var own := String(MagicRules.ruler_magic(f.ruler_type).get("own_spell", "")) if f.has_ruler() else ""
+		if ruler_spells.has(own):
+			ruler_book.append(own)
+		for sid in book:
+			if ruler_spells.has(sid) and not ruler_book.has(sid):
+				ruler_book.append(String(sid))
+		out[f.id] = {"book": book, "bonus": bonus, "ruler_book": ruler_book}
 	return out
 
 
@@ -155,7 +166,9 @@ static func room_for_mage(units: Array) -> bool:
 ## once a battle, is worth its first round over `rounds` (AIPlayer.ROUNDS_GUESS). A mage in a shielded second rank lasts
 ## longer, as Volley's does: `lasts` multiplies the whole (AIPlayer gives 1 + VOLLEY_SHIELD_VALUE x the share of the second
 ## rank the enemy cannot reach while the front rank is as big, otherwise 1). The two classes refer to each other, so the
-## numbers come in as arguments rather than as AIPlayer's constants.
+## numbers come in as arguments rather than as AIPlayer's constants. #182: when side `s` fights with its ruler beside its mages
+## (s.ruler_with[owner]), the ruler casts first each round (§5.1: "the Regent casts Sunlance, and the Adept casts Shield of Law"),
+## so the mages' spread starts after its spell; the ruler's own cast is not counted (it is never recruited).
 static func mage_pressure(s: Dictionary, foe: Dictionary, lasts: float, rounds: float) -> float:
 	var total := 0.0
 	var casts_by: Dictionary = s.get("casts", {})
@@ -165,16 +178,25 @@ static func mage_pressure(s: Dictionary, foe: Dictionary, lasts: float, rounds: 
 		var book: Array = profile.get("book", [])
 		if book.is_empty():
 			continue
-		total += _round_value(int(mages[owner]), book, profile.get("bonus", {}), s, foe, rounds)
+		var lead: Array = profile.get("ruler_book", []) if bool(s.get("ruler_with", {}).get(owner, false)) else []
+		total += _round_value(int(mages[owner]), book, profile.get("bonus", {}), s, foe, rounds, lead)
 	return total * lasts
 
 
 ## What `n` mages casting `book` are worth a round (mage_pressure). The spread rule is the resolver's: each mage casts the
 ## first useful spell nobody has cast this round, and once every useful spell has been cast, the first useful one again.
-static func _round_value(n: int, book: Array, bonus: Dictionary, s: Dictionary, foe: Dictionary, rounds: float) -> float:
+static func _round_value(n: int, book: Array, bonus: Dictionary, s: Dictionary, foe: Dictionary, rounds: float,
+		lead: Array = []) -> float:
 	var total := 0.0
 	var done := {}
 	var left := {}  # "<spell>|<type id>" -> units of that type still without the spell's part this round
+	for sid in lead:  # #182: the ruler's cast this round, first: its first useful spell, which the mages then pass over
+		var sp := MagicRules.spell_data(String(sid))
+		if sp.has("round") or _cast_value(String(sid), sp, _bonus(bonus, sp), s, foe, left, false) <= 0.0:
+			continue
+		_cast_value(String(sid), sp, _bonus(bonus, sp), s, foe, left, true)
+		done[sid] = true
+		break
 	for j in n:
 		var pick := ""
 		var again := ""
