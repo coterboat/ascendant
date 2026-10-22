@@ -52,6 +52,8 @@ const SiegeBoard := preload("res://world3d/siege_board.gd")
 const SH_GHOST := preload("res://world3d/shaders/ghost.gdshader")
 const SH_SMOKE := preload("res://world3d/shaders/smoke.gdshader")
 const SH_MEMORY := preload("res://world3d/shaders/memory_ghost.gdshader")
+const SH_WICK := preload("res://world3d/shaders/wick_flame.gdshader") ## CW-8: an army's flame on its figures' wicks
+const CandleFigures := preload("res://world3d/candle_figures.gd")
 const Vision := preload("res://world3d/vision.gd")
 const MagicBeats := preload("res://world3d/magic_beats.gd")
 const SPEED := 21.0 ## march speed, world units a second at 1x
@@ -80,6 +82,10 @@ const BREACH_BEAT := 1.6
 
 ## #125: the musician in every colour party (off on the lower quality rungs: the board sets it, musicians_at).
 static var musicians := true
+## CW-8: the wick flames sway on the quality ladder's top rungs, never with reduced motion (the board sets it, set_flicker).
+static var flicker := true
+static var _wick_mesh: ArrayMesh = null
+static var _wick_mat: ShaderMaterial = null
 
 ## The land changed hands: the board repaints the province's wash and its fortress.
 signal captured(province_id: String, owner_id: String)
@@ -283,6 +289,8 @@ func _desc_of(a: Army, st: GameState = null) -> Dictionary:
 		leaders.append({"type": ct, "role": "commander", "rank": 2, "sp": _spacing(ct)})
 	var d := {"id": a.id, "owner": a.owner, "location": a.location, "blocks": blocks, "leaders": leaders,
 		"units": a.units.size(), "ruler": a.ruler != null, "extras": extras()}
+	if a.flame >= 0:
+		d["flame"] = a.flame  # CW-8: its regulars' wicks burn at it (none in a view out of clear sight: -1)
 	if Vision.is_memory(a):
 		## M5-3: a remembered army (a grey ghost): no banner, no tent and no fire, fading a step for every 2 turns of age
 		d["memory"] = true
@@ -303,6 +311,37 @@ static func extras() -> Array:
 ## down it stands down. The bearer always stays: it carries the army's banner, its owner's colour and emblem.
 static func musicians_at(rung: int) -> bool:
 	return rung < MUSICIAN_OFF_RUNG
+
+
+## CW-8: whether the wick flames sway on board quality rung `rung` (the top two: 0 and 1), never with reduced motion.
+static func flicker_at(rung: int, reduced: bool) -> bool:
+	return rung <= 1 and not reduced
+
+
+## CW-8: sets the flames' sway for every army at once (one shared material).
+static func set_flicker(on: bool) -> void:
+	flicker = on
+	if _wick_mat != null:
+		_wick_mat.set_shader_parameter("flicker", 1.0 if on else 0.0)
+
+
+## CW-8: the flame drawn on a wick, a teardrop of unit height with its foot at the origin (scaled to CandleFigures.flame_look's
+## height and width per figure), and its material; shared by every army.
+static func wick_mesh() -> ArrayMesh:
+	if _wick_mesh == null:
+		var b := Kit.Builder.new()
+		b.ball(0.36, Vector3(0, 0.33, 0), Color.WHITE, Vector3(1.0, 0.92, 1.0), 8)
+		b.cyl(0.0, 0.33, 0.62, Vector3(0, 0.69, 0), Color.WHITE, 8)
+		_wick_mesh = b.mesh()
+	return _wick_mesh
+
+
+static func wick_material() -> ShaderMaterial:
+	if _wick_mat == null:
+		_wick_mat = ShaderMaterial.new()
+		_wick_mat.shader = SH_WICK
+		_wick_mat.set_shader_parameter("flicker", 1.0 if flicker else 0.0)
+	return _wick_mat
 
 
 func _spacing(t: String) -> Vector2:
@@ -528,13 +567,14 @@ func _layout_stage(pid: String, list0: Array, ghosts: Array, out: Dictionary) ->
 	var depth := 0.0
 	var basis := Basis.looking_at(Vector3(facing.x, 0, facing.y), Vector3.UP)
 	for d in list:
-		var slots: Array = Kit.formation_blocks(d["blocks"], d["leaders"], 44.0, d.get("extras", ["bearer"]))
+		var slots: Array = _formation(d, 44.0)
 		var placed: Array = []
 		for sl in slots:
 			var lp: Vector2 = sl["pos"]
 			var w3: Vector3 = basis * Vector3(lp.x, 0, depth + lp.y)
 			var p: Vector2 = origin + Vector2(w3.x, w3.z)
-			placed.append({"type": sl["type"], "role": sl["role"], "pos": p, "yaw": atan2(-facing.x, -facing.y), "y": maxf(t.height_at(p), 0.0)})
+			placed.append({"type": sl["type"], "role": sl["role"], "pos": p, "yaw": atan2(-facing.x, -facing.y) + float(sl.get("yaw_off", 0.0)),
+				"y": maxf(t.height_at(p), 0.0)})  # CW-8: a slumped crowd's figures face a little askew
 		depth += Kit.formation_depth(slots) + 2.0
 		if d["id"] == "~ghost":
 			var gf: Array = placed.filter(func(sl): return sl["role"] != "bearer" and sl["role"] != "musician")
@@ -652,7 +692,7 @@ func _layout_ring(s: GameState, pid: String, y: Dictionary, others: Array, out: 
 	var fires: Array = []
 	var ids: Array = []
 	for d in list:
-		var slots: Array = Kit.formation_blocks(d["blocks"], d["leaders"], 26.0, d.get("extras", ["bearer"]))
+		var slots: Array = _formation(d, 26.0)
 		var depth: float = Kit.formation_depth(slots)
 		var pick := -1
 		for ci in cands.size():
@@ -679,7 +719,8 @@ func _layout_ring(s: GameState, pid: String, y: Dictionary, others: Array, out: 
 			var lp: Vector2 = sl["pos"]
 			var w3: Vector3 = basis * Vector3(lp.x, 0, lp.y)
 			var p: Vector2 = origin + Vector2(w3.x, w3.z)
-			placed.append({"type": sl["type"], "role": sl["role"], "pos": p, "yaw": atan2(-facing.x, -facing.y), "y": maxf(t.height_at(p), 0.0)})
+			placed.append({"type": sl["type"], "role": sl["role"], "pos": p, "yaw": atan2(-facing.x, -facing.y) + float(sl.get("yaw_off", 0.0)),
+				"y": maxf(t.height_at(p), 0.0)})  # CW-8: a slumped crowd's figures face a little askew
 		out["places"][d["id"]] = placed
 		ids.append(d["id"])
 		var tp: Vector2 = origin + dir * (depth + RING_TENT)
@@ -770,7 +811,14 @@ func _base_order(d: Dictionary, in_fort: bool) -> Array:
 		for i in slots.size():
 			centres.append(Vector2.ZERO)
 		return Muster.figures_at(slots, centres)
-	return Kit.formation_blocks(d["blocks"], d["leaders"], 44.0, d.get("extras", ["bearer"]))
+	return _formation(d, 44.0)
+
+
+## An army's field formation (Kit.formation_blocks), slumped into a crowd when its owner keeps a flame (CW-8: the Candlewake's massing,
+## Kit.slump); every other army's ranks as before.
+func _formation(d: Dictionary, max_w: float) -> Array:
+	var slots: Array = Kit.formation_blocks(d["blocks"], d["leaders"], max_w, d.get("extras", ["bearer"]))
+	return Kit.slump(slots, String(d["id"])) if WickRules.has_wick(String(d.get("owner", ""))) else slots
 
 
 # ------------------------------------------------------------------ entries: figures in MultiMeshes
@@ -786,6 +834,8 @@ func _make_entry(d: Dictionary, placed: Array, ghost: bool = false) -> Dictionar
 		e["step"] = int(d.get("step", 0))
 	if bool(d.get("stand_in", false)):
 		e["stand_in"] = true
+	if d.has("flame"):
+		e["flame"] = int(d["flame"])  # CW-8
 	_fill_entry(e, placed, ghost)
 	return e
 
@@ -863,6 +913,7 @@ func _fill_entry(e: Dictionary, placed: Array, ghost: bool = false) -> void:
 				f["keep_scale"] = true
 		e["figs"].append(f)
 		k += 1
+	_fill_wicks(e, ghost or memory)
 	if memory and e.get("banner") != null:
 		(e["banner"] as Node).queue_free() ## a memory carries no banner
 		e["banner"] = null
@@ -911,6 +962,42 @@ func _free_meshes(e: Dictionary) -> void:
 		for mi in e["types"][t]["mis"]:
 			(mi as Node).queue_free()
 	e["types"] = {}
+	if e.get("wick") != null:
+		(e["wick"] as Node).queue_free()
+	e["wick"] = null
+
+
+## CW-8 (design/CANDLEWAKE.md §10): an army that keeps a flame burns it on its regulars' wicks, one MultiMesh for the army: none for a
+## ghost or a memory, an army with no flame (-1: a rival's out of clear sight) or no figure that burns (CandleFigures.burns).
+func _fill_wicks(e: Dictionary, faded: bool) -> void:
+	e["wick"] = null
+	var look := CandleFigures.flame_look(int(e.get("flame", -1)))
+	if faded or look.is_empty():
+		return
+	var n := 0
+	var tops := {}
+	for f in e["figs"]:
+		if f["role"] == "unit" and CandleFigures.burns(String(f["type"])):
+			n += 1
+			tops[f["type"]] = Models.fx_top(String(f["type"]))  # where each type's wick ends (the row's "fx_anchor")
+	if n == 0:
+		return
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
+	mm.mesh = wick_mesh()
+	mm.instance_count = n
+	for i in n:
+		mm.set_instance_custom_data(i, look["col"])
+	var mi := MultiMeshInstance3D.new()
+	mi.name = "%s_wicks" % str(e["id"]).validate_node_name()
+	mi.multimesh = mm
+	mi.material_override = wick_material()
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	e["wick"] = mi
+	e["wick_look"] = look
+	e["wick_tops"] = tops
 
 
 func _free_army(e: Dictionary) -> void:
@@ -924,6 +1011,7 @@ func _free_army(e: Dictionary) -> void:
 ## figures), and the banner onto the bearer.
 func _sync(e: Dictionary) -> void:
 	var counters := {}
+	var wick_i := 0
 	for t in e["types"].keys():
 		var z: Array = []
 		z.resize((e["types"][t]["mis"] as Array).size())
@@ -949,6 +1037,13 @@ func _sync(e: Dictionary) -> void:
 		var idx: int = arr[gi]
 		arr[gi] = idx + 1
 		((te["mis"][gi] as MultiMeshInstance3D).multimesh).set_instance_transform(idx, xf)
+		if e.get("wick") != null and f["role"] == "unit" and CandleFigures.burns(String(f["type"])):
+			## CW-8: its flame on its wick, out with the figure when it falls or fades
+			var look: Dictionary = e["wick_look"]
+			var lit := 0.0 if (sc < 0.05 or float(f["fall"]) > 0.5) else 1.0
+			var wsz := Vector3(float(look["w"]), float(look["h"]), float(look["w"])) * maxf(sc * fig_scale * blend * lit, 0.001)
+			(e["wick"] as MultiMeshInstance3D).multimesh.set_instance_transform(wick_i, Transform3D(basis.orthonormalized().scaled(wsz), xf * (e["wick_tops"][f["type"]] as Vector3)))
+			wick_i += 1
 		if f["role"] == "bearer" and e.get("banner") != null:
 			var bn: Node3D = e["banner"]
 			bn.transform = Transform3D(Basis(Vector3.UP, yaw + PI * 0.5).scaled(Vector3.ONE * maxf(fig_scale * blend, 0.001)), xf * Vector3(0.95, 1.2, 0.0))
@@ -960,6 +1055,8 @@ func _sync(e: Dictionary) -> void:
 			var mi: MultiMeshInstance3D = mis[gi]
 			mi.multimesh.visible_instance_count = n
 			mi.visible = n > 0 and blend > 0.01
+	if e.get("wick") != null:
+		(e["wick"] as MultiMeshInstance3D).visible = wick_i > 0 and blend > 0.01
 
 
 ## The middle of an army's standing figures and the height of its plate's foot (for its count plate),

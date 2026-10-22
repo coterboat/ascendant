@@ -79,11 +79,12 @@ static func unit_faction(unit_type_id: String) -> String:
 		for ut in IndependentData.UNIT_TYPES:  # IND-2 (#161): the Free Holds' garrison units and their Hold Captain
 			_unit_factions[String(ut.id)] = IndependentData.FACTION_ID
 		_unit_factions[String(IndependentData.COMMANDER.id)] = IndependentData.FACTION_ID
-		for side in PathData.BRANCHES:
-			var b: Dictionary = PathData.BRANCHES[side]
-			var new_unit := String(AscensionRules.node_effects(String(b.get("transformation", ""))).get("new_unit", ""))
-			if not new_unit.is_empty():
-				_unit_factions[new_unit] = String(b.get("faction", ""))
+		for table in [PathData.BRANCHES, PathData.PREVIEW_BRANCHES]:  # CW-4: the preview's sides too
+			for side in table:
+				var b: Dictionary = table[side]
+				var new_unit := String(AscensionRules.node_effects(String(b.get("transformation", ""))).get("new_unit", ""))
+				if not new_unit.is_empty():
+					_unit_factions[new_unit] = String(b.get("faction", ""))
 		for fid in MagicData.MAGES:  # M5: each faction's mage (ART-M5-2D, #224)
 			_unit_factions[String(MagicData.MAGES[fid].id)] = String(fid)
 		for sid in MagicData.SUMMONS:  # and the summoned creatures, by their own faction field
@@ -113,8 +114,8 @@ static func variant_portrait(unit_type_id: String, faction_id: String, transform
 ## changes the unit (the Celestial Host makes its Spearmen Sunspears), that look; else its own portrait.
 static func unit_portrait(state: GameState, faction_id: String, unit_type_id: String) -> Texture2D:
 	var fid := faction_id if not faction_id.is_empty() else unit_faction(unit_type_id)
-	for side in PathData.BRANCHES:
-		var trans := String(PathData.BRANCHES[side].get("transformation", ""))
+	for side in AscensionRules.branches_for(fid):  # CW-4: the preview's sides too
+		var trans := String(AscensionRules.branch_data(side).get("transformation", ""))
 		if (AscensionRules.node_effects(trans).get("rename", {}) as Dictionary).has(unit_type_id) \
 				and AscensionRules.has_node(state, fid, trans):
 			var look := variant_portrait(unit_type_id, fid, trans)

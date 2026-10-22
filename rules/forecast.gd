@@ -48,7 +48,7 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 	var would_capture := false
 	if state.sieges and dest.fort_level > 0:
 		return _with_sight(state, faction_id, order, army,  # M3c: which row of §3.9
-			_fort_move(state, faction_id, order, other_orders, army, here, dest, text, arrival))
+			_fort_move(state, faction_id, order, other_orders, army, here, dest, text, arrival), other_orders)
 	var garrison := state.garrison_at(dest.id)
 	if garrison != null and enemies == [IndependentData.FACTION_ID]:
 		# IND-1 (#142): a garrison never moves, so there is no border meeting to warn about.
@@ -75,7 +75,8 @@ static func move(state: GameState, faction_id: String, order: MoveOrder, other_o
 			text = text.trim_suffix(".") + ", and %d gold at once (%s: %s)." % [int(raid.gold),
 				AscensionRules.node_name(String(raid.node)), AscensionRules.times_text(int(raid.times))]
 	return _with_sight(state, faction_id, order, army, {"ok": true, "code": "", "reason": "", "from": here.id, "to": dest.id,
-		"via": order.via, "arrival_turn": arrival, "enemy_present": not enemies.is_empty(), "would_capture": would_capture, "text": text})
+		"via": order.via, "arrival_turn": arrival, "enemy_present": not enemies.is_empty(), "would_capture": would_capture, "text": text},
+		other_orders)
 
 
 ## M3c (§9.2): the move forecast into a fort in a game with sieges says which row of §3.9 it will be, if the other
@@ -1400,9 +1401,11 @@ static func wick(state: GameState, faction_id: String, orders: Array = []) -> Ar
 	for o in orders:
 		if o is MoveOrder:
 			ends[o.army_id] = o.to
+	var kindled := MagicRules.kindled_flames(state, faction_id, orders)  # CW-5: this turn's Kindle, cast before the battles
 	for a in TurnResolver._sorted_armies(state):
 		if a.owner == faction_id and a.flame >= 0:
-			out.append({"army": a.id, "text": WickRules.forecast_line(state, a, String(ends.get(a.id, a.location)))})
+			out.append({"army": a.id, "text": WickRules.forecast_line(state, a, String(ends.get(a.id, a.location)),
+				int(kindled.get(a.id, {}).get("to", -1)))})
 	return out
 
 
@@ -1677,9 +1680,11 @@ static func _veiled_move_text(state: GameState, faction_id: String, dest: Provin
 
 ## Sight in `move` (§2.10, §11.1): adds to a fog move forecast "sees" (the provinces it will see next turn that are out
 ## of your sight now, by id), "sight_range" and the sentence. Unchanged without fog, or when the move can't be given.
-static func _with_sight(state: GameState, faction_id: String, order: MoveOrder, army: Army, out: Dictionary) -> Dictionary:
+## CW-2/CW-5: first its flame line, counting a Kindle among `other_orders` (cast before the battles).
+static func _with_sight(state: GameState, faction_id: String, order: MoveOrder, army: Army, out: Dictionary, other_orders: Array = []) -> Dictionary:
 	if bool(out.get("ok", false)) and army.flame >= 0:
-		out["text"] = "%s %s" % [String(out.text), WickRules.forecast_line(state, army, order.to)]  # CW-2 (§2.5): its flame
+		var kindled := int(MagicRules.kindled_flames(state, faction_id, other_orders).get(army.id, {}).get("to", -1))
+		out["text"] = "%s %s" % [String(out.text), WickRules.forecast_line(state, army, order.to, kindled)]  # CW-2 (§2.5): its flame
 	if not is_fog_view(state) or not bool(out.get("ok", false)):
 		return out
 	var s := FogRules.army_sight(army)
@@ -1763,8 +1768,8 @@ static func arcana_delay(state: GameState, faction_id: String, node_id: String, 
 	var sworn := AscensionRules.branch(view, faction_id)
 	var road := {}
 	var side := ""
-	for key in PathData.BRANCHES:
-		if String(PathData.BRANCHES[key].faction) != faction_id or (not sworn.is_empty() and String(key) != sworn):
+	for key in AscensionRules.branches_for(faction_id):  # CW-4: the Candlewake's sides too
+		if not sworn.is_empty() and String(key) != sworn:
 			continue
 		var r := AscensionRules.road_need(view, faction_id, String(key))
 		if not r.is_empty() and (road.is_empty() or int(r.need) < int(road.need)):

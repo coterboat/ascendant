@@ -57,7 +57,8 @@ func test_candlewake_armies_burn_at_their_start_flame_and_the_game_carries_marks
 		var other: String = seats[0] if seats[1] == WAKE else seats[1]
 		assert_eq(s.find_army("%s-1" % other).flame, -1, "the other faction keeps no flame")
 		var d := s.to_dict()
-		assert_eq(d.get("marks"), {}, "the game carries marks, none yet")
+		assert_eq(d.get("marks"), {s.find_faction(WAKE).capital: {"mark": {"faction": WAKE, "since_turn": int(MarkData.row(WAKE).capital)}}},
+			"the game carries marks: the capital's, from the start (CW-3)")
 		for a in d.armies:
 			assert_eq(a.has("flame"), String(a.owner) == WAKE, "%s saves a flame only if it is the Candlewake's" % a.id)
 		assert_true(WickRules.in_play(s) and MarkRules.in_play(s))
@@ -67,9 +68,10 @@ func test_flames_and_marks_save_and_load() -> void:
 	var s := _create([CROWN, WAKE], {"fog": true})
 	s.find_army("candlewake-1").flame = 3
 	var p := s.find_province("thornvale")
-	s.marks = {"thornvale": {"mark": {"faction": WAKE, "since_turn": 5}},
+	p.owner = WAKE  # CW-3: a mark stands on land its faction holds, from no later than this turn's end clock
+	s.marks = {"thornvale": {"mark": {"faction": WAKE, "since_turn": MarkRules.end_clock(s)}},
 		"rivermarch": {"scar": {"faction": WAKE, "stage": 2, "until_turn": 13}},
-		"stonegate": {"mark": {"faction": WAKE, "since_turn": 2}, "scar": {"faction": WAKE, "stage": 3, "until_turn": 9}}}
+		"stonegate": {"scar": {"faction": WAKE, "stage": 3, "until_turn": 9}}}
 	var errors := []
 	assert_true(s.validate(errors), "valid: %s" % [errors])
 	assert_true(p != null)
@@ -157,15 +159,17 @@ func test_the_wake_and_wick_steps_run_after_recruitment_and_before_income() -> v
 		assert_eq(GameSession.report_phases(s).slice(i, i + 4), ["recruitment", "wake", "wick", "income"])
 
 
-func test_the_steps_change_nothing_yet() -> void:
+func test_a_quiet_first_turn_keeps_a_harboured_flame_and_the_marks_and_says_nothing_of_them() -> void:
+	# CW-2 and CW-3 gave the steps their rules: an army idle in its capital (a harbour) keeps its flame, and on the first turn
+	# no mark grows, no cold wake forms and the dead don't rise yet.
 	var s := _create([CROWN, WAKE], {"independents": true})
 	s.find_army("candlewake-1").flame = 2
 	var result := TurnResolver.resolve(s, {}, 9, AutoBattleResolver.new())
 	var after: GameState = result.new_state
-	assert_eq(after.find_army("candlewake-1").flame, 2, "the Wick step changes no flame until CW-2")
-	assert_eq(after.marks, {}, "the wake step sets no mark until CW-3")
+	assert_eq(after.find_army("candlewake-1").flame, 2, "a harbour keeps the flame")
+	assert_eq(after.marks, s.marks, "the capital's mark, as it was")
 	for e in result.events:
-		assert_false(WickRules.EVENT_TYPES.has(String(e.type)) or MarkRules.EVENT_TYPES.has(String(e.type)), "no Wick or wake events yet")
+		assert_false(WickRules.EVENT_TYPES.has(String(e.type)) or MarkRules.EVENT_TYPES.has(String(e.type)), "no Wick or wake events")
 
 
 # --- fog (§2.4, §3.1) --------------------------------------------------------------------------------------
@@ -223,7 +227,8 @@ func test_a_flame_out_of_clear_sight_changes_nothing_a_rival_sees() -> void:
 
 func test_the_marks_are_public_in_every_view() -> void:
 	var s := _create([WAKE, CLANS], {"fog": true})
-	s.marks = {"wildmoor": {"mark": {"faction": WAKE, "since_turn": 3}}, "bloodfen": {"scar": {"faction": WAKE, "stage": 1, "until_turn": 6}}}
+	s.find_province("wildmoor").owner = WAKE
+	s.marks = {"wildmoor": {"mark": {"faction": WAKE, "since_turn": 1}}, "bloodfen": {"scar": {"faction": WAKE, "stage": 1, "until_turn": 6}}}
 	for viewer in [WAKE, CLANS]:
 		var view := FogRules.view_state(s, viewer)
 		assert_eq(view.marks, s.marks, "%s's view carries the marks whole" % viewer)
@@ -268,8 +273,8 @@ func test_the_marks_events_are_public_with_the_same_words() -> void:
 		assert_eq(theirs.size(), 1, "the rival sees %s too" % e.type)
 		assert_eq(String(theirs[0].text), String(e.text), "%s: the rival reads the same words" % e.type)
 		assert_true(bool(theirs[0].get("rebuilt", false)), "rebuilt from its public numbers")
-	assert_eq(MarkRules.stage_of(WAKE, 0), 1, "held 0: the first stage")
+	assert_eq(MarkRules.stage_of(null, WAKE, 0), 1, "held 0: the first stage")
 	for i in MarkData.stage_count(WAKE):
 		var threshold := int(MarkData.stage(WAKE, i + 1).held)
-		assert_eq(MarkRules.stage_of(WAKE, threshold), i + 1, "held %d reaches stage %d" % [threshold, i + 1])
-	assert_eq(MarkRules.stage_of(WAKE, -1), 0, "not yet held")
+		assert_eq(MarkRules.stage_of(null, WAKE, threshold), i + 1, "held %d reaches stage %d" % [threshold, i + 1])
+	assert_eq(MarkRules.stage_of(null, WAKE, -1), 0, "not yet held")

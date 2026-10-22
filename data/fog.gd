@@ -107,6 +107,7 @@ const AUDIENCE := {
 	"mark_stage": {"whole": "actor", "others": "rebuilt"},
 	"scar_formed": {"whole": "actor", "others": "rebuilt"},
 	"scar_consumed": {"whole": "actor", "others": "rebuilt"},
+	"risen": {"whole": "actor", "others": "none"},  # CW-3: the dead rise in their owner's report; a rival sees the army when it sees the land
 	# the end of the game: the fog lifts (§2.1)
 	"game_over": {"whole": "all", "others": "none"},
 }
@@ -138,7 +139,9 @@ const SAFE_NUMBERS := {
 
 ## The texts of rebuilt and synthetic events (§2.8). {placeholders} are filled from the event's safe numbers and
 ## the public names of the provinces, factions, nodes and unit types they name, never from the resolver's own text.
-## A template whose key ends in a suffix ("captured_capital") is a sentence added when its numbers say so.
+## A template whose key ends in a suffix ("captured_capital") is a sentence added when its numbers say so. A sentence
+## may open with a name written for running text ({faction} is "the Aurel Crown"): FogRules capitalises the first
+## letter of every sentence once a template is filled (#284).
 const TEXT := {
 	"captured": "{faction} captured {province}. It now pays them {income} gold per turn.",
 	"captured_lost": " {previous} lost it.",

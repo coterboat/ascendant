@@ -9,16 +9,19 @@ extends RefCounted
 ## the end clock E = current_turn + 1 (§2.2), turned into a stage by the row's thresholds (stage_of). A scar keeps the stage its
 ## mark had. Marks and scars are public, like terrain and owners (§3.1): every view carries them whole (FogRules).
 ##
-## CW-1 is the scaffold: the field, save and load, validation, the wake step's place in the turn (wake_step, after recruitment
-## and before the Wick step) and the event contracts below. The truth table of §3.3 (a mark when the Candlewake take a province,
-## a scar when they lose it, consuming it on a retake), harbours, the gold and the Risen are CW-3 (#254).
+## CW-1 was the scaffold: the field, save and load, validation, the wake step's place in the turn (wake_step, after recruitment
+## and before the Wick step) and the event contracts below. CW-3 (#254) gives the step its rules: the truth table of §3.3 (a mark
+## when a marking faction takes a province, a cold wake when it loses one, relit on a retake), the capitals' marks, harbours,
+## the gold, the Risen and their words.
 ##
-## Event contracts (CW-3 emits them; public: FogData.AUDIENCE rebuilds them for the other players):
+## Event contracts (the first three are public: FogData.AUDIENCE rebuilds them for the other players; the Risen are their owner's):
 ##   mark_stage     numbers {"province", "stage"}: a mark reached a new stage in the wake step. "Thornvale wakes: the Wake-Line."
 ##   scar_formed    numbers {"province", "stage", "until_turn"}: a marked province changed hands. "A cold wake forms at Rivermarch."
 ##   scar_consumed  numbers {"province", "stage"}: its faction retook a scarred province. "Rivermarch relights."
+##   risen          numbers {"province", "army", "unit", "count", "joined"}: the dead rose from Deep Wake (§3.6). "At Thornvale
+##                  the dead rose: one Wickwarden. They joined the Candlewake's 2nd."
 
-const EVENT_TYPES := ["mark_stage", "scar_formed", "scar_consumed"]
+const EVENT_TYPES := ["mark_stage", "scar_formed", "scar_consumed", "risen"]
 ## The phase the wake step runs in (TurnResolver.phases): after "recruitment", before "wick".
 const PHASE := "wake"
 ## The codex entry each event links (CW-3 writes it).
@@ -47,28 +50,327 @@ static func end_clock(state: GameState) -> int:
 	return state.current_turn + 1
 
 
-## The stage (1-based) of `faction_id`'s mark held for `held` turns: the last stage whose threshold it has reached, or 0 before
-## the first (a since_turn in the future).
-static func stage_of(faction_id: String, held: int) -> int:
+## The stage (1-based) of `faction_id`'s mark held for `held` turns in `state`: the last stage whose threshold (threshold: the
+## path can bring the Wake-Line sooner) it has reached, or 0 before the first (a since_turn in the future).
+static func stage_of(state: GameState, faction_id: String, held: int) -> int:
 	var out := 0
-	var stages: Array = MarkData.row(faction_id).get("stages", [])
-	for i in stages.size():
-		if held >= int(stages[i].held):
+	for i in MarkData.stage_count(faction_id):
+		if held >= threshold(state, faction_id, i + 1):
 			out = i + 1
 	return out
 
 
-## The wake step (§3.3): marks start, grow, scar and heal on the end clock, after recruitment and before the Wick step, so a
-## province that reaches the Wake-Line shelters armies in that turn's Wick step. CW-1 gives it its place in the turn; CW-3 gives
-## it its rules, so for now it changes nothing.
-static func wake_step(state: GameState, _events: Array) -> void:
+## The turns held a mark of `faction_id` needs to reach stage `stage_number` in `state` (CW-4, §6): the row's "held"; a stage
+## marked "sooner" (the Wake-Line) comes sooner by the faction's "wake_sooner" path effects (Sitting Up Early, Meadow Wake),
+## never before 1 turn held. Deep Wake stays put.
+static func threshold(state: GameState, faction_id: String, stage_number: int) -> int:
+	var st := MarkData.stage(faction_id, stage_number)
+	var held := int(st.get("held", 0))
+	if bool(st.get("sooner", false)):
+		held = maxi(1, held - AscensionRules.effect_int(state, faction_id, "wake_sooner"))
+	return held
+
+
+## What stage `stage_number` changes its province's income by for its own faction (§3.2, §6.2): the row's "gold", or Meadow
+## Wake's "wake_gold" in its place where the row's isn't 0 (the Oath of the Kept: +1 where it cost 1).
+static func stage_gold(state: GameState, faction_id: String, stage_number: int) -> int:
+	var gold := int(MarkData.stage(faction_id, stage_number).get("gold", 0))
+	var meadow := AscensionRules.effect_int(state, faction_id, "wake_gold")
+	return meadow if gold != 0 and meadow != 0 else gold
+
+
+## The name of the rule that turned the Wake's gold (Meadow Wake), or "".
+static func _gold_rule(state: GameState, faction_id: String) -> String:
+	for nid in AscensionRules.researched(state, faction_id):
+		if AscensionRules.node_effects(nid).has("wake_gold"):
+			return AscensionRules.economy_rule_name(nid)
+	return ""
+
+
+## Where and how often the dead rise for `faction_id` in `state` (§3.6, §6.2): the row's "risen" ({"unit", "every", "count"}) with
+## "stage", the first stage they rise from: the row's first "risen" stage, or the Long Sleep's (from the Wake-Line, every 3).
+## {} for a faction whose dead never rise.
+static func risen_rule(state: GameState, faction_id: String) -> Dictionary:
+	var row: Dictionary = MarkData.row(faction_id).get("risen", {})
+	if row.is_empty():
+		return {}
+	var out := row.duplicate()
+	out["stage"] = 0
+	for i in MarkData.stage_count(faction_id):
+		if bool(MarkData.stage(faction_id, i + 1).get("risen", false)):
+			out["stage"] = i + 1
+			break
+	var sleep := AscensionRules.effect_dict(state, faction_id, "risen")
+	if not sleep.is_empty():
+		out["stage"] = MarkData.stage_index(faction_id, String(sleep.get("from", "")))
+		out["every"] = int(sleep.get("every", out.every))
+	return out if int(out.stage) > 0 and int(out.get("every", 0)) > 0 else {}
+
+
+## A new game's marks (GameState._seat, CW-3): only each marking faction's capital, held since its row's "capital" end clock, so
+## it stands at the last stage from the start (§3.1: Deep Wake). The legacy constructors never seat, so a Crown–Clans game has none.
+static func seed_capitals(state: GameState) -> void:
+	state.marks = {}
+	for f in state.factions:
+		if has_marks(f.id) and state.find_province(f.capital) != null:
+			state.marks[f.capital] = {"mark": {"faction": f.id, "since_turn": int(MarkData.row(f.id).capital)}}
+
+
+## The stage of the mark at `province_id` on end clock `e` (0 with no mark there).
+static func stage_at(state: GameState, province_id: String, e: int) -> int:
+	var mark: Dictionary = Dictionary(state.marks.get(province_id, {})).get("mark", {})
+	return 0 if mark.is_empty() else stage_of(state, String(mark.faction), e - int(mark.since_turn))
+
+
+## The stage of the mark at `province_id` as the land looks now: the last wake step's (E - 1), what the board and the card show.
+## This turn's wake step may move it on (stage_at with end_clock: what the harbour, the gold and the forecasts read).
+static func stage_now(state: GameState, province_id: String) -> int:
+	return stage_at(state, province_id, end_clock(state) - 1)
+
+
+## The wake step (§3.3, CW-3): marks start, grow, scar and heal on the end clock E, after recruitment and before the Wick step,
+## so a province that reaches the Wake-Line shelters armies in that turn's Wick step and costs its gold in that turn's income.
+## `start` is the state at the start of the turn: a province whose owner differs between it and `state` changed hands this turn
+## (capture resolves once a turn, and every owner change of the turn, the capture phase's and Sworn Vassals', is done by now).
+## Each pass walks a sorted snapshot of province ids, so the order never depends on the dictionary's:
+##   1. every cold wake that has run its course (E >= until_turn) fades, before anyone can retake it;
+##   2. every province that changed hands: the old owner's mark becomes a cold wake at the stage it had at the last wake step
+##      (held E - 1 - since_turn), lasting scar_turns a stage; a new owner that marks its land relights its own cold wake there
+##      (the mark resumes at since_turn = E - that stage's threshold, so the stage returns at once) or starts a mark at E;
+##   3. every other mark that reached a new stage at E says so (mark_stage);
+##   4. the Risen (§3.6, _rise).
+static func wake_step(state: GameState, events: Array, start: GameState = null) -> void:
 	if not in_play(state):
 		return
+	var e := end_clock(state)
+	for pid in _sorted_ids(state.marks):
+		var entry: Dictionary = state.marks[pid]
+		if entry.has("scar") and e >= int(entry.scar.until_turn):
+			entry.erase("scar")
+			_store(state, pid, entry)
+	var fresh := {}  # province ids whose mark started or relit in this step: they say nothing more this turn
+	if start != null:
+		for p in TurnResolver._sorted_provinces(state):
+			var before := start.find_province(p.id)
+			if before == null or before.owner == p.owner:
+				continue
+			var entry: Dictionary = state.marks.get(p.id, {})
+			var mark: Dictionary = entry.get("mark", {})
+			if not mark.is_empty() and String(mark.faction) == before.owner:
+				var stage := maxi(1, stage_of(state, before.owner, e - 1 - int(mark.since_turn)))
+				var until := e + int(MarkData.row(before.owner).get("scar_turns", 0)) * stage
+				entry.erase("mark")
+				entry["scar"] = {"faction": before.owner, "stage": stage, "until_turn": until}
+				events.append(scar_event(state, before.owner, p.id, stage, until))
+			if has_marks(p.owner):
+				var scar: Dictionary = entry.get("scar", {})
+				if not scar.is_empty() and String(scar.faction) == p.owner:
+					entry.erase("scar")
+					entry["mark"] = {"faction": p.owner, "since_turn": e - threshold(state, p.owner, int(scar.stage))}
+					events.append(relit_event(state, p.owner, p.id, int(scar.stage)))
+				else:
+					entry["mark"] = {"faction": p.owner, "since_turn": e}
+				fresh[p.id] = true
+			_store(state, p.id, entry)
+	for pid in _sorted_ids(state.marks):
+		var mark: Dictionary = Dictionary(state.marks[pid]).get("mark", {})
+		if mark.is_empty() or fresh.has(pid):
+			continue
+		var fid := String(mark.faction)
+		var now := stage_of(state, fid, e - int(mark.since_turn))
+		if now > stage_of(state, fid, e - 1 - int(mark.since_turn)):
+			events.append(stage_event(state, fid, pid, now))
+	for pid in _sorted_ids(state.marks):
+		_rise(state, pid, e, events)
+
+
+static func _sorted_ids(marks: Dictionary) -> Array:
+	var out := marks.keys()
+	out.sort()
+	return out
+
+
+static func _store(state: GameState, province_id: String, entry: Dictionary) -> void:
+	if entry.is_empty():
+		state.marks.erase(province_id)
+	else:
+		state.marks[province_id] = entry
+
+
+## The Risen (§3.6): where the mark of `province_id`'s owner stands at a stage where the dead rise, the row's "risen" unit rises
+## every "every" turns past that stage's threshold (Deep Wake at 6, every 4: held 10, 14, 18; the capital, held since -6, at
+## the ends of turns 3, 7, 11). They join the lowest-numbered regular army of the owner there, at its flame (they rose in the
+## wax: no cooling), or form a new army there lit at the start flame (2 with Kindling), which the Wick step counts as raised
+## this turn. A trickle, never their recruitment.
+static func _rise(state: GameState, province_id: String, e: int, events: Array) -> void:
+	var mark: Dictionary = Dictionary(state.marks[province_id]).get("mark", {})
+	var p := state.find_province(province_id)
+	if mark.is_empty() or p == null or p.owner != String(mark.faction):
+		return
+	var fid := String(mark.faction)
+	var risen := risen_rule(state, fid)
+	if risen.is_empty():
+		return
+	var every := int(risen.every)
+	var past := e - int(mark.since_turn) - threshold(state, fid, int(risen.stage))
+	if past < every or past % every != 0:
+		return
+	var ut := TurnResolver.recruitable_type(state.find_faction(fid), String(risen.get("unit", "")))
+	var count := int(risen.get("count", 1))
+	if ut == null or count <= 0:
+		return
+	var joins := state.armies.filter(func(a): return a.owner == fid and a.location == province_id and WickRules.carries_flame(a))
+	var raised := WickRules.raise(state, fid, ut, count, province_id, joins)
+	events.append(risen_event(state, fid, province_id, raised.army, ut.id, count, bool(raised.joined)))
+
+
+# --- gold and the words (§3.2, §3.4) ---------------------------------------------------------------------
+
+## The key of the Wake's income part (RulerRules.province_income_parts, Breakdown).
+const INCOME_KEY := "wake"
+
+
+## The Wake's income part for province `p` (RulerRules.province_income_parts, before the floor and a siege's cut-off): its owner's
+## own mark at this turn's stage (end_clock: the stage this turn's income is paid at) changes what it pays by that stage's
+## "gold". [] for unmarked land, another faction's mark, or a stage that costs nothing.
+static func income_parts(state: GameState, p: Province) -> Array:
+	if not in_play(state) or p == null:
+		return []
+	var mark: Dictionary = Dictionary(state.marks.get(p.id, {})).get("mark", {})
+	if mark.is_empty() or String(mark.faction) != p.owner:
+		return []
+	var stage := stage_at(state, p.id, end_clock(state))
+	var gold := stage_gold(state, p.owner, stage)
+	if gold == 0:
+		return []
+	var rule := _gold_rule(state, p.owner) if gold > 0 else ""  # CW-4: Meadow Wake pays
+	return [{"key": INCOME_KEY, "name": rule if not rule.is_empty() else RulerRules._cap(stage_name(p.owner, stage)), "value": gold,
+		"note": ("%s: the Wake pays" % rule) if not rule.is_empty() else "the Wake: the living sit up all night"}]
+
+
+## The one-sentence rule behind the Wake's income part (Breakdown._modifier_rule), from MarkData's rows.
+static func income_rule() -> String:
+	for fid in MarkData.ROWS:
+		var paying := []
+		var gold := 0
+		for st in MarkData.ROWS[fid].stages:
+			if int(st.gold) != 0:
+				paying.append("at %s" % String(st.name))
+				gold = int(st.gold)
+		if not paying.is_empty():
+			return "The Wake: a %s province %s pays its owner %d gold less; the living sit up all night." % [
+				FactionData.row(fid).name, " or ".join(paying), -gold]
+	return ""
+
+
+## The province card's lines (§3.4) for `province_id`, as the land looks now (stage_now): the mark's stage, how long it has been
+## held, what the stage does and when the next one comes; where the dead rise, when the next one will; a cold wake's stage, when
+## it fades and that it relights. [] where nothing marks the land. Every number comes from MarkData's row:
+##   "The Wake-Line (held 4 turns): Candlewake armies keep their flame here. The living sit up all night: -1 gold. Deep Wake in 2 turns."
+##   "Deep Wake: the dead rise here. Next Wickwarden in 3 turns."
+##   "A cold wake. The Candlewake held it to the Wake-Line; it fades in 3 turns. Their armies still find harbour here, and if
+##    they retake it, it relights at once."
+## A "turn" here counts this one: a stage due "in 2 turns" comes at the end of the next turn.
+static func province_text(state: GameState, province_id: String) -> Array:
+	var out := []
+	var entry: Dictionary = state.marks.get(province_id, {})
+	var e := end_clock(state)
+	var mark: Dictionary = entry.get("mark", {})
+	if not mark.is_empty():
+		var fid := String(mark.faction)
+		var held := e - 1 - int(mark.since_turn)
+		var stage := maxi(1, stage_of(state, fid, held))
+		var row := MarkData.stage(fid, stage)
+		var who := String(FactionData.row(fid).name)
+		var gold := stage_gold(state, fid, stage)
+		var line := "%s (held %s):" % [RulerRules._cap(String(row.name)), _turns(held)]
+		if bool(row.get("harbour", false)):
+			line += " %s armies keep their flame here." % who
+		if gold < 0:
+			line += " The living sit up all night: %d gold." % gold
+		elif gold > 0:
+			line += " %s: +%d gold." % [_gold_rule(state, fid), gold]  # CW-4: Meadow Wake
+		if not bool(row.get("harbour", false)) and gold == 0:
+			line += " A lilac flame in every window."
+		if stage < MarkData.stage_count(fid):
+			line += " %s in %s." % [RulerRules._cap(stage_name(fid, stage + 1)), _turns(threshold(state, fid, stage + 1) - held)]
+		out.append(line)
+		var risen := risen_rule(state, fid)
+		var ut := TurnResolver.recruitable_type(state.find_faction(fid), String(risen.get("unit", "")))
+		if not risen.is_empty() and stage >= int(risen.stage) and ut != null:
+			var every := int(risen.every)
+			var past := held + 1 - threshold(state, fid, int(risen.stage))  # past the threshold at this turn's end
+			var due := maxi(every, ceili(float(past) / every) * every)
+			out.append("%s: the dead rise here. Next %s in %s." % [RulerRules._cap(String(row.name)), _one_name(String(ut.name)),
+				_turns(due - past + 1)])
+	var scar: Dictionary = entry.get("scar", {})
+	if not scar.is_empty():
+		var fid := String(scar.faction)
+		out.append("A cold wake. The %s held it to %s; it fades in %s. Their armies still find harbour here, and if they retake it, it relights at once." % [
+			FactionData.row(fid).name, stage_name(fid, int(scar.stage)), _turns(int(scar.until_turn) - e)])
+	return out
+
+
+static func _turns(n: int) -> String:
+	return "1 turn" if n == 1 else "%d turns" % n
+
+
+# --- CW-12 (#263, design/CANDLEWAKE.md §4.5): units poured in the mark, the candlebeasts ------------------------------------
+
+## Whether unit type `ut` is poured in its faction's own mark (UnitType.mark_stage: the candlebeasts' Deep Wake).
+static func is_poured(ut: UnitType) -> bool:
+	return ut != null and not ut.mark_stage.is_empty()
+
+
+## "" when `faction_id` may recruit `ut` at `province_id` now (§4.5): a unit with no mark stage anywhere it may otherwise recruit,
+## a poured one only in a province of its own where its own mark stands at the unit's stage or deeper as the land looks now
+## (stage_now, the last wake step's, which the card shows: the recruitment phase reads the same, as the wake step comes after it).
+## Otherwise the reason, in the row's words: "Candlebeasts are poured only where the Wake runs deep. Thornvale is on the
+## Wake-Line: Deep Wake in 3 turns."
+static func pour_reason(state: GameState, faction_id: String, ut: UnitType, province_id: String) -> String:
+	if not is_poured(ut):
+		return ""
+	var need := MarkData.stage_index(faction_id, ut.mark_stage)
+	var words: Dictionary = MarkData.row(faction_id).get("poured", {})
+	var head := "%s are poured only %s." % [String(words.get("many", ut.name)), String(words.get("where", "in their own mark"))]
+	var p := state.find_province(province_id)
+	if p == null or need <= 0:
+		return head
+	var entry: Dictionary = state.marks.get(province_id, {})
+	var mark: Dictionary = entry.get("mark", {})
+	var scar: Dictionary = entry.get("scar", {})
+	if p.owner == faction_id and String(scar.get("faction", "")) == faction_id:
+		return "%s %s is a cold wake of yours: it relights at the end of this turn." % [head, p.name]  # retaken this turn
+	if p.owner != faction_id or mark.is_empty() or String(mark.faction) != faction_id:
+		return "%s %s %s." % [head, p.name, String(words.get("unmarked", "is not marked"))]
+	var stage := stage_now(state, province_id)
+	if stage >= need:
+		return ""
+	var held := end_clock(state) - 1 - int(mark.since_turn)
+	return "%s %s %s: %s in %s." % [head, p.name, String(MarkData.stage(faction_id, maxi(1, stage)).get("at", "is marked")),
+		RulerRules._cap(stage_name(faction_id, need)), _turns(maxi(1, threshold(state, faction_id, need) - held))]
+
+
+## The family line of a poured unit's tooltip (§4.5): "A candlebeast: poured in Deep Wake." "" for any other unit. The faction is
+## the one whose roster row (FactionData, the preview's too) holds the type.
+static func family_line(ut: UnitType) -> String:
+	if not is_poured(ut):
+		return ""
+	var faction_id := ""
+	for row in FactionData.rows():
+		if Array(row.unit_types).any(func(u): return String(u.id) == ut.id):
+			faction_id = String(row.id)
+	var words: Dictionary = MarkData.row(faction_id).get("poured", {})
+	var one := String(words.get("one", ""))
+	if one.is_empty():
+		return ""
+	return "%s %s: poured in %s." % ["An" if "aeiou".contains(one.left(1)) else "A", one,
+		stage_name(faction_id, MarkData.stage_index(faction_id, ut.mark_stage))]
 
 
 ## Whether a mark or a scar of `faction_id` makes `province_id` a harbour for its armies (§2.2, §3.3): its own mark there, in a
-## province it owns, at a stage that shelters (the Wake-Line and Deep Wake), or a cold wake of its own while it lasts. Marks are
-## set by the wake step (CW-3), so until then nothing here is a harbour.
+## province it owns, at a stage that shelters (the Wake-Line and Deep Wake), or a cold wake of its own while it lasts. Read on the
+## end clock, so in a turn's orders it already says what this turn's Wick step will find (the forecasts read it).
 static func harbour(state: GameState, faction_id: String, province_id: String) -> bool:
 	var entry: Dictionary = state.marks.get(province_id, {})
 	if entry.is_empty():
@@ -76,7 +378,7 @@ static func harbour(state: GameState, faction_id: String, province_id: String) -
 	var mark: Dictionary = entry.get("mark", {})
 	var p := state.find_province(province_id)
 	if not mark.is_empty() and String(mark.faction) == faction_id and p != null and p.owner == faction_id:
-		var stage := stage_of(faction_id, end_clock(state) - int(mark.since_turn))
+		var stage := stage_of(state, faction_id, end_clock(state) - int(mark.since_turn))
 		if bool(MarkData.stage(faction_id, stage).get("harbour", false)):
 			return true
 	var scar: Dictionary = entry.get("scar", {})
@@ -138,9 +440,41 @@ static func validate(state: GameState, errors = null) -> bool:
 			if not ["mark", "scar"].has(String(key)):
 				_report(errors, "%s hold '%s', but a province holds only a mark and a scar." % [where, key])
 				ok = false
+		var good := {}
 		for part in ["mark", "scar"]:
-			if entry.has(part) and not _part_ok(state, entry[part], part, where, errors):
-				ok = false
+			if entry.has(part):
+				if _part_ok(state, entry[part], part, where, errors):
+					good[part] = entry[part]
+				else:
+					ok = false
+		if not _wake_ok(state, String(pid), good, where, errors):
+			ok = false
+	return ok
+
+
+## What the wake step keeps true (CW-3, §3.3): a mark stands on land its faction holds and began no later than this turn's end
+## clock; a cold wake still has a turn to run (until_turn >= E: one that runs out at E fades in this turn's wake step); and a
+## province never holds a mark and a cold wake of one faction, since retaking a cold wake relights it.
+static func _wake_ok(state: GameState, province_id: String, parts: Dictionary, where: String, errors) -> bool:
+	var ok := true
+	var e := end_clock(state)
+	if parts.has("mark"):
+		var m: Dictionary = parts.mark
+		var who := TurnResolver._faction_name(state, String(m.faction))
+		if state.find_province(province_id).owner != String(m.faction):
+			_report(errors, "%s are a mark of %s, but %s doesn't hold that land." % [where, who, who])
+			ok = false
+		if int(m.since_turn) > e:
+			_report(errors, "%s are a mark from turn %d, still to come (this turn ends at %d)." % [where, int(m.since_turn), e])
+			ok = false
+	if parts.has("scar") and int(parts.scar.until_turn) < e:
+		_report(errors, "%s are a cold wake that has already faded (it lasted until turn %d; this turn ends at %d)." % [where,
+			int(parts.scar.until_turn), e])
+		ok = false
+	if parts.has("mark") and parts.has("scar") and String(parts.mark.faction) == String(parts.scar.faction):
+		_report(errors, "%s are both a mark and a cold wake of %s, but retaking a cold wake relights it." % [where,
+			TurnResolver._faction_name(state, String(parts.mark.faction))])
+		ok = false
 	return ok
 
 
@@ -192,6 +526,15 @@ static func relit_event(state: GameState, faction_id: String, province_id: Strin
 	return _mark_event(state, "scar_consumed", faction_id, province_id, {"province": province_id, "stage": stage})
 
 
+## A risen event: the dead rose at `province_id` as `count` of `unit_id` and joined `army` (`joined`) or formed it (§3.6).
+static func risen_event(state: GameState, faction_id: String, province_id: String, army: Army, unit_id: String, count: int,
+		joined: bool) -> Dictionary:
+	var e := _mark_event(state, "risen", faction_id, province_id, {"province": province_id, "army": army.id, "unit": unit_id,
+		"count": count, "joined": joined})
+	e["armies"] = [army.id]
+	return e
+
+
 static func _mark_event(state: GameState, type: String, faction_id: String, province_id: String, numbers: Dictionary) -> Dictionary:
 	var e := {"type": type, "phase": PHASE, "provinces": [province_id], "factions": [faction_id], "armies": [],
 		"numbers": numbers, "codex": CODEX}
@@ -211,7 +554,21 @@ static func event_sentence(state: GameState, e: Dictionary) -> String:
 			return "A cold wake forms at %s." % where
 		"scar_consumed":
 			return "%s relights." % RulerRules._cap(where)
+		"risen":
+			var ut := TurnResolver.recruitable_type(state.find_faction(fid), String(n.get("unit", "")))
+			var name := String(ut.name) if ut != null else String(n.get("unit", ""))
+			var count := int(n.get("count", 0))
+			var army := TurnReportText.army_name(state, String(n.get("army", "")), fid)
+			var tail := ("They joined %s." % army) if bool(n.get("joined", false)) else ("They form a new army: %s, at %s." % [army,
+				WickRules.start_words(state, fid)])
+			return "At %s the dead rose: %s %s. %s" % [where, MusterRules.count_word(count),
+				_one_name(name) if count == 1 else TurnReportText._plural_name(name), tail]
 	return String(e.get("text", ""))
+
+
+## One of a unit named for its company ("Wickwardens"): "Wickwarden".
+static func _one_name(name: String) -> String:
+	return name.left(-1) if name.ends_with("s") and not name.ends_with("ss") else name
 
 
 ## The name of stage `stage` of `faction_id`'s mark as players read it ("the Wake-Line"), or "".

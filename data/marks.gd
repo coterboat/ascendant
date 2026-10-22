@@ -7,21 +7,33 @@ class_name MarkData
 ## A row:
 ##   "stages"      in order, stage 1 first: {"id", "name" (as players read it), "held" (the turns held it takes: held =
 ##                 E - since_turn, on the end clock E = current_turn + 1), "harbour" (a Wick army ending a turn there keeps
-##                 its flame), "gold" (the change to the province's income), "risen" (the dead rise there, §3.6)}
+##                 its flame), "gold" (the change to the province's income), "risen" (the dead rise there, §3.6), "sooner"
+##                 (CW-4: a path's "wake_sooner" brings this stage that many turns sooner, never before 1 turn held), "at" (CW-12:
+##                 a province there, in words: "is on the Wake-Line")}
 ##   "scar_turns"  a lost mark lingers as a scar this many turns for each stage it had (§3.3)
 ##   "capital"     a capital counts as held since this end clock, so it stands at the last stage from the start
-## CW-1 ships the shape and the numbers; the wake step that reads them (stages, scars, harbours, gold, the Risen) is CW-3
-## (#254). Every number is a starting point that CW-11 (#262) tunes.
+##   "poured"      CW-12: the words for the units poured in the mark (a roster row's "requires_mark_stage"): "one" and "many" (the
+##                 family), "where" (the stage it needs, said as a place), "unmarked" (a province without the faction's mark) and
+##                 "codex" (its page)
+##   "risen"       the dead rise (§3.6) where the mark stands at a stage whose "risen" is true: "count" of the roster's "unit"
+##                 every "every" turns past that stage's threshold (held = threshold + every, threshold + 2 × every, ...)
+## CW-1 shipped the shape and the numbers, and CW-3 (#254) the wake step that reads them (MarkRules: stages, scars, harbours,
+## gold, the Risen). Every number is a starting point that CW-11 (#262) tunes.
 
 const ROWS := {
 	"candlewake": {
 		"stages": [
-			{"id": "sitting_up", "name": "Sitting Up", "held": 0, "harbour": false, "gold": 0, "risen": false},
-			{"id": "wake_line", "name": "the Wake-Line", "held": 3, "harbour": true, "gold": -1, "risen": false},
-			{"id": "deep_wake", "name": "Deep Wake", "held": 6, "harbour": true, "gold": -1, "risen": true},
+			{"id": "sitting_up", "name": "Sitting Up", "held": 0, "harbour": false, "gold": 0, "risen": false, "at": "is only Sitting Up"},
+			{"id": "wake_line", "name": "the Wake-Line", "held": 3, "harbour": true, "gold": -1, "risen": false, "sooner": true,
+				"at": "is on the Wake-Line"},
+			{"id": "deep_wake", "name": "Deep Wake", "held": 6, "harbour": true, "gold": -1, "risen": true, "at": "is in Deep Wake"},
 		],
 		"scar_turns": 2,
 		"capital": -6,
+		"risen": {"unit": "wickwardens", "every": 4, "count": 1},
+		# CW-12 (#263, §4.5): the family of units poured in the mark (a unit row's "requires_mark_stage"), in words.
+		"poured": {"one": "candlebeast", "many": "Candlebeasts", "where": "where the Wake runs deep", "codex": "candlebeasts",
+			"unmarked": "bears no Wake of yours"},
 	},
 }
 
@@ -34,6 +46,24 @@ static func row(faction_id: String) -> Dictionary:
 ## How many stages `faction_id`'s mark has (0 without a row).
 static func stage_count(faction_id: String) -> int:
 	return Array(row(faction_id).get("stages", [])).size()
+
+
+## The turns a mark of `faction_id` is held before the dead rise there: the threshold of its first stage whose "risen" is true,
+## or -1 when they never do.
+static func risen_threshold(faction_id: String) -> int:
+	for st in row(faction_id).get("stages", []):
+		if bool(st.get("risen", false)):
+			return int(st.held)
+	return -1
+
+
+## The 1-based number of `faction_id`'s stage `stage_id` ("wake_line": 2), or 0.
+static func stage_index(faction_id: String, stage_id: String) -> int:
+	var stages: Array = row(faction_id).get("stages", [])
+	for i in stages.size():
+		if String(stages[i].id) == stage_id:
+			return i + 1
+	return 0
 
 
 ## Stage `stage` (1-based) of `faction_id`'s mark, or {}.

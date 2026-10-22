@@ -211,6 +211,7 @@ func _add_facts(p: Province) -> void:
 	if FogView.active(state):
 		_add_vision_line(p)  # M5-2: in clear sight, glimpsed or out of sight, and why
 	_add_enchantment_lines(p)  # M5-6: wards, curses and Far Sight on it
+	_add_wake_lines(p)  # CW-3: the Wake on it
 
 
 ## M3c S-3: "Fort: Keep" (linked to the level's own entry), then the fort section (FortPanel) in a frame: its summary (the walls,
@@ -268,6 +269,16 @@ func _add_enchantment_lines(p: Province) -> void:
 			UiPalette.GILT)
 		line.name = "Enchantment_%s" % String(e.ritual).validate_node_name()
 		CodexLink.attach(line, MagicRules.spell_codex(String(e.ritual)), map.request_codex)
+
+
+## CW-3 (#254, design/CANDLEWAKE.md §3.4): the marks on a province, in MarkRules' words: its stage and what it does, when the
+## next one comes and when the dead rise, or a cold wake fading. Public, like owners and terrain; none on unmarked land.
+func _add_wake_lines(p: Province) -> void:
+	var lines := MarkRules.province_text(state, p.id)
+	for i in lines.size():
+		var line := add_text(String(lines[i]), TooltipText.plain("The Wake", RulesCodex.text(MarkRules.CODEX)), UiPalette.TEXT_SECONDARY)
+		line.name = "Wake_%d" % i
+		CodexLink.attach(line, MarkRules.CODEX, map.request_codex)
 
 
 # --- the armies here ---------------------------------------------------------------------------------

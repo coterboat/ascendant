@@ -78,6 +78,8 @@ static func _modifier_rule(key: String) -> String:
 			return "Forge Tithe: every province with a fort you own earns more gold."
 		RulerRules.CUT_OFF:  # M3c
 			return "Cut off: while a real army besieges a fort, from the siege's second turn, it pays its owner nothing and its base income goes to the besiegers."
+		MarkRules.INCOME_KEY:  # CW-3
+			return MarkRules.income_rule()
 	if key.begins_with(AscensionRules.PART_PREFIX):
 		return AscensionRules.part_rule(key)  # M4: Market Charters, Tithe of Light, Deep Mines, Bounty of the Wild
 	return ""
@@ -143,11 +145,13 @@ static func unit_count(state: GameState, army_id: String, unit_type_name: String
 ## Plain description of a unit type's stats, using the UnitType describe() strings. `price` is what its
 ## faction pays for one, as RulerRules.price_text gives it ("16 gold (20 - Muster Grounds 4)"); without
 ## it, the type's own cost.
+## CW-12: a candlebeast's family line comes before its trait ("A candlebeast: poured in Deep Wake.", MarkRules.family_line).
 static func unit_type_description(ut: UnitType, price: String = "") -> String:
-	return "%s: hit points %d (%s) Attack %d (%s) Defense %d (%s) Morale %d (%s) Recruit cost %s. Trait %s: %s" % [
+	var family := MarkRules.family_line(ut)
+	return "%s: hit points %d (%s) Attack %d (%s) Defense %d (%s) Morale %d (%s) Recruit cost %s. %sTrait %s: %s" % [
 		ut.name, ut.hp, UnitType.describe("hp"), ut.attack, UnitType.describe("attack"),
 		ut.defense, UnitType.describe("defense"), ut.morale, UnitType.describe("morale"),
-		price if not price.is_empty() else "%d gold" % ut.cost, ut.trait_id, ut.get_trait_desc()]
+		price if not price.is_empty() else "%d gold" % ut.cost, family + " " if not family.is_empty() else "", ut.trait_id, ut.get_trait_desc()]
 
 
 ## The turn being ordered, 1-based like every turn number players see (GameSession.turn_number()):
@@ -384,7 +388,7 @@ static func research_rate(state: GameState, faction_id: String) -> Dictionary:
 	var rate := AscensionRules.research_rate(state, faction_id)
 	var lines := []
 	for part in rate.parts:
-		lines.append(_line(String(part.name), int(part.value), String(part.note)))
+		lines.append(_line(RulerRules._cap(String(part.name)), int(part.value), String(part.note)))  # a capital named "the ..." heads its line
 	var desc := RulesCodex.text("research_points")
 	return _coded(_make("Research per turn of the %s" % f.faction_name, desc, lines, "Research per turn", int(rate.rate)),
 		"research_points")
@@ -450,7 +454,8 @@ static func spell_number(state: GameState, faction_id: String, spell_id: String,
 		if per.has(key):
 			field = key
 	var words := {"value": "damage" if String(sp.get("kind", "")) == "bolt" else ("hit points a turn" if not bool(sp.get("battle", false)) else "part"),
-		"count": "units" if bool(sp.get("battle", false)) else "most wolves", "duration": "turns after the cast turn"}
+		"count": "units" if bool(sp.get("battle", false)) else "most %s" % String(MagicRules.pack_words(spell_id).get("many", "wolves")),  # CW-5
+		"duration": "turns after the cast turn"}
 	var base := int(MagicRules.spell_numbers(spell_id, 0, forest)[field])
 	var now := int(MagicRules.spell_numbers(spell_id, bonus, forest)[field])
 	var lines := [_line("%s base" % MagicRules.spell_name(spell_id), base, String(words[field]))]

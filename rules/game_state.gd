@@ -241,7 +241,7 @@ static func system_problems(faction_id: String, flags: Dictionary, builds: Dicti
 	var name := "The %s" % String(FactionData.row(faction_id).get("name", faction_id))
 	var rulers := not RulerRules.rulers_for(faction_id).is_empty()
 	var paths := rulers and not AscensionRules.path_data(faction_id).is_empty()
-	var magic := paths and MagicRules.mage_type(faction_id) != null
+	var magic := paths and MagicRules.mage_type(faction_id) != null  # CW-5: the Candlewake's mage is in MagicData.PREVIEW_MAGES
 	if on.magic and not magic:
 		return ["%s can't play with magic yet: their magic isn't ready. Play them without Magic." % name]
 	if on.paths and not paths:
@@ -292,7 +292,10 @@ func _seat(faction_ids: Array, errors = null) -> bool:
 		var cap := find_province(f.capital)
 		if cap != null and not shown.is_empty():
 			cap.name = shown
-	return place_starting_armies(errors) and validate(errors)
+	if not place_starting_armies(errors):
+		return false
+	MarkRules.seed_capitals(self)  # CW-3: a marking faction's capital stands at its last stage from the start
+	return validate(errors)
 
 ## The M1 starting state plus a ruler for every faction (design/M2_RULER.md §1.5). `builds` maps a
 ## faction id to its build, {"ruler": ruler id, "mandates": [mandate ids]}, or to a preset id

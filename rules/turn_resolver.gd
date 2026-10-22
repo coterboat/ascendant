@@ -161,7 +161,7 @@ static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: 
 	_sieges_phase(s, battle_sites, events)  # M3c: games with sieges only
 	_capture(s, battle_sites, events)
 	_recruitment(s, recruits, events, state)  # Warband Muster gathers where the ruler started the turn
-	MarkRules.wake_step(s, events)  # CW-1: games where a faction marks its land only; CW-3 gives it its rules
+	MarkRules.wake_step(s, events, state)  # CW-1, CW-3: games where a faction marks its land only
 	WickRules.wick_step(s, events, state)  # CW-1, CW-2: games where a faction keeps a flame only
 	_income(s, events)
 	_research_phase(s, events)  # M4: games with paths only
@@ -328,6 +328,13 @@ static func check_recruit(state: GameState, faction_id: String, order, gold_avai
 			var fort := SiegeRules.check_recruit_at(state, faction_id, faction.capital, ut, at_count, start_state)
 			if not fort.is_empty():
 				return fort
+	if MarkRules.is_poured(ut):  # CW-12 (design/CANDLEWAKE.md §4.5): poured only where its own mark runs deep enough
+		var place := faction.capital if at.is_empty() else at
+		if at == RecruitOrder.AT_RULER:
+			place = muster_province(start_state if start_state != null else state, faction_id)
+		var poured := MarkRules.pour_reason(state, faction_id, ut, place)
+		if not poured.is_empty():
+			return _reject("needs_mark_stage", poured)
 	var price := RulerRules.recruit_price(state, faction_id, ut)
 	if price > gold_available:
 		return _reject("not_enough_gold", "%s cost %d gold, but you only have %d gold left." % [ut.name, price, gold_available])
@@ -1317,8 +1324,8 @@ static func _rulers_phase(s: GameState, events: Array) -> void:
 
 # --- the rituals and enchantments phases (M5-6, #117; design/M5_MAGIC_FOG.md §6.3, §9) ---------------------
 # Games with magic only. The rituals phase comes after orders and before movement: every cast order that passed its
-# checks is cast in MagicRules.ritual_queue's order (kinds: wards, curses, blessings, summons, raisings, global, sight;
-# then faction id; then the order given), each through MagicRules.ritual_effect, which re-checks it, pays it and applies
+# checks is cast in MagicRules.ritual_queue's order (kinds: wards, curses, blessings, CW-5's flame, summons, raisings, global,
+# sight; then faction id; then the order given), each through MagicRules.ritual_effect, which re-checks it, pays it and applies
 # it. Spells and rituals never draw from the RNG. Events (codex in brackets; FogData.AUDIENCE says who reads each under
 # fog, by default only its first faction):
 #   ritual_cast          the ritual was paid and took effect: who, from where, the price and what it does [spell_<id>]
@@ -1362,7 +1369,10 @@ static func _rituals_phase(s: GameState, casts: Dictionary, events: Array) -> vo
 					_blood_event(s, fid, fx, from, events)
 				continue
 		var where := [from] if target.is_empty() or target[0] == from else [from, target[0]]
-		events.append(_event("ritual_cast", "rituals", where, [fid], [order.army_id], "cast_order", numbers, MagicRules.cast_text(s, fx), codex))
+		var cast_by := [order.army_id]
+		if fx.has("kindled") and String(fx.kindled.army) != order.army_id:
+			cast_by.append(String(fx.kindled.army))  # CW-5: the army Kindle warmed
+		events.append(_event("ritual_cast", "rituals", where, [fid], cast_by, "cast_order", numbers, MagicRules.cast_text(s, fx), codex))
 		if int(fx.hp) > 0:
 			_blood_event(s, fid, fx, from, events)
 		if not String(fx.enchantment).is_empty():
@@ -1387,7 +1397,8 @@ static func _rituals_phase(s: GameState, casts: Dictionary, events: Array) -> vo
 				{"province": fx.target, "of": fx.read, "blocked": not String(fx.blocked).is_empty(), "blocked_by": fx.blocked,
 					"reading": Dictionary(fx.reading).duplicate(true)}, MagicRules.reading_text(s, fx), "spell_far_sight"))
 		var owner := s.find_province(order.target).owner if s.find_province(order.target) != null else ""
-		if not owner.is_empty() and owner != fid and s.find_faction(owner) != null:
+		# CW-5: Kindle lands on the caster's own army, not on the land, so the land's owner is told nothing new
+		if not owner.is_empty() and owner != fid and s.find_faction(owner) != null and String(fx.kind) != "flame":
 			events.append(_event("ritual_fell", "rituals", target, [owner, fid], [], String(fx.kind),
 				{"ritual": fx.ritual, "faction": fid, "province": fx.target, "until_turn": fx.until_turn,
 					"budget": int(MagicRules.spell_numbers(order.ritual, int(fx.bonus)).value), "read": fx.read == owner,

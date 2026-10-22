@@ -252,6 +252,60 @@ func test_research_rate_is_the_capital_plus_one_per_other_province() -> void:
 	assert_eq(AscensionRules.research_rate(GameState.with_rulers(7), CROWN).rate, 0, "no research without paths")
 
 
+## #281 (QA-1): while only the capital pays research (every game's first turns), its words name the capital alone, "Crownkeep 5",
+## never "Crownkeep 5, 0 other provinces 0", a pair of zeros that read like a typo. The list names the other provinces again as
+## soon as one pays.
+func test_with_no_other_province_the_rate_names_the_capital_alone() -> void:
+	var s := _game()
+	var capital := int(PathData.RESEARCH.capital)
+	var per := int(PathData.RESEARCH.province)
+	for fid in [CROWN, CLANS]:
+		var cap := s.find_province(s.find_faction(fid).capital).name
+		var r := AscensionRules.research_rate(s, fid)
+		assert_eq(int(r.others), 0, "%s holds only its capital at the start" % fid)
+		assert_eq(String(r.short), "%s %d" % [cap, capital])
+		assert_eq(String(r.text), "Research %d a turn: %s %d (your capital)" % [capital, cap, capital])
+		assert_eq(String(r.gained_short), "%s %d, 0 other provinces 0" % [cap, capital], "the record's list keeps both parts")
+		_give(s, fid, [_home(fid)[0]])
+		r = AscensionRules.research_rate(s, fid)
+		assert_eq(String(r.short), "%s %d, 1 other province %d" % [cap, capital, per], "one more province is named again")
+		assert_eq(String(r.text), "Research %d a turn: %s %d (your capital) and %d from 1 other province" % [capital + per, cap, capital, per])
+	# The forecast a player reads before choosing (the research panel's Researching line, the needs-you card) says it the same way.
+	var fresh := _game()
+	var crownkeep := fresh.find_province(fresh.find_faction(CROWN).capital).name
+	var fc := Forecast.research(fresh, CROWN)
+	assert_true(String(fc.text).contains("you gain %d a turn (%s %d)." % [capital, crownkeep, capital]), fc.text)
+	AscensionRules.set_target(fresh, CROWN, _kind(CROWN, PathData.TIER1)[0])
+	fc = Forecast.research(fresh, CROWN)
+	assert_true(String(fc.text).contains("You gain %d a turn (%s %d)" % [capital, crownkeep, capital]), fc.text)
+	assert_false(String(fc.text).contains("0 other provinces"), fc.text)
+
+
+## #281: the turn report's Research line, read on turn 2 after a turn with no captures: "The Aurel Crown gained 5 research (Crownkeep
+## 5)." The event's own text, which every recorded game's digest has, still lists both parts.
+func test_the_report_says_research_came_from_the_capital_alone() -> void:
+	var s := _game()
+	var r := _resolve(s)
+	var after: GameState = r.new_state
+	for fid in [CROWN, CLANS]:
+		var gained := _events(r.events, "research_gained", fid)
+		assert_eq(gained.size(), 1, "one research_gained for %s" % fid)
+		var f := after.find_faction(fid)
+		var cap := after.find_province(f.capital).name
+		var capital := int(PathData.RESEARCH.capital)
+		var line := TurnReportText.line(gained[0], r.events, after, fid)
+		assert_eq(line, "The %s gained %d research (%s %d)." % [f.faction_name, capital, cap, capital])
+		assert_eq(String(gained[0].text), "The %s gained %d research (%s %d, 0 other provinces 0)." % [f.faction_name, capital, cap, capital],
+			"the record keeps its words")
+	# With another province it lists both, as the record does.
+	var s2 := _game()
+	_give(s2, CROWN, [_home(CROWN)[0]])
+	var r2 := _resolve(s2)
+	var e2: Dictionary = _events(r2.events, "research_gained", CROWN)[0]
+	assert_eq(TurnReportText.line(e2, r2.events, r2.new_state, CROWN), String(e2.text), "a list with a province that pays is the record's")
+	assert_true(String(e2.text).contains(", 1 other province %d)." % int(PathData.RESEARCH.province)), e2.text)
+
+
 func test_the_research_phase_counts_provinces_after_captures_and_sworn_vassals() -> void:
 	# The Clans have Sworn Vassals (Clan Moot), so a neutral province joins them in the capture phase.
 	var s := _game(11, {CLANS: "clan_moot"})

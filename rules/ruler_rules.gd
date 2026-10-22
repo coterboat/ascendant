@@ -1293,6 +1293,10 @@ static func province_income_parts(state: GameState, province_id: String, ruler_a
 	for m in AscensionRules.income_parts(state, p):
 		mods.append(m)
 		total += int(m.value)
+	# CW-3: the Wake (§3.2): a marking faction's own mark at the Wake-Line or Deep Wake pays it less (none without marks).
+	for m in MarkRules.income_parts(state, p):
+		mods.append(m)
+		total += int(m.value)
 	if total < 0:
 		mods.append({"key": "income_floor", "name": "Never below 0", "value": -total,
 			"note": "a province never earns less than nothing"})
@@ -1760,6 +1764,17 @@ static func _a(name: String) -> String:
 ## A name with its first letter capitalised, for the start of a sentence ("The Ever-Regent ...").
 static func _cap(text: String) -> String:
 	return text if text.is_empty() else text.substr(0, 1).to_upper() + text.substr(1)
+
+
+## `text` with every sentence starting with a capital: its first letter, and the first after each ". ", "! " or "? " (#284). A
+## sentence a template opens with a name written for running text ("the Aurel Crown", "the Crown's 3rd", "the Long Vigil") reads
+## "The Aurel Crown ...". Nothing else changes: no word, no capital, and a colon or a semicolon starts no sentence.
+static func cap_sentences(text: String) -> String:
+	var out := text
+	for m in RegEx.create_from_string("(?:^|[.!?] +)([a-z])").search_all(text):
+		var at := m.get_start(1)
+		out = out.substr(0, at) + out[at].to_upper() + out.substr(at + 1)
+	return out
 
 
 static func _faction_display(faction_id: String) -> String:

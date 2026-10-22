@@ -8,7 +8,9 @@ extends RefCounted
 ## sieges, so M1, M2 and M4 games play out exactly as before.
 ##
 ## Everything is read from the state at the start of the turn. There is no memory between turns (#94's rule),
-## and another faction's orders are never read. Every decision that risks an army uses Forecast's siege odds
+## and another faction's orders are never read. #184: an aggressive computer (AIPlayer's temperament) storms, besieges,
+## stays, fights through a breach, sallies and relieves at AIPlayer.RISK_DISCOUNT worse odds (ai._risk); a steady one at
+## the numbers below, exactly as before. Every decision that risks an army uses Forecast's siege odds
 ## (storm_odds, sally_odds, relief_odds and breach_odds), which fight the real battle rules through
 ## SiegeRules.next_battle. The rough strength guess stands in only when a fight is lopsided or the plan's
 ## forecast budget is spent.
@@ -221,7 +223,7 @@ func _under_siege(p: Province, inside: Array, foes: Array) -> void:
 	# sallies with it. Through a breach there is no sally: the relief fights beside the garrison there.
 	var relief: Array = ai._free_next_to(p.id)
 	if not relief.is_empty():
-		var need := CAPITAL_RELIEF_WIN if cap else RELIEF_WIN
+		var need: float = ai._risk(CAPITAL_RELIEF_WIN if cap else RELIEF_WIN)  # #184: less for the aggressive temperament
 		var sally: Array = inside if p.walls > 0 else []
 		var odds := _relief_odds(p.id, relief, sally)
 		if float(odds.rate) >= need:
@@ -281,18 +283,19 @@ func _under_siege(p: Province, inside: Array, foes: Array) -> void:
 	_march_relief(p)
 
 
-## The garrison armies that sally, strongest first, up to the first set whose sally odds reach SIEGE_SALLY_WIN,
-## with those odds last. [] when even the whole garrison doesn't reach them.
+## The garrison armies that sally, strongest first, up to the first set whose sally odds reach SIEGE_SALLY_WIN (#184: less
+## AIPlayer.RISK_DISCOUNT for the aggressive temperament), with those odds last. [] when even the whole garrison doesn't reach them.
 func _sally_set(inside: Array, foes: Array) -> Array:
 	var by_power := inside.duplicate()
 	by_power.sort_custom(func(x, y): return ai._army_power(x) > ai._army_power(y) or (ai._army_power(x) == ai._army_power(y) and x.id < y.id))
 	var all := _sally_odds(by_power, foes)
-	if float(all.rate) < SIEGE_SALLY_WIN:
+	var need: float = ai._risk(SIEGE_SALLY_WIN)
+	if float(all.rate) < need:
 		return []
 	for n in range(1, by_power.size()):
 		var some := by_power.slice(0, n)
 		var odds := _sally_odds(some, foes)
-		if float(odds.rate) >= SIEGE_SALLY_WIN:
+		if float(odds.rate) >= need:
 			return some + [odds]
 	return by_power + [all]
 
@@ -407,7 +410,7 @@ func _siege_turn(p: Province, ours: Array) -> void:
 			return
 	var dmg := int(SiegeRules.siege_damage_at(state, p.id).total)
 	var last: bool = p.walls <= dmg
-	var need := _start_win() if last else SIEGE_STAY_WIN
+	var need := _start_win() if last else float(ai._risk(SIEGE_STAY_WIN))
 	var open := _open_odds(p.id, ours, true)
 	if float(open.rate) >= need:
 		for a in ours:
@@ -453,7 +456,7 @@ func _fort_next_door(p: Province) -> void:
 	var relief := _relief_for(p.id)
 	if p.walls <= 0:
 		var odds := _breach_odds_with(p.id, att)
-		var need: float = AIPlayer.LIKELY_WIN if ai._standoff.is_empty() else AIPlayer.STANDOFF_WIN
+		var need: float = ai._risk(AIPlayer.LIKELY_WIN if ai._standoff.is_empty() else AIPlayer.STANDOFF_WIN)
 		if float(odds.rate) >= need:
 			for a in att:
 				ai._move(a, p.id)
@@ -473,7 +476,10 @@ func _fort_next_door(p: Province) -> void:
 			ai._move(a, p.id)
 		var dmg := int(SiegeRules.siege_damage(SiegeRules.troops(att), SiegeRules.engines_of(att)).total)
 		_bump("fort_sieges")
-		var tail := "" if ai._standoff.is_empty() or float(open.rate) >= SIEGE_START_WIN else " After a long stand-off, even odds are worth a siege."
+		var tail := ""  # #184: below the usual odds, either a long stand-off's rule or the aggressive temperament's risk
+		if float(open.rate) < SIEGE_START_WIN:
+			tail = " After a long stand-off, even odds are worth a siege." if ai._standoff_fight(float(open.rate), STANDOFF_START_WIN) \
+				else " It plays aggressively and takes the risk."
 		ai._note("Besieging %s: its walls (%d) drop to 0 %s, and in the open %s.%s" % [p.name, p.walls,
 			_in_turns(SiegeRules.turns_to_breach(p.walls, dmg)), _open_words(open), tail])
 		return
@@ -510,14 +516,16 @@ func _storm(p: Province, staying: Array, moving: Array, odds: Dictionary, relief
 
 ## The storm odds a storm of `pid` needs: CAPITAL_STORM_WIN at an enemy capital, RACE_STORM_WIN when a relief
 ## army can reach the fort this turn, and STORM_WIN otherwise.
+## #184: less AIPlayer.RISK_DISCOUNT for the aggressive temperament (AIPlayer._risk), as are _start_win, the stay odds, the
+## breach, the sallies and the relief.
 func _storm_need(pid: String, relief: Array) -> float:
 	if not relief.is_empty():
-		return RACE_STORM_WIN
-	return CAPITAL_STORM_WIN if ai._is_enemy_capital(pid) else STORM_WIN
+		return ai._risk(RACE_STORM_WIN)
+	return ai._risk(CAPITAL_STORM_WIN if ai._is_enemy_capital(pid) else STORM_WIN)
 
 
 func _start_win() -> float:
-	return SIEGE_START_WIN if ai._standoff.is_empty() else STANDOFF_START_WIN
+	return ai._risk(SIEGE_START_WIN if ai._standoff.is_empty() else STANDOFF_START_WIN)
 
 
 ## The fort owner's armies, other than its garrison, that could reach `pid` this turn.
@@ -784,7 +792,7 @@ func muster_value(p: Province) -> float:
 		return 0.0
 	var cheapest := 0
 	for ut in me.unit_types:
-		if ut.cost <= 0:
+		if ut.cost <= 0 or MarkRules.is_poured(ut):  # CW-12: a candlebeast is poured only in Deep Wake, not at any fort
 			continue
 		var price: int = ai._price(ut)
 		if cheapest == 0 or price < cheapest:
@@ -885,7 +893,7 @@ func checked_recruits() -> Array:
 func _places() -> Array:
 	var probe: UnitType = null
 	for ut in me.unit_types:
-		if ut.cost > 0 and (probe == null or ut.cost < probe.cost):
+		if ut.cost > 0 and not MarkRules.is_poured(ut) and (probe == null or ut.cost < probe.cost):  # CW-12: a troop any fort takes
 			probe = ut
 	var forts := []
 	for p in ai._sorted_provinces():

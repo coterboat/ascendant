@@ -4,7 +4,9 @@ extends Control
 ## computer plays it (#35; the computer at Easy or Normal), and the game seed, random by default.
 ## Start emits start_requested(config) with
 ##   {"players": [faction ids in seat order], "seed": int}
-## plus, only when the computer plays a seat, "ai": {faction id: "easy" or "normal"}. A seat not in
+## plus, only when the computer plays a seat, "ai": {faction id: "easy" or "normal"} and (#184) "temperaments": each computer
+## seat's style, rolled from the seed and the seat (AISeat.temperaments_for) and shown on its faction line, Steady or
+## Aggressive, with what it means in the tooltip. A seat not in
 ## "ai" is human, so a hotseat config is exactly {"players", "seed"} as before. This is what
 ## GameScreen.start_game(config) takes. Every seat may be the computer: then the game is watch mode.
 ## While any seat is the computer, the computer's explanation (RulesCodex "computer_opponent") takes the
@@ -45,8 +47,8 @@ extends Control
 ## Builds its children in code, so it works before it is in the tree (headless tests).
 ##
 ## API:
-##   config() -> Dictionary          {"players", "seed"}, plus "ai" for computer seats and "rulers": true
-##                                   while the rulers box is ticked; only meaningful when is_valid()
+##   config() -> Dictionary          {"players", "seed"}, plus "ai" and "temperaments" (#184) for computer seats and
+##                                   "rulers": true while the rulers box is ticked; only meaningful when is_valid()
 ##   is_valid() -> bool
 ##   error_text() -> String          every problem in plain words, "" when valid
 ##   set_seed(value: int)            new_seed(avoid) -> int picks a random one (the "New seed" button),
@@ -74,7 +76,7 @@ extends Control
 ##                                   in seat 1, the computer at Normal in seat 2, every system on (default_systems)
 ##                                   with the balanced preset for the person, and a random seed. CW-0: the factions are
 ##                                   quick_start_factions(preview, default_systems()): with the preview off, the dice are
-##                                   exactly as before
+##                                   exactly as before. #184: the computer's style is its seat's roll ("temperaments")
 ##   build_screen                    the BuildScreen Start opens while rulers are on (null until then);
 ##                                   build_screen_open() -> bool
 ##   seat_faction(seat) -> String, faction_ids() -> Array[String]
@@ -202,6 +204,7 @@ func config() -> Dictionary:
 			ai[ids[i]] = seat_level(i + 1)
 	if not ai.is_empty():
 		out["ai"] = ai
+		out["temperaments"] = AISeat.temperaments_for(ids, ai, out.seed)  # #184: each computer's style, from the seed
 	if rulers_on():
 		out["rulers"] = true
 	if paths_on():
@@ -492,7 +495,8 @@ func build_screen_open() -> bool:
 ## seat 2, with every system on (default_systems: rulers, paths, forts and sieges, magic, fog of war and independents)
 ## and a random seed. The person gets their faction's balanced preset and the
 ## computer the preset its seeded dice pick (BuildScreen.computer_build, the same roll AISeat makes), so
-## the game starts at once, without the build screen. The same as Start with this screen's defaults.
+## the game starts at once, without the build screen. #184: the computer plays the style its seat rolls from the seed
+## (AISeat.temperaments_for), which draws nothing from `rng`. The same as Start with this screen's defaults.
 ## CW-0 (#251): `preview` is the Candlewake's preview box (CW-7, #258; design/CANDLEWAKE.md §12). The two factions come from quick_start_factions, so
 ## with the preview off they are the Crown and the Clans and the dice fall exactly as before; with it on, the Candlewake can
 ## come up once they play every system Quick start turns on.
@@ -509,6 +513,7 @@ static func quick_start_config(rng: RandomNumberGenerator = null, preview: bool 
 	var builds := {human: RulerRules.preset_build(RulerRules.balanced_preset(human)),
 		opponent: BuildScreen.computer_build(opponent, game_seed, 1)}
 	var out := {"players": [human, opponent], "seed": game_seed, "ai": {opponent: DEFAULT_LEVEL}, "builds": builds}
+	out["temperaments"] = AISeat.temperaments_for(out.players, out.ai, game_seed)  # #184: no draw from `dice`
 	out.merge(default_systems())
 	return out
 
@@ -626,13 +631,18 @@ func _refresh() -> void:
 	for i in seat_pickers.size():
 		var f := _faction(ids[i])
 		faction_labels[i].text = "Plays in %s. %s" % [UiPalette.seat_color_name(i), _faction_summary(f)] if f else ""
+		var style := ""  # #184: the computer's style, the one config() hands the game for this seed and seat
 		if f and seat_kind(i + 1) == "computer":
+			style = AIPlayer.choose_temperament(_seed_value(), i)
 			faction_labels[i].text += " The computer plays this seat at the %s level." % AISeat.level_name(seat_level(i + 1))
+			faction_labels[i].text += " Its style, from the seed: %s." % AIPlayer.temperament_name(style)
 			if rulers_on():
 				faction_labels[i].text += " Its build: one of its three presets, picked at random from the seed."
 		elif f and rulers_on():
 			faction_labels[i].text += " Picks a ruler and mandates on the build screen."
 		faction_labels[i].tooltip_text = _faction_tooltip(f) if f else ""
+		if not style.is_empty():
+			faction_labels[i].tooltip_text += "\n\n" + TooltipText.wrap_text(AIPlayer.temperament_line(style))
 		seat_pickers[i].tooltip_text = "Player %d plays %s.\n\n%s" % [i + 1, f.faction_name, _faction_tooltip(f)] if f \
 			else "Pick the faction Player %d plays." % (i + 1)
 	_refresh_systems_label()

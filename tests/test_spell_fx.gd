@@ -822,6 +822,8 @@ func test_a_turns_ritual_and_enchantment_beats_all_play_on_the_board() -> void:
 		got[p["key"]] = true
 		assert_false(bool(p["skipped"]), "%s was not turned away by the pool" % p["key"])
 	for key in SpellPlan.BOARD_KEYS:
+		if key == "cast:flame":
+			continue  # CW-5: only the Candlewake cast Kindle, never in this Crown–Clans turn; tests/test_spell_plan_preview.gd plays it
 		assert_true(got.has(key), "the board played %s" % key)
 	# a caster the viewer can't see has no direction: the heralded moon and the fall start nowhere
 	for p in played:
