@@ -161,7 +161,7 @@ static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: 
 	_sieges_phase(s, battle_sites, events)  # M3c: games with sieges only
 	_capture(s, battle_sites, events)
 	_recruitment(s, recruits, events, state)  # Warband Muster gathers where the ruler started the turn
-	MarkRules.wake_step(s, events)  # CW-1: games where a faction marks its land only; CW-3 gives it its rules
+	MarkRules.wake_step(s, events, state)  # CW-1, CW-3: games where a faction marks its land only
 	WickRules.wick_step(s, events, state)  # CW-1, CW-2: games where a faction keeps a flame only
 	_income(s, events)
 	_research_phase(s, events)  # M4: games with paths only
