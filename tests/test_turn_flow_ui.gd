@@ -233,7 +233,10 @@ func test_game_over_event_is_shown_on_top_and_highlighted() -> void:
 	assert_true(panel.victory_box.visible, "the game-over banner is shown")
 	assert_eq(panel.victory_label.text, "The Thornmane Clans take the last capital and win.")
 	var box := panel.victory_box.get_parent()
-	assert_true(box.get_children().find(panel.victory_box) < box.get_children().find(panel.scroll),
+	var rows_branch: Node = panel.scroll  # #286: the event list shares a container with the computer's notes, under the banner
+	while rows_branch != null and rows_branch.get_parent() != box:
+		rows_branch = rows_branch.get_parent()
+	assert_true(rows_branch != null and box.get_children().find(panel.victory_box) < box.get_children().find(rows_branch),
 		"the banner sits above the event list")
 	assert_eq(panel.event_rows().size(), 1, "the game-over event is not repeated in the list")
 	assert_eq(panel.battle_buttons().size(), 0)
