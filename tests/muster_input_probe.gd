@@ -17,6 +17,10 @@ extends SceneTree
 ##     keep, from the army's card and from the fort panel.
 ## It prints one PASS or FAIL line a check and a last line, "MUSTER_PROBE OK" or "MUSTER_PROBE FAILED n". Never touches the
 ## player's settings or saves (they go to a scratch folder under user://).
+## Errors count while the input runs, from the line INPUT_BEGIN to INPUT_END: each engine or script error raised then is a FAIL line,
+## and the test counts the ERROR lines printed between the two. Before INPUT_BEGIN the setup has settled (the land baked on the main
+## thread, the board built from it, the renderer's queued commands run, frames for the deferred calls and the frees), so nothing the
+## setup started is counted as the input's. What the setup or the exit prints is the test's note, not a failure.
 ##
 ##   godot --headless --path . --script res://tests/muster_input_probe.gd
 ##   godot --path . --resolution 1600x900 --always-on-top --script res://tests/muster_input_probe.gd   (windowed, to watch it)
@@ -28,13 +32,57 @@ const SCRATCH := "user://muster_input_probe"
 const SEED := 4242
 const HUMAN := "kingdom"
 const FOE := "beasts"
+## The lines that open and close the input: errors count between them (tests/test_muster_card.gd reads the same two lines).
+const INPUT_BEGIN := "MUSTER_PROBE INPUT BEGIN"
+const INPUT_END := "MUSTER_PROBE INPUT END"
 
 var game: GameScreen
 var screen: MapScreen  # the map screen driven: the game's, then a map screen of a siege
 var results := []
 var stopped := false
+var errors := ErrorLog.new()
 var _at := Vector2.ZERO  # where the pointer is (canvas coordinates)
 var _pressed_on := ""  # the control under the pointer at the last press (for the checks' words)
+
+
+## The errors Godot raises while the input runs (count(true) to count(false)), as the runner's own catcher takes them: engine and
+## script errors, not warnings. Godot logs from any thread, so behind a mutex.
+class ErrorLog extends Logger:
+	var _counting := false
+	var _during: PackedStringArray = []
+	var _outside := 0
+	var _mutex := Mutex.new()
+
+	func count(on: bool) -> void:
+		_mutex.lock()
+		_counting = on
+		_mutex.unlock()
+
+	func _log_error(function: String, file: String, line: int, code: String, rationale: String, _editor_notify: bool,
+			error_type: int, _script_backtrace: Array[ScriptBacktrace]) -> void:
+		if error_type == Logger.ERROR_TYPE_WARNING:
+			return
+		var text := rationale if not rationale.is_empty() else code
+		_mutex.lock()
+		if _counting:
+			_during.append("%s (%s:%d in %s)" % [text, file, line, function])
+		else:
+			_outside += 1
+		_mutex.unlock()
+
+	## The errors raised while counting.
+	func during() -> PackedStringArray:
+		_mutex.lock()
+		var out := _during.duplicate()
+		_mutex.unlock()
+		return out
+
+	## How many were raised while not counting (the setup, the exit).
+	func outside() -> int:
+		_mutex.lock()
+		var n := _outside
+		_mutex.unlock()
+		return n
 
 
 func _initialize() -> void:
@@ -205,9 +253,27 @@ func _keep_off_the_cursor() -> void:
 			return
 
 
+## Lets what the setup started finish before errors count: the board built from the baked land, the renderer's queued commands run
+## (RenderingServer.force_sync), and frames, each of which flushes the deferred calls (the message queue) and frees what was queued.
+func _settle() -> void:
+	await _frames(8)
+	RenderingServer.force_sync()
+	await _frames(4)
+
+
 func _run() -> void:
 	await process_frame
 	_keep_off_the_cursor()
+	OS.add_logger(errors)
+	# The land bakes here, on the main thread, before the game's board would bake it on a worker (Board3D.prebake). Headless, a
+	# worker's bake races the dummy renderer, whose mesh RIDs are not thread safe (mesh_create() takes the RID on the calling thread,
+	# and the dummy's RID_Owner has no lock; the GL renderer's has): on a loaded machine that printed `Parameter "m" is null.` (the
+	# dummy mesh storage) and `Condition "!F" is true.` (the renderer's dependency tracker) while the land baked, before any input. A
+	# bake already under way (a windowed run's autoload starts one) is waited for with frames: it asks the renderer, which answers
+	# between frames.
+	while Board3D._task >= 0 and not WorkerThreadPool.is_task_completed(Board3D._task):
+		await process_frame
+	Board3D.terrain_now()
 	var gs := GameSettings.new(SCRATCH.path_join("settings.cfg"))
 	gs.set_board("3d")
 	gs.save()
@@ -225,16 +291,25 @@ func _run() -> void:
 	var t0 := Time.get_ticks_msec()
 	while not board3d.prepared and float(Time.get_ticks_msec() - t0) / 1000.0 < 120.0:
 		await create_timer(0.1).timeout
-	await _frames(8)
+	await _settle()
+	print(INPUT_BEGIN)
+	errors.count(true)
 	await _muster()
 	await _sweep()
 	await _recruit_and_fort()
 	await _fort_in_a_siege()
+	errors.count(false)
+	print(INPUT_END)
+	for e in errors.during():
+		_check(false, "no error while the input ran, but: %s" % e)
+	if errors.outside() > 0:
+		print("MUSTER_PROBE note: %d errors before the input (the setup), not counted" % errors.outside())
 	var failed := results.filter(func(r): return String(r).begins_with("FAIL"))
 	print("MUSTER_PROBE ", "OK" if failed.is_empty() and not stopped else "FAILED %d" % failed.size())
 	if is_instance_valid(game):
 		game.queue_free()
 	await process_frame
+	OS.remove_logger(errors)
 	quit()
 
 

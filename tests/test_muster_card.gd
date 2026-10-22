@@ -7,6 +7,7 @@ extends "res://tests/test_case.gd"
 
 const Kit := preload("res://tests/muster_test_kit.gd")
 const FortTest := preload("res://tests/test_fort_panel.gd")
+const InputProbe := preload("res://tests/muster_input_probe.gd")
 const MAP_SCENE := "res://ui/map_screen.tscn"
 const CROWN := "kingdom"
 const CLANS := "beasts"
@@ -478,7 +479,9 @@ func test_cards_read_the_board_the_plan_leaves() -> void:
 ## run before the scene tree is live, so no mouse event is routed in them: tests/muster_input_probe.gd is a real main loop in a child
 ## process that sends mouse events through Input at the default game, checks after each one that Godot's hovered control is in the
 ## tree, and clicks and drags every muster action, Cancel muster, Recruit and the fort panel in a siege (the same arrangement as the
-## card click probe).
+## card click probe). Errors count while its input runs, between its INPUT_BEGIN and INPUT_END lines (the probe also fails a check for
+## each one). What its setup or its exit prints is noted, not counted: on a loaded machine its land bake once printed renderer errors
+## there, before any input (the probe now bakes the land on the main thread).
 func test_real_input_on_armies_here_never_leaves_godot_hovering_a_freed_control() -> void:
 	var scratch := "user://muster_input_probe"
 	var cmd := ["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/muster_input_probe.gd"]
@@ -487,18 +490,29 @@ func test_real_input_on_armies_here_never_leaves_godot_hovering_a_freed_control(
 	var text := "\n".join(output)
 	var passed := 0
 	var failed := []
-	var errors := []
+	var errors := []  # printed while the probe's input ran
+	var outside := []  # printed by its setup or its exit
+	var counting := not text.contains(InputProbe.INPUT_BEGIN)  # a probe that never got to its input: every line counts
 	for line in text.split("\n"):
-		if line.begins_with("PASS "):
+		if line.begins_with(InputProbe.INPUT_BEGIN):
+			counting = true
+		elif line.begins_with(InputProbe.INPUT_END):
+			counting = false
+		elif line.begins_with("PASS "):
 			passed += 1
 		elif line.begins_with("FAIL "):
 			failed.append(line)
 		elif line.contains("ERROR"):
-			errors.append(line)
+			if counting:
+				errors.append(line)
+			else:
+				outside.append(line)
 	assert_true(passed >= 40, "the probe ran its checks (exit code %d, %d passed): %s" % [code, passed, text.right(600)])
 	assert_eq(failed, [], "no real-input check of Armies here failed")
-	assert_eq(errors, [], "and no error was printed")
+	assert_eq(errors, [], "and no error was printed while its input ran")
 	assert_true(text.contains("MUSTER_PROBE OK"), "and it said so (exit code %d)" % code)
+	if not outside.is_empty():
+		_notes.append("the probe's setup or exit printed %d error lines, not counted (not its input's): %s" % [outside.size(), outside.slice(0, 3)])
 	_remove_tree(scratch)
 
 
