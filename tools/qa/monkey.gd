@@ -784,7 +784,12 @@ func _march_target() -> Dictionary:
 	var here := st.find_province(a.location) if a != null else null
 	if here == null:
 		return {}
-	var near := targets.filter(func(t): return t.kind == "board_province" and here.neighbors.has(String(t.get("pid", ""))))
+	var covers: Array = []  # the panels up (the cards, the Chronicle): a province under one can't be clicked on the board
+	for pn in panel_nodes:
+		if is_instance_valid(pn[1]) and (pn[1] as Control).is_visible_in_tree():
+			covers.append(_win_rect(pn[1]))
+	var near := targets.filter(func(t): return t.kind == "board_province" and here.neighbors.has(String(t.get("pid", ""))) \
+		and not covers.any(func(r): return r.has_point(t.rect.get_center())))
 	return near[rng.randi_range(0, near.size() - 1)] if not near.is_empty() else {}
 
 
