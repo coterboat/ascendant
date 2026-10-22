@@ -258,6 +258,16 @@ const TRAIT_TEXT := {
 	MAGE: "Casts a spell from your spellbook every round instead of attacking, and attacks only when no spell is useful. Fights from the second rank: safe while your front rank is at least as big. Fangthrowers and Seraphs can always reach it.",
 }
 ## One-line summaries of TRAIT_TEXT, for odds reasons and compact lists.
+## CW-4: Siphon's and Flare's words with a path's number (Red Gleaners heal 2; Brighter Flare burns 3): the trait's own text,
+## TRAIT_TEXT, with `n` in place of SIPHON_HEAL or FLARE_DAMAGE. AscensionRules writes them on the roster when a node changes them.
+static func siphon_words(n: int) -> String:
+	return String(TRAIT_TEXT[SIPHON]).replace("heals %d hit point," % SIPHON_HEAL, "heals %d hit point%s," % [n, "" if n == 1 else "s"])
+
+
+static func flare_words(n: int) -> String:
+	return String(TRAIT_TEXT[FLARE]).replace("flares: %d damage" % FLARE_DAMAGE, "flares: %d damage" % n)
+
+
 const TRAIT_SHORT := {
 	SHIELD_WALL: "+%d defense in a group" % SHIELD_WALL_DEFENSE,
 	VOLLEY: "shoots from the second rank",
@@ -623,6 +633,10 @@ static func _build_sides(sides_in: Array, defender_fid: String, state, kind: Str
 				var fighter := _fighter(i, a, u, false, false, mods, max_hp)
 				if a.flame >= 0 and u.type.trait_id != MAGE and not u.type.summoned:
 					fighter["flame"] = WickRules.battle_flame(state if state is GameState else null, a)  # CW-2: regulars only
+				if state is GameState and u.type.trait_id == FLARE and WickRules.flare_damage(state, sd.faction) != FLARE_DAMAGE:
+					fighter["flare_damage"] = WickRules.flare_damage(state, sd.faction)  # CW-4: Brighter Flare
+				if state is GameState and u.type.trait_id == SIPHON and WickRules.siphon_heal(state, sd.faction, u.type.id) != SIPHON_HEAL:
+					fighter["siphon_heal"] = WickRules.siphon_heal(state, sd.faction, u.type.id)  # CW-4: Red Gleaners
 				fighters.append(fighter)
 				morale_sum += u.type.morale + _mods_total(mods.morale)
 				for m in mods.morale:
@@ -1455,15 +1469,16 @@ static func _flare(sides: Array, flaring: Array, round_no: int, highlights: Arra
 		var side: Dictionary = sides[si]
 		side.flares = int(side.get("flares", 0)) + 1
 		side.triggers[FLARE] = side.triggers.get(FLARE, 0) + 1
+		var burn := int(fw.get("flare_damage", FLARE_DAMAGE))  # CW-4: Brighter Flare burns hotter
 		if rec != null:
 			_log_push(rec.log, rec.cap, {"t": "flare", "n": round_no, "f": fw.id, "targets": targets.map(func(x): return x[0].id),
-				"damage": FLARE_DAMAGE})
+				"damage": burn})
 		var dealt := 0
 		var names := []
 		for x in targets:
 			var t: Dictionary = x[0]
 			var before: int = t.hp
-			t.hp = maxi(0, t.hp - FLARE_DAMAGE)
+			t.hp = maxi(0, t.hp - burn)
 			t.taken += before - t.hp
 			dealt += before - t.hp
 			names.append(t.name)
@@ -1480,7 +1495,7 @@ static func _flare(sides: Array, flaring: Array, round_no: int, highlights: Arra
 					sides[int(x[1])].ruler_fell = round_no
 		side.flared = int(side.get("flared", 0)) + dealt
 		_add_impact(side, FLARE, float(dealt))
-		highlights.append("%s %s flared as it fell: %d damage to %s." % [_poss(side.name), _bare(fw.name), FLARE_DAMAGE, _count_names(names)])
+		highlights.append("%s %s flared as it fell: %d damage to %s." % [_poss(side.name), _bare(fw.name), burn, _count_names(names)])
 
 
 ## CW-2: the flame parts a side's regulars fought with, in words: "+1 attack (flame 2)", "+2 attack (flame 3) and +1 attack
@@ -1526,7 +1541,7 @@ static func _siphon(sides: Array, standing: Array, round_no: int, highlights: Ar
 			if not f.alive or f.hp >= f.max or side.cursed:
 				continue
 			var before: int = f.hp
-			f.hp = mini(f.max, f.hp + SIPHON_HEAL)
+			f.hp = mini(f.max, f.hp + int(f.get("siphon_heal", SIPHON_HEAL)))  # CW-4: Red Gleaners drink 2
 			healed += f.hp - before
 			who = f.name
 			side.triggers[SIPHON] = side.triggers.get(SIPHON, 0) + 1
@@ -2228,6 +2243,9 @@ static func _log_fighter(f: Dictionary, s: Dictionary) -> Dictionary:
 		out["mastery"] = f.caster.mastery.duplicate()  # M5-7: a caster's bonus in each school it casts
 	if ut.summoned:
 		out["summoned"] = true  # M5-7: a summoned creature
+	for key in ["flare_damage", "siphon_heal"]:
+		if f.has(key):
+			out[key] = int(f[key])  # CW-4: a path's Flare or Siphon, where it differs from the trait's own
 	return out
 
 
