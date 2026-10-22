@@ -163,6 +163,22 @@ func test_the_candlewake_start_army_and_capital_in_a_sieges_game() -> void:
 		assert_eq(TurnResolver.recruitable_type(wake, "siege_ram", s), null, "another faction's engine is never theirs")
 
 
+func test_a_start_army_that_names_a_unit_the_faction_lacks_is_refused_in_words() -> void:
+	var s := _create([CROWN, WAKE])
+	var wake := s.find_faction(WAKE)
+	var kept: Array[UnitType] = []
+	for ut in wake.unit_types:
+		if ut.id != "gleaners":
+			kept.append(ut)
+	wake.unit_types = kept
+	var errors := []
+	assert_false(s.place_starting_armies(errors), "the start army can't be placed")
+	assert_eq(errors.size(), 1, "one reason: %s" % [errors])
+	assert_true(String(errors[0]).contains("Candlewake") and String(errors[0]).contains("not one of its unit types"), String(errors[0]))
+	var crown := s.find_army("kingdom-1")
+	assert_eq(crown.units.size(), FactionData.row(CROWN).unit_types.size(), "a row without a start army still gets one of each")
+
+
 # --- the factory refuses in plain words (§1.1) ----------------------------------------------------
 
 func test_the_factory_refuses_in_plain_words() -> void:
