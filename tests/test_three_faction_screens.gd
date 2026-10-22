@@ -294,6 +294,40 @@ func test_the_art_report_and_victory_lookups_find_the_candlewake() -> void:
 	assert_eq(VictoryScreen._faction_name(WAKE, null), _wake_name(), "a name without a state")
 
 
+## CW-4's path and CW-5's magic wait in preview tables; the screens read them through the rules' lookups, so the report finds a
+## Candlewake transformation's new unit in its recruit line (it raised a script error on a Candlewake game's report), the Oath's
+## lock-in preview names the unit the other side would have brought, the research sidebar shows both roads, and the art finds
+## their mage, their summons and their new units.
+func test_the_report_the_path_screens_and_the_art_read_the_candlewakes_preview_tables() -> void:
+	var sides := AscensionRules.branches_for(WAKE)
+	assert_eq(sides.size(), 2, "the Candlewake's fork has two sides")
+	var s := GameState.create(7, [WAKE, CROWN], {"rulers": true, "paths": true}, {}, [])
+	assert_true(s != null, "a Candlewake game with paths")
+	if s == null:
+		return
+	for side in sides:
+		var trans := String(AscensionRules.branch_data(side).transformation)
+		var new_id := String(AscensionRules.node_effects(trans).get("new_unit", ""))
+		if not new_id.is_empty():
+			var unit_name := String(AscensionRules.new_unit_data(new_id).name)
+			var e := {"type": "recruited", "factions": [WAKE], "text": "The %s recruited %s at the Long Vigil." % [_wake_name(), unit_name]}
+			assert_eq(TurnReportPanel.recruited_unit(e), new_id, "a recruit of %s finds its unit" % unit_name)
+			assert_eq(Art.unit_faction(new_id), WAKE, "%s is theirs" % unit_name)
+		var p := PathView.preview(s, WAKE, String(AscensionRules.branch_data(side).oath))
+		assert_true(bool(p.get("ok", false)), "%s's Oath has its lock-in preview: %s" % [side, p.get("reason", "")])
+		var other_trans := String(AscensionRules.branch_data(AscensionRules.other_branch(WAKE, side)).transformation)
+		var other_new := String(AscensionRules.node_effects(other_trans).get("new_unit", ""))
+		if not other_new.is_empty():
+			var lost := " ".join(Array(p.get("lose", [])).map(func(l): return String(l.text)))
+			assert_true(lost.contains(String(AscensionRules.new_unit_data(other_new).name)), "the side it closes names its new unit: %s" % lost)
+	assert_eq(PathView.sidebar(s, WAKE).routes.size(), sides.size(), "the research sidebar shows the road to each side")
+	var mage := String(MagicRules.mage_data(WAKE).get("id", ""))
+	assert_false(mage.is_empty(), "they have a mage")
+	assert_eq(Art.unit_faction(mage), WAKE, "their mage is theirs")
+	for sid in MagicData.PREVIEW_SUMMONS:
+		assert_eq(Art.unit_faction(String(sid)), String(MagicData.PREVIEW_SUMMONS[sid].get("faction", "")), "%s's faction" % sid)
+
+
 # --- what the box and the seat lines say (CW-7: every new mechanic is explained) -------------------------------------------
 
 func test_the_box_says_what_the_preview_is_and_what_isnt_built_yet_and_links_the_codex() -> void:

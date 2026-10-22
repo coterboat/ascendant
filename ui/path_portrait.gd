@@ -26,7 +26,7 @@ static func make(unit_type_id: String, faction_id: String, colour: String, card_
 	p.custom_minimum_size = card_size
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var initial := String(PathData.NEW_UNITS.get(unit_type_id, {}).get("name", ""))
+	var initial := String(AscensionRules.new_unit_data(unit_type_id).get("name", ""))  # CW-7: the preview's new units too
 	p.card = Art.portrait_card(unit_type_id, card_size, faction_id, Art.Crop.FULL, PathView.FORK_COLOURS.get(colour, UiPalette.GILT))
 	var variant := Art.variant_portrait(unit_type_id, faction_id, transformation_of(faction_id, colour))
 	if variant != null:
@@ -48,11 +48,11 @@ func has_art() -> bool:
 	return card != null and card.has_art()
 
 
-## The transformation of `faction_id`'s side of the fork in `colour` (PathData.BRANCHES), or "".
+## The transformation of `faction_id`'s side of the fork in `colour` (PathData.BRANCHES; CW-7: the preview's too), or "".
 static func transformation_of(faction_id: String, colour: String) -> String:
-	for side in PathData.BRANCHES:
-		var b: Dictionary = PathData.BRANCHES[side]
-		if String(b.get("faction", "")) == faction_id and String(b.get("colour", "")) == colour:
+	for side in AscensionRules.branches_for(faction_id):
+		var b := AscensionRules.branch_data(side)
+		if String(b.get("colour", "")) == colour:
 			return String(b.get("transformation", ""))
 	return ""
 
