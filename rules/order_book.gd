@@ -152,6 +152,8 @@ static func check_order(state: GameState, faction_id: String, order, existing: A
 		recruits.append(order)
 		var last: Dictionary = TurnResolver.price_recruits(board, faction_id, recruits, null,
 			MagicRules.queued_gold(board, faction_id, existing)).results.back()
+		if last.ok and order is RecruitOrder and not order.into.is_empty():
+			return TurnResolver.check_into(board, faction_id, order, String(last.province))  # CW-2: the army it names
 		return {} if last.ok else {"code": last.code, "reason": last.reason}
 	if order is CastOrder:
 		return MagicRules.check_cast(board, faction_id, order, existing)  # M5-5
@@ -370,7 +372,7 @@ static func order_from_dict(data: Dictionary, errors = null):
 		"move":
 			return MoveOrder.new(str(data.get("army", "")), str(data.get("to", "")), str(data.get("via", "")))
 		"recruit":
-			return RecruitOrder.new(str(data.get("unit_type", "")), str(data.get("at", "")))
+			return RecruitOrder.new(str(data.get("unit_type", "")), str(data.get("at", "")), str(data.get("into", "")))
 		"sacrifice":
 			return SacrificeOrder.new(str(data.get("mandate", "")))
 		"research":
