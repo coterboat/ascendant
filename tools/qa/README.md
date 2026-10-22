@@ -80,8 +80,9 @@ and to know when to stop: no order is ever given through the API.
 - `godot.log` (`--log-file`; `godot.clean.log` without colour codes) and `stdout.log`: Godot's own output, with a crash's backtrace.
 - `summary.json`: the verdict, the turn reached, gestures, events, errors (and the monkey's own), HOVER-FREED count, the aim check,
   every screen seen and the ten slowest frames.
-- `shots/`: `f<frame>_<why>.jpg` at the start, each new turn, each screen (set of panels) not seen before (up to 40), every N
-  gestures and the end. Read them for clipped or overlapping UI and numbers that don't explain themselves.
+- `shots/`: `f<frame>_<why>.jpg` at the start, each new turn, each screen (set of panels) not seen before (up to 40, and past
+  that a battle or the victory screen still), every N gestures and the end. Read them for clipped or overlapping UI and numbers
+  that don't explain themselves.
 - `settings.cfg`, `saves/`: the run's own (the player's are never read or written; with no settings file the first-game guide shows,
   as for a new player).
 
@@ -93,7 +94,7 @@ and to know when to stop: no order is ever given through the API.
 | `ERRORS` | 1 | it stopped by itself, but Godot logged `ERROR` / `SCRIPT ERROR` lines | the runner prints each distinct error with the gesture and screen before it |
 | `CRASH` | 2 | Godot died on a signal | the runner prints the backtrace, the seed, the last 30 events, the last notes and the replay command |
 | `HANG` | 3 | no new event for 60 s (5 minutes while the game loads; up to 5 minutes while the Mac's load is above its core count) | the runner sends SIGSEGV first, so `godot.log` holds the main thread's stack, then the last 30 events |
-| `STUCK` | 4 | 40 tries at the seal and the turn never ended | `events.log`'s STUCK note names the screens up; the last shot shows it |
+| `STUCK` | 4 | 40 tries at a live game's seal and the turn never ended (tries on the title or after the game is over don't count; a loaded game starts again from 0) | `events.log`'s STUCK note names the screens up; the last shot shows it |
 | `EXITED` | 5 | Godot quit before the monkey's end, with no signal | the last 30 events show what closed it |
 
 The last line of each run is `RESULT seed=N verdict=... window=WxH dir=...`; a batch lists every run and exits with its worst.
