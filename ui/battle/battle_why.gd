@@ -113,6 +113,9 @@ func _build() -> void:
 				if String(_log.events[ev].get("spell", "")) == "blood_moon":
 					_feed(rnd, k, ev, "heal", "%s healed back %d hp under the Blood Moon." % [_cap(BattleExplain.label(_log, int(b.fighter))),
 						int(b.data.healed)], "spell_blood_moon")
+				elif String(_log.events[ev].get("trait", "")) == AutoBattleResolver.SIPHON:  # CW-2: a Gleaner's heal
+					_feed(rnd, k, ev, "heal", "%s drank %d hp (Siphon)." % [_cap(BattleExplain.label(_log, int(b.fighter))),
+						int(b.data.healed)], AutoBattleResolver.codex_id_for_trait(AutoBattleResolver.SIPHON))
 				else:
 					_feed(rnd, k, ev, "heal", "%s drank back %d hp (Lifedrinker)." % [_cap(BattleExplain.label(_log, int(b.fighter))),
 						int(b.data.healed)], "trait_lifedrinker")

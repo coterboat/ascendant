@@ -11,7 +11,7 @@ const SIGHT := {"owned": 1, "army": 1, "fort": 2, "commander": 2, "ruler": 2, "s
 
 ## Scouts (§2.3): unit types that see 2 provinces. Transformations keep the id, so Iron Knights and Thornthrowers
 ## are scouts too. Thornwolves arrive with magic (M5-6). New factions add rows.
-const SCOUTS := ["knights", "fangthrowers", "seraphs", "thornwolves"]
+const SCOUTS := ["knights", "fangthrowers", "seraphs", "thornwolves", "gleaners"]  # CW-2: the Gleaners are the Candlewake's scouts
 
 ## The sight levels (§2.3), best first: id -> the words players read.
 const LEVELS := ["clear", "glimpse", "veiled"]
