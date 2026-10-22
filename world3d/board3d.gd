@@ -1184,6 +1184,7 @@ func set_quality_rung(q: int) -> void:
 	wv.set_quality(q)
 	if decals != null:
 		decals.set_rung(SpellPlan.rung_of(wv.quality, RenderingServer.get_current_rendering_method() == "gl_compatibility")) ## M5-9: the effects thin with the ladder
+	Armies.set_flicker(Armies.flicker_at(wv.quality, bool(BattleFx.settings().get("reduced_motion", false))))  # CW-8: the wick flames
 	var keep := Armies.musicians_at(wv.quality)
 	if keep == Armies.musicians:
 		return

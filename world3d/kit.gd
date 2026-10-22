@@ -12,6 +12,7 @@ const FIG := 6.0 ## a man's height, base included (world units)
 ## six seat emblems (world3d/shaders/banner.gdshader).
 const EMBLEM_SHIELD := 6
 const SpellFigures := preload("res://world3d/spell_figures.gd") ## M5-9: the mages and the summoned creatures
+const CandleFigures := preload("res://world3d/candle_figures.gd") ## CW-8: the Candlewake's host, beasts, rulers, mage and the Snuffed
 
 ## faction palettes (style bible 1.3: worn in art, independent of the player's colour)
 const STEEL := Color("#B9C3CE")
@@ -60,6 +61,9 @@ const SPACING := {
 	"knight_captain": Vector2(6.0, 8.0), "warchief": Vector2(6.0, 6.0), "bearer": Vector2(4.0, 4.0),
 	"free_spears": Vector2(4.2, 4.4), "hill_slingers": Vector2(4.2, 4.4), "wildkin": Vector2(5.0, 5.2),
 	"hold_captain": Vector2(6.0, 6.0), "free_bearer": Vector2(4.0, 4.0),
+	## CW-8: the Candlewake's bigger figures (world3d/candle_figures.gd)
+	"hundred_wick": Vector2(5.6, 5.6), "lamplighter": Vector2(6.0, 6.0), "wax_hounds": Vector2(4.4, 5.4),
+	"tallow_stag": Vector2(5.4, 7.4), "guttering_bear": Vector2(7.6, 8.6),
 }
 ## the order blocks stand in from the front: melee, then ranged, then the big and the mounted
 const RANK_ORDER := ["spearmen", "free_spears", "tuskers", "wildkin", "crossbowmen", "hill_slingers", "fangthrowers", "knights", "war_bear"]
@@ -143,7 +147,7 @@ const INDEPENDENTS_PARTY := "free_bearer"
 
 ## True for a figure id figure() draws (anything else gets the generic figure).
 static func has_figure(type_id: String) -> bool:
-	return FIGURES.has(type_id) or SpellFigures.has(type_id) ## M5-9: the mages and the summoned (world3d/spell_figures.gd)
+	return FIGURES.has(type_id) or SpellFigures.has(type_id) or CandleFigures.has(type_id) ## M5-9 (spell_figures.gd), CW-8 (candle_figures.gd)
 
 
 ## A primitive figure. `s` scales the whole figure (a ruler or a monster stands bigger); `ruler` adds
@@ -224,6 +228,9 @@ static func figure(type_id: String, s: float = 1.0, ruler: bool = false) -> Arra
 			_human(b, WOOL, GREY, SLATE, NO_COLOUR, GREY)
 		"adepts", "shamans", "thornwolves", "greenwrath": ## M5-9 (#120): the mages and the summoned (world3d/spell_figures.gd)
 			SpellFigures.build(b, type_id)
+		"wickwardens", "gleaners", "hundred_wick", "lamplighter", "half_death", "mother_tallow", "chandlers_apprentices", "snuffed", \
+				"wax_hounds", "tallow_stag", "guttering_bear", "amber_saints", "pyre_walkers": ## CW-8 (#259): world3d/candle_figures.gd
+			CandleFigures.build(b, type_id)
 		_:
 			_human(b, Color("#8D88A0"), STEEL)
 	if not is_equal_approx(s, 1.0):
@@ -255,6 +262,17 @@ static func _base(b: Builder, type_id: String, ruler: bool = false, s: float = 1
 			sc = Vector3(1.0, 1.0, 1.9)
 		"greenwrath":
 			r = 3.6
+		"hundred_wick": ## CW-8
+			r = 1.75
+		"wax_hounds":
+			r = 1.4
+			sc = Vector3(1.0, 1.0, 1.6)
+		"tallow_stag":
+			r = 1.7
+			sc = Vector3(1.0, 1.0, 1.8)
+		"guttering_bear":
+			r = 2.4
+			sc = Vector3(1.0, 1.0, 1.5)
 	r *= s
 	var m := CylinderMesh.new()
 	m.top_radius = r
@@ -829,6 +847,31 @@ static func formation_depth(slots: Array) -> float:
 ## front rank on z = 0, x centred. One block per unit type in `blocks` ([{"type", "n" figures, "rank"
 ## 0 front / 1 second (Volley), "sp": Vector2 spacing}]), front rank first, packed into rows no wider
 ## than `max_w`. `leaders` ([{"type", "role": "commander" or "ruler", "rank", "sp"}]) stand with their
+## CW-8 (design/CANDLEWAKE.md §10): the Candlewake's massing, a slumped, uneven crowd, never a rectangle. Each regular's place is
+## nudged by a hash of the army's id and its index, up to SLUMP_X sideways and SLUMP_Z deeper back, its facing up to SLUMP_YAW askew
+## ("yaw_off", which the layout adds). Leaders and the colour party keep their places. Pure and deterministic: no dice.
+const SLUMP_X := 1.1
+const SLUMP_Z := 1.5
+const SLUMP_YAW := 0.3
+
+
+static func slump(slots: Array, key: String) -> Array:
+	var out: Array = []
+	for i in slots.size():
+		var sl: Dictionary = (slots[i] as Dictionary).duplicate()
+		if String(sl.get("role", "")) == "unit":
+			var hx := _hash01(key, i, 1) * 2.0 - 1.0
+			var hz := _hash01(key, i, 2)
+			sl["pos"] = (sl["pos"] as Vector2) + Vector2(hx * SLUMP_X, hz * SLUMP_Z)
+			sl["yaw_off"] = (_hash01(key, i, 3) * 2.0 - 1.0) * SLUMP_YAW
+		out.append(sl)
+	return out
+
+
+static func _hash01(key: String, i: int, salt: int) -> float:
+	return float(absi(hash("%s:%d:%d" % [key, i, salt])) % 1000) / 1000.0
+
+
 ## rank: a front-rank ruler leads from the front, a commander (rank 2) stands at the back with the
 ## banner bearer, who carries the army's banner in every army, and the army's other `extras` (M3a.2:
 ## its musician). Returns [{"type", "pos", "role"}].
