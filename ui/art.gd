@@ -376,8 +376,23 @@ class BannerCard extends Control:
 ## a band of the plate's own parchment as wide as the card (its edge drawn on outwards), so the vignette spreads across the page as
 ## one picture, in a keyline. Nothing is cropped or stretched; without a texture it draws nothing. Takes no mouse.
 class PlateCard extends Control:
-	## How far into the plate, as a share of its width, its sides fade into the band (about its parchment border).
-	const FEATHER := 0.07
+	## The column, as a share of the plate's width in from each side, whose colour is the parchment's on that row.
+	const EDGE := 1.0 / 128.0
+	## A plate's parchment lightens towards its middle, so on a band of its edge colour its square would show. Within FEATHER of the
+	## plate's width from each side, a pixel close to its row's edge colour is drawn as that colour, easing out inwards; a painted
+	## pixel (far from the parchment's colour) is left as it is. The band's own draws sample the edge, so they are unchanged.
+	const FEATHER := 0.3
+	const SHADER := """shader_type canvas_item;
+uniform float edge = 0.0078125;
+uniform float feather = 0.3;
+void fragment() {
+	vec4 rim = textureLod(TEXTURE, vec2(UV.x < 0.5 ? edge : 1.0 - edge, UV.y), 0.0);
+	float near_side = 1.0 - smoothstep(0.0, feather, min(UV.x, 1.0 - UV.x));
+	float paper = 1.0 - smoothstep(0.02, 0.12, distance(COLOR.rgb, rim.rgb));
+	COLOR.rgb = mix(COLOR.rgb, rim.rgb, near_side * paper);
+}
+"""
+	static var _blend: ShaderMaterial = null
 	var texture: Texture2D = null:
 		set(value):
 			texture = value
@@ -386,6 +401,14 @@ class PlateCard extends Control:
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		if _blend == null:
+			var shader := Shader.new()
+			shader.code = SHADER
+			_blend = ShaderMaterial.new()
+			_blend.shader = shader
+			_blend.set_shader_parameter("edge", EDGE)
+			_blend.set_shader_parameter("feather", FEATHER)
+		material = _blend
 
 	func has_art() -> bool:
 		return texture != null
@@ -407,31 +430,14 @@ class PlateCard extends Control:
 		var inner := r.grow(-2.0)
 		var at := plate_rect()
 		var tex_size := texture.get_size()
-		# The band is the plate's own parchment: its corner under everything, then its side columns (a few pixels in, clear of any
-		# filtering seam) drawn on outwards, so the paper runs on unbroken whatever its shading.
-		var edge := maxf(2.0, tex_size.x / 128.0)
+		# The band is the plate's own parchment: its corner under everything, then its side columns (EDGE in, clear of any filtering
+		# seam) drawn on outwards, so the paper runs on unbroken whatever its shading; the shader eases the plate's sides into it.
+		var edge := floorf(tex_size.x * EDGE)
 		draw_texture_rect_region(texture, r, Rect2(edge, edge, 1.0, 1.0))
-		var spread := at.position.x > inner.position.x + 0.5
-		if spread:
+		if at.position.x > inner.position.x + 0.5:
 			draw_texture_rect_region(texture, Rect2(inner.position.x, at.position.y, at.position.x - inner.position.x, at.size.y),
 				Rect2(edge, 0.0, 1.0, tex_size.y))
 			draw_texture_rect_region(texture, Rect2(at.end.x, at.position.y, inner.end.x - at.end.x, at.size.y),
 				Rect2(tex_size.x - edge - 1.0, 0.0, 1.0, tex_size.y))
 		draw_texture_rect(texture, at, false)
-		if spread:
-			# The parchment lightens towards the plate's middle; the edge colour laid over the plate's outer strip, fading out
-			# inwards, lets it start without a seam.
-			_feather(at, (edge + 0.5) / tex_size.x, 1.0)
-			_feather(at, (tex_size.x - edge - 0.5) / tex_size.x, -1.0)
 		draw_rect(r.grow(-1.0), UiPalette.PANEL_BORDER.lightened(0.15), false, 2.0)
-
-	## The texture's column at `u`, drawn over the strip of `at` FEATHER wide on its left side (`dir` 1) or right side (-1), opaque at
-	## the plate's edge and clear inside.
-	func _feather(at: Rect2, u: float, dir: float) -> void:
-		var w := at.size.x * FEATHER * dir
-		var x0 := at.position.x if dir > 0.0 else at.end.x
-		var pts := PackedVector2Array([Vector2(x0, at.position.y), Vector2(x0 + w, at.position.y), Vector2(x0 + w, at.end.y), Vector2(x0, at.end.y)])
-		var solid := Color(1, 1, 1, 1)
-		var clear := Color(1, 1, 1, 0)
-		draw_polygon(pts, PackedColorArray([solid, clear, clear, solid]),
-			PackedVector2Array([Vector2(u, 0.0), Vector2(u, 0.0), Vector2(u, 1.0), Vector2(u, 1.0)]), texture)
