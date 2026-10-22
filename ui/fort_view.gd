@@ -217,7 +217,7 @@ static func needs_you(state: GameState, viewer: String, report_turn: int) -> Arr
 			continue
 		if p.walls <= 0:
 			var odds := odds_text(siege_odds("breach", state, viewer, p.id, []))
-			out.append({"text": "%s's walls are down. %s you fight there in the open, unless you leave%s." % [p.name,
+			out.append({"text": "%s's walls are down. %s you fight there in the open, unless you leave%s." % [RulerRules._cap(p.name),  # #284: the Long Vigil
 				RulerRules._cap(TurnReportText.reader_turn(turn, turn)), ": odds %s" % odds if not odds.is_empty() else ""], "province": p.id, "codex": "breach"})
 			continue
 		var dmg := SiegeRules.siege_damage_at(state, p.id)

@@ -1766,6 +1766,17 @@ static func _cap(text: String) -> String:
 	return text if text.is_empty() else text.substr(0, 1).to_upper() + text.substr(1)
 
 
+## `text` with every sentence starting with a capital: its first letter, and the first after each ". ", "! " or "? " (#284). A
+## sentence a template opens with a name written for running text ("the Aurel Crown", "the Crown's 3rd", "the Long Vigil") reads
+## "The Aurel Crown ...". Nothing else changes: no word, no capital, and a colon or a semicolon starts no sentence.
+static func cap_sentences(text: String) -> String:
+	var out := text
+	for m in RegEx.create_from_string("(?:^|[.!?] +)([a-z])").search_all(text):
+		var at := m.get_start(1)
+		out = out.substr(0, at) + out[at].to_upper() + out.substr(at + 1)
+	return out
+
+
 static func _faction_display(faction_id: String) -> String:
 	for f in FactionData.rows():
 		if f.id == faction_id:
