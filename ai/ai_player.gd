@@ -127,6 +127,14 @@ extends RefCounted
 ##   * Its notes say what it did and why in the same plain words ("Scouting: ..."); the screen keeps them back until
 ##     the game is over (AISeat.report_notes).
 ##
+## Temperament (#184). Each computer seat plays "normal" or "aggressive", a pure roll of the game seed and the seat
+## (choose_temperament, a stream of its own: TEMPERAMENT_SALT), set with set_temperament before the first plan; AISeat
+## rolls it, and the new game screen shows it. With "normal" nothing below changes, so every normal game is the same as
+## before. The aggressive computer discounts the risk of a fight by RISK_DISCOUNT: it storms, besieges, stays in a siege,
+## attacks through a breach, attacks an army and attacks a capital at odds that much worse; it reads a stand-off at
+## AGGRESSIVE_STANDOFF of the pile; and when a held fort or capital stops its main army, it goes around it to take a
+## province from the Free Holds or raid (_go_around) instead of massing at the walls. Its first turn's note says so in plain words.
+##
 ## Games with magic (M5-10, #121; design/M5_MAGIC_FOG.md §10.2; ai/ai_magic.gd). Every rule is a rule with ties by id and no
 ## draw from the seat's RNG; with magic off none of it runs and games are the same as before:
 ##   * Research: AIPaths.sequence puts the arcana in the plan (the aligned school's tier I after the first ordinary node, then
@@ -250,6 +258,18 @@ const SIEGE_STANDOFF_TURNS := 12.0
 const STANDOFF_WIN := 0.5
 const STANDOFF_SAFE := 1.0
 const STANDOFF_SALLY_WIN := LIKELY_WIN
+## Temperament (#184): the computer's style, rolled per seat from the seed (choose_temperament). "normal" plays as before.
+const TEMPERAMENTS := ["normal", "aggressive"]
+const TEMPERAMENT_NAMES := {"normal": "Steady", "aggressive": "Aggressive"}
+## The roll's own stream: SeededRNG(AISeat.seat_seed(game_seed, seat) + TEMPERAMENT_SALT), so the seat's RNG and the
+## side of the fork (AIPaths.BRANCH_SALT) are untouched.
+const TEMPERAMENT_SALT := 13
+## The share of seats that roll aggressive.
+const AGGRESSIVE_SHARE := 0.5
+## Aggressive: every storm, siege, breach, army and capital attack needs odds this much lower.
+const RISK_DISCOUNT := 0.1
+## Aggressive: a stand-off is read at this share of the pile (STANDOFF_TURNS, SIEGE_STANDOFF_TURNS).
+const AGGRESSIVE_STANDOFF := 0.5
 ## A note names at most this many armies, then says how many more (a Warband Muster host is many small armies).
 const NAMED_ARMIES := 2
 
@@ -301,6 +321,7 @@ var _scratch_top: GameState = null  # M5-4: _scratch for the top of the view (th
 var _gold_reserved := 0  # M3c: gold set aside for Fortify and engines before the troops are planned (0 without sieges)
 var _magic := AIMagic.new()  # M5-10: the research plan's mages, rituals and Tithe of Blood (ai/ai_magic.gd); nothing runs without magic
 var _ritual_gold := 0  # M5-10: gold the rituals of this turn hold back from the troops (0 without magic)
+var _temperament := "normal"  # #184: set_temperament(); kept for the whole game
 
 
 ## Orders for `faction_id` this turn. See the class comment. Unknown difficulties play as "normal".
@@ -312,6 +333,7 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 		return []
 	var out := []
 	_note_build()
+	_note_temperament()
 	_sacrifice = _choose_sacrifice()
 	if not _sacrifice.is_empty():
 		# The sacrifice phase resolves first, so every other order is planned (and checked by
@@ -379,6 +401,35 @@ func configure(game_seed: int, seat: int, forced_branch: String = "") -> void:
 	_game_seed = game_seed
 	_seat = seat
 	_forced_branch = forced_branch
+
+
+## Sets the brain's temperament (#184) for every plan after it: "normal" or "aggressive" (anything else plays "normal").
+func set_temperament(temperament: String) -> void:
+	_temperament = temperament if TEMPERAMENTS.has(temperament) else "normal"
+
+
+func temperament() -> String:
+	return _temperament
+
+
+## The temperament of the computer in 0-based `seat` (#184): "aggressive" for AGGRESSIVE_SHARE of the rolls, else
+## "normal". The first draw of SeededRNG(AISeat.seat_seed(game_seed, seat) + TEMPERAMENT_SALT), a stream of its own, so
+## the seat's RNG and its side of the fork are untouched. A pure function of the seed and the seat.
+static func choose_temperament(game_seed: int, seat: int) -> String:
+	var roll := SeededRNG.new(AISeat.seat_seed(game_seed, seat) + TEMPERAMENT_SALT).randf()
+	return "aggressive" if roll < AGGRESSIVE_SHARE else "normal"
+
+
+## "Steady", "Aggressive": the temperament's name on screen.
+static func temperament_name(temperament: String) -> String:
+	return String(TEMPERAMENT_NAMES.get(temperament, TEMPERAMENT_NAMES.normal))
+
+
+## What the temperament means, in plain words, for a tooltip or the new game screen.
+static func temperament_help(temperament: String) -> String:
+	if temperament == "aggressive":
+		return "It takes fights at worse odds (%d points less on every storm, siege and attack), loses patience in a stand-off twice as fast, and goes around a fort it won't attack to take land from the Free Holds or raid." % roundi(RISK_DISCOUNT * 100.0)
+	return "It fights only at good odds and masses its armies before it pushes on."
 
 
 ## The side of the fork the computer in 0-based `seat` swears to in a game with paths (design/M4_ASCENSION.md
@@ -790,7 +841,7 @@ func _strike_capitals() -> void:
 				_note("Not walking into %s yet: the %s armies next to it could rush back and win." % [ec.name, f.faction_name])
 			continue
 		var odds := _attack_rate(attackers, ec.id)
-		if odds.rate >= CAPITAL_WIN:
+		if odds.rate >= _risk(CAPITAL_WIN):
 			for a in attackers:
 				_move(a, ec.id)
 			_stats.attacks += 1
@@ -833,9 +884,9 @@ func _attack_armies() -> void:
 			continue
 		var p := _state.find_province(c.pid)
 		var odds := _attack_rate(att, c.pid)
-		var need := URGENT_WIN if c.urgent else LIKELY_WIN
+		var need := URGENT_WIN if c.urgent else _risk(LIKELY_WIN)
 		if not c.urgent and not _standoff.is_empty():
-			need = STANDOFF_WIN  # #94: after a long stand-off an even fight is worth taking
+			need = _risk(STANDOFF_WIN)  # #94: after a long stand-off an even fight is worth taking
 		if odds.rate < need:
 			_stats.held_back += 1
 			if odds.rate > HOPELESS_RATIO or c.urgent:
@@ -850,7 +901,7 @@ func _attack_armies() -> void:
 		var why := " before it reaches %s" % _province_name(_me.capital) if c.urgent else ""
 		var tail := ""
 		if not c.urgent and odds.rate < LIKELY_WIN:
-			tail = ": after a long stand-off, even odds are worth taking"
+			tail = ": after a long stand-off, even odds are worth taking" if not _standoff.is_empty() else ": it plays aggressively and takes the risk"
 		_note("Attacking the enemy at %s with %s%s (odds: %s%s)%s." % [p.name, _count_text(att), why, _odds_words(odds.rate, odds.label), _joiners_text(odds), tail])
 
 
@@ -1003,7 +1054,7 @@ func _best_capture(g: Dictionary, is_main: bool, objective: String, claimed: Dic
 		if not _safe_at(g.armies, n):
 			continue
 		var hold_rate := _hold_rate(g.armies, n)  # IND-1: 1.0 where no garrison stands
-		if hold_rate < float(HOLD_ATTACK_RATE[_level]):
+		if hold_rate < _risk(float(HOLD_ATTACK_RATE[_level])):
 			continue
 		var score: float
 		if _paths:
@@ -1028,6 +1079,10 @@ func _advance(g: Dictionary, objective: String) -> String:
 		return here
 	var d_here := _d(here, objective)
 	if d_here <= 1:
+		if _temperament == "aggressive":
+			var around := _go_around(here, objective, g.armies)  # #184: not massing at walls it won't attack
+			if not around.is_empty():
+				return around
 		return here  # next to the enemy capital: _strike_capitals decides when to go in
 	if not g.get("massed", true):
 		_note("Massing at %s: waiting for %s to join before pushing on to %s." % [_province_name(here),
@@ -1050,12 +1105,54 @@ func _advance(g: Dictionary, objective: String) -> String:
 		var other := _sieges.approach_step(here, objective, g.armies) if _state.sieges else _siege_step(here, objective, g.armies)
 		if other.is_empty():
 			other = _raid_step(here, g.armies)
+		if other.is_empty() and _temperament == "aggressive":
+			other = _go_around(here, objective, g.armies)  # #184
 		if not other.is_empty():
 			return other
 		_note("Massing at %s before pushing on to %s: the road ahead is guarded by stronger armies." % [_province_name(here), _province_name(objective)])
 		return here
 	var step := _pick_step(options)
 	return step
+
+
+## #184, the aggressive temperament: the main army at `here` would otherwise wait (next to a fort or capital that it
+## doesn't attack this turn, or before a guarded road), so it goes around: one step toward the nearest province within
+## MASS_REACH that isn't ours and isn't `objective`, with no enemy army in it, where `armies` are safe and beat its Free
+## Holds garrison, if any, at _risk(HOLD_ATTACK_RATE). Land to take from the Free Holds, or the foe's to raid. Ties: what it is
+## worth to us, then id. "" when there is none.
+func _go_around(here: String, objective: String, armies: Array) -> String:
+	var best := ""
+	var best_step := ""
+	var best_d := MASS_REACH + 1
+	var best_worth := -1.0
+	for p in _sorted_provinces():
+		if p.owner == _fid or p.id == objective or not _foes_at(p.id).is_empty():
+			continue
+		var d := _d(here, p.id)
+		if d < 1 or d > best_d:
+			continue
+		var worth: float = _capture_worth(p) if _paths else float(p.income) * (1.0 if p.owner.is_empty() else 2.0)
+		if d == best_d and worth <= best_worth + 0.0001:
+			continue
+		if not _safe_at(armies, p.id) or _hold_rate(armies, p.id) < _risk(float(HOLD_ATTACK_RATE[_level])):
+			continue
+		var step: String = p.id if d == 1 else _step_toward(here, p.id, armies)
+		if step.is_empty():
+			continue
+		best = p.id
+		best_step = step
+		best_d = d
+		best_worth = worth
+	if best.is_empty():
+		return ""
+	_stats.go_arounds = 1
+	var target := _state.find_province(best)
+	var what := "%s, to raid the %s" % [target.name, _faction_name(target.owner)]
+	if target.owner.is_empty():
+		what = "%s, held by the Free Holds" % target.name if _holds.has(best) else "%s, which nobody holds" % target.name
+	_note("Going around %s: %s %s for %s rather than wait at its walls (it plays aggressively)." % [_province_name(objective),
+		_army_names(armies), "heads" if armies.size() == 1 else "head", what])
+	return best_step
 
 
 ## Every other free army: one safe step toward where the main army will be.
@@ -1761,12 +1858,17 @@ func _guard_holds() -> void:
 	pids.sort()
 	for pid in pids:
 		var rate := _hold_rate(into[pid], pid)
-		if rate >= float(HOLD_ATTACK_RATE[_level]):
+		if rate >= _risk(float(HOLD_ATTACK_RATE[_level])):
 			_note("Attacking the %s: %d%% to win." % [TurnReportText.army_name(_state, _holds[pid].id).trim_prefix("the "), roundi(rate * 100.0)])
 			continue
 		for a in into[pid]:
 			_hold(a)
 		_note("Holding back from %s: its garrison is too strong for now (%d%% to win)." % [_province_name(pid), roundi(rate * 100.0)])
+
+
+## #184: the odds a fight needs, `base` less RISK_DISCOUNT for the aggressive temperament (and `base` itself otherwise).
+func _risk(base: float) -> float:
+	return base - RISK_DISCOUNT if _temperament == "aggressive" else base
 
 
 func _skips() -> bool:
@@ -1776,6 +1878,14 @@ func _skips() -> bool:
 # --- M2: the build, sacrifices and the ruler (design/M2_RULER.md §6.1, §6.3) ---------------------
 
 ## Turn 1 of a game with rulers: which build we play and what it means for the ruler, in a note.
+## #184: on the first turn, the aggressive computer says how it plays (a steady one says nothing, as before).
+func _note_temperament() -> void:
+	if _temperament != "aggressive" or _state.current_turn != 0:
+		return
+	_note_top("%s plays aggressively: it storms, besieges and attacks at odds %d points worse than a steady computer, loses patience in a stand-off twice as fast, and goes around a fort it won't attack to take land from the Free Holds or raid." % [
+		_me.faction_name, roundi(RISK_DISCOUNT * 100.0)])
+
+
 func _note_build() -> void:
 	if _preset.is_empty() or _state.current_turn != 0:
 		return
@@ -2352,7 +2462,7 @@ func _path_recruit_reason(ut: UnitType, n: int) -> String:
 ##   _attack_armies     attacks at STANDOFF_WIN instead of LIKELY_WIN
 ##   _sally             the garrison sallies at STANDOFF_SALLY_WIN instead of SALLY_WIN
 func _plan_standoff() -> void:
-	_standoff = standoff_info(_state, _fid)
+	_standoff = standoff_info(_state, _fid, _temperament)
 	_hunt = {}
 	if _state.sieges:
 		_sieges.begin()  # M3c: the main army's fort target; a stand-off's "siege" is a real one
@@ -2365,8 +2475,9 @@ func _plan_standoff() -> void:
 ## Whether `faction_id` has reached a stand-off in `state`, read from the state alone (no battle history,
 ## no saved AI state): every unit it fields (rulers left out) at today's recruit price, plus its treasury,
 ## worth STANDOFF_TURNS turns of its income or more. {"turns" (the pile in turns of income), "value" (its
-## units' worth), "gold", "income", "units"}, or {} when it isn't one (or the faction is unknown).
-static func standoff_info(state: GameState, faction_id: String) -> Dictionary:
+## units' worth), "gold", "income", "units"}, or {} when it isn't one (or the faction is unknown). #184: the aggressive
+## `temperament` reads it at AGGRESSIVE_STANDOFF of the pile.
+static func standoff_info(state: GameState, faction_id: String, temperament: String = "normal") -> Dictionary:
 	var f: Faction = state.find_faction(faction_id) if state != null else null
 	if f == null:
 		return {}
@@ -2386,7 +2497,10 @@ static func standoff_info(state: GameState, faction_id: String) -> Dictionary:
 			value += int(prices[u.type.id])
 			units += 1
 	var turns := float(value + maxi(0, f.gold)) / float(maxi(1, income))
-	if turns < (SIEGE_STANDOFF_TURNS if state.sieges else STANDOFF_TURNS):
+	var need := SIEGE_STANDOFF_TURNS if state.sieges else STANDOFF_TURNS
+	if temperament == "aggressive":
+		need *= AGGRESSIVE_STANDOFF
+	if turns < need:
 		return {}
 	return {"turns": turns, "value": value, "gold": f.gold, "income": income, "units": units}
 

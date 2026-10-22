@@ -30,6 +30,9 @@ extends RefCounted
 ## (seat_seed + AIPaths.BRANCH_SALT). The seat RNG makes no extra draw, so M1 and M2 games are unchanged,
 ## and a restored save rolls the same side.
 ##
+## Temperament (#184): each brain plays the temperament AIPlayer.choose_temperament rolls for its seed and seat, a stream of
+## its own, so the seat RNG makes no extra draw and a restored save rolls the same one. temperament(faction) returns it.
+##
 ## Fog of war (M5-4, design/M5_MAGIC_FOG.md §10.1): the computer is handed its VIEW and nothing else. In a game with
 ## fog, view_state(faction) is FogRules.view_state: its own side whole and the rival's armies as the stand-ins it has
 ## sighted or remembers (AIFog drops the old ghosts before it plans). The seat never calls a truth accessor of the
@@ -52,6 +55,7 @@ var _seats := {}  # faction id -> 0-based seat
 var _brains := {}  # faction id -> AIPlayer
 var _rngs := {}  # faction id -> SeededRNG, one per seat for the whole game
 var _builds := {}  # faction id -> AIPlayer.choose_build (games with rulers only): the RNG's first draw
+var _temperaments := {}  # faction id -> AIPlayer.choose_temperament (#184)
 var _notes := {}  # 1-based turn -> {faction id: Array of plain-language notes}
 var _stats := {}  # 1-based turn -> {faction id: AIPlayer.last_plan_stats()}
 var _rejected: Array = []  # {"turn", "faction", "order", "why"}: orders the session refused (expected: none)
@@ -74,6 +78,8 @@ func _init(session: GameSession = null, game_seed: int = 0) -> void:
 		_seats[fid] = seat
 		_brains[fid] = AIPlayer.new()
 		_brains[fid].configure(game_seed, seat)  # M4: the side of the fork is this seat's roll (no effect without paths)
+		_temperaments[fid] = AIPlayer.choose_temperament(game_seed, seat)
+		_brains[fid].set_temperament(_temperaments[fid])
 		_rngs[fid] = SeededRNG.new(seat_seed(game_seed, seat))
 		if rulers:
 			_builds[fid] = AIPlayer.choose_build(view, fid, _rngs[fid])
@@ -94,12 +100,14 @@ static func tag_text(level: String) -> String:
 	return "Computer (%s)" % level_name(level)
 
 
-## The tag's tooltip body: who plays the seat and how, in plain words (the codex link is added by the UI).
-static func tag_help(faction_name: String, level: String) -> String:
+## The tag's tooltip body: who plays the seat and how, in plain words (the codex link is added by the UI). #184: with a
+## `temperament`, its style too (AIPlayer.temperament_help).
+static func tag_help(faction_name: String, level: String, temperament: String = "") -> String:
 	var how := "Easy makes more mistakes: it passes up some good attacks, recruits at random and keeps a thinner guard on its capital." if level == "easy" \
 		else "Normal plays as well as it can: it checks the odds before every risky battle and never leaves its capital open."
-	return "The computer plays %s at the %s level, by the same rules as you. It gives its orders at the same time as you, without seeing yours. %s After each turn, the turn report shows what it was thinking." % [
-		faction_name, level_name(level), how]
+	var style := "" if temperament.is_empty() else " Style: %s. %s" % [AIPlayer.temperament_name(temperament), AIPlayer.temperament_help(temperament)]
+	return "The computer plays %s at the %s level, by the same rules as you. It gives its orders at the same time as you, without seeing yours. %s%s After each turn, the turn report shows what it was thinking." % [
+		faction_name, level_name(level), how, style]
 
 
 func is_computer(faction_id: String) -> bool:
@@ -108,6 +116,11 @@ func is_computer(faction_id: String) -> bool:
 
 func level(faction_id: String) -> String:
 	return String(_levels.get(faction_id, ""))
+
+
+## The temperament the computer seat `faction_id` plays (#184): "normal" or "aggressive", or "" for a seat it doesn't play.
+func temperament(faction_id: String) -> String:
+	return String(_temperaments.get(faction_id, ""))
 
 
 ## The computer seats' faction ids, in seat order.

@@ -407,7 +407,7 @@ func _siege_turn(p: Province, ours: Array) -> void:
 			return
 	var dmg := int(SiegeRules.siege_damage_at(state, p.id).total)
 	var last: bool = p.walls <= dmg
-	var need := _start_win() if last else SIEGE_STAY_WIN
+	var need := _start_win() if last else float(ai._risk(SIEGE_STAY_WIN))
 	var open := _open_odds(p.id, ours, true)
 	if float(open.rate) >= need:
 		for a in ours:
@@ -453,7 +453,7 @@ func _fort_next_door(p: Province) -> void:
 	var relief := _relief_for(p.id)
 	if p.walls <= 0:
 		var odds := _breach_odds_with(p.id, att)
-		var need: float = AIPlayer.LIKELY_WIN if ai._standoff.is_empty() else AIPlayer.STANDOFF_WIN
+		var need: float = ai._risk(AIPlayer.LIKELY_WIN if ai._standoff.is_empty() else AIPlayer.STANDOFF_WIN)
 		if float(odds.rate) >= need:
 			for a in att:
 				ai._move(a, p.id)
@@ -474,6 +474,8 @@ func _fort_next_door(p: Province) -> void:
 		var dmg := int(SiegeRules.siege_damage(SiegeRules.troops(att), SiegeRules.engines_of(att)).total)
 		_bump("fort_sieges")
 		var tail := "" if ai._standoff.is_empty() or float(open.rate) >= SIEGE_START_WIN else " After a long stand-off, even odds are worth a siege."
+		if tail.is_empty() and float(open.rate) < SIEGE_START_WIN:
+			tail = " It plays aggressively and takes the risk."
 		ai._note("Besieging %s: its walls (%d) drop to 0 %s, and in the open %s.%s" % [p.name, p.walls,
 			_in_turns(SiegeRules.turns_to_breach(p.walls, dmg)), _open_words(open), tail])
 		return
@@ -510,14 +512,15 @@ func _storm(p: Province, staying: Array, moving: Array, odds: Dictionary, relief
 
 ## The storm odds a storm of `pid` needs: CAPITAL_STORM_WIN at an enemy capital, RACE_STORM_WIN when a relief
 ## army can reach the fort this turn, and STORM_WIN otherwise.
+## #184: less AIPlayer.RISK_DISCOUNT for the aggressive temperament (AIPlayer._risk), as are _start_win and the stay odds.
 func _storm_need(pid: String, relief: Array) -> float:
 	if not relief.is_empty():
-		return RACE_STORM_WIN
-	return CAPITAL_STORM_WIN if ai._is_enemy_capital(pid) else STORM_WIN
+		return ai._risk(RACE_STORM_WIN)
+	return ai._risk(CAPITAL_STORM_WIN if ai._is_enemy_capital(pid) else STORM_WIN)
 
 
 func _start_win() -> float:
-	return SIEGE_START_WIN if ai._standoff.is_empty() else STANDOFF_START_WIN
+	return ai._risk(SIEGE_START_WIN if ai._standoff.is_empty() else STANDOFF_START_WIN)
 
 
 ## The fort owner's armies, other than its garrison, that could reach `pid` this turn.

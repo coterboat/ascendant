@@ -147,13 +147,15 @@ static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Call
 		return out
 	for i in int(item.count):
 		var game_seed: int = int(item.from) + i
+		var policies := temperament_policies(cell.policies, "" if str(cell.band) == "S8" else str(systems.get("temperament", "")))
 		var options := {"rulers": true, "builds": cell.builds.duplicate(), "paths": bool(cell.paths), "branches": [],
 			"replay_check": str(cell.band) == "S" and (game_seed - int(cell.seed)) % REPLAY_EVERY == 0, "record_digest": str(cell.band) == "S8"}
 		options["independents"] = independents and str(cell.band) != "S8"
 		if str(cell.band) != "S8":
 			options.merge(systems)
+			options.erase("temperament")
 		options["sieges"] = bool(cell.sieges)
-		var r := Simulator.play_game(game_seed, cell.seats, cell.policies, int(cell.get("turn_cap", turn_cap)), probe, options)
+		var r := Simulator.play_game(game_seed, cell.seats, policies, int(cell.get("turn_cap", turn_cap)), probe, options)
 		r.erase("final_state")
 		r["cell"] = str(cell.id)
 		r["band"] = str(cell.band)
@@ -161,6 +163,25 @@ static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Call
 		r["with_paths"] = bool(cell.paths)
 		r["with_sieges"] = bool(cell.sieges)
 		out.append(r)
+	return out
+
+
+## #184 (autoplay --temperament): the policies the computer seats (POLICY) of a cell play. "aggressive": both seats play
+## the aggressive temperament; "mixed": seat 1 aggressive, seat 2 normal (with both seat orders in the plan, each faction
+## plays it); "roll": each seat rolls its temperament as an AI seat does. Anything else, or a cell of band S8 (whose
+## digests are the normal computer's), keeps `policies`.
+static func temperament_policies(policies: Array, temperament: String) -> Array:
+	var out := policies.duplicate()
+	for i in out.size():
+		if str(out[i]) != POLICY:
+			continue
+		match temperament:
+			"aggressive":
+				out[i] = "ai_aggressive"
+			"mixed":
+				out[i] = "ai_aggressive" if i == 0 else POLICY
+			"roll":
+				out[i] = "ai_roll"
 	return out
 
 

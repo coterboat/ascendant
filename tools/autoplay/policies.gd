@@ -22,6 +22,9 @@ extends RefCounted
 ##   ai      the computer opponent, AIPlayer (ai/ai_player.gd) at "normal": guards its capital against
 ##           anything that can reach it, masses armies, attacks on good odds, expands when it is safe.
 ##   ai_easy AIPlayer at "easy": sometimes lets good moves pass and recruits at random.
+##   ai_aggressive (#184) AIPlayer at "normal" with the aggressive temperament (AIPlayer.set_temperament).
+##   ai_roll  (#184) AIPlayer at "normal" with the temperament an AI seat rolls for this seed and seat
+##           (AIPlayer.choose_temperament). Plain "ai" always plays the normal temperament, so its games stay the same.
 ##   ai_bleed (M5-11, #122) AIPlayer at "normal" playing Tithe of Blood the way a person who loves it might: every ritual a
 ##           Shaman's army can pay in blood is paid in blood, down to the last hit point each soldier can give
 ##           (the computer itself keeps two thirds of its hit points). The scripted build of band G9.
@@ -33,7 +36,7 @@ extends RefCounted
 ##   var policy = Policies.make("greedy")
 ##   var orders: Array = policy.orders(state, "kingdom", SeededRNG.new(7))
 
-const NAMES := ["greedy", "random", "turtle", "ai", "ai_easy", "ai_bleed"]
+const NAMES := ["greedy", "random", "turtle", "ai", "ai_easy", "ai_bleed", "ai_aggressive", "ai_roll"]
 
 
 ## A new policy by name, or null for an unknown name.
@@ -51,6 +54,10 @@ static func make(policy_name: String) -> Base:
 			return AIPolicy.new("ai_easy", "easy")
 		"ai_bleed":
 			return AIPolicy.new("ai_bleed", "normal", true)
+		"ai_aggressive":
+			return AIPolicy.new("ai_aggressive", "normal", false, "aggressive")
+		"ai_roll":
+			return AIPolicy.new("ai_roll", "normal", false, "roll")
 	return null
 
 
@@ -604,25 +611,33 @@ class AIPolicy extends Base:
 	var difficulty := "normal"
 	## M5-11: pay every ritual that can be paid in blood in blood (the scripted Tithe build, "ai_bleed").
 	var bleed := false
+	## #184: "" or "normal" (the default temperament), "aggressive", or "roll" (configure rolls it as an AI seat does).
+	var temperament := ""
 	## Slowest single plan of the game, in microseconds (reporting only).
 	var slowest_usec := 0
 
-	func _init(p_name: String = "ai", p_difficulty: String = "normal", p_bleed: bool = false) -> void:
+	func _init(p_name: String = "ai", p_difficulty: String = "normal", p_bleed: bool = false, p_temperament: String = "") -> void:
 		policy_name = p_name
 		difficulty = p_difficulty
 		bleed = p_bleed
+		temperament = p_temperament
+		if temperament == "aggressive":
+			ai.set_temperament(temperament)
 
 	## M4: the brain's seed and seat, as AISeat gives them (AIPlayer.configure), so its side of the fork is
 	## the one an AI seat in a real game on this seed rolls; `forced_branch` replaces the roll (--branches).
 	func configure(game_seed: int, seat: int, forced_branch: String = "") -> void:
 		ai.configure(game_seed, seat, forced_branch)
+		if temperament == "roll":
+			ai.set_temperament(AIPlayer.choose_temperament(game_seed, seat))
+			stats["aggressive"] = 1 if ai.temperament() == "aggressive" else 0
 
 	func orders(state: GameState, faction_id: String, rng: SeededRNG) -> Array:
 		var planned: Array = ai.plan_orders(state, faction_id, rng, difficulty)
 		var st: Dictionary = ai.last_plan_stats()
 		for key in ["odds_calls", "odds_cached", "odds_skipped", "attacks", "held_back", "captures", "recalls",
 				"retreats", "dropped_invalid", "sacrifices", "road_moves", "field_recruits", "ruler_moves",
-				"research_orders", "path_recruits", "standoff", "hunts", "sieges", "raids",
+				"research_orders", "path_recruits", "standoff", "hunts", "sieges", "raids", "go_arounds",
 				# M3c S-6 (#104), games with sieges only: what AISieges planned
 				"fort_sieges", "storms", "sallies", "reliefs", "abandons", "sieges_left", "approaches", "garrisons",
 				"engines_bought", "forts_ordered",

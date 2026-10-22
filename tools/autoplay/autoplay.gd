@@ -70,6 +70,10 @@ extends SceneTree
 ##                    the bands are then judged on those games alone
 ##   --work-dir PATH  with --matrix and --jobs above 1, where the worker processes write their results
 ##                    (default user://autoplay_matrix); the files are removed afterwards
+##   --temperament T  with --matrix --sieges (#184), the computer's temperament in the siege games and their baseline (not
+##                    band S8's): normal (the default), aggressive (both seats), mixed (seat 1 aggressive, seat 2 normal) or
+##                    roll (each seat rolls it as an AI seat does, AIPlayer.choose_temperament). With --p1/--p2 use the policies
+##                    ai_aggressive and ai_roll instead
 ##   --save-results PATH  with --matrix --magic or --sieges, also write the games' raw results to PATH, so a run can be chunked
 ##                    (--only G:, --only GF:, --only GT:, --only GB:, --only P, and with & for both: --only "G:&+iron_crown";
 ##                    for sieges --only "S:&beast_god", S0:, S7, S8) and judged later with --merge
@@ -202,7 +206,7 @@ func _parse(args: PackedStringArray) -> Dictionary:
 		"turn_cap": Simulator.TURN_CAP, "out": "", "list": false, "rulers": false, "builds": ["", ""], "paths": false, "independents": false, "branches": ["", ""],
 		"magic": false, "fog": false, "tithe": "", "save_results": "", "merge": "", "records": false, "no_records": false, "sieges": false,
 		"matrix": false, "jobs": clampi(OS.get_processor_count(), 1, MAX_JOBS), "scale": 1.0, "work_dir": "user://autoplay_matrix",
-		"worker": false, "cell": "", "from": 0, "count": 0, "only": "", "record_m2": "", "note": ""}
+		"worker": false, "cell": "", "from": 0, "count": 0, "only": "", "record_m2": "", "note": "", "temperament": ""}
 	var builds_arg := ""
 	var branches_arg := ""
 	var i := 0
@@ -308,6 +312,10 @@ func _parse(args: PackedStringArray) -> Dictionary:
 				opts.only = value
 			"--record-m2":
 				opts.record_m2 = value
+			"--temperament":
+				if not ["normal", "aggressive", "mixed", "roll"].has(value):
+					return {"error": "--temperament must be normal, aggressive, mixed or roll"}
+				opts.temperament = value
 			"--note":
 				opts.note = value
 			"--cell":  # worker processes only
@@ -500,6 +508,8 @@ func _systems(opts: Dictionary) -> Dictionary:
 		out["magic"] = true
 	if opts.fog:
 		out["fog"] = true
+	if not str(opts.temperament).is_empty():
+		out["temperament"] = str(opts.temperament)  # #184: SiegeMatrix.temperament_policies
 	return out
 
 
@@ -696,6 +706,8 @@ func _play_items(items: Array, cells: Array, opts: Dictionary, catcher: ErrorCat
 				args.append("--paths")
 			if opts.independents:
 				args.append("--independents")
+			if not str(opts.temperament).is_empty():
+				args.append_array(["--temperament", str(opts.temperament)])
 			var pid := OS.create_process(exe, args)
 			if pid <= 0:
 				problems.append("could not start a worker for %s, seeds %d-%d" % [item.cell, item.from, item.from + item.count - 1])

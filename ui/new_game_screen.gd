@@ -633,6 +633,10 @@ func _refresh() -> void:
 		elif f and rulers_on():
 			faction_labels[i].text += " Picks a ruler and mandates on the build screen."
 		faction_labels[i].tooltip_text = _faction_tooltip(f) if f else ""
+		if f and seat_kind(i + 1) == "computer":  # #184: the style AISeat rolls for this seed and seat
+			var style := AIPlayer.choose_temperament(_seed_value(), i)
+			faction_labels[i].text += " Its style, from the seed: %s." % AIPlayer.temperament_name(style)
+			faction_labels[i].tooltip_text += "\n\n" + TooltipText.wrap_text("Style: %s. %s" % [AIPlayer.temperament_name(style), AIPlayer.temperament_help(style)])
 		seat_pickers[i].tooltip_text = "Player %d plays %s.\n\n%s" % [i + 1, f.faction_name, _faction_tooltip(f)] if f \
 			else "Pick the faction Player %d plays." % (i + 1)
 	_refresh_systems_label()
