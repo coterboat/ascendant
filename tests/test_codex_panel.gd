@@ -1,6 +1,7 @@
 extends "res://tests/test_case.gd"
 ## In-game codex panel (#8): lists every RulesCodex entry by title, shows text, search, links, no raw
 ## ids. Also the #8 criterion: every codex key the rules and session code link to exists in RulesCodex.
+## #285: a faction's own entries are listed only where that faction plays (tests/test_codex_factions.gd).
 
 const PANEL_SCENE := "res://ui/codex_panel.tscn"
 
@@ -18,14 +19,19 @@ func _free(panel) -> void:
 	panel.free()
 
 
+## The entries a codex for the factions a new game can seat lists (#285: the preview faction's own are left out).
+func _shown() -> Array:
+	return RulesCodex.ENTRIES.keys().filter(func(k): return RulesCodex.shown_for(String(k), FactionData.playable(false)))
+
+
 func test_lists_every_codex_entry_by_title() -> void:
 	var panel = _make_panel()
 	var keys: Array[String] = panel.entry_keys()
-	assert_eq(keys.size(), RulesCodex.ENTRIES.size())
-	for key in RulesCodex.ENTRIES:
+	assert_eq(keys.size(), _shown().size())
+	for key in _shown():
 		assert_true(keys.has(key), "panel offers %s" % key)
 	var list: ItemList = panel.get_node("%EntryList")
-	assert_eq(list.item_count, RulesCodex.ENTRIES.size())
+	assert_eq(list.item_count, _shown().size())
 	for i in list.item_count:
 		var key := String(list.get_item_metadata(i))
 		assert_eq(list.get_item_text(i), String(RulesCodex.entry(key).title), "row %d shows the title" % i)
@@ -37,7 +43,7 @@ func test_show_entry_shows_its_text() -> void:
 	var panel = _make_panel()
 	var list: ItemList = panel.get_node("%EntryList")
 	var title: Label = panel.get_node("%EntryTitle")
-	for key in RulesCodex.ENTRIES:
+	for key in _shown():
 		assert_true(panel.show_entry(key), key)
 		assert_eq(panel.current_key(), key)
 		assert_eq(title.text, String(RulesCodex.entry(key).title))
@@ -61,7 +67,7 @@ func test_show_entry_rejects_unknown_keys() -> void:
 func test_filter_narrows_the_list() -> void:
 	var panel = _make_panel()
 	var list: ItemList = panel.get_node("%EntryList")
-	var total := RulesCodex.ENTRIES.size()
+	var total := _shown().size()
 	var n: int = panel.filter("swapping")
 	assert_true(n >= 1 and n < total, "search narrows the list (got %d of %d)" % [n, total])
 	assert_eq(list.item_count, n)
@@ -164,7 +170,7 @@ func test_no_listed_entry_describes_placeholder_battles() -> void:
 	var stub_phrases := ["placeholder", "until full battles", "takes no losses", "higher strength wins",
 		"strengths are tied", "on a tie the defender", "win ties", "wins ties", "ties go to the defender"]
 	var listed: Array[String] = panel.listed_keys()
-	assert_eq(listed.size(), RulesCodex.ENTRIES.size(), "the panel lists every entry")
+	assert_eq(listed.size(), _shown().size(), "the panel lists every entry this game can show")
 	for key in listed:
 		panel.show_entry(key)
 		var seen := ("%s\n%s" % [(panel.get_node("%EntryTitle") as Label).text, panel.shown_text()]).to_lower()
