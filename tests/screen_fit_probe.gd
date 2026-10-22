@@ -115,7 +115,8 @@ func _rects(screen: Control) -> Dictionary:
 			"compact": [1.0 if hud.compact else 0.0, 0.0, 0.0, 0.0, true], "card": _r(map.cards), "safe": _r_rect(hud.safe_area()),
 			"guide": _r(screen.first_game_guide), "map": _r(map.map_view),
 			"research_panel": _rt(research), "research_close": _r(screen.research_hud.panel.close_button) if research != null else [],
-			"report_box": _rt(report_box), "report_close": _r(screen.report_overlay.find_child("CloseReportButton", true, false))}
+			"report_box": _rt(report_box), "report_close": _r(screen.report_overlay.find_child("CloseReportButton", true, false)),
+			"hint_lines": [map.hint_label.get_line_count(), map.hint_label.get_visible_line_count()]}  # #277: the lines it needs, the lines it shows
 		if map.cast_dialog != null and map.cast_dialog.visible:  # UI-POLISH-1 (#239): the cast dialog and what it shows
 			rects["cast_panel"] = _r(map.cast_dialog.panel)
 			rects["cast_want"] = map.cast_dialog.panel.get_combined_minimum_size().y
