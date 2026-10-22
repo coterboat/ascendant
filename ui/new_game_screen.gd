@@ -44,9 +44,9 @@ extends Control
 ## Three factions, two seats (CW-7, #258; design/CANDLEWAKE.md §1, §12): the Candlewake's preview box beside the seats (preview_label),
 ## off by default and remembered in the settings (GameSettings.preview_factions_on), lets either seat pick the factions still
 ## being built (FactionData.PREVIEW_FACTIONS). Unticked, the pickers list the Crown and the Clans as before. The same faction
-## still can't be picked twice. A seated faction that can't play a ticked system yet (GameState.system_problems: the
-## Candlewake's rulers came with CW-2, their path and magic come with CW-4 and CW-5) says so in plain words and disables Start,
-## the deepest box first, so one line names every box to untick. Each seat's line names its capital: the Candlewake take the
+## still can't be picked twice. A seated faction that can't play a ticked system yet (GameState.system_problems; the
+## Candlewake play every system since CW-5) says so in plain words and disables Start, the deepest box first, so one line
+## names every box to untick. Each seat's line names its capital: the Candlewake take the
 ## capital the other seat doesn't hold and call it the Long Vigil (the row's capital_name), so the line says which one. The
 ## box's tooltip says what the preview is and what isn't built yet (not_built: those boxes, the computer's way with them,
 ## their art) and links the codex at their own rule (PREVIEW_CODEX); a computer seat that plays them says what it can't do
@@ -804,7 +804,9 @@ static func preview_tooltip() -> String:
 		if not missing.is_empty():
 			text += " Not built yet: %s." % _clauses_list(missing)
 		text += " Their numbers are a first draft."
-		if not quick_start_factions(true, default_systems()).has(fid):
+		if quick_start_factions(true, default_systems()).has(fid):
+			text += " Ticked, Quick start may seat them too."
+		else:
 			text += " Quick start leaves them out until they can play every system."
 		parts.append(text)
 	parts.append("Remembered for your next new game; clear it to see only the finished factions.")
@@ -812,8 +814,8 @@ static func preview_tooltip() -> String:
 
 
 ## CW-7: what isn't built yet for the preview faction `faction_id`, in words, in the order a player meets it: the boxes it
-## can't play yet (systems_not_ready: their rulers, path and magic come in CW-2, CW-4 and CW-5), the computer's own play for
-## it (computer_preview_note; CW-6), and its art while its banner isn't in (CW-10). Empty for a finished faction.
+## can't play yet (systems_not_ready; none for the Candlewake since CW-5), the computer's own play for it
+## (computer_preview_note; CW-6), and its art while its banner isn't in (CW-10). Empty for a finished faction.
 static func not_built(faction_id: String) -> Array[String]:
 	var out: Array[String] = []
 	if not FactionData.is_preview(faction_id):

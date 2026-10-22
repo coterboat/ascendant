@@ -20,8 +20,6 @@ const SCREENS := ["title", "new_game", "new_game_full", "new_game_error", "victo
 	"title_three", "new_game_preview", "build_candlewake"]
 ## CW-7 (#258): new_game_preview is the screen with the Candlewake's box ticked and the Candlewake seated, every box as it ships.
 const NEW_GAMES := ["new_game", "new_game_full", "new_game_error", "new_game_preview"]
-## The new game screens whose error line shows (why Start is off).
-const NEW_GAME_ERRORS := ["new_game_error", "new_game_preview"]
 const VICTORIES := ["victory", "victory_actions", "victory_everything", "victory_draw"]
 ## A scroll container smaller than this is not a visible way to the content in it.
 const MIN_SCROLL_HEIGHT := 200.0
@@ -130,7 +128,8 @@ func test_new_game_start_and_back_are_on_screen_below_the_body() -> void:
 			assert_true(start.position.y >= scroll.end.y - 0.5 and back.position.y >= scroll.end.y - 0.5, "%s: the buttons are pinned below the scrolling body, not in it" % where)
 			assert_true(_inside(_rect(s, "panel"), viewport), "%s: the panel is inside the viewport" % where)
 			assert_true(_inside(scroll, viewport) and scroll.size.y >= MIN_SCROLL_HEIGHT, "%s: the body is a visible scroll container (%s)" % [where, scroll])
-			if NEW_GAME_ERRORS.has(name):
+			# The error line: an invalid seed, or (CW-7) a box the Candlewake can't play yet, while there is one.
+			if name == "new_game_error" or (name == "new_game_preview" and not NewGameScreen.systems_not_ready("candlewake").is_empty()):
 				assert_true(_shown(s, "error") and _inside(_rect(s, "error"), viewport), "%s: why Start is off is on screen too" % where))
 
 

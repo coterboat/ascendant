@@ -254,6 +254,31 @@ func test_the_title_hangs_a_preview_banner_only_with_the_box_ticked_and_its_art_
 	GameSettings.set_preview_factions(was, path)
 
 
+## #285's hook for the box: the title's codex lists a faction's own entries only for the factions a new game can seat, so the
+## Candlewake's rules (Wick first, the entry their box links) are listed while the box is ticked, and not while it is clear.
+func test_the_titles_codex_lists_their_rules_while_the_box_is_ticked() -> void:
+	var path := GameSettings.default_path
+	var was := GameSettings.preview_factions_on(path)
+	var folder := "user://test_three_faction_screens_codex_%d" % OS.get_process_id()
+	var title := load(TITLE_SCENE).instantiate() as TitleScreen
+	title.store = SaveStore.new(folder)
+	(Engine.get_main_loop() as SceneTree).root.add_child(title)  # as tests/test_codex_panel.gd's panel (any API call binds it)
+	GameSettings.set_preview_factions(false, path)
+	title.open_codex()
+	assert_eq(title.codex.factions, FactionData.playable(false), "the box clear: the finished factions")
+	assert_false(title.codex.entry_keys().has(NewGameScreen.PREVIEW_CODEX), "no Candlewake rule")
+	title.codex.visible = false  # closed, as its Close does
+	GameSettings.set_preview_factions(true, path)
+	title.open_codex(NewGameScreen.PREVIEW_CODEX)
+	assert_eq(title.codex.factions, FactionData.playable(true), "the box ticked: the Candlewake too")
+	assert_true(title.codex.entry_keys().has(NewGameScreen.PREVIEW_CODEX), "their rules are listed")
+	assert_eq(title.codex.current_key(), NewGameScreen.PREVIEW_CODEX, "and the box's link opens at Wick")
+	title.get_parent().remove_child(title)
+	title.free()
+	DirAccess.remove_absolute(folder)
+	GameSettings.set_preview_factions(was, path)
+
+
 # --- lookups that read every faction row -------------------------------------------------------------------------------
 
 func test_the_art_report_and_victory_lookups_find_the_candlewake() -> void:
@@ -285,8 +310,9 @@ func test_the_box_says_what_the_preview_is_and_what_isnt_built_yet_and_links_the
 		assert_true(tip.contains(box), "names %s, a box they can't play yet" % box)
 	assert_true(tip.contains("computer") and tip.contains("flame"), "the computer doesn't plan around their flame yet (CW-6): %s" % tip)
 	assert_eq(tip.contains("their art"), Art.banner(WAKE) == null, "their art, while it is still coming")
-	assert_eq(tip.contains("Quick start leaves them out"), not NewGameScreen.quick_start_factions(true, NewGameScreen.default_systems()).has(WAKE),
-		"Quick start seats them only once they play every system")
+	var drawn := NewGameScreen.quick_start_factions(true, NewGameScreen.default_systems()).has(WAKE)
+	assert_eq(tip.contains("Quick start leaves them out"), not drawn, "Quick start seats them only once they play every system")
+	assert_eq(tip.contains("Quick start may seat them"), drawn, "and the box says so once it may")
 	assert_eq(NewGameScreen.not_built(CROWN), [], "nothing left to build for a finished faction")
 	# Its codex line: a right-click (or F1) opens their own rule, and doesn't tick the box.
 	assert_true(RulesCodex.ENTRIES.has(NewGameScreen.PREVIEW_CODEX), "a codex entry")

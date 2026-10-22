@@ -20,7 +20,8 @@ extends Control
 ## three the same size and clear of the title and the menu at every size the title is laid out at. No banner is drawn in
 ## code: without its art a preview faction hangs none, and the title stays at two (the Candlewake's banner,
 ## assets/banners/candlewake.webp, waits in the Review Table).
-##   Codex        opens the CodexPanel over the title; Close (or Esc) returns here.
+##   Codex        opens the CodexPanel over the title; Close (or Esc) returns here. It lists the entries of the factions a
+##                new game can seat (#285): the Candlewake's too while their preview box is ticked (CW-7).
 ##   Settings     opens the SettingsPanel (window mode, interface size, sound volumes).
 ##   Quit         closes the game.
 ##   Map preview  a developer preview of the map screen, kept small and grey at the bottom. MVP-1 (#141): it is hidden
@@ -286,6 +287,8 @@ func open_codex(key: String = "") -> void:
 			bg.add_theme_stylebox_override("panel", UiPalette.panel_style())
 		add_child(codex)
 	_raise(codex)
+	# #285, CW-7 (#258): the entries of the factions a new game can seat, the Candlewake's too while their box is ticked.
+	codex.set_factions(FactionData.playable(GameSettings.preview_factions_on()))
 	codex.open(key)
 
 

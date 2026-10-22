@@ -277,7 +277,8 @@ func _title_three() -> Control:
 
 
 ## CW-7: the new game screen with the box ticked and the Candlewake in seat 1 against the computer's Crown, every system box as
-## it ships: the seat lines name the Long Vigil, and the error line says which boxes they can't play yet.
+## it ships: the seat lines name the Long Vigil and say what the preview means, and while they can't play a box yet, the
+## error line says which.
 func _new_game_preview() -> Control:
 	var s := NewGameScreen.new()
 	s.set_preview(true)
