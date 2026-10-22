@@ -792,7 +792,7 @@ func muster_value(p: Province) -> float:
 		return 0.0
 	var cheapest := 0
 	for ut in me.unit_types:
-		if ut.cost <= 0:
+		if ut.cost <= 0 or MarkRules.is_poured(ut):  # CW-12: a candlebeast is poured only in Deep Wake, not at any fort
 			continue
 		var price: int = ai._price(ut)
 		if cheapest == 0 or price < cheapest:
@@ -893,7 +893,7 @@ func checked_recruits() -> Array:
 func _places() -> Array:
 	var probe: UnitType = null
 	for ut in me.unit_types:
-		if ut.cost > 0 and (probe == null or ut.cost < probe.cost):
+		if ut.cost > 0 and not MarkRules.is_poured(ut) and (probe == null or ut.cost < probe.cost):  # CW-12: a troop any fort takes
 			probe = ut
 	var forts := []
 	for p in ai._sorted_provinces():
