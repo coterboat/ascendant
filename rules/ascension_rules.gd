@@ -65,9 +65,10 @@ static var _nodes_by_id := {}
 
 # --- data lookups ---------------------------------------------------------------------------------
 
-## The faction's path: {"id", "name", "codex", "nodes"}, or {} for a faction without one.
+## The faction's path: {"id", "name", "codex", "nodes"}, or {} for a faction without one. CW-4: the Candlewake's is in
+## PathData.PREVIEW_PATHS, behind their preview; the shipped PATHS stay as they are.
 static func path_data(faction_id: String) -> Dictionary:
-	return PathData.PATHS.get(faction_id, {})
+	return PathData.PATHS.get(faction_id, PathData.PREVIEW_PATHS.get(faction_id, {}))
 
 
 ## "the Sunstone Path", or "" for a faction without one.
@@ -88,16 +89,18 @@ static func node_ids(faction_id: String) -> Array:
 ## so is_ordinary, requires_any, node_ids and path_complete still count path nodes only.
 static func node_data(node_id: String) -> Dictionary:
 	if _nodes_by_id.is_empty():
-		for fid in PathData.PATHS:
-			for n in PathData.PATHS[fid].nodes:
-				var copy: Dictionary = n.duplicate(true)
-				copy["faction"] = fid
-				_nodes_by_id[n.id] = copy
-		for fid in MagicData.ARCANA:
-			for n in MagicData.ARCANA[fid]:
-				var copy: Dictionary = n.duplicate(true)
-				copy["faction"] = fid
-				_nodes_by_id[n.id] = copy
+		for table in [PathData.PATHS, PathData.PREVIEW_PATHS]:  # CW-4: the Candlewake's path too
+			for fid in table:
+				for n in table[fid].nodes:
+					var copy: Dictionary = n.duplicate(true)
+					copy["faction"] = fid
+					_nodes_by_id[n.id] = copy
+		for table in [MagicData.ARCANA, MagicData.PREVIEW_ARCANA]:  # CW-5: the Candlewake's arcana too
+			for fid in table:
+				for n in table[fid]:
+					var copy: Dictionary = n.duplicate(true)
+					copy["faction"] = fid
+					_nodes_by_id[n.id] = copy
 	return _nodes_by_id.get(node_id, {})
 
 
@@ -150,7 +153,17 @@ static func node_ref(node_id: String) -> String:
 
 
 static func branch_data(branch_id: String) -> Dictionary:
-	return PathData.BRANCHES.get(branch_id, {})
+	return PathData.BRANCHES.get(branch_id, PathData.PREVIEW_BRANCHES.get(branch_id, {}))
+
+
+## The sides of `faction_id`'s fork, in data order: the shipped table's, then the preview's (CW-4: the Candlewake's).
+static func branches_for(faction_id: String) -> Array:
+	var out := []
+	for table in [PathData.BRANCHES, PathData.PREVIEW_BRANCHES]:
+		for b in table:
+			if String(table[b].faction) == faction_id:
+				out.append(String(b))
+	return out
 
 
 ## The people a side of the fork makes: "Celestial Host".
@@ -167,15 +180,62 @@ static func branch_ref(branch_id: String) -> String:
 static func other_branch(faction_id: String, branch_id: String) -> String:
 	if String(branch_data(branch_id).get("faction", "")) != faction_id:
 		return ""
-	for b in PathData.BRANCHES:
-		if b != branch_id and String(PathData.BRANCHES[b].faction) == faction_id:
+	for b in branches_for(faction_id):
+		if b != branch_id:
 			return b
 	return ""
 
 
 ## An Oath's economy rule name ("Tithe of Light"), or "".
 static func economy_rule_name(node_id: String) -> String:
-	return String(PathData.ECONOMY_RULES.get(node_id, {}).get("name", ""))
+	return String(economy_rule_data(node_id).get("name", ""))
+
+
+## An Oath's economy rule {"name", "codex"} (PathData.ECONOMY_RULES; CW-4: the Candlewake's preview ones), or {}.
+static func economy_rule_data(node_id: String) -> Dictionary:
+	return PathData.ECONOMY_RULES.get(node_id, PathData.PREVIEW_ECONOMY_RULES.get(node_id, {}))
+
+
+## A transformation's new unit as data (PathData.NEW_UNITS; CW-4: the Candlewake's preview ones), or {}.
+static func new_unit_data(unit_id: String) -> Dictionary:
+	return PathData.NEW_UNITS.get(unit_id, PathData.PREVIEW_NEW_UNITS.get(unit_id, {}))
+
+
+static func is_new_unit(unit_id: String) -> bool:
+	return not new_unit_data(unit_id).is_empty()
+
+
+## A transformation's province rule as data {"name", "codex"} (PathData.PROVINCE_RULES; CW-4: the preview's), or {}.
+static func province_rule_data(rule_id: String) -> Dictionary:
+	return PathData.PROVINCE_RULES.get(rule_id, PathData.PREVIEW_PROVINCE_RULES.get(rule_id, {}))
+
+
+## CW-4: the sum of an integer path effect `key` over `faction_id`'s researched nodes (0 without paths): wake_sooner,
+## wake_gold, flare_damage, harvest_bonus.
+static func effect_int(state: GameState, faction_id: String, key: String) -> int:
+	var out := 0
+	for nid in researched(state, faction_id):
+		out += int(node_effects(nid).get(key, 0))
+	return out
+
+
+## CW-4: the largest of an integer path effect `key` over the researched nodes, or 0: flame_cap, idle_loss, pyre_roads.
+static func effect_max(state: GameState, faction_id: String, key: String) -> int:
+	var out := 0
+	for nid in researched(state, faction_id):
+		out = maxi(out, int(node_effects(nid).get(key, 0)))
+	return out
+
+
+## CW-4: a dictionary path effect `key` from the researched nodes (the last one researched that has it), or {}: risen,
+## siphon_heal.
+static func effect_dict(state: GameState, faction_id: String, key: String) -> Dictionary:
+	var out := {}
+	for nid in researched(state, faction_id):
+		var v = node_effects(nid).get(key)
+		if v is Dictionary:
+			out = v
+	return out
 
 
 # --- reading a game -------------------------------------------------------------------------------
@@ -570,6 +630,18 @@ static func _apply_roster(f: Faction, node_id: String) -> Dictionary:
 			if ut.id == String(type_id):
 				renamed[ut.id] = {"from": ut.name, "to": String(names[type_id])}
 				ut.name = String(names[type_id])
+	# CW-4: a node that changes Flare or Siphon rewrites those units' trait words with the new number (Brighter Flare's 3, Red
+	# Gleaners' 2), so the roster says what the battle does.
+	if fx.has("flare_damage") or fx.has("siphon_heal"):
+		var burn := AutoBattleResolver.FLARE_DAMAGE
+		for r in f.researched:
+			burn += int(node_effects(String(r.get("node", ""))).get("flare_damage", 0))
+		var heal: Dictionary = fx.get("siphon_heal", {})
+		for ut in f.unit_types:
+			if ut.trait_id == AutoBattleResolver.FLARE and fx.has("flare_damage"):
+				ut.trait_description = AutoBattleResolver.flare_words(burn)
+			elif ut.trait_id == AutoBattleResolver.SIPHON and heal.has(ut.id):
+				ut.trait_description = AutoBattleResolver.siphon_words(int(heal[ut.id]))
 	var added := ""
 	var new_id := String(fx.get("new_unit", ""))
 	if not new_id.is_empty() and TurnResolver.recruitable_type(f, new_id) == null:
@@ -673,8 +745,8 @@ static func part_name(key_or_node: String) -> String:
 ## The RulesCodex entry for a part key or node id: an Oath's economy rule entry, otherwise the node's.
 static func part_codex(key_or_node: String) -> String:
 	var nid := key_or_node.trim_prefix(PART_PREFIX)
-	if PathData.ECONOMY_RULES.has(nid):
-		return String(PathData.ECONOMY_RULES[nid].codex)
+	if not economy_rule_data(nid).is_empty():
+		return String(economy_rule_data(nid).codex)
 	return String(node_data(nid).get("codex", "path_node"))
 
 
@@ -820,6 +892,7 @@ static func _effects_now(state: GameState, faction_id: String, node_id: String, 
 		else:
 			clauses.append("%s earns %d more gold for every province you own (%s, %+d now)" % [cap_name,
 				int(fx.tithe_per_province), rule, income])
+	clauses.append_array(_wake_clauses(state, faction_id, node_id, past))  # CW-4: the Candlewake's path, in numbers
 	if clauses.is_empty() or fx.has("capture_gold") or fx.has("blood_levy") or fx.has("forest_stride") or fx.has("new_unit"):
 		var text := String(node_data(node_id).get("text", "")).trim_suffix(".")
 		if is_oath(node_id):
@@ -832,6 +905,58 @@ static func _effects_now(state: GameState, faction_id: String, node_id: String, 
 			text = text.substr(0, 1).to_lower() + text.substr(1)
 		clauses.append(text)
 	return "; ".join(clauses)
+
+
+## CW-4 (design/CANDLEWAKE.md §6.4): the clauses of a Candlewake node's own effects, every number read from `state` (where the
+## node is researched) against what it was without it: the Wake's gold and the Wake-Line's threshold (Meadow Wake, Sitting Up
+## Early), Pyre Roads' flame, the Long Sleep's risers, the Red Wake's flame and burn-down, Siphon, Flare and the Swelling.
+static func _wake_clauses(state: GameState, faction_id: String, node_id: String, past: bool) -> Array:
+	var fx := node_effects(node_id)
+	var out := []
+	var your := "their" if past else "your"
+	var rule := economy_rule_name(node_id)
+	var head := "%s: " % rule if not rule.is_empty() else ""
+	if fx.has("wake_gold") or fx.has("wake_sooner"):
+		var bits := []
+		if fx.has("wake_gold"):
+			var was := int(MarkData.stage(faction_id, MarkData.stage_index(faction_id, WickRules.PYRE_STAGE)).get("gold", 0))
+			bits.append("%s Wake pays %+d gold a province instead of %d" % [your, int(fx.wake_gold), was])
+		if fx.has("wake_sooner"):
+			var line := MarkData.stage_index(faction_id, WickRules.PYRE_STAGE)
+			var now := MarkRules.threshold(state, faction_id, line)
+			var was := mini(int(MarkData.stage(faction_id, line).held), now + int(fx.wake_sooner))
+			bits.append("%s reach the Wake-Line after %d %s held instead of %d" % ["they" if past else "you", now,
+				"turn" if now == 1 else "turns", was])
+		out.append(head + ", and ".join(bits))
+	if fx.has("pyre_roads"):
+		out.append("%sa win in a province of %s at the Wake-Line or deeper gives %+d flame instead of +1, never above flame %d" % [
+			head, "theirs" if past else "yours", int(fx.pyre_roads), WickRules.cap(state, faction_id)])
+	var sleep: Dictionary = fx.get("risen", {})
+	if not sleep.is_empty():
+		var base: Dictionary = MarkData.row(faction_id).get("risen", {})
+		var rid := String(Dictionary(fx.get("province_rule", {})).get("id", ""))
+		var name := String(province_rule_data(rid).get("name", "")) if not rid.is_empty() else ""
+		out.append("%sthe dead rise from %s too, every %d turns instead of %d" % ["%s: " % name if not name.is_empty() else "",
+			MarkRules.stage_name(faction_id, MarkData.stage_index(faction_id, String(sleep.get("from", "")))), int(sleep.every),
+			int(base.get("every", 0))])
+	if fx.has("flame_cap"):
+		var base_cap := WickRules.base_cap(faction_id)
+		out.append("%s flame burns to flame %d instead of %d: above %d it drops to %d unless it wins, even in a harbour" % [your,
+			int(fx.flame_cap), base_cap, base_cap, base_cap])
+	if fx.has("idle_loss"):
+		out.append("an army of %s idle outside a harbour loses %d flame instead of 1" % ["theirs" if past else "yours", int(fx.idle_loss)])
+	var siphon: Dictionary = fx.get("siphon_heal", {})
+	for type_id in siphon:
+		var ut := TurnResolver.recruitable_type(state.find_faction(faction_id), String(type_id))
+		var who := ut.name if ut != null else String(type_id)
+		out.append("%s %s%s Siphon heals %d instead of %d" % [your, who, "'" if who.ends_with("s") else "'s", int(siphon[type_id]),
+			AutoBattleResolver.SIPHON_HEAL])
+	if fx.has("flare_damage"):
+		out.append("a Hundred-Wick's Flare deals %d damage instead of %d" % [WickRules.flare_damage(state, faction_id),
+			WickRules.flare_damage(state, faction_id) - int(fx.flare_damage)])
+	if fx.has("harvest_bonus"):
+		out.append("every Harvest raises %s more (the Swelling)" % ("one" if int(fx.harvest_bonus) == 1 else str(int(fx.harvest_bonus))))
+	return out
 
 
 # --- transformations on the map (M4-2, #67; design/M4_ASCENSION.md §3.4, §4, §6) -------------------
@@ -850,7 +975,7 @@ const TIMES_WORDS := {1: "once", 2: "twice", 3: "three times"}
 
 ## A new unit's UnitType (§4.1-4.4), from PathData.NEW_UNITS, or null.
 static func new_unit_type(unit_id: String) -> UnitType:
-	var d: Dictionary = PathData.NEW_UNITS.get(unit_id, {})
+	var d: Dictionary = new_unit_data(unit_id)
 	if d.is_empty():
 		return null
 	var ut := UnitType.new()
@@ -877,7 +1002,7 @@ static func base_unit_name(faction_id: String, type_id: String) -> String:
 				return String(u.name)
 		if f.commander.id == type_id:
 			return String(f.commander.name)
-	return String(PathData.NEW_UNITS.get(type_id, {}).get("name", type_id))
+	return String(new_unit_data(type_id).get("name", type_id))
 
 
 ## The faction's researched transformation node, or "".
@@ -900,7 +1025,7 @@ static func unit_title(state: GameState, faction_id: String, ut: UnitType) -> St
 	if ut == null:
 		return ""
 	var base := base_unit_name(faction_id, ut.id)
-	if base == ut.name or PathData.NEW_UNITS.has(ut.id):
+	if base == ut.name or is_new_unit(ut.id):
 		return ut.name
 	return "%s (%s of %s)" % [ut.name, base, branch_ref(branch(state, faction_id))]
 
@@ -912,7 +1037,7 @@ static func province_rule(state: GameState, faction_id: String) -> Dictionary:
 		var r: Dictionary = node_effects(nid).get("province_rule", {})
 		if not r.is_empty():
 			var rid := String(r.get("id", ""))
-			var data: Dictionary = PathData.PROVINCE_RULES.get(rid, {})
+			var data: Dictionary = province_rule_data(rid)
 			return {"id": rid, "value": int(r.get("value", 0)), "node": nid, "name": String(data.get("name", rid)),
 				"codex": String(data.get("codex", "transformation"))}
 	return {}
@@ -1360,7 +1485,7 @@ static func validate(state: GameState, errors = null) -> bool:
 				_report(errors, "%s has research, but this game has no paths." % name)
 				ok = false
 			for ut in f.unit_types:
-				if PathData.NEW_UNITS.has(ut.id):
+				if is_new_unit(ut.id):
 					_report(errors, "%s can recruit %s, but this game has no paths, and only a transformation brings them." % [name, ut.name])
 					ok = false
 			continue
@@ -1454,7 +1579,7 @@ static func _validate_roster(f: Faction, done: Dictionary, name: String, errors)
 		if new_id.is_empty():
 			continue
 		var on_roster := TurnResolver.recruitable_type(f, new_id) != null
-		var unit_name := String(PathData.NEW_UNITS.get(new_id, {}).get("name", new_id))
+		var unit_name := String(new_unit_data(new_id).get("name", new_id))
 		if has and not on_roster:
 			_report(errors, "%s has become %s, but %s are not on its roster." % [name, branch_ref(String(node_data(nid).branch)), unit_name])
 			ok = false

@@ -561,10 +561,11 @@ func queue_sally(army_id: String, relief_id: String = "") -> String:
 
 
 ## M5-5 (games with magic): queue a cast of `ritual` by the army `army_id` on `target` ("" for the Blood Moon), paid
-## in gold or, under Tithe of Blood, in blood; `size` is Call the Pack's wolves. Or set the battle spellbook: every
+## in gold or, under Tithe of Blood, in blood; `size` is Call the Pack's wolves; CW-5: `target_army` the army of yours a
+## one-army ritual lands on (Kindle, Candlemass; "" for the lowest-numbered it fits). Or set the battle spellbook: every
 ## battle spell in `order`, with `off` switched off. "" when accepted.
-func queue_cast(ritual: String, army_id: String, target: String, pay: String = CastOrder.GOLD, size: int = 0) -> String:
-	return queue_order(CastOrder.new(ritual, army_id, target, pay, size))
+func queue_cast(ritual: String, army_id: String, target: String, pay: String = CastOrder.GOLD, size: int = 0, target_army: String = "") -> String:
+	return queue_order(CastOrder.new(ritual, army_id, target, pay, size, target_army))
 
 
 func queue_spellbook(order: Array, off: Array = []) -> String:

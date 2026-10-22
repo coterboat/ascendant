@@ -7,7 +7,8 @@ class_name MarkData
 ## A row:
 ##   "stages"      in order, stage 1 first: {"id", "name" (as players read it), "held" (the turns held it takes: held =
 ##                 E - since_turn, on the end clock E = current_turn + 1), "harbour" (a Wick army ending a turn there keeps
-##                 its flame), "gold" (the change to the province's income), "risen" (the dead rise there, §3.6)}
+##                 its flame), "gold" (the change to the province's income), "risen" (the dead rise there, §3.6), "sooner"
+##                 (CW-4: a path's "wake_sooner" brings this stage that many turns sooner, never before 1 turn held)}
 ##   "scar_turns"  a lost mark lingers as a scar this many turns for each stage it had (§3.3)
 ##   "capital"     a capital counts as held since this end clock, so it stands at the last stage from the start
 ##   "risen"       the dead rise (§3.6) where the mark stands at a stage whose "risen" is true: "count" of the roster's "unit"
@@ -19,7 +20,7 @@ const ROWS := {
 	"candlewake": {
 		"stages": [
 			{"id": "sitting_up", "name": "Sitting Up", "held": 0, "harbour": false, "gold": 0, "risen": false},
-			{"id": "wake_line", "name": "the Wake-Line", "held": 3, "harbour": true, "gold": -1, "risen": false},
+			{"id": "wake_line", "name": "the Wake-Line", "held": 3, "harbour": true, "gold": -1, "risen": false, "sooner": true},
 			{"id": "deep_wake", "name": "Deep Wake", "held": 6, "harbour": true, "gold": -1, "risen": true},
 		],
 		"scar_turns": 2,
@@ -46,6 +47,15 @@ static func risen_threshold(faction_id: String) -> int:
 		if bool(st.get("risen", false)):
 			return int(st.held)
 	return -1
+
+
+## The 1-based number of `faction_id`'s stage `stage_id` ("wake_line": 2), or 0.
+static func stage_index(faction_id: String, stage_id: String) -> int:
+	var stages: Array = row(faction_id).get("stages", [])
+	for i in stages.size():
+		if String(stages[i].id) == stage_id:
+			return i + 1
+	return 0
 
 
 ## Stage `stage` (1-based) of `faction_id`'s mark, or {}.

@@ -137,7 +137,9 @@ extends BattleResolver
 ##   hexes and shields  a part "spell_<id>" on the targets' attack or defense for the round: Briar Snare and Sunburst
 ##                -2 attack (credited, in the "why", to the side that cast it), Shield of Law +4 defense on units
 ##                without a terrain or fort bonus.
-##   Dawn Blessing  +morale for the whole battle to a side with at least half its fighters in blessed armies.
+##   Dawn Blessing  +morale for the whole battle to a side with at least half its fighters in blessed armies (CW-5: every
+##                blessing with a "morale", Candlemass too, by its own part "spell_<id>"; Bonfire Night is in the side's
+##                flame, WickRules.battle_flame, and its log entry names it).
 ##   Blood Moon   the moon's side heals back a quarter of the damage its attacks dealt each round (rounded down;
 ##                Lifedrinker's larger share instead), never above its maximum - 1; not in a province a rival warded.
 ##   curses       a side standing in a province a rival cursed heals from nothing: no Lifedrinker, moon or Feast.
@@ -258,6 +260,16 @@ const TRAIT_TEXT := {
 	MAGE: "Casts a spell from your spellbook every round instead of attacking, and attacks only when no spell is useful. Fights from the second rank: safe while your front rank is at least as big. Fangthrowers and Seraphs can always reach it.",
 }
 ## One-line summaries of TRAIT_TEXT, for odds reasons and compact lists.
+## CW-4: Siphon's and Flare's words with a path's number (Red Gleaners heal 2; Brighter Flare burns 3): the trait's own text,
+## TRAIT_TEXT, with `n` in place of SIPHON_HEAL or FLARE_DAMAGE. AscensionRules writes them on the roster when a node changes them.
+static func siphon_words(n: int) -> String:
+	return String(TRAIT_TEXT[SIPHON]).replace("heals %d hit point," % SIPHON_HEAL, "heals %d hit point%s," % [n, "" if n == 1 else "s"])
+
+
+static func flare_words(n: int) -> String:
+	return String(TRAIT_TEXT[FLARE]).replace("flares: %d damage" % FLARE_DAMAGE, "flares: %d damage" % n)
+
+
 const TRAIT_SHORT := {
 	SHIELD_WALL: "+%d defense in a group" % SHIELD_WALL_DEFENSE,
 	VOLLEY: "shoots from the second rank",
@@ -473,7 +485,7 @@ static func odds_summary(wins: int, scores: Dictionary, briefs: Dictionary, pers
 		var parts := []
 		for fid in fids:
 			var ids := []
-			for sid in MagicData.SPELLBOOK.get(fid, []):
+			for sid in MagicRules.default_spellbook(fid):
 				if spells[fid].has(sid):
 					ids.append(String(sid))
 			cast[fid] = ids
@@ -623,6 +635,10 @@ static func _build_sides(sides_in: Array, defender_fid: String, state, kind: Str
 				var fighter := _fighter(i, a, u, false, false, mods, max_hp)
 				if a.flame >= 0 and u.type.trait_id != MAGE and not u.type.summoned:
 					fighter["flame"] = WickRules.battle_flame(state if state is GameState else null, a)  # CW-2: regulars only
+				if state is GameState and u.type.trait_id == FLARE and WickRules.flare_damage(state, sd.faction) != FLARE_DAMAGE:
+					fighter["flare_damage"] = WickRules.flare_damage(state, sd.faction)  # CW-4: Brighter Flare
+				if state is GameState and u.type.trait_id == SIPHON and WickRules.siphon_heal(state, sd.faction, u.type.id) != SIPHON_HEAL:
+					fighter["siphon_heal"] = WickRules.siphon_heal(state, sd.faction, u.type.id)  # CW-4: Red Gleaners
 				fighters.append(fighter)
 				morale_sum += u.type.morale + _mods_total(mods.morale)
 				for m in mods.morale:
@@ -682,6 +698,7 @@ static func _build_sides(sides_in: Array, defender_fid: String, state, kind: Str
 			"wings_reach": 0.0, "wings_targets": {}, "wings_kills": [], "iron_hits": 0, "healed": 0,
 			# M5-7: magic. Only _setup_magic, in a game with magic, ever changes these.
 			"magic": false, "casters": [], "spellbook": [], "enchant_log": [], "blessed": 0, "blessed_fighters": 0, "moon": false,
+			"blessed_by": "dawn_blessing", "bonfire": "",  # CW-5: the blessing behind "blessed"; Bonfire Night's ritual when it warms the side
 			"cursed": false, "bled": 0, "moon_healed": 0, "spells_cast": {}, "spell_stats": {}, "cast_battle": {}, "type_rank": {}})
 		for f in fighters:
 			if not f.trait.is_empty():
@@ -1324,7 +1341,7 @@ static func _morale(sides: Array, si: int, standing: Array) -> Dictionary:
 	if lands > 0:
 		parts[DREAD_LANDS] = -lands
 	if int(side.get("blessed", 0)) > 0:
-		parts[BLESSING] = int(side.blessed)  # M5-7: Dawn Blessing, counted at the battle's start
+		parts[_blessing_part(side)] = int(side.blessed)  # M5-7: Dawn Blessing (CW-5: or Candlemass), counted at the battle's start
 	if int(side.get("toll", 0)) > 0 and side.fighters.any(func(f): return f.alive and f.trait == TOLL):
 		parts[TOLL] = int(side.toll)  # CW-2: the enemies fallen so far, while a Lamplighter stands
 	var value: int = side.base_morale
@@ -1382,7 +1399,7 @@ static func _dealt(t: Dictionary, raw: int) -> int:
 ## its attacks dealt that round, rounded down (spell damage never counts), and a Lifedrinker the larger of its two
 ## shares, not both; none of them above its maximum - 1. A cursed side (side.cursed) heals back nothing.
 static func _drink(sides: Array, standing: Array, round_no: int, highlights: Array, rec) -> void:
-	var share := int(MagicData.SPELLS.blood_moon.get("share", 4))
+	var share := int(MagicRules.spell_data("blood_moon").get("share", 4))
 	for si in standing:
 		var side: Dictionary = sides[si]
 		var healed := 0
@@ -1455,15 +1472,16 @@ static func _flare(sides: Array, flaring: Array, round_no: int, highlights: Arra
 		var side: Dictionary = sides[si]
 		side.flares = int(side.get("flares", 0)) + 1
 		side.triggers[FLARE] = side.triggers.get(FLARE, 0) + 1
+		var burn := int(fw.get("flare_damage", FLARE_DAMAGE))  # CW-4: Brighter Flare burns hotter
 		if rec != null:
 			_log_push(rec.log, rec.cap, {"t": "flare", "n": round_no, "f": fw.id, "targets": targets.map(func(x): return x[0].id),
-				"damage": FLARE_DAMAGE})
+				"damage": burn})
 		var dealt := 0
 		var names := []
 		for x in targets:
 			var t: Dictionary = x[0]
 			var before: int = t.hp
-			t.hp = maxi(0, t.hp - FLARE_DAMAGE)
+			t.hp = maxi(0, t.hp - burn)
 			t.taken += before - t.hp
 			dealt += before - t.hp
 			names.append(t.name)
@@ -1480,7 +1498,7 @@ static func _flare(sides: Array, flaring: Array, round_no: int, highlights: Arra
 					sides[int(x[1])].ruler_fell = round_no
 		side.flared = int(side.get("flared", 0)) + dealt
 		_add_impact(side, FLARE, float(dealt))
-		highlights.append("%s %s flared as it fell: %d damage to %s." % [_poss(side.name), _bare(fw.name), FLARE_DAMAGE, _count_names(names)])
+		highlights.append("%s %s flared as it fell: %d damage to %s." % [_poss(side.name), _bare(fw.name), burn, _count_names(names)])
 
 
 ## CW-2: the flame parts a side's regulars fought with, in words: "+1 attack (flame 2)", "+2 attack (flame 3) and +1 attack
@@ -1526,7 +1544,7 @@ static func _siphon(sides: Array, standing: Array, round_no: int, highlights: Ar
 			if not f.alive or f.hp >= f.max or side.cursed:
 				continue
 			var before: int = f.hp
-			f.hp = mini(f.max, f.hp + SIPHON_HEAL)
+			f.hp = mini(f.max, f.hp + int(f.get("siphon_heal", SIPHON_HEAL)))  # CW-4: Red Gleaners drink 2
 			healed += f.hp - before
 			who = f.name
 			side.triggers[SIPHON] = side.triggers.get(SIPHON, 0) + 1
@@ -1698,17 +1716,19 @@ static func _setup_magic(sides: Array, ctx: Dictionary, env: Dictionary, state: 
 			for ut in faction.unit_types:
 				s.type_rank[ut.id] = rank
 				rank += 1
-		for sid in MagicData.SUMMONS:
-			if not s.type_rank.has(sid):
-				s.type_rank[sid] = rank
-				rank += 1
+		for table in [MagicData.SUMMONS, MagicData.PREVIEW_SUMMONS]:  # CW-5: the shipped summons, then the preview's
+			for sid in table:
+				if not s.type_rank.has(sid):
+					s.type_rank[sid] = rank
+					rank += 1
 		_setup_enchantments(s, state, pid)
 
 
 ## The enchantments in play for side `s` in a battle in province `pid` ("" on a border, where nobody is cursed and
 ## no ward lies): Dawn Blessing's morale, counted once at the start (at least half the side's fighters blessed), the
 ## Blood Moon (outside a province a rival has warded) and a rival's curse (the side heals from nothing). Each goes
-## into the log as {"id", "ritual", "effect"}.
+## into the log as {"id", "ritual", "effect"}. CW-5: a blessing's morale is its spell's "morale" (Candlemass's too), and
+## Bonfire Night (its flame is in the fighters' "flame") is logged with what it adds.
 static func _setup_enchantments(s: Dictionary, state: GameState, pid: String) -> void:
 	var fid: String = s.faction
 	var blessed := {}
@@ -1718,7 +1738,7 @@ static func _setup_enchantments(s: Dictionary, state: GameState, pid: String) ->
 		var ritual := String(e.ritual)
 		if String(e.faction) != fid:
 			continue
-		if ritual == "dawn_blessing":
+		if String(e.kind) == "blessing" and MagicRules.spell_data(ritual).has("morale"):  # Dawn Blessing; CW-5: Candlemass
 			var hit := false
 			for f in s.fighters:
 				if Array(e.armies).has(f.army):
@@ -1732,7 +1752,12 @@ static func _setup_enchantments(s: Dictionary, state: GameState, pid: String) ->
 		elif ritual == "blood_moon":
 			moon = e
 	if not blessings.is_empty():
-		var morale := int(MagicData.SPELLS.dawn_blessing.get("morale", 1))
+		# CW-5: one faction casts one kind of morale blessing (the Crown Dawn Blessing, the Candlewake Candlemass); the highest counts
+		var morale := 0
+		for e in blessings:
+			if int(MagicRules.spell_data(String(e.ritual)).get("morale", 1)) > morale:
+				morale = int(MagicRules.spell_data(String(e.ritual)).get("morale", 1))
+				s.blessed_by = String(e.ritual)
 		var count := blessed.size()
 		var enough := count * 2 >= int(s.count_start)
 		s.blessed = morale if enough else 0
@@ -1740,7 +1765,12 @@ static func _setup_enchantments(s: Dictionary, state: GameState, pid: String) ->
 		for e in blessings:
 			var effect := "+%d morale: %d of %d fighters blessed" % [morale, count, int(s.count_start)] if enough \
 				else "no morale: only %d of %d fighters blessed, under half" % [count, int(s.count_start)]
-			s.enchant_log.append({"id": String(e.id), "ritual": "dawn_blessing", "effect": effect})
+			s.enchant_log.append({"id": String(e.id), "ritual": String(e.ritual), "effect": effect})
+	var bonfire := MagicRules.flame_global(state, fid)
+	if not bonfire.is_empty() and s.fighters.any(func(f): return f.has("flame")):
+		s.bonfire = String(bonfire.ritual)  # CW-5: its regulars fight hotter (their "flame" has it, never above the cap)
+		s.enchant_log.append({"id": String(bonfire.id), "ritual": String(bonfire.ritual),
+			"effect": "its regulars fight %d flame hotter, never above the cap" % MagicRules.flame_bonus(state, fid)})
 	if not moon.is_empty():
 		s.moon = _rival_ward(state, fid, pid).is_empty()
 		s.enchant_log.append({"id": String(moon.id), "ritual": "blood_moon",
@@ -1750,6 +1780,11 @@ static func _setup_enchantments(s: Dictionary, state: GameState, pid: String) ->
 		for e in state.enchantments:
 			if String(e.kind) == "curse" and String(e.province) == pid and String(e.faction) != fid:
 				s.enchant_log.append({"id": String(e.id), "ritual": String(e.ritual), "effect": "cursed: it can't heal here"})
+
+
+## CW-5: the morale part (and its codex entry) of side `s`'s blessing: "spell_dawn_blessing" (BLESSING), or "spell_candlemass".
+static func _blessing_part(s: Dictionary) -> String:
+	return SPELL_PREFIX + String(s.get("blessed_by", "dawn_blessing"))
 
 
 ## A ward a faction other than `fid` holds on province `pid` (the Blood Moon stays out of it), or {}.
@@ -2228,6 +2263,9 @@ static func _log_fighter(f: Dictionary, s: Dictionary) -> Dictionary:
 		out["mastery"] = f.caster.mastery.duplicate()  # M5-7: a caster's bonus in each school it casts
 	if ut.summoned:
 		out["summoned"] = true  # M5-7: a summoned creature
+	for key in ["flare_damage", "siphon_heal"]:
+		if f.has(key):
+			out[key] = int(f[key])  # CW-4: a path's Flare or Siphon, where it differs from the trait's own
 	return out
 
 
@@ -2734,6 +2772,8 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 				FLAME:
 					# CW-2 (§2.5): "Wick: +1 attack (flame 2)".
 					var lit := _flame_words(s)
+					if not String(s.get("bonfire", "")).is_empty():  # CW-5: "(with Bonfire Night's +1)"
+						lit += " (with %s's +%d)" % [MagicRules.spell_name(String(s.bonfire)), int(MagicRules.spell_data(String(s.bonfire)).get("flame_bonus", 0))]
 					c = "%s burned hot: Wick gave its regulars %s, worth about %d damage" % [s.name, lit, dmg] if won \
 						else "even though Wick gave %s regulars %s" % [who, lit]
 					brief = "Wick: %s" % lit
@@ -2883,10 +2923,11 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 		for e in s.morale_log:
 			if e.lost_pct < e.break_pct and e.lost_pct >= break_pct(e.morale - part):
 				held_by_it = true
-		var lifted := "Dawn Blessing raised %s morale by %d (%d of %d fighters blessed)" % [_poss(s.name), part, int(s.blessed_fighters), int(s.count_start)]
-		out.append({"id": "morale_" + BLESSING, "side": si, "faction": s.faction, "impact": float(_hp(s)) if held_by_it else float(part) * 0.5,
-			"clause": ("%s and kept the line from breaking" if held_by_it else "%s") % lifted if si == wi else "even though Dawn Blessing steadied %s line" % _poss(s.name),
-			"brief": "Dawn Blessing (+%d morale to %s)" % [part, s.name], "codex": BLESSING})
+		var spell := MagicRules.spell_name(String(s.blessed_by))  # CW-5: Dawn Blessing or Candlemass
+		var lifted := "%s raised %s morale by %d (%d of %d fighters blessed)" % [spell, _poss(s.name), part, int(s.blessed_fighters), int(s.count_start)]
+		out.append({"id": "morale_" + _blessing_part(s), "side": si, "faction": s.faction, "impact": float(_hp(s)) if held_by_it else float(part) * 0.5,
+			"clause": ("%s and kept the line from breaking" if held_by_it else "%s") % lifted if si == wi else "even though %s steadied %s line" % [spell, _poss(s.name)],
+			"brief": "%s (+%d morale to %s)" % [spell, part, s.name], "codex": _blessing_part(s)})
 	# CW-2: Toll's morale, measured like Dawn Blessing's: the most it gave in a check, and whether it kept the line.
 	for si in sides.size():
 		var s: Dictionary = sides[si]

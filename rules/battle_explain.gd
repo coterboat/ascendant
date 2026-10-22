@@ -33,6 +33,7 @@ const MORALE_PART_NAMES := {
 	"Dread": "Dread (the enemy's Great Thornmane)",
 	"Dread Lands": "Dread Lands (the Blood Pact's own land)",
 	"spell_dawn_blessing": "Dawn Blessing (blessed armies)",
+	"spell_candlemass": "Candlemass (its blessed army)",  # CW-5
 	"Toll": "Toll (its Lamplighter, for the enemies fallen)",  # CW-2
 }
 ## The RulesCodex entry behind each report factor id that isn't a trait or a mandate (the battle report

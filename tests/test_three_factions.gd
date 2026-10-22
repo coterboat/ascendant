@@ -12,8 +12,9 @@ const CROWN := "kingdom"
 const CLANS := "beasts"
 const WAKE := "candlewake"
 const PAIRINGS := [[CROWN, CLANS], [CLANS, CROWN], [CROWN, WAKE], [WAKE, CROWN], [CLANS, WAKE], [WAKE, CLANS]]
-## The systems the Candlewake play with: none, forts with independents and fog, and (CW-2) rulers.
-const SYSTEM_SETS := [{}, {"sieges": true, "independents": true, "fog": true}, {"rulers": true, "sieges": true, "independents": true}]
+## The systems the Candlewake play with: none, forts with independents and fog, and (CW-2) rulers, (CW-4) paths, (CW-5) magic.
+const SYSTEM_SETS := [{}, {"sieges": true, "independents": true, "fog": true}, {"rulers": true, "sieges": true, "independents": true},
+	{"paths": true, "fog": true}, {"magic": true, "independents": true}]
 const PLAY_TURNS := 5
 
 
@@ -176,8 +177,6 @@ func test_the_factory_refuses_in_plain_words() -> void:
 		[[CROWN, CROWN], {}, "twice"],
 		[[CROWN], {}, "two"],
 		[[CROWN, CLANS, WAKE], {}, "two"],
-		[[WAKE, CLANS], {"paths": true}, "paths"],
-		[[CROWN, WAKE], {"magic": true}, "magic"],
 	]
 	for c in cases:
 		var errors := []
@@ -192,18 +191,17 @@ func test_the_factory_refuses_in_plain_words() -> void:
 	var errors := []
 	assert_true(GameState.create(5, [CROWN, WAKE], {"rulers": true}, {}, errors) != null, "rulers: %s" % [errors])
 	assert_true(GameState.create(5, [WAKE, CLANS], {}, {WAKE: "harvest_moot"}, errors) != null, "a Candlewake preset: %s" % [errors])
+	assert_true(GameState.create(5, [WAKE, CLANS], {"paths": true}, {}, errors) != null, "CW-4: paths are theirs too: %s" % [errors])
+	assert_true(GameState.create(5, [CROWN, WAKE], {"magic": true}, {}, errors) != null, "CW-5: and magic: %s" % [errors])
 	assert_eq(GameState.create(5, [CROWN, WAKE], {}, {WAKE: "regents_court"}, errors), null, "the Crown's preset isn't theirs")
 
 
+## CW-5: with their magic the Candlewake play every system, as the Crown and the Clans do.
 func test_system_problems_name_what_a_faction_cannot_play_yet() -> void:
-	for system in ["sieges", "independents", "fog", "rulers"]:
-		assert_eq(GameState.system_problems(WAKE, {system: true}), [], "the Candlewake play with %s" % system)
-	for system in ["paths", "magic"]:
-		var problems := GameState.system_problems(WAKE, {system: true})
-		assert_eq(problems.size(), 1, "one reason for %s" % system)
-		assert_true(String(problems[0]).begins_with("The Candlewake"), problems[0])
-		for fid in [CROWN, CLANS]:
+	for system in ["sieges", "independents", "fog", "rulers", "paths", "magic"]:
+		for fid in [CROWN, CLANS, WAKE]:
 			assert_eq(GameState.system_problems(fid, {system: true}), [], "%s plays with %s" % [fid, system])
+	assert_eq(GameState.system_problems(WAKE, NewGameScreen.default_systems()), [], "and with every default system at once")
 
 
 # --- configs pick two (§1.1) ----------------------------------------------------------------------
@@ -242,18 +240,30 @@ func test_quick_start_picks_two_and_keeps_todays_dice() -> void:
 		var b := RandomNumberGenerator.new()
 		b.seed = 1000 + n
 		assert_eq(_without_temperaments(NewGameScreen.quick_start_config(a)), _old_quick_start(b), "seed %d: the preview off, as before" % n)
+	# CW-5: the Candlewake play every default system now, so with the preview on Quick start may seat them; the same dice, the
+	# same config, and every config it gives can be seated.
+	var seated := 0
+	for n in 40:
 		var c := RandomNumberGenerator.new()
 		c.seed = 1000 + n
 		var d := RandomNumberGenerator.new()
 		d.seed = 1000 + n
-		assert_eq(_without_temperaments(NewGameScreen.quick_start_config(c, true)), _old_quick_start(d),
-			"seed %d: the preview on, but the Candlewake can't play every default system yet, so the same two" % n)
+		var config := NewGameScreen.quick_start_config(c, true)
+		assert_eq(config, NewGameScreen.quick_start_config(d, true), "seed %d: the same dice give the same config" % n)
+		assert_false(_without_temperaments(config).has("temperaments"), "seed %d: the computer's style is its seat's roll" % n)
+		var players: Array = config.players
+		assert_true(players.size() == 2 and players[0] != players[1] and players.all(func(fid): return [CROWN, CLANS, WAKE].has(fid)),
+			"seed %d: two of the three: %s" % [n, players])
+		assert_eq(GameState.seating_problems(players, config, config.builds), [], "seed %d: %s can be seated" % [n, players])
+		if players.has(WAKE):
+			seated += 1
+	assert_true(seated > 0, "the preview on seats the Candlewake now and then (%d of 40)" % seated)
 
 
 func test_quick_start_factions_take_the_preview_and_the_systems_into_account() -> void:
 	var all_systems := NewGameScreen.default_systems()
 	assert_eq(NewGameScreen.quick_start_factions(false, all_systems), [CROWN, CLANS])
-	assert_eq(NewGameScreen.quick_start_factions(true, all_systems), [CROWN, CLANS], "no rulers for the Candlewake yet")
+	assert_eq(NewGameScreen.quick_start_factions(true, all_systems), [CROWN, CLANS, WAKE], "CW-5: they play every system now")
 	var theirs := {"sieges": true, "independents": true, "fog": true}
 	assert_eq(NewGameScreen.quick_start_factions(true, theirs), [CROWN, CLANS, WAKE], "with only the systems they play")
 	assert_eq(NewGameScreen.quick_start_factions(false, theirs), [CROWN, CLANS], "the preview off hides them")
