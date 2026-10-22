@@ -150,7 +150,7 @@ const TABLE := {
 		"besieged": ["battles", "siege_begun", "fought", "Walls at {place}: {walls} of {walls_max}", "Siege turn {turn_of_siege}: the walls dropped from {walls_before} to {walls}.", "o"],
 		"besieging": ["battles", "siege_begun", "fought", "Walls at {place}: {walls} of {walls_max}", "Siege turn {turn_of_siege}: the walls dropped from {walls_before} to {walls}.", "o"],
 	},
-	"walls_breached": {"default": ["battles", "walls_breached", "fought", "Walls of {place} are down", "If both sides are still there next turn ({battle_turn}), they fight in the open.", "o"]},
+	"walls_breached": {"default": ["battles", "walls_breached", "fought", "Walls of {place} are down", "If both sides are still there {battle_when}, they fight in the open.", "o"]},
 	"siege_lifted": {"default": ["battles", "siege_ended", "fought_minor", "Siege of {place} lifted", "{row}", "o"]},
 	"siege_ended": {"default": ["battles", "siege_ended", "fought", "{place} fell", "{row}", "o"]},
 	"storm_called_off": {"default": ["battles", "order_void", "fought_minor", "Storm called off at {place}", "{row}", "o"]},
@@ -551,6 +551,9 @@ static func fields_of(e: Dictionary, row_text: String, ctx: Dictionary) -> Dicti
 			f["provinces"] = TooltipText.count(n, "province") if n > 0 else "your land"
 		"siege_started", "walls_damaged":
 			f["Besieger"] = _cap(_short(state, String(numbers.get("besieger", ""))))
+		"walls_breached":
+			if numbers.has("battle_turn"):  # the reader's words, as the report's line says them (#279): "this turn (9)", not the record's "next turn (9)"
+				f["battle_when"] = TurnReportText.reader_turn(int(numbers.battle_turn), int(ctx.turn) + 1)
 		"fort_built", "construction_started":
 			f["fort"] = SiegeRules.level_word(int(numbers.get("level", numbers.get("to", 1))))
 		"walls_repaired":

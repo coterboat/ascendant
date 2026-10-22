@@ -43,9 +43,10 @@ class_name TurnReportText
 ##        as the garrison sallied", "... as a relief arrived";
 ##      - every turn word is the reader's: the report of turn T is read at the start of turn T + 1, the turn the top
 ##        bar shows, so a siege line says "this turn (T + 1)", "next turn (T + 2)", "in 3 turns (turn T + 3)"
-##        (reader_turn, reader_end), where the event's own text says "next turn (T + 1)". The phrase comes from the
-##        event's numbers (breach_turn, cut_off_from, battle_turn, recruit_from); the rest of the line is the
-##        resolver's own words, so the two never disagree on anything else.
+##        (reader_turn, reader_end), where the event's own text says "next turn (T + 1)"; after "from" a far turn leads
+##        with its number, "from turn T + 3 (in 3 turns)" (reader_from, #279). The phrase comes from the event's numbers
+##        (breach_turn, cut_off_from, battle_turn, recruit_from); the rest of the line is the resolver's own words, so
+##        the two never disagree on anything else.
 
 const BORDER := "border_battle"
 const BATTLE := "battle"
@@ -1165,6 +1166,16 @@ static func reader_turn(turn: int, now: int) -> String:
 	return "in %d turns (turn %d)" % [n, turn]
 
 
+## "from this turn (8)", "from next turn (9)", "from turn 10 (in 3 turns)": from `turn` on, as someone reading at the start of
+## turn `now` counts it (reader_turn's count). A far turn leads with its number, so the wait reads as one phrase (#279: a
+## captured fort's line read "can recruit there from in 3 turns (turn 10)").
+static func reader_from(turn: int, now: int) -> String:
+	var n := turn - now + 1
+	if n <= 2:
+		return "from %s" % reader_turn(turn, now)
+	return "from turn %d (in %d turns)" % [turn, n]
+
+
 ## "at the end of this turn (8)", "at the end of next turn (9)", "in 3 turns (end of turn 10)": the end of `turn`, as
 ## someone reading at the start of turn `now` counts it.
 static func reader_end(turn: int, now: int) -> String:
@@ -1221,21 +1232,21 @@ static func _siege_line(e: Dictionary, ctx: Dictionary) -> String:
 				text = text.replace("The walls reach 0 %s," % SiegeRules.report_when(end, reported), "The walls reach 0 %s," % reader_end(end, now))
 			if int(numbers.get("cut_off_from", 0)) > 0:
 				var from := int(numbers.cut_off_from)
-				text = text.replace("From next turn (%d) " % from, "From %s " % reader_turn(from, now))
+				text = text.replace("From next turn (%d) " % from, "%s " % _cap(reader_from(from, now)))
 		"walls_breached":
 			var battle := int(numbers.get("battle_turn", now))
 			text = text.replace("still there next turn (%d)," % battle, "still there %s," % reader_turn(battle, now))
 		"siege_lifted":
-			text = text.replace("from next turn (%d)." % now, "from %s." % reader_turn(now, now))
+			text = text.replace("from next turn (%d)." % now, "%s." % reader_from(now, now))
 		"fort_built":
 			var from := int(numbers.get("recruit_from", now))
-			text = text.replace("from next turn (%d)," % from, "from %s," % reader_turn(from, now))
+			text = text.replace("from next turn (%d)," % from, "%s," % reader_from(from, now))
 	return text
 
 
 ## A capture's fort clause (rule 8), from the event's numbers: " It came with its keep (walls 2 of 6): the Aurel Crown
-## can recruit there from next turn (9)." A fort retaken within FortData.RETAKE_TURNS recruits at once. "" when no
-## fort came with the province.
+## can recruit there from turn 11 (in 3 turns)." (reader_from). A fort retaken within FortData.RETAKE_TURNS recruits at
+## once ("from this turn (9), since they retook it ..."). "" when no fort came with the province.
 static func _fort_came_with(e: Dictionary, fname: String, ctx: Dictionary) -> String:
 	var numbers: Dictionary = e.get("numbers", {})
 	var level := int(numbers.get("fort_level", 0))
@@ -1243,7 +1254,7 @@ static func _fort_came_with(e: Dictionary, fname: String, ctx: Dictionary) -> St
 		return ""
 	var now := int((ctx.state as GameState).current_turn) + 1
 	var from := int(numbers.get("recruit_from", now + 1))
-	var when := "from %s" % reader_turn(from, now)
+	var when := reader_from(from, now)
 	if from <= now:
 		when += ", since they retook it within %d turns of losing it" % FortData.RETAKE_TURNS
 	return " It came with its %s (walls %d of %d): the %s can recruit there %s." % [SiegeRules.level_word(level), int(numbers.get("walls", 0)),
