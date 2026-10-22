@@ -14,12 +14,12 @@ class_name MagicRules
 ## Data and reading a game:
 ##   has_magic(state), spell_data(id), spell_name(id), school_data(id), school_name(id), schools(fid)
 ##   is_ritual(id), is_battle_spell(id), arcana_ids(fid), arcana_node(id)
-##   mage_data(fid), mage_type(fid), is_mage(ut), summon_type(id), summon_types(), ruler_magic(ruler id)
+##   mage_data(fid), mage_type(fid), is_mage(ut), summon_data(id), summon_type(id), summon_types(), ruler_magic(ruler id)
 ##   known_spells(state, fid), knows(state, fid, spell), knows_a_spell(state, fid)   researched spells (Far Sight
 ##                                             needs no research); a mage can be recruited once one is known
 ##   battle_spells(state, fid, caster_kind)    the battle spells a mage or the ruler casts (the Ever-Regent's own
 ##                                             Sunlance from turn 1)
-##   spellbook(state, fid), check_spellbook(state, fid, order), set_spellbook(state, fid, order)
+##   spellbook(state, fid), default_spellbook(fid), check_spellbook(state, fid, order), set_spellbook(state, fid, order)
 ## Casters and mastery (§3.2):
 ##   casters(state, army)                      [{"kind" ("mage" | "ruler"), "unit", "type", "schools", "battle"}]
 ##   caster_for(state, fid, army, ritual)      the caster that casts a ritual from that army, or {}
@@ -51,6 +51,8 @@ class_name MagicRules
 ##   ward_on, blessing_of, reading, spell_codex, and the report's sentences (cast_text, turned_aside_text, blood_text,
 ##   fell_text, reading_text, healed_text, bit_text, ended_text, faded_text)
 ## M5-7 adds the battle spells.
+## CW-5 (#256): every lookup reads MagicData's shipped table first, then its PREVIEW_ table (the Candlewake's magic, behind
+## their preview), so a Crown or Clans id reads exactly as before.
 
 ## The kinds of ritual that leave an enchantment in GameState.enchantments (§3.4, §6.2-§6.4). Summons leave
 ## creatures (Unit.until) and raisings leave a fort (Faction.bastions) instead.
@@ -75,16 +77,16 @@ const PART_CAP := "mastery_cap"
 
 ## The Blood Moon's share in words ("a fifth"): MagicData.SPELLS.blood_moon.share, which every text about the moon reads.
 static func moon_share_word() -> String:
-	return String(MagicData.SHARE_WORDS.get(int(MagicData.SPELLS.blood_moon.get("share", 4)), "a share"))
+	return String(MagicData.SHARE_WORDS.get(int(spell_data("blood_moon").get("share", 4)), "a share"))
 
 
 static func has_magic(state: GameState) -> bool:
 	return state != null and state.magic
 
 
-## The spell or ritual with this id (MagicData.SPELLS), or {}.
+## The spell or ritual with this id (MagicData.SPELLS, then CW-5's PREVIEW_SPELLS), or {}.
 static func spell_data(spell_id: String) -> Dictionary:
-	return MagicData.SPELLS.get(spell_id, {})
+	return MagicData.SPELLS.get(spell_id, MagicData.PREVIEW_SPELLS.get(spell_id, {}))
 
 
 static func spell_name(spell_id: String) -> String:
@@ -104,8 +106,9 @@ static func is_ritual(spell_id: String) -> bool:
 	return not spell_data(spell_id).is_empty() and not is_battle_spell(spell_id)
 
 
+## The school with this id (MagicData.SCHOOLS, then CW-5's PREVIEW_SCHOOLS), or {}.
 static func school_data(school_id: String) -> Dictionary:
-	return MagicData.SCHOOLS.get(school_id, {})
+	return MagicData.SCHOOLS.get(school_id, MagicData.PREVIEW_SCHOOLS.get(school_id, {}))
 
 
 ## "Sun", "Law", "the Wild", "Blood"; "common" for Far Sight's.
@@ -117,7 +120,7 @@ static func school_name(school_id: String) -> String:
 
 ## The faction's schools, in the Magic tab's order ([] for a faction without magic data).
 static func schools(faction_id: String) -> Array:
-	return MagicData.FACTION_SCHOOLS.get(faction_id, []).duplicate()
+	return MagicData.FACTION_SCHOOLS.get(faction_id, MagicData.PREVIEW_FACTION_SCHOOLS.get(faction_id, [])).duplicate()
 
 
 ## Whether `faction_id` can ever cast spells of `school_id` (its own schools, and Far Sight's common magic).
@@ -128,19 +131,20 @@ static func faction_has_school(faction_id: String, school_id: String) -> bool:
 ## The arcana node ids of the faction (§4), in the Magic tab's order.
 static func arcana_ids(faction_id: String) -> Array:
 	var out := []
-	for n in MagicData.ARCANA.get(faction_id, []):
+	for n in MagicData.ARCANA.get(faction_id, MagicData.PREVIEW_ARCANA.get(faction_id, [])):
 		out.append(String(n.id))
 	return out
 
 
 ## The arcana node with this id, with its "faction" added, or {}. AscensionRules.node_data falls back to it.
 static func arcana_node(node_id: String) -> Dictionary:
-	for fid in MagicData.ARCANA:
-		for n in MagicData.ARCANA[fid]:
-			if String(n.id) == node_id:
-				var copy: Dictionary = n.duplicate(true)
-				copy["faction"] = fid
-				return copy
+	for table in [MagicData.ARCANA, MagicData.PREVIEW_ARCANA]:  # CW-5: the shipped arcana, then the preview's
+		for fid in table:
+			for n in table[fid]:
+				if String(n.id) == node_id:
+					var copy: Dictionary = n.duplicate(true)
+					copy["faction"] = fid
+					return copy
 	return {}
 
 
@@ -148,9 +152,9 @@ static func is_arcana(node_id: String) -> bool:
 	return not arcana_node(node_id).is_empty()
 
 
-## The faction's mage row (MagicData.MAGES), or {}.
+## The faction's mage row (MagicData.MAGES, then CW-5's PREVIEW_MAGES), or {}.
 static func mage_data(faction_id: String) -> Dictionary:
-	return MagicData.MAGES.get(faction_id, {})
+	return MagicData.MAGES.get(faction_id, MagicData.PREVIEW_MAGES.get(faction_id, {}))
 
 
 ## The faction's mage as a roster UnitType (a regular unit with the trait Mage), or null.
@@ -183,15 +187,21 @@ static func is_mage(ut: UnitType) -> bool:
 
 ## The ids of every mage type (any faction's).
 static func is_mage_id(type_id: String) -> bool:
-	for fid in MagicData.MAGES:
-		if String(MagicData.MAGES[fid].id) == type_id:
-			return true
+	for table in [MagicData.MAGES, MagicData.PREVIEW_MAGES]:  # CW-5: the shipped mages, then the preview's
+		for fid in table:
+			if String(table[fid].id) == type_id:
+				return true
 	return false
 
 
-## A summoned creature's UnitType (MagicData.SUMMONS), or null: never recruited (cost 0), `summoned` true.
+## A summoned creature's row (MagicData.SUMMONS, then CW-5's PREVIEW_SUMMONS), or {}.
+static func summon_data(summon_id: String) -> Dictionary:
+	return MagicData.SUMMONS.get(summon_id, MagicData.PREVIEW_SUMMONS.get(summon_id, {}))
+
+
+## A summoned creature's UnitType (summon_data), or null: never recruited (cost 0), `summoned` true.
 static func summon_type(summon_id: String) -> UnitType:
-	var d: Dictionary = MagicData.SUMMONS.get(summon_id, {})
+	var d := summon_data(summon_id)
 	if d.is_empty():
 		return null
 	var ut := UnitType.new()
@@ -208,17 +218,19 @@ static func summon_type(summon_id: String) -> UnitType:
 	return ut
 
 
-## {summon id: UnitType} for every summoned creature: what GameState.from_dict loads in a magic game.
+## {summon id: UnitType} for every summoned creature: what GameState.from_dict loads in a magic game. CW-5: the shipped
+## summons first, then the preview's.
 static func summon_types() -> Dictionary:
 	var out := {}
-	for sid in MagicData.SUMMONS:
-		out[sid] = summon_type(sid)
+	for table in [MagicData.SUMMONS, MagicData.PREVIEW_SUMMONS]:
+		for sid in table:
+			out[sid] = summon_type(sid)
 	return out
 
 
 ## Whether summoned creatures of this type fade (Thornwolves) or stay until they fall (the Greenwrath).
 static func summon_fades(type_id: String) -> bool:
-	return MagicData.SUMMONS.get(type_id, {}).get("fades", false) == true
+	return summon_data(type_id).get("fades", false) == true
 
 
 ## The build screen's magic line for ruler `ruler_id` at `kept` power (§7.3), one short sentence with its number at the
@@ -246,9 +258,10 @@ static func ruler_line(ruler_id: String, kept: int) -> String:
 	return "Magic: casts %s rituals; %s takes %d hit points a turn once researched." % [school.trim_prefix("the "), spell_name(ritual), n.value]
 
 
-## The ruler's magic (MagicData.RULER_MAGIC): {"schools", "battle", "own_spell", "line"}, or {}.
+## The ruler's magic (MagicData.RULER_MAGIC, then CW-5's PREVIEW_RULER_MAGIC): {"schools", "battle", "own_spell", "line"},
+## or {}.
 static func ruler_magic(ruler_id: String) -> Dictionary:
-	return MagicData.RULER_MAGIC.get(ruler_id, {})
+	return MagicData.RULER_MAGIC.get(ruler_id, MagicData.PREVIEW_RULER_MAGIC.get(ruler_id, {}))
 
 
 # --- reading a game -------------------------------------------------------------------------------
@@ -282,8 +295,8 @@ static func knows_a_spell(state: GameState, faction_id: String) -> bool:
 
 
 ## The battle spells a caster of `faction_id` casts (§5.1, §7.2): for a mage, the faction's researched battle
-## spells; for the ruler, those of its schools if it casts in battle (only the Ever-Regent), plus its own spell
-## (Sunlance) from turn 1. In MagicData.SPELLBOOK order.
+## spells; for the ruler, those of its schools if it casts in battle (the Ever-Regent; Half-Death behind the preview),
+## plus its own spell (Sunlance, Draw the Warmth) from turn 1. In default_spellbook order.
 static func battle_spells(state: GameState, faction_id: String, caster_kind: String = MAGE) -> Array:
 	if not has_magic(state):
 		return []
@@ -294,18 +307,29 @@ static func battle_spells(state: GameState, faction_id: String, caster_kind: Str
 		rm = ruler_magic(f.ruler_type) if f != null else {}
 		if rm.get("battle", false) != true:
 			return []
+	# CW-5: a ruler casts its own spell and the researched spells of its own schools, no others (the Ever-Regent's schools
+	# are all the Crown's; Half-Death's are the Wick's, so it never casts Wax Skin).
+	var own: Array = rm.get("schools", [])
 	var out := []
-	for sid in MagicData.SPELLBOOK.get(faction_id, []):
-		if known.has(sid) or (caster_kind == RULER and String(rm.get("own_spell", "")) == sid):
+	for sid in default_spellbook(faction_id):
+		if caster_kind == RULER and String(rm.get("own_spell", "")) == sid:
+			out.append(sid)
+		elif known.has(sid) and (caster_kind != RULER or own.has(String(spell_data(sid).get("school", "")))):
 			out.append(sid)
 	return out
 
 
+## The faction's default battle spellbook (§5.1): every battle spell of its schools, in order (MagicData.SPELLBOOK, then
+## CW-5's PREVIEW_SPELLBOOK), or [].
+static func default_spellbook(faction_id: String) -> Array:
+	return MagicData.SPELLBOOK.get(faction_id, MagicData.PREVIEW_SPELLBOOK.get(faction_id, []))
+
+
 ## The faction's battle spellbook (§5.1): {"order": every battle spell of its schools, in the order its casters
-## try them, "off": the ones switched off}. Faction.spellbook, or MagicData.SPELLBOOK's default when it is {}.
+## try them, "off": the ones switched off}. Faction.spellbook, or default_spellbook when it is {}.
 static func spellbook(state: GameState, faction_id: String) -> Dictionary:
 	var f: Faction = state.find_faction(faction_id) if state != null else null
-	var default: Array = MagicData.SPELLBOOK.get(faction_id, [])
+	var default := default_spellbook(faction_id)
 	if f == null or f.spellbook.is_empty():
 		return {"order": default.duplicate(), "off": []}
 	return {"order": Serial.to_string_array(f.spellbook.get("order", default)), "off": Serial.to_string_array(f.spellbook.get("off", []))}
@@ -319,7 +343,7 @@ static func check_spellbook(state: GameState, faction_id: String, order) -> Dict
 		return _refusal("unknown_faction", "Those orders are for a faction that is not in this game.")
 	if not has_magic(state):
 		return _refusal("no_magic", NO_MAGIC)
-	var spells: Array = MagicData.SPELLBOOK.get(faction_id, [])
+	var spells := default_spellbook(faction_id)
 	var names := spells.map(func(s): return spell_name(String(s)))
 	var listed := {}
 	for sid in order.order:
@@ -346,7 +370,7 @@ static func set_spellbook(state: GameState, faction_id: String, order) -> void:
 	var f := state.find_faction(faction_id)
 	if f == null:
 		return
-	var default: Array = MagicData.SPELLBOOK.get(faction_id, [])
+	var default := default_spellbook(faction_id)
 	if order.order == default and order.off.is_empty():
 		f.spellbook = {}
 	else:
@@ -424,7 +448,7 @@ static func mastery_bonus(state: GameState, faction_id: String, school: String, 
 	if not trans.is_empty() and String(AscensionRules.node_data(trans).get("branch", "")) == aligned:
 		parts.append({"key": PART_TRANSFORMATION, "name": AscensionRules.branch_name(aligned), "value": int(MagicData.MASTERY.transformation),
 			"note": "the transformation adds +1 in its aligned school"})
-	var node := String(MagicData.MASTERY_NODES.get(school, ""))
+	var node := String(MagicData.MASTERY_NODES.get(school, MagicData.PREVIEW_MASTERY_NODES.get(school, "")))
 	if AscensionRules.has_node(state, faction_id, node):
 		parts.append({"key": PART_NODE, "name": AscensionRules.node_name(node), "value": int(MagicData.MASTERY.node),
 			"note": "the mastery node adds +1 for every caster"})
@@ -579,7 +603,7 @@ static func is_pack(spell_id: String) -> bool:
 
 ## A pack's words, {"one", "many"} ("wolf", "wolves"), or {} for a ritual that summons no pack.
 static func pack_words(spell_id: String) -> Dictionary:
-	return MagicData.SUMMONS.get(String(spell_data(spell_id).get("summon", "")), {}).get("pack", {})
+	return summon_data(String(spell_data(spell_id).get("summon", ""))).get("pack", {})
 
 
 ## A ritual's price in words: "5 gold a wolf" for a pack, "%d gold" for any other.
@@ -595,7 +619,7 @@ static func price(state: GameState, faction_id: String, ritual: String, size: in
 	var cost := int(sp.get("cost", 0))
 	if is_pack(ritual):
 		var bodies := maxi(size, int(sp.get("count", 3)))
-		return {"gold": cost * bodies, "parts": [{"label": "%d %s" % [bodies, String(MagicData.SUMMONS[String(sp.summon)].name)],
+		return {"gold": cost * bodies, "parts": [{"label": "%d %s" % [bodies, String(summon_data(String(sp.summon)).name)],
 			"value": cost * bodies, "note": price_words(ritual)}]}
 	return {"gold": cost, "parts": [{"label": spell_name(ritual), "value": cost, "note": "the ritual's price"}]}
 
@@ -692,11 +716,11 @@ static func check_cast(state: GameState, faction_id: String, order, existing: Ar
 		var sizes := pack_sizes(state, faction_id, army, order.ritual)
 		if order.size < int(sizes[0]) or order.size > int(sizes[1]):
 			return _refusal("pack_size", "You can call %s %s from your army at %s (%d, +%d for each point of %s mastery)." % [
-				str(sizes[0]) if sizes[0] == sizes[1] else "%d to %d" % [sizes[0], sizes[1]], String(MagicData.SUMMONS[String(sp.summon)].name),
+				str(sizes[0]) if sizes[0] == sizes[1] else "%d to %d" % [sizes[0], sizes[1]], String(summon_data(String(sp.summon)).name),
 				_province_name(state, army.location), int(sp.get("count", 3)), int(sp.get("per_bonus", {}).get("count", 0)),
 				school_name(String(sp.school)).trim_prefix("the ")])
 	elif order.size != 0:
-		return _refusal("no_size", _no_size_text())
+		return _refusal("no_size", _no_size_text(state))
 	var cost := int(price(state, faction_id, order.ritual, order.size).gold)
 	match order.pay:
 		CastOrder.BLOOD:
@@ -1272,9 +1296,9 @@ static func _effect_words(state: GameState, after: GameState, faction_id: String
 			var pack := TurnReportText.army_name(after, String(summon.army), faction_id)
 			if summon_fades(String(summon.type)):
 				return "%d %s form a new army at %s, %s. It holds this turn, can move from next turn, and fades at the end of turn %d." % [
-					int(summon.count), String(MagicData.SUMMONS[summon.type].name), where, pack, int(summon.until)]
+					int(summon.count), String(summon_data(String(summon.type)).name), where, pack, int(summon.until)]
 			return "the %s wakes at %s as a new army of its own, %s. It holds this turn, can move from next turn, and stays until it falls." % [
-				String(MagicData.SUMMONS[summon.type].name), where, pack]
+				String(summon_data(String(summon.type)).name), where, pack]
 		"raising":
 			var f := after.find_faction(faction_id)
 			var used := f.bastions.size() if f != null else 0
@@ -1314,9 +1338,9 @@ static func brief_words(state: GameState, after: GameState, faction_id: String, 
 			var summon: Dictionary = fx.summon
 			var pack := TurnReportText.army_name(after, String(summon.army), faction_id)
 			if summon_fades(String(summon.type)):
-				return "%d %s at %s, %s, until the end of turn %d." % [int(summon.count), String(MagicData.SUMMONS[summon.type].name), where,
+				return "%d %s at %s, %s, until the end of turn %d." % [int(summon.count), String(summon_data(String(summon.type)).name), where,
 					pack, int(summon.until)]
-			return "The %s wakes at %s, %s, until it falls." % [String(MagicData.SUMMONS[summon.type].name), where, pack]
+			return "The %s wakes at %s, %s, until it falls." % [String(summon_data(String(summon.type)).name), where, pack]
 		"raising":
 			var f := after.find_faction(faction_id)
 			return "A fort at %s for good (%d of %d Bastion forts)." % [where, f.bastions.size() if f != null else 0, MagicData.BASTION_CAP]
@@ -1504,7 +1528,7 @@ static func reading_text(state: GameState, fx: Dictionary) -> String:
 static func summoned_text(state: GameState, fx: Dictionary) -> String:
 	var s: Dictionary = fx.summon
 	var army := state.find_army(String(s.army))
-	return "%d %s answered %s at %s: %s." % [int(s.count), String(MagicData.SUMMONS[s.type].name), _the(state, String(fx.faction)),
+	return "%d %s answered %s at %s: %s." % [int(s.count), String(summon_data(String(s.type)).name), _the(state, String(fx.faction)),
 		_province_name(state, army.location if army else ""), TurnReportText.army_name(state, String(s.army), String(fx.faction))]
 
 
@@ -1743,7 +1767,7 @@ static func _end_stale_siege(state: GameState, province_id: String) -> void:
 static func faded_text(state: GameState, f: Dictionary) -> String:
 	var army := TurnReportText.army_name(state, String(f.army), String(f.faction))
 	var text := "%d %s of %s faded at %s at the end of turn %d, as Call the Pack said." % [int(f.count),
-		String(MagicData.SUMMONS.get(f.type, {}).get("name", f.type)), army, _province_name(state, String(f.province)), int(f.until)]
+		String(summon_data(String(f.type)).get("name", f.type)), army, _province_name(state, String(f.province)), int(f.until)]
 	if bool(f.removed) and int(f.get("engines_lost", 0)) > 0:
 		return text + " %s is gone, and %s it carried %s lost with it: siege engines ride only with fighters." % [Serial.cap(army),
 			SiegeRules.engines_text(String(f.faction), int(f.engines_lost)), "is" if int(f.engines_lost) == 1 else "are"]
@@ -2062,7 +2086,7 @@ static func _validate_faction(f: Faction, provinces: Dictionary, errors) -> bool
 		if not (order is Array and off is Array):
 			_report(errors, "%s's battle spellbook should list its order and the spells switched off." % name)
 			return false
-		var spells: Array = MagicData.SPELLBOOK.get(f.id, [])
+		var spells := default_spellbook(f.id)
 		var listed := {}
 		for sid in order:
 			if not (sid is String) or String(sid).is_empty():
@@ -2265,9 +2289,14 @@ static func _refusal(code: String, reason: String) -> Dictionary:
 
 
 ## Why a cast that is not a pack's gives a size: "Only Call the Pack takes a size: how many wolves to call." (CW-0: the packs
-## come from MagicData.SUMMONS, so a later faction's pack is named here too.)
-static func _no_size_text() -> String:
+## come from MagicData.SUMMONS, so a later faction's pack is named here too.) CW-5: then a preview faction's packs (Raise the
+## Snuffed), only in a game that seats that faction, so a Crown-Clans game reads as before.
+static func _no_size_text(state: GameState) -> String:
 	var packs: Array = MagicData.SPELLS.keys().filter(func(sid): return is_pack(String(sid)))
+	for sid in MagicData.PREVIEW_SPELLS:
+		var school := school_data(String(MagicData.PREVIEW_SPELLS[sid].school))
+		if is_pack(String(sid)) and state.find_faction(String(school.get("faction", ""))) != null:
+			packs.append(sid)
 	if packs.size() == 1:
 		return "Only %s takes a size: how many %s to call." % [spell_name(String(packs[0])), String(pack_words(String(packs[0])).many)]
 	return "Only %s take a size: how many to call." % RulerRules._and_list(packs.map(func(sid): return spell_name(String(sid))))

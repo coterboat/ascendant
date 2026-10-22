@@ -95,11 +95,12 @@ static func node_data(node_id: String) -> Dictionary:
 					var copy: Dictionary = n.duplicate(true)
 					copy["faction"] = fid
 					_nodes_by_id[n.id] = copy
-		for fid in MagicData.ARCANA:
-			for n in MagicData.ARCANA[fid]:
-				var copy: Dictionary = n.duplicate(true)
-				copy["faction"] = fid
-				_nodes_by_id[n.id] = copy
+		for table in [MagicData.ARCANA, MagicData.PREVIEW_ARCANA]:  # CW-5: the Candlewake's arcana too
+			for fid in table:
+				for n in table[fid]:
+					var copy: Dictionary = n.duplicate(true)
+					copy["faction"] = fid
+					_nodes_by_id[n.id] = copy
 	return _nodes_by_id.get(node_id, {})
 
 

@@ -112,7 +112,7 @@ static func cast_profiles(state: GameState) -> Dictionary:
 			if known.has(sid) and not pages.off.has(sid):
 				book.append(String(sid))
 		if known.is_empty():
-			for sid in MagicData.SPELLBOOK.get(f.id, []):
+			for sid in MagicRules.default_spellbook(f.id):
 				if String(MagicRules.spell_data(String(sid)).get("tier", "")) == "I":
 					book = [String(sid)]
 					break

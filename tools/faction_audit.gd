@@ -33,7 +33,7 @@ const MARKS := {
 	"data/factions.gd": [19, "fixed: the faction rows themselves, the Candlewake's behind the preview (PREVIEW_FACTIONS), LEGACY_PAIR, and capitals derived from the seated factions (capitals_for)"],
 	"data/fog.gd": [1, "fixed: the Gleaners are the Candlewake's scouts (SCOUTS, CW-2 #253, §4.1)"],
 	"data/forts.gd": [3, "fixed: one siege engine per faction, the Candlewake's Guttering Ram with CW-2 (#253); a faction with no engine row would recruit none (SiegeRules.engine_type is null)"],
-	"data/magic.gd": [16, "safe: the Crown's and the Clans' schools, mages, spellbooks and summons by faction; the Candlewake's Wick and Wax are CW-5 (#256). Fixed: the Thornwolves' row says it is a pack (summons from data)"],
+	"data/magic.gd": [23, "safe: the Crown's and the Clans' schools, mages, spellbooks and summons by faction; the Candlewake's Wick and Wax are CW-5 (#256). Fixed: the Thornwolves' row says it is a pack (summons from data) CW-5 (#256): the Candlewake's Wick and Wax wait behind the preview (MagicData's PREVIEW_ tables)."],
 	"data/mandates.gd": [13, "safe: mandates by faction; Kindling and Tallow Levy (CW-2, #253) wait behind the preview (PREVIEW_MANDATES), and Tallow Levy's price names the Wickwardens"],
 	"data/marks.gd": [2, "safe: the Candlewake's mark (MarkData) and the unit that rises from it (CW-3): the engine is generic, and only the Candlewake mark the land in this milestone"],
 	"data/map.gd": [8, "safe: the map's two capitals and their neighbours; the Candlewake take whichever is free (FactionData.capitals_for)"],

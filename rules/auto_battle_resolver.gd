@@ -483,7 +483,7 @@ static func odds_summary(wins: int, scores: Dictionary, briefs: Dictionary, pers
 		var parts := []
 		for fid in fids:
 			var ids := []
-			for sid in MagicData.SPELLBOOK.get(fid, []):
+			for sid in MagicRules.default_spellbook(fid):
 				if spells[fid].has(sid):
 					ids.append(String(sid))
 			cast[fid] = ids
@@ -1396,7 +1396,7 @@ static func _dealt(t: Dictionary, raw: int) -> int:
 ## its attacks dealt that round, rounded down (spell damage never counts), and a Lifedrinker the larger of its two
 ## shares, not both; none of them above its maximum - 1. A cursed side (side.cursed) heals back nothing.
 static func _drink(sides: Array, standing: Array, round_no: int, highlights: Array, rec) -> void:
-	var share := int(MagicData.SPELLS.blood_moon.get("share", 4))
+	var share := int(MagicRules.spell_data("blood_moon").get("share", 4))
 	for si in standing:
 		var side: Dictionary = sides[si]
 		var healed := 0
@@ -1713,10 +1713,11 @@ static func _setup_magic(sides: Array, ctx: Dictionary, env: Dictionary, state: 
 			for ut in faction.unit_types:
 				s.type_rank[ut.id] = rank
 				rank += 1
-		for sid in MagicData.SUMMONS:
-			if not s.type_rank.has(sid):
-				s.type_rank[sid] = rank
-				rank += 1
+		for table in [MagicData.SUMMONS, MagicData.PREVIEW_SUMMONS]:  # CW-5: the shipped summons, then the preview's
+			for sid in table:
+				if not s.type_rank.has(sid):
+					s.type_rank[sid] = rank
+					rank += 1
 		_setup_enchantments(s, state, pid)
 
 
@@ -1747,7 +1748,7 @@ static func _setup_enchantments(s: Dictionary, state: GameState, pid: String) ->
 		elif ritual == "blood_moon":
 			moon = e
 	if not blessings.is_empty():
-		var morale := int(MagicData.SPELLS.dawn_blessing.get("morale", 1))
+		var morale := int(MagicRules.spell_data("dawn_blessing").get("morale", 1))
 		var count := blessed.size()
 		var enough := count * 2 >= int(s.count_start)
 		s.blessed = morale if enough else 0

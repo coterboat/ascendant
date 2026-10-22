@@ -254,7 +254,7 @@ const PREVIEW_SPELLS := {
 		"text": "Raises 3 Snuffed (up to 3 + your Wax mastery), 4 gold each, as a new army of their own at the caster's province, through turn T + 4. One band at a time."},
 	"candlemass": {"id": "candlemass", "name": "Candlemass", "school": "wax", "tier": "III", "kind": "blessing", "battle": false,
 		"cost": 25, "range": 2, "target": "own_with_army", "duration": 4, "value": 12, "morale": 1, "one_army": true,
-		"per_bonus": {"value": 4}, "codex": "spell_candlemass",
+		"per_bonus": {}, "codex": "spell_candlemass",
 		"text": "Blesses one army of yours within 2 through turn T + 4: it heals 12 hit points a turn and fights with +1 morale."},
 }
 
@@ -283,7 +283,7 @@ const PREVIEW_ARCANA := {
 			"text": "Ritual (Wax): raises a band of 3 or more Snuffed for 4 gold each, for 5 turns."},
 		{"id": "wax_mastery", "name": "Wax Mastery", "kind": "mastery", "tier": "mastery", "school": "wax", "cost": 20,
 			"requires": ["raise_the_snuffed"], "requires_any": 0, "branch": "", "oath_branch": "", "codex": "node_wax_mastery",
-			"text": "+1 mastery in Wax for every caster: Wax Skin covers 1 more unit, the band can be 1 Snuffed bigger, Candlemass +4 hit points a turn."},
+			"text": "+1 mastery in Wax for every caster: Wax Skin covers 1 more unit, the band can be 1 Snuffed bigger."},
 		{"id": "candlemass", "name": "Candlemass", "kind": "spell", "tier": "III", "school": "wax", "cost": 25,
 			"requires": ["raise_the_snuffed", "wake_oath_kept"], "requires_any": 0, "branch": "", "oath_branch": "golden_wake",
 			"codex": "spell_candlemass",
