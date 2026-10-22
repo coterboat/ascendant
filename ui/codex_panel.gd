@@ -236,14 +236,18 @@ func _linked_text(key: String, text: String) -> String:
 	if text.contains("["):
 		return text
 	var plain_title := RegEx.create_from_string("^[A-Za-z]+( [A-Za-z]+)*$")
+	var names := _unit_name_spans(text)
 	var spans := []
 	for other in entry_keys():
 		var title := String(RulesCodex.entry(other).get("title", ""))
 		if other == key or plain_title.search(title) == null:
 			continue
-		var m := RegEx.create_from_string("(?i)\\b" + title.replace(" ", "\\s+") + "\\b").search(text)
-		if m:
+		for m in RegEx.create_from_string("(?i)\\b" + title.replace(" ", "\\s+") + "\\b").search_all(text):
+			# CW-12: a term inside a unit's own name isn't the term ("Guttering" in "the Guttering Bear", "Wick" in "Hundred-Wick")
+			if names.any(func(n): return m.get_start() >= int(n[0]) and m.get_end() <= int(n[1])):
+				continue
 			spans.append([m.get_start(), m.get_end(), other])
+			break
 	spans.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] > b[1]))
 	var out := ""
 	var at := 0
@@ -254,3 +258,26 @@ func _linked_text(key: String, text: String) -> String:
 		out += "[url=%s%s]%s[/url]" % [LINK_PREFIX, s[2], text.substr(s[0], s[1] - s[0])]
 		at = s[1]
 	return out + text.substr(at)
+
+
+## CW-12: where unit names of two words or more ("Guttering Bear", "Hundred-Wick", "Knight Captain") stand in `text`, as [start,
+## end] spans: every faction's roster and commander (the preview's too), the paths' new units, the mages and the summoned.
+static func _unit_name_spans(text: String) -> Array:
+	var names := {}
+	for row in FactionData.rows():
+		for u in Array(row.unit_types) + [row.commander]:
+			names[String(u.name)] = true
+	for table in [PathData.NEW_UNITS, PathData.PREVIEW_NEW_UNITS, MagicData.MAGES, MagicData.PREVIEW_MAGES, MagicData.SUMMONS,
+			MagicData.PREVIEW_SUMMONS]:
+		for id in table:
+			names[String(table[id].get("name", ""))] = true
+	var out := []
+	var lower := text.to_lower()
+	for n in names:
+		if not (String(n).contains(" ") or String(n).contains("-")):
+			continue
+		var at := lower.find(String(n).to_lower())
+		while at >= 0:
+			out.append([at, at + String(n).length()])
+			at = lower.find(String(n).to_lower(), at + 1)
+	return out
