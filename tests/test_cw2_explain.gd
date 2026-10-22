@@ -108,6 +108,36 @@ func test_the_battle_why_names_wick() -> void:
 	assert_true(found, "the why counts the flame")
 
 
+func test_the_why_panel_names_a_siphon_heal() -> void:
+	var s := _game()
+	var heals := {}
+	for game_seed in 24:
+		var wake := Army.new()
+		wake.id = s.new_army_id(WAKE)
+		wake.owner = WAKE
+		wake.location = "thornvale"
+		for i in 3:
+			wake.units.append(Unit.new(TurnResolver.recruitable_type(s.find_faction(WAKE), "gleaners"), WAKE))
+		wake.flame = 1
+		var foe := Army.new()
+		foe.id = s.new_army_id(CROWN)
+		foe.owner = CROWN
+		foe.location = "thornvale"
+		for type_id in ["spearmen", "spearmen", "crossbowmen"]:
+			foe.units.append(Unit.new(TurnResolver.recruitable_type(s.find_faction(CROWN), type_id), CROWN))
+		var r := AutoBattleResolver.resolve(wake, foe, s.find_province("thornvale"), SeededRNG.new(300 + game_seed), s, true)
+		var p := BattlePlayer.new(r.log, r.report)
+		var why := BattleWhy.new(p)
+		for k in p.beats().size() + 1:
+			for f in why.at(k, p.timeline().state_at(0)).feed:
+				if String(f.kind) == "heal":
+					heals["%d|%d" % [game_seed, int(f.event)]] = f
+	assert_false(heals.is_empty(), "the Gleaners healed")
+	for f in heals.values():
+		assert_true(String(f.text).ends_with("(Siphon).") and not String(f.text).contains("Lifedrinker"), f.text)
+		assert_eq(String(f.codex), AutoBattleResolver.codex_id_for_trait(AutoBattleResolver.SIPHON))
+
+
 func test_every_new_codex_link_exists() -> void:
 	for key in ["wick", "harbour", "guttering", "ruler_half_death", "ruler_mother_tallow", "ability_harvest", "ability_vigil",
 			"mandate_kindling", "mandate_tallow_levy", "unit_guttering_ram"]:
