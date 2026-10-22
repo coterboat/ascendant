@@ -1763,8 +1763,8 @@ static func arcana_delay(state: GameState, faction_id: String, node_id: String, 
 	var sworn := AscensionRules.branch(view, faction_id)
 	var road := {}
 	var side := ""
-	for key in PathData.BRANCHES:
-		if String(PathData.BRANCHES[key].faction) != faction_id or (not sworn.is_empty() and String(key) != sworn):
+	for key in AscensionRules.branches_for(faction_id):  # CW-4: the Candlewake's sides too
+		if not sworn.is_empty() and String(key) != sworn:
 			continue
 		var r := AscensionRules.road_need(view, faction_id, String(key))
 		if not r.is_empty() and (road.is_empty() or int(r.need) < int(road.need)):

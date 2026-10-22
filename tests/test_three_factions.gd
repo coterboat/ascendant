@@ -13,7 +13,8 @@ const CLANS := "beasts"
 const WAKE := "candlewake"
 const PAIRINGS := [[CROWN, CLANS], [CLANS, CROWN], [CROWN, WAKE], [WAKE, CROWN], [CLANS, WAKE], [WAKE, CLANS]]
 ## The systems the Candlewake play with: none, forts with independents and fog, and (CW-2) rulers.
-const SYSTEM_SETS := [{}, {"sieges": true, "independents": true, "fog": true}, {"rulers": true, "sieges": true, "independents": true}]
+const SYSTEM_SETS := [{}, {"sieges": true, "independents": true, "fog": true}, {"rulers": true, "sieges": true, "independents": true},
+	{"paths": true, "fog": true}]
 const PLAY_TURNS := 5
 
 
@@ -176,7 +177,6 @@ func test_the_factory_refuses_in_plain_words() -> void:
 		[[CROWN, CROWN], {}, "twice"],
 		[[CROWN], {}, "two"],
 		[[CROWN, CLANS, WAKE], {}, "two"],
-		[[WAKE, CLANS], {"paths": true}, "paths"],
 		[[CROWN, WAKE], {"magic": true}, "magic"],
 	]
 	for c in cases:
@@ -192,13 +192,14 @@ func test_the_factory_refuses_in_plain_words() -> void:
 	var errors := []
 	assert_true(GameState.create(5, [CROWN, WAKE], {"rulers": true}, {}, errors) != null, "rulers: %s" % [errors])
 	assert_true(GameState.create(5, [WAKE, CLANS], {}, {WAKE: "harvest_moot"}, errors) != null, "a Candlewake preset: %s" % [errors])
+	assert_true(GameState.create(5, [WAKE, CLANS], {"paths": true}, {}, errors) != null, "CW-4: paths are theirs too: %s" % [errors])
 	assert_eq(GameState.create(5, [CROWN, WAKE], {}, {WAKE: "regents_court"}, errors), null, "the Crown's preset isn't theirs")
 
 
 func test_system_problems_name_what_a_faction_cannot_play_yet() -> void:
-	for system in ["sieges", "independents", "fog", "rulers"]:
+	for system in ["sieges", "independents", "fog", "rulers", "paths"]:
 		assert_eq(GameState.system_problems(WAKE, {system: true}), [], "the Candlewake play with %s" % system)
-	for system in ["paths", "magic"]:
+	for system in ["magic"]:
 		var problems := GameState.system_problems(WAKE, {system: true})
 		assert_eq(problems.size(), 1, "one reason for %s" % system)
 		assert_true(String(problems[0]).begins_with("The Candlewake"), problems[0])

@@ -37,7 +37,7 @@ const MARKS := {
 	"data/mandates.gd": [13, "safe: mandates by faction; Kindling and Tallow Levy (CW-2, #253) wait behind the preview (PREVIEW_MANDATES), and Tallow Levy's price names the Wickwardens"],
 	"data/marks.gd": [2, "safe: the Candlewake's mark (MarkData) and the unit that rises from it (CW-3): the engine is generic, and only the Candlewake mark the land in this milestone"],
 	"data/map.gd": [8, "safe: the map's two capitals and their neighbours; the Candlewake take whichever is free (FactionData.capitals_for)"],
-	"data/paths.gd": [15, "safe: the Crown's and the Clans' paths by faction and unit; the Candlewake's is CW-4 (#255)"],
+	"data/paths.gd": [23, "safe: each faction's path by faction and unit; the Candlewake's (CW-4, #255) waits behind the preview (PathData.PREVIEW_PATHS and the other PREVIEW_ tables)"],
 	"data/rulers.gd": [8, "safe: rulers by faction (one hit is the word 'kingdom' in a ruler's flavour); Half-Death and Mother Tallow (CW-2, #253) wait behind the preview (PREVIEW_RULERS), and Harvest names the Wickwardens it raises"],
 	"rules/army.gd": [1, "safe: a comment's example army id"],
 	"rules/auto_battle_resolver.gd": [1, "safe: a border battle's two provinces, not two factions"],

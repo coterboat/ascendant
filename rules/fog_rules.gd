@@ -1435,7 +1435,7 @@ static func text_for(t: String, numbers: Dictionary, provinces: Array, factions:
 					"new_name": String(names.get("to", old))})
 			var new_unit := String(numbers.get("new_unit", ""))
 			if not new_unit.is_empty():
-				p["new_unit_name"] = String(PathData.NEW_UNITS.get(new_unit, {}).get("name", new_unit))
+				p["new_unit_name"] = String(AscensionRules.new_unit_data(new_unit).get("name", new_unit))
 				text += String(FogData.TEXT.transformed_new_unit)
 			var opens := String(numbers.get("opens_mandate", ""))
 			if not opens.is_empty():
