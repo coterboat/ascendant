@@ -139,6 +139,62 @@ vec3 lens_prop(vec3 c) {
 	return pow(clamp(m, 0.0, 1.0), vec3(2.2));
 }
 
+// CW-8 (#259, design/CANDLEWAKE.md §3.5): the buildings melt in step with the Wake. prop_melts is 1 on the buildings' materials while
+// the quality ladder draws the melt (WorldView.set_wake), 0 everywhere else, and then this is one branch and no fetch. prop_wake is the
+// ground's wake texture (b: the melt, which a cold wake keeps), read under the instance's foot, so a building melts with its province:
+// its roofline sags and its walls pool outward a little about its base (melt_pivot, its mesh's base centre, and melt_h its height, in
+// the mesh's own units), and its colours go to tallow at their own lightness (so a door stays dark); on the ladder's top rungs
+// (prop_drips) paler wax runs down its walls from the roofline. outline.gdshader melts its ink the same way.
+uniform float prop_melts = 0.0;
+uniform float prop_drips = 0.0;
+uniform sampler2D prop_wake : filter_nearest, repeat_disable;
+uniform vec3 melt_pivot = vec3(0.0);
+uniform float melt_h = 1.0;
+varying float v_melt;
+varying vec3 v_mloc; // the vertex in the mesh's own space, before the melt (where the drips hang)
+
+float wake_melt(vec3 foot) {
+	if (prop_melts < 0.5) {
+		return 0.0;
+	}
+	float id = floor(textureLod(prop_data_n, (foot.xz - prop_origin) / prop_extent, 0.0).r * 255.0 + 0.5);
+	if (id > 254.5) {
+		return 0.0;
+	}
+	return textureLod(prop_wake, vec2((id + 0.5) / float(textureSize(prop_wake, 0).x), 0.5), 0.0).b;
+}
+
+vec3 melted(vec3 v, float melt) {
+	vec3 p = v - melt_pivot;
+	p.xz *= 1.0 + melt * 0.07;
+	p.y *= 1.0 - melt * 0.22;
+	return p + melt_pivot;
+}
+
+// thin runs of wax hanging from the roofline, each column its own length (a hash of the column: cosmetic), longer as it melts
+float wax_drips(vec3 p, float melt) {
+	if (prop_drips < 0.5 || melt <= 0.0) {
+		return 0.0;
+	}
+	float h = max(melt_h, 0.001);
+	float down = 1.0 - clamp((p.y - melt_pivot.y) / h, 0.0, 1.0); // 0 at the roofline, 1 at the foot
+	float u = ((p.x - melt_pivot.x) + (p.z - melt_pivot.z)) / h * 16.0;
+	float run = (0.1 + 0.32 * fract(sin(floor(u) * 12.9898) * 43758.5453)) * melt;
+	float thin = 1.0 - smoothstep(0.14, 0.24, abs(fract(u) - 0.5));
+	return thin * (1.0 - smoothstep(run * 0.75, run, down));
+}
+
+vec3 wax_albedo(vec3 c) {
+	if (v_melt <= 0.0) {
+		return c;
+	}
+	vec3 lw = vec3(0.2126, 0.7152, 0.0722);
+	vec3 tallow = vec3(1.0, 0.86, 0.6);
+	vec3 wax = tallow * (dot(c, lw) * 1.08 / dot(tallow, lw));
+	vec3 w = mix(c, wax, v_melt * 0.6);
+	return mix(w, min(wax * 1.5 + 0.04, vec3(1.0)), wax_drips(v_mloc, v_melt) * 0.8);
+}
+
 vec3 model_albedo(vec4 vcol, vec2 uv) {
 	vec3 c = vcol.rgb;
 	if (use_tex) {

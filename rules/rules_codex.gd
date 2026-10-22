@@ -783,6 +783,8 @@ const ENTRIES := {
 			+ " Lose a marked province and the mark becomes a cold wake for %d turns for each stage it had reached." % _WAKE_ROW.scar_turns
 			+ " A cold wake still shelters Candlewake armies, and if they retake the province before it fades, it relights at once at the stage it had."
 			+ " In Deep Wake the dead rise: one Wickwarden every %d turns, joining the lowest-numbered Candlewake army there at its flame, or forming a new army at the start flame. It is a trickle, never their recruitment." % _WAKE_ROW.risen.every
+			+ " You can read it from the land: the ground goes pale with wax, spreading from the roads and buildings as it deepens; a lilac flame burns in every window;"
+			+ " candle-posts line the roads from %s on; and the buildings slump as they melt. A cold wake is greyer and unlit, its wax fading back toward the roads." % _WAKE_ROW.stages[1].name
 			+ " Marks are public, like owners and terrain. See Harbour and Marks on the land.",
 	},
 	"marks_on_the_land": {

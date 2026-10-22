@@ -74,6 +74,7 @@ const SiegeBoard := preload("res://world3d/siege_board.gd")
 const Vision := preload("res://world3d/vision.gd")
 const EnchantDecals := preload("res://world3d/enchant_decals.gd")
 const SpellPlan := preload("res://world3d/spell_plan.gd")
+const WakeLook := preload("res://world3d/wake_look.gd") ## CW-8: the Wake on the land
 
 const SPAN_NEAR := 70.0
 const PITCH_FAR := 60.0
@@ -352,6 +353,7 @@ func _paint_owners(st: GameState) -> void:
 	for id in wv.forts.keys():
 		var p2 := st.find_province(id)
 		wv.set_fort_colour(id, UiPalette.owner_color(st, p2.owner, seats) if p2 != null and not p2.owner.is_empty() else UiPalette.NEUTRAL)
+	wv.set_wake(WakeLook.of(st)) ## CW-8: the Wake on the land (marks are public), over the forts as they now stand
 
 
 func _sync_marks() -> void:

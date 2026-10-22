@@ -15,6 +15,8 @@ const SH_MODEL_CEL := preload("res://world3d/shaders/model_cel.gdshader")
 const SH_MODEL_LIT := preload("res://world3d/shaders/model_lit.gdshader")
 const SH_OUTLINE := preload("res://world3d/shaders/outline.gdshader")
 const SH_WATER := preload("res://world3d/shaders/water.gdshader")
+const WakeLook := preload("res://world3d/wake_look.gd") ## CW-8: the Wake on the land
+const WakeLights := preload("res://world3d/wake_lights.gd")
 const SH_BANNER := preload("res://world3d/shaders/banner.gdshader")
 const SH_GHOST := preload("res://world3d/shaders/ghost.gdshader")
 const SH_SMOKE := preload("res://world3d/shaders/smoke.gdshader")
@@ -45,6 +47,11 @@ var owner_img: Image ## WIDTH x 1 RGBA8: rgb the owner's colour, a owned
 var owner_tex: ImageTexture
 var mark_img: Image ## WIDTH x 1 RGBA8: r a King's Roads destination, g a legal move target, b a focus flash, a a forest the rules grew
 var mark_tex: ImageTexture
+var wake_img: Image ## CW-8: WIDTH x 1 RGBA8, WakeLook.texels: r a live Wake's tint, g a cold wake's, b the melt, a lit
+var wake_tex: ImageTexture
+var wake_lights: Node3D = null ## CW-8: the Wake's window flames and candle-posts (WakeLights), made when a Wake first shows
+var _wake_look := {}
+var wake_reach_tex: ImageTexture = null ## CW-8: the reach mask (wake_reach_of), made when a Wake first shows
 var vision_img: Image ## M5-3, WIDTH x 1 R8 beside the owner wash: 0 never seen, 85 remembered, 170 glimpsed, 255 in clear sight (Vision)
 var vision_tex: ImageTexture
 var lens_img: Image ## UX-7, WIDTH x 2 RGBA8: the active map lens (MapLens.texels): row 0 its tint and strength, row 1 its mark and flag
@@ -138,6 +145,9 @@ func _build_ground() -> void:
 	mark_img = Image.create(Vision.WIDTH, 1, false, Image.FORMAT_RGBA8)
 	mark_tex = ImageTexture.create_from_image(mark_img)
 	gmat.set_shader_parameter("mark_tex", mark_tex)
+	wake_img = Image.create(Vision.WIDTH, 1, false, Image.FORMAT_RGBA8)
+	wake_tex = ImageTexture.create_from_image(wake_img)
+	gmat.set_shader_parameter("wake_tex", wake_tex)
 	vision_img = Image.create_from_data(Vision.WIDTH, 1, false, Image.FORMAT_R8, Vision.texels({}, []))
 	vision_tex = ImageTexture.create_from_image(vision_img)
 	gmat.set_shader_parameter("vision_tex", vision_tex)
@@ -289,6 +299,8 @@ func set_quality(q: int) -> void:
 	if vp:
 		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 		vp.scaling_3d_scale = 1.0 if quality < 3 else 0.75
+	if not _wake_look.is_empty():
+		set_wake(_wake_look) ## CW-8: the Wake thins with the ladder
 	apply_rig()
 
 
@@ -299,7 +311,7 @@ func set_prop_outlines(on: bool) -> void:
 		return
 	prop_outlines = on
 	for m in _prop_mats:
-		(m as ShaderMaterial).next_pass = outline_mat if on and look == "cel" else null
+		(m as ShaderMaterial).next_pass = _own_outline.get(m, outline_mat) if on and look == "cel" else null  # CW-8: a melting village keeps its own ink
 
 
 ## Effects on/off for the performance probe: SSAO, glow, fog, shadows, MSAA/FXAA together.
@@ -383,6 +395,191 @@ func set_owners(colours: Dictionary) -> void:
 		else:
 			owner_img.set_pixel(i, 0, Color(0, 0, 0, 0))
 	owner_tex.update(owner_img)
+
+
+## CW-8 (#259, design/CANDLEWAKE.md §3.5): the Wake on the land, from WakeLook.of(state): the ground's pale-wax tint (wake_tex, spread
+## through the reach mask), the buildings' melt and drips (every village's, landmark's, fort's and fortress's material: prop_melts,
+## prop_drips, prop_wake, its mesh's melt_pivot and melt_h, and its own ink outline's) and the window flames and candle-posts
+## (WakeLights), each thinned on the quality ladder (WakeLook.ladder). A game with no mark draws none of it and pays for none of it.
+func set_wake(look: Dictionary) -> void:
+	_wake_look = look
+	wake_img = Image.create_from_data(Vision.WIDTH, 1, false, Image.FORMAT_RGBA8, WakeLook.texels(look, terrain.ids, Vision.WIDTH))
+	wake_tex.update(wake_img)
+	if wake_reach_tex == null and not look.is_empty():
+		wake_reach_tex = ImageTexture.create_from_image(wake_reach_of(terrain))
+		gmat.set_shader_parameter("wake_reach", wake_reach_tex)
+		gmat.set_shader_parameter("wake_reach_max", WakeLook.REACH_MAX)
+	var lad := WakeLook.ladder(quality, bool(BattleFx.settings().get("reduced_motion", false)))
+	var melts := 1.0 if bool(lad.melt) and not look.is_empty() else 0.0
+	var drips := 1.0 if bool(lad.drips) else 0.0
+	for pair in _melt_targets():
+		var pm: ShaderMaterial = pair[0]
+		var box: AABB = (pair[1] as Mesh).get_aabb()
+		for mat in [pm, _melt_outline(pm)]: ## the building, and its own ink (never the shared outline every model wears)
+			if mat == null:
+				continue
+			mat.set_shader_parameter("prop_wake", wake_tex)
+			mat.set_shader_parameter("prop_data_n", gmat.get_shader_parameter("data_n"))
+			mat.set_shader_parameter("prop_origin", Terrain3D.ORIGIN)
+			mat.set_shader_parameter("prop_extent", Terrain3D.EXTENT)
+			mat.set_shader_parameter("prop_melts", melts)
+			mat.set_shader_parameter("prop_drips", drips)
+			mat.set_shader_parameter("melt_pivot", Vector3(box.get_center().x, box.position.y, box.get_center().z))
+			mat.set_shader_parameter("melt_h", box.size.y)
+	if wake_lights == null and not look.is_empty():
+		wake_lights = WakeLights.new()
+		wake_lights.name = "WakeLights"
+		add_child(wake_lights)
+	if wake_lights != null:
+		wake_lights.sync(self, look, lad)
+
+
+## CW-8: every building's [model material, its mesh] as the board stands now: the villages and landmarks (a material for each model,
+## shared by its instances, which melt by the province under each one's foot), the forts and the capitals' fortresses.
+func _melt_targets() -> Array:
+	var out: Array = []
+	if _wake_look.is_empty() and wake_reach_tex == null:
+		return out ## never a Wake: nothing to set or to clear
+	for ch in buildings.get_children():
+		if ch is MultiMeshInstance3D and String(ch.name).begins_with("Village_") and _is_model_mat(ch.material_override):
+			out.append([ch.material_override, (ch as MultiMeshInstance3D).multimesh.mesh])
+	for table in [forts, fortresses]:
+		for pid in table.keys():
+			for mi in _model_meshes(table[pid].get("node")):
+				out.append([mi.material_override, mi.mesh])
+	return out
+
+
+func _is_model_mat(m: Material) -> bool:
+	return m is ShaderMaterial and ((m as ShaderMaterial).shader == SH_MODEL_CEL or (m as ShaderMaterial).shader == SH_MODEL_LIT)
+
+
+## The MeshInstance3Ds under `root` (itself too) drawn with a model material.
+func _model_meshes(root) -> Array:
+	var out: Array = []
+	if root == null or not is_instance_valid(root):
+		return out
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null and _is_model_mat((n as MeshInstance3D).material_override):
+			out.append(n)
+		stack.append_array(n.get_children())
+	return out
+
+
+## CW-8: the buildings of `province_id` that hold windows for the Wake's flames: [{"mesh", "xf"}], each placed in this view's space
+## (a village or landmark the fort cleared away is left out).
+func wake_buildings(province_id: String) -> Array:
+	var out: Array = []
+	for v in _village_at.get(province_id, []):
+		var mm: MultiMesh = v["mm"]
+		if mm.get_instance_transform(int(v["k"])).basis.get_scale().x < 0.01:
+			continue
+		out.append({"mesh": mm.mesh, "xf": _in_view(buildings) * (v["xf"] as Transform3D)})
+	for table in [forts, fortresses]:
+		if table.has(province_id):
+			for mi in _model_meshes(table[province_id].get("node")):
+				out.append({"mesh": (mi as MeshInstance3D).mesh, "xf": _in_view(mi)})
+	return out
+
+
+## `n`'s transform in this view's space (walked up the parents, so it holds outside the tree too).
+func _in_view(n: Node3D) -> Transform3D:
+	var xf := n.transform
+	var p := n.get_parent()
+	while p != null and p != self:
+		if p is Node3D:
+			xf = (p as Node3D).transform * xf
+		p = p.get_parent()
+	return xf
+
+
+## CW-8: the reach mask (R8, at half the land's grid): how far each spot of land lies from its nearest road or building, of
+## WakeLook.REACH_MAX world units, so the Wake's tint can spread from them (ground_common.gdshaderinc). From the land alone (its roads,
+## the planned villages and landmarks, the forts and the capitals): computed once per land on the first Wake and kept in its plan.
+static func wake_reach_of(t) -> Image:
+	if t.plan.has("wake_reach"):
+		return t.plan["wake_reach"]
+	var w2 := (int(t.w) + 1) / 2
+	var h2 := (int(t.h) + 1) / 2
+	var step: float = float(t.cell) * 2.0
+	var far := WakeLook.REACH_MAX * 4.0
+	var d := PackedFloat32Array()
+	d.resize(w2 * h2)
+	d.fill(far)
+	for y in h2:
+		var row: int = mini(y * 2, int(t.h) - 1) * int(t.w)
+		for x in w2:
+			d[y * w2 + x] = minf(far, float(t.road_d[row + mini(x * 2, int(t.w) - 1)]))
+	var seats: Array = [] ## [centre, radius]
+	for v in plan_of(t)["villages"]:
+		seats.append([v["pos"], float(v["r"])])
+	for i in t.ids.size():
+		if t.is_capital[i]:
+			seats.append([t.centres[i], FORTRESS_SIDE * 0.5])
+		elif t.has_fort[i]:
+			var fs: Array = fort_spot(t, i)
+			seats.append([fs[0], float(fs[1])])
+	for seat in seats:
+		var c: Vector2 = seat[0]
+		var r: float = seat[1]
+		var x0 := maxi(0, int((c.x - r - Terrain3D.ORIGIN.x) / step))
+		var x1 := mini(w2 - 1, int((c.x + r - Terrain3D.ORIGIN.x) / step) + 1)
+		for y in range(maxi(0, int((c.y - r - Terrain3D.ORIGIN.y) / step)), mini(h2 - 1, int((c.y + r - Terrain3D.ORIGIN.y) / step) + 1) + 1):
+			for x in range(x0, x1 + 1):
+				var p := Terrain3D.ORIGIN + Vector2((x + 0.5) * step, (y + 0.5) * step)
+				d[y * w2 + x] = minf(d[y * w2 + x], maxf(0.0, p.distance_to(c) - r))
+	## a chamfer distance, out from every road and building: a forward pass, then a backward one
+	var dg := step * sqrt(2.0)
+	for y in h2:
+		for x in w2:
+			var k := y * w2 + x
+			var v := d[k]
+			if x > 0:
+				v = minf(v, d[k - 1] + step)
+			if y > 0:
+				v = minf(v, d[k - w2] + step)
+				if x > 0:
+					v = minf(v, d[k - w2 - 1] + dg)
+				if x < w2 - 1:
+					v = minf(v, d[k - w2 + 1] + dg)
+			d[k] = v
+	for y in range(h2 - 1, -1, -1):
+		for x in range(w2 - 1, -1, -1):
+			var k := y * w2 + x
+			var v := d[k]
+			if x < w2 - 1:
+				v = minf(v, d[k + 1] + step)
+			if y < h2 - 1:
+				v = minf(v, d[k + w2] + step)
+				if x < w2 - 1:
+					v = minf(v, d[k + w2 + 1] + dg)
+				if x > 0:
+					v = minf(v, d[k + w2 - 1] + dg)
+			d[k] = v
+	var bytes := PackedByteArray()
+	bytes.resize(w2 * h2)
+	for k in d.size():
+		bytes[k] = clampi(roundi(d[k] / WakeLook.REACH_MAX * 255.0), 0, 255)
+	var img := Image.create_from_data(w2, h2, false, Image.FORMAT_R8, bytes)
+	t.plan["wake_reach"] = img
+	return img
+
+
+## CW-8: a melting material's own ink outline (made once, _give_own_outline), on it while its outlines are drawn, or null when they
+## aren't: the shared outline_mat every model wears must never melt.
+func _melt_outline(m: ShaderMaterial) -> ShaderMaterial:
+	if not _own_outline.has(m):
+		_give_own_outline(m)
+	if m.next_pass != null and m.next_pass != _own_outline[m]:
+		m.next_pass = _own_outline[m]
+	return _own_outline[m] as ShaderMaterial
+
+
+## The wake texture's bytes as the ground reads them (tests).
+func wake_bytes() -> PackedByteArray:
+	return wake_img.get_data()
 
 
 ## Repaints one province's owner wash (a capture during the turn's playback).

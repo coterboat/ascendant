@@ -847,6 +847,20 @@ static func formation_depth(slots: Array) -> float:
 ## front rank on z = 0, x centred. One block per unit type in `blocks` ([{"type", "n" figures, "rank"
 ## 0 front / 1 second (Volley), "sp": Vector2 spacing}]), front rank first, packed into rows no wider
 ## than `max_w`. `leaders` ([{"type", "role": "commander" or "ruler", "rank", "sp"}]) stand with their
+## CW-8: a flame drawn in code (a wick's, a window's, a candle-post's): a teardrop of unit height with its foot at the origin, white
+## (its colour comes per instance), shared by everything that burns on the board.
+static var _flame_mesh: ArrayMesh = null
+
+
+static func flame_mesh() -> ArrayMesh:
+	if _flame_mesh == null:
+		var b := Builder.new()
+		b.ball(0.36, Vector3(0, 0.33, 0), Color.WHITE, Vector3(1.0, 0.92, 1.0), 8)
+		b.cyl(0.0, 0.33, 0.62, Vector3(0, 0.69, 0), Color.WHITE, 8)
+		_flame_mesh = b.mesh()
+	return _flame_mesh
+
+
 ## CW-8 (design/CANDLEWAKE.md §10): the Candlewake's massing, a slumped, uneven crowd, never a rectangle. Each regular's place is
 ## nudged by a hash of the army's id and its index, up to SLUMP_X sideways and SLUMP_Z deeper back, its facing up to SLUMP_YAW askew
 ## ("yaw_off", which the layout adds). Leaders and the colour party keep their places. Pure and deterministic: no dice.
