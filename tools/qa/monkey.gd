@@ -161,6 +161,7 @@ var _hover_desc := "nothing"
 var _stale_id := 0
 var _pending_shot := ""
 var _march_follow := false  # --focus=battles: March was just pressed, so the next gesture picks a neighbouring province
+var _game_id := 0  # the game screen played on: a load or a new game resets the turn's counters
 
 
 func _initialize() -> void:
@@ -356,6 +357,12 @@ func _stop_reason() -> String:
 	off_game = 0
 	if started_msec > 0 and (Time.get_ticks_msec() - started_msec) / 60000.0 >= max_minutes:
 		return "minutes"
+	if game.get_instance_id() != _game_id:
+		if _game_id != 0:
+			_note("a game screen again (loaded or new), at turn %d" % _turn())
+			turn_gestures = 0
+			end_tries = 0
+		_game_id = game.get_instance_id()
 	var turn := _turn()
 	if turn != turn_seen:
 		_note("turn %d begins (after %d gestures on turn %d, %d end-turn tries)" % [turn, turn_gestures, turn_seen, end_tries])
@@ -491,8 +498,9 @@ func _act_on(t: Dictionary) -> void:
 
 
 func _end_turn() -> void:
-	end_tries += 1
 	var game := _game()
+	if game != null and game.session != null and not game.session.is_over():
+		end_tries += 1  # only a live game's seal counts toward STUCK (not the title's, nor a game that is over)
 	var b: Control = game.end_turn_button if game != null and game.get("end_turn_button") is Control else null
 	for t in targets:  # the first game's review: the seal opens the Plan, and its Seal the orders ends the turn
 		if is_instance_valid(t.node) and String(t.node.name) == "SealButton" and t.kind == "button" and rng.randf() < 0.8:
