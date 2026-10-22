@@ -66,6 +66,23 @@ static func wake_step(state: GameState, _events: Array) -> void:
 		return
 
 
+## Whether a mark or a scar of `faction_id` makes `province_id` a harbour for its armies (§2.2, §3.3): its own mark there, in a
+## province it owns, at a stage that shelters (the Wake-Line and Deep Wake), or a cold wake of its own while it lasts. Marks are
+## set by the wake step (CW-3), so until then nothing here is a harbour.
+static func harbour(state: GameState, faction_id: String, province_id: String) -> bool:
+	var entry: Dictionary = state.marks.get(province_id, {})
+	if entry.is_empty():
+		return false
+	var mark: Dictionary = entry.get("mark", {})
+	var p := state.find_province(province_id)
+	if not mark.is_empty() and String(mark.faction) == faction_id and p != null and p.owner == faction_id:
+		var stage := stage_of(faction_id, end_clock(state) - int(mark.since_turn))
+		if bool(MarkData.stage(faction_id, stage).get("harbour", false)):
+			return true
+	var scar: Dictionary = entry.get("scar", {})
+	return not scar.is_empty() and String(scar.faction) == faction_id and end_clock(state) < int(scar.until_turn)
+
+
 ## A copy of `marks` in its saved form: entries with no mark and no scar are left out, and the numbers are whole numbers.
 static func marks_copy(marks: Dictionary) -> Dictionary:
 	var out := {}
@@ -162,20 +179,20 @@ static func _part_ok(state: GameState, part, kind: String, where: String, errors
 
 ## A mark_stage event: `faction_id`'s mark at `province_id` reached stage `stage`.
 static func stage_event(state: GameState, faction_id: String, province_id: String, stage: int) -> Dictionary:
-	return _event(state, "mark_stage", faction_id, province_id, {"province": province_id, "stage": stage})
+	return _mark_event(state, "mark_stage", faction_id, province_id, {"province": province_id, "stage": stage})
 
 
 ## A scar_formed event: `faction_id`'s mark at `province_id` became a scar at `stage`, lasting until `until_turn`.
 static func scar_event(state: GameState, faction_id: String, province_id: String, stage: int, until_turn: int) -> Dictionary:
-	return _event(state, "scar_formed", faction_id, province_id, {"province": province_id, "stage": stage, "until_turn": until_turn})
+	return _mark_event(state, "scar_formed", faction_id, province_id, {"province": province_id, "stage": stage, "until_turn": until_turn})
 
 
 ## A scar_consumed event: `faction_id` retook its scarred `province_id`, and the mark came back at `stage`.
 static func relit_event(state: GameState, faction_id: String, province_id: String, stage: int) -> Dictionary:
-	return _event(state, "scar_consumed", faction_id, province_id, {"province": province_id, "stage": stage})
+	return _mark_event(state, "scar_consumed", faction_id, province_id, {"province": province_id, "stage": stage})
 
 
-static func _event(state: GameState, type: String, faction_id: String, province_id: String, numbers: Dictionary) -> Dictionary:
+static func _mark_event(state: GameState, type: String, faction_id: String, province_id: String, numbers: Dictionary) -> Dictionary:
 	var e := {"type": type, "phase": PHASE, "provinces": [province_id], "factions": [faction_id], "armies": [],
 		"numbers": numbers, "codex": CODEX}
 	e["text"] = event_sentence(state, e)

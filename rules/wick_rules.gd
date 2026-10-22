@@ -22,8 +22,14 @@ extends RefCounted
 const EVENT_TYPES := ["flame_changed", "guttered", "harvest"]
 ## The phase the Wick step runs in (TurnResolver.phases): after "wake", before "income".
 const PHASE := "wick"
-## The codex entry each event links (CW-2 writes them).
-const CODEX := {"flame_changed": "wick", "guttered": "guttering", "harvest": "harvest"}
+## What an army at flame 0 loses in each Wick step, per regular unit, never below 1 hp (§2.2: guttering).
+const GUTTER_HP := 2
+## Vigil never lifts a flame above this (§4.2), whatever the cap.
+const VIGIL_MAX := 3
+## The battle event types whose armies "fought" this turn (TurnResolver).
+const BATTLE_TYPES := ["battle", "border_battle"]
+## The codex entry each event links.
+const CODEX := {"flame_changed": "wick", "guttered": "guttering", "harvest": "ability_harvest"}
 
 
 ## Whether `faction_id` keeps a flame on its armies (its FactionData row has "wick").
@@ -74,11 +80,149 @@ static func light(state: GameState, army: Army) -> void:
 	army.flame = start_flame(state, army.owner) if carries_flame(army) else -1
 
 
-## The Wick step (§2.2): one deterministic pass over the armies in id order, on the end clock E = current_turn + 1, after the
-## wake step and before income. CW-1 gives it its place in the turn; CW-2 gives it its rules, so for now it changes nothing.
-static func wick_step(state: GameState, _events: Array) -> void:
+## The Wick step (§2.2, CW-2): one deterministic pass over every army that carries a flame, in id order, after the wake step and
+## before income. `start` is the state at the start of the turn (an army not in it was raised this turn, and its flame then is
+## where the turn's net line starts). For each army:
+##   1. it won a battle this turn: +1, once;
+##   2. else it fought none: outside a harbour -1, in one no change; an army raised this turn skips this;
+##   3. Vigil: in the province of a living ruler with Vigil, it rises to at least that ruler's floor (never above VIGIL_MAX);
+##   4. clamp to 0 and the cap;
+##   5. at flame 0 it gutters: every regular (not mages or summoned creatures) loses GUTTER_HP, never below 1.
+## Then one flame_changed line an army whose flame differs from the turn's start, and a guttered line an army that lost hp.
+static func wick_step(state: GameState, events: Array, start: GameState = null) -> void:
 	if not in_play(state):
 		return
+	var facts := battle_facts(events)
+	var floors := vigil_floors(state)
+	for a in TurnResolver._sorted_armies(state):
+		if not carries_flame(a):
+			continue
+		var before: Army = start.find_army(a.id) if start != null else null
+		var raised := start != null and before == null
+		var flame: int = a.flame
+		var why := ""
+		if facts.won.has(a.id):
+			flame += 1
+			why = "won"
+		elif not facts.fought.has(a.id) and not raised and not harbour(state, a.owner, a.location):
+			flame -= 1
+			why = "idle"
+		var floor := int(floors.get("%s|%s" % [a.owner, a.location], 0))
+		if floor > flame:
+			flame = mini(floor, VIGIL_MAX)
+			why = "vigil"
+		a.flame = clampi(flame, 0, cap(state, a.owner))
+		if a.flame == 0:
+			var units := 0
+			var lost := 0
+			for u in a.units:
+				if u.type.summoned or u.type.trait_id == AutoBattleResolver.MAGE:
+					continue
+				var take := mini(GUTTER_HP, u.current_hp - 1)
+				if take > 0:
+					u.current_hp -= take
+					units += 1
+					lost += take
+			if lost > 0:
+				events.append(gutter_event(state, a, units, lost))
+		var from: int = before.flame if before != null else a.flame
+		if from >= 0 and from != a.flame:
+			events.append(flame_event(state, a, from, a.flame, why if not why.is_empty() else "joined"))
+
+
+## The turn's per-army facts (§2.1), read from its battle events: {"fought": {army id: true}, "won": {army id: true}}. Losing
+## armies are destroyed, so an army that fought and was not destroyed in that battle won it.
+static func battle_facts(events: Array) -> Dictionary:
+	var fought := {}
+	var won := {}
+	for e in events:
+		if not BATTLE_TYPES.has(String(e.get("type", ""))):
+			continue
+		var destroyed: Array = e.get("numbers", {}).get("destroyed", [])
+		for aid in e.get("armies", []):
+			fought[String(aid)] = true
+			if not destroyed.has(aid):
+				won[String(aid)] = true
+	return {"fought": fought, "won": won}
+
+
+## Whether `province_id` is a harbour for `faction_id`'s armies (§2.2): a fort it owns, or a mark of its own at a stage that
+## shelters, or a cold wake of its own (MarkRules.harbour, CW-3). A siege camp is not one: it stands in someone else's land.
+static func harbour(state: GameState, faction_id: String, province_id: String) -> bool:
+	var p := state.find_province(province_id)
+	if p == null:
+		return false
+	if p.owner == faction_id and (p.has_fort or p.fort_level > 0):
+		return true
+	return MarkRules.harbour(state, faction_id, province_id)
+
+
+## Vigil's floors (§4.2): {"<faction id>|<province id>": the floor} for every living ruler with Vigil, where its army stands.
+static func vigil_floors(state: GameState) -> Dictionary:
+	var out := {}
+	for f in state.factions:
+		if not has_wick(f.id) or not f.has_ruler() or f.ruler_status != RulerRules.ALIVE:
+			continue
+		if String(RulerRules.ruler_data(f.ruler_type).get("ability", "")) != "vigil":
+			continue
+		var army := RulerRules.ruler_army(state, f.id)
+		if army != null:
+			out["%s|%s" % [f.id, army.location]] = RulerRules.ability_value(f.ruler_type, RulerRules.ability_rank(f.kept_power))
+	return out
+
+
+## Harvest (§4.2, CW-2), after a battle (TurnResolver._fight): once a turn, when a battle in a province (not on a border) is won
+## by a faction whose living ruler has Harvest and fought in it, the ruler's ability raises its "unit" (Wickwardens): its value
+## at the ruler's ability rank against a player's army, "free_hold" against only a Free Hold. They join the lowest-id regular
+## army of the winner that fought there and stands, at its flame (they rose in the fire), or form a new army there at the start
+## flame. Never the enemy's dead. `sides` {faction id: armies}, `destroyed` the armies the battle destroyed.
+static func harvest(state: GameState, kind: String, province_ids: Array, sides: Dictionary, winner: String, destroyed: Array,
+		events: Array) -> void:
+	if kind == "border" or province_ids.is_empty() or not sides.has(winner) or not has_wick(winner):
+		return
+	var f := state.find_faction(winner)
+	if f == null or not f.has_ruler() or String(RulerRules.ruler_data(f.ruler_type).get("ability", "")) != "harvest":
+		return
+	var ruler_fought := false
+	var joins: Array = []
+	for a in sides[winner]:
+		if destroyed.has(a.id):
+			continue
+		if a.ruler != null:
+			ruler_fought = true
+		elif state.find_army(a.id) != null:
+			joins.append(a)
+	if not ruler_fought:
+		return
+	for e in events:
+		if String(e.get("type", "")) == "harvest" and Array(e.get("factions", [])).has(winner):
+			return  # once a turn (a fort's chain of battles counts once)
+	var beat_player := false
+	for fid in sides:
+		if fid != winner and fid != IndependentData.FACTION_ID:
+			beat_player = true
+	var ability := RulerRules.ability_data(f.ruler_type)
+	var count := RulerRules.ability_value(f.ruler_type, RulerRules.ability_rank(f.kept_power)) if beat_player else int(ability.get("free_hold", 1))
+	var ut := TurnResolver.recruitable_type(f, String(ability.get("unit", "")))
+	if ut == null or count <= 0:
+		return
+	joins.sort_custom(func(x, y): return TurnReportText.army_number(x.id) < TurnReportText.army_number(y.id))
+	var army: Army = joins[0] if not joins.is_empty() else null
+	var joined := army != null
+	if army == null:
+		army = Army.new()
+		army.id = state.new_army_id(winner)
+		army.owner = winner
+		army.location = String(province_ids[0])
+		light(state, army)
+		state.armies.append(army)
+	for i in count:
+		var u := Unit.new(ut, winner)
+		u.current_hp = RulerRules.unit_max_hp(state, u)
+		army.units.append(u)
+	var e := harvest_event(state, army, ut.id, count, joined)
+	e.phase = String(events.back().get("phase", "battles")) if not events.is_empty() else "battles"
+	events.append(e)
 
 
 ## Checks every flame (GameState.validate): only a Wick faction's armies carry one, every one of theirs but a ruler's does,
@@ -107,22 +251,22 @@ static func validate(state: GameState, errors = null) -> bool:
 
 ## A flame_changed event: `army`'s flame went from `from` to `to` this turn, for `why` (CW-2: "won", "idle", "vigil", ...).
 static func flame_event(state: GameState, army: Army, from: int, to: int, why: String) -> Dictionary:
-	return _event(state, "flame_changed", army, {"army": army.id, "from": from, "to": to, "why": why})
+	return _wick_event(state, "flame_changed", army, {"army": army.id, "from": from, "to": to, "why": why})
 
 
 ## A guttered event: `army`, at flame 0, lost `hp` hit points over `units` regulars.
 static func gutter_event(state: GameState, army: Army, units: int, hp: int) -> Dictionary:
-	return _event(state, "guttered", army, {"army": army.id, "units": units, "hp": hp})
+	return _wick_event(state, "guttered", army, {"army": army.id, "units": units, "hp": hp})
 
 
 ## A harvest event: `count` fighters of `unit_type` rose at `army`'s province and joined it (`joined`) or formed it.
 static func harvest_event(state: GameState, army: Army, unit_type: String, count: int, joined: bool) -> Dictionary:
-	var e := _event(state, "harvest", army, {"army": army.id, "unit": unit_type, "count": count, "joined": joined})
+	var e := _wick_event(state, "harvest", army, {"army": army.id, "unit": unit_type, "count": count, "joined": joined})
 	e.phase = "battles"
 	return e
 
 
-static func _event(state: GameState, type: String, army: Army, numbers: Dictionary) -> Dictionary:
+static func _wick_event(state: GameState, type: String, army: Army, numbers: Dictionary) -> Dictionary:
 	var e := {"type": type, "phase": PHASE, "provinces": [army.location], "factions": [army.owner], "armies": [army.id],
 		"numbers": numbers, "codex": String(CODEX[type])}
 	e["text"] = event_sentence(state, e)

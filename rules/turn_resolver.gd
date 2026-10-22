@@ -162,7 +162,7 @@ static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: 
 	_capture(s, battle_sites, events)
 	_recruitment(s, recruits, events, state)  # Warband Muster gathers where the ruler started the turn
 	MarkRules.wake_step(s, events)  # CW-1: games where a faction marks its land only; CW-3 gives it its rules
-	WickRules.wick_step(s, events)  # CW-1: games where a faction keeps a flame only; CW-2 gives it its rules
+	WickRules.wick_step(s, events, state)  # CW-1, CW-2: games where a faction keeps a flame only
 	_income(s, events)
 	_research_phase(s, events)  # M4: games with paths only
 	_rulers_phase(s, events)
@@ -693,6 +693,8 @@ static func _muster_events(s: GameState, fid: String, info: Dictionary, events: 
 			numbers = {"from": info.from, "to": info.to, "units": info.units.duplicate(), "commander": info.commander, "engines": info.engines}
 	if not info.outside.is_empty():
 		numbers["outside"] = info.outside.duplicate(true)
+	if info.has("flame"):
+		numbers["flame"] = info.flame.duplicate()  # CW-2: the flame the army it joined fell to (a merge takes the lower)
 	var e := _event(type, "orders", province, [fid], armies, "order", numbers, "", MusterRules.CODEX)
 	e["text"] = MusterRules.event_sentence(s, e)
 	events.append(e)
@@ -1084,6 +1086,7 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 	events.append(_event("border_battle" if kind == "border" else "battle", "battles", province_ids, fids, army_ids, cause,
 		numbers, text, codex))
 	_record_ruler_deaths(s, rulers_in, winner, kind, province_ids, events)
+	WickRules.harvest(s, kind, province_ids, sides, winner, destroyed, events)  # CW-2: the Candlewake's Half-Death only
 	return winner
 
 
@@ -1686,6 +1689,10 @@ static func _recruitment(s: GameState, recruits: Dictionary, events: Array, star
 				numbers["max_hp"] = placed.max_hp
 				numbers["blood_levy"] = AscensionRules.blood_levy_divisor(s, fid)
 				text += " " + AscensionRules.arrival_text(ut, int(placed.hp), int(placed.max_hp), int(numbers.blood_levy))
+			if not placed.cooled.is_empty():
+				# CW-2: only a recruit that cooled the army it joined carries this, so every other event is unchanged.
+				numbers["flame"] = placed.cooled.duplicate()
+				text += " It cools the army from flame %d to %d." % [int(placed.cooled.from), int(placed.cooled.to)]
 			if not placed.outside.is_empty():
 				# ARM-1 (§2.1): only a recruit that joined an army under a blessing carries these, so every other event is unchanged.
 				numbers["outside_blessing"] = String(placed.outside.id)
@@ -1753,6 +1760,11 @@ static func _add_recruit(s: GameState, faction: Faction, ut: UnitType, location:
 		WickRules.light(s, army)  # CW-1: recruits forming a new army start it at its start flame (§2.1)
 		s.armies.append(army)
 		created = true
+	var cooled := {}
+	if not created and not ut.is_commander and army.flame > WickRules.start_flame(s, faction.id):
+		# CW-2 (design/CANDLEWAKE.md §2.1): recruits cool what they join, to their own (start) flame. A commander doesn't.
+		cooled = {"from": army.flame, "to": WickRules.start_flame(s, faction.id)}
+		army.flame = int(cooled.to)
 	var unit := Unit.new(ut, faction.id)
 	var max_hp := unit.current_hp
 	if ut.is_commander:
@@ -1770,7 +1782,7 @@ static func _add_recruit(s: GameState, faction: Faction, ut: UnitType, location:
 			unit.add_status(UnitStatus.OUTSIDE_BLESSING, String(outside.id))
 		else:
 			outside = {}
-	return {"army": army, "created": created, "hp": unit.current_hp, "max_hp": max_hp, "outside": outside}
+	return {"army": army, "created": created, "hp": unit.current_hp, "max_hp": max_hp, "outside": outside, "cooled": cooled}
 
 
 static func _income(s: GameState, events: Array) -> void:
