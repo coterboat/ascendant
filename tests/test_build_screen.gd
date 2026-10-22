@@ -340,27 +340,40 @@ func test_every_number_has_the_rules_breakdown() -> void:
 
 
 func test_the_numbers_are_the_specs() -> void:
-	# Regent's Court: the Ever-Regent with Royal Armories and King's Roads keeps 5 (§6.1, §1.3).
+	# The build a player starts with is the Crown's balanced preset, Regent's Court (§6.1); #183 retuned it, so its numbers
+	# come from its preset row and the Ever-Regent's from §1.3 at the power it keeps.
+	var preset := RulerRules.preset_build(RulerRules.balanced_preset("kingdom"))
+	var kept := RulerRules.kept_after(preset)
 	var b := _builder(VS_COMPUTER)
-	assert_eq(b.meter_label.text, "Power pool 10  ·  spent 5  ·  kept 5")
+	assert_eq(b.current_build(), {"ruler": preset.ruler, "mandates": preset.mandates}, "the balanced preset")
+	assert_eq(b.meter_label.text, "Power pool %d  ·  spent %d  ·  kept %d" % [RulerData.POWER_POOL, RulerData.POWER_POOL - kept, kept])
 	assert_eq(b.meter_label.get_meta(BuildScreen.BREAKDOWN), Breakdown.build_kept_power(b.current_build()))
 	var gilt := 0
 	for pip in b.meter_pips:
 		if (pip.get_theme_stylebox("panel") as StyleBoxFlat).bg_color == UiPalette.GILT:
 			gilt += 1
-	assert_eq(gilt, 5, "5 kept pips are gilt")
-	assert_eq((b.meter_pips[5].get_theme_stylebox("panel") as StyleBoxFlat).bg_color, BuildScreen.AREA_COLORS.units, "Royal Armories' pips")
-	assert_eq((b.meter_pips[8].get_theme_stylebox("panel") as StyleBoxFlat).bg_color, BuildScreen.AREA_COLORS.map, "King's Roads' pips")
+	assert_eq(gilt, kept, "%d kept pips are gilt" % kept)
+	# After the kept pips, each mandate's pips in the order taken, in its area's colour.
+	var at := kept
+	for mid in preset.mandates:
+		var md := RulerRules.mandate_data(mid)
+		for i in RulerRules.mandate_cost(mid):
+			assert_eq((b.meter_pips[at + i].get_theme_stylebox("panel") as StyleBoxFlat).bg_color, BuildScreen.AREA_COLORS[String(md.area)],
+				"%s's pips" % md.name)
+		at += RulerRules.mandate_cost(mid)
 	assert_true(b.meter_sentence.text.contains("Power you keep makes the Ever-Regent stronger in person"), b.meter_sentence.text)
-	assert_eq(b._grid_labels.hp[0].text, "19", "Regent hp at 5 kept: 14 + 1 x 5")
-	assert_eq(b._grid_labels.attack[0].text, "13")
-	assert_eq(b._grid_labels.defense[0].text, "8")
-	assert_eq(b._grid_labels.rank[0].text, "2")
-	assert_eq(b._grid_labels.hp[1].text, "14", "spend all")
-	assert_eq(b._grid_labels.hp[2].text, "24", "keep all")
-	assert_eq(b._grid_labels.attack[0].get_meta(BuildScreen.BREAKDOWN), Breakdown.ruler_stat_at("ever_regent", "attack", 5))
+	assert_eq(b._grid_labels.hp[0].text, str(RulerRules.stat_value("ever_regent", "hp", kept)), "Regent hp at %d kept" % kept)
+	assert_eq(b._grid_labels.attack[0].text, str(RulerRules.stat_value("ever_regent", "attack", kept)))
+	assert_eq(b._grid_labels.defense[0].text, str(RulerRules.stat_value("ever_regent", "defense", kept)))
+	assert_eq(b._grid_labels.rank[0].text, str(RulerRules.ability_rank(kept)))
+	assert_eq(b._grid_labels.hp[1].text, str(RulerRules.stat_value("ever_regent", "hp", 0)), "spend all")
+	assert_eq(b._grid_labels.hp[2].text, str(RulerRules.stat_value("ever_regent", "hp", RulerData.POWER_POOL)), "keep all")
+	assert_eq(b._grid_labels.attack[0].get_meta(BuildScreen.BREAKDOWN), Breakdown.ruler_stat_at("ever_regent", "attack", kept))
 	# Royal Armories: Spearmen attack +1, marked with the old value (base stats read from data, so a balance pass
-	# doesn't break this test).
+	# doesn't break this test). The court doesn't hold it since #183, so it is ticked here and cleared again after.
+	var had_armories: bool = preset.mandates.has("royal_armories")
+	if not had_armories:
+		assert_true(b.set_mandate("royal_armories", true), "Royal Armories fits in the %d kept" % kept)
 	var spear_attack := _base_stat("kingdom", "spearmen", "attack")
 	var cells: Array = b._roster_cells["spearmen"]["attack"]
 	assert_eq(cells[0].text, str(spear_attack + 1))
@@ -371,13 +384,19 @@ func test_the_numbers_are_the_specs() -> void:
 	assert_eq(cells[0].get_meta(BuildScreen.BREAKDOWN).lines[1].label, "Royal Armories")
 	assert_false(b._roster_cells["knight_captain"]["attack"][1].visible, "commanders don't get Royal Armories")
 	assert_eq(b._roster_cells["knight_captain"]["attack"][0].text, str(_base_stat("kingdom", "knight_captain", "attack")))
-	# The King at 5 kept power: attack 11 = 9 + 2 (§1.3, §7.1).
+	if not had_armories:
+		assert_true(b.set_mandate("royal_armories", false))
+		assert_eq(b.current_build().mandates, preset.mandates, "back to the preset")
+	# The King with the court's mandates keeps the same power: attack 9 + 1 for every 2 kept (§1.3, §7.1).
 	b.select_ruler("aurel_king")
-	assert_eq(b._grid_labels.attack[0].text, "11")
-	assert_eq(int(b._grid_labels.attack[0].get_meta(BuildScreen.BREAKDOWN).lines[1].value), 2)
-	assert_true(b._ruler_lines.succession.text.contains("Corvane II is crowned at Crownkeep 2 turns later"), b._ruler_lines.succession.text)
-	assert_true(b._ruler_lines.succession.text.contains("(now 5, so 2)"), b._ruler_lines.succession.text)
-	assert_eq(int(b._ruler_lines.succession.get_meta(BuildScreen.BREAKDOWN).total), 2)
+	var gain := RulerRules.stat_value("aurel_king", "attack", kept) - RulerRules.stat_value("aurel_king", "attack", 0)
+	assert_eq(b._grid_labels.attack[0].text, str(RulerRules.stat_value("aurel_king", "attack", kept)))
+	assert_eq(int(b._grid_labels.attack[0].get_meta(BuildScreen.BREAKDOWN).lines[1].value), gain)
+	var heir := int(RulerRules.successor_for("aurel_king", kept).kept_power)
+	var delay := int(RulerRules.successor_for("aurel_king", kept).delay)
+	assert_true(b._ruler_lines.succession.text.contains("Corvane II is crowned at Crownkeep %d turns later" % delay), b._ruler_lines.succession.text)
+	assert_true(b._ruler_lines.succession.text.contains("(now %d, so %d)" % [kept, heir]), b._ruler_lines.succession.text)
+	assert_eq(int(b._ruler_lines.succession.get_meta(BuildScreen.BREAKDOWN).total), heir)
 	# Muster Grounds: Knights 20 -> 16 gold, a fifth off; cheaper is marked as good.
 	b.apply_preset("warrior_king")
 	assert_true(b.set_mandate("muster_grounds", true))
@@ -417,10 +436,15 @@ func test_the_numbers_are_the_specs() -> void:
 
 func test_an_unaffordable_mandate_is_disabled_with_its_reason() -> void:
 	var b := _builder(VS_COMPUTER)
-	assert_true(b.apply_preset("regents_court"))
-	assert_true(b.set_mandate("drilled_ranks", true))  # 3 + 2 + 2: 3 power left
+	# The Ever-Regent with Royal Armories, King's Roads and Drilled Ranks, ticked one by one (#183: a build of its own, so a
+	# retuned preset row doesn't move it): 3 + 2 + 2 spent, 3 power left.
+	b.select_ruler("ever_regent")
+	b.clear_build()
+	for mid in ["royal_armories", "kings_roads", "drilled_ranks"]:
+		assert_true(b.set_mandate(mid, true), "%s is ticked" % mid)
 	var kept := RulerRules.kept_after(b.current_build())
-	assert_eq(kept, 3)
+	assert_eq(kept, RulerData.POWER_POOL - RulerRules.mandate_cost("royal_armories") - RulerRules.mandate_cost("kings_roads")
+		- RulerRules.mandate_cost("drilled_ranks"))
 	for mid in RulerRules.available_mandates("kingdom"):
 		var check: CheckBox = b.mandate_checks[mid]
 		var reason: Label = b.mandate_reasons[mid]

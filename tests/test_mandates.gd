@@ -9,11 +9,12 @@ const SPEC_MANDATES := {
 	"muster_grounds": [4, ""], "sworn_vassals": [4, ""], "royal_armories": [3, "kingdom"], "kings_roads": [2, "kingdom"],
 	"blood_frenzy": [3, "beasts"], "feast_of_victory": [3, "beasts"],
 }
-## §6.1: preset id -> [faction, ruler, mandates, kept].
+## §6.1: preset id -> [faction, ruler, mandates, kept]. #183 retuned Regent's Court for band S6 of design/M3C_SIEGES.md
+## (Royal Armories and King's Roads, keeping 5, before); the §6.1 table is the director's to update.
 const SPEC_PRESETS := {
 	"warrior_king": ["kingdom", "aurel_king", [], 10],
 	"iron_crown": ["kingdom", "aurel_king", ["royal_armories", "heavy_tithes", "veteran_levies"], 0],
-	"regents_court": ["kingdom", "ever_regent", ["royal_armories", "kings_roads"], 5],
+	"regents_court": ["kingdom", "ever_regent", ["heavy_tithes", "kings_roads"], 4],
 	"beast_god_unbound": ["beasts", "thornmane_avatar", [], 10],
 	"clan_moot": ["beasts", "fang_chieftain", ["iron_discipline", "blood_frenzy", "sworn_vassals"], 0],
 	"blood_of_the_fang": ["beasts", "fang_chieftain", ["iron_discipline", "drilled_ranks"], 5],
@@ -167,25 +168,36 @@ func test_build_kept_power_breakdown() -> void:
 
 
 func test_kept_power_breakdown_counts_sacrifices_and_successions() -> void:
+	# The Regent's Court (#183: the numbers come from its preset row) sacrifices for Drilled Ranks on turn 3.
+	var build := RulerRules.preset_build("regents_court")
+	var bought := "drilled_ranks"
+	assert_false(build.mandates.has(bought), "the preset doesn't hold %s yet" % bought)
+	var cost := RulerRules.sacrifice_cost(bought)
+	var kept := RulerRules.kept_after(build) - cost
+	assert_true(kept > 0, "the court keeps enough power to buy %s and keep some (%d)" % [bought, kept])
 	var s := GameState.with_rulers(8, {"kingdom": "regents_court"})
 	var k := s.find_faction("kingdom")
-	k.mandates.append("drilled_ranks")
-	k.sacrifices = [{"turn": 3, "mandate": "drilled_ranks", "cost": 3}]
-	k.kept_power = 2
+	k.mandates.append(bought)
+	k.sacrifices = [{"turn": 3, "mandate": bought, "cost": cost}]
+	k.kept_power = kept
 	RulerRules.refresh_ruler(s, "kingdom")
 	assert_true(s.validate([]))
 	var b := Breakdown.kept_power(s, "kingdom")
-	assert_eq(b.lines.map(func(l): return l.value), [10, -3, -2, -3])
-	assert_eq(b.lines[3].label, "Drilled Ranks, sacrificed on turn 3")
-	assert_eq(int(b.total), 2)
-	# After a succession took the last point, a line says so and the lines still sum to the total.
+	var want := [RulerData.POWER_POOL]
+	for mid in build.mandates:
+		want.append(-RulerRules.mandate_cost(mid))
+	want.append(-cost)
+	assert_eq(b.lines.map(func(l): return l.value), want)
+	assert_eq(b.lines.back().label, "%s, sacrificed on turn 3" % RulerRules.mandate_name(bought))
+	assert_eq(int(b.total), kept)
+	# After a succession took the last points, a line says so and the lines still sum to the total.
 	k.kept_power = 0
 	RulerRules.refresh_ruler(s, "kingdom")
 	b = Breakdown.kept_power(s, "kingdom")
 	assert_eq(b.lines.back().label, "Successions")
-	assert_eq(b.lines.back().value, -2)
+	assert_eq(b.lines.back().value, -kept)
 	assert_eq(Breakdown.sum_of_lines(b), 0)
-	assert_eq(RulerRules.ruler_unit(s, "kingdom").type.hp, 14, "the Regent's stats follow kept power")
+	assert_eq(RulerRules.ruler_unit(s, "kingdom").type.hp, RulerRules.stat_value("ever_regent", "hp", 0), "the Regent's stats follow kept power")
 
 
 # --- what later tickets read ----------------------------------------------------------------------

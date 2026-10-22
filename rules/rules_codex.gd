@@ -620,7 +620,7 @@ const ENTRIES := {
 	},
 	"build_presets": {
 		"title": "Build presets",
-		"text": "Each faction has three ready-made builds: one keeps all its power, one spends it all, and one is balanced. Aurel Crown: Warrior King (King Corvane, no mandates), Iron Crown (King Corvane with Royal Armories, Heavy Tithes and Veteran Levies) and Regent's Court (the Ever-Regent with Royal Armories and King's Roads, keeping 5). Thornmane Clans: Beast-God Unbound (the Great Thornmane, no mandates), Clan Moot (the Ninth Fang with Iron Discipline, Blood Frenzy and Sworn Vassals) and Blood of the Fang (the Ninth Fang with Iron Discipline and Drilled Ranks, keeping 5). A game with rulers gives a faction its balanced build unless another is chosen. AI seats pick one of the three.",
+		"text": "Each faction has three ready-made builds: one keeps all its power, one spends it all, and one is balanced. Aurel Crown: Warrior King (King Corvane, no mandates), Iron Crown (King Corvane with Royal Armories, Heavy Tithes and Veteran Levies) and Regent's Court (the Ever-Regent with Heavy Tithes and King's Roads, keeping 4). Thornmane Clans: Beast-God Unbound (the Great Thornmane, no mandates), Clan Moot (the Ninth Fang with Iron Discipline, Blood Frenzy and Sworn Vassals) and Blood of the Fang (the Ninth Fang with Iron Discipline and Drilled Ranks, keeping 5). A game with rulers gives a faction its balanced build unless another is chosen. AI seats pick one of the three.",
 	},
 	"ai_seat": {
 		"title": "AI seats",
