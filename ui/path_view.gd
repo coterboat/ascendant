@@ -31,9 +31,11 @@ const STAT_HEADS := {"hp": "Hit points", "attack": "Attack", "defense": "Defense
 const STAT_CODEX := {"hp": "stat_hit_points", "attack": "stat_attack", "defense": "stat_defense", "morale": "stat_morale",
 	"cost": "stat_cost"}
 ## The fork colours of the placeholder frames (§12.3; PathData.BRANCHES "colour").
-const FORK_COLOURS := {"gilt": Color("#E6B84E"), "iron": Color("#8A96A3"), "moss": Color("#6FA04B"), "crimson": Color("#C0303A")}
+const FORK_COLOURS := {"gilt": Color("#E6B84E"), "iron": Color("#8A96A3"), "moss": Color("#6FA04B"), "crimson": Color("#C0303A"),
+	"honey": Color("#E0B65A"), "cherry": Color("#C93A5B")}  # CW-4: the Candlewake's Golden Wake and Red Wake
 ## What the glyph on a fork's frame is, in words (tooltips).
-const FORK_GLYPHS := {"gilt": "a gilt sun ring", "iron": "riveted iron", "moss": "a vine", "crimson": "a blood edge"}
+const FORK_GLYPHS := {"gilt": "a gilt sun ring", "iron": "riveted iron", "moss": "a vine", "crimson": "a blood edge",
+	"honey": "golden wax pooling", "cherry": "a wick flame"}
 
 
 # --- the state the orders are checked against -----------------------------------------------------------
@@ -238,7 +240,7 @@ static func sidebar(state: GameState, fid: String, orders: Array = [], own: bool
 	out.target_name = String(fc.get("name", ""))
 	out.cost = int(fc.get("cost", 0))
 	out.target_text = String(fc.get("text", ""))
-	for side in AscensionRules.branches_for(fid):  # CW-7: the preview's sides too (the Candlewake's Golden and Red Wakes)
+	for side in AscensionRules.branches_for(fid):  # CW-4: the preview's sides too (the Candlewake's Pouring)
 		var r := route(view, fid, side)
 		if not r.is_empty():
 			out.routes.append(r)
@@ -400,7 +402,7 @@ static func preview(state: GameState, fid: String, nid: String, orders: Array = 
 			bits.append("your %s never become %s" % [AscensionRules.base_unit_name(fid, String(type_id)), String(ofx.rename[type_id])])
 		var other_new := String(ofx.get("new_unit", ""))
 		if not other_new.is_empty():
-			var d: Dictionary = AscensionRules.new_unit_data(other_new)  # CW-7: the preview's new units too
+			var d: Dictionary = AscensionRules.new_unit_data(other_new)
 			bits.append("no %s (%d hp, attack %d, defense %d, %d gold, %s)" % [String(d.name), int(d.hp), int(d.attack),
 				int(d.defense), int(d.cost), String(d.trait)])
 		var orule: Dictionary = ofx.get("province_rule", {})

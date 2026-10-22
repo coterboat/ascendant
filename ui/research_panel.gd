@@ -20,6 +20,8 @@ extends Control
 ## school columns of four cards (the same cards, ETAs and "Research this" as the path, from the same pool), each
 ## school's mastery for your casters, and the battle spellbook: tick a spell on or off and move it up or down, which
 ## asks the host to queue a SpellbookOrder (spellbook_requested). All words come from MagicView.
+## #287: a tree taller than the panel's body (the Magic tab's cards, with a status line under them) scrolls there, under the fade and
+## "More" (ScrollMore) while more of it is below; each tab opens at its top.
 
 signal research_requested(node_id: String)
 signal preview_requested(node_id: String)
@@ -56,6 +58,8 @@ var spellbook_checks := {}  # M5-5: spell id -> its on/off CheckBox (for tests)
 var enemy_tabs: HBoxContainer
 var close_button: Button
 var tree_box: HBoxContainer
+var tree_scroll: ScrollContainer  # #287: the tree scrolls in the body when it is taller
+var tree_more: ScrollMore  # #287: the fade and "More" over the tree's bottom edge while more of it is below
 var links: Control
 var sidebar: VBoxContainer
 var status_label: Label
@@ -83,6 +87,7 @@ func show_for(p_state: GameState, p_viewer: String, p_orders: Array = [], p_can_
 	showing_magic = false
 	status_text = ""
 	refresh()
+	tree_scroll.scroll_vertical = 0
 	visible = true
 
 
@@ -91,12 +96,14 @@ func show_enemy(fid: String) -> void:
 	showing_fid = fid
 	showing_magic = false
 	refresh()
+	tree_scroll.scroll_vertical = 0  # #287: a new tab opens at its top (an order on the same tab keeps the place)
 
 
 func show_own() -> void:
 	showing_fid = viewer_fid
 	showing_magic = false
 	refresh()
+	tree_scroll.scroll_vertical = 0
 
 
 ## M5-5: your arcana and battle spellbook (a game with magic only).
@@ -106,6 +113,7 @@ func show_magic() -> void:
 	showing_fid = viewer_fid
 	showing_magic = true
 	refresh()
+	tree_scroll.scroll_vertical = 0
 
 
 ## New orders (after one was queued or cancelled) without leaving the tab.
@@ -723,20 +731,30 @@ func _build() -> void:
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 24)
 	box.add_child(body)
-	var tree_holder := Control.new()
+	# #287: the tree scrolls inside the body, under UI-FIT's fade and "More" while more of it is below (ScrollMore), so its cards end at the
+	# body's edge, above the status and footer lines, at every window size. Its holder was a plain Control that took none of the tree's
+	# height and clipped nothing: the Clans' Magic tab ran its last row of spell cards over both lines. The panel keeps its size on every tab.
+	tree_scroll = ScrollContainer.new()
+	tree_scroll.name = "TreeScroll"
+	tree_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tree_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var frame := ScrollMore.frame(tree_scroll, UiPalette.PANEL_BG)
+	tree_more = frame.get_node("MoreCue") as ScrollMore
+	body.add_child(frame)
+	var tree_holder := MarginContainer.new()  # the tree and its links, as tall as the tree: what the scroll scrolls
 	tree_holder.name = "TreeHolder"
 	tree_holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tree_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	body.add_child(tree_holder)
+	for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		tree_holder.add_theme_constant_override(side, 0)
+	tree_scroll.add_child(tree_holder)
 	tree_box = HBoxContainer.new()
 	tree_box.name = "Tree"
-	tree_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	tree_box.add_theme_constant_override("separation", 30)
 	tree_holder.add_child(tree_box)
 	links = Links.new()
 	links.name = "Links"
 	links.panel = self
-	links.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	tree_holder.add_child(links)
 	tree_holder.move_child(links, 0)  # under the cards
 	tree_box.resized.connect(links.queue_redraw)

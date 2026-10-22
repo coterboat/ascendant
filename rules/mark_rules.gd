@@ -315,6 +315,59 @@ static func _turns(n: int) -> String:
 	return "1 turn" if n == 1 else "%d turns" % n
 
 
+# --- CW-12 (#263, design/CANDLEWAKE.md §4.5): units poured in the mark, the candlebeasts ------------------------------------
+
+## Whether unit type `ut` is poured in its faction's own mark (UnitType.mark_stage: the candlebeasts' Deep Wake).
+static func is_poured(ut: UnitType) -> bool:
+	return ut != null and not ut.mark_stage.is_empty()
+
+
+## "" when `faction_id` may recruit `ut` at `province_id` now (§4.5): a unit with no mark stage anywhere it may otherwise recruit,
+## a poured one only in a province of its own where its own mark stands at the unit's stage or deeper as the land looks now
+## (stage_now, the last wake step's, which the card shows: the recruitment phase reads the same, as the wake step comes after it).
+## Otherwise the reason, in the row's words: "Candlebeasts are poured only where the Wake runs deep. Thornvale is on the
+## Wake-Line: Deep Wake in 3 turns."
+static func pour_reason(state: GameState, faction_id: String, ut: UnitType, province_id: String) -> String:
+	if not is_poured(ut):
+		return ""
+	var need := MarkData.stage_index(faction_id, ut.mark_stage)
+	var words: Dictionary = MarkData.row(faction_id).get("poured", {})
+	var head := "%s are poured only %s." % [String(words.get("many", ut.name)), String(words.get("where", "in their own mark"))]
+	var p := state.find_province(province_id)
+	if p == null or need <= 0:
+		return head
+	var entry: Dictionary = state.marks.get(province_id, {})
+	var mark: Dictionary = entry.get("mark", {})
+	var scar: Dictionary = entry.get("scar", {})
+	if p.owner == faction_id and String(scar.get("faction", "")) == faction_id:
+		return "%s %s is a cold wake of yours: it relights at the end of this turn." % [head, p.name]  # retaken this turn
+	if p.owner != faction_id or mark.is_empty() or String(mark.faction) != faction_id:
+		return "%s %s %s." % [head, p.name, String(words.get("unmarked", "is not marked"))]
+	var stage := stage_now(state, province_id)
+	if stage >= need:
+		return ""
+	var held := end_clock(state) - 1 - int(mark.since_turn)
+	return "%s %s %s: %s in %s." % [head, p.name, String(MarkData.stage(faction_id, maxi(1, stage)).get("at", "is marked")),
+		RulerRules._cap(stage_name(faction_id, need)), _turns(maxi(1, threshold(state, faction_id, need) - held))]
+
+
+## The family line of a poured unit's tooltip (§4.5): "A candlebeast: poured in Deep Wake." "" for any other unit. The faction is
+## the one whose roster row (FactionData, the preview's too) holds the type.
+static func family_line(ut: UnitType) -> String:
+	if not is_poured(ut):
+		return ""
+	var faction_id := ""
+	for row in FactionData.rows():
+		if Array(row.unit_types).any(func(u): return String(u.id) == ut.id):
+			faction_id = String(row.id)
+	var words: Dictionary = MarkData.row(faction_id).get("poured", {})
+	var one := String(words.get("one", ""))
+	if one.is_empty():
+		return ""
+	return "%s %s: poured in %s." % ["An" if "aeiou".contains(one.left(1)) else "A", one,
+		stage_name(faction_id, MarkData.stage_index(faction_id, ut.mark_stage))]
+
+
 ## Whether a mark or a scar of `faction_id` makes `province_id` a harbour for its armies (§2.2, §3.3): its own mark there, in a
 ## province it owns, at a stage that shelters (the Wake-Line and Deep Wake), or a cold wake of its own while it lasts. Read on the
 ## end clock, so in a turn's orders it already says what this turn's Wick step will find (the forecasts read it).

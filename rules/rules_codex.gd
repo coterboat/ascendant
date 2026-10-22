@@ -790,6 +790,21 @@ const ENTRIES := {
 		"title": "Marks on the land",
 		"text": "Some peoples change the land they hold, and the change outlasts their hold on it. The longer they keep a province, the deeper their mark; when they lose it, the mark lingers a while before it fades. Everyone sees the marks, as they see owners and terrain, so the map tells who held what, for how long, and who took it from them. The Candlewake's mark is the Wake; other peoples' marks are coming.",
 	},
+	# CW-12 (#263, design/CANDLEWAKE.md §4.5): the candlebeasts, the roster's last three rows (FactionData); the gate is MarkData's.
+	"candlebeasts": {
+		"faction": "candlewake",
+		"title": "Candlebeasts",
+		"text": "Beasts the Wake has poured over: the wax remembers a shape and fills it. The Candlewake pour them only in a province of theirs that stands in %s, their capital from the start;" % _WAKE_ROW.stages[2].name
+			+ " anywhere else the recruit list shows them greyed, with how long until %s. A province must already stand there when the turn is ordered: one taken or retaken this turn pours from the next." % _WAKE_ROW.stages[2].name
+			+ " They are regulars: they fight at flame - 1 and gutter like the rest, and neither the Risen nor Harvest raises them."
+			+ " %s" % _WAKE_UNITS[3].name + " (%d hit points," % _WAKE_UNITS[3].hp + " attack %d," % _WAKE_UNITS[3].attack + " defense %d," % _WAKE_UNITS[3].defense
+				+ " morale %d," % _WAKE_UNITS[3].morale + " %d gold," % _WAKE_UNITS[3].cost + " %s): they hunt past the line to the archers." % _WAKE_UNITS[3].trait
+			+ " The %s" % _WAKE_UNITS[4].name + " (%d hit points," % _WAKE_UNITS[4].hp + " attack %d," % _WAKE_UNITS[4].attack + " defense %d," % _WAKE_UNITS[4].defense
+				+ " morale %d," % _WAKE_UNITS[4].morale + " %d gold," % _WAKE_UNITS[4].cost + " %s): it hits hardest in the first round, harder still in a forest." % _WAKE_UNITS[4].trait
+			+ " The %s" % _WAKE_UNITS[5].name + " (%d hit points," % _WAKE_UNITS[5].hp + " attack %d," % _WAKE_UNITS[5].attack + " defense %d," % _WAKE_UNITS[5].defense
+				+ " morale %d," % _WAKE_UNITS[5].morale + " %d gold," % _WAKE_UNITS[5].cost + " %s): mid-melt, and wounded wax burns hotter." % _WAKE_UNITS[5].trait
+			+ " More forms will come as the Wake pours over more of the land. See The Wake.",
+	},
 	# CW-4 (#255, design/CANDLEWAKE.md §6): the Candlewake's path, the Pouring (the director's provisional name, for Alex to
 	# rename), its nodes and their rules. The numbers are the host's and the path's data.
 	"path_candlewake": {

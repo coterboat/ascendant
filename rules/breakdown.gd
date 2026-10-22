@@ -145,11 +145,13 @@ static func unit_count(state: GameState, army_id: String, unit_type_name: String
 ## Plain description of a unit type's stats, using the UnitType describe() strings. `price` is what its
 ## faction pays for one, as RulerRules.price_text gives it ("16 gold (20 - Muster Grounds 4)"); without
 ## it, the type's own cost.
+## CW-12: a candlebeast's family line comes before its trait ("A candlebeast: poured in Deep Wake.", MarkRules.family_line).
 static func unit_type_description(ut: UnitType, price: String = "") -> String:
-	return "%s: hit points %d (%s) Attack %d (%s) Defense %d (%s) Morale %d (%s) Recruit cost %s. Trait %s: %s" % [
+	var family := MarkRules.family_line(ut)
+	return "%s: hit points %d (%s) Attack %d (%s) Defense %d (%s) Morale %d (%s) Recruit cost %s. %sTrait %s: %s" % [
 		ut.name, ut.hp, UnitType.describe("hp"), ut.attack, UnitType.describe("attack"),
 		ut.defense, UnitType.describe("defense"), ut.morale, UnitType.describe("morale"),
-		price if not price.is_empty() else "%d gold" % ut.cost, ut.trait_id, ut.get_trait_desc()]
+		price if not price.is_empty() else "%d gold" % ut.cost, family + " " if not family.is_empty() else "", ut.trait_id, ut.get_trait_desc()]
 
 
 ## The turn being ordered, 1-based like every turn number players see (GameSession.turn_number()):

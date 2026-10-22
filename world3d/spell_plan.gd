@@ -53,18 +53,22 @@ const BLOOD := Color("#C8323C")
 const BLOOD_DEEP := Color("#7A1020")
 const SIGHT := Color("#F2E6B8")
 const SMOKE := Color("#9C968C")
+## CW-5 (#256): the Candlewake's schools in the director's colours: the Wick lilac, Wax honey with its ivory.
+const WICK := Color("#B48CF0")
+const WAX := Color("#E0B65A")
 const SCHOOL_COLOURS := {
 	"sun": {"main": GILT, "hot": GILT_HOT}, "law": {"main": LAW, "hot": Color("#E6F0FF")},
 	"wild": {"main": WILD, "hot": Color("#D6F5B0")}, "blood": {"main": BLOOD, "hot": Color("#FFB0A8")},
+	"wick": {"main": WICK, "hot": Color("#EADCFF")}, "wax": {"main": WAX, "hot": Color("#EADFC4")},
 	"common": {"main": SIGHT, "hot": Color.WHITE},
 }
 
 ## Every battle effect and the cast kinds (MagicData.BATTLE_KINDS) that play it.
-const BATTLE_EFFECTS := ["sunlance", "bloodbolt", "briar_snare", "shield_of_law", "sunburst", "heal_back"]
+const BATTLE_EFFECTS := ["sunlance", "bloodbolt", "briar_snare", "shield_of_law", "sunburst", "heal_back", "draw_the_warmth", "wax_skin"]
 const KIND_EFFECT := {"bolt": "sunlance", "hex": "briar_snare", "shield": "shield_of_law", "drink": "heal_back"}
 
 ## Every map effect: the events §12.3 lists, a ritual cast split by its kind.
-const BOARD_KEYS := ["cast:blessing", "cast:ward", "cast:curse", "cast:summon", "cast:raising", "cast:global", "cast:sight",
+const BOARD_KEYS := ["cast:blessing", "cast:ward", "cast:curse", "cast:summon", "cast:raising", "cast:global", "cast:sight", "cast:flame",
 	"ritual_turned_aside", "ritual_fell", "blood_paid", "summoned", "fort_raised", "enchantment_began", "enchantment_ended",
 	"blessing_healed", "curse_bit", "summon_faded", "far_sight_reading"]
 const STANDING_KINDS := ["blessing", "ward", "curse", "sight"]
@@ -175,6 +179,10 @@ static func battle(effect: String, rung: int, args: Dictionary, reduced: bool = 
 			_snare(plan, args, reduced)
 		"shield_of_law":
 			_shield(plan, args, reduced)
+		"draw_the_warmth":  # CW-5: the Wick's bolt, in its own lilac, with no self-bleed
+			_bolt(plan, args, "wick", reduced)
+		"wax_skin":  # CW-5: Wax's shield, in honey
+			_shield(plan, args, reduced, "wax")
 		"sunburst":
 			_sunburst(plan, args, reduced)
 		"heal_back":
@@ -293,8 +301,9 @@ static func _snare(plan: Dictionary, args: Dictionary, reduced: bool) -> void:
 	plan["flash"] = false
 
 
-static func _shield(plan: Dictionary, args: Dictionary, reduced: bool) -> void:
+static func _shield(plan: Dictionary, args: Dictionary, reduced: bool, school: String = "law") -> void:
 	var rung: int = plan["rung"]
+	var main: Color = SCHOOL_COLOURS[school]["main"]  # CW-5: Wax Skin's honey; Law's blue for Shield of Law, as before
 	var c: Dictionary = args.get("caster", {})
 	var targets: Array = args.get("targets", [])
 	var life := maxf(float(args.get("life", 2.0)), 0.6)
@@ -303,13 +312,13 @@ static func _shield(plan: Dictionary, args: Dictionary, reduced: bool) -> void:
 	plan["life"] = life
 	_caster_ring(plan, args, 0.7)
 	if rung <= 1:
-		_add(plan, "glow", _mid(c, 0.78), 3.2, 0.0, 0.5, _alpha(LAW, 0.55), {"fin": 0.05, "fout": 0.3})
+		_add(plan, "glow", _mid(c, 0.78), 3.2, 0.0, 0.5, _alpha(main, 0.55), {"fin": 0.05, "fout": 0.3})
 	for i in targets.size():
 		var tg: Dictionary = targets[i]
 		var t0 := 0.1 + 0.03 * mini(i, 8)
 		if rung <= 3:
 			## a translucent shield quad before each covered fighter: a rim that pulses on rung 0-2
-			_add(plan, "shield", _mid(tg, 0.5), 3.8, t0, life - t0, _alpha(LAW, 0.8), {"fin": 0.25, "fout": 0.25, "w": 1.0 if pulse else 0.0, "seed": h01(i, 8)})
+			_add(plan, "shield", _mid(tg, 0.5), 3.8, t0, life - t0, _alpha(main, 0.8), {"fin": 0.25, "fout": 0.25, "w": 1.0 if pulse else 0.0, "seed": h01(i, 8)})
 		else:
 			## a ▲ decal under each covered fighter, in the caster's side colour (ownership is the decal's colour)
 			_add(plan, "tri", _foot(tg) + Vector3.UP * 0.3, float(tg.get("r", 3.2)) * 1.0, t0, life - t0, _alpha(col, 0.95), {"fin": 0.2, "fout": 0.25,
@@ -319,7 +328,7 @@ static func _shield(plan: Dictionary, args: Dictionary, reduced: bool) -> void:
 	if not part.is_empty():
 		txt += " +%d %s" % [int(part.get("value", 0)), String(part.get("stat", "defense"))]
 	if not c.is_empty():
-		_label(plan, txt, _head(c) + Vector3.UP * 3.2, Color("#E6F0FF"))
+		_label(plan, txt, _head(c) + Vector3.UP * 3.2, SCHOOL_COLOURS[school]["hot"])
 	plan["flash"] = false
 
 
@@ -393,16 +402,17 @@ static func board_key(beat: Dictionary) -> String:
 	return t
 
 
-## The school of a ritual (its colours): MagicData.SPELLS' school, "common" for Far Sight and anything unknown.
+## The school of a ritual (its colours): its school (MagicRules.spell_data: CW-5, the preview's spells too), "common" for Far
+## Sight and anything unknown.
 static func school_of(ritual: String) -> String:
-	var row: Dictionary = MagicData.SPELLS.get(ritual, {})
+	var row: Dictionary = MagicRules.spell_data(ritual)
 	var s := String(row.get("school", "common"))
 	return s if SCHOOL_COLOURS.has(s) else "common"
 
 
-## The kind of a ritual (MagicData.SPELLS' "kind"), "" when unknown.
+## The kind of a ritual (its "kind", MagicRules.spell_data: CW-5, the preview's spells too), "" when unknown.
 static func rkind_of(ritual: String) -> String:
-	return String((MagicData.SPELLS.get(ritual, {}) as Dictionary).get("kind", ""))
+	return String(MagicRules.spell_data(ritual).get("kind", ""))
 
 
 ## `args`: "at" (the target's point), "from" (the visible caster's, or absent), "path" (a PackedVector3Array along the roads),
@@ -447,18 +457,20 @@ static func board(key: String, rung: int, args: Dictionary, reduced: bool = fals
 			_add(plan, "mist", src + Vector3.UP * 1.5, 4.5, 0.0, 1.0, _alpha(BLOOD, 0.45), {"up": 0.0 if reduced else 5.0, "fin": 0.12, "fout": 0.7})
 			_add(plan, "ring", src + Vector3.UP * 0.3, 6.0, 0.0, 0.9, _alpha(BLOOD, 0.8), {"fin": 0.05, "fout": 0.5})
 		"summoned":
-			## a briar ring the creatures step out of; thorns shoot up from it
-			_summon_ring(plan, rung, reduced, at, maxf(r, 6.0), WILD, float(args.get("yaw", 0.0)))  # VFX-WIRE: turned to the summons' facing
+			## a briar ring the creatures step out of; thorns shoot up from it (CW-5: the Snuffed's in Wax's honey)
+			_summon_ring(plan, rung, reduced, at, maxf(r, 6.0), WILD if school == "wild" or school == "common" else main,
+				float(args.get("yaw", 0.0)))  # VFX-WIRE: turned to the summons' facing
 		"summon_faded":
-			## the creatures dissolve into leaves
+			## the creatures dissolve into leaves (CW-5: the Snuffed into flakes of Wax's honey)
+			var wild := school == "wild" or school == "common"
 			var nl := 16 if rung <= 1 else (8 if rung == 2 else 0)
 			if not reduced:
 				for i in nl:
 					var a2 := h01(i, 81) * TAU
 					_add(plan, "leaf", at + Vector3(cos(a2), 0.4, sin(a2)) * (h01(i, 83) * maxf(r, 4.0)), 0.7 + h01(i, 85) * 0.4, h01(i, 87) * 0.5, 1.0 + h01(i, 89) * 0.5,
-						_alpha(WILD if i % 2 == 0 else Color("#D6F5B0"), 0.9), {"up": 5.0 + h01(i, 91) * 5.0, "yaw": a2, "fin": 0.1, "fout": 0.6})
-			_add(plan, "thorn_ring", at + Vector3.UP * 0.3, maxf(r, 5.0), 0.0, 1.0, _alpha(WILD, 0.85), {"fin": 0.05, "fout": 0.8, "w": 0.0})
-			_add(plan, "puff", at + Vector3.UP * 3.0, maxf(r, 5.0) * 0.8, 0.0, 0.9, _alpha(WILD_DEEP, 0.5), {"fin": 0.1, "fout": 0.6, "up": 0.0 if reduced else 3.0})
+						_alpha((WILD if wild else main) if i % 2 == 0 else (Color("#D6F5B0") if wild else hot), 0.9), {"up": 5.0 + h01(i, 91) * 5.0, "yaw": a2, "fin": 0.1, "fout": 0.6})
+			_add(plan, "thorn_ring", at + Vector3.UP * 0.3, maxf(r, 5.0), 0.0, 1.0, _alpha(WILD if wild else main, 0.85), {"fin": 0.05, "fout": 0.8, "w": 0.0})
+			_add(plan, "puff", at + Vector3.UP * 3.0, maxf(r, 5.0) * 0.8, 0.0, 0.9, _alpha(WILD_DEEP if wild else main.darkened(0.4), 0.5), {"fin": 0.1, "fout": 0.6, "up": 0.0 if reduced else 3.0})
 		"fort_raised":
 			_raise(plan, rung, reduced, at, r, float(args.get("height", 16.0)))
 		"enchantment_began":
@@ -545,8 +557,12 @@ static func _arrive(plan: Dictionary, rung: int, reduced: bool, school: String, 
 		## a shaft of light coming down onto the target
 		_add(plan, "column", at + Vector3.UP * 46.0, 4.5, delay, 0.8, _alpha(main, 0.9), {"to": at, "fin": 0.05, "fout": 0.5, "head": 0.3})
 	match kind:
-		"blessing":
-			_add(plan, "sun_ring", land, r * 0.6, delay, 1.4, _alpha(GILT, 0.9), {"r0": r * 0.6 if reduced else r * 0.1, "fin": 0.1, "fout": 0.8})
+		"blessing":  # CW-5: Candlemass's in Wax's honey; Dawn Blessing's gilt, as before
+			_add(plan, "sun_ring", land, r * 0.6, delay, 1.4, _alpha(GILT if school == "sun" or school == "common" else main, 0.9),
+				{"r0": r * 0.6 if reduced else r * 0.1, "fin": 0.1, "fout": 0.8})
+		"flame":  # CW-5, Kindle: a ring at the army it warms, and a lick of flame rising from it
+			_add(plan, "ring", land, r * 0.3, delay, 1.4, _alpha(main, 0.9), {"fin": 0.1, "fout": 0.8})
+			_add(plan, "column", land, 3.0, delay + 0.1, 1.1, _alpha(hot, 0.9), {"to": land + Vector3.UP * 16.0, "fin": 0.1, "fout": 0.6})
 		"ward":
 			_add(plan, "band", land, r * WARD_K, delay, 1.4, _alpha(LAW, 0.9), {"r0": r * WARD_K if reduced else r * 0.2, "fin": 0.1, "fout": 0.8})
 		"curse":

@@ -7,6 +7,10 @@ extends Control
 ## points, Morale and routs, ...) appears in the text as whole words; a longer title wins an overlap.
 ## UI-ICONS (#233): a spell's entry (and the blood mandate's) shows its painted icon beside its name in the list and above its
 ## title on its page, once the icon's file has landed (SpellIcons).
+## #272: a page whose key has a plate (Art.codex_plate: assets/concept/codex/<key>.webp) shows it at the top of the page, on a band
+## as wide as the page: the plate scaled to the page's width with its aspect kept, no taller than PLATE_MAX_SHARE of the panel
+## (a square plate then sits centred on its own parchment). The band's height is set as the page is shown, from the page's width,
+## so the title and text are laid out once, below it, with no jump. A page without a plate is laid out exactly as before.
 ## Esc closes the panel, in one press, even while the search box has focus: the panel takes Esc in
 ## _input, before the focused search box would use it to stop editing. Hosts need no Esc code of their
 ## own; the panel only skips Esc when another overlay is open above it among its siblings.
@@ -14,6 +18,8 @@ extends Control
 signal closed
 
 const LINK_PREFIX := "codex:"
+## #272: the plate's band is at most this share of the panel's height, so a page's text still starts in view under its plate.
+const PLATE_MAX_SHARE := 0.34
 
 ## UX-1 (§1.4): inside a game, Esc on the codex calls the game's one cancel dispatcher (UiCancel.cancel) instead of closing
 ## the panel itself, so a stack of panels closes one layer a press. Unset (the new game and build screens): it closes itself.
@@ -26,6 +32,8 @@ var _list: ItemList
 var _no_matches: Label
 var _title: Label
 var _icon: TextureRect  # UI-ICONS: the shown entry's spell icon (hidden when it has none)
+var _page: Control  # the right column: the plate, the icon, the title and the text
+var _plate: Art.PlateCard  # #272: the shown entry's plate, at the top of the page (hidden when it has none)
 var _body: RichTextLabel
 var _close: Button
 
@@ -56,6 +64,13 @@ func _bind() -> void:
 	_icon.visible = false
 	_title.get_parent().add_child(_icon)
 	_title.get_parent().move_child(_icon, _title.get_index())
+	_page = _title.get_parent() as Control
+	_plate = Art.PlateCard.new()
+	_plate.name = "EntryPlate"
+	_plate.visible = false
+	_page.add_child(_plate)
+	_page.move_child(_plate, 0)
+	_page.resized.connect(_fit_plate)
 	_search.text_changed.connect(filter)
 	_list.item_selected.connect(_on_item_selected)
 	_body.meta_clicked.connect(follow_link)
@@ -136,13 +151,19 @@ func current_key() -> String:
 	return _current
 
 
-## Plain text of the entry on the right, as the player reads it (links stripped).
 ## UI-ICONS: the spell icon shown above the entry's title, or null.
 func shown_icon() -> Texture2D:
 	_bind()
 	return _icon.texture if _icon.visible else null
 
 
+## #272: the plate shown at the top of the entry's page, or null.
+func shown_plate() -> Texture2D:
+	_bind()
+	return _plate.texture if _plate.visible else null
+
+
+## Plain text of the entry on the right, as the player reads it (links stripped).
 func shown_text() -> String:
 	_bind()
 	return _body.get_parsed_text()
@@ -183,6 +204,10 @@ func show_entry(key: String) -> bool:
 	_title.text = String(e.get("title", ""))
 	_icon.texture = SpellIcons.texture(SpellIcons.of_codex(key))
 	_icon.visible = _icon.texture != null
+	var plate := Art.codex_plate(key)
+	_plate.texture = plate
+	_plate.visible = plate != null
+	_fit_plate()
 	_body.text = _linked_text(key, String(e.get("text", "")))
 	if _body.is_inside_tree():
 		_body.scroll_to_line(0)
@@ -219,6 +244,24 @@ func _on_item_selected(index: int) -> void:
 	show_entry(String(_list.get_item_metadata(index)))
 
 
+## #272: the height of the plate's band on a page `page_width` wide, in a panel `panel_height` tall, for a plate of `plate_size`:
+## the plate scaled to the page's width with its aspect kept, but no taller than PLATE_MAX_SHARE of the panel. 0 without a size.
+static func plate_height(plate_size: Vector2, page_width: float, panel_height: float) -> float:
+	if plate_size.x <= 0.0 or plate_size.y <= 0.0 or page_width <= 0.0:
+		return 0.0
+	return floorf(minf(page_width * plate_size.y / plate_size.x, panel_height * PLATE_MAX_SHARE))
+
+
+## Sizes the plate's band for the page as it is now. Runs as a page is shown, so its height is known before the page is laid out
+## (no jump), and again whenever the page is resized (the window, the interface size).
+func _fit_plate() -> void:
+	var h := 0.0
+	if _plate.visible and _plate.texture != null:
+		h = plate_height(_plate.texture.get_size(), _page.size.x, size.y)
+	if _plate.custom_minimum_size.y != h:
+		_plate.custom_minimum_size = Vector2(0.0, h)
+
+
 func _select_current_in_list() -> void:
 	var idx := _shown_keys.find(_current)
 	if idx >= 0:
@@ -236,14 +279,18 @@ func _linked_text(key: String, text: String) -> String:
 	if text.contains("["):
 		return text
 	var plain_title := RegEx.create_from_string("^[A-Za-z]+( [A-Za-z]+)*$")
+	var names := _unit_name_spans(text)
 	var spans := []
 	for other in entry_keys():
 		var title := String(RulesCodex.entry(other).get("title", ""))
 		if other == key or plain_title.search(title) == null:
 			continue
-		var m := RegEx.create_from_string("(?i)\\b" + title.replace(" ", "\\s+") + "\\b").search(text)
-		if m:
+		for m in RegEx.create_from_string("(?i)\\b" + title.replace(" ", "\\s+") + "\\b").search_all(text):
+			# CW-12: a term inside a unit's own name isn't the term ("Guttering" in "the Guttering Bear", "Wick" in "Hundred-Wick")
+			if names.any(func(n): return m.get_start() >= int(n[0]) and m.get_end() <= int(n[1])):
+				continue
 			spans.append([m.get_start(), m.get_end(), other])
+			break
 	spans.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] > b[1]))
 	var out := ""
 	var at := 0
@@ -254,3 +301,26 @@ func _linked_text(key: String, text: String) -> String:
 		out += "[url=%s%s]%s[/url]" % [LINK_PREFIX, s[2], text.substr(s[0], s[1] - s[0])]
 		at = s[1]
 	return out + text.substr(at)
+
+
+## CW-12: where unit names of two words or more ("Guttering Bear", "Hundred-Wick", "Knight Captain") stand in `text`, as [start,
+## end] spans: every faction's roster and commander (the preview's too), the paths' new units, the mages and the summoned.
+static func _unit_name_spans(text: String) -> Array:
+	var names := {}
+	for row in FactionData.rows():
+		for u in Array(row.unit_types) + [row.commander]:
+			names[String(u.name)] = true
+	for table in [PathData.NEW_UNITS, PathData.PREVIEW_NEW_UNITS, MagicData.MAGES, MagicData.PREVIEW_MAGES, MagicData.SUMMONS,
+			MagicData.PREVIEW_SUMMONS]:
+		for id in table:
+			names[String(table[id].get("name", ""))] = true
+	var out := []
+	var lower := text.to_lower()
+	for n in names:
+		if not (String(n).contains(" ") or String(n).contains("-")):
+			continue
+		var at := lower.find(String(n).to_lower())
+		while at >= 0:
+			out.append([at, at + String(n).length()])
+			at = lower.find(String(n).to_lower(), at + 1)
+	return out
