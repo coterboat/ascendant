@@ -4,7 +4,9 @@ The studio runs as one **director** session and a few standing **lanes**. A lane
 work: it takes that shape's tickets in order, one at a time, and keeps what it learned about its part of the code from one ticket
 to the next. The director cuts tickets, verifies, merges, and holds the slot. Alex plays, decides, and can talk to any lane directly.
 
-Session names are the addresses: **`ascendant director`**, **`ascendant lane UI`**, **`ascendant lane Art`**, **`ascendant lane AI`**.
+Session names are the addresses: **`ascendant director`**, **`ascendant lane UI`**, **`ascendant lane Art`**, **`ascendant lane AI`**,
+**`ascendant lane Candlewake`**, **`ascendant lane QA`**. Past the MVP, work lands on the `next` branch: read "Past the MVP" at the end
+first, because it changes the base branch, the slot and what READY needs.
 
 ## The director
 - Cuts tickets (one GitHub issue each) and gives each lane its queue. Routes design questions: Alex's calls go to him as numbered
@@ -67,3 +69,42 @@ The art pipeline: Review Table batches (`review/<batch>/`, `tools/review/README.
 ## Starting a lane
 The director offers a chip with a short brief: who you are, your section of this file, your queue. Alex clicks it. A stopped lane
 can be resumed and keeps its name. When the director restarts, it runs ListAgents and tells each lane it's back.
+
+### Candlewake: `ascendant lane Candlewake`
+Milestone C's rules (`design/CANDLEWAKE.md`, the third faction): CW-0, CW-1, CW-2, CW-3, CW-4, CW-5, CW-12, in that order.
+- Owns `rules/` and `data/` for the Candlewake and the engine's third-faction seams. A ticket that touches `ui/` or `world3d/` beyond a
+  line or two hands that part to lane UI (CW-7, CW-8) through the director.
+- Every Crown–Clans game stays byte-identical: records, digests and fixtures for every old feature combination (CW-0's gate).
+- The faction ships behind the "Candlewake (preview)" box, off by default, until CW-11's bands pass.
+
+### QA: `ascendant lane QA`
+Plays the game the way a player does and files what breaks: crashes, script errors, stuck states, clipped or overlapping UI, numbers
+that don't explain themselves, slow frames.
+- Owns `tools/qa/` (the crash-hunting harness) and nothing else; it files issues instead of fixing game code.
+- Every finding is one GitHub issue labelled `qa`, with the steps, the seed, a shot and the log lines, and the lane that owns it
+  (`ui`, `rules`, `ai`, `art`) in the title. A crash or a lost game is `P0` in the title.
+
+## Past the MVP: the `next` branch (from 2026-10-22)
+Alex walked the MVP on 10-21 ("the core foundation is solid") and asked for refinement, polish and the rest of the game. Main stays
+the build he plays; everything new lands on **`next`**, an integration branch the director verifies and merges into. Alex promotes
+`next` to main when he has played it.
+- **Base and PRs:** branch from `refs/remotes/origin/next` and open PRs against `next` (`gh pr create --base next`). A fix Alex needs
+  in the build he plays (a crash) branches from `origin/main` and targets `main`; the director also merges it into `next`.
+- **Stacking:** when your next ticket needs your own PR that isn't on `next` yet, branch from that PR's branch and say "stacked on
+  #<n>" in the body. Never wait idle for a merge.
+- **READY needs:** compile check 0 failed, focused runs (`-- --only=`) of every test file your change could touch, boots 0 ERROR
+  (headless, plus `-- --world3d` when you touched `world3d/`), and shots for anything a player sees. **The full suite is the
+  director's:** it runs on the merge candidate (`next` plus one or more PRs) and sends failures back to the lane.
+- **The slot is a lock directory**, so nobody waits for a message: `mkdir /private/tmp/ascendant-slot` succeeds only for one
+  process. Write `<lane> <ticket> <what> <sha> <time>` into `/private/tmp/ascendant-slot/owner`, run, then `rm -rf` it. If `mkdir`
+  fails, keep working and wait with a background until-loop (`until mkdir /private/tmp/ascendant-slot 2>/dev/null; do sleep 30;
+  done`). The slot covers full suites, autoplay matrices and QA harness runs longer than 10 minutes. A lock older than 2 hours whose
+  owner's process is gone is stale: remove it and say so to the director.
+- **CPU:** jobsnearme's lanes run Playwright on this Mac too. Before anything heavy, check `uptime`; above a 1-minute load of 14,
+  wait (the same until-loop) unless it's a focused run under a minute.
+- **The main checkout** (`/Users/coterboat/Documents/GitHub/ascendant`) is Alex's: never edit, switch, commit or import there.
+  Read from it only.
+- **Questions don't stop a lane:** send `Q` to the director, take your pick provisionally, write it under "Decisions I made on my
+  own", and keep going. The director logs the calls on #25 and asks Alex only what is truly his (art verdicts, spending, the brief).
+- **Wrap-up:** when the director sends `WRAP UP` (the weekly usage line nears its cap), commit what's finished, push your branch,
+  open or update a draft PR with where it stands and what's next, and stop.
