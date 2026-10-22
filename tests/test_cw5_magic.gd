@@ -377,6 +377,25 @@ func test_only_one_global_is_up_at_a_time() -> void:
 	assert_eq(MagicRules.check_target(t, WAKE, "bonfire_night", _ruler(t), ""), {}, "and may be cast again, restarting it")
 
 
+func test_under_fog_everyone_hears_of_bonfire_night_but_not_where_it_was_cast() -> void:
+	var s := _game(SNUFFED + WICK + ["bonfire_night"], "half_death", {"fog": true})
+	var home := _capital(s)
+	var r := _resolve(s, {WAKE: [CastOrder.new("bonfire_night", _ruler(s).id, "")]})
+	# The Oath is public news (oath_sworn): the Crown has learned it, as a real turn would.
+	var intel := FogRules.new_intel(s, CROWN)
+	intel[WAKE]["nodes"] = SNUFFED.map(func(nid): return {"node": nid, "turn": 0})
+	var turn := FogRules.turn_for(r.events, CROWN, s, r.new_state, {}, intel)
+	var crown: Array = turn.events.filter(func(e): return String(e.type) == "ritual_cast")
+	assert_eq(crown.size(), 1, "the Crown hears of it: a global is public")
+	assert_eq(String(crown[0].numbers.get("ritual", "")), "bonfire_night")
+	if String(FogRules.sight(s, CROWN).get(home, FogRules.VEILED)) == FogRules.VEILED:
+		assert_false(Array(crown[0].get("provinces", [])).has(home), "never the caster's province out of sight")
+	var view: GameState = turn.view_after
+	assert_true(view != null, "the Crown's view loads")
+	if view != null:
+		assert_false(MagicRules.flame_global(view, WAKE).is_empty(), "the Crown's view holds the enchantment in the sky")
+
+
 func test_bonfire_nights_words() -> void:
 	var s := _game(SNUFFED + WICK + ["bonfire_night"])
 	var order := CastOrder.new("bonfire_night", _ruler(s).id, "")
