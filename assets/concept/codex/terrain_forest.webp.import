@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cy77jowhadcv6"
-path="res://.godot/imported/plains.webp-fe78d27e5c52a19f84878f43a493251e.ctex"
+uid="uid://bou710spkoen8"
+path="res://.godot/imported/terrain_forest.webp-869388ff6ee256b56f5d08eff55b64ea.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/concept/codex/plains.webp"
-dest_files=["res://.godot/imported/plains.webp-fe78d27e5c52a19f84878f43a493251e.ctex"]
+source_file="res://assets/concept/codex/terrain_forest.webp"
+dest_files=["res://.godot/imported/terrain_forest.webp-869388ff6ee256b56f5d08eff55b64ea.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
