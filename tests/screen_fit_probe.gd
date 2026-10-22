@@ -8,7 +8,8 @@ extends SceneTree
 ##
 ## `clipped` lists every visible button, label, check box, picker, text box, scroll container and panel that reaches
 ## outside the viewport and does not sit inside a ScrollContainer (what a scroll container holds is clipped to it, and
-## the container itself is listed when it is out). `rects` holds the screens' key nodes in viewport coordinates.
+## the container itself is listed when it is out). `rects` holds the screens' key nodes in viewport coordinates, and the
+## title's banners as their art is drawn ("banner:<node>") with their captions (CW-7, #258).
 ## It never touches the player's settings or saves: settings go to a scratch file under user://.
 ##
 ##   godot --headless --path . --script res://tests/screen_fit_probe.gd
@@ -32,6 +33,8 @@ func _run() -> void:
 		report[key] = {}
 		for entry in _screens():
 			report[key][entry[0]] = await _measure(size, entry[1])
+			if entry.size() > 2:  # a screen that changed something to be shown puts it back
+				(entry[2] as Callable).call()
 	print("FIT_REPORT " + JSON.stringify(report))
 	quit()
 
@@ -56,6 +59,10 @@ func _screens() -> Array:
 		["game_research", _game_research],
 		["game_report", _game_report],
 		["game_cast", _game_cast],
+		# CW-7 (#258): the Candlewake behind their box (each puts the box back after: _preview_off).
+		["title_three", _title_three, _preview_off],
+		["new_game_preview", _new_game_preview, _preview_off],
+		["build_candlewake", _build_candlewake, _preview_off],
 	]
 
 
@@ -87,6 +94,16 @@ func _r(c: Control) -> Array:
 ## A rect as drawn: through the control's own transform, so a panel PanelFit has scaled reports the size it shows.
 func _r_rect(r: Rect2) -> Array:
 	return [r.position.x, r.position.y, r.size.x, r.size.y, true]
+
+
+## Where a TextureRect that keeps its art's shape, centred (the title's banners), draws it.
+func _drawn(t: TextureRect) -> Rect2:
+	var r := t.get_global_rect()
+	if t.texture == null:
+		return r
+	var art := t.texture.get_size()
+	var fit := art * minf(r.size.x / art.x, r.size.y / art.y)
+	return Rect2(r.position + (r.size - fit) / 2.0, fit)
 
 
 func _rt(c: Control) -> Array:
@@ -131,6 +148,10 @@ func _rects(screen: Control) -> Dictionary:
 	elif screen is TitleScreen:
 		rects = {"box": _r(screen.get_node("Center/Box")), "new_game": _r(screen.new_game_button), "quit": _r(screen.quit_button),
 			"continue": _r(screen.continue_button), "map_preview": _r(screen.map_preview_button)}
+		for c in screen.get_children():  # CW-7 (#258): each banner that hangs, as its art is drawn, and its caption
+			if c is TextureRect and String(c.name).ends_with("Banner") and c.visible:
+				rects["banner:" + String(c.name)] = _r_rect(_drawn(c))
+				rects["caption:" + String(c.name)] = _r(c.get_child(0) as Control)
 	elif screen is BuildScreen:
 		rects = {"lock_in": _r(screen.lock_button), "back": _r(screen.back_button),
 			"columns": _r(screen.find_child("ColumnsScroll", true, false)), "header": _r(screen.find_child("Header", true, false)),
@@ -245,6 +266,38 @@ func _build() -> Control:
 	if b.step == BuildScreen.Step.HANDOFF:
 		b.acknowledge()
 	return b
+
+
+## CW-7 (#258): the title with the Candlewake's box ticked and their banner hung, from a stand-in in Art's cache (their own art
+## waits in the Review Table), so the three banners hang as they will once it is accepted.
+func _title_three() -> Control:
+	GameSettings.set_preview_factions(true, GameSettings.default_path)
+	Art._cache[Art.BANNER_PATH % "candlewake"] = Art.banner("kingdom")
+	return _title()
+
+
+## CW-7: the new game screen with the box ticked and the Candlewake in seat 1 against the computer's Crown, every system box as
+## it ships: the seat lines name the Long Vigil, and the error line says which boxes they can't play yet.
+func _new_game_preview() -> Control:
+	var s := NewGameScreen.new()
+	s.set_preview(true)
+	s.set_seats(["candlewake", "kingdom"])
+	return s
+
+
+## CW-7: the Candlewake's build screen (their rulers, mandates and presets) in a game against the computer's Crown.
+func _build_candlewake() -> Control:
+	var b := load(BuildScreen.SCENE).instantiate() as BuildScreen
+	b.begin({"players": ["candlewake", "kingdom"], "seed": 4242, "ai": {"kingdom": "normal"}, "rulers": true})
+	if b.step == BuildScreen.Step.HANDOFF:
+		b.acknowledge()
+	return b
+
+
+## The box clear again, as the probe's settings had it, and no stand-in banner.
+func _preview_off() -> void:
+	GameSettings.set_preview_factions(false, GameSettings.default_path)
+	Art._cache.erase(Art.BANNER_PATH % "candlewake")
 
 
 func _codex() -> Control:

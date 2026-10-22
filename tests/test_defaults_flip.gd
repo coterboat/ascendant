@@ -107,6 +107,9 @@ func test_every_system_box_starts_ticked_with_no_preview_label() -> void:
 	var text := _all_text(screen)
 	# CW-7 (#258): the one preview left is a faction's, the Candlewake's box beside the seats (design/CANDLEWAKE.md §12). No system
 	# box has one, and with the box clear (the default) no picker lists a preview faction.
+	assert_false(screen.preview_on(), "the Candlewake's box starts clear")
+	assert_eq(screen.faction_ids(), FactionData.playable(false), "so the pickers list the finished factions only")
+	assert_true(screen.preview_toggle.text.ends_with(NewGameScreen.PREVIEW_MARK), screen.preview_toggle.text)
 	text = text.replace(screen.preview_toggle.tooltip_text, "").replace(screen.preview_toggle.text, "")
 	for old in ["M2 preview", "M3c preview", "M4 preview", "M5 preview", "(preview)", "preview of", "still being built"]:
 		assert_false(text.contains(old), "no '%s' anywhere on the screen, tooltips included" % old)
@@ -197,10 +200,18 @@ func test_each_box_says_what_it_adds_and_links_its_codex_entry() -> void:
 
 func test_no_preview_wording_is_left_in_the_game() -> void:
 	var label := RegEx.create_from_string("M[0-9]+[a-z]* preview|[A-Za-z&] \\(preview\\)\"|is a preview|are a preview")
+	# CW-7 (#258): the one exception is a faction's, the Candlewake's box and picker item (design/CANDLEWAKE.md §12). Its mark is
+	# written once, as NewGameScreen.PREVIEW_MARK, and nowhere else: no system box, line or codex entry has one.
+	var mark := RegEx.create_from_string("[ \"]\\(preview\\)")
 	for dir in ["res://ui", "res://rules", "res://ai", "res://data"]:
 		for path in _scripts_under(dir):
 			var src := FileAccess.get_file_as_string(path)
 			assert_true(label.search(src) == null, "%s has no preview label" % path)
+			assert_eq(mark.search_all(src).size(), 1 if path == "res://ui/new_game_screen.gd" else 0,
+				"%s: the preview mark only as NewGameScreen.PREVIEW_MARK" % path)
+	assert_eq(NewGameScreen.PREVIEW_MARK, " (preview)")
+	assert_eq(NewGameScreen.preview_label(), " and ".join(FactionData.PREVIEW_FACTIONS.map(func(f): return String(f.name))) +
+		NewGameScreen.PREVIEW_MARK, "the mark names the factions still being built, the Candlewake")
 	for id in RulesCodex.ENTRIES:
 		assert_true(label.search(RulesCodex.text(id)) == null, "codex entry %s has no preview label" % id)
 	# The refusals that used to send the player to a "(preview)" box send them to the box by its name.

@@ -45,9 +45,12 @@ extends Control
 ## off by default and remembered in the settings (GameSettings.preview_factions_on), lets either seat pick the factions still
 ## being built (FactionData.PREVIEW_FACTIONS). Unticked, the pickers list the Crown and the Clans as before. The same faction
 ## still can't be picked twice. A seated faction that can't play a ticked system yet (GameState.system_problems: the
-## Candlewake have no rulers, paths or magic until CW-2, CW-4 and CW-5) says so in plain words and disables Start, the
-## deepest box first, so one line names every box to untick. Each seat's line names its capital: the Candlewake take the
-## capital the other seat doesn't hold and call it the Long Vigil (the row's capital_name), so the line says which one.
+## Candlewake's rulers came with CW-2, their path and magic come with CW-4 and CW-5) says so in plain words and disables Start,
+## the deepest box first, so one line names every box to untick. Each seat's line names its capital: the Candlewake take the
+## capital the other seat doesn't hold and call it the Long Vigil (the row's capital_name), so the line says which one. The
+## box's tooltip says what the preview is and what isn't built yet (not_built: those boxes, the computer's way with them,
+## their art) and links the codex at their own rule (PREVIEW_CODEX); a computer seat that plays them says what it can't do
+## for them yet (computer_preview_note). Their picker item and the box carry PREVIEW_MARK, the game's one preview label.
 ## Layout (MVP-1, #141): it fits the default window (1600x900) and 1280x720. The title sits above, the error
 ## line and the Start and Back buttons below (always on screen), and the body scrolls between them when it is taller than
 ## the window leaves room for. The six boxes sit in two columns. tests/test_screens_fit.gd checks it at both sizes.
@@ -124,6 +127,12 @@ const SYSTEM_LINES := {
 	"fog": "You see only near your land and your armies.",
 	"independents": "Free fighters garrison every neutral province.",
 }
+## CW-7 (#258): the mark a faction still being built carries on this screen, on its box and its picker item: the one
+## preview label left in the game (design/CANDLEWAKE.md §12). tests/test_defaults_flip.gd lets it through here, written once,
+## and nowhere else.
+const PREVIEW_MARK := " (preview)"
+## CW-7: the codex entry the preview box links: the Candlewake's own rule, Wick (right-click or F1 on the box).
+const PREVIEW_CODEX := "wick"
 const MAX_SEED_DIGITS := 18  # any 18-digit number fits in a 64-bit int
 const MAX_RANDOM_SEED := 999999999
 const BACKGROUND := Color("#14131F")
@@ -421,7 +430,7 @@ func _fill_pickers() -> void:
 		picker.clear()
 		for fid in ids:
 			var f := _faction(fid)
-			picker.add_item(f.faction_name + (" (preview)" if FactionData.is_preview(fid) else ""))
+			picker.add_item(f.faction_name + (PREVIEW_MARK if FactionData.is_preview(fid) else ""))
 			var idx := picker.item_count - 1
 			picker.set_item_metadata(idx, fid)
 			picker.get_popup().set_item_tooltip(idx, _faction_tooltip(f))
@@ -704,6 +713,9 @@ func _refresh() -> void:
 			style = AIPlayer.choose_temperament(_seed_value(), i)
 			faction_labels[i].text += " The computer plays this seat at the %s level." % AISeat.level_name(seat_level(i + 1))
 			faction_labels[i].text += " Its style, from the seed: %s." % AIPlayer.temperament_name(style)
+			var not_yet := computer_preview_note(f.id)  # CW-7: what the computer can't do for a faction still being built
+			if not not_yet.is_empty():
+				faction_labels[i].text += " " + not_yet
 			if rulers_on():
 				faction_labels[i].text += " Its build: one of its three presets, picked at random from the seed."
 		elif f and rulers_on():
@@ -776,25 +788,67 @@ static func systems_not_ready(faction_id: String) -> Array[String]:
 	return out
 
 
-## The preview box's tooltip: what ticking it does, the Long Vigil, and the boxes the preview factions can't play yet.
+## The preview box's tooltip (CW-7): what the preview is (a faction still being built, either seat may pick it against a
+## finished one), the capital it takes, what isn't built for it yet (not_built), that its numbers are a first draft (CW-11
+## tunes them), whether Quick start seats it, and that the box is remembered. The box links the codex (PREVIEW_CODEX).
 static func preview_tooltip() -> String:
 	var parts := []
+	var finished := " or ".join(FactionData.FACTIONS.map(func(f): return "the %s" % String(f.name)))
 	for f in FactionData.PREVIEW_FACTIONS:
 		var fid := String(f.id)
-		var text := "The %s are a faction still being built: ticked, either seat can pick them." % String(f.name)
+		var text := "The %s are a faction still being built, here to try early: tick this and either seat can pick them, against %s." % [
+			String(f.name), finished]
 		if not String(f.get("capital_name", "")).is_empty():
 			text += " They take the capital the other player doesn't hold and call it %s." % String(f.capital_name)
-		var missing := systems_not_ready(fid)
+		var missing := not_built(fid)
 		if not missing.is_empty():
-			text += " Until theirs are ready they play without %s." % _names_list(missing)
+			text += " Not built yet: %s." % _clauses_list(missing)
+		text += " Their numbers are a first draft."
+		if not quick_start_factions(true, default_systems()).has(fid):
+			text += " Quick start leaves them out until they can play every system."
 		parts.append(text)
-	parts.append("Remembered for Quick start and your next new game. Clear it to see only the finished factions.")
+	parts.append("Remembered for your next new game; clear it to see only the finished factions.")
 	return TooltipText.plain(preview_label(), " ".join(parts))
+
+
+## CW-7: what isn't built yet for the preview faction `faction_id`, in words, in the order a player meets it: the boxes it
+## can't play yet (systems_not_ready: their rulers, path and magic come in CW-2, CW-4 and CW-5), the computer's own play for
+## it (computer_preview_note; CW-6), and its art while its banner isn't in (CW-10). Empty for a finished faction.
+static func not_built(faction_id: String) -> Array[String]:
+	var out: Array[String] = []
+	if not FactionData.is_preview(faction_id):
+		return out
+	var missing := systems_not_ready(faction_id)
+	if not missing.is_empty():
+		out.append("their %s, so a game with them plays without %s" % [_names_list(missing), "that box" if missing.size() == 1 else "those boxes"])
+	out.append("the computer's way with them, so it plays them, and against them, as it plays anyone%s" % (
+		", without planning around their flame" if FactionData.row(faction_id).has("wick") else ""))
+	if Art.banner(faction_id) == null:
+		out.append("their art")
+	return out
+
+
+## CW-7: the line a computer seat of the preview faction `faction_id` adds on this screen: what it can't do for them yet
+## (CW-6, #257, teaches the computer the flame), or "" for a finished faction.
+static func computer_preview_note(faction_id: String) -> String:
+	if not FactionData.is_preview(faction_id):
+		return ""
+	var row := FactionData.row(faction_id)
+	if row.has("wick"):
+		return "It doesn't plan around the %s's flame yet." % String(row.name)
+	return "It plays them as it plays anyone for now."
 
 
 ## The preview box's words: the names of the factions still being built, marked as a preview (the Candlewake's, today).
 static func preview_label() -> String:
-	return " and ".join(FactionData.PREVIEW_FACTIONS.map(func(f): return String(f.name))) + " (preview)"
+	return " and ".join(FactionData.PREVIEW_FACTIONS.map(func(f): return String(f.name))) + PREVIEW_MARK
+
+
+## "A and B" or "A, B and C" (_names_list); clauses that hold a comma themselves read "A; B; and C".
+static func _clauses_list(clauses: Array[String]) -> String:
+	if clauses.size() < 2 or not clauses.any(func(c: String): return c.contains(",")):
+		return _names_list(clauses)
+	return "%s; and %s" % ["; ".join(clauses.slice(0, clauses.size() - 1)), clauses.back()]
 
 
 ## The capital a faction plays from, in words: its own ("Crownkeep"), or for a faction that takes the free one (the
@@ -826,14 +880,15 @@ func _faction_summary(f: Faction) -> String:
 	if f.commander_type:
 		text += ", led by a %s" % f.commander_type.name
 	text += "."
-	if FactionData.is_preview(f.id):
-		text += " A preview: still being built."
+	if FactionData.is_preview(f.id):  # CW-7: what the preview means for this game, in a line (the box's tooltip says the rest)
+		var missing := systems_not_ready(f.id)
+		text += " A preview, still being built%s." % ((": they play without %s" % _names_list(missing)) if not missing.is_empty() else "")
 	return text
 
 
 func _faction_tooltip(f: Faction) -> String:
 	var lines := PackedStringArray()
-	lines.append(f.faction_name + (" (preview)" if FactionData.is_preview(f.id) else ""))
+	lines.append(f.faction_name + (PREVIEW_MARK if FactionData.is_preview(f.id) else ""))
 	lines.append(TooltipText.wrap_text("Starting gold %d: %s" % [f.gold, Faction.describe("gold")]))
 	var shown := String(FactionData.row(f.id).get("capital_name", ""))
 	var capital := _model.find_province(f.capital)
@@ -981,6 +1036,7 @@ func _build() -> void:
 	preview_toggle.focus_mode = Control.FOCUS_NONE
 	preview_toggle.add_theme_font_size_override("font_size", 18)
 	preview_toggle.tooltip_text = preview_tooltip()
+	CodexLink.attach(preview_toggle, PREVIEW_CODEX, codex_requested.emit)  # right-click or F1: the Candlewake's own rule
 	preview_toggle.toggled.connect(func(on: bool): set_preview(on))
 	seats_head.add_child(preview_toggle)
 	for i in SEAT_COUNT:

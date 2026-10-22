@@ -15,9 +15,11 @@ extends Control
 ##                the Candlewake's preview box ticked (GameSettings.preview_factions_on) the preview factions are
 ##                in the draw too, once they can play every system Quick start turns on.
 ## The banners (CW-7, #258): a banner hangs for every faction that ships, and for a faction still being built once the
-## preview box is ticked and its banner's art is in (banner_factions). Two hang where they always did; a third joins the
-## left flank and the flanks narrow around the menu (provisional, until the Candlewake's banner art is accepted: the
-## title is unchanged until then).
+## preview box is ticked and its banner's art is in (banner_factions). Two hang where they always did. Three hang as a
+## triptych (THREE_BANNERS): the Crown's and the Candlewake's side by side on the left flank, the Clans' on the right, all
+## three the same size and clear of the title and the menu at every size the title is laid out at. No banner is drawn in
+## code: without its art a preview faction hangs none, and the title stays at two (the Candlewake's banner,
+## assets/banners/candlewake.webp, waits in the Review Table).
 ##   Codex        opens the CodexPanel over the title; Close (or Esc) returns here.
 ##   Settings     opens the SettingsPanel (window mode, interface size, sound volumes).
 ##   Quit         closes the game.
@@ -34,11 +36,16 @@ const CODEX_SCENE := "res://ui/codex_panel.tscn"
 ## From design/GAME_BRIEF.md's one line.
 const TAGLINE := "Simultaneous-turn fantasy strategy where every rule is visible."
 const BANNERS := {"KingdomBanner": "kingdom", "BeastsBanner": "beasts"}  # the banners the scene hangs
-## CW-7: where the banners hang, as [left anchor, right anchor] in the banners' order. Two where the scene has them; three
-## with the first two at the flanks' outer edges and the third on the left flank's inner side, each narrowed so the menu
-## keeps its column.
+## CW-7: where the banners hang, as [left anchor, right anchor] in the banners' order (banner_factions), and their
+## [top anchor, bottom anchor, top offset, bottom offset]. Two hang where the scene has them. Three hang as a triptych: the
+## first and the third side by side on the left flank, the second on the right, centred on the mirror of that pair; each is
+## 0.113 of the window wide, so the pair clears the title and the menu at 1280x720 (and 1600x900 at 125%), the narrowest
+## the title is laid out at (tests/test_screens_fit.gd measures it), and as tall as a 2:3 banner that wide in a 16:9 window,
+## centred where the two hang, so each caption sits right under its banner.
 const TWO_BANNERS := [[0.06, 0.2475], [0.7525, 0.94]]
-const THREE_BANNERS := [[0.02, 0.19], [0.81, 0.98], [0.2, 0.37]]
+const TWO_BANNERS_Y := [0.5, 0.5, -300.0, 150.0]
+const THREE_BANNERS := [[0.015, 0.128], [0.8105, 0.9235], [0.138, 0.251]]
+const THREE_BANNERS_Y := [0.2593, 0.5607, 0.0, 0.0]
 
 var continue_button: Button
 var new_game_button: Button
@@ -198,7 +205,9 @@ static func banner_node_name(faction_id: String) -> String:
 ## hangs them (TWO_BANNERS), three where THREE_BANNERS says. A banner no longer wanted comes down.
 func hang_banners() -> void:
 	var fids := banner_factions(GameSettings.preview_factions_on()).slice(0, THREE_BANNERS.size())
-	var spots: Array = THREE_BANNERS if fids.size() == THREE_BANNERS.size() else TWO_BANNERS
+	var three := fids.size() == THREE_BANNERS.size()
+	var spots: Array = THREE_BANNERS if three else TWO_BANNERS
+	var rows: Array = THREE_BANNERS_Y if three else TWO_BANNERS_Y
 	var wanted := {}
 	for i in fids.size():
 		var fid := String(fids[i])
@@ -215,6 +224,10 @@ func hang_banners() -> void:
 		(banner.get_child(0) as Label).text = String(FactionData.row(fid).get("name", ""))
 		banner.anchor_left = spots[i][0]
 		banner.anchor_right = spots[i][1]
+		banner.anchor_top = rows[0]
+		banner.anchor_bottom = rows[1]
+		banner.offset_top = rows[2]
+		banner.offset_bottom = rows[3]
 	for child in get_children():
 		if child is TextureRect and String(child.name).ends_with("Banner"):
 			child.visible = wanted.has(String(child.name))

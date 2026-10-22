@@ -9,13 +9,19 @@ extends "res://tests/test_case.gd"
 ## The live check of the same screens, with pictures, is tools/shots/play_shots.gd (windowed). UX-1 (#194): the game screen's Table
 ## (plaques, system row, tray, seal, a full-bleed map view) is measured here at the two logical sizes; every piece of it in every state, on
 ## both boards and at all three of the spec's sizes, and the mouse, are tests/table_probe.gd's (test_table_geometry.gd).
+## CW-7 (#258): the Candlewake behind their box too: the new game screen that seats them, their build screen, and the title's
+## three banners once their banner's art is in.
 
 const PROBE := "res://tests/screen_fit_probe.gd"
 const SCRATCH := "user://screen_fit_probe"  # the probe's own settings and saves (tests/screen_fit_probe.gd)
 const SIZES := {"1600x900": Vector2(1600, 900), "1280x720": Vector2(1280, 720)}
 const SCREENS := ["title", "new_game", "new_game_full", "new_game_error", "victory", "victory_actions", "victory_everything",
-	"victory_draw", "build", "codex", "settings", "load", "guide", "game", "game_research", "game_report", "game_cast"]
-const NEW_GAMES := ["new_game", "new_game_full", "new_game_error"]
+	"victory_draw", "build", "codex", "settings", "load", "guide", "game", "game_research", "game_report", "game_cast",
+	"title_three", "new_game_preview", "build_candlewake"]
+## CW-7 (#258): new_game_preview is the screen with the Candlewake's box ticked and the Candlewake seated, every box as it ships.
+const NEW_GAMES := ["new_game", "new_game_full", "new_game_error", "new_game_preview"]
+## The new game screens whose error line shows (why Start is off).
+const NEW_GAME_ERRORS := ["new_game_error", "new_game_preview"]
 const VICTORIES := ["victory", "victory_actions", "victory_everything", "victory_draw"]
 ## A scroll container smaller than this is not a visible way to the content in it.
 const MIN_SCROLL_HEIGHT := 200.0
@@ -124,7 +130,7 @@ func test_new_game_start_and_back_are_on_screen_below_the_body() -> void:
 			assert_true(start.position.y >= scroll.end.y - 0.5 and back.position.y >= scroll.end.y - 0.5, "%s: the buttons are pinned below the scrolling body, not in it" % where)
 			assert_true(_inside(_rect(s, "panel"), viewport), "%s: the panel is inside the viewport" % where)
 			assert_true(_inside(scroll, viewport) and scroll.size.y >= MIN_SCROLL_HEIGHT, "%s: the body is a visible scroll container (%s)" % [where, scroll])
-			if name == "new_game_error":
+			if NEW_GAME_ERRORS.has(name):
 				assert_true(_shown(s, "error") and _inside(_rect(s, "error"), viewport), "%s: why Start is off is on screen too" % where))
 
 
@@ -190,19 +196,50 @@ func test_the_title_shows_the_dev_link_with_dev() -> void:
 
 func test_the_build_screen_fits_and_its_columns_scroll_under_pinned_buttons() -> void:
 	_each_size(func(key: String, viewport: Vector2):
-		var s := _screen(key, "build")
-		var columns := _rect(s, "columns")
-		assert_true(_inside(_rect(s, "lock_in"), viewport) and _inside(_rect(s, "back"), viewport), "Lock in build and Back are on screen at %s" % key)
-		assert_true(_inside(columns, viewport) and columns.size.y >= MIN_SCROLL_HEIGHT, "the columns sit in a visible scroll container at %s (%s)" % [key, columns])
-		assert_true(_rect(s, "lock_in").position.y >= columns.end.y - 0.5, "Lock in build is pinned below the columns at %s" % key)
-		# UI-FIT (#237): at 125% the ruler and power columns were cut with the only scroll bar beside the third. While the columns are
-		# taller than their scroll, the fade and "More" show over its bottom edge, inside it; when they fit, nothing shows.
-		var cut: bool = float(s.rects.columns_h) > columns.size.y + 2.0
-		assert_eq(_shown(s, "more"), cut, "at %s the columns are %d tall in %d: the More cue %s" % [key, s.rects.columns_h, columns.size.y, "shows" if cut else "hides"])
-		if cut:
-			var more := _rect(s, "more_button")
-			assert_true(_shown(s, "more_button") and columns.grow(0.5).encloses(more), "More is inside the columns at %s (%s in %s)" % [key, more, columns])
-			assert_true(more.end.y >= columns.end.y - ScrollMore.FADE_H, "at their bottom edge at %s" % key))
+		for name in ["build", "build_candlewake"]:  # CW-7 (#258): the Candlewake's too
+			_check_build_fits(_screen(key, name), "%s at %s" % [name, key], viewport))
+
+
+## One build screen's report `s` (`key` names it and its size) against the window `viewport`.
+func _check_build_fits(s: Dictionary, key: String, viewport: Vector2) -> void:
+	var columns := _rect(s, "columns")
+	assert_true(_inside(_rect(s, "lock_in"), viewport) and _inside(_rect(s, "back"), viewport), "Lock in build and Back are on screen at %s" % key)
+	assert_true(_inside(columns, viewport) and columns.size.y >= MIN_SCROLL_HEIGHT, "the columns sit in a visible scroll container at %s (%s)" % [key, columns])
+	assert_true(_rect(s, "lock_in").position.y >= columns.end.y - 0.5, "Lock in build is pinned below the columns at %s" % key)
+	# UI-FIT (#237): at 125% the ruler and power columns were cut with the only scroll bar beside the third. While the columns are
+	# taller than their scroll, the fade and "More" show over its bottom edge, inside it; when they fit, nothing shows.
+	var cut: bool = float(s.rects.columns_h) > columns.size.y + 2.0
+	assert_eq(_shown(s, "more"), cut, "at %s the columns are %d tall in %d: the More cue %s" % [key, s.rects.columns_h, columns.size.y, "shows" if cut else "hides"])
+	if cut:
+		var more := _rect(s, "more_button")
+		assert_true(_shown(s, "more_button") and columns.grow(0.5).encloses(more), "More is inside the columns at %s (%s in %s)" % [key, more, columns])
+		assert_true(more.end.y >= columns.end.y - ScrollMore.FADE_H, "at their bottom edge at %s" % key)
+
+
+## CW-7 (#258): with the Candlewake's box ticked and their banner's art in (a stand-in in the probe), three banners hang as a
+## triptych, each with its caption right under it, inside the window and clear of the title, the menu and each other, at both
+## sizes (1280x720 is also 1600x900 at 125%).
+func test_three_banners_hang_clear_of_the_title_and_the_menu() -> void:
+	_each_size(func(key: String, viewport: Vector2):
+		var s := _screen(key, "title_three")
+		var box := _rect(s, "box")
+		var banners := (s.rects.keys() as Array).filter(func(k): return String(k).begins_with("banner:"))
+		assert_eq(banners.size(), 3, "three banners hang at %s: %s" % [key, banners])
+		var placed: Array[Rect2] = []
+		for k in banners:
+			var node := String(k).trim_prefix("banner:")
+			var art := _rect(s, String(k))
+			var caption := _rect(s, "caption:" + node)
+			var where := "%s at %s" % [node, key]
+			assert_true(_inside(art, viewport) and _inside(caption, viewport), "%s: inside the window (%s, %s)" % [where, art, caption])
+			assert_false(art.intersects(box) or caption.intersects(box), "%s: clear of the title and the menu (%s, %s; they are %s)" % [
+				where, art, caption, box])
+			assert_true(caption.position.y >= art.end.y - 0.5 and caption.position.y - art.end.y <= 16.0, "%s: its caption sits right under it (%s, %s)" % [
+				where, art, caption])
+			for other in placed:
+				assert_false(art.intersects(other) or caption.intersects(other), "%s: clear of the other banners and captions (%s)" % [where, other])
+			placed.append(art)
+			placed.append(caption))
 
 
 func test_the_codex_settings_and_load_screens_fit() -> void:

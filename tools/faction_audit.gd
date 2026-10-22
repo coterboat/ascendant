@@ -90,7 +90,7 @@ const MARKS := {
 	"tools/replay_fixture_paths.gd": [1, "safe: the M4 fixtures are Crown–Clans games"],
 	"tools/shots/magic_shots.gd": [5, "safe: Crown–Clans magic shots"],
 	"tools/shots/model_compare.gd": [1, "safe: the model sheet's Crown–Clans figures"],
-	"tools/shots/play_shots.gd": [2, "safe: the play shots' Crown–Clans game; CW-7 (#258) may add a Candlewake walk"],
+	"tools/shots/play_shots.gd": [2, "safe: the play shots' Crown–Clans game by default; --human or --foe=candlewake walks a Candlewake game behind its box (CW-7, #258)"],
 }
 
 ## Places that assume two factions without naming one: [path, where, disposition].

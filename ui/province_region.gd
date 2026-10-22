@@ -156,7 +156,7 @@ func setup(state: GameState, p: Province, center: Vector2, seats: Array = [], vi
 	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(box)
 
-	name_label = _label(p.name, 17, UiPalette.TEXT_PRIMARY)
+	name_label = _label(RulerRules._cap(p.name), 17, UiPalette.TEXT_PRIMARY)  # CW-7 (#258): "The Long Vigil" on its own
 	name_label.name = "NameLabel"
 	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	name_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER

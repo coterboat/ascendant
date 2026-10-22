@@ -317,7 +317,7 @@ func _build_province_plates() -> void:
 		row.add_child(dot)
 		var name_label := Label.new()
 		name_label.name = "NameLabel"
-		name_label.text = p.name
+		name_label.text = RulerRules._cap(p.name)  # CW-7 (#258): a label of its own reads "The Long Vigil"
 		name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		name_label.add_theme_font_size_override("font_size", 16 if p.is_capital else 15)
 		name_label.add_theme_color_override("font_color", UiPalette.TEXT_PRIMARY)

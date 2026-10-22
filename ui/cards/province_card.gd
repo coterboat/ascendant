@@ -83,7 +83,7 @@ func _add_header(p: Province) -> void:
 	header.add_child(row)
 	var title := Label.new()
 	title.name = "ProvinceName"
-	title.text = p.name
+	title.text = RulerRules._cap(p.name)  # CW-7 (#258): a heading, so "The Long Vigil" (its name in running text is "the Long Vigil")
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
