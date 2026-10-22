@@ -33,6 +33,7 @@ const MORALE_PART_NAMES := {
 	"Dread": "Dread (the enemy's Great Thornmane)",
 	"Dread Lands": "Dread Lands (the Blood Pact's own land)",
 	"spell_dawn_blessing": "Dawn Blessing (blessed armies)",
+	"Toll": "Toll (its Lamplighter, for the enemies fallen)",  # CW-2
 }
 ## The RulesCodex entry behind each report factor id that isn't a trait or a mandate (the battle report
 ## viewer's FACTOR_ENTRIES; tests/test_battle_moments.gd checks the two agree).
@@ -49,6 +50,8 @@ const FACTOR_ENTRIES := {
 	"ruler": "ruler_in_battle",
 	"morale_ruler": "ruler_in_battle",
 	"ability_dread": "ability_dread",
+	"flame": "wick",  # CW-2
+	"morale_Toll": "trait_toll",
 }
 const RANK_WORDS := ["front rank", "second rank", "back line"]
 
@@ -79,16 +82,19 @@ static func explain_attack(battle_log: Dictionary, i: int) -> Dictionary:
 	if base != AutoBattleResolver.BASE_HIT:
 		lines.append(_line(RulerRules.mandate_name(RulerRules.DRILLED_RANKS), base - AutoBattleResolver.BASE_HIT,
 			"its side's base hit chance is %d%%" % base))
+	var pall := int(e.get("pall", 0))  # CW-2: Pall's cut, before the chance is held within its bounds
+	if pall != 0:
+		lines.append(_line(AutoBattleResolver.PALL, pall, "the target is harder to hit"))
 	var diff := atk - dfn
 	var per := AutoBattleResolver.HIT_PER_POINT
 	lines.append(_line("%d x (attack %d - defense %d)" % [per, atk, dfn], per * diff,
 		"%d%% for every point of attack %s the target's defense" % [per, "below" if diff < 0 else "above"]))
-	var raw := base + per * diff
+	var raw := base + pall + per * diff
 	if raw > AutoBattleResolver.MAX_HIT:
 		lines.append(_line("Never above %d%%" % AutoBattleResolver.MAX_HIT, AutoBattleResolver.MAX_HIT - raw, "the highest a hit chance goes"))
 	elif raw < AutoBattleResolver.MIN_HIT:
 		lines.append(_line("Never below %d%%" % AutoBattleResolver.MIN_HIT, AutoBattleResolver.MIN_HIT - raw, "the lowest a hit chance goes"))
-	var formula := "%d%% = base %d + %d x (attack %d - defense %d)" % [chance, base, per, atk, dfn]
+	var formula := "%d%% = base %d%s + %d x (attack %d - defense %d)" % [chance, base, " - Pall %d" % -pall if pall != 0 else "", per, atk, dfn]
 	if raw != chance:
 		formula += ", kept within %d-%d%%" % [AutoBattleResolver.MIN_HIT, AutoBattleResolver.MAX_HIT]
 	var chance_bd := _make("Hit chance of %s against %s" % [_bare(a.name), _bare(t.name)], formula, lines, "Hit chance", chance,
@@ -588,6 +594,8 @@ static func part_name(battle_log: Dictionary, key: String) -> String:
 		return AscensionRules.part_name(key)  # M4-3: "Living Iron", "Arbalests"
 	if key.begins_with(AutoBattleResolver.SPELL_PREFIX) and not MagicRules.spell_data(key.trim_prefix(AutoBattleResolver.SPELL_PREFIX)).is_empty():
 		return MagicRules.spell_name(key.trim_prefix(AutoBattleResolver.SPELL_PREFIX))  # M5-7: "Briar Snare"
+	if key == AutoBattleResolver.FLAME:
+		return "Wick (its army's flame)"  # CW-2: flame - 1
 	return key
 
 

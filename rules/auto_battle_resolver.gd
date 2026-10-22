@@ -184,6 +184,22 @@ const ROOTED_DEFENSE := 4
 const LIFEDRINK_DIVISOR := 2
 ## Red Harvest (§4.10): gold for every enemy fighter lost in a battle its side wins.
 const RED_HARVEST_GOLD := 1
+## CW-2 (#253, design/CANDLEWAKE.md §2.1, §4.1): Wick and the Candlewake's traits. A regular of an army that keeps a flame
+## fights with FLAME's attack part: its army's flame - 1 (WickRules.battle_flame, the flame the battle phase began with; -1 at
+## flame 0, +2 at flame 3). Pall takes PALL_HIT off an attack's hit chance before the chance is held between MIN_HIT and
+## MAX_HIT. A Gleaner that landed a hit in a round and still stands heals SIPHON_HEAL at its end (a curse that stops healing
+## stops it). A Hundred-Wick that falls flares: FLARE_DAMAGE sure damage (no roll; no defense or Iron Hide turns it) to up to
+## FLARE_TARGETS standing enemy fighters of the front rank, the healthiest first. While a Lamplighter stands, every enemy
+## fighter that has fallen in the battle (not summoned creatures) gives its side TOLL_MORALE morale, at most TOLL_MAX.
+## Each is a "why" factor with its codex entry (the four traits' "trait_*", and "wick"); a battle with one of them or a
+## flame on the field logs "wick": true and its additions (BattleLog), so every other battle logs as before.
+const FLAME := "flame"
+const PALL_HIT := 5
+const SIPHON_HEAL := 1
+const FLARE_DAMAGE := 2
+const FLARE_TARGETS := 6
+const TOLL_MORALE := 1
+const TOLL_MAX := 3
 ## M5-7: the Mage trait (MagicData's), the prefix of a spell's part and "why" factor ("spell_sunlance", also its
 ## RulesCodex entry), Dawn Blessing's morale part, and the Blood Moon's "why" factor (the hp it healed back).
 const MAGE := MagicData.MAGE_TRAIT
@@ -203,6 +219,11 @@ const WINGS := "Wings"
 const IRON_HIDE := "Iron Hide"
 const ROOTED := "Rooted"
 const LIFEDRINKER := "Lifedrinker"
+const PALL := "Pall"  # CW-2: the Candlewake's
+const SIPHON := "Siphon"
+const FLARE := "Flare"
+const TOLL := "Toll"
+const WICK_TRAITS := [PALL, SIPHON, FLARE, TOLL]
 ## M3c: the siege engines' trait (FortData.ENGINES). Engines never fight, so no fighter carries it in battle;
 ## its text is here so every trait the game shows has its rules' own words (codex trait_siege_engine).
 const SIEGE_ENGINE := FortData.ENGINE_TRAIT
@@ -226,6 +247,13 @@ const TRAIT_TEXT := {
 	IRON_HIDE: "Every hit on it deals %d less damage" % IRON_HIDE_DAMAGE + ", but always at least %d." % MIN_DAMAGE,
 	ROOTED: "Gets +%d defense in a battle in a forest province, whoever holds it. Not in a battle on a border." % ROOTED_DEFENSE,
 	LIFEDRINKER: "At the end of each round, if it still stands, it heals %s of the damage its hits dealt that round (rounded up), up to its maximum." % SHARE_WORDS[LIFEDRINK_DIVISOR],
+	PALL: "Harder to hit: every attack on it has %d%% less hit chance" % PALL_HIT + ", taken off before the chance is held between %d%%" % MIN_HIT
+		+ " and %d%%." % MAX_HIT,
+	SIPHON: "At the end of each round in which it landed a hit, if it still stands, it heals %d hit point, up to its maximum. A curse that stops healing stops it." % SIPHON_HEAL,
+	FLARE: "When it falls it flares: %d damage" % FLARE_DAMAGE + " to each of up to %d standing enemy fighters in the front rank, the healthiest first." % FLARE_TARGETS
+		+ " The fire is sure: no roll, and no defense or Iron Hide turns it.",
+	TOLL: "While it stands, every enemy fighter that has fallen in the battle gives its side +%d morale" % TOLL_MORALE
+		+ ", up to +%d (summoned creatures don't count)." % TOLL_MAX,
 	SIEGE_ENGINE: FortData.ENGINE_RULE,
 	MAGE: "Casts a spell from your spellbook every round instead of attacking, and attacks only when no spell is useful. Fights from the second rank: safe while your front rank is at least as big. Fangthrowers and Seraphs can always reach it.",
 }
@@ -243,6 +271,10 @@ const TRAIT_SHORT := {
 	IRON_HIDE: "-%d damage from every hit" % IRON_HIDE_DAMAGE,
 	ROOTED: "+%d defense in a forest" % ROOTED_DEFENSE,
 	LIFEDRINKER: "heals %s of the damage it deals" % SHARE_WORDS[LIFEDRINK_DIVISOR],
+	PALL: "-%d%% to be hit" % PALL_HIT,
+	SIPHON: "heals %d after a round it hits" % SIPHON_HEAL,
+	FLARE: "%d damage" % FLARE_DAMAGE + " to %d front-rank enemies as it falls" % FLARE_TARGETS,
+	TOLL: "+%d morale for each fallen enemy" % TOLL_MORALE + ", up to +%d" % TOLL_MAX,
 	SIEGE_ENGINE: "+%d siege damage while besieging; never fights" % FortData.SIEGE.engine,
 	MAGE: "casts a spell every round, from the second rank",
 }
@@ -588,7 +620,10 @@ static func _build_sides(sides_in: Array, defender_fid: String, state, kind: Str
 			for u in a.units:
 				var mods := _unit_mods(mods_by_type, sd.faction, u.type, state)
 				var max_hp: int = RulerRules.unit_max_hp(state, u) if state is GameState else u.type.hp
-				fighters.append(_fighter(i, a, u, false, false, mods, max_hp))
+				var fighter := _fighter(i, a, u, false, false, mods, max_hp)
+				if a.flame >= 0 and u.type.trait_id != MAGE and not u.type.summoned:
+					fighter["flame"] = WickRules.battle_flame(state if state is GameState else null, a)  # CW-2: regulars only
+				fighters.append(fighter)
 				morale_sum += u.type.morale + _mods_total(mods.morale)
 				for m in mods.morale:
 					morale_by_key[m.key] = int(morale_by_key.get(m.key, 0)) + int(m.value)
@@ -651,6 +686,9 @@ static func _build_sides(sides_in: Array, defender_fid: String, state, kind: Str
 		for f in fighters:
 			if not f.trait.is_empty():
 				sides[i].trait_units[f.trait] = f.name
+		if fighters.any(func(f): return f.has("flame") or WICK_TRAITS.has(f.trait)):
+			# CW-2: what Wick and the Candlewake's traits did, kept only on a side that has them.
+			sides[i].merge({"wick": true, "siphoned": 0, "flares": 0, "flared": 0, "toll": 0})
 	return sides
 
 
@@ -851,29 +889,34 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			if f.trait == CHARGE and round_no == 1:
 				bonus = CHARGE_DAMAGE_FOREST if env.terrain == "forest" else CHARGE_DAMAGE
 			var base: int = side.base_hit  # BASE_HIT, or Drilled Ranks'
-			var chance := hit_chance(atk.value, dfn.value, base)
+			var pall := -PALL_HIT if t.trait == PALL else 0  # CW-2: inside the clamp, so never folded into `base` (Drilled Ranks')
+			var chance := hit_chance(atk.value, dfn.value, base + pall)
 			var hide := _hide(t, damage(atk.value, dfn.value) + bonus)  # M4-3: Iron Hide (0 for anyone else)
 			var dmg := damage(atk.value, dfn.value) + bonus - hide
 			var expected := chance / 100.0 * dmg
 			# What each modifier was worth on this attack, in expected damage.
 			for p in atk.parts:
 				var a2: int = atk.value - atk.parts[p]
-				var gain: float = expected - hit_chance(a2, dfn.value, base) / 100.0 * _dealt(t, damage(a2, dfn.value) + bonus)
+				var gain: float = expected - hit_chance(a2, dfn.value, base + pall) / 100.0 * _dealt(t, damage(a2, dfn.value) + bonus)
 				if magic and String(p).begins_with(SPELL_PREFIX):
 					_add_impact(sides[int(f.hexed_by.get(p, si))], p, -gain)  # M5-7: a hex's worth is its caster's side's
 				else:
 					_add_impact(side, p, gain)
 			for p in dfn.parts:
 				var d2: int = dfn.value - dfn.parts[p]
-				var saved: float = hit_chance(atk.value, d2, base) / 100.0 * _dealt(t, damage(atk.value, d2) + bonus) - expected
+				var saved: float = hit_chance(atk.value, d2, base + pall) / 100.0 * _dealt(t, damage(atk.value, d2) + bonus) - expected
 				_add_impact(tside, p, saved)
+			if pall != 0:
+				# CW-2: Pall's worth is the hit chance it took off this attack, in expected damage, like a defense part.
+				_add_impact(tside, PALL, (hit_chance(atk.value, dfn.value, base) - chance) / 100.0 * dmg)
+				tside.triggers[PALL] = tside.triggers.get(PALL, 0) + 1
 			if hide > 0:
 				# Iron Hide: the damage it turned aside, in expected damage like every other defense part.
 				_add_impact(tside, IRON_HIDE, chance / 100.0 * hide)
 				tside.triggers[IRON_HIDE] = tside.triggers.get(IRON_HIDE, 0) + 1
 			if base != BASE_HIT:
 				# Drilled Ranks: what the side's higher base hit chance added to this attack.
-				var plain_chance := hit_chance(atk.value, dfn.value)
+				var plain_chance := hit_chance(atk.value, dfn.value, BASE_HIT + pall)
 				if plain_chance != chance:
 					_add_impact(side, side.base_hit_key, (chance - plain_chance) / 100.0 * dmg)
 					side.triggers[side.base_hit_key] = side.triggers.get(side.base_hit_key, 0) + 1
@@ -909,7 +952,7 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			var roll := rng.randi_range(1, 100)
 			var hit := roll <= chance
 			if rec != null:
-				_log_attack(rec, round_no, f, t, reach, pool.size(), pick, chance, roll, hit, dmg, bonus, base, atk, dfn, expected, hide)
+				_log_attack(rec, round_no, f, t, reach, pool.size(), pick, chance, roll, hit, dmg, bonus, base, atk, dfn, expected, hide, pall)
 				expected_by[si] = float(expected_by.get(si, 0.0)) + expected
 				if hit:
 					if not hit_by.has(t.id):
@@ -939,6 +982,8 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 				# commander Wings struck (so the "why" can say it fell to the Seraphs).
 				if f.trait == LIFEDRINKER or side.moon:  # M5-7: under the Blood Moon every fighter of its side drinks
 					f["drink"] = int(f.get("drink", 0)) + dmg
+				if f.trait == SIPHON:
+					f["siphon"] = int(f.get("siphon", 0)) + dmg  # CW-2: it landed a hit this round (_siphon heals it at the end)
 				if hide > 0:
 					tside.iron_hits += 1
 				if f.trait == WINGS and t.cmd:
@@ -951,6 +996,8 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			highlights.append("%s %s charged home for %d extra damage." % [_poss(sides[si].name), sides[si].trait_units[CHARGE], charge[si]])
 		if berserk.has(si):
 			highlights.append("%s wounded %s went berserk (+%d attack)." % [_poss(sides[si].name), berserk[si], BERSERK_ATTACK])
+	var fell := []  # CW-2: the fighters that fell this round (Toll counts them), and the Hundred-Wicks among them (they flare)
+	var flaring := []
 	for si in standing:
 		for f in sides[si].fighters:
 			var bleed := int(f.get("bleed", 0))  # M5-7: Bloodbolt's bleeding lands with the wounds
@@ -977,6 +1024,9 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 				if f.hp == 0:
 					f.alive = false
 					sides[si].lost.append(f.name)
+					fell.append(f)
+					if f.trait == FLARE:
+						flaring.append(f)
 					for sid in f.get("bolted", {}):
 						# M5-7: a bolt helped fell it this round (the spell's "why" names it).
 						sides[int(f.bolted[sid])].spell_stats[sid].kills.append({"name": _target_ref(f), "round": round_no})
@@ -990,7 +1040,11 @@ static func _fight_round(sides: Array, round_no: int, env: Dictionary, rng: Seed
 			f.pending = 0
 			if bleed > 0:
 				f.bleed = 0
+	if not flaring.is_empty():
+		_flare(sides, flaring, round_no, highlights, rec, fell)  # CW-2: after the round's deaths, before any heal
 	_drink(sides, standing, round_no, highlights, rec)
+	_siphon(sides, standing, round_no, highlights, rec)
+	_toll(sides, fell)
 
 	# Morale is checked for every side before any of them leaves, so the order of sides never matters.
 	var checks := {}
@@ -1184,6 +1238,8 @@ static func _attack(f: Dictionary, side: Dictionary, env: Dictionary) -> Diction
 		for o in side.fighters:
 			if o.alive and o.cmd and o.trait == PACK_LEADER:
 				parts[PACK_LEADER] = PACK_LEADER_ATTACK
+	if f.has("flame") and int(f.flame) != 1:
+		parts[FLAME] = int(f.flame) - 1  # CW-2 (§2.1): a regular fights at its army's flame - 1
 	for m in f.get("mods", {}).get("attack", []):
 		parts[m.key] = int(parts.get(m.key, 0)) + int(m.value)  # Royal Armories
 	var value: int = f.type.attack
@@ -1269,6 +1325,8 @@ static func _morale(sides: Array, si: int, standing: Array) -> Dictionary:
 		parts[DREAD_LANDS] = -lands
 	if int(side.get("blessed", 0)) > 0:
 		parts[BLESSING] = int(side.blessed)  # M5-7: Dawn Blessing, counted at the battle's start
+	if int(side.get("toll", 0)) > 0 and side.fighters.any(func(f): return f.alive and f.trait == TOLL):
+		parts[TOLL] = int(side.toll)  # CW-2: the enemies fallen so far, while a Lamplighter stands
 	var value: int = side.base_morale
 	for p in parts:
 		value += parts[p]
@@ -1367,6 +1425,132 @@ static func _drink(sides: Array, standing: Array, round_no: int, highlights: Arr
 			side.moon_healed += moon_healed
 			_add_impact(side, MOON, float(moon_healed))
 			highlights.append("Under the Blood Moon, %s healed back %d hp." % [side.name, moon_healed])
+
+
+## CW-2 (design/CANDLEWAKE.md §4.1, the round's order): every Hundred-Wick that fell this round flares, one at a time in (side,
+## army, unit) order, which is the order of `flaring`: FLARE_DAMAGE sure damage (no roll; no defense or Iron Hide turns it) to
+## each of up to FLARE_TARGETS standing enemy fighters in the front rank, the healthiest first, ties by side, then army and
+## unit (their place in their side's list). A fighter an earlier Flare felled is gone before the next one picks. Every fighter
+## the Flares fell is added to `fell`. Logs a "flare" event, then the wounds and deaths it dealt, by the flaring fighter.
+static func _flare(sides: Array, flaring: Array, round_no: int, highlights: Array, rec, fell: Array) -> void:
+	for fw in flaring:
+		var si := int(fw.side)
+		var targets := []
+		for oi in sides.size():
+			if oi == si:
+				continue
+			for i in sides[oi].fighters.size():
+				var t: Dictionary = sides[oi].fighters[i]
+				if t.alive and int(t.tier) == 0:
+					targets.append([t, oi, i])
+		if targets.is_empty():
+			continue
+		targets.sort_custom(func(a, b):
+			if int(a[0].hp) != int(b[0].hp):
+				return int(a[0].hp) > int(b[0].hp)
+			if int(a[1]) != int(b[1]):
+				return int(a[1]) < int(b[1])
+			return int(a[2]) < int(b[2]))
+		targets = targets.slice(0, FLARE_TARGETS)
+		var side: Dictionary = sides[si]
+		side.flares = int(side.get("flares", 0)) + 1
+		side.triggers[FLARE] = side.triggers.get(FLARE, 0) + 1
+		if rec != null:
+			_log_push(rec.log, rec.cap, {"t": "flare", "n": round_no, "f": fw.id, "targets": targets.map(func(x): return x[0].id),
+				"damage": FLARE_DAMAGE})
+		var dealt := 0
+		var names := []
+		for x in targets:
+			var t: Dictionary = x[0]
+			var before: int = t.hp
+			t.hp = maxi(0, t.hp - FLARE_DAMAGE)
+			t.taken += before - t.hp
+			dealt += before - t.hp
+			names.append(t.name)
+			if rec != null:
+				_log_push(rec.log, rec.cap, {"t": "wound", "n": round_no, "f": t.id, "from": before, "to": t.hp, "by": [fw.id]})
+				if t.hp == 0:
+					_log_push(rec.log, rec.cap, {"t": "death", "n": round_no, "f": t.id, "by": [fw.id]})
+			if t.hp == 0:
+				t.alive = false
+				sides[int(x[1])].lost.append(t.name)
+				fell.append(t)
+				highlights.append("%s %s fell." % [_poss(sides[int(x[1])].name), _bare(t.name)])
+				if t.ruler:
+					sides[int(x[1])].ruler_fell = round_no
+		side.flared = int(side.get("flared", 0)) + dealt
+		_add_impact(side, FLARE, float(dealt))
+		highlights.append("%s %s flared as it fell: %d damage to %s." % [_poss(side.name), _bare(fw.name), FLARE_DAMAGE, _count_names(names)])
+
+
+## CW-2: the flame parts a side's regulars fought with, in words: "+1 attack (flame 2)", "+2 attack (flame 3) and +1 attack
+## (flame 2)", hottest first.
+static func _flame_words(s: Dictionary) -> String:
+	var flames := {}
+	for f in s.fighters:
+		if f.has("flame") and int(f.flame) != 1:
+			flames[int(f.flame)] = true
+	var keys := flames.keys()
+	keys.sort()
+	keys.reverse()
+	return RulerRules._and_list(keys.map(func(fl): return "%+d attack (flame %d)" % [int(fl) - 1, int(fl)]))
+
+
+## "6 Spearmen", "4 Spearmen and 2 Knights": how many of each name, in the order they first appear.
+static func _count_names(names: Array) -> String:
+	var order := []
+	var counts := {}
+	for n in names:
+		if not counts.has(n):
+			order.append(n)
+			counts[n] = 0
+		counts[n] += 1
+	var parts := []
+	for n in order:
+		parts.append("%d %s" % [counts[n], n] if int(counts[n]) > 1 or _plural(String(n)) else "1 " + String(n))
+	return RulerRules._and_list(parts)
+
+
+## CW-2: a Gleaner (Siphon) that landed a hit this round and still stands heals SIPHON_HEAL, up to its maximum; a curse that
+## stops healing (Bloodrot: side.cursed) stops it. Logs a "heal" with trait Siphon.
+static func _siphon(sides: Array, standing: Array, round_no: int, highlights: Array, rec) -> void:
+	for si in standing:
+		var side: Dictionary = sides[si]
+		var healed := 0
+		var who := ""
+		for f in side.fighters:
+			var drunk := int(f.get("siphon", 0))
+			if drunk <= 0:
+				continue
+			f.erase("siphon")
+			if not f.alive or f.hp >= f.max or side.cursed:
+				continue
+			var before: int = f.hp
+			f.hp = mini(f.max, f.hp + SIPHON_HEAL)
+			healed += f.hp - before
+			who = f.name
+			side.triggers[SIPHON] = side.triggers.get(SIPHON, 0) + 1
+			if rec != null:
+				_log_push(rec.log, rec.cap, {"t": "heal", "n": round_no, "f": f.id, "from": before, "to": f.hp, "dealt": drunk, "trait": SIPHON})
+		if healed > 0:
+			side.siphoned = int(side.get("siphoned", 0)) + healed
+			_add_impact(side, SIPHON, float(healed))
+			highlights.append("%s %s drank %d hp." % [_poss(side.name), who, healed])
+
+
+## CW-2: Toll. Every side that keeps a toll (a side with Wick) counts the enemy fighters in `fell` (not summoned creatures),
+## TOLL_MORALE each, up to TOLL_MAX for the battle; _morale adds it while one of its Lamplighters stands.
+static func _toll(sides: Array, fell: Array) -> void:
+	if fell.is_empty():
+		return
+	for si in sides.size():
+		if not sides[si].has("toll") or not sides[si].trait_units.has(TOLL):
+			continue
+		var n := 0
+		for f in fell:
+			if int(f.side) != si and not f.type.summoned:
+				n += 1
+		sides[si].toll = mini(TOLL_MAX, int(sides[si].toll) + TOLL_MORALE * n)
 
 
 ## Veteran Levies (§7.4): the damage each regular unit's extra maximum hp absorbed (up to the bonus, for
@@ -2010,6 +2194,8 @@ static func _log_header(sides: Array, sides_in: Array, ctx: Dictionary, env: Dic
 		out["paths"] = true  # M4-3: the path additions below are in this log (BattleLog: "paths")
 	if env.get("magic", false):
 		out["magic"] = true  # M5-7: the magic additions are in this log (BattleLog: "magic")
+	if sides.any(func(s): return s.get("wick", false)):
+		out["wick"] = true  # CW-2: a flame or a Candlewake trait is on the field (BattleLog: "wick")
 	if env.has("siege"):
 		out["siege"] = env.siege.duplicate(true)  # M3c (§4.4): what kind of battle at a fort, and what the walls did
 	return out
@@ -2070,7 +2256,7 @@ static func _log_round(rec: Dictionary, sides: Array, standing: Array, round_no:
 
 static func _log_attack(rec: Dictionary, round_no: int, f: Dictionary, t: Dictionary, reach: Dictionary, pool: int, pick: int,
 		chance: int, roll: int, hit: bool, dmg: int, bonus: int, base: int, atk: Dictionary, dfn: Dictionary, expected: float,
-		hide: int = 0) -> void:
+		hide: int = 0, pall: int = 0) -> void:
 	var how: String = TIER_WORDS[t.tier]
 	if not reach[t.side].tiers.has(t.tier):
 		how = "wings" if f.trait == WINGS else "skirmish"  # only Skirmish (or Wings, M4-3) could reach it
@@ -2078,11 +2264,14 @@ static func _log_attack(rec: Dictionary, round_no: int, f: Dictionary, t: Dictio
 	var damage_parts := {CHARGE: bonus} if bonus > 0 else {}
 	if hide > 0:
 		damage_parts[IRON_HIDE] = -hide
-	_log_push(rec.log, rec.cap, {"t": "attack", "n": round_no, "by": f.id, "to": t.id, "pool": pool, "pick": pick,
+	var ev := {"t": "attack", "n": round_no, "by": f.id, "to": t.id, "pool": pool, "pick": pick,
 		"chance": chance, "roll": roll, "hit": hit, "damage": dmg, "bonus": damage_parts,
 		"base_hit": base, "attack": {"value": atk.value, "base": f.type.attack, "parts": atk.parts},
 		"defense": {"value": dfn.value, "base": t.type.defense, "parts": dfn.parts}, "reach": how,
-		"screened": not reach[f.side].tiers.has(f.tier), "expected": _dec(expected, 10.0)})
+		"screened": not reach[f.side].tiers.has(f.tier), "expected": _dec(expected, 10.0)}
+	if pall != 0:
+		ev["pall"] = pall  # CW-2: what Pall took off the hit chance, inside the clamp (only on an attack on Pall)
+	_log_push(rec.log, rec.cap, ev)
 
 
 ## The round's morale checks, routs and destructions, and its round_end totals.
@@ -2542,6 +2731,26 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 					c = "%s %s drank back %d hp (Lifedrinker)" % [who, unit, s.healed] if won \
 						else "even though %s %s drank back %d hp (Lifedrinker)" % [who, unit, s.healed]
 					codex = codex_id_for_trait(k)
+				FLAME:
+					# CW-2 (§2.5): "Wick: +1 attack (flame 2)".
+					var lit := _flame_words(s)
+					c = "%s burned hot: Wick gave its regulars %s, worth about %d damage" % [s.name, lit, dmg] if won \
+						else "even though Wick gave %s regulars %s" % [who, lit]
+					brief = "Wick: %s" % lit
+					codex = "wick"
+				PALL:
+					c = "%s %s were harder to hit (Pall, %d%% less hit chance), turning aside about %d damage" % [who, unit, PALL_HIT, dmg] if won \
+						else "even though %s %s were harder to hit (Pall)" % [who, unit]
+					codex = codex_id_for_trait(k)
+				SIPHON:
+					c = "%s %s drank %d hp back after their hits (Siphon)" % [who, unit, int(s.get("siphoned", 0))] if won \
+						else "even though %s %s drank %d hp back (Siphon)" % [who, unit, int(s.get("siphoned", 0))]
+					codex = codex_id_for_trait(k)
+				FLARE:
+					var flares := int(s.get("flares", 0))
+					c = "%s %s flared as %s fell, burning %d damage into the enemy front rank" % [who, unit, "it" if flares == 1 else "they",
+						int(s.get("flared", 0))] if won else "even though %s %s flared as %s fell" % [who, unit, "it" if flares == 1 else "they"]
+					codex = codex_id_for_trait(k)
 				_:
 					var words := {}
 					if k.begins_with(MANDATE_PREFIX):
@@ -2678,6 +2887,22 @@ static func _factors(sides: Array, env: Dictionary, wi: int, end: String, rounds
 		out.append({"id": "morale_" + BLESSING, "side": si, "faction": s.faction, "impact": float(_hp(s)) if held_by_it else float(part) * 0.5,
 			"clause": ("%s and kept the line from breaking" if held_by_it else "%s") % lifted if si == wi else "even though Dawn Blessing steadied %s line" % _poss(s.name),
 			"brief": "Dawn Blessing (+%d morale to %s)" % [part, s.name], "codex": BLESSING})
+	# CW-2: Toll's morale, measured like Dawn Blessing's: the most it gave in a check, and whether it kept the line.
+	for si in sides.size():
+		var s: Dictionary = sides[si]
+		var part := 0
+		var held_by_it := false
+		for e in s.morale_log:
+			var toll := int(e.parts.get(TOLL, 0))
+			part = maxi(part, toll)
+			if toll > 0 and e.lost_pct < e.break_pct and e.lost_pct >= break_pct(e.morale - toll):
+				held_by_it = true
+		if part <= 0:
+			continue
+		var tolled := "%s %s tolled for the fallen (+%d morale)" % [_poss(s.name), String(s.trait_units.get(TOLL, "commander")), part]
+		out.append({"id": "morale_" + TOLL, "side": si, "faction": s.faction, "impact": float(_hp(s)) if held_by_it else float(part) * 0.5,
+			"clause": ("%s and kept the line from breaking" if held_by_it else "%s") % tolled if si == wi else "even though %s" % tolled,
+			"brief": "%s %s (%s)" % [_poss(s.name), String(s.trait_units.get(TOLL, "commander")), TRAIT_SHORT[TOLL]], "codex": codex_id_for_trait(TOLL)})
 	# M2-2: the ruler's +morale kept the line, measured like the commander's (§7.4), and Iron Discipline
 	# held a side past its breaking point while a commander stood: the hp it kept from a rout.
 	for si in sides.size():

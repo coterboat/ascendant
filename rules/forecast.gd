@@ -1312,7 +1312,9 @@ static func fortify(state: GameState, faction_id: String, province_id: String, o
 ## queued orders, paid first. For a siege engine it says which army carries it, and what one more engine
 ## changes at each siege that faction keeps now. Returns {"ok", "code", "reason", "unit_type", "name", "fort",
 ## "count", "limit", "price", "joins" (the army's id, "" for a new army), "text"}.
-static func recruit_at(state: GameState, faction_id: String, unit_type_id: String, at: String = "", orders: Array = []) -> Dictionary:
+## CW-2: `into` is the army the recruit names (RecruitOrder.into): the forecast joins it, or a new army for NEW_PREFIX.
+static func recruit_at(state: GameState, faction_id: String, unit_type_id: String, at: String = "", orders: Array = [],
+		into: String = "") -> Dictionary:
 	var out := {"ok": false, "code": "", "reason": "", "unit_type": unit_type_id, "name": "", "fort": "", "count": 0, "limit": 0,
 		"price": 0, "joins": "", "text": ""}
 	var view := RulerRules.state_after_orders(state, faction_id, orders)
@@ -1341,15 +1343,25 @@ static func recruit_at(state: GameState, faction_id: String, unit_type_id: Strin
 	var where := view.find_province(place).name
 	var head := "%s at %s (%d of %d this turn)" % [ut.name, where, out.count, out.limit] if view.sieges else "%s at %s" % [ut.name, where]
 	var joins: Army = null
-	for a in TurnResolver._sorted_armies(view):
-		if a.owner != faction_id or a.location != place or a.ruler != null:
-			continue
-		if SiegeRules.is_engine(ut) and not SiegeRules.can_carry(a):
-			continue
-		if ut.is_commander and a.commander != null:
-			continue
-		joins = a
-		break
+	if not into.is_empty() and not SiegeRules.is_engine(ut):
+		var why := TurnResolver.check_into(view, faction_id, RecruitOrder.new(unit_type_id, at, into), place)
+		if not why.is_empty():
+			out.ok = false
+			out.code = String(why.code)
+			out.reason = String(why.reason)
+			out.text = out.reason
+			return out
+		joins = null if into.begins_with(RecruitOrder.NEW_PREFIX) else view.find_army(into)
+	else:
+		for a in TurnResolver._sorted_armies(view):
+			if a.owner != faction_id or a.location != place or a.ruler != null:
+				continue
+			if SiegeRules.is_engine(ut) and not SiegeRules.can_carry(a):
+				continue
+			if ut.is_commander and a.commander != null:
+				continue
+			joins = a
+			break
 	out.joins = joins.id if joins != null else ""
 	if SiegeRules.is_engine(ut):
 		var who := TurnReportText.army_title(view, joins, false) if joins != null else "the army a recruit forms there first"
@@ -1373,6 +1385,24 @@ static func recruit_at(state: GameState, faction_id: String, unit_type_id: Strin
 		out.text = "%s: they %s %s." % [head, verb, TurnReportText.army_title(view, joins, false)]
 	else:
 		out.text = "%s: they form a new army there." % head
+	out.text += WickRules.recruit_words(view, faction_id, joins, ut)  # CW-2 (§2.5): what joining does to its flame
+	return out
+
+
+## CW-2 (design/CANDLEWAKE.md §2.5): the orders forecast's flame line for every army of `faction_id` that keeps a flame, where it
+## ends the turn under `orders` (its move's destination, or where it stands): [{"army", "text"}], in id order. [] for a faction
+## that keeps no flame.
+static func wick(state: GameState, faction_id: String, orders: Array = []) -> Array:
+	var out := []
+	if not WickRules.has_wick(faction_id):
+		return out
+	var ends := {}
+	for o in orders:
+		if o is MoveOrder:
+			ends[o.army_id] = o.to
+	for a in TurnResolver._sorted_armies(state):
+		if a.owner == faction_id and a.flame >= 0:
+			out.append({"army": a.id, "text": WickRules.forecast_line(state, a, String(ends.get(a.id, a.location)))})
 	return out
 
 
@@ -1648,6 +1678,8 @@ static func _veiled_move_text(state: GameState, faction_id: String, dest: Provin
 ## Sight in `move` (§2.10, §11.1): adds to a fog move forecast "sees" (the provinces it will see next turn that are out
 ## of your sight now, by id), "sight_range" and the sentence. Unchanged without fog, or when the move can't be given.
 static func _with_sight(state: GameState, faction_id: String, order: MoveOrder, army: Army, out: Dictionary) -> Dictionary:
+	if bool(out.get("ok", false)) and army.flame >= 0:
+		out["text"] = "%s %s" % [String(out.text), WickRules.forecast_line(state, army, order.to)]  # CW-2 (§2.5): its flame
 	if not is_fog_view(state) or not bool(out.get("ok", false)):
 		return out
 	var s := FogRules.army_sight(army)

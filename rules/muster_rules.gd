@@ -145,6 +145,11 @@ static func apply(state: GameState, faction_id: String, order: MusterOrder) -> D
 			info["engines"] = n
 			for u in joiners:
 				_join(state, to, u, info)
+			if not info.created and not joiners.is_empty() and to.flame >= 0 and from.flame >= 0 and from.flame < to.flame:
+				# CW-2 (design/CANDLEWAKE.md §2.1, after ARM-1): a merge or a transfer into an army takes the lower flame, as recruits
+				# joining do; a split keeps its flame on both parts (above).
+				info["flame"] = {"from": to.flame, "to": from.flame}
+				to.flame = from.flame
 			if from.units.is_empty() and from.commander == null and from.ruler == null:
 				state.armies.erase(from)
 				info["disbanded"].append(from.id)
@@ -348,12 +353,13 @@ static func event_sentence(state: GameState, e: Dictionary) -> String:
 		"army_split":
 			return "%s of %s formed %s at %s." % [_cap(_moved_words(state, fid, n)), _army(state, fid, n.from), _army(state, fid, n.to), where]
 		"units_transferred":
-			return "%s of %s joined %s at %s.%s" % [_cap(_moved_words(state, fid, n)), _army(state, fid, n.from), _army(state, fid, n.to), where,
-				_outside_words(state, n)]
+			return "%s of %s joined %s at %s.%s%s" % [_cap(_moved_words(state, fid, n)), _army(state, fid, n.from), _army(state, fid, n.to), where,
+				_outside_words(state, n), _flame_words(state, fid, n)]
 		"armies_merged":
 			var line := "%s merged into %s at %s" % [_cap(_army(state, fid, n.from)), _army(state, fid, n.to), where]
 			var moved := _moved_words(state, fid, n)
 			line += ": %s joined it." % moved if moved != "no one" else " (no one moved)."
+			line += _flame_words(state, fid, n)
 			if bool(n.get("commander_left", false)):
 				line += " Both had a commander, so %s stays behind, and %s goes on as an army of its own." % [
 					"the " + _type_name(state, fid, String(n.get("commander_stays", ""))) if not String(n.get("commander_stays", "")).is_empty() else "its commander",
@@ -402,6 +408,14 @@ static func _moved_words(state: GameState, fid: String, n: Dictionary) -> String
 	if engines > 0:
 		parts.append(SiegeRules.engines_text(fid, engines) if engines > 1 else "a " + SiegeRules.engines_text(fid, 1).trim_prefix("1 "))
 	return RulerRules._and_list(parts) if not parts.is_empty() else "no one"
+
+
+## CW-2: " Its flame falls from 3 to 1." when a merge or transfer cooled the army it joined (design/CANDLEWAKE.md §2.1).
+static func _flame_words(_state: GameState, _fid: String, n: Dictionary) -> String:
+	var fl: Dictionary = n.get("flame", {})
+	if fl.is_empty():
+		return ""
+	return " Its flame falls from %d to %d." % [int(fl.from), int(fl.to)]
 
 
 ## " They aren't under its Dawn Blessing." when fighters joined an army under a blessing (§2.1).

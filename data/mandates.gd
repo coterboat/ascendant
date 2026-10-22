@@ -137,6 +137,24 @@ const MAGIC_MANDATES: Array[Dictionary] = [
 	},
 ]
 
+## CW-2 (#253, design/CANDLEWAKE.md §4.3): the Candlewake's own mandates, behind their faction's preview (FactionData.
+## PREVIEW_FACTIONS). Kept apart from MANDATES, so the shipped build lists and everything that walks them stay as they are;
+## RulerRules.mandate_data and available_mandates read this list too. Their numbers:
+##   start_flame   a new army and recruits start at this flame instead of the faction's start (WickRules.start_flame)
+##   unit_cost     {unit type id: the price a recruit of it costs instead} (RulerRules.price_mods)
+const PREVIEW_MANDATES: Array[Dictionary] = [
+	{
+		"id": "kindling", "name": "Kindling", "faction": "candlewake", "cost": 3, "area": "units",
+		"effect": "New armies and your recruits start at flame 2 instead of 1.",
+		"codex": "mandate_kindling", "start_flame": 2,
+	},
+	{
+		"id": "tallow_levy", "name": "Tallow Levy", "faction": "candlewake", "cost": 3, "area": "economy",
+		"effect": "Wickwardens cost 5 gold instead of %d." % FactionData.PREVIEW_FACTIONS[0].unit_types[0].cost,
+		"codex": "mandate_tallow_levy", "unit_cost": {"wickwardens": 5},
+	},
+]
+
 ## A mandate for the balance check and nothing else (M5-11, #122; design/M5_MAGIC_FOG.md §13.2, band G9): it costs what
 ## Tithe of Blood costs and does nothing, so a Tithe pair's control run keeps the same power without the mandate. It is on
 ## no list a person or the computer picks from (not in MANDATES, PATH_MANDATES or MAGIC_MANDATES): only RulerRules.mandate_data

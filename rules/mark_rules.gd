@@ -66,6 +66,23 @@ static func wake_step(state: GameState, _events: Array) -> void:
 		return
 
 
+## Whether a mark or a scar of `faction_id` makes `province_id` a harbour for its armies (§2.2, §3.3): its own mark there, in a
+## province it owns, at a stage that shelters (the Wake-Line and Deep Wake), or a cold wake of its own while it lasts. Marks are
+## set by the wake step (CW-3), so until then nothing here is a harbour.
+static func harbour(state: GameState, faction_id: String, province_id: String) -> bool:
+	var entry: Dictionary = state.marks.get(province_id, {})
+	if entry.is_empty():
+		return false
+	var mark: Dictionary = entry.get("mark", {})
+	var p := state.find_province(province_id)
+	if not mark.is_empty() and String(mark.faction) == faction_id and p != null and p.owner == faction_id:
+		var stage := stage_of(faction_id, end_clock(state) - int(mark.since_turn))
+		if bool(MarkData.stage(faction_id, stage).get("harbour", false)):
+			return true
+	var scar: Dictionary = entry.get("scar", {})
+	return not scar.is_empty() and String(scar.faction) == faction_id and end_clock(state) < int(scar.until_turn)
+
+
 ## A copy of `marks` in its saved form: entries with no mark and no scar are left out, and the numbers are whole numbers.
 static func marks_copy(marks: Dictionary) -> Dictionary:
 	var out := {}

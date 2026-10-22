@@ -83,7 +83,7 @@ const SIEGE_WHYS := {"storm": ["storm"], "breach": ["breach"], "open": ["sally",
 const SIEGE_FORTS := ["palisade", "keep", "citadel"]
 const MAX_EVENTS := 12000
 const EVENT_TYPES := ["round", "attack", "wound", "death", "morale", "rout", "destroyed", "round_end", "end", "feast", "aftermath",
-	"heal", "harvest", "cast", "bleed_closed"]
+	"heal", "harvest", "cast", "bleed_closed", "flare"]
 ## Events without a round number.
 const UNROUNDED := ["end", "feast", "aftermath", "harvest", "bleed_closed"]
 ## M5-7: the battle spell kinds a cast event can have.
@@ -411,8 +411,17 @@ static func validate(battle_log) -> Array:
 					if not (h is Array) or h.size() != 3 or not _in_range(h[0], nf) or int(_num(h[2], 0)) <= int(_num(h[1], 0)) \
 							or int(_num(h[2], 0)) > int(_num(fighters[int(h[0])].get("max_hp"), 0)):
 						_add(r, "%s should list [fighter, hit points before, hit points after] for each caster whose bleeding closed." % what)
+			"flare":
+				# CW-2: a fallen Hundred-Wick's fire: sure damage to standing enemies of the front rank, then their wounds.
+				if not _in_range(e.get("f"), nf):
+					_add(r, "%s names fighter %s, but the log has %d fighters." % [what, str(e.get("f")), nf])
+				if not (e.get("targets") is Array) or e.targets.is_empty() or e.targets.size() > AutoBattleResolver.FLARE_TARGETS \
+						or not e.targets.all(func(x): return _in_range(x, nf)):
+					_add(r, "%s should name 1 to %d fighters it burned." % [what, AutoBattleResolver.FLARE_TARGETS])
+				if not _is_int(e.get("damage")) or int(_num(e.get("damage"), 0)) < 1:
+					_add(r, "%s should say the damage each target took." % what)
 			"heal":
-				# M4-3: Lifedrinker (M5-7: or the Blood Moon, "spell"). Up, never past the fighter's maximum.
+				# M4-3: Lifedrinker (M5-7: or the Blood Moon, "spell"; CW-2: or Siphon). Up, never past the fighter's maximum.
 				if not _in_range(e.get("f"), nf):
 					_add(r, "%s names fighter %s, but the log has %d fighters." % [what, str(e.get("f")), nf])
 				elif not _is_int(e.get("from")) or not _is_int(e.get("to")) or int(e.to) <= int(e.from) \
@@ -622,10 +631,11 @@ static func _validate_attack(r: Array, what: String, e: Dictionary, nf: int) -> 
 		if total != int(stat.value):
 			_add(r, "%s has %s %d, but its base and parts add up to %d." % [what, key, int(stat.value), total])
 		values[key] = int(stat.value)
-	var chance := AutoBattleResolver.hit_chance(values.attack, values.defense, int(e.base_hit))
+	var pall := int(_num(e.get("pall"), 0))  # CW-2: Pall's cut, inside the clamp (only on an attack on Pall)
+	var chance := AutoBattleResolver.hit_chance(values.attack, values.defense, int(e.base_hit) + pall)
 	if chance != int(e.chance):
-		_add(r, "%s has a %d%% chance, but attack %d against defense %d from base %d gives %d%%." % [what, int(e.chance),
-			values.attack, values.defense, int(e.base_hit), chance])
+		_add(r, "%s has a %d%% chance, but attack %d against defense %d from base %d%s gives %d%%." % [what, int(e.chance),
+			values.attack, values.defense, int(e.base_hit), " with Pall's %d" % pall if pall != 0 else "", chance])
 	var bonus := 0
 	for p in e.bonus:
 		bonus += int(e.bonus[p])
@@ -846,6 +856,20 @@ static func cross_check(battle_log: Dictionary, report: Dictionary) -> Array:
 				self_bleed.erase(int(e.f))
 			"death":
 				deaths[int(fighters[int(e.f)].side)].append(String(fighters[int(e.f)].name))
+			"flare":
+				# CW-2: a fallen Hundred-Wick burns standing enemies of the front rank; its damage waits for their wounds.
+				var fw := int(e.f)
+				if state.fighters[fw].alive or String(fighters[fw].trait) != AutoBattleResolver.FLARE:
+					_add(r, "Round %d, event %d: fighter %d flares, but only a fallen fighter with Flare does." % [int(e.n), i, fw])
+				for x in e.targets:
+					var tx := int(x)
+					if not state.fighters[tx].alive or state.fighters[tx].fled or int(fighters[tx].side) == int(fighters[fw].side) \
+							or int(fighters[tx].tier) != 0:
+						_add(r, "Round %d, event %d: the Flare burns fighter %d, who isn't a standing enemy in the front rank." % [int(e.n), i, tx])
+					var p: Dictionary = pending.get(tx, {"dmg": 0, "by": []})
+					p.dmg += int(e.damage)
+					p.by.append(fw)
+					pending[tx] = p
 			"heal":
 				# M4-3: Lifedrinker heals a standing fighter 1/LIFEDRINK_DIVISOR of what its hits dealt this
 				# round, rounded up, up to its maximum.
@@ -858,7 +882,15 @@ static func cross_check(battle_log: Dictionary, report: Dictionary) -> Array:
 				var share := floori(float(drunk) / int(MagicData.SPELLS.blood_moon.share)) if by_moon \
 					else ceili(float(drunk) / AutoBattleResolver.LIFEDRINK_DIVISOR)
 				var want := mini(top, int(e.from) + share)
-				if (by_moon and not moon) or (not by_moon and String(hf.trait) != AutoBattleResolver.LIFEDRINKER) or not state.fighters[int(e.f)].alive:
+				if String(e.get("trait", "")) == AutoBattleResolver.SIPHON:
+					# CW-2: Siphon heals a standing fighter that landed a hit this round SIPHON_HEAL, up to its maximum.
+					if String(hf.trait) != AutoBattleResolver.SIPHON or not state.fighters[int(e.f)].alive or drunk <= 0:
+						_add(r, "Round %d: fighter %d siphons, but only a standing fighter with Siphon that landed a hit this round does." % [int(e.n), int(e.f)])
+					elif int(e.from) != int(state.fighters[int(e.f)].hp) or int(e.to) != mini(int(hf.max_hp), int(e.from) + AutoBattleResolver.SIPHON_HEAL) \
+							or int(e.dealt) != drunk:
+						_add(r, "Round %d: fighter %d siphons from %d to %d, but it had %d hp and Siphon heals %d." % [int(e.n), int(e.f),
+							int(e.from), int(e.to), int(state.fighters[int(e.f)].hp), AutoBattleResolver.SIPHON_HEAL])
+				elif (by_moon and not moon) or (not by_moon and String(hf.trait) != AutoBattleResolver.LIFEDRINKER) or not state.fighters[int(e.f)].alive:
 					_add(r, "Round %d: fighter %d heals, but only a standing fighter with Lifedrinker, or under the Blood Moon, does." % [int(e.n), int(e.f)])
 				elif int(e.from) != int(state.fighters[int(e.f)].hp) or int(e.to) != want or int(e.dealt) != drunk:
 					_add(r, "Round %d: fighter %d heals from %d to %d after dealing %d, but it had %d hp and its hits dealt %d this round." % [

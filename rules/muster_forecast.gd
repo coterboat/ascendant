@@ -131,8 +131,8 @@ static func recruit_destinations(state: GameState, faction_id: String, orders: A
 		if ut == null:
 			continue
 		var place := _recruit_place(state, after_board, faction, o)
-		var now := _destination(orders, after_board, faction, ut, place)
-		var was := _destination(orders, before_board, faction, ut, place)
+		var now := _destination(orders, after_board, faction, ut, place, o.into, _group_index(orders, i))
+		var was := _destination(orders, before_board, faction, ut, place, o.into, _group_index(orders, i))
 		var row := {"index": i, "unit": ut.name, "army": now.id, "name": now.name, "new": bool(now.new), "was": String(was.id), "outside": "",
 			"place": TurnResolver._province_name(after_board, place)}
 		var text := ""
@@ -155,9 +155,27 @@ static func _recruit_place(state: GameState, board: GameState, faction: Faction,
 	return faction.capital if where.is_empty() else where
 
 
+## CW-2: which new army a "new:<group>" recruit at `orders[i]` forms: the place of its group among the plan's new groups, in order
+## (0 for the first), or -1 for a recruit that names no new group.
+static func _group_index(orders: Array, i: int) -> int:
+	var o = orders[i]
+	if not (o is RecruitOrder) or not o.is_new_army():
+		return -1
+	var groups := []
+	for j in i + 1:
+		if orders[j] is RecruitOrder and orders[j].is_new_army() and not groups.has(orders[j].into):
+			groups.append(orders[j].into)
+	return groups.find(o.into)
+
+
 ## The army a recruit of `ut` at `place` would join on `board`, given the plan's moves: {"id", "name", "new"}. A new army is named
-## by the id the faction would hand out next.
-static func _destination(orders: Array, board: GameState, faction: Faction, ut: UnitType, place: String) -> Dictionary:
+## by the id the faction would hand out next. CW-2: a recruit that names an army (`into`) joins it while it is there; one that
+## names a new group (`group` its place among the plan's groups) forms that group's army.
+static func _destination(orders: Array, board: GameState, faction: Faction, ut: UnitType, place: String, into: String = "",
+		group: int = -1) -> Dictionary:
+	if group >= 0:
+		var id := String(board.peek_army_ids(faction.id, group + 1)[group])
+		return {"id": id, "name": TurnReportText.army_name(board, id, faction.id), "new": true}
 	var leaving := {}
 	var arriving := []
 	for o in orders:
@@ -174,6 +192,12 @@ static func _destination(orders: Array, board: GameState, faction: Faction, ut: 
 		if a.owner == faction.id and a.location == place and not leaving.has(a.id):
 			here.append(a)
 	here.sort_custom(func(x, y): return x.id < y.id)  # as TEXT, as the recruitment phase sorts
+	if not into.is_empty():
+		for a in here:
+			if a.id == into and a.ruler == null and (not ut.is_commander or a.commander == null):
+				return {"id": a.id, "name": TurnReportText.army_name(board, a.id, faction.id), "new": false}
+		var fallback := String(board.peek_army_ids(faction.id, 1)[0])  # it isn't there: the recruits form a new army
+		return {"id": fallback, "name": TurnReportText.army_name(board, fallback, faction.id), "new": true}
 	for a in here:
 		var fits: bool = a.ruler == null
 		if SiegeRules.is_engine(ut):
@@ -314,6 +338,10 @@ static func _text(board: GameState, faction_id: String, candidate: MusterOrder, 
 	for row in f.outside:
 		parts.append(RulerRules._cap(String(row.text)) + ".")
 	var info: Dictionary = f.info
+	if info.has("flame"):
+		# CW-2 (design/CANDLEWAKE.md §2.1, the director's ARM-1 rule): a merge or transfer takes the lower flame.
+		parts.append("%s flame falls from %d to %d: a merge takes the lower flame." % [RulerRules._cap(TurnReportText._possessive(
+			TurnReportText.army_name(board, String(info.to), faction_id))), int(info.flame.from), int(info.flame.to)])
 	if bool(info.get("commander_left", false)):
 		parts.append("Both armies have a commander, so the commander of %s stays behind as an army of its own." % TurnReportText.army_name(board, String(info.from), faction_id))
 	for d in f.dropped:

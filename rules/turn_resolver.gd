@@ -162,7 +162,7 @@ static func resolve(state: GameState, orders_by_faction: Dictionary, turn_seed: 
 	_capture(s, battle_sites, events)
 	_recruitment(s, recruits, events, state)  # Warband Muster gathers where the ruler started the turn
 	MarkRules.wake_step(s, events)  # CW-1: games where a faction marks its land only; CW-3 gives it its rules
-	WickRules.wick_step(s, events)  # CW-1: games where a faction keeps a flame only; CW-2 gives it its rules
+	WickRules.wick_step(s, events, state)  # CW-1, CW-2: games where a faction keeps a flame only
 	_income(s, events)
 	_research_phase(s, events)  # M4: games with paths only
 	_rulers_phase(s, events)
@@ -334,6 +334,34 @@ static func check_recruit(state: GameState, faction_id: String, order, gold_avai
 	return {}
 
 
+## CW-2 (#253, design/CANDLEWAKE.md §2.1): whether a recruit's `into` may be given: NEW_PREFIX and a group (letters, digits or
+## "_"), or an army of yours at `place` (where the recruit is made) that is not a ruler's and, for a commander, has none.
+## {} when it may, otherwise {"code", "reason"}. Siege engines join the army that carries them and name none.
+static func check_into(state: GameState, faction_id: String, order: RecruitOrder, place: String) -> Dictionary:
+	var into := order.into
+	if into.is_empty():
+		return {}
+	var ut := recruitable_type(state.find_faction(faction_id), order.unit_type_id, state)
+	if ut != null and SiegeRules.is_engine(ut):
+		return _reject("engine_into", "A siege engine joins the army that carries it; it can't name an army to join.")
+	if order.is_new_army():
+		var group := into.trim_prefix(RecruitOrder.NEW_PREFIX)
+		if group.is_empty() or not group.is_valid_identifier():
+			return _reject("bad_into", "A recruit for a new army names its group in letters and digits, like \"new:a\".")
+		return {}
+	var army := state.find_army(into)
+	if army == null or army.owner != faction_id:
+		return _reject("unknown_into", "There is no army of yours by that name to join. Pick one of your armies at %s, or a new army." % _province_name(state, place))
+	if army.location != place:
+		return _reject("into_elsewhere", "%s is at %s, but these recruits are made at %s. Pick an army there, or a new army." % [
+			RulerRules._cap(TurnReportText.army_name(state, army.id, faction_id)), _province_name(state, army.location), _province_name(state, place)])
+	if army.ruler != null:
+		return _reject("into_ruler", "%s travels alone: recruits never join a ruler's army." % RulerRules._cap(TurnReportText.army_name(state, army.id, faction_id)))
+	if ut != null and ut.is_commander and army.commander != null:
+		return _reject("into_led", "%s already has a commander. Pick an army without one, or a new army." % RulerRules._cap(TurnReportText.army_name(state, army.id, faction_id)))
+	return {}
+
+
 ## Warband Muster (§1.4): a recruit "with the ruler" needs a ruler with the ability, on the map (in
 ## `state`: the start of the turn when ordering, after battles when resolving), a regular unit (commanders
 ## come only from the capital), room under the per-turn limit, and the province where the ruler started
@@ -381,7 +409,7 @@ static func muster_province(start_state: GameState, fid: String) -> String:
 
 ## The first ruler id (in data order) whose ability is `ability_id`, for naming the ability.
 static func _first_ruler_with(ability_id: String) -> String:
-	for r in RulerData.RULERS:
+	for r in RulerRules.all_rulers():
 		if String(r.get("ability", "")) == ability_id:
 			return r.id
 	return ""
@@ -693,6 +721,8 @@ static func _muster_events(s: GameState, fid: String, info: Dictionary, events: 
 			numbers = {"from": info.from, "to": info.to, "units": info.units.duplicate(), "commander": info.commander, "engines": info.engines}
 	if not info.outside.is_empty():
 		numbers["outside"] = info.outside.duplicate(true)
+	if info.has("flame"):
+		numbers["flame"] = info.flame.duplicate()  # CW-2: the flame the army it joined fell to (a merge takes the lower)
 	var e := _event(type, "orders", province, [fid], armies, "order", numbers, "", MusterRules.CODEX)
 	e["text"] = MusterRules.event_sentence(s, e)
 	events.append(e)
@@ -1084,6 +1114,7 @@ static func _fight(s: GameState, resolver: BattleResolver, rng: SeededRNG, kind:
 	events.append(_event("border_battle" if kind == "border" else "battle", "battles", province_ids, fids, army_ids, cause,
 		numbers, text, codex))
 	_record_ruler_deaths(s, rulers_in, winner, kind, province_ids, events)
+	WickRules.harvest(s, kind, province_ids, sides, winner, destroyed, events)  # CW-2: the Candlewake's Half-Death only
 	return winner
 
 
@@ -1645,6 +1676,7 @@ static func _recruitment(s: GameState, recruits: Dictionary, events: Array, star
 		var faction := s.find_faction(fid)
 		var priced := price_recruits(s, fid, list, start)
 		faction.gold = priced.gold_after
+		var groups := {}  # CW-2: "new:<group>" -> the army that group formed this turn
 		for r in priced.results:
 			if not r.ok:
 				events.append(_rejected_event(s, fid, r.order, r, "recruitment"))
@@ -1657,10 +1689,15 @@ static func _recruitment(s: GameState, recruits: Dictionary, events: Array, star
 				_recruit_engine(s, faction, ut, r, events)  # M3c
 				continue
 			var with_ruler: bool = r.at == RecruitOrder.AT_RULER
-			var placed := _add_recruit(s, faction, ut, r.province)
+			var into: String = String(r.order.into) if r.get("order") is RecruitOrder else ""
+			var placed := _add_recruit(s, faction, ut, r.province, into, groups)
 			var army: Army = placed.army
 			var joined: String
-			if placed.created:
+			if not String(placed.fell_back).is_empty():
+				# CW-2 (§2.1): the army it named is no longer there, so the recruits form a new army, and the report says so.
+				joined = "%s was no longer there to join, so they form a new army: the %s." % [
+					RulerRules._cap(TurnReportText.army_name(s, String(placed.fell_back), fid)), army_label(s, army)]
+			elif placed.created:
 				joined = "They form a new army: the %s." % army_label(s, army)
 			elif ut.is_commander:
 				joined = "They now lead the %s." % army_label(s, army)
@@ -1686,6 +1723,10 @@ static func _recruitment(s: GameState, recruits: Dictionary, events: Array, star
 				numbers["max_hp"] = placed.max_hp
 				numbers["blood_levy"] = AscensionRules.blood_levy_divisor(s, fid)
 				text += " " + AscensionRules.arrival_text(ut, int(placed.hp), int(placed.max_hp), int(numbers.blood_levy))
+			if not placed.cooled.is_empty():
+				# CW-2: only a recruit that cooled the army it joined carries this, so every other event is unchanged.
+				numbers["flame"] = placed.cooled.duplicate()
+				text += " It cools the army from flame %d to %d." % [int(placed.cooled.from), int(placed.cooled.to)]
 			if not placed.outside.is_empty():
 				# ARM-1 (§2.1): only a recruit that joined an army under a blessing carries these, so every other event is unchanged.
 				numbers["outside_blessing"] = String(placed.outside.id)
@@ -1737,14 +1778,26 @@ static func _recruit_engine(s: GameState, faction: Faction, ut: UnitType, r: Dic
 ## army: a ruler travels alone (RulesCodex "ruler_army").
 ## Returns {"army": the army it joined, "created": true if that army was formed by this recruit, "hp" (the hp
 ## it arrives with), "max_hp"}. M4-2: under Blood Levy a regular recruit arrives missing a quarter of its hp.
-static func _add_recruit(s: GameState, faction: Faction, ut: UnitType, location: String = "") -> Dictionary:
+static func _add_recruit(s: GameState, faction: Faction, ut: UnitType, location: String = "", into: String = "",
+		groups: Dictionary = {}) -> Dictionary:
 	var where := faction.capital if location.is_empty() else location
 	var army: Army = null
 	var created := false
-	for a in _sorted_armies(s):
-		if a.owner == faction.id and a.location == where and a.ruler == null and (not ut.is_commander or a.commander == null):
-			army = a
-			break
+	var fell_back := ""
+	if into.begins_with(RecruitOrder.NEW_PREFIX):
+		army = s.find_army(String(groups.get(into, "")))  # CW-2: the army an earlier order of its group formed this turn
+	elif not into.is_empty():
+		var named := s.find_army(into)  # CW-2: the army it names, if it is still there
+		if named != null and named.owner == faction.id and named.location == where and named.ruler == null \
+				and (not ut.is_commander or named.commander == null):
+			army = named
+		else:
+			fell_back = into
+	else:
+		for a in _sorted_armies(s):
+			if a.owner == faction.id and a.location == where and a.ruler == null and (not ut.is_commander or a.commander == null):
+				army = a
+				break
 	if army == null:
 		army = Army.new()
 		army.id = s.new_army_id(faction.id)
@@ -1753,6 +1806,13 @@ static func _add_recruit(s: GameState, faction: Faction, ut: UnitType, location:
 		WickRules.light(s, army)  # CW-1: recruits forming a new army start it at its start flame (§2.1)
 		s.armies.append(army)
 		created = true
+		if into.begins_with(RecruitOrder.NEW_PREFIX):
+			groups[into] = army.id
+	var cooled := {}
+	if not created and not ut.is_commander and army.flame > WickRules.start_flame(s, faction.id):
+		# CW-2 (design/CANDLEWAKE.md §2.1): recruits cool what they join, to their own (start) flame. A commander doesn't.
+		cooled = {"from": army.flame, "to": WickRules.start_flame(s, faction.id)}
+		army.flame = int(cooled.to)
 	var unit := Unit.new(ut, faction.id)
 	var max_hp := unit.current_hp
 	if ut.is_commander:
@@ -1770,7 +1830,8 @@ static func _add_recruit(s: GameState, faction: Faction, ut: UnitType, location:
 			unit.add_status(UnitStatus.OUTSIDE_BLESSING, String(outside.id))
 		else:
 			outside = {}
-	return {"army": army, "created": created, "hp": unit.current_hp, "max_hp": max_hp, "outside": outside}
+	return {"army": army, "created": created, "hp": unit.current_hp, "max_hp": max_hp, "outside": outside, "cooled": cooled,
+		"fell_back": fell_back}
 
 
 static func _income(s: GameState, events: Array) -> void:

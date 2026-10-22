@@ -104,6 +104,47 @@ const RULERS: Array[Dictionary] = [
 	},
 ]
 
+## CW-2 (#253, design/CANDLEWAKE.md §4.2): the Candlewake's two rulers, behind their faction's preview (FactionData.
+## PREVIEW_FACTIONS). Kept apart from RULERS, so the shipped list and everything that walks it (portraits, models, the AI's
+## plans) stay as they are; RulerRules reads both (all_rulers). Mother Tallow's line names its founder ("naming.founder") and
+## counts on from the Ninth Chandler: her successor is the Tenth Chandler.
+const PREVIEW_RULERS: Array[Dictionary] = [
+	{
+		"id": "half_death",
+		"faction": "candlewake",
+		"name": "Half-Death",
+		"naming": {"style": "fixed"},
+		"kind": "god",
+		"battle_rank": "front",
+		"morale": 13,
+		"stats": {
+			"hp": {"base": 20, "gain": 3, "per": 1},
+			"attack": {"base": 9, "gain": 1, "per": 1},
+			"defense": {"base": 5, "gain": 1, "per": 2},
+		},
+		"ability": "harvest",
+		"succession": {"delay": 1, "power": "minus", "minus": 3},
+		"flavour": "What is left of the Wright, who died at noon, mid-stroke: half a face of smooth alabaster, half a hollow lit from inside. The tide itself. When its body falls it comes back, a little less of itself each time.",
+	},
+	{
+		"id": "mother_tallow",
+		"faction": "candlewake",
+		"name": "Mother Tallow",
+		"naming": {"style": "ordinal", "ruler": "the %s Chandler", "first": 9, "founder": "Mother Tallow"},
+		"kind": "mortal",
+		"battle_rank": "second",
+		"morale": 10,
+		"stats": {
+			"hp": {"base": 14, "gain": 1, "per": 1},
+			"attack": {"base": 7, "gain": 1, "per": 2},
+			"defense": {"base": 6, "gain": 1, "per": 2},
+		},
+		"ability": "vigil",
+		"succession": {"delay": 2, "power": "half"},
+		"flavour": "The Ninth Chandler: the one living woman among the dead, the one warm face, her taper burning gold. Patience. When she dies, the Tenth Chandler takes up the taper.",
+	},
+]
+
 ## Province abilities (§1.4). `values` is the effect at ability rank 1..4. `effect` is the plain rule
 ## with {ruler} (the ruler's name) and {value} filled in by RulerRules.ability_text.
 const ABILITIES := {
@@ -130,6 +171,22 @@ const ABILITIES := {
 		"values": [1, 2, 3, 4],
 		"short": "{value} recruits in the field",
 		"effect": "Each turn you may recruit up to {value} regular units with {ruler}, at the usual prices. They gather where {ruler} starts the turn and join your armies there at the end of the turn, if you still own that province then. Commanders still come only from the capital.",
+	},
+	# CW-2 (#253, design/CANDLEWAKE.md §4.2): the Candlewake's rulers' abilities. Harvest's `free_hold` is what it raises
+	# from a win over only a Free Hold, at any rank; `unit` is the type that rises. Vigil never lifts a flame above 3.
+	"harvest": {
+		"name": "Harvest",
+		"values": [1, 1, 2, 2],
+		"free_hold": 1,
+		"unit": "wickwardens",
+		"short": "{value} risen a won battle",
+		"effect": "Once a turn, when {ruler} wins a battle in a province against an army of another player, {value} Wickwardens rise from the dead there (1 when it beat only a Free Hold). They join the lowest-numbered of your armies that fought, at its flame, or form a new army.",
+	},
+	"vigil": {
+		"name": "Vigil",
+		"values": [1, 1, 2, 2],
+		"short": "flame at least {value}",
+		"effect": "In the Wick step, your armies in the province {ruler} is in burn at least at flame {value}. Vigil never lifts a flame above 3.",
 	},
 }
 

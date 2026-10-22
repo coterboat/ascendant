@@ -64,6 +64,9 @@ const ENGINES := {
 		"text": "A ram on wheels under a timber roof. " + ENGINE_RULE},
 	"beasts": {"id": "wallbreakers", "name": "Wallbreakers", "plural": "Wallbreakers", "faction": "beasts", "cost": 16,
 		"text": "A crew with a great iron-shod trunk. " + ENGINE_RULE},
+	# CW-2 (#253, design/CANDLEWAKE.md §5): the Siege Ram's numbers
+	"candlewake": {"id": "guttering_ram", "name": "Guttering Ram", "plural": "Guttering Rams", "faction": "candlewake", "cost": 18,
+		"text": "A ram of poured wax on an iron core, still guttering as it rolls. " + ENGINE_RULE},
 }
 
 

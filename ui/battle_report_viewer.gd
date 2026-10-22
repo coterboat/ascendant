@@ -70,6 +70,8 @@ const FACTOR_ENTRIES := {
 	"ruler": "ruler_in_battle",
 	"morale_ruler": "ruler_in_battle",
 	"ability_dread": "ability_dread",
+	"flame": "wick",  # CW-2
+	"morale_Toll": "trait_toll",
 }
 ## Player-facing names for the morale effects in a morale check.
 const MORALE_PART_NAMES := {
@@ -79,6 +81,7 @@ const MORALE_PART_NAMES := {
 	"ruler": "Its ruler still standing",
 	"Dread": "Dread (the enemy's Great Thornmane)",
 	"Dread Lands": "Dread Lands (fighting on the Blood Pact's own land)",  # M4-4, for M4-3's morale part
+	"Toll": "Toll (its Lamplighter, for the enemies fallen)",  # CW-2
 }
 
 var title_label: Label
