@@ -385,7 +385,9 @@ func _gesture() -> void:
 	var sig := _screen()
 	if not screens_seen.has(sig):
 		screens_seen[sig] = true
-		if screens_seen.size() <= NEW_SCREEN_SHOTS and gestures > 0:
+		# past the cap, only the rare screens a long run reaches late (a battle, the end of the game) still get their shot
+		var rare := sig.contains("Battle") or sig.contains("VictoryScreen")
+		if (screens_seen.size() <= NEW_SCREEN_SHOTS or rare) and gestures > 0:
 			await _shot("new_" + sig.replace(">", "+").replace(" ", "").left(60))
 	if _march_follow:
 		# --focus=battles: a march needs its destination, as a player clicks it next (into a garrison, a rival: a battle)
