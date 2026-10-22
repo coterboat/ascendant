@@ -16,7 +16,7 @@ class_name AscensionRules
 ##   research_points(state, fid), research_target(state, fid)   the pool and the target ("" for none).
 ##                                             The target is PRIVATE (§3.3): only its own faction's screens
 ##                                             may show it, and no event names it.
-##   research_rate(state, fid)                 {"rate", "parts", "capital_held", "others", "text", "short"}
+##   research_rate(state, fid)                 {"rate", "parts", "capital_held", "others", "text", "short", "gained_short"}
 ##   node_state(state, fid, nid)               {"state", "code", "reason"}: researched, researching,
 ##                                             available, needs (with the missing node) or closed (and why)
 ##   check_research(state, fid, nid)           {} or {"code", "reason"}: the ResearchOrder rule
@@ -36,7 +36,7 @@ class_name AscensionRules
 ##   A part is {"key": "path_<node id>", "node", "name", "value", "note", "codex", "mandate": ""}. ("mandate"
 ##   is empty so AutoBattleResolver._unit_mods, which keys parts by mandate, reads it without error; M4-3
 ##   keys path parts by "key".)
-## Text: gained_text, done_text, sworn_text, effect_preview, rate_text, closed_reason.
+## Text: gained_text (and gained_line, as the report reads it), done_text, sworn_text, effect_preview, rate_text, closed_reason.
 ## Transformations on the map (M4-2, #67; §3.4, §4, §6):
 ##   apply_node also changes the roster: rename in place (same id), new_unit_type joins it
 ##   transformation(state, fid), people_name, unit_title, base_unit_name, province_rule
@@ -259,11 +259,15 @@ static func path_complete(state: GameState, faction_id: String) -> bool:
 ## province it owns. The research phase runs after captures and Sworn Vassals, so it counts those.
 ## Returns {"rate", "capital_held", "capital_name", "others", "parts": [{"key", "name", "value", "note"}],
 ## "text" ("Research 9 a turn: Crownkeep 5 (your capital) and 4 from 4 other provinces"), "short"
-## ("Crownkeep 5, 4 other provinces 4")}. Rate 0 without paths.
+## ("Crownkeep 5, 4 other provinces 4"), "gained_short"}. While no other province pays research, the player's words name
+## the capital alone: "Research 5 a turn: Crownkeep 5 (your capital)" and "Crownkeep 5" (#281: "Crownkeep 5, 0 other
+## provinces 0" read like a typo). "gained_short" is the research_gained sentence's list (gained_text), which names both
+## parts whatever they pay, as every recorded game's digest has it. Rate 0 without paths.
 static func research_rate(state: GameState, faction_id: String) -> Dictionary:
 	var f: Faction = state.find_faction(faction_id) if has_paths(state) else null
 	if f == null:
-		return {"rate": 0, "capital_held": false, "capital_name": "", "others": 0, "parts": [], "text": "", "short": ""}
+		return {"rate": 0, "capital_held": false, "capital_name": "", "others": 0, "parts": [], "text": "", "short": "",
+			"gained_short": ""}
 	var cap := state.find_province(f.capital)
 	var cap_name: String = cap.name if cap else "your capital"
 	var held := cap != null and cap.owner == faction_id
@@ -281,11 +285,15 @@ static func research_rate(state: GameState, faction_id: String) -> Dictionary:
 			"note": "%d research for each province you own besides the capital" % per},
 	]
 	var rate := cap_value + others * per
-	var text := "Research %d a turn: %s %d (your capital%s) and %d from %s" % [rate, cap_name, cap_value,
-		"" if held else ", not held", others * per, _count(others, "other province", "other provinces")]
-	var short := "%s %d, %s %d" % [cap_name, cap_value, _count(others, "other province", "other provinces"), others * per]
+	var provinces := _count(others, "other province", "other provinces")
+	var gained_short := "%s %d, %s %d" % [cap_name, cap_value, provinces, others * per]
+	var text := "Research %d a turn: %s %d (your capital%s)" % [rate, cap_name, cap_value, "" if held else ", not held"]
+	var short := "%s %d" % [cap_name, cap_value]
+	if others * per > 0:
+		text += " and %d from %s" % [others * per, provinces]
+		short = gained_short
 	return {"rate": rate, "capital_held": held, "capital_name": cap_name, "others": others, "parts": parts,
-		"text": text, "short": short}
+		"text": text, "short": short, "gained_short": gained_short}
 
 
 ## The rate in one line for reasons and forecasts: "you gain 7 a turn".
@@ -464,8 +472,8 @@ static func set_target(state: GameState, faction_id: String, node_id: String) ->
 ## gains research_rate; then, if the target is paid for, its cost is paid and it is done (apply_node).
 ## At most one node a turn. The target then becomes empty, except after an Oath: its transformation
 ## becomes the target at once. Points left over stay in the pool, and so do points gained with no target.
-## Returns {"faction", "rate", "short", "parts", "pool_before", "gained", "pool_after", "target_before",
-## "done" (node id or ""), "cost", "sworn" (the branch an Oath swore, or ""), "target_after", "applied"
+## Returns {"faction", "rate", "short", "gained_short" (research_rate's), "parts", "pool_before", "gained", "pool_after",
+## "target_before", "done" (node id or ""), "cost", "sworn" (the branch an Oath swore, or ""), "target_after", "applied"
 ## (apply_node's result, or {})}. Nothing happens without paths ({"rate": 0, "done": ""}).
 static func research_step(state: GameState, faction_id: String, turn: int) -> Dictionary:
 	var f: Faction = state.find_faction(faction_id) if has_paths(state) else null
@@ -475,9 +483,9 @@ static func research_step(state: GameState, faction_id: String, turn: int) -> Di
 	var before := f.research_points
 	f.research_points += int(rate.rate)
 	var target := f.research_target
-	var out := {"faction": faction_id, "rate": int(rate.rate), "short": rate.short, "parts": rate.parts.duplicate(true),
-		"pool_before": before, "gained": int(rate.rate), "pool_after": f.research_points, "target_before": target,
-		"done": "", "cost": 0, "sworn": "", "target_after": target, "applied": {}}
+	var out := {"faction": faction_id, "rate": int(rate.rate), "short": rate.short, "gained_short": rate.gained_short,
+		"parts": rate.parts.duplicate(true), "pool_before": before, "gained": int(rate.rate), "pool_after": f.research_points,
+		"target_before": target, "done": "", "cost": 0, "sworn": "", "target_after": target, "applied": {}}
 	if target.is_empty() or not check_research(state, faction_id, target).is_empty():
 		_sell_research(state, f, out)  # M5-5: with nothing left to research, research becomes gold
 		return out
@@ -685,10 +693,22 @@ static func part_rule(key_or_node: String) -> String:
 # --- text -----------------------------------------------------------------------------------------
 
 ## The research_gained sentence (§9.5), public, so it never names the target (§3.3): "The Aurel Crown
-## gained 9 research (Crownkeep 5, 4 other provinces 4)."
+## gained 9 research (Crownkeep 5, 4 other provinces 4)." It is the event's own text, which every recorded game's digest has,
+## so it lists both parts (the step's "gained_short") even when no other province pays; players read gained_line (#281).
 static func gained_text(state: GameState, faction_id: String, step: Dictionary) -> String:
 	return "%s gained %d research (%s)." % [_cap(_the_faction(state, faction_id)), int(step.get("gained", 0)),
-		String(step.get("short", ""))]
+		String(step.get("gained_short", step.get("short", "")))]
+
+
+## A research_gained event's sentence as players read it (#281), from the event: its own text without a part that pays
+## nothing, as research_rate's "short" leaves it out. "The Thornmane Clans gained 5 research (Fangridge 5)." where the
+## record says "(Fangridge 5, 0 other provinces 0)". The event itself is not changed.
+static func gained_line(e: Dictionary) -> String:
+	var text := String(e.get("text", ""))
+	for part in e.get("numbers", {}).get("parts", []):
+		if part is Dictionary and String(part.get("key", "")) == "provinces" and int(part.get("value", 0)) == 0:
+			text = text.replace(", %s 0)." % String(part.get("name", "")), ").")
+	return text
 
 
 ## The research_done sentence (§9.5) for a node `faction_id` just completed in `state` (the state after

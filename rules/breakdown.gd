@@ -384,7 +384,7 @@ static func research_rate(state: GameState, faction_id: String) -> Dictionary:
 	var rate := AscensionRules.research_rate(state, faction_id)
 	var lines := []
 	for part in rate.parts:
-		lines.append(_line(String(part.name), int(part.value), String(part.note)))
+		lines.append(_line(RulerRules._cap(String(part.name)), int(part.value), String(part.note)))  # a capital named "the ..." heads its line
 	var desc := RulesCodex.text("research_points")
 	return _coded(_make("Research per turn of the %s" % f.faction_name, desc, lines, "Research per turn", int(rate.rate)),
 		"research_points")

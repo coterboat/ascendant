@@ -154,6 +154,25 @@ func test_every_card_shows_its_node_state_with_the_plain_reason() -> void:
 		assert_true(seen.has(name), "the stages cover a %s node" % name)
 
 
+## #281 (QA-1): on turn 1 only the capital pays research, and the Research per turn box says so plainly: "Crownkeep 5", not "Crownkeep
+## 5, 0 other provinces 0". So does the Researching line ("You gain 5 a turn (Crownkeep 5)").
+func test_the_research_box_names_the_capital_alone_before_any_capture() -> void:
+	var s := _paths()
+	var capital := int(PathData.RESEARCH.capital)
+	var cap := s.find_province(s.find_faction(CROWN).capital).name
+	AscensionRules.set_target(s, CROWN, "crown_charters")
+	var panel := _panel(s, CROWN)
+	var parts := panel.sidebar.find_child("RateParts", true, false) as Label
+	assert_true(parts != null, "the box says where research comes from")
+	if parts:
+		assert_eq(parts.text, "%s %d" % [cap, capital])
+	var text := panel.sidebar.find_child("TargetText", true, false) as Label
+	assert_true(text != null and text.text.contains("You gain %d a turn (%s %d)," % [capital, cap, capital]), text.text if text else "no Researching line")
+	# The breakdown behind the box still shows its "0 other provinces: +0" line: a sum, which says where more research would come from.
+	assert_true(parts == null or parts.tooltip_text.contains("%s (capital): %d" % [cap, capital]), parts.tooltip_text if parts else "")
+	panel.free()
+
+
 func test_the_sidebar_shows_research_per_turn_the_pool_and_the_target() -> void:
 	var s := _paths()
 	s.find_faction(CROWN).research_points = 4

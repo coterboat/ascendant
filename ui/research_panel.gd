@@ -556,7 +556,8 @@ func _fill_sidebar(own: bool) -> void:
 	var rate := _label(sidebar, String(s.rate_text), 18, UiPalette.TEXT_PRIMARY)
 	rate.name = "RateLabel"
 	_bd(rate, s.rate)
-	var short := _label(sidebar, String(AscensionRules.research_rate(state, showing_fid).short), 14, UiPalette.TEXT_SECONDARY)
+	# "Crownkeep 5, 4 other provinces 4", or "Crownkeep 5" alone (#281); a line of its own, so a capital named "the ..." starts with a capital
+	var short := _label(sidebar, RulerRules._cap(String(AscensionRules.research_rate(state, showing_fid).short)), 14, UiPalette.TEXT_SECONDARY)
 	short.name = "RateParts"
 	_bd(short, s.rate)
 	if not own:
