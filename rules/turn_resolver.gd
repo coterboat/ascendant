@@ -381,7 +381,7 @@ static func muster_province(start_state: GameState, fid: String) -> String:
 
 ## The first ruler id (in data order) whose ability is `ability_id`, for naming the ability.
 static func _first_ruler_with(ability_id: String) -> String:
-	for r in RulerData.RULERS:
+	for r in RulerRules.all_rulers():
 		if String(r.get("ability", "")) == ability_id:
 			return r.id
 	return ""

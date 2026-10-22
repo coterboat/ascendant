@@ -41,9 +41,22 @@ static func in_play(state: GameState) -> bool:
 	return false
 
 
-## The flame a new army of `faction_id` starts at (§2.1: 1; Kindling's 2 is CW-2).
-static func start_flame(_state: GameState, faction_id: String) -> int:
-	return int(FactionData.row(faction_id).get("wick", {}).get("start", 1))
+## The flame a new army of `faction_id`, and its recruits, start at (§2.1, §4.3): the row's start (1), or a mandate's
+## "start_flame" when it has one (Kindling: 2), never above the cap.
+static func start_flame(state: GameState, faction_id: String) -> int:
+	var out := int(FactionData.row(faction_id).get("wick", {}).get("start", 1))
+	if state != null:
+		for mid in RulerRules.mandates(state, faction_id):
+			out = maxi(out, int(RulerRules.mandate_data(mid).get("start_flame", 0)))
+	return mini(out, cap(state, faction_id))
+
+
+## The flame `army` fights a battle at (§2.2): its flame (the one the battle phase began with: nothing changes a flame
+## during the battle phase), with any battle bonus (Bonfire Night, CW-5), never above its cap. -1 for an army with none.
+static func battle_flame(state: GameState, army: Army) -> int:
+	if army == null or army.flame < 0:
+		return -1
+	return mini(army.flame, cap(state, army.owner))
 
 
 ## The highest flame `faction_id`'s armies reach (§2.1: 3; the Red Wake's 4 is CW-4).

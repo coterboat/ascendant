@@ -52,8 +52,9 @@ const FACTIONS: Array[Dictionary] = [
 ]
 
 ## CW-0: the factions behind a preview box (design/CANDLEWAKE.md §12: the Candlewake's box, off by default). The Candlewake's
-## §4.1 stat lines without their traits: Pall, Siphon, Flare and Toll come with their code and words in CW-2 (#253), with the
-## rulers, mandates, presets and the Guttering Ram; their path is CW-4 and their magic CW-5. Ids from the CW-9 manifest.
+## §4.1 host, ids from the CW-9 manifest; CW-2 (#253) gives them their traits (Pall, Siphon, Flare, Toll: AutoBattleResolver),
+## rulers, mandates and presets (RulerData, MandateData and BuildPresetData's preview lists) and the Guttering Ram
+## (FortData.ENGINES); their path is CW-4 and their magic CW-5.
 const PREVIEW_FACTIONS: Array[Dictionary] = [
 	{
 		"id": "candlewake",
@@ -62,11 +63,11 @@ const PREVIEW_FACTIONS: Array[Dictionary] = [
 		"capital": "",
 		"capital_name": "the Long Vigil",
 		"unit_types": [
-			{"id": "wickwardens", "name": "Wickwardens", "hp": 7, "attack": 9, "defense": 8, "morale": 8, "cost": 7, "trait": ""},
-			{"id": "gleaners", "name": "Gleaners", "hp": 6, "attack": 11, "defense": 4, "morale": 7, "cost": 8, "trait": ""},
-			{"id": "hundred_wick", "name": "Hundred-Wick", "hp": 20, "attack": 13, "defense": 5, "morale": 9, "cost": 18, "trait": ""},
+			{"id": "wickwardens", "name": "Wickwardens", "hp": 7, "attack": 9, "defense": 8, "morale": 8, "cost": 7, "trait": "Pall"},
+			{"id": "gleaners", "name": "Gleaners", "hp": 6, "attack": 11, "defense": 4, "morale": 7, "cost": 8, "trait": "Siphon"},
+			{"id": "hundred_wick", "name": "Hundred-Wick", "hp": 20, "attack": 13, "defense": 5, "morale": 9, "cost": 18, "trait": "Flare"},
 		],
-		"commander": {"id": "lamplighter", "name": "Lamplighter", "hp": 22, "attack": 11, "defense": 9, "morale": 12, "cost": 30, "trait": ""},
+		"commander": {"id": "lamplighter", "name": "Lamplighter", "hp": 22, "attack": 11, "defense": 9, "morale": 12, "cost": 30, "trait": "Toll"},
 		"start_army": ["wickwardens", "wickwardens", "gleaners", "hundred_wick"],
 		# CW-1 (#252, §2.1): every army but a ruler's burns at a flame from 0 to "cap", starting at "start" (WickRules)
 		"wick": {"start": 1, "cap": 3},

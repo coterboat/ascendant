@@ -5,8 +5,8 @@ extends "res://tests/test_case.gd"
 ## rematch. The byte gate for the Crown and the Clans is tests/test_cw0_byte_gate.gd.
 ##
 ## The Candlewake ship behind their preview box (CW-7, design/CANDLEWAKE.md §12): FactionData.FACTIONS keeps the two shipped factions and
-## the Candlewake are FactionData.PREVIEW_FACTIONS. Until CW-2, CW-4 and CW-5 they have no ruler, path or mage, so they play
-## games without rulers, paths and magic: with or without forts and sieges, independents and fog of war.
+## the Candlewake are FactionData.PREVIEW_FACTIONS. CW-2 gave them rulers; until CW-4 and CW-5 they have no path or mage, so they
+## play games without paths and magic.
 
 const CROWN := "kingdom"
 const CLANS := "beasts"
@@ -80,11 +80,12 @@ func test_the_candlewake_row_sits_behind_the_preview() -> void:
 	assert_false(WAKE.contains("-"), "army ids are <faction>-<n>")
 	assert_ne(WAKE, IndependentData.FACTION_ID)
 	assert_false(WAKE.begins_with("free"), "Free Holds army ids begin with 'free'")
-	# CW-0: the §4.1 roster as plain stat lines, ids from the CW-9 manifest; traits are CW-2's.
+	# The §4.1 host, ids from the CW-9 manifest, each with its trait and the trait's words (CW-2).
 	assert_eq(row.unit_types.map(func(u): return String(u.id)), ["wickwardens", "gleaners", "hundred_wick"])
 	assert_eq(String(row.commander.id), "lamplighter")
+	assert_eq((row.unit_types + [row.commander]).map(func(u): return String(u.trait)), AutoBattleResolver.WICK_TRAITS)
 	for u in row.unit_types + [row.commander]:
-		assert_eq(String(u.trait), "", "%s has no trait until CW-2 gives it its code and words" % u.name)
+		assert_false(String(AutoBattleResolver.TRAIT_TEXT.get(String(u.trait), "")).is_empty(), "%s's trait has its words" % u.name)
 	# The start army: 2 Wickwardens, the Gleaners and the Hundred-Wick, with the Lamplighter, the cheapest of the three.
 	assert_eq(row.start_army, ["wickwardens", "wickwardens", "gleaners", "hundred_wick"])
 	var own := _row_cost(WAKE, row.start_army) + int(row.commander.cost)
@@ -157,9 +158,11 @@ func test_the_candlewake_start_army_and_capital_in_a_sieges_game() -> void:
 		assert_eq(army.commander.type.id, "lamplighter")
 		var cap := s.find_province(wake.capital)
 		assert_eq(cap.fort_level, int(FortData.START.capital), "the Long Vigil is a citadel like every capital")
-		# CW-0: the Candlewake have no siege engine yet (the Guttering Ram is CW-2): nothing to recruit, and no crash.
-		assert_true(FortData.engine_for(WAKE).is_empty())
-		assert_eq(SiegeRules.engine_type(WAKE), null)
+		# CW-2: the Guttering Ram, the Siege Ram's numbers (§5).
+		var ram := SiegeRules.engine_type(WAKE)
+		assert_eq(ram.id, "guttering_ram")
+		assert_eq(ram.cost, int(FortData.ENGINES.kingdom.cost), "the Siege Ram's price")
+		assert_eq(TurnResolver.recruitable_type(wake, "guttering_ram", s).id, "guttering_ram")
 		assert_eq(TurnResolver.recruitable_type(wake, "siege_ram", s), null, "another faction's engine is never theirs")
 
 
@@ -187,7 +190,6 @@ func test_the_factory_refuses_in_plain_words() -> void:
 		[[CROWN, CROWN], {}, "twice"],
 		[[CROWN], {}, "two"],
 		[[CROWN, CLANS, WAKE], {}, "two"],
-		[[CROWN, WAKE], {"rulers": true}, "rulers"],
 		[[WAKE, CLANS], {"paths": true}, "paths"],
 		[[CROWN, WAKE], {"magic": true}, "magic"],
 	]
@@ -200,16 +202,17 @@ func test_the_factory_refuses_in_plain_words() -> void:
 		assert_true(text.to_lower().contains(String(c[2])), "%s: the reason says why ('%s'): %s" % [c[0], c[2], text])
 		for raw in ["candlewake", "kingdom", "beasts"]:
 			assert_false(text.contains(raw), "no raw ids in '%s'" % text)
-	# Builds ask for rulers too.
+	# CW-2: rulers are theirs now, by preset or build; a build of the wrong faction is refused in words.
 	var errors := []
-	assert_eq(GameState.create(5, [CROWN, WAKE], {}, {CROWN: "regents_court"}, errors), null, "builds mean rulers")
-	assert_true(" ".join(errors).contains("rulers"), " ".join(errors))
+	assert_true(GameState.create(5, [CROWN, WAKE], {"rulers": true}, {}, errors) != null, "rulers: %s" % [errors])
+	assert_true(GameState.create(5, [WAKE, CLANS], {}, {WAKE: "harvest_moot"}, errors) != null, "a Candlewake preset: %s" % [errors])
+	assert_eq(GameState.create(5, [CROWN, WAKE], {}, {WAKE: "regents_court"}, errors), null, "the Crown's preset isn't theirs")
 
 
 func test_system_problems_name_what_a_faction_cannot_play_yet() -> void:
-	for system in ["sieges", "independents", "fog"]:
+	for system in ["sieges", "independents", "fog", "rulers"]:
 		assert_eq(GameState.system_problems(WAKE, {system: true}), [], "the Candlewake play with %s" % system)
-	for system in ["rulers", "paths", "magic"]:
+	for system in ["paths", "magic"]:
 		var problems := GameState.system_problems(WAKE, {system: true})
 		assert_eq(problems.size(), 1, "one reason for %s" % system)
 		assert_true(String(problems[0]).begins_with("The Candlewake"), problems[0])

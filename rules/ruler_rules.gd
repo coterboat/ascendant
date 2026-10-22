@@ -61,10 +61,15 @@ const STAT_NAMES := {"hp": "Maximum hit points", "attack": "Attack", "defense": 
 # --- data lookups ---------------------------------------------------------------------------------
 
 static func ruler_data(ruler_id: String) -> Dictionary:
-	for r in RulerData.RULERS:
+	for r in all_rulers():
 		if r.id == ruler_id:
 			return r
 	return {}
+
+
+## Every ruler: the shipped ones, then those behind a faction's preview (RulerData.PREVIEW_RULERS, CW-2).
+static func all_rulers() -> Array:
+	return RulerData.RULERS + RulerData.PREVIEW_RULERS
 
 
 static func mandate_data(mandate_id: String) -> Dictionary:
@@ -75,6 +80,9 @@ static func mandate_data(mandate_id: String) -> Dictionary:
 		if m.id == mandate_id:
 			return m
 	for m in MandateData.MAGIC_MANDATES:  # M5-5: the mandates of magic (games with magic only)
+		if m.id == mandate_id:
+			return m
+	for m in MandateData.PREVIEW_MANDATES:  # CW-2: the mandates of the factions behind a preview
 		if m.id == mandate_id:
 			return m
 	for m in MandateData.TEST_MANDATES:  # M5-11: the balance check's do-nothing mandate (on no list anyone picks from)
@@ -89,19 +97,20 @@ static func ability_data(ruler_id: String) -> Dictionary:
 
 ## The preset with this id, with its "faction" added, or {}.
 static func preset_data(preset_id: String) -> Dictionary:
-	for fid in BuildPresetData.PRESETS:
-		for p in BuildPresetData.PRESETS[fid]:
-			if p.id == preset_id:
-				var out: Dictionary = p.duplicate(true)
-				out["faction"] = fid
-				return out
+	for table in [BuildPresetData.PRESETS, BuildPresetData.PREVIEW_PRESETS]:  # CW-2: and the presets behind a preview
+		for fid in table:
+			for p in table[fid]:
+				if p.id == preset_id:
+					var out: Dictionary = p.duplicate(true)
+					out["faction"] = fid
+					return out
 	return {}
 
 
 ## The rulers `faction_id` can choose, in data order.
 static func rulers_for(faction_id: String) -> Array:
 	var out := []
-	for r in RulerData.RULERS:
+	for r in all_rulers():
 		if r.faction == faction_id:
 			out.append(r.id)
 	return out
@@ -114,7 +123,7 @@ static func rulers_for(faction_id: String) -> Array:
 static func available_mandates(faction_id: String, state: GameState = null) -> Array:
 	var shared := []
 	var own := []
-	for m in MandateData.MANDATES:
+	for m in MandateData.MANDATES + MandateData.PREVIEW_MANDATES:  # CW-2: a preview faction's own come after its shared
 		if String(m.faction).is_empty():
 			shared.append(m.id)
 		elif m.faction == faction_id:
@@ -133,12 +142,17 @@ static func available_mandates(faction_id: String, state: GameState = null) -> A
 
 ## The faction's preset dictionaries, in data order (an AI seat rolls an index into this list).
 static func presets_for(faction_id: String) -> Array:
-	return BuildPresetData.PRESETS.get(faction_id, []).duplicate(true)
+	return _preset_rows(faction_id).duplicate(true)
+
+
+## `faction_id`'s preset rows: BuildPresetData.PRESETS, or (CW-2) its preview's.
+static func _preset_rows(faction_id: String) -> Array:
+	return BuildPresetData.PRESETS.get(faction_id, BuildPresetData.PREVIEW_PRESETS.get(faction_id, []))
 
 
 ## Id of the faction's balanced preset: the build a game with rulers gives a faction that chose none.
 static func balanced_preset(faction_id: String) -> String:
-	for p in BuildPresetData.PRESETS.get(faction_id, []):
+	for p in _preset_rows(faction_id):
 		if p.style == BuildPresetData.BALANCED:
 			return p.id
 	return ""
@@ -254,6 +268,8 @@ static func ruler_name(ruler_id: String, generation: int = 1) -> String:
 		return "an unknown ruler"
 	var naming: Dictionary = r.get("naming", {})
 	var g := maxi(1, generation)
+	if g == 1 and naming.has("founder"):
+		return String(naming.founder)  # CW-2: a line whose founder has a name of her own (Mother Tallow, then the Tenth Chandler)
 	match String(naming.get("style", "fixed")):
 		"regnal":
 			return String(naming.ruler) % roman(g)
@@ -822,7 +838,7 @@ static func build_errors(faction_id: String, build) -> Array:
 	if build is String or build is StringName:
 		var preset := preset_data(String(build))
 		var names := []
-		for p in BuildPresetData.PRESETS.get(faction_id, []):
+		for p in _preset_rows(faction_id):
 			names.append(p.name)
 		if preset.is_empty():
 			return ["'%s' is not a build preset in this game. The %s presets are %s." % [String(build), fname, _and_list(names)]]
@@ -1070,6 +1086,10 @@ static func price_mods(state: GameState, faction_id: String, ut: UnitType) -> Ar
 		if divisor > 0:
 			out.append({"mandate": mid, "key": AutoBattleResolver.MANDATE_PREFIX + mid, "name": md.name,
 				"value": -floori(float(ut.cost) / divisor)})
+		var fixed: Dictionary = md.get("unit_cost", {})  # CW-2: Tallow Levy, Wickwardens at 5 instead of 7
+		if fixed.has(ut.id):
+			out.append({"mandate": mid, "key": AutoBattleResolver.MANDATE_PREFIX + mid, "name": md.name,
+				"value": int(fixed[ut.id]) - ut.cost})
 	out.append_array(AscensionRules.price_parts(state, faction_id, ut))
 	return out
 
