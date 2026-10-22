@@ -869,7 +869,8 @@ static func place_fort(world: Node3D, faction: String, at: Vector2, yaw: float, 
 ## The field band the camera fills, in view pixels (the view is the field).
 func _band() -> Rect2:
 	var b := stage_band()
-	var r := Rect2(b.position.x + BAND_SIDE, b.position.y + BAND_TOP, b.size.x - BAND_SIDE * 2.0, maxf(40.0, b.size.y - BAND_TOP - BAND_BOTTOM))
+	var top := BAND_TOP + hud_drop() ## #265: with more plates the banner stands lower (hud_drop)
+	var r := Rect2(b.position.x + BAND_SIDE, b.position.y + top, b.size.x - BAND_SIDE * 2.0, maxf(40.0, b.size.y - top - BAND_BOTTOM))
 	return Rect2(r.position * _px, r.size * _px)
 
 
@@ -2291,7 +2292,8 @@ func _draw_overlay(ci: CanvasItem) -> void:
 		var rect := _words_rect(font, String(n["text"]), int(n["size"]), shown)
 		if bool(n.get("tag", false)):
 			var band := stage_band()
-			rect = place_words(rect, placed, Rect2(Vector2(0.0, band.position.y + WORDS_TOP), Vector2(field_width(), band.size.y - WORDS_TOP)))
+			var top := WORDS_TOP + hud_drop() ## #265: under the banner and the moment's line, lower with more plates
+			rect = place_words(rect, placed, Rect2(Vector2(0.0, band.position.y + top), Vector2(field_width(), band.size.y - top)))
 			shown = Vector2(rect.position.x + rect.size.x * 0.5, rect.end.y - 4.0)
 			pos = shown + Vector2(0, rise)
 		placed.append(rect)

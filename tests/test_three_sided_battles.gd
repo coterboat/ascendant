@@ -248,6 +248,43 @@ func test_the_top_bar_fits_three_plates_and_the_centre_at_every_size() -> void:
 			assert_true(v.chips_width(chips) + 20.0 <= v._centre_w + 0.5, "%s at %s: the condition chips fit the centre (%.0f of %.0f)" % [name,
 				view_size, v.chips_width(chips) + 20.0, v._centre_w])
 			assert_true(absf(v.centre.size.x - v._centre_w) < 0.5, "%s at %s: the centre plate keeps the width between the plates" % [name, view_size])
+			## each side's morale tag stays on the field, clear of every other, with the why panel docked over the right or closed
+			for why_open in [true, false]:
+				v.controls.set_why(why_open, false)
+				var fw := v.field_width()
+				var tags := []
+				for k in 3:
+					var tr: Rect2 = v._tag_rect(k, fw)
+					assert_true(tr.size.x > 0.0 and tr.position.x >= BattleSimpleView.MARGIN - 0.5 and tr.end.x <= fw - BattleSimpleView.MARGIN + 0.5,
+						"%s at %s, why %s: tag %d hangs on the field (%s, the field %.0f wide)" % [name, view_size, why_open, k, tr, fw])
+					tags.append(tr)
+				for a in 3:
+					for b in range(a + 1, 3):
+						assert_false((tags[a] as Rect2).intersects(tags[b]), "%s at %s, why %s: tags %d and %d stand apart" % [name, view_size, why_open, a, b])
+			v.free()
+
+
+func test_each_morale_tag_names_its_side_in_both_views() -> void:
+	for name in T.names():
+		var fx := _fixture(name)
+		for kind in ["simple", "3d"]:
+			var v: BattleSimpleView = BattleSimpleView.new() if kind == "simple" else BattleStage3D.new()
+			assert_eq(v.show_battle(fx.log, fx.report, fx.seats), "", "%s plays (%s)" % [name, kind])
+			var checked := {}
+			for b in v.player.beats():
+				if b.kind != "morale" or checked.has(int(b.side)):
+					continue
+				## a round's morale checks land together: fire them
+				v.player.seek_beat(int(b.i))
+				v.player.play()
+				v.tick(0.0001)
+				v.player.pause()
+				for si in fx.log.sides.size():
+					var text := String(v.tag_labels[v.plate_of(si)].text)
+					if not text.is_empty() and not checked.has(si):
+						assert_true(text.begins_with(_name(fx, si)), "%s (%s): %s's morale tag says whose it is (\"%s\")" % [name, kind, _name(fx, si), text])
+						checked[si] = true
+			assert_eq(checked.size(), 3, "%s (%s): every side's morale check shows its tag" % [name, kind])
 			v.free()
 
 

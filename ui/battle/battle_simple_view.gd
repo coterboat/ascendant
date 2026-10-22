@@ -71,6 +71,8 @@ const SIDE_PLATE_MIN_W := 340.0
 ## #265: a side plate's least width when more than two share the top bar (264 at a 1280-wide view with three, less when the
 ## centre's words need more room: a long condition chip with no short words, as outside a besieged fort's walls).
 const MANY_PLATE_MIN_W := 180.0
+## #265: with more than two plates, how much lower the round banner and the moment's line stand (hud_drop): a tag's row.
+const TAG_ROW_H := 30.0
 const SIDE_PLATE_GAP := 12.0
 const CENTRE_MIN_W := 420.0
 const HUD_TOP := MARGIN + SIDE_PLATE_H + 8.0
@@ -336,6 +338,12 @@ func plate_groups() -> Array:
 ## Whether plate `k` is on the top bar's right half (its bar mirrored, its words to the right).
 func plate_on_right(k: int) -> bool:
 	return (plate_groups()[1] as Array).has(k)
+
+
+## #265: how far the round banner and the moment's line stand lower than with two sides: with more plates a morale tag can hang
+## in the middle of the top, where the banner shows, so they drop below the tags' row (0 with two sides).
+func hud_drop() -> float:
+	return TAG_ROW_H if plates_used() > 2 else 0.0
 
 
 ## An Array with `value` for each side of the battle on screen.
@@ -861,13 +869,32 @@ func plate_rect(k: int) -> Rect2:
 
 
 ## Where side plate `k`'s morale tag hangs: under its plate, on its plate's side, left of the docked why panel (field `fw`).
+## #265: with more than two plates, the left half's tags hang under their plates; the right half's under theirs too while the
+## field reaches them, and otherwise packed leftward in their order to end at the field's edge (narrowed if they must be),
+## so no two tags of a round's morale checks ever stand on each other.
 func _tag_rect(k: int, fw: float) -> Rect2:
-	var pr := plate_rect(k)
 	var y := MARGIN + SIDE_PLATE_H + 6.0
 	if plates_used() <= 2:
 		var tw := minf(520.0, fw / 2.0 - MARGIN - 8.0)
 		return Rect2(MARGIN if k == 0 else fw - MARGIN - tw, y, tw, 22.0)
-	return Rect2(minf(pr.position.x, fw - MARGIN - pr.size.x), y, pr.size.x, 22.0)
+	var groups := plate_groups()
+	var left: Array = groups[0]
+	var right: Array = groups[1]
+	if left.has(k):
+		var pl := plate_rect(k)
+		return Rect2(pl.position.x, y, pl.size.x, 22.0)
+	var floor_x := plate_rect(int(left[-1])).end.x + SIDE_PLATE_GAP
+	var room := (fw - MARGIN) - floor_x - SIDE_PLATE_GAP * (right.size() - 1)
+	var w := minf(plate_width(), room / float(right.size()))
+	var limit := fw - MARGIN
+	var out := Rect2()
+	for j in range(right.size() - 1, -1, -1):
+		var end := minf(plate_rect(int(right[j])).end.x, limit)
+		var r := Rect2(end - w, y, w, 22.0)
+		if int(right[j]) == k:
+			out = r
+		limit = r.position.x - SIDE_PLATE_GAP
+	return out
 
 
 func _set_why_open(on: bool) -> void:
@@ -912,9 +939,9 @@ func _layout() -> void:
 	for n in [cards_layer, effects]:
 		(n as Control).position = band.position
 		(n as Control).size = band.size
-	banner_label.position = Vector2(0, band.position.y + 14.0)
+	banner_label.position = Vector2(0, band.position.y + 14.0 + hud_drop())
 	banner_label.size.x = fw
-	toast_label.position = Vector2(200, band.position.y + 54.0)
+	toast_label.position = Vector2(200, band.position.y + 54.0 + hud_drop())
 	toast_label.size.x = maxf(200.0, fw - 400.0)
 	# The plates in the top corners, the centre between them.
 	_place_plates(fw)
@@ -1243,6 +1270,9 @@ static func garrison_caption_for(battle_log: Dictionary) -> String:
 
 func _show_tag(si: int, text: String) -> void:
 	var k := _slot_of_side(si)
+	var side_name := String(_log.sides[si].name)
+	if plates_used() > 2 and not text.contains(side_name):
+		text = "%s · %s" % [side_name, text]  # #265: with more sides a tag can hang off its plate (the docked why panel): it says whose it is
 	tag_labels[k].text = text
 	_tag_t[k] = 0.0
 
