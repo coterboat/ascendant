@@ -8,6 +8,10 @@ class_name TurnReportText
 ## lines here, when it is shown, from each event's structured fields, the other events of the turn and the
 ## state after the turn. A loaded game reads exactly like a game just played.
 ##
+## Every sentence of every line starts with a capital, whoever wrote it (#284, RulerRules.cap_sentences): a line that
+## opens with a name written for running text ("the Long Vigil fell to ...", the fog's "the Aurel Crown swore ...")
+## or a sentence after one ("Gold: 17 -> 22. the Long Vigil paid nothing") reads "The ...". No word changes.
+##
 ##   rows(events, state, viewer = "", before = null) -> [{"event", "text"}]   the report, in display order
 ##   line(event, events, state, viewer = "", before = null) -> String         one event's line
 ##   display_order(events, state) -> Array        the events in report order, moves grouped by destination
@@ -60,18 +64,18 @@ const NAMES_HINT := "Every army keeps one name until it is gone: a ruler's army 
 # --- the report -----------------------------------------------------------------------------------
 
 ## The report's lines in display order: [{"event": the event, "text": its line}]. Without a state the
-## lines are the events' own text, in resolver order.
+## lines are the events' own text, in resolver order. Every sentence starts with a capital (#284).
 static func rows(events: Array, state: GameState, viewer: String = "", before: GameState = null) -> Array:
 	var out := []
 	if state == null:
 		for e in events:
 			if not is_beat(e, events):
-				out.append({"event": e, "text": own_text(e, viewer)})
+				out.append({"event": e, "text": _sentences(own_text(e, viewer))})
 		return out
 	var ctx := _context(events, state, before, viewer)
 	var texts := {}
 	for i in events.size():
-		texts[i] = _line_at(i, ctx)
+		texts[i] = _sentences(_line_at(i, ctx))
 	var shown := []
 	for i in _order(events, state):
 		if not is_beat(events[i], events):
@@ -88,7 +92,7 @@ static func rows(events: Array, state: GameState, viewer: String = "", before: G
 			out.append({"event": events[shown[k]], "text": texts[shown[k]]})
 		else:
 			var merged := _merged_recruits(group.map(func(g): return events[g]))
-			out.append({"event": merged, "text": _recruited_line(merged, ctx)})
+			out.append({"event": merged, "text": _sentences(_recruited_line(merged, ctx))})
 		k += group.size()
 	return out
 
@@ -141,10 +145,10 @@ static func is_beat(e: Dictionary, events: Array) -> bool:
 
 
 ## One event's line. `events` is the whole turn's report it belongs to (it reads the other events: who
-## moved where, who died, the faction's income).
+## moved where, who died, the faction's income). Every sentence starts with a capital (#284).
 static func line(e: Dictionary, events: Array, state: GameState, viewer: String = "", before: GameState = null) -> String:
 	if state == null:
-		return own_text(e, viewer)
+		return _sentences(own_text(e, viewer))
 	var all := events
 	var index := -1
 	for i in events.size():
@@ -154,7 +158,7 @@ static func line(e: Dictionary, events: Array, state: GameState, viewer: String 
 		all = events.duplicate()
 		all.append(e)
 		index = all.size() - 1
-	return _line_at(index, _context(all, state, before, viewer))
+	return _sentences(_line_at(index, _context(all, state, before, viewer)))
 
 
 ## The events in display order: the resolver's order, except that the moves of the movement phase are
@@ -1400,3 +1404,8 @@ static func _possessive(name: String) -> String:
 
 static func _cap(text: String) -> String:
 	return RulerRules._cap(text)
+
+
+## `text` with every sentence starting with a capital (#284).
+static func _sentences(text: String) -> String:
+	return RulerRules.cap_sentences(text)
