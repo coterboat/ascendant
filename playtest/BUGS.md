@@ -1,13 +1,19 @@
 # playtest bugs
 
-running ledger kept by repo clerk from playtester's reports. one file per red run lives in `playtest/reports/`. bug ids follow playtester's A-numbers.
+running ledger kept by repo clerk from playtester's reports. one file per red run lives in `playtest/reports/`. bug ids follow playtester's A-numbers where free; a number already used gets the next free id.
 
 ## open
 
 | id | severity | title | first seen | latest report |
 |---|---|---|---|---|
+| A-006 | glitch | cast dialog's deferred fit lambda runs after the dialog is freed (SCRIPT ERROR in tests) | 59066e7 | [2026-11-15-0034-59066e7](reports/2026-11-15-0034-59066e7.md) |
 
-none.
+### A-006: cast dialog's deferred fit lambda runs after the dialog is freed (SCRIPT ERROR in tests)
+- note: playtester numbered this A4; A-004 was already used, so it is A-006 here
+- repro:
+  1. tests/runner.gd full run (godot --headless --path . -s tests/runner.gd); errors print near the end of the run, in the cast-dialog tests
+- error: `SCRIPT ERROR: Bad address index.` at ArmyCard.<anonymous lambda> (res://ui/cast_dialog.gd:164) and PortraitCard.<anonymous lambda> (res://ui/cast_dialog.gd:164), each preceded by `ERROR: Condition "slot >= slot_max" is true. Returning: nullptr`. also `1 RID of type "Canvas" was leaked`
+- suspect: ui/cast_dialog.gd:158-166 (_queue_fit lambda via call_deferred reads _fit_queued / panel after the dialog is freed). file last touched by bf85684 (UI-POLISH-1)
 
 ## fixed
 
