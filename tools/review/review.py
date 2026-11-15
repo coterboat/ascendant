@@ -1688,13 +1688,60 @@ def _repo_target(target: str) -> Path | None:
     return p if REPO.resolve() in p.parents else None
 
 
+## #314: `apply` writes the format the target names. The game loads art by exact path (Art wants .webp portraits,
+## banners and codex plates; NoticeArt wants .png), so a .png copied beside a .webp target would never be shown.
+CONVERTIBLE = (".png", ".webp", ".jpg", ".jpeg")
+
+
+def _tool(name: str) -> str | None:
+    """A converter on PATH, or Homebrew's ffmpeg-full for ffmpeg (Homebrew's plain ffmpeg can't write WebP; cwebp does)."""
+    found = shutil.which(name)
+    if not found and name == "ffmpeg" and os.path.exists("/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg"):
+        found = "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg"
+    return found
+
+
+def convert_image(src: Path, dest: Path) -> str | None:
+    """Writes src to dest in dest's format (png, webp, jpg). Returns None, or the plain reason it can't. WebP is written
+    by cwebp at q90 with -exact (the colour under transparent pixels kept, alpha kept); a WebP source is read by dwebp."""
+    s, t = src.suffix.lower(), dest.suffix.lower()
+    if s not in CONVERTIBLE or t not in CONVERTIBLE:
+        return f"can't turn a {s} into a {t} (apply converts only between {', '.join(CONVERTIBLE)})"
+    with tempfile.TemporaryDirectory() as tmp:
+        work = src
+        if s == ".webp":
+            dwebp = _tool("dwebp")
+            if not dwebp:
+                return "dwebp is not installed (brew install webp), so a .webp can't be read"
+            work = Path(tmp) / "src.png"
+            r = subprocess.run([dwebp, "-quiet", str(src), "-o", str(work)], capture_output=True)
+            if r.returncode != 0:
+                return f"dwebp could not read it ({r.stderr.decode(errors='replace').strip()[:120]})"
+        if t == ".webp":
+            cwebp = _tool("cwebp")
+            if not cwebp:
+                return "cwebp is not installed (brew install webp), so a .webp can't be written"
+            cmd = [cwebp, "-quiet", "-q", "90", "-exact", str(work), "-o", str(dest)]
+        else:
+            ffmpeg = _tool("ffmpeg")
+            if not ffmpeg:
+                return f"ffmpeg is not installed, so a {t} can't be written"
+            cmd = [ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(work)] + (["-q:v", "2"] if t in (".jpg", ".jpeg") else []) \
+                + [str(dest)]
+        r = subprocess.run(cmd, capture_output=True)
+        if r.returncode != 0 or not dest.exists() or dest.stat().st_size == 0:
+            dest.unlink(missing_ok=True)
+            return f"the conversion to {t} failed ({r.stderr.decode(errors='replace').strip()[:120]})"
+    return None
+
+
 def cmd_apply(args) -> int:
     name = args.batch
     d, _ = load_batch(name)
     mb = merged_batch(name)
     dry = args.dry_run
     tag = "[dry-run] " if dry else ""
-    copied = unchanged = skipped = 0
+    copied = unchanged = skipped = refused = 0
     warnings: list[str] = []
     for it in mb["items"]:
         if it["verdict"] in KEPT and it["status"] == "missing":
@@ -1709,27 +1756,36 @@ def cmd_apply(args) -> int:
             warnings.append(f"{it['id']}: target {it.get('target')!r} is missing or outside the repo — skipped")
             skipped += 1
             continue
-        if src.suffix.lower() != dest.suffix.lower():
-            stale = dest if dest.exists() else None
-            dest = dest.with_suffix(src.suffix)
-            msg = (f"{it['id']}: target says {Path(it['target']).suffix} but the file is {src.suffix}; "
-                   f"copying to {dest.relative_to(REPO)}")
-            if stale:
-                msg += f" (the old {stale.relative_to(REPO)} is still there)"
-            warnings.append(msg)
         rel = dest.relative_to(REPO)
-        if dest.exists() and filecmp.cmp(src, dest, shallow=False):
-            unchanged += 1
-            print(f"  {tag}=  {rel}  (unchanged)")
-            continue
-        verb = "overwrite" if dest.exists() else "new"
-        print(f"  {tag}+  {rel}  ({verb})")
-        if not dry:
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            tmp = dest.with_name(f".{dest.name}.tmp")
-            shutil.copy2(src, tmp)
-            os.replace(tmp, dest)
-        copied += 1
+        converted = None  # the source in the target's format (#314), made in a temporary folder
+        conv_dir = None
+        if src.suffix.lower() != dest.suffix.lower():
+            conv_dir = tempfile.TemporaryDirectory()
+            converted = Path(conv_dir.name) / dest.name
+            why = convert_image(src, converted)
+            if why:
+                conv_dir.cleanup()
+                warnings.append(f"{it['id']}: refused: the file is {src.suffix} but the target is {rel}; {why}. Nothing written")
+                refused += 1
+                continue
+        body = converted or src
+        how = f", converted from {src.suffix}" if converted else ""
+        try:
+            if dest.exists() and filecmp.cmp(body, dest, shallow=False):
+                unchanged += 1
+                print(f"  {tag}=  {rel}  (unchanged{how})")
+                continue
+            verb = "overwrite" if dest.exists() else "new"
+            print(f"  {tag}+  {rel}  ({verb}{how})")
+            if not dry:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                tmp = dest.with_name(f".{dest.name}.tmp")
+                shutil.copy2(body, tmp)
+                os.replace(tmp, dest)
+            copied += 1
+        finally:
+            if conv_dir:
+                conv_dir.cleanup()
 
     rejected = rejected_entries(mb["items"], mb["mode"])
     rj = d / "rejected.json"
@@ -1741,13 +1797,13 @@ def cmd_apply(args) -> int:
         print(f"  ! {w}")
     revised = f", {c['revise']} good with changes" if mb["mode"] == "concept" else ""
     print(f"{tag}{name}: {'would copy' if dry else 'copied'} {copied}, unchanged {unchanged}, "
-          f"skipped {skipped}  ·  {c['accept']} accepted{revised}, {c['reject']} rejected, "
+          f"skipped {skipped}{f', refused {refused}' if refused else ''}  ·  {c['accept']} accepted{revised}, {c['reject']} rejected, "
           f"{c['pending']} pending, {c['missing']} missing")
     print(f"{tag}{'would write' if dry else 'wrote'} {rj.relative_to(REPO)} ({len(rejected)} to re-roll)")
     if c["regenerated"]:
         print(f"  {c['regenerated']} item(s) were regenerated after their verdict and were not applied: "
               "give them a listen first")
-    return 0
+    return 1 if refused else 0  # a refused install fails the run, so the Table shows it (#314)
 
 
 # ---------------------------------------------------------------- canon
