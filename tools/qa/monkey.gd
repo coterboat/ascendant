@@ -26,6 +26,11 @@ extends SceneTree
 ##                     before (up to 40) and the end
 ##   --slow-ms=N       a frame slower than this is noted as SLOW with the gesture before it (default 400)
 ##   --build=TEXT      the build under test (run_monkey.sh passes the git sha and branch), written into the log's options
+##   --preview         the new game screen's preview box ticked (the Candlewake, CW-7): Quick start's dice may seat it; with
+##                     --human=candlewake it is the person's faction (and --human=X --foe=candlewake the computer's)
+##   --foe=ID          with --human: the computer's faction (default: the first other faction in the data)
+##   --scene=PATH      play a scene instead of a game, e.g. res://ui/battle/battle_watch.tscn or res://world3d/battle_watch3d.tscn with
+##                     --fixture=three_holds (the launcher reads its own options): the hand works its controls until --minutes
 ##   --replay=FILE     send the events of an events.log again at their frames instead of choosing them (the seed, faction, fog and
 ##                     interface size come from the log's options note; give the same window size)
 ##   --selftest=KIND   the harness checking itself: after 5 gestures the monkey raises an error ("error"), stops the main thread
@@ -121,6 +126,9 @@ var slow_ms := 400
 var build := ""
 var selftest := ""
 var replay_path := ""
+var preview := false
+var foe := ""
+var scene_path := ""
 var replay_options := {}
 var unknown_options: PackedStringArray = []
 
@@ -184,6 +192,10 @@ func _initialize() -> void:
 			"build": build = v
 			"selftest": selftest = v
 			"replay": replay_path = v
+			"preview": preview = true
+			"foe": foe = v
+			"scene": scene_path = v
+			"fixture", "speed", "paused", "no-art", "reduced-motion": pass  # the battle launchers' own (--scene)
 			_: unknown_options.append(a)
 	if not replay_path.is_empty():
 		# The seed, faction, fog and interface size of the run being replayed (its options note), whatever the command line says.
@@ -194,6 +206,9 @@ func _initialize() -> void:
 		ui_scale = int(replay_options.get("ui_scale", ui_scale))
 		fog = bool(replay_options.get("fog", fog))
 		human = String(replay_options.get("human", human))
+		preview = bool(replay_options.get("preview", preview))
+		foe = String(replay_options.get("foe", foe))
+		scene_path = String(replay_options.get("scene", scene_path))
 	if out.is_empty():
 		out = "/tmp/ascendant-qa/monkey_%d" % seed_n
 	if not replay_path.is_empty() and ProjectSettings.globalize_path(out.path_join("events.log")) == ProjectSettings.globalize_path(replay_path):
@@ -231,7 +246,7 @@ func _run() -> void:
 	var screen := DisplayServer.screen_get_size(DisplayServer.window_get_current_screen())
 	_note("options " + JSON.stringify({"seed": seed_n, "ui_scale": ui_scale, "fog": fog, "human": human, "focus": ",".join(focus),
 		"turns": max_turns, "minutes": max_minutes, "pace": pace, "window": [DisplayServer.window_get_size().x, DisplayServer.window_get_size().y],
-		"screen": [screen.x, screen.y], "build": build, "replay": replay_path, "godot": Engine.get_version_info().string}))
+		"screen": [screen.x, screen.y], "build": build, "replay": replay_path, "preview": preview, "foe": foe, "scene": scene_path, "godot": Engine.get_version_info().string}))
 	if not unknown_options.is_empty():
 		_note("unknown options ignored: %s" % " ".join(unknown_options))
 	for a in focus:
@@ -241,6 +256,9 @@ func _run() -> void:
 		var was: Array = replay_options.window
 		if Vector2i(int(was[0]), int(was[1])) != DisplayServer.window_get_size():
 			_note("REPLAY WINDOW DIFFERS: the run was %dx%d, this window is %s: the clicks land elsewhere" % [int(was[0]), int(was[1]), DisplayServer.window_get_size()])
+	if not scene_path.is_empty():
+		await _run_scene()
+		return
 	change_scene_to_file(TITLE_SCENE)
 	await _frames(4)
 	var title := current_scene as TitleScreen
@@ -275,19 +293,49 @@ func _run() -> void:
 	_finish(verdict)
 
 
+## --scene: a scene played on its own (a battle launcher with its fixture): the hand works whatever it shows until --minutes.
+func _run_scene() -> void:
+	change_scene_to_file(scene_path)
+	var t0 := Time.get_ticks_msec()
+	await _frames(4)
+	while not BattleStage3D.land_ready() and Time.get_ticks_msec() - t0 < 120000:
+		await process_frame  # the 3D stage's land bakes on a worker first
+	await _wait_seconds(3.0)
+	mouse = Vector2(root.size) * 0.5
+	_note("ready: scene %s, window %s, laid out at %s (ui scale %d%%), loaded in %.1f s" % [scene_path, root.size,
+		root.get_visible_rect().size, ui_scale, (Time.get_ticks_msec() - t0) / 1000.0])
+	started_msec = Time.get_ticks_msec()
+	frame_n = 0
+	if replay_path.is_empty():
+		await _shot("start")
+		await _play()
+	else:
+		await _replay()
+	if verdict.is_empty():
+		verdict = "done"
+	await _shot("end")
+	_finish(verdict)
+
+
+func _wait_seconds(s: float) -> void:
+	var until := Time.get_ticks_msec() + int(s * 1000.0)
+	while Time.get_ticks_msec() < until:
+		await process_frame
+
+
 func _game_config() -> Dictionary:
 	var dice := RandomNumberGenerator.new()
 	dice.seed = seed_n
-	var cfg := NewGameScreen.quick_start_config(dice)
-	if not human.is_empty() and human != String(cfg.players[0]):
-		var foe := ""
+	var cfg := NewGameScreen.quick_start_config(dice, preview)
+	if not human.is_empty() and (human != String(cfg.players[0]) or (not foe.is_empty() and foe != String(cfg.players[1]))):
+		var other := foe
 		for f in FactionData.FACTIONS:
-			if String(f.id) != human:
-				foe = String(f.id)
-				break
-		cfg.players = [human, foe]
-		cfg.ai = {foe: NewGameScreen.DEFAULT_LEVEL}
-		cfg.builds = {human: RulerRules.preset_build(RulerRules.balanced_preset(human)), foe: BuildScreen.computer_build(foe, int(cfg.seed), 1)}
+			if other.is_empty() and String(f.id) != human:
+				other = String(f.id)
+		cfg.players = [human, other]
+		cfg.ai = {other: NewGameScreen.DEFAULT_LEVEL}
+		cfg.builds = {human: RulerRules.preset_build(RulerRules.balanced_preset(human)), other: BuildScreen.computer_build(other, int(cfg.seed), 1)}
+		cfg.temperaments = AISeat.temperaments_for(cfg.players, cfg.ai, int(cfg.seed))
 	human = String(cfg.players[0])
 	if not fog:
 		cfg.fog = false
@@ -351,6 +399,8 @@ func _selftest() -> void:
 
 
 func _stop_reason() -> String:
+	if not scene_path.is_empty():
+		return "minutes" if started_msec > 0 and (Time.get_ticks_msec() - started_msec) / 60000.0 >= max_minutes else ""
 	var game := _game()
 	if game == null:
 		return "left_game" if off_game > 120 else ""
@@ -681,6 +731,8 @@ func _denied(c: Control) -> bool:
 	var nm := String(c.name)
 	if DENY_NAMES.has(nm):
 		return true
+	if not scene_path.is_empty() and c is BaseButton and (c.tooltip_text.begins_with("Close the battle") or c.tooltip_text.begins_with("Close (Esc)")):
+		return true  # --scene: closing a launcher's battle quits Godot
 	if DENY_UNDER.has(nm):
 		var p := c.get_parent()
 		while p != null:
@@ -977,6 +1029,8 @@ func _sweep(points: int = 0, settle: int = 1) -> void:
 
 
 func _key(k: Key, pressed: bool, what: String, unicode: int = 0, echo: bool = false) -> void:
+	if not scene_path.is_empty() and k == KEY_ESCAPE:
+		k = KEY_SPACE  # --scene: Esc closes a launcher's battle, and closing it quits Godot
 	var e := InputEventKey.new()
 	e.keycode = k
 	e.physical_keycode = k

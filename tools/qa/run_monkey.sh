@@ -108,6 +108,10 @@ run_one() {
 			--focus=*) tag="${tag}_${a#*=}" ;;
 			--fog=off) tag="${tag}_nofog" ;;
 			--replay=*) tag="${tag}_replay" ;;
+			--preview) tag="${tag}_preview" ;;
+			--human=*) tag="${tag}_${a#*=}" ;;
+			--fixture=*) tag="${tag}_${a#*=}" ;;
+			--scene=*) local sc="${a##*/}"; tag="${tag}_${sc%.tscn}" ;;
 		esac
 	done
 	local out
