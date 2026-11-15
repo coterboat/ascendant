@@ -338,6 +338,7 @@ var _gold_reserved := 0  # M3c: gold set aside for Fortify and engines before th
 var _magic := AIMagic.new()  # M5-10: the research plan's mages, rituals and Tithe of Blood (ai/ai_magic.gd); nothing runs without magic
 var _ritual_gold := 0  # M5-10: gold the rituals of this turn hold back from the troops (0 without magic)
 var _temperament := "normal"  # #184: set_temperament(); kept for the whole game
+var _wick := AIWick.new()  # CW-6: Wick and the Wake, ours and a rival's (ai/ai_wick.gd); nothing runs where no seated faction keeps a flame
 
 
 ## Orders for `faction_id` this turn. See the class comment. Unknown difficulties play as "normal".
@@ -371,8 +372,10 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 	_attack_armies()
 	if _state.sieges:
 		_sieges.keep_garrisons()  # M3c: a reachable keep keeps an army
+	_wick.cold_moves()  # CW-6: our cold armies feed their flame or keep it (nothing for a faction that keeps no flame)
 	_fog.scout()  # M5-4: a free scout army looks toward an objective it cannot see (nothing in a game without fog)
 	_field_moves()
+	_wick.guard()  # CW-6: no army of ours ends the turn out of time to keep its flame, before the ruler picks its place
 	_ruler_moves()
 	if _state.sieges:
 		_sieges.plan_builds()  # M3c: Fortify, with its gold set aside before the troops are planned
@@ -406,6 +409,7 @@ func plan_orders(state: GameState, faction_id: String, rng: SeededRNG, difficult
 	_sieges.end()
 	_fog.end()
 	_magic.end()
+	_wick.end()
 	return out
 
 
@@ -568,6 +572,7 @@ func _begin(state: GameState, faction_id: String, rng: SeededRNG, difficulty: St
 		_sieges.attach(self)  # M3c: forts and sieges (ai/ai_sieges.gd) for this plan
 	_fog.attach(self)  # M5-4: fog of war (ai/ai_fog.gd) for this plan; _collect_armies finds the top of the view
 	_magic.attach(self)  # M5-10: magic (ai/ai_magic.gd) for this plan; it reads what last turn's Far Sight came to
+	_wick.attach(self)  # CW-6: Wick (ai/ai_wick.gd) for this plan; _collect_armies reads the flames and the harbours
 	_nbrs = {}
 	for p in state.provinces:
 		var n: Array = p.neighbors.duplicate()
@@ -609,6 +614,7 @@ func _collect_armies() -> void:
 	_foes.sort_custom(func(x, y): return x.id < y.id)
 	_scratch_top = null
 	_fog.refresh()  # M5-4: the top of the view's sightings (null in a game without fog)
+	_wick.refresh()  # CW-6: every known flame for the rough guess, and our harbours (nothing where no seated faction keeps a flame)
 
 
 ## Plans the rest of the turn on `state` instead (the state with this turn's sacrifice applied). The map
@@ -941,7 +947,8 @@ func _attackers_for(pid: String, urgent: bool) -> Array:
 		return att
 	return att.filter(func(a):
 		var obj := _objective_for(a.location)
-		return obj.is_empty() or _d(pid, obj) <= _d(a.location, obj))
+		# CW-6 (§8.1): a straggler is fuel for an army of ours that burns low (AIWick.COLD), worth the step away
+		return obj.is_empty() or _d(pid, obj) <= _d(a.location, obj) or (a.flame >= 0 and a.flame <= AIWick.COLD))
 
 
 ## {"rate", "label", "helpers"} for our `attackers` attacking `pid` now. Enemy armies next to `pid`
@@ -995,6 +1002,11 @@ func _field_moves() -> void:
 		var g: Dictionary = groups[i]
 		_last_via = ""
 		var dest := _field_move(g, i == 0, objective, main_dest, claimed)
+		if _wick.on:
+			var kept := _wick.keep_in_time(g.armies, g.loc, dest)  # CW-6 (§8.2): never out of time to keep the flame
+			if kept != dest:
+				dest = kept
+				_last_via = ""
 		if i == 0:
 			main_dest = dest
 		for a in g.armies:
@@ -1008,6 +1020,11 @@ func _field_move(g: Dictionary, is_main: bool, objective: String, main_dest: Str
 	var here: String = g.loc
 	var armies: Array = g.armies
 	var here_name := _province_name(here)
+	if _wick.against:
+		var deny := _wick.deny_step(g)  # CW-6 (§8.8): a hot rival army we'd likely lose to as defender gets no battle
+		if not deny.is_empty():
+			_stats.retreats += 1
+			return deny
 	# A clearly stronger enemy next door: pull back.
 	var danger := _foes_next_to(here)
 	if not danger.is_empty() and _ratio(armies, danger, _ground_bonus(here), 1.0) < RETREAT_RATIO:
@@ -1031,6 +1048,10 @@ func _field_move(g: Dictionary, is_main: bool, objective: String, main_dest: Str
 		claimed[capture] = true
 		_stats.captures += 1
 		var p := _state.find_province(capture)
+		if _wick.on:
+			var relit := _wick.relight_note(p)  # CW-6 (§8.6): our cold wake there relights at once
+			if not relit.is_empty():
+				_note(relit)
 		if _paths:
 			_note(_capture_note(p))
 		else:
@@ -1081,6 +1102,8 @@ func _best_capture(g: Dictionary, is_main: bool, objective: String, claimed: Dic
 		var hold_rate := _hold_rate(g.armies, n)  # IND-1: 1.0 where no garrison stands
 		if hold_rate < _risk(float(HOLD_ATTACK_RATE[_level])):
 			continue
+		if _wick.on and not _wick.worth_ending(g.armies, n):
+			continue  # CW-6 (§8.2): from there our flame could no longer reach a harbour, and no fight is in reach
 		var score: float
 		if _paths:
 			score = _capture_worth(p) + _rng.randf() * float(JITTER[_level])
@@ -1090,6 +1113,8 @@ func _best_capture(g: Dictionary, is_main: bool, objective: String, claimed: Dic
 			score -= 0.01 * _d(n, objective)
 		if _state.sieges:
 			score += _sieges.muster_value(p)  # M3c: a fort is a recruiting post
+		if _wick.on:
+			score += _wick.capture_bonus(p)  # CW-6 (§8.1, §8.6): a fight feeds the flame; our cold wake relights at once
 		score *= hold_rate  # IND-1: a garrison's fight discounts the prize
 		if score > best_score:
 			best = n
@@ -1764,6 +1789,8 @@ func _checked_recruits() -> Array:
 		if not r.ok:
 			_stats.dropped_invalid += 1
 			continue
+		if _wick.on:
+			_wick.name_army(order, String(r.province), ut)  # CW-6 (§8.3): never cool a hot army, never join a guttering one
 		out.append(order)
 		var tally: Dictionary = away if order.is_with_ruler() else home
 		if order.is_with_ruler():
@@ -1777,6 +1804,10 @@ func _checked_recruits() -> Array:
 	_stats.recruits = out.size()
 	if not home.names.is_empty():
 		_note("Recruiting at %s for %d gold: %s." % [_province_name(_me.capital), home.spent, _tally_text(home)])
+		if _wick.on:
+			var kept := _wick.recruit_note(out, _me.capital)
+			if not kept.is_empty():
+				_note(kept)
 	if _paths:
 		# M4: why a unit with a path trait (Seraphs, the Iron Colossus, Briarwardens, Bloodsworn) is in the plan.
 		var counts := {}
@@ -2105,6 +2136,9 @@ func _ruler_moves() -> void:
 			options.append_array(_ruler_steps(cap, "to head back to %s: %s" % [_province_name(cap), reason]))
 			options.append({"to": here, "via": "", "why": "holding: the way back to %s isn't safe this turn" % _province_name(cap)})
 	else:
+		var harvest := _wick.harvest_fight() if _wick.on else ""  # CW-6 (§8.4): a Harvest ruler fights where our armies fight
+		if not harvest.is_empty():
+			options.append({"to": harvest, "via": "", "why": "to fight beside our armies there: %s" % _wick.harvest_words()})
 		var lead := _lead_army()
 		if lead == null:
 			if here != cap:
@@ -2810,7 +2844,7 @@ func _power_units(units: Array, foe_units: Array) -> float:
 	for u in units:
 		var st := _eff(u)
 		hp += u.current_hp
-		dmg += _pressure(int(st.attack) + _wounded_attack(u), foe_def, base_hit)
+		dmg += _pressure(int(st.attack) + _wounded_attack(u) + _wick.attack_part(u), foe_def, base_hit)  # CW-6: a known flame's flame - 1
 		if u.type.is_ruler:
 			ruler = true
 			best = maxi(best, int(st.morale))

@@ -12,6 +12,12 @@ extends SceneTree
 ##                    that seat on that seed, AIPlayer.choose_temperament)
 ##   --seat1 FACTION  faction in seat 1: kingdom (Aurel Crown, default) or beasts (Thornmane Clans);
 ##                    seat 2 gets the other one
+##   --seat2 FACTION  CW-6 (#257): faction in seat 2. Name both seats to seat the Candlewake (candlewake, the preview faction):
+##                    `--seat1 candlewake --seat2 kingdom`. Such a game is built as the new game screen builds it
+##                    (GameState.create), with only the systems the Candlewake can play yet (--rulers, --sieges,
+##                    --independents, --fog; not --paths or --magic), and the report adds its Wick lines: the share of its
+##                    army-turns at each flame, in a harbour and guttering, and the flame its battles began at (with --list,
+##                    one row a game). A Crown–Clans game is built and played exactly as before
 ##   --turn-cap T     turns before a game counts as unfinished (default 60)
 ##   --out PATH       also write the markdown report to PATH
 ##   --list           also print one table row per game (seed, result, turns, battles, ...)
@@ -125,7 +131,7 @@ func _initialize() -> void:
 	var opts := _parse(OS.get_cmdline_user_args())
 	if opts.has("error"):
 		printerr("autoplay: %s" % opts.error)
-		printerr("usage: godot --headless --path . -s tools/autoplay/autoplay.gd -- --games 50 --seed 1 --p1 greedy --p2 greedy [--seat1 kingdom|beasts] [--turn-cap 60] [--out report.md] [--list] [--rulers [--builds PRESET1,PRESET2]]")
+		printerr("usage: godot --headless --path . -s tools/autoplay/autoplay.gd -- --games 50 --seed 1 --p1 greedy --p2 greedy [--seat1 kingdom|beasts|candlewake] [--seat2 FACTION] [--turn-cap 60] [--out report.md] [--list] [--rulers [--builds PRESET1,PRESET2]]")
 		quit(2)
 		return
 	var catcher := ErrorCatcher.new()
@@ -182,10 +188,14 @@ func _initialize() -> void:
 		extra += " --sieges"
 	if not str(opts.tithe).is_empty():
 		extra += " --tithe " + str(opts.tithe)
-	md += "\n- **Run:** `--games %d --seed %d --p1 %s --p2 %s --seat1 %s --turn-cap %d%s`, %.1f s." % [opts.games, opts.seed,
-		opts.policies[0], opts.policies[1], opts.seats[0], opts.turn_cap, extra, seconds]
+	var seat2 := "" if FACTIONS.has(opts.seats[0]) and FACTIONS.has(opts.seats[1]) else " --seat2 %s" % opts.seats[1]  # CW-6
+	md += "\n- **Run:** `--games %d --seed %d --p1 %s --p2 %s --seat1 %s%s --turn-cap %d%s`, %.1f s." % [opts.games, opts.seed,
+		opts.policies[0], opts.policies[1], opts.seats[0], seat2, opts.turn_cap, extra, seconds]
 	if opts.list:
 		md += "\n\n" + Simulator.game_lines(results)
+		var wick_rows := Simulator.wick_game_lines(results)  # CW-6 (#257): only a game that seats the Candlewake has a row
+		if not wick_rows.is_empty():
+			md += "\n\n" + wick_rows
 	print(md)
 	if not opts.out.is_empty():
 		var f := FileAccess.open(opts.out, FileAccess.WRITE)
@@ -211,6 +221,7 @@ func _parse(args: PackedStringArray) -> Dictionary:
 		"worker": false, "cell": "", "from": 0, "count": 0, "only": "", "record_m2": "", "note": "", "temperament": ""}
 	var builds_arg := ""
 	var branches_arg := ""
+	var named := ["", ""]  # CW-6: --seat1 and --seat2, as given
 	var i := 0
 	while i < args.size():
 		var key := args[i]
@@ -282,10 +293,11 @@ func _parse(args: PackedStringArray) -> Dictionary:
 				if not Policies.NAMES.has(value):
 					return {"error": "%s must be one of %s" % [key, ", ".join(Policies.NAMES)]}
 				opts.policies[0 if key == "--p1" else 1] = value
-			"--seat1":
-				if not FACTIONS.has(value):
-					return {"error": "--seat1 must be kingdom or beasts"}
-				opts.seats = [value, FACTIONS[1] if value == FACTIONS[0] else FACTIONS[0]]
+			"--seat1", "--seat2":
+				# CW-6 (#257): any faction a game can seat (FactionData.ids), the Candlewake's preview included
+				if not FactionData.ids().has(value):
+					return {"error": "%s must be one of %s" % [key, ", ".join(FactionData.ids())]}
+				named[0 if key == "--seat1" else 1] = value
 			"--turn-cap":
 				if not value.is_valid_int() or value.to_int() < 1:
 					return {"error": "--turn-cap must be a positive whole number"}
@@ -328,6 +340,10 @@ func _parse(args: PackedStringArray) -> Dictionary:
 				opts.count = value.to_int()
 			_:
 				return {"error": "unknown option %s" % key}
+	var seated := _seats_from(named)
+	if seated.has("error"):
+		return seated
+	opts.seats = seated.seats
 	if not builds_arg.is_empty():
 		if not opts.rulers:
 			return {"error": "--builds needs --rulers"}
@@ -376,6 +392,27 @@ func _parse(args: PackedStringArray) -> Dictionary:
 		if opts.policies[clans_seat] == "ai":
 			opts.policies[clans_seat] = "ai_bleed"
 	return opts
+
+
+## The seats --seat1 and --seat2 name: {"seats": [seat 1's faction, seat 2's]} or {"error"}. With neither, the Crown and then
+## the Clans; with only one of those two, the other one in the other seat (as --seat1 always did). CW-6 (#257): a game with the
+## Candlewake names both seats, and GameState.seating_problems says why a pair can't play (a faction twice).
+static func _seats_from(named: Array) -> Dictionary:
+	var a := str(named[0])
+	var b := str(named[1])
+	if a.is_empty() and b.is_empty():
+		return {"seats": FACTIONS.duplicate()}
+	if b.is_empty() or a.is_empty():
+		var given := a if b.is_empty() else b
+		if not FACTIONS.has(given):
+			return {"error": "--seat%d %s needs --seat%d: name the faction in the other seat too" % [1 if b.is_empty() else 2, given,
+				2 if b.is_empty() else 1]}
+		var other: String = FACTIONS[1] if given == FACTIONS[0] else FACTIONS[0]
+		return {"seats": [given, other] if b.is_empty() else [other, given]}
+	var problems := GameState.seating_problems([a, b])
+	if not problems.is_empty():
+		return {"error": " ".join(problems)}
+	return {"seats": [a, b]}
 
 
 # --- the build balance matrix (M2-8, #36) ----------------------------------------------------------

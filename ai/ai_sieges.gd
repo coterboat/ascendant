@@ -840,6 +840,8 @@ func checked_recruits() -> Array:
 			var r: Dictionary = TurnResolver.price_recruits(state, fid, trial, null, ai._ritual_gold).results.back()
 			if not r.ok:
 				continue
+			if ai._wick.on:
+				ai._wick.name_army(order, String(r.province), ut)  # CW-6 (§8.3): never cool a hot army, never join a guttering one
 			out.append(order)
 			placed = at
 			counts[at] = int(counts.get(at, 0)) + 1
@@ -883,6 +885,10 @@ func checked_recruits() -> Array:
 				RulerRules.current_name(state, fid), tally.spent, AIPlayer._tally_text(tally), ai._province_name(dest)])
 		else:
 			ai._note("Recruiting at %s for %d gold: %s." % [ai._province_name(at), tally.spent, AIPlayer._tally_text(tally)])
+			if ai._wick.on:
+				var kept: String = ai._wick.recruit_note(out, String(at))  # CW-6 (§8.3)
+				if not kept.is_empty():
+					ai._note(kept)
 	return out
 
 
