@@ -203,7 +203,9 @@ static func _is_plain_move(e: Dictionary) -> bool:
 
 ## An army's name for life: its ruler's name for a ruler's army, otherwise "the Crown's 3rd" from the
 ## number in its id. `owner` is needed only for an army that is not in `state` and whose id has no faction.
-static func army_name(state: GameState, army_id: String, owner: String = "", ruler_name: String = "") -> String:
+## #322: `side_name`, the name its side fought under in the battle log, names the faction when `state` can't (no state, or
+## a side that isn't one of its factions), so an army is never "an army of an unknown faction" or "the faction's 9th".
+static func army_name(state: GameState, army_id: String, owner: String = "", ruler_name: String = "", side_name: String = "") -> String:
 	if not ruler_name.is_empty():
 		return ruler_name
 	var a: Army = state.find_army(army_id) if state != null else null
@@ -213,13 +215,14 @@ static func army_name(state: GameState, army_id: String, owner: String = "", rul
 		var p: Province = state.find_province(army_id.trim_prefix(IndependentData.ARMY_PREFIX)) if state != null else null
 		if p != null:
 			return "the %s %s" % [p.name, IndependentData.garrison_kind(p.terrain)]
+		return "the %s garrison" % _possessive(_faction_name(state, IndependentData.FACTION_ID, side_name))  # #322: with no map to name it by
 	var fid := owner
 	if fid.is_empty():
 		fid = a.owner if a != null else faction_of(army_id)
 	var n := army_number(army_id)
 	if n <= 0:
-		return "an army of %s" % _faction_name(state, fid)
-	return "%s %s" % [_possessive(faction_short(state, fid)), ordinal(n)]
+		return "an army of %s" % _faction_name(state, fid, side_name)
+	return "%s %s" % [_possessive(faction_short(state, fid, side_name)), ordinal(n)]
 
 
 ## The number in an army id ("kingdom-12" -> 12), or 0 when it has none.
@@ -250,8 +253,8 @@ static func ordinal(n: int) -> String:
 
 ## A faction's short name in running text: the last word of its name, with "the" ("the Crown", "the Clans"; CW-0: a one-word
 ## name too, "the Candlewake").
-static func faction_short(state: GameState, fid: String) -> String:
-	var name := _faction_name(state, fid)
+static func faction_short(state: GameState, fid: String, fallback: String = "") -> String:
+	var name := _faction_name(state, fid, fallback)
 	var words := name.split(" ", false)
 	return "the %s" % words[words.size() - 1] if not words.is_empty() else name
 
@@ -317,7 +320,7 @@ static func log_armies(battle_log, faction_id: String, state: GameState = null) 
 			for en in entries:
 				if en.role == "ruler":
 					ruler = String(en.name)
-			var title := army_name(state, id, faction_id, ruler)
+			var title := army_name(state, id, faction_id, ruler, String(side.get("name", "")))  # #322: named for its own side
 			if ruler.is_empty() and not entries.is_empty():
 				title += " (%s)" % units_phrase(entries)
 			var from := ""
@@ -1379,13 +1382,19 @@ static func _unit_type_by_name(s: GameState, fid: String, unit_name: String) -> 
 
 # --- names ----------------------------------------------------------------------------------------
 
-static func _faction_name(s: GameState, fid: String) -> String:
+## A faction's name: from the game state, else the faction data, else the Free Holds' own name; `fallback` (#322: the name its side
+## fought under in a battle log) when none of them knows it, and "an unknown faction" only when there is no fallback either.
+static func _faction_name(s: GameState, fid: String, fallback: String = "") -> String:
 	var f: Faction = s.find_faction(fid) if s != null else null
 	if f != null:
 		return f.faction_name
 	for d in FactionData.rows():
 		if String(d.id) == fid:
 			return String(d.name)
+	if IndependentData.is_independent(fid):  # #322: the Free Holds are no seat's faction
+		return IndependentData.FACTION_NAME
+	if not fallback.is_empty():
+		return fallback
 	return "an unknown faction"
 
 

@@ -2414,6 +2414,8 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 	var where := _place(ctx, state)
 	var factors := _factors(sides, env, wi, end, rounds.size())
 	var chosen := _choose(factors, wi)
+	if sides.size() > 2:
+		chosen = _with_every_break(chosen, factors, wi)  # #322
 	var clauses := []
 	for c in chosen:
 		clauses.append(c.clause)
@@ -2502,6 +2504,8 @@ static func _report(sides: Array, ctx: Dictionary, env: Dictionary, rounds: Arra
 				how = "the attack was not decided after %d rounds, so the defender held" % ROUND_CAP
 			else:
 				how = "nothing was decided after %d rounds, and %s had more of its strength left" % [ROUND_CAP, winner.name]
+	if sides.size() > 2:
+		how = _how_sides_left(sides, wi, end, how)  # #322
 	var n := rounds.size()
 	lines.append("Result: %s won after %d %s: %s." % [winner.name, n, "round" if n == 1 else "rounds", how])
 	lines.append("Why: %s." % _cap(why))
@@ -3120,6 +3124,47 @@ static func _choose(factors: Array, wi: int) -> Array:
 		all.sort_custom(order)
 		chosen = all.slice(0, 1)
 	return chosen
+
+
+## #322: in a battle of three sides or more, every side that broke is part of why the winner won (the result names
+## them all). A break _choose left out joins the winner's factors, after them and before any "even though".
+static func _with_every_break(chosen: Array, factors: Array, wi: int) -> Array:
+	var out := chosen.filter(func(c): return c.side == wi)
+	for f in factors:
+		if f.id == "rout" and not out.has(f):
+			out.append(f)
+	return out + chosen.filter(func(c): return c.side != wi)
+
+
+## #322: how a battle of three sides or more ended, from its own sides: each side that left the field and the round it
+## left, in the order they left ("Free Holds broke in round 3 and Thornmane Clans broke in round 4"), not "the enemy".
+## `how` is the two-sided wording, kept for an end that no side's leaving explains (the round cap with all still there).
+static func _how_sides_left(sides: Array, wi: int, end: String, how: String) -> String:
+	var gone := []
+	for si in sides.size():
+		var s: Dictionary = sides[si]
+		if si != wi and (s.routed or s.destroyed) and int(s.out_round) > 0:
+			gone.append(si)
+	gone.sort_custom(func(a, b): return int(sides[a].out_round) < int(sides[b].out_round) or (sides[a].out_round == sides[b].out_round and a < b))
+	var left := []
+	for si in gone:
+		var s: Dictionary = sides[si]
+		left.append("%s %s in round %d" % [s.name, "was destroyed" if s.destroyed else "broke", int(s.out_round)])
+	if left.is_empty():
+		return how
+	var winner: Dictionary = sides[wi]
+	match end:
+		"mutual":
+			return "%s; %s broke in round %d too, but had more of its strength left" % [_and_join(left), winner.name, int(winner.out_round)]
+		"round_cap":
+			return "%s; then %s" % [_and_join(left), how]
+	return _and_join(left)
+
+
+static func _and_join(parts: Array) -> String:
+	if parts.size() <= 1:
+		return "".join(parts)
+	return "%s and %s" % [", ".join(parts.slice(0, parts.size() - 1)), parts.back()]
 
 
 # --- names ----------------------------------------------------------------------------------------
