@@ -48,7 +48,7 @@ func _build() -> void:
 			"", UiPalette.TEXT_SECONDARY)
 		return
 	_add_header(p)
-	add_status()
+	add_status([MapScreen.about_province(p.id)])
 	_add_actions(p)
 	_add_facts(p)
 	_add_armies(p)

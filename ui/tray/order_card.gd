@@ -51,7 +51,7 @@ func _build() -> void:
 	title.mouse_filter = Control.MOUSE_FILTER_PASS
 	title.tooltip_text = TooltipText.plain(heading, OrderMarks.REALM_NOTE if number == 0 else OrderMarks.RENUMBER_NOTE)
 	link(title, "order_check")
-	add_status()
+	add_status([MapScreen.about_order(order)])
 	var line := add_order_line(self, index)
 	line.add_theme_font_size_override("font_size", 16)
 	add_storm_now_row(self, index)

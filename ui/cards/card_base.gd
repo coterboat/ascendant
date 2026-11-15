@@ -69,9 +69,10 @@ func link_key(control: Control, key: String) -> void:
 
 
 ## The last order's result, as the side panel showed it: the rules' reason when an order was refused, or what was ordered.
-## Nothing when there is nothing to say.
-func add_status() -> Label:
-	if map.status_text.is_empty():
+## Nothing when there is nothing to say, or (#289) when the result is about something else: `about` is what this card is about
+## (MapScreen.about_army, about_province, about_order), and the result shows only when it shares one of them.
+func add_status(about: Array) -> Label:
+	if map.status_text.is_empty() or not map.status_is_about(about):
 		return null
 	var status := add_text(map.status_text, TooltipText.plain("Order check",
 		"Orders are checked with the same rules the turn uses, so a refused order would fail at the end of the turn too."), UiPalette.GILT)

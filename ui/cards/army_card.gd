@@ -83,7 +83,7 @@ func _build() -> void:
 	if a == null:
 		add_text("This army is no longer on the map.", "", UiPalette.TEXT_SECONDARY)
 		return
-	add_status()
+	add_status([MapScreen.about_army(a.id)])
 	if FogView.is_stand_in(a):
 		_build_stand_in(a)
 		return

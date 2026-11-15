@@ -109,6 +109,11 @@ var orders: OrdersController = null  # issue #6: the viewing faction's orders th
 var session: GameSession = null  # game screen (#7): when set, orders live in the session's books
 var intercept_back := false  # game screen (#7): the host confirms before leaving
 var status_text := ""  # last order result: the rules' reason when an order was refused
+## #289: what status_text is about, as subject keys (about_army, about_province, about_order): the army or province the call was
+## for, and every order it added or removed, with that order's army and places. A card shows the result only when it is about
+## one of them (CardBase.add_status), so a card never reads another order's result as its own ("Order cancelled." on an order
+## that stands).
+var status_about: Array = []
 var arrow_layer: Control  # drawn above the regions: one arrow per queued move
 var order_marks_2d: OrderMarks2D = null  # UX-4: the numbers and tokens of the queued orders over the 2D map (the 3D board draws its own)
 var hover_panel: ForecastGlance  # the move forecast of the hovered province, compact; it lives in the selection card or the march strip (UX-3)
@@ -173,6 +178,7 @@ func set_state(new_state: GameState, faction_id: String) -> void:
 			cast_dialog.close()  # M5-8: a new turn or another seat: the dialog's orders are stale
 		orders = OrdersController.new(new_state, faction_id, session)
 		status_text = ""
+		status_about = []
 	orders.fog_memory = fog_memory
 	orders.fog_intel = fog_intel
 	state = new_state
@@ -243,6 +249,7 @@ func _select_province(province_id: String, keep_army: bool) -> void:
 		# Refused: the reason stays in the status line and the click selects the province as usual.
 	else:
 		status_text = ""
+		status_about = []
 	clear_preview()
 	selected_province_id = province_id
 	var army := board_army(selected_army_id)
@@ -456,6 +463,7 @@ func close_sacrifice_dialog() -> void:
 ## Queues a Sacrifice order for the viewing faction. Returns "" or the rules' reason (also shown in the
 ## panel). Orders the sacrifice made fail are removed and listed in the status line.
 func queue_sacrifice(mandate_id: String) -> String:
+	var before := _orders_about()
 	var reason := orders.queue_sacrifice(mandate_id)
 	if reason.is_empty():
 		GameAudio.sfx("sacrifice")
@@ -464,6 +472,7 @@ func queue_sacrifice(mandate_id: String) -> String:
 		status_text += _removed_text(orders.last_removed())
 	else:
 		status_text = reason
+	_status_about(before, [])  # a realm order: its own card, and the cards of the orders it removed
 	_orders_changed()
 	return reason
 
@@ -496,6 +505,7 @@ func close_cast_dialog() -> void:
 ## M5-6: queues a cast order for the viewing faction. Returns "" or the rules' reason (also in the status line). A move
 ## given to the casting army is removed, and the status line says so.
 func queue_cast(ritual: String, army_id: String, target: String, pay: String = CastOrder.GOLD, size: int = 0, target_army: String = "") -> String:
+	var before := _orders_about()
 	var reason := orders.queue_cast(ritual, army_id, target, pay, size, target_army)
 	if reason.is_empty():
 		GameAudio.sfx("sacrifice")
@@ -504,6 +514,7 @@ func queue_cast(ritual: String, army_id: String, target: String, pay: String = C
 		status_text += _removed_text(orders.last_removed())
 	else:
 		status_text = reason
+	_status_about(before, [about_army(army_id), about_province(target)])
 	_orders_changed()
 	return reason
 
@@ -550,6 +561,70 @@ func _removed_text(lines: Array) -> String:
 	if lines.is_empty():
 		return ""
 	return " Also removed, because they relied on what changed: %s" % " ".join(lines)
+
+
+# --- what the last order result is about (#289) -----------------------------------------------------
+
+## The subject keys a card and the last order result share (status_about): an army, a province, one queued order.
+static func about_army(army_id: String) -> String:
+	return "army:" + army_id
+
+
+static func about_province(province_id: String) -> String:
+	return "province:" + province_id
+
+
+static func about_order(order) -> String:
+	return "order:%d" % (order as Object).get_instance_id() if order is Object else ""
+
+
+## Whether the last order result is about any of `about` (a card's own keys).
+func status_is_about(about: Array) -> bool:
+	for k in about:
+		if not String(k).is_empty() and status_about.has(k):
+			return true
+	return false
+
+
+## Every queued order, in orders() order, with the keys of what it is about: the order itself, its army, the province its mark
+## stands in and a march's destination (OrderMarks). [{"order", "about"}]; [] without orders.
+func _orders_about() -> Array:
+	var out := []
+	if orders == null:
+		return out
+	var marks := {}
+	for m in OrderMarks.marks(orders):
+		marks[int(m.index)] = m
+	var list := orders.orders()
+	for i in list.size():
+		var keys := [about_order(list[i])]
+		var m: Dictionary = marks.get(i, {})
+		if not String(m.get("army", "")).is_empty():
+			keys.append(about_army(String(m.army)))
+		if list[i] is MusterOrder:  # ARM-1: a muster is about its other army and the army it forms too (their cards cancel it)
+			for id in [String(list[i].to_army), orders.muster_forms(i)]:
+				if not id.is_empty() and not keys.has(about_army(id)):
+					keys.append(about_army(id))
+		for k in ["place", "to"]:
+			if not String(m.get(k, "")).is_empty():
+				keys.append(about_province(String(m[k])))
+		out.append({"order": list[i], "about": keys})
+	return out
+
+
+## Sets status_about after an order call: `named`, what the call was for (so a refusal shows where it was asked), and every order
+## the call added or removed (`before` is _orders_about() from before it), with what each is about.
+func _status_about(before: Array, named: Array) -> void:
+	var about := named.duplicate()
+	var now := _orders_about()
+	for pair in [[before, now], [now, before]]:
+		var others: Array = (pair[1] as Array).map(func(e): return e.order)
+		for e in pair[0]:
+			if not others.has(e.order):
+				for k in e.about:
+					if not about.has(k):
+						about.append(k)
+	status_about = about
 
 
 ## Keeps the ruler panel in step with set_state(): closed when the map changes player or turn, rebuilt
@@ -920,6 +995,7 @@ func _update_ruler_line(f: Faction) -> void:
 
 ## Queues a move for the viewing faction. Returns "" or the rules' reason (also shown in the panel).
 func queue_move(army_id: String, to_province: String) -> String:
+	var before := _orders_about()
 	var reason := orders.queue_move(army_id, to_province)
 	status_text = reason if not reason.is_empty() else "Move ordered. Armies move when the turn ends; Cancel order on the army's card, or the cross on its tray token, takes it back."
 	if reason.is_empty() and not orders.last_relief.is_empty():  # M3c: the garrison comes out to join the relief
@@ -928,6 +1004,7 @@ func queue_move(army_id: String, to_province: String) -> String:
 			place, RulerRules._and_list(orders.last_relief.map(func(id): return TurnReportText.army_name(state, id))), place]
 	elif reason.is_empty() and orders.siege_kind(army_id, to_province) == "besiege":
 		status_text = "Move ordered: it besieges %s when the turn ends. Tick Storm now on the order to storm from the march instead." % state.find_province(to_province).name
+	_status_about(before, [about_army(army_id), about_province(to_province)])  # a refusal shows on the province clicked too
 	_order_sound(reason, "march")
 	_orders_changed()
 	return reason
@@ -936,12 +1013,17 @@ func queue_move(army_id: String, to_province: String) -> String:
 ## ARM-1: queues a muster (a split, a transfer, a merge or a swap of commanders between your armies in one province). Returns ""
 ## or the rules' reason, which is the forecast's own (MusterForecast.refusal), also shown on the card.
 func queue_muster(order: MusterOrder) -> String:
+	var before := _orders_about()
 	var reason := orders.queue_muster(order)
 	if reason.is_empty():
 		status_text = "%s Armies muster first when the turn ends, before anything moves, so a new army can be given a move now. Cancel muster on the army's card, or the cross on its tray token, undoes it.%s" % [
 			orders.order_text(orders.orders().size() - 1), _removed_text(orders.last_removed())]
 	else:
 		status_text = reason
+	var armies := [order.from_army, order.to_army]
+	if reason.is_empty():
+		armies.append(orders.muster_forms(orders.orders().find(order)))  # the army a split forms
+	_status_about(before, armies.filter(func(id): return not String(id).is_empty()).map(func(id): return about_army(String(id))))
 	_order_sound(reason, "")
 	_orders_changed()
 	return reason
@@ -949,8 +1031,11 @@ func queue_muster(order: MusterOrder) -> String:
 
 ## Queues one recruit at the capital. Returns "" or the rules' reason (also shown in the panel).
 func queue_recruit(unit_type_id: String) -> String:
+	var before := _orders_about()
 	var reason := orders.queue_recruit(unit_type_id)
 	status_text = reason if not reason.is_empty() else "Recruit ordered. It is paid and joins at your capital when the turn ends."
+	var f := state.find_faction(viewing_faction_id)
+	_status_about(before, [about_province(f.capital)] if f != null else [])
 	_order_sound(reason, "recruit")
 	_orders_changed()
 	return reason
@@ -958,9 +1043,12 @@ func queue_recruit(unit_type_id: String) -> String:
 
 ## Queues one recruit with the ruler (Warband Muster). Returns "" or the rules' reason.
 func queue_recruit_with_ruler(unit_type_id: String) -> String:
+	var before := _orders_about()
 	var reason := orders.queue_recruit_with_ruler(unit_type_id)
 	status_text = reason if not reason.is_empty() else "Recruit ordered. It is paid and joins %s where it ends the turn, if you own that province then." % \
 		RulerRules.current_name(state, viewing_faction_id)
+	var ruler := RulerRules.ruler_army(state, viewing_faction_id)
+	_status_about(before, [about_army(ruler.id), about_province(ruler.location)] if ruler != null else [])
 	_order_sound(reason, "recruit")
 	_orders_changed()
 	return reason
@@ -968,10 +1056,13 @@ func queue_recruit_with_ruler(unit_type_id: String) -> String:
 
 ## M3c S-3: queues one recruit at the fort `at` ("" for the capital). Returns "" or the rules' reason.
 func queue_recruit_at(unit_type_id: String, at: String) -> String:
+	var before := _orders_about()
 	var reason := orders.queue_recruit(unit_type_id, at)
 	var place := state.find_province(at)
 	status_text = reason if not reason.is_empty() else "Recruit ordered. It is paid and joins your armies at %s when the turn ends." % (
 		place.name if place != null else "your capital")
+	var f := state.find_faction(viewing_faction_id)
+	_status_about(before, [about_province(place.id if place != null else (f.capital if f != null else ""))])
 	_order_sound(reason, "recruit")
 	_orders_changed()
 	return reason
@@ -979,6 +1070,7 @@ func queue_recruit_at(unit_type_id: String, at: String) -> String:
 
 ## M3c S-3: queues a Fortify order for `province_id` (the fort panel's Fortify or Upgrade). "" or the reason.
 func queue_fortify(province_id: String) -> String:
+	var before := _orders_about()
 	var reason := orders.queue_fortify(province_id)
 	if reason.is_empty():
 		var fc := orders.fortify_preview(province_id)
@@ -986,6 +1078,7 @@ func queue_fortify(province_id: String) -> String:
 			SiegeRules.fort_phrase(int(fc.level)), state.find_province(province_id).name, int(fc.stands), int(fc.recruit_from)]
 	else:
 		status_text = reason
+	_status_about(before, [about_province(province_id)])
 	_order_sound(reason, "")
 	_orders_changed()
 	return reason
@@ -993,6 +1086,7 @@ func queue_fortify(province_id: String) -> String:
 
 ## M3c S-3: the Storm toggle (fort panel, or Storm now on a move): storm `province_id` this turn, or wait.
 func set_storm(province_id: String, on: bool) -> String:
+	var before := _orders_about()
 	var reason := orders.set_storm(province_id, on)
 	var place := state.find_province(province_id).name
 	if reason.is_empty():
@@ -1002,6 +1096,12 @@ func set_storm(province_id: String, on: bool) -> String:
 			status_text += _removed_text(orders.last_removed())
 	else:
 		status_text = reason
+	var about := [about_province(province_id)]
+	var list := orders.orders()
+	for i in list.size():  # the marches into the fort, whose Storm now toggle this is (on their card and their army's)
+		if orders.storm_target(i) == province_id:
+			about.append_array([about_order(list[i]), about_army(String(list[i].army_id))])
+	_status_about(before, about)
 	_order_sound(reason, "")
 	_orders_changed()
 	return reason
@@ -1009,6 +1109,7 @@ func set_storm(province_id: String, on: bool) -> String:
 
 ## M3c S-3: a Sally tick: `army_id` comes out of its besieged fort this turn (on), or stays inside.
 func set_sally(army_id: String, on: bool) -> String:
+	var before := _orders_about()
 	var reason := orders.set_sally(army_id, on)
 	var name := TurnReportText.army_name(state, army_id)
 	if reason.is_empty():
@@ -1016,6 +1117,8 @@ func set_sally(army_id: String, on: bool) -> String:
 			else "%s stays inside the walls.") % (name if on else RulerRules._cap(name))
 	else:
 		status_text = reason
+	var inside := board_army(army_id)
+	_status_about(before, [about_army(army_id)] + ([about_province(inside.location)] if inside != null else []))  # its fort's panel
 	_order_sound(reason, "")
 	_orders_changed()
 	return reason
@@ -1023,15 +1126,21 @@ func set_sally(army_id: String, on: bool) -> String:
 
 ## Sends the road move at `index` through its next legal province (King's Roads).
 func change_via(index: int) -> void:
+	var before := _orders_about()
+	var about: Array = before[index].about if index >= 0 and index < before.size() else []
 	var reason := orders.change_via(index)
 	status_text = reason if not reason.is_empty() else "Road move changed: it now goes the other way. It moved to the end of your orders."
+	_status_about(before, about)  # the same order, at the end of the list now
 	_order_sound(reason, "")
 	_orders_changed()
 
 
 func cancel_order(index: int) -> void:
+	var before := _orders_about()
+	var about: Array = before[index].about if index >= 0 and index < before.size() else []  # the order's card, its army's, its places'
 	var reason := orders.cancel(index)
 	status_text = reason if not reason.is_empty() else "Order cancelled." + _removed_text(orders.last_removed())
+	_status_about(before, about)
 	if reason.is_empty():
 		GameAudio.sfx("order_cancelled")
 	_orders_changed()
