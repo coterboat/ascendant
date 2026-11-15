@@ -11,13 +11,12 @@ extends Control
 ##
 ## Layers, bottom to top:
 ##   the map (this Control): the board, the Table, the first-game guide (#282: over the Table, under the map's own panels, such
-##             as the Rulers panel, which cover it when they open)
+##             as the Rulers panel, which cover it when they open), and the notice beside it (#290: "Game saved", "Game loaded",
+##             in the same place, under the realm plaque; the map's panels and every overlay cover it, and it never blocks the map)
 ##   Overlays (CanvasLayer 10): victory screen, turn report, battle report viewer, codex, setup errors,
 ##             quit confirmation, the game menu, the save dialog, the load screen and settings. Each opens
 ##             on top of whatever is already open (_raise), so the codex opened from a report's "?" sits
 ##             above the report, and closing it shows the report again.
-##   NoticeLayer (CanvasLayer 15): a small notice under the realm plaque ("Game saved", "Game loaded"). It
-##             never blocks the map, and it sits under the handoff cover.
 ##   HandoffLayer (CanvasLayer 20): the handoff cover, above everything, so nothing leaks between players.
 ##
 ## Saving (SaveGame, SaveStore): the game saves itself at the start of every turn, once the last turn
@@ -184,7 +183,7 @@ var save_error: Label
 var load_screen: LoadScreen
 var settings_panel: SettingsPanel
 var quit_text: Label
-var notice_panel: PanelContainer  # on the NoticeLayer: "Game saved", "Game loaded"
+var notice_panel: PanelContainer  # "Game saved", "Game loaded": in the map, over the Table and under its panels (#290)
 var notice_title: Label
 var notice_label: Label
 var notice_ok: Button
@@ -678,7 +677,7 @@ func _show_current_player(play: bool = true) -> void:
 
 
 ## M5-2 (§11.1): the first fog turn's one-line hint, until a player presses Got it (remembered in the settings). Only
-## on the game's first turn, before any report: the notice sits above the overlays, and must never cover a report.
+## on the game's first turn, before any report (the hint is for the first turn only).
 const FOG_HINT := "Fog of war is on. You see exactly where you own land or stand; next to that you glimpse armies roughly (two away from forts, commanders, rulers and scouts); beyond, only what you saw last."
 
 
@@ -1703,19 +1702,17 @@ func _build_save_dialog() -> void:
 	_overlay_button(row, "ConfirmSaveButton", "Save", func(): confirm_save(), "Save the game under this name.")
 
 
-## The NoticeLayer's notice: a title, a line and OK, under the realm plaque.
+## The notice: a title, a line and OK, under the realm plaque. #290: it hangs where the first-game guide does (MapScreen.add_over_table),
+## over the board and the Table and under the map's own panels and every overlay, so a panel opened after it (Settings, the Codex, the
+## Rulers panel) covers it. It sat on its own CanvasLayer (15), over the overlays (10), and covered Settings' title and first rows.
 func _build_notice() -> void:
-	var layer := CanvasLayer.new()
-	layer.name = "NoticeLayer"
-	layer.layer = 15
-	add_child(layer)
 	notice_panel = PanelContainer.new()
 	notice_panel.name = "Notice"
 	notice_panel.visible = false
 	var style := UiPalette.panel_style(16)
 	style.border_color = UiPalette.GILT
 	notice_panel.add_theme_stylebox_override("panel", style)
-	layer.add_child(notice_panel)
+	map.add_over_table(notice_panel)
 	map.table().hang("notice", notice_panel)  # UX-1: under the realm plaque, inside the board's safe area (TableHud)
 	# The title and OK share a row and the text has the whole width under them: the notice lives in the Table's left column (400 px),
 	# and a shorter notice leaves the selection card more room under it.

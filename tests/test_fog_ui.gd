@@ -408,7 +408,7 @@ func test_the_first_fog_turn_has_its_hint_until_got_it() -> void:
 	assert_false(game.notice_panel.visible)
 	assert_true(GameSettings.hint_seen("fog"), "Got it is remembered in the settings")
 	game.free()
-	# The hint is for the first turn only: it never sits over a turn report (the notice is above the overlays).
+	# The hint is for the first turn only: End turn takes it down, so it never waits under the turn report (#290: the report covers the notice).
 	_set_hints({GameSettings.HINT_FIRST_GAME: true})
 	var later := _game({"players": [CROWN, CLANS], "seed": 4244, "fog": true, "ai": {CLANS: "normal"}})
 	assert_true(later.notice_panel.visible and later.notice_label.text == GameScreen.FOG_HINT, "its first turn has the hint")
