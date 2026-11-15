@@ -151,23 +151,27 @@ func shelter_at(pid: String) -> bool:
 	return not scar.is_empty() and bool(MarkData.stage(String(ai._fid), int(scar.stage)).get("harbour", false))
 
 
-## The flame an army of ours at `flame` has after this turn's Wick step when it ends the turn at `pid` without a battle (§2.2): it
-## keeps it in a shelter (shelter_at) and loses 1 elsewhere, and a Vigil floor there lifts it (never above WickRules.VIGIL_MAX).
+## Whether `pid` keeps an army of ours from losing flame when it ends the turn there without a battle: a shelter at the end of the
+## turn (shelter_at), or the province of a ruler of ours whose Vigil floor holds it.
+func keeps_flame(pid: String) -> bool:
+	return shelter_at(pid) or _floors.has(pid)
+
+
+## The flame an army of ours at `flame` has after this turn's Wick step when it ends the turn at `pid` without a battle (§2.2, the
+## rules' own transition, WickRules.next_flame): it keeps it in a shelter (shelter_at) and loses the idle loss elsewhere (1; the
+## Red Wake's 2), a flame above the row's cap burns down to it, and a Vigil floor there lifts it.
 func flame_after(pid: String, flame: int) -> int:
-	var out := flame if shelter_at(pid) else maxi(0, flame - 1)
-	var floor := int(_floors.get(pid, 0))
-	if floor > out:
-		out = mini(floor, WickRules.VIGIL_MAX)
-	return out
+	return WickRules.next_flame(ai._state, String(ai._fid), flame, false, false, shelter_at(pid), false, int(_floors.get(pid, 0)))
 
 
-## How far an army of ours at `flame` that ends this turn at `pid` without a battle is from running out of time (§8.2): its flame
-## after the Wick step, less the larger of 1 and the moves from `pid` to the nearest shelter (0 when `pid` is one). 0 or more: it
-## keeps a flame of at least 1 and can still reach a shelter with one. Below 0: it can't (an army at flame 0 never can).
+## How far an army of ours at `flame` that ends this turn at `pid` without a battle is from running out of time (§8.2): the flame it
+## would reach the nearest shelter with, walking on from `pid` (its flame after this turn's Wick step, less the idle loss for each
+## turn it still ends outside one on the way), less 1. 0 or more: it keeps a flame of 1 or more and can still reach a shelter with
+## one. Below 0: it can't (an army at flame 0 never can, outside Vigil).
 func margin(pid: String, flame: int) -> int:
 	var after := flame_after(pid, flame)
-	var d := 0 if shelter_at(pid) or _floors.has(pid) else int(_dist.get(pid, 99))
-	return after - maxi(1, d)
+	var d := 0 if keeps_flame(pid) else int(_dist.get(pid, 99))
+	return after - 1 - WickRules.idle_loss(ai._state, String(ai._fid)) * maxi(0, d - 1)
 
 
 ## Whether an army of ours that ends the turn at `pid` fights there: an enemy army stands there (an attack, a siege or a fort we
@@ -187,6 +191,61 @@ func in_time(armies: Array, pid: String) -> bool:
 	return true
 
 
+## Whether `armies` ending this turn at `pid`, with no battle there, are where a burning army should be (§8.1, §8.2): every one at
+## flame 1 or more is in time there (in_time), and `pid` either keeps its flame (keeps_flame) or brings a fight in reach (purposeful).
+## A step that only burns the flame down, with no fight it can still reach hot at its end, is no place to end a turn. A fight
+## always is.
+func worth_ending(armies: Array, pid: String) -> bool:
+	if not on or fights(pid):
+		return true
+	if not armies.any(func(a): return a.flame >= 1):
+		return true
+	return in_time(armies, pid) and (keeps_flame(pid) or purposeful(armies, pid))
+
+
+## Whether a fight is in reach of `armies` from `pid` (§8.1): one their coldest army at flame 1 or more still reaches with a flame of
+## 1 or more, losing the idle loss for each turn it ends on the way. A fight is a Free Holds garrison or a rival's army that they
+## match by the rough guess (on its ground), or a rival's fort or capital (the march's objective: a siege or a storm).
+func purposeful(armies: Array, pid: String) -> bool:
+	var coldest := 99
+	for a in armies:
+		if a.flame >= 1:
+			coldest = mini(coldest, a.flame)
+	if coldest == 99:
+		return true
+	var after := flame_after(pid, coldest)
+	var loss := WickRules.idle_loss(ai._state, String(ai._fid))
+	for t in _fights_for(armies):
+		var d: int = ai._d(pid, String(t))
+		if d >= 1 and after - loss * (d - 1) >= 1:
+			return true
+	return false
+
+
+## Where `armies` could have a fight (purposeful): every province with a Free Holds garrison or a rival's army they match by the rough
+## guess on its ground, and every rival fort or capital that has a garrison. By province id.
+func _fights_for(armies: Array) -> Array:
+	var out := {}
+	for pid in ai._holds:
+		if float(ai._ratio(armies, [ai._holds[pid]], 1.0, ai._ground_bonus(String(pid)))) >= 1.0:
+			out[String(pid)] = true
+	for e in ai._foes:
+		if out.has(e.location):
+			continue
+		var p: Province = ai._state.find_province(e.location)
+		if p != null and p.owner == e.owner and (p.has_fort or p.fort_level > 0 or p.is_capital):
+			out[e.location] = true
+		elif float(ai._ratio(armies, ai._foes_at(e.location), 1.0, ai._ground_bonus(e.location))) >= 1.0:
+			out[e.location] = true
+	for f in ai._state.factions:
+		var cap: Province = ai._state.find_province(f.capital) if f.id != String(ai._fid) else null
+		if cap != null and cap.owner == f.id:
+			out[cap.id] = true  # a rival capital: the war's end, held or not
+	var ids: Array = out.keys()
+	ids.sort()
+	return ids
+
+
 ## How far `armies` ending at `pid` fall short of time, all told (0 when every one is in time): the sum of each negative margin.
 func _shortfall(armies: Array, pid: String) -> int:
 	var out := 0
@@ -196,12 +255,15 @@ func _shortfall(armies: Array, pid: String) -> int:
 	return out
 
 
-## A place for `armies` (all standing at `here`) that keeps them in time, instead of `dest` (where the plan sent them, out of time):
-## holding at `here` or a safe step to a neighbour that is no fight, whichever falls least short (ties: `dest`, then `here`, then
-## the neighbours by id). `dest` itself when nothing in reach does better.
-func in_time_step(armies: Array, here: String, dest: String) -> String:
+## A place for `armies` (all standing at `here`) worth ending the turn at, instead of `dest` (where the plan sent them, which isn't):
+## holding at `here` or a safe step to a neighbour that is no fight. One worth ending at (worth_ending) comes first, the nearest to
+## `dest` (so the plan's intent holds), then `here`, then by id; otherwise the one that falls least short of time (in_time). `dest`
+## itself when nothing in reach does better.
+func better_end(armies: Array, here: String, dest: String) -> String:
 	var best := dest
+	var best_worth := false
 	var best_short := _shortfall(armies, dest)
+	var best_d := 0
 	var places: Array = [here]
 	places.append_array(ai._nbrs.get(here, []))
 	for pid in places:
@@ -209,10 +271,21 @@ func in_time_step(armies: Array, here: String, dest: String) -> String:
 			continue
 		if pid != here and (fights(pid) or not ai._safe_at(armies + ai._friends_ending_at(pid, armies), pid)):
 			continue
+		var worth := worth_ending(armies, pid)
 		var short := _shortfall(armies, pid)
-		if short > best_short:
+		var d: int = ai._d(pid, dest)
+		var better := false
+		if worth != best_worth:
+			better = worth
+		elif worth:
+			better = best == dest or d < best_d
+		else:
+			better = short > best_short
+		if better:
 			best = pid
+			best_worth = worth
 			best_short = short
+			best_d = d
 	return best
 
 
@@ -388,17 +461,23 @@ func guard() -> void:
 ## time there or nothing in reach does better, otherwise in_time_step's place, with a note saying why. AIPlayer._field_moves asks it
 ## for each group of ours, and guard for every army the other parts of the plan placed.
 func keep_in_time(armies: Array, here: String, dest: String) -> String:
-	if not on or in_time(armies, dest):
+	if not on or worth_ending(armies, dest):
 		return dest
-	var to := in_time_step(armies, here, dest)
+	var to := better_end(armies, here, dest)
 	if to == dest:
 		return dest
-	_bump("home_in_time")
 	var it := "it" if armies.size() == 1 else "they"
-	ai._note("Home in time: %s (%s) %s %s rather than %s: from there %s could no longer reach a harbour before %s flame burns out." % [
-		ai._army_names(armies), _flames_text(armies), "holds at" if to == here else "turns to", ai._province_name(to),
-		"hold at %s" % ai._province_name(dest) if dest == here else "go on to %s" % ai._province_name(dest), it,
-		"its" if armies.size() == 1 else "their"])
+	var rather := "hold at %s" % ai._province_name(dest) if dest == here else "go on to %s" % ai._province_name(dest)
+	var what := "%s (%s) %s %s rather than %s" % [ai._army_names(armies), _flames_text(armies), "holds at" if to == here else "turns to",
+		ai._province_name(to), rather]
+	if not in_time(armies, dest):
+		_bump("home_in_time")
+		ai._note("Home in time: %s: from there %s could no longer reach a harbour before %s flame burns out." % [what, it,
+			"its" if armies.size() == 1 else "their"])
+	else:
+		_bump("flame_kept")
+		ai._note("Keeping the flame: %s: %s would burn its flame down there with no fight in reach to win%s." % [what, it,
+			"" if not keeps_flame(to) else ", and %s keeps it" % ai._province_name(to)])
 	return to
 
 
