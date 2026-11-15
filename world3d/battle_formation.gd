@@ -27,13 +27,23 @@
 ## like knights and war bears get wider files and deeper lines). The number of files is the one that
 ## lets the camera frame the whole battle biggest in a band of the given aspect (width / height).
 ##
+## Three sides or more (#265: a Free Holds garrison caught between two players; the Candlewake later): every
+## side stands on its own spoke round the battle's middle, the spokes evenly apart (three sides stand as a
+## triangle), each side's front line the same distance from the middle, far enough that no two front lines
+## touch (spoke_gap), each side facing the middle. The near side (the defender; with nobody defending side 0,
+## or on a border the side whose home is nearest) takes the spoke at -axis, where it stands with two sides, so
+## a defender still holds the stage, its gate or its fort; the others take the spokes nearest the roads home
+## they came by (the axis points to their homes' middle). Two sides stand exactly as above.
+##
 ## Returns {"site": Vector2, "axis": Vector2 (unit: from the near side toward the far side), "near": side
 ## index standing on the -axis half, "far", "where": "stage" | "gate" | "fort" | "border", "files": int,
 ## "slots": [by fighter id: {"pos": Vector2, "y", "yaw", "side", "tier", "line", "file", "width", "depth"}],
 ## "extras": [{"type": "bearer" | "musician", "side", "pos", "y", "yaw"}], "back": [by side: Vector2 the
 ## point its routed fighters run to], "footprint": PackedVector2Array (the corners of the ground the
 ## battle needs clear), "fort": {} or {"pos": Vector2, "yaw", "faction", "world": bool (the world's own
-## fort)}, "depths": [by side: its formation's depth], "width": the widest line}.
+## fort)}, "depths": [by side: its formation's depth], "width": the widest line}. With three sides or more
+## also "dirs" ([by side: the unit vector from the middle out along its spoke]) and "gap" (each front line's
+## distance from the middle); "far" is then the side whose spoke points nearest +axis.
 extends RefCounted
 
 const Models := preload("res://world3d/models.gd")
@@ -60,7 +70,7 @@ static func plan(battle_log: Dictionary, t, world: Dictionary = {}, aspect: floa
 	var nsides := sides.size()
 	var lines := [] ## by side: the lines of that side (front first)
 	var reps: Dictionary = groups.get("reps", {})
-	var files := _pick_files(battle_log, aspect, reps)
+	var files := _pick_files(battle_log, aspect, reps) if nsides < 3 else compact_files(battle_log, reps, spokes_extent)
 	for si in nsides:
 		lines.append(side_lines(battle_log, si, files, reps))
 	var depths := []
@@ -69,11 +79,17 @@ static func plan(battle_log: Dictionary, t, world: Dictionary = {}, aspect: floa
 		depths.append(_depth(lines[si]))
 		for ln in lines[si]:
 			widest = maxf(widest, float(ln["width"]))
-	var geo := _site(battle_log, t, world, depths)
+	var many := nsides >= 3
+	var gap := spoke_gap(lines, nsides) if many else FRONT_GAP * 0.5
+	var geo := _site(battle_log, t, world, depths, gap)
 	var site: Vector2 = geo["site"]
 	var axis: Vector2 = geo["axis"]
 	var near: int = geo["near"]
 	var far: int = 1 - near if nsides > 1 else near
+	var spokes := {}
+	if many:
+		spokes = _spokes(battle_log, t, axis, near)
+		far = _far_spoke(spokes, near)
 	## turn until no one stands in the sea (and never into a fortress)
 	var best := {}
 	var best_wet := 1 << 30
@@ -84,7 +100,7 @@ static func plan(battle_log: Dictionary, t, world: Dictionary = {}, aspect: floa
 		if String(geo["where"]) == "fort" and geo.has("pivot"):
 			var pv: Vector2 = geo["pivot"]
 			st = pv + (site - pv).rotated(deg_to_rad(deg))
-		var placed := _place(battle_log, t, lines, depths, st, ax, near, far)
+		var placed := _place_many(battle_log, t, lines, st, ax, spokes, gap) if many else _place(battle_log, t, lines, depths, st, ax, near, far)
 		var wet := _wet(t, placed, world, battle_log)
 		if wet < best_wet:
 			best_wet = wet
@@ -115,11 +131,115 @@ static func plan(battle_log: Dictionary, t, world: Dictionary = {}, aspect: floa
 			## the stage's own fort stands behind the near side's back line, gate toward the battle
 			var ax2: Vector2 = out["axis"]
 			var r: float = fort_radius(String(fd.get("faction", "")))
-			fd["pos"] = (out["site"] as Vector2) - ax2 * (FRONT_GAP * 0.5 + float(depths[near]) + 3.0 + r)
+			fd["pos"] = (out["site"] as Vector2) - ax2 * (gap + float(depths[near]) + 3.0 + r)
 			fd["yaw"] = atan2(-ax2.x, -ax2.y)
 		out["fort"] = fd
-	out["footprint"] = _footprint(out["site"], out["axis"], depths, near, far, widest, nsides)
+	if many:
+		out["gap"] = gap
+		out["footprint"] = _footprint_many(out["site"], out["axis"], out["slots"], out["extras"])
+	else:
+		out["footprint"] = _footprint(out["site"], out["axis"], depths, near, far, widest, nsides)
 	return out
+
+
+## #265: how far from the middle each front line of a battle of `n` sides (n >= 3) stands, its sides' lines being `lines`
+## (side_lines'): far enough that every line's ends stay FRONT_GAP / 2 clear of the line halfway between its spoke and the
+## next (`TAU / n` apart), so two neighbouring sides are never nearer than two sides' front lines (FRONT_GAP), and never
+## nearer the middle than two sides stand (FRONT_GAP / 2).
+static func spoke_gap(lines: Array, n: int) -> float:
+	var half_turn := PI / float(n)
+	var need := FRONT_GAP * 0.5
+	for ls in lines:
+		var acc := 0.0
+		var last_tier := -1
+		for ln in ls:
+			if last_tier >= 0 and int(ln["tier"]) != last_tier:
+				acc += TIER_GAP
+			last_tier = int(ln["tier"])
+			need = maxf(need, float(ln["width"]) * 0.5 / tan(half_turn) + FRONT_GAP * 0.5 / sin(half_turn) - acc)
+			acc += float(ln["depth"])
+	return need
+
+
+## #265: the file count that stands a battle of more sides most compactly: from about the square root of twice its biggest
+## side (lines, not queues, as _pick_files) up to MAX_FILES, the one whose lines (by side) give the least `extent`
+## (Callable(lines) -> float; the fewest files on a tie).
+static func compact_files(battle_log: Dictionary, reps: Dictionary, extent: Callable) -> int:
+	var sides: Array = battle_log.get("sides", [])
+	var most := 1
+	for si in sides.size():
+		var n := 0
+		for fid in sides[si].fighters:
+			if reps.is_empty() or reps.has(int(fid)):
+				n += 1
+		most = maxi(most, n)
+	var least := mini(most, maxi(1, int(ceil(sqrt(2.0 * most)))))
+	var best := least
+	var best_e := INF
+	for w in range(least, maxi(least, mini(MAX_FILES, most)) + 1):
+		var lines := []
+		for si in sides.size():
+			lines.append(side_lines(battle_log, si, w, reps))
+		var e: float = extent.call(lines)
+		if e < best_e - 0.01:
+			best_e = e
+			best = w
+	return best
+
+
+## #265: how far a battle of more sides standing on spokes reaches from its middle (compact_files' measure for plan): its
+## farthest side's back corner.
+static func spokes_extent(lines: Array) -> float:
+	var gap := spoke_gap(lines, lines.size())
+	var r := 0.0
+	for ls in lines:
+		var wide := 0.0
+		for ln in ls:
+			wide = maxf(wide, float(ln["width"]))
+		r = maxf(r, Vector2(gap + _depth(ls), wide * 0.5).length())
+	return r
+
+
+## #265: each side's spoke, as its turn (radians) from the near side's (-axis): the near side 0, the others the spokes
+## TAU / n apart in turn, given in the order of the roads home they came by (the signed angle of each side's home from
+## `axis`; a side with no road home counts as straight along it), so each stands toward where it came from.
+static func _spokes(battle_log: Dictionary, t, axis: Vector2, near: int) -> Dictionary:
+	var sides: Array = battle_log.sides
+	var n := sides.size()
+	var pids: Array = battle_log.get("provinces", [])
+	var pid := String(pids[0]) if not pids.is_empty() else ""
+	var turns := []  # [signed angle from axis, spoke k]
+	for k in range(1, n):
+		var u := (-axis).rotated(TAU * k / float(n))
+		turns.append([atan2(axis.cross(u), axis.dot(u)), k])
+	turns.sort_custom(func(a, b): return float(a[0]) < float(b[0]))
+	var others := []  # [signed angle of its home from axis, side]
+	for si in n:
+		if si == near:
+			continue
+		var h := home_dir(t, pid, String(sides[si].faction)) if pid != "" and t.index_of(pid) >= 0 else Vector2.ZERO
+		others.append([atan2(axis.cross(h), axis.dot(h)) if h != Vector2.ZERO else 0.0, si])
+	others.sort_custom(func(a, b): return float(a[0]) < float(b[0]) or (float(a[0]) == float(b[0]) and int(a[1]) < int(b[1])))
+	var out := {near: 0.0}
+	for j in others.size():
+		out[int(others[j][1])] = TAU * int(turns[j][1]) / float(n)
+	return out
+
+
+## #265: the side whose spoke points nearest +axis (the lowest index on a tie): the "far" side of a battle of more sides.
+static func _far_spoke(spokes: Dictionary, near: int) -> int:
+	var best := near
+	var best_dot := -INF
+	var keys := spokes.keys()
+	keys.sort()
+	for si in keys:
+		if int(si) == near:
+			continue
+		var d := -cos(float(spokes[si]))  # the spoke's direction (-axis turned by it) along +axis
+		if d > best_dot + 0.0001:
+			best_dot = d
+			best = int(si)
+	return best
 
 
 ## The lines of side `si` with `files` files: [{"fids": [ids in file order], "pitches": [each one's room
@@ -372,8 +492,9 @@ static func _depth(ls: Array) -> float:
 	return d
 
 
-## Where the battle stands and which way it faces, before the sea check.
-static func _site(battle_log: Dictionary, t, world: Dictionary, depths: Array) -> Dictionary:
+## Where the battle stands and which way it faces, before the sea check. `gap`: how far each front line stands from the
+## middle (FRONT_GAP / 2 with two sides; #265: spoke_gap with more).
+static func _site(battle_log: Dictionary, t, world: Dictionary, depths: Array, gap: float = FRONT_GAP * 0.5) -> Dictionary:
 	var sides: Array = battle_log.get("sides", [])
 	var pids: Array = battle_log.get("provinces", [])
 	var pid := String(pids[0]) if not pids.is_empty() else ""
@@ -398,7 +519,15 @@ static func _site(battle_log: Dictionary, t, world: Dictionary, depths: Array) -
 		var axis: Vector2 = (cb - ca).normalized()
 		## the side whose home is nearer province a stands on a's half
 		var near := 0
-		if sides.size() > 1:
+		if sides.size() > 2:
+			## #265: of more sides, the one whose home is nearest a (the first on a tie)
+			var best_d := 1 << 30
+			for si in sides.size():
+				var dsi_home := roads_home(t, a, String(sides[si].faction)) - roads_home(t, b, String(sides[si].faction))
+				if dsi_home < best_d:
+					best_d = dsi_home
+					near = si
+		elif sides.size() > 1:
 			var d0 := roads_home(t, a, String(sides[0].faction)) - roads_home(t, b, String(sides[0].faction))
 			var d1 := roads_home(t, a, String(sides[1].faction)) - roads_home(t, b, String(sides[1].faction))
 			near = 1 if d1 < d0 else 0
@@ -411,8 +540,16 @@ static func _site(battle_log: Dictionary, t, world: Dictionary, depths: Array) -
 	var fortresses: Dictionary = world.get("fortresses", {})
 	var forts: Dictionary = world.get("forts", {})
 	if dsi >= 0 and sides.size() > 1:
-		var asi := 1 - dsi
-		var a_dir := home_dir(t, pid, String(sides[asi].faction))
+		var a_dir := Vector2.ZERO
+		if sides.size() > 2:
+			## #265: the attackers' roads home, together
+			for si in sides.size():
+				if si != dsi:
+					a_dir += home_dir(t, pid, String(sides[si].faction))
+			a_dir = a_dir.normalized() if a_dir.length() > 0.2 else Vector2.ZERO
+		else:
+			var asi := 1 - dsi
+			a_dir = home_dir(t, pid, String(sides[asi].faction))
 		if a_dir == Vector2.ZERO:
 			a_dir = -home_dir(t, pid, String(sides[dsi].faction))
 		if a_dir == Vector2.ZERO:
@@ -421,7 +558,7 @@ static func _site(battle_log: Dictionary, t, world: Dictionary, depths: Array) -
 			var fz: Dictionary = fortresses[pid]
 			var gdir: Vector2 = fz["gate_dir"]
 			var gout: Vector2 = fz["gate_outer"]
-			var site: Vector2 = gout + gdir * (GATE_MARGIN + float(depths[dsi]) + FRONT_GAP * 0.5)
+			var site: Vector2 = gout + gdir * (GATE_MARGIN + float(depths[dsi]) + gap)
 			return {"site": site, "axis": gdir, "near": dsi, "where": "gate"}
 		if battle_log.get("fort", false):
 			var fac := String(sides[dsi].faction)
@@ -431,19 +568,25 @@ static func _site(battle_log: Dictionary, t, world: Dictionary, depths: Array) -
 				var fr: float = float(fs[1])
 				var toward: Vector2 = c + a_dir * float(t.stage_r[i]) - fpos
 				var axis: Vector2 = toward.normalized() if toward.length() > 0.01 else a_dir
-				var site: Vector2 = fpos + axis * (fr + 3.0 + float(depths[dsi]) + FRONT_GAP * 0.5)
+				var site: Vector2 = fpos + axis * (fr + 3.0 + float(depths[dsi]) + gap)
 				return {"site": site, "axis": axis, "near": dsi, "where": "fort", "pivot": fpos,
 					"fort": {"pos": fpos, "yaw": atan2(-axis.x, -axis.y), "faction": fac, "world": true}}
 			## a fort the world doesn't draw here (a test battle): the stage puts one behind the defender
 			var r := fort_radius(fac)
 			var back: Vector2 = c - a_dir * float(t.stage_r[i]) * 0.5
-			var site2: Vector2 = back + a_dir * (r + 3.0 + float(depths[dsi]) + FRONT_GAP * 0.5)
+			var site2: Vector2 = back + a_dir * (r + 3.0 + float(depths[dsi]) + gap)
 			return {"site": site2, "axis": a_dir, "near": dsi, "where": "fort", "pivot": back,
 				"fort": {"faction": fac, "world": false}}
 		return {"site": c, "axis": a_dir, "near": dsi, "where": "stage"}
 	## nobody defends: each side takes the end nearer its home
 	var h0 := home_dir(t, pid, String(sides[0].faction)) if sides.size() > 0 else Vector2.ZERO
 	var h1 := home_dir(t, pid, String(sides[1].faction)) if sides.size() > 1 else Vector2.ZERO
+	if sides.size() > 2:
+		## #265: side 0 at its end, the others toward their roads home together
+		h1 = Vector2.ZERO
+		for si in range(1, sides.size()):
+			h1 += home_dir(t, pid, String(sides[si].faction))
+		h1 = h1 / float(sides.size() - 1)
 	var axis2 := h1 - h0
 	if axis2.length() < 0.2:
 		axis2 = -h0 if h0 != Vector2.ZERO else (h1 if h1 != Vector2.ZERO else _gate_dir(t, pid))
@@ -452,10 +595,11 @@ static func _site(battle_log: Dictionary, t, world: Dictionary, depths: Array) -
 		var fz2: Dictionary = fortresses[pid]
 		var gdir2: Vector2 = fz2["gate_dir"]
 		var gout2: Vector2 = fz2["gate_outer"]
-		## both stand outside the gate, along it; side 0 nearer the gate unless its home is the far way
-		var near2 := 0 if axis2.dot(gdir2) >= 0.0 else 1
+		## both stand outside the gate, along it; side 0 nearer the gate unless its home is the far way (#265: with more
+		## sides, side 0 nearest the gate)
+		var near2 := 0 if axis2.dot(gdir2) >= 0.0 or sides.size() > 2 else 1
 		var dn := float(depths[near2]) if near2 < depths.size() else 0.0
-		return {"site": gout2 + gdir2 * (GATE_MARGIN + dn + FRONT_GAP * 0.5), "axis": gdir2, "near": near2, "where": "gate"}
+		return {"site": gout2 + gdir2 * (GATE_MARGIN + dn + gap), "axis": gdir2, "near": near2, "where": "gate"}
 	return {"site": c, "axis": axis2, "near": 0, "where": "stage"}
 
 
@@ -529,6 +673,80 @@ static func _place(battle_log: Dictionary, t, lines: Array, depths: Array, site:
 			extras.append({"type": "bearer" if k == 0 else "musician", "side": si, "pos": p2, "y": maxf(t.height_at(p2), 0.0), "yaw": yaw})
 		back[si] = site + axis * (dir * (back_d + ROUT_RUN))
 	return {"slots": slots, "extras": extras, "back": back}
+
+
+## #265: every fighter's place for a battle of three sides or more standing at `site`: each side on its spoke (`spokes`: its
+## turn from -axis), its front line `gap` from the middle, its lines going out along the spoke, facing the middle; the
+## colour party beside its commander (or behind its lines); its routed fighters run on out along the spoke. Also "dirs":
+## by side, the unit vector out along its spoke.
+static func _place_many(battle_log: Dictionary, t, lines: Array, site: Vector2, axis: Vector2, spokes: Dictionary, gap: float) -> Dictionary:
+	var slots := []
+	slots.resize((battle_log.get("fighters", []) as Array).size())
+	var extras := []
+	var sides: Array = battle_log.get("sides", [])
+	var back := []
+	back.resize(sides.size())
+	var dirs := []
+	dirs.resize(sides.size())
+	for si in sides.size():
+		var u: Vector2 = (-axis).rotated(float(spokes.get(si, 0.0)))
+		dirs[si] = u
+		var lat := Vector2(-u.y, u.x)
+		var yaw := atan2(u.x, u.y) ## facing -u: the middle
+		var d := gap
+		var last_tier := -1
+		var line_no := 0
+		var commander_at := Vector2.INF
+		var back_d := d
+		for ln in lines[si]:
+			if last_tier >= 0 and int(ln["tier"]) != last_tier:
+				d += TIER_GAP
+			last_tier = int(ln["tier"])
+			var depth: float = ln["depth"]
+			var centre_d: float = d + depth * 0.5
+			var fids: Array = ln["fids"]
+			var pitches: Array = ln["pitches"]
+			var run := -float(ln["width"]) * 0.5
+			for k in fids.size():
+				var pitch: float = pitches[k]
+				var off: float = run + pitch * 0.5
+				run += pitch
+				var p: Vector2 = site + u * centre_d + lat * off
+				var fid := int(fids[k])
+				slots[fid] = {"pos": p, "y": maxf(t.height_at(p), 0.0), "yaw": yaw, "side": si, "tier": int(ln["tier"]), "line": line_no,
+					"file": k, "width": pitch, "depth": depth}
+				if battle_log.fighters[fid].role == "commander" and commander_at == Vector2.INF:
+					commander_at = p
+			d += depth
+			back_d = d
+			line_no += 1
+		var base: Vector2 = commander_at if commander_at != Vector2.INF else site + u * (back_d + LINE_PITCH * 0.5)
+		var spread := FILE_PITCH * 1.4 if commander_at != Vector2.INF else FILE_PITCH * 0.7
+		for k in 2:
+			var p2: Vector2 = base + lat * (spread * (1.0 if k == 0 else -1.0))
+			extras.append({"type": "bearer" if k == 0 else "musician", "side": si, "pos": p2, "y": maxf(t.height_at(p2), 0.0), "yaw": yaw})
+		back[si] = site + u * (back_d + ROUT_RUN)
+	return {"slots": slots, "extras": extras, "back": back, "dirs": dirs}
+
+
+## #265: the ground a battle of three sides or more needs clear: the rectangle along `axis` round every fighter and colour
+## party, CLEAR_MARGIN (and a little more) beyond them.
+static func _footprint_many(site: Vector2, axis: Vector2, slots: Array, extras: Array) -> PackedVector2Array:
+	var lat := Vector2(-axis.y, axis.x)
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for s in slots + extras:
+		if s == null:
+			continue
+		var q: Vector2 = (s["pos"] as Vector2) - site
+		var a := Vector2(q.dot(axis), q.dot(lat))
+		lo = lo.min(a)
+		hi = hi.max(a)
+	var m := CLEAR_MARGIN + 6.0 + LINE_PITCH * 0.5
+	lo -= Vector2(m, m)
+	hi += Vector2(m, m)
+	return PackedVector2Array([site + axis * lo.x + lat * lo.y, site + axis * hi.x + lat * lo.y, site + axis * hi.x + lat * hi.y,
+		site + axis * lo.x + lat * hi.y])
 
 
 ## How many fighters of a placement stand in the sea, inside a fortress or off the land (fewer is better).

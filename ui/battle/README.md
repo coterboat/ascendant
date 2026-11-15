@@ -37,8 +37,16 @@ host.next(); host.previous(); host.close()
   replays the game record with `BattleLog.regenerate` and checks the result against the report). Meanwhile
   the host shows "Regenerating this battle's playback from the game record…".
 - Battles that can't be watched say why, both on the Watch buttons (`BattleHost.watch_problem(event)`) and in
-  the host if one is opened anyway: fought with the test rules (no log), more than two sides, a log cut short
-  at `BattleLog.MAX_EVENTS`, or a log that isn't kept and can't be rebuilt.
+  the host if one is opened anyway: fought with the test rules (no log), a log cut short at
+  `BattleLog.MAX_EVENTS`, or a log that isn't kept and can't be rebuilt.
+- **Any number of sides** (#265): a Free Holds garrison caught between two players fights a three-sided battle,
+  and so will the Candlewake. Both views play it. On the Simple view's field (`BattleLayout`) the lone side (the
+  defender, else side 0) holds a half alone and the others share the other half, each in its own band. The top
+  bar has a side plate per side: the left half's plates, the centre, the right half's, each plate's morale tag
+  under it, all in plate order for Tab (`layout.order`, `layout.groups`, `plate_of(si)`). The why panel and
+  the result card name each side and when it left the field (`BattleWhy.how_it_ended`). Two sides lay out
+  exactly as before. `tests/three_side_fixtures.gd` fights three of them with the real rules, and both
+  launchers play them (`--fixture three_holds`, `three_fort`, `three_rivals`).
 - The view comes from the setting **Battle view** (`[battle] view` in `user://settings.cfg`: `3d`, the default
   since M3b, or `simple`). The 3D stage is `world3d/battle_stage.tscn` (`BattleStage3D`, see `world3d/README.md`);
   if `BattleHost.stage_3d_path` is missing, `3d` plays in the Simple view and the host shows a short note.

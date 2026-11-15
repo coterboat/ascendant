@@ -21,9 +21,18 @@ extends RefCounted
 ##   (a "crowd": cards overlap upward, lower rows in front, and the hp bar moves to the card's top so it
 ##   stays visible). Every fixture fits, the biggest (149 a side) as a crowd.
 ##
+## Three sides or more (#265: a Free Holds garrison caught between two players, the Candlewake later): one side holds a
+## half alone, the defender on the right (with no defender, side 0 on the left), and the others share the other half,
+## each in its own band of the ground, from the top down in side order, each facing the centre. Each side's cards keep
+## the rules above inside its band; the scale is the largest at which every side fits its band, and past the smallest a
+## side that still doesn't fit closes its own rows (a crowd). Two sides lay out exactly as above.
+##
 ## Returns {"scale", "card" (Vector2), "crowd" (bool), "bar_on_top" (bool), "bar_h", "pitch" (Vector2: column
 ## and row pitch), "left", "right", "slots": [{"rect", "side", "tier", "col", "row", "dir" (+1 faces right,
-## -1 faces left), "back_x" (the x of its side's back edge, where routed cards run to)}] by fighter id}.
+## -1 faces left), "back_x" (the x of its side's back edge, where routed cards run to)}] by fighter id,
+## "groups": [the sides on the left half, top to bottom; those on the right], "order": the sides in plate order (the
+## left half's, then the right's: the side plates over the field follow it), "areas": [by side: the Rect2 of the
+## ground its cards stand in]}. With two sides "left" and "right" are the halves' sides; with more, each half's first.
 
 const SCALES := [1.0, 0.875, 0.75, 0.625]
 const CARD := Vector2(72, 96)
@@ -33,10 +42,14 @@ const AREA_BOTTOM_MARGIN := 10.0
 const SIDE_MARGIN := 32.0
 const FRONT_GAP := 120.0
 const RANK_GAP := 24.0
+## #265: the gap between two sides' bands on a shared half, at the 600 px field height (scaled with it).
+const BAND_GAP := 14.0
 
 
 static func build(battle_log: Dictionary, field: Vector2) -> Dictionary:
 	var sides: Array = battle_log.get("sides", [])
+	if sides.size() >= 3:
+		return _build_many(battle_log, field)
 	var left := 0
 	var right := 1 if sides.size() > 1 else 0
 	for s in sides:
@@ -81,8 +94,85 @@ static func build(battle_log: Dictionary, field: Vector2) -> Dictionary:
 	for si in sides.size():
 		var on_left := sides.size() == 1 or si == left
 		_place(battle_log, slots, si, on_left, tiers[si], pick, field, area_top, area_h)
+	var groups := [[left], [right] if sides.size() > 1 else []]
+	var areas := []
+	for si in sides.size():
+		var half_left := sides.size() == 1 or si == left
+		areas.append(Rect2(0.0 if half_left else field.x / 2.0, area_top, field.x / 2.0, area_h))
 	return {"scale": pick.scale, "card": pick.card, "crowd": pick.crowd, "bar_on_top": pick.crowd, "bar_h": pick.bar_h,
-		"pitch": Vector2(pick.cell_w, pick.pitch_y), "left": left, "right": right, "slots": slots}
+		"pitch": Vector2(pick.cell_w, pick.pitch_y), "left": left, "right": right, "slots": slots, "groups": groups,
+		"order": groups[0] + groups[1], "areas": areas}
+
+
+## Three sides or more (#265): the lone side's half and the shared half's bands (see the class comment).
+static func _build_many(battle_log: Dictionary, field: Vector2) -> Dictionary:
+	var sides: Array = battle_log.sides
+	var n := sides.size()
+	var lone := 0
+	var lone_right := false
+	for s in sides:
+		if s.get("defender", false):
+			lone = int(s.index)
+			lone_right = true
+	var others := []
+	for si in n:
+		if si != lone:
+			others.append(si)
+	var groups := [others, [lone]] if lone_right else [[lone], others]
+	var tiers := {}
+	for si in n:
+		tiers[si] = _ordered_tiers(battle_log, si)
+	var area_top := AREA_TOP * field.y / 600.0
+	var area_h := field.y - area_top - AREA_BOTTOM_MARGIN
+	var gap := BAND_GAP * field.y / 600.0
+	var bands := {}  # side -> [top, height]
+	for g in groups:
+		var k: int = (g as Array).size()
+		var bh := (area_h - gap * (k - 1)) / maxf(1.0, float(k))
+		for j in k:
+			bands[int(g[j])] = [area_top + j * (bh + gap), bh]
+	var per := {}  # side -> its geometry
+	for s in SCALES:
+		var fits := {}
+		for si in n:
+			var g := _geometry(s, float(bands[si][1]))
+			if _width(tiers[si], int(g.rows), g) > _available(field, s):
+				fits = {}
+				break
+			fits[si] = g
+		if fits.size() == n:
+			per = fits
+			break
+	var crowd := false
+	if per.is_empty():
+		# A crowd: the smallest scale; a side that doesn't fit its band closes its rows until it does.
+		for si in n:
+			var g := _geometry(SCALES[-1], float(bands[si][1]))
+			var rows := int(g.rows)
+			var limit := 400
+			while limit > 0 and _width(tiers[si], rows, g) > _available(field, float(g.scale)):
+				rows += 1
+				limit -= 1
+			if rows > int(g.rows):
+				crowd = true
+				g.rows = rows
+				g.crowd = true
+				g.pitch_y = maxf(8.0, (float(bands[si][1]) - float(g.card.y)) / maxf(1.0, rows - 1))
+			per[si] = g
+	var slots := []
+	slots.resize(battle_log.get("fighters", []).size())
+	var areas := []
+	for si in n:
+		var on_left: bool = (groups[0] as Array).has(si)
+		_place(battle_log, slots, si, on_left, tiers[si], per[si], field, float(bands[si][0]), float(bands[si][1]))
+		areas.append(Rect2(0.0 if on_left else field.x / 2.0, float(bands[si][0]), field.x / 2.0, float(bands[si][1])))
+	var first: Dictionary = per[0]
+	var pitch_y := INF
+	for si in n:
+		pitch_y = minf(pitch_y, float(per[si].pitch_y))
+	return {"scale": first.scale, "card": first.card, "crowd": crowd, "bar_on_top": crowd, "bar_h": first.bar_h,
+		"pitch": Vector2(first.cell_w, pitch_y), "left": int(groups[0][0]), "right": int(groups[1][0]), "slots": slots, "groups": groups,
+		"order": groups[0] + groups[1], "areas": areas}
 
 
 static func _geometry(s: float, area_h: float) -> Dictionary:
