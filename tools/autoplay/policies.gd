@@ -642,7 +642,11 @@ class AIPolicy extends Base:
 				"fort_sieges", "storms", "sallies", "reliefs", "abandons", "sieges_left", "approaches", "garrisons",
 				"engines_bought", "forts_ordered",
 				# M5-10 (#121), games with magic and fog only: the rituals cast (and in blood), the scouts sent
-				"rituals", "blood_paid", "scouts"]:
+				"rituals", "blood_paid", "scouts",
+				# CW-6 (#257), games with the Candlewake only: what AIWick planned (fights for fuel, harbours kept and reached,
+				# armies turned home in time, recruits kept from cooling an army, cold wakes retaken, battles denied a hot army)
+				"fuel", "harbour_holds", "flame_kept", "home_steps", "home_in_time", "new_armies", "relights", "harvest_fights",
+				"denials"]:
 			if int(st.get(key, 0)) > 0:
 				bump(key, int(st.get(key, 0)))
 		for key in st:

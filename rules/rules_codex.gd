@@ -735,6 +735,12 @@ const ENTRIES := {
 		"title": "Harbour",
 		"text": "Where a Candlewake army can wait without its flame falling: a fort you own, and (with the Wake) a province of yours on the Wake-Line or in Deep Wake, or a cold wake of your own. A siege camp is not a harbour: it wants the storm, not the wait. An army in a harbour that fights no battle keeps its flame in the Wick step.",
 	},
+	# CW-6 (#257, design/CANDLEWAKE.md §8): how the computer plays Wick, and against it (see Playing against the computer).
+	"computer_wick": {
+		"faction": "candlewake",
+		"title": "The computer and Wick",
+		"text": "Playing the Candlewake, the computer feeds a cold army's flame on a fight next door, brings an army with no fight in reach home to a harbour before its flame burns out, and lets its recruits form a new army beside a hot one rather than cool it. Playing against them, it pulls back from an army at flame %d or more that it would likely lose to, so that flame burns down waiting. Its notes in the turn report say when it does any of these." % AIWick.HOT,
+	},
 	"guttering": {
 		"faction": "candlewake",
 		"title": "Guttering",

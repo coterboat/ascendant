@@ -93,7 +93,7 @@ const END_NAMES := {"rout": "rout (a side broke and fled)", "destroyed": "destro
 const SUMMARY_KEYS := ["games", "matchup", "seats", "policies", "seeds", "turn_cap", "finished", "unfinished",
 	"draws", "wins_by_faction", "wins_by_seat", "length", "length_decisive", "length_all", "length_buckets", "battles",
 	"why_factors", "final_gold", "mean_gold", "provinces_held", "orders", "rejections",
-	"resolution_rejections", "violations", "errors", "script_errors", "policy_stats", "patterns", "builds", "rulers", "paths", "magic"]
+	"resolution_rejections", "violations", "errors", "script_errors", "policy_stats", "patterns", "builds", "rulers", "paths", "magic", "wick"]
 ## Trait names as they appear as "why" factor ids (data/factions.gd), for the trait line of the report.
 const TRAITS := ["Shield Wall", "Volley", "Charge", "Inspire", "Berserk", "Skirmish", "Fury", "Pack Leader"]
 const LENGTH_BUCKETS := [[1, 9, "under 10"], [10, 15, "10-15"], [16, 20, "16-20"], [21, 30, "21-30"], [31, 100000, "31+"]]
@@ -150,6 +150,8 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 		"duels": [],
 		# M5-11: a game with magic carries its log (MagicLog), a game with fog the snapshot probe's (FogProbe).
 		"magic": {}, "fog": {},
+		# CW-6 (#257): a game that seats a faction keeping a flame (the Candlewake) carries its Wick log (wick_log_new); {} without.
+		"wick": {},
 	}
 	if seat_factions.size() != policy_names.size():
 		_error(result, 0, "There are %d seats but %d policies." % [seat_factions.size(), policy_names.size()])
@@ -163,8 +165,6 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 			return result
 		policies.append(policy)
 		rngs.append(SeededRNG.new(policy_seed(game_seed, i)))
-	var sieges: bool = options.get("sieges", false)
-	var siege_log := siege_log_new()
 	var magic: bool = options.get("magic", false)
 	var fog: bool = options.get("fog", false)
 	var tithe_mode := str(options.get("tithe", ""))
@@ -173,6 +173,13 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 	for i in policies.size():
 		policies[i].configure(game_seed, i, str(forced_sides[i]) if i < forced_sides.size() and forced_sides[i] != null else "")
 
+	if not _legacy_seats(seat_factions):
+		# CW-6 (#257): a game with the Candlewake is built the way GameScreen.starting_state builds it, through GameState.create;
+		# the Crown and the Clans keep the legacy constructors below, byte for byte.
+		var seated := _seated_start(game_seed, seat_factions, options, rngs, result)
+		if seated == null:
+			return result
+		return _play_from(seated, game_seed, seat_factions, policy_names, policies, rngs, turn_cap, probe, options, result)
 	var start := GameState.new(game_seed)
 	if options.get("rulers", false) or paths:
 		var forced: Array = options.get("builds", [])
@@ -225,6 +232,66 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 			for e in fog_errors:
 				_error(result, 0, "setup: %s" % e)
 			return result
+	return _play_from(start, game_seed, seat_factions, policy_names, policies, rngs, turn_cap, probe, options, result)
+
+
+## The Crown and the Clans, in either order: the pair the legacy constructors build (FactionData.LEGACY_PAIR).
+static func _legacy_seats(seat_factions: Array) -> bool:
+	var a := seat_factions.map(func(fid): return str(fid))
+	a.sort()
+	var b := FactionData.LEGACY_PAIR.duplicate()
+	b.sort()
+	return a == b
+
+
+## CW-6 (#257): the starting state of a game that seats a faction other than the Crown and the Clans (the Candlewake), as
+## GameScreen.starting_state builds it: GameState.create with the systems `options` asks for and each seat's build rolled with
+## AIPlayer.choose_build, the first draw of its policy RNG (as AISeat rolls it), or forced by "builds". null, with the reasons
+## filed in `result`, when the game can't be built (a faction that can't play a system yet says so).
+static func _seated_start(game_seed: int, seat_factions: Array, options: Dictionary, rngs: Array, result: Dictionary) -> GameState:
+	var magic: bool = options.get("magic", false)
+	var paths: bool = options.get("paths", false) or magic
+	var rulers: bool = options.get("rulers", false) or paths
+	var flags := {"rulers": rulers, "paths": paths, "magic": magic, "sieges": options.get("sieges", false),
+		"independents": options.get("independents", false), "fog": options.get("fog", false)}
+	if not str(options.get("tithe", "")).is_empty():
+		_error(result, 0, "setup: Tithe of Blood is for the Thornmane Clans' builds in a Crown–Clans game.")
+		return null
+	var builds := {}
+	if rulers:
+		var forced: Array = options.get("builds", [])
+		for i in seat_factions.size():
+			var fid := str(seat_factions[i])
+			var rolled := AIPlayer.choose_build(null, fid, rngs[i])  # the seat RNG's first draw, as in AISeat
+			var pick = forced[i] if i < forced.size() else ""
+			if (pick is String and pick.is_empty()) or pick == null:
+				builds[fid] = rolled
+				result.builds[fid] = str(rolled.get("preset", ""))
+				continue
+			var parsed := parse_build(pick, fid)
+			if parsed.has("error"):
+				_error(result, 0, "setup: seat %d: %s" % [i + 1, parsed.error])
+				return null
+			builds[fid] = {"preset": parsed.preset, "ruler": parsed.ruler, "mandates": parsed.mandates}
+			result.builds[fid] = str(parsed.id)
+	var errors := []
+	var start := GameState.create(game_seed, seat_factions, flags, builds, errors)
+	if start == null:
+		for e in errors:
+			_error(result, 0, "setup: %s" % e)
+	return start
+
+
+## Plays the game from `start` to its end or the turn cap (play_game's loop): see play_game.
+static func _play_from(start: GameState, game_seed: int, seat_factions: Array, policy_names: Array, policies: Array, rngs: Array,
+		turn_cap: int, probe: Callable, options: Dictionary, result: Dictionary) -> Dictionary:
+	var sieges: bool = options.get("sieges", false)
+	var siege_log := siege_log_new()
+	var magic: bool = options.get("magic", false)
+	var fog: bool = options.get("fog", false)
+	var paths: bool = options.get("paths", false) or magic
+	var forced_sides: Array = options.get("branches", [])
+	var wick := wick_log_new(start)  # CW-6 (#257): the Candlewake's flames; {} in a game where no seated faction keeps one
 	var session := GameSession.new(start, seat_factions, game_seed, AutoBattleResolver.new())
 	for e in session.setup_errors():
 		_error(result, 0, "setup: %s" % e)
@@ -292,6 +359,8 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 			check_research(prev, state, turn, forecasts, pending_research, result.research)
 		if sieges:
 			log_sieges(siege_log, turn_start, state, events, queued, turn)
+		if not wick.is_empty():
+			log_wick(wick, turn_start, state, events)
 		for v in found:
 			result.violations.append({"seed": game_seed, "turn": turn, "check": v.check, "detail": v.detail})
 		var logged: Array = Array(probe.call()) if probe.is_valid() else []
@@ -355,6 +424,7 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 	result.final_state = final_state.to_dict()
 	if sieges:
 		result.sieges = siege_log_done(siege_log, final_state, result)
+	result.wick = wick
 	_log_rulers(result, final_state)
 	_log_paths(result, final_state)
 	if magic:
@@ -614,7 +684,9 @@ static func check_invariants(prev: GameState, state: GameState, events: Array) -
 	for e in events:
 		var type := str(e.get("type", ""))
 		if not EVENT_TYPES.has(type) and not RULER_EVENT_TYPES.has(type) and not (state.paths and PATH_EVENT_TYPES.has(type)) \
-				and not (state.sieges and SIEGE_EVENT_TYPES.has(type)) and not (state.magic and MAGIC_EVENT_TYPES.has(type)):
+				and not (state.sieges and SIEGE_EVENT_TYPES.has(type)) and not (state.magic and MAGIC_EVENT_TYPES.has(type)) \
+				and not (WickRules.in_play(state) and WickRules.EVENT_TYPES.has(type)) \
+				and not (MarkRules.in_play(state) and MarkRules.EVENT_TYPES.has(type)):  # CW-6: the Candlewake's Wick and Wake
 			out.append({"check": "event_type_unknown", "detail": "The turn report has an event of unexpected type '%s'." % type})
 		var phases: Array = GameSession.report_phases(state)
 		if not phases.has(str(e.get("phase", ""))):
@@ -1022,6 +1094,150 @@ static func _check_rulers(prev: GameState, state: GameState, events: Array) -> A
 	return out
 
 
+# --- CW-6 (#257): the Wick log -------------------------------------------------------------------------
+
+## A game's Wick log (design/CANDLEWAKE.md §2, §8, §9 bands W1-W2), one entry for each seated faction whose armies keep a flame
+## (WickRules.has_wick): {faction id: {"army_turns" (each of its flame-carrying armies at the end of each turn), "by_flame" ({flame:
+## army-turns}, the flame after the Wick step), "harbour_turns" (army-turns that ended in a harbour: WickRules.harbour on that
+## turn's clock), "zero_outside" (army-turns that ended at flame 0 outside a harbour), "guttered" (guttered events: an army at
+## flame 0 lost hp), "battle_flames" (the flame each of its armies began a battle at, one entry an army a battle), "battles"
+## (battles it fought), "battles_won" (battles it came out of with an army standing)}}. {} when no seated faction keeps a flame,
+## so a Crown–Clans game logs nothing.
+static func wick_log_new(start: GameState) -> Dictionary:
+	var out := {}
+	if start == null:
+		return out
+	for f in start.factions:
+		if WickRules.has_wick(f.id):
+			out[f.id] = {"army_turns": 0, "by_flame": {}, "harbour_turns": 0, "zero_outside": 0, "guttered": 0, "battle_flames": [],
+				"battles": 0, "battles_won": 0}
+	return out
+
+
+## Adds one resolved turn to `log` (wick_log_new): `turn_start` is the state its orders were given on (every flame then is the
+## one its battles were fought at, §2.1), `state` the state after it, `events` its report's events.
+static func log_wick(log: Dictionary, turn_start: GameState, state: GameState, events: Array) -> void:
+	for e in events:
+		var type := str(e.get("type", ""))
+		if type == "guttered":
+			var who := _first(e, "factions")
+			if log.has(who):
+				log[who].guttered += 1
+			continue
+		if not BATTLE_TYPES.has(type):
+			continue
+		var destroyed: Array = e.get("numbers", {}).get("destroyed", [])
+		var stood := {}  # faction id -> whether one of its armies came out of this battle standing
+		for aid in e.get("armies", []):
+			var a := turn_start.find_army(str(aid))
+			if a == null or a.flame < 0 or not log.has(a.owner):
+				continue
+			log[a.owner].battle_flames.append(a.flame)
+			stood[a.owner] = bool(stood.get(a.owner, false)) or not destroyed.has(aid)
+		for fid in stood:
+			log[fid].battles += 1
+			if stood[fid]:
+				log[fid].battles_won += 1
+	for a in state.armies:
+		if a.flame < 0 or not log.has(a.owner):
+			continue
+		var l: Dictionary = log[a.owner]
+		l.army_turns += 1
+		l.by_flame[a.flame] = int(l.by_flame.get(a.flame, 0)) + 1
+		if _sheltered(state, a.owner, a.location):
+			l.harbour_turns += 1
+		elif a.flame == 0:
+			l.zero_outside += 1
+
+
+## Whether `province_id` sheltered `faction_id`'s armies in the Wick step of the turn `state` has just resolved: WickRules.harbour
+## on that turn's end clock (a resolved state already counts the next turn, and a mark or a cold wake reads the clock).
+static func _sheltered(state: GameState, faction_id: String, province_id: String) -> bool:
+	state.current_turn -= 1
+	var out := WickRules.harbour(state, faction_id, province_id)
+	state.current_turn += 1
+	return out
+
+
+## The Wick part of summarize(): {faction id: {"games", "decisive", "wins", "army_turns", "by_flame", "harbour_turns",
+## "zero_outside", "guttered", "games_guttered", "battle_flames", "battles", "battles_won"}} over the games that seat it. {}
+## when no game seats a faction that keeps a flame.
+static func _wick_summary(results: Array) -> Dictionary:
+	var out := {}
+	for r in results:
+		var w = r.get("wick", {})
+		if not (w is Dictionary):
+			continue
+		var decisive: bool = r.finished and not r.draw and not str(r.winner).is_empty()
+		for fid in w:
+			if not out.has(fid):
+				out[fid] = {"games": 0, "decisive": 0, "wins": 0, "army_turns": 0, "by_flame": {}, "harbour_turns": 0, "zero_outside": 0,
+					"guttered": 0, "games_guttered": 0, "battle_flames": [], "battles": 0, "battles_won": 0}
+			var o: Dictionary = out[fid]
+			var g: Dictionary = w[fid]
+			o.games += 1
+			if decisive:
+				o.decisive += 1
+				if str(r.winner) == str(fid):
+					o.wins += 1
+			for key in ["army_turns", "harbour_turns", "zero_outside", "guttered", "battles", "battles_won"]:
+				o[key] += int(g.get(key, 0))
+			for fl in g.get("by_flame", {}):
+				o.by_flame[int(fl)] = int(o.by_flame.get(int(fl), 0)) + int(g.by_flame[fl])
+			o.battle_flames.append_array(g.get("battle_flames", []))
+			if int(g.get("guttered", 0)) > 0:
+				o.games_guttered += 1
+	return out
+
+
+## The Wick report lines, one per faction that keeps a flame: where its armies' turns were spent, by flame, how often they found
+## harbour or guttered, and the flame its battles began at (band W1's median).
+static func _wick_lines(wk: Dictionary) -> Array:
+	var L := []
+	var fids: Array = wk.keys()
+	fids.sort()
+	for fid in fids:
+		var o: Dictionary = wk[fid]
+		var shares := []
+		var flames: Array = o.by_flame.keys()
+		flames.sort()
+		for fl in flames:
+			shares.append("flame %d %s (%d)" % [int(fl), _pct(o.by_flame[fl], o.army_turns), int(o.by_flame[fl])])
+		var bf := stats_of(o.battle_flames)
+		L.append("- **Wick, %s** (%d games, won %d of %d decisive): %d army-turns: %s; in a harbour %s; at flame 0 outside a harbour %d. Guttered %d times, in %d of %d games. Battles %d (came out standing %d); the flame its armies began them at: median %s, mean %.2f." % [
+			faction_name(str(fid)), o.games, o.wins, o.decisive, o.army_turns, ", ".join(shares) if not shares.is_empty() else "none",
+			_pct(o.harbour_turns, o.army_turns), o.zero_outside, o.guttered, o.games_guttered, o.games, o.battles, o.battles_won,
+			_num(bf.median), float(bf.mean)])
+	return L
+
+
+## One table row a game with a Wick log (wick_log_new), for --list: its army-turns at each flame, those in a harbour, at flame 0
+## outside one, the guttered events and the flame its battles began at. "" when no game has one.
+static func wick_game_lines(results: Array) -> String:
+	var rows := []
+	for r in results:
+		var w = r.get("wick", {})
+		if not (w is Dictionary) or w.is_empty():
+			continue
+		var outcome := "unfinished"
+		if r.finished:
+			outcome = "draw" if r.draw else faction_name(str(r.winner))
+		var fids: Array = w.keys()
+		fids.sort()
+		for fid in fids:
+			var g: Dictionary = w[fid]
+			var by := []
+			for fl in range(0, WickRules.cap(null, str(fid)) + 1):
+				by.append(str(int(g.by_flame.get(fl, 0))))
+			var bf := stats_of(g.get("battle_flames", []))
+			rows.append("| %d | %s | %s | %d | %d | %s | %d | %d | %d | %s |" % [r.seed, " vs ".join(r.seats.map(func(x): return faction_name(str(x)))),
+				outcome, r.turns, r.battles.size(), " / ".join(by), int(g.harbour_turns), int(g.zero_outside), int(g.guttered), _num(bf.median)])
+	if rows.is_empty():
+		return ""
+	return "\n".join(["| seed | seats | result | turns | battles | army-turns at flame 0 / 1 / 2 / 3 | in a harbour | at 0 outside one | guttered | battle flame (median) |",
+		"|---|---|---|---|---|---|---|---|---|---|"] + rows)
+
+
 ## Aggregates play_game results into the numbers the report prints. Returns every key in SUMMARY_KEYS.
 static func summarize(results: Array) -> Dictionary:
 	var s := {}
@@ -1221,6 +1437,7 @@ static func summarize(results: Array) -> Dictionary:
 	s.rulers = rulers
 	s.paths = _paths_summary(results)
 	s.magic = _magic_summary(results)
+	s.wick = _wick_summary(results)  # CW-6 (#257): {} unless a game seats a faction that keeps a flame
 	return s
 
 
@@ -1320,12 +1537,9 @@ static func build_name(preset_id: String) -> String:
 	return "%s: %s, keeps %d" % [who, ", ".join(mandates.map(func(m): return RulerRules.mandate_name(str(m)))), kept]
 
 
-## Display name of a faction id from data/factions.gd.
+## Display name of a faction id from data/factions.gd (CW-6: the preview rows too, so the Candlewake have a name).
 static func faction_name(fid: String) -> String:
-	for f in FactionData.FACTIONS:
-		if f.id == fid:
-			return f.name
-	return fid
+	return str(FactionData.row(fid).get("name", fid))
 
 
 ## The summary as a markdown section.
@@ -1416,6 +1630,9 @@ static func to_markdown(s: Dictionary) -> String:
 	var mg = s.get("magic", {})
 	if mg is Dictionary and int(mg.get("games", 0)) > 0:
 		L.append_array(_magic_lines(mg))
+	var wk = s.get("wick", {})
+	if wk is Dictionary and not wk.is_empty():
+		L.append_array(_wick_lines(wk))  # CW-6 (#257)
 	var v: Dictionary = s.violations
 	if v.count == 0:
 		L.append("- **Invariant violations:** 0.")
