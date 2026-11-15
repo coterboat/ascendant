@@ -249,6 +249,8 @@ static func hp_ledger(prev: GameState, state: GameState, events: Array, tally: D
 					_add(net, String(t.get("army", "")), int(t.get("to", 0)) - int(t.get("from", 0)))
 			"blood_paid":
 				_add(net, String(n.get("army", "")), -int(n.get("hp", 0)))
+			"guttered":  # CW-11 (#262): a Candlewake army at flame 0 in the Wick step (WickRules.gutter_event)
+				_add(net, String(n.get("army", "")), -int(n.get("hp", 0)))
 	for a in state.armies:
 		var was := prev.find_army(a.id)
 		if was == null or touched.has(a.id) or transformed.has(a.owner) or _members(was).size() != _members(a).size():

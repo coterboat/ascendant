@@ -62,6 +62,7 @@ extends RefCounted
 const Policies := preload("res://tools/autoplay/policies.gd")
 const MagicLog := preload("res://tools/autoplay/magic_log.gd")
 const FogProbe := preload("res://tools/autoplay/fog_probe.gd")
+const WickLog := preload("res://tools/autoplay/wick_log.gd")  # CW-11 (#262): the W bands' per-turn log
 
 const TURN_CAP := 60
 ## The mandate a Tithe pair's control run buys with the same power (MandateData.TEST_MANDATES): it does nothing.
@@ -152,6 +153,8 @@ static func play_game(game_seed: int, seat_factions: Array, policy_names: Array,
 		"magic": {}, "fog": {},
 		# CW-6 (#257): a game that seats a faction keeping a flame (the Candlewake) carries its Wick log (wick_log_new); {} without.
 		"wick": {},
+		# CW-11 (#262): the same games' WickLog for the Candlewake matrix's W bands (tools/autoplay/wick_log.gd); {} without.
+		"wick_bands": {},
 	}
 	if seat_factions.size() != policy_names.size():
 		_error(result, 0, "There are %d seats but %d policies." % [seat_factions.size(), policy_names.size()])
@@ -361,6 +364,7 @@ static func _play_from(start: GameState, game_seed: int, seat_factions: Array, p
 			log_sieges(siege_log, turn_start, state, events, queued, turn)
 		if not wick.is_empty():
 			log_wick(wick, turn_start, state, events)
+			WickLog.record_turn(result.wick_bands, turn, turn_start, state, events)  # CW-11
 		for v in found:
 			result.violations.append({"seed": game_seed, "turn": turn, "check": v.check, "detail": v.detail})
 		var logged: Array = Array(probe.call()) if probe.is_valid() else []

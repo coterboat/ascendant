@@ -30,7 +30,7 @@ func test_the_plan_crosses_every_preset_of_each_pair_in_both_seat_orders() -> vo
 ## A decisive result of the pair Crown–Candlewake won by `winner` in `turns`, with a WickLog entry `wick`.
 func _r(winner: String, turns: int, wick: Dictionary = {}, branch: String = "", recruits: Dictionary = {}) -> Dictionary:
 	return {"pair": "%s|%s" % [CROWN, WAKE], "finished": true, "draw": false, "winner": winner, "turns": turns,
-		"wick": {WAKE: wick}, "paths": {WAKE: {"branch": branch}}, "recruits": {WAKE: recruits}}
+		"wick_bands": {WAKE: wick}, "paths": {WAKE: {"branch": branch}}, "recruits": {WAKE: recruits}}
 
 
 func _status(rows: Array, band: String) -> String:
@@ -60,9 +60,9 @@ func test_w2_counts_guttering_games_and_the_longest_stay_at_the_cap() -> void:
 	for i in n:
 		games.append(_r(CROWN, 12, {"guttered": 1 if i < gutter else 0, "army_turns": {"candlewake-1": [CM.MIN_ARMY_TURNS, 0]}}))
 	assert_eq(CM.w2(games).status, "pass", "%d of %d games guttered" % [gutter, n])
-	games[0].wick[WAKE].army_turns["candlewake-2"] = [CM.MIN_ARMY_TURNS, CM.MIN_ARMY_TURNS]
+	games[0].wick_bands[WAKE].army_turns["candlewake-2"] = [CM.MIN_ARMY_TURNS, CM.MIN_ARMY_TURNS]
 	assert_eq(CM.w2(games).status, "miss", "an army always at its cap")
-	games[0].wick[WAKE].army_turns["candlewake-2"] = [CM.MIN_ARMY_TURNS - 1, CM.MIN_ARMY_TURNS - 1]
+	games[0].wick_bands[WAKE].army_turns["candlewake-2"] = [CM.MIN_ARMY_TURNS - 1, CM.MIN_ARMY_TURNS - 1]
 	assert_eq(CM.w2(games).status, "pass", "an army seen fewer than MIN_ARMY_TURNS turns is not judged")
 
 

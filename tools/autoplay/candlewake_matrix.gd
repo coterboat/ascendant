@@ -17,7 +17,7 @@ extends RefCounted
 ## The force is what the Candlewake fielded: its regular recruits (the simulator's "recruits", commanders left out), the Harvest
 ## and the Risen.
 ##
-## A result needs the simulator's "wick" log (WickLog, one entry per Wick faction): the matrix reads it, never computes it.
+## A result needs the simulator's "wick_bands" log (WickLog, one entry per Wick faction): the matrix reads it, never computes it.
 
 const Simulator := preload("res://tools/autoplay/simulator.gd")
 const Matrix := preload("res://tools/autoplay/matrix.gd")
@@ -61,6 +61,27 @@ static func plan(scale: float = 1.0, base_seed: int = 1) -> Array:
 					cells.append({"id": "W:%s+%s:%s+%s" % [seats[0], builds[0], seats[1], builds[1]], "pair": "%s|%s" % pair,
 						"seats": seats, "builds": builds, "policies": [POLICY, POLICY], "games": n, "seed": base_seed})
 	return cells
+
+
+## Plays one work item ({"cell", "from", "count"}, Matrix.work_items) of `cells` (plan) and returns its results: play_game results
+## without "final_state", each with "cell" and "pair" added. Every system is on (rulers, paths, magic, fog, sieges) and `independents`
+## puts the Free Holds garrisons in (the contract, Alex 10-5).
+static func play_item(cells: Array, item: Dictionary, turn_cap: int, probe: Callable = Callable(), independents := true) -> Array:
+	var out := []
+	var found := cells.filter(func(c): return str(c.id) == str(item.cell))
+	if found.is_empty():
+		return out
+	var cell: Dictionary = found[0]
+	for i in int(item.count):
+		var game_seed: int = int(item.from) + i
+		var options := {"rulers": true, "builds": cell.builds.duplicate(), "paths": true, "magic": true, "fog": true, "sieges": true,
+			"independents": independents}
+		var r := Simulator.play_game(game_seed, cell.seats, cell.policies, turn_cap, probe, options)
+		r.erase("final_state")
+		r["cell"] = str(cell.id)
+		r["pair"] = str(cell.pair)
+		out.append(r)
+	return out
 
 
 ## Every band over `results` (play_game results, each with "pair" added), as rows {"band", "pair", "value", "target", "status"}.
@@ -194,7 +215,7 @@ static func _force_share(games: Array, key: String) -> float:
 
 
 static func _wick(r: Dictionary) -> Dictionary:
-	return r.get("wick", {}).get(CANDLEWAKE, {})
+	return r.get("wick_bands", {}).get(CANDLEWAKE, {})
 
 
 ## The markdown table of `rows` (judge).

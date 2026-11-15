@@ -52,6 +52,9 @@ extends SceneTree
 ##   --matrix         the M2 build balance check (#36, design/M2_RULER.md §8.2): plays bands A-H with
 ##                    AIPlayer in both seats and prints a pass/miss table (tools/autoplay/matrix.gd).
 ##                    --seed and --turn-cap apply; --games, --p1/--p2, --seat1, --builds and --rulers don't
+##   --matrix --candlewake  CW-11 (#262, design/CANDLEWAKE.md §9): the Candlewake's pair matrix (tools/autoplay/candlewake_matrix.gd):
+##                    Crown–Clans, Crown–Candlewake and Clans–Candlewake, every preset pairing, both seat orders, every system on;
+##                    bands C3, W1-W6 and P1c per pair, pass or miss (targets, not caps). Add --independents (the contract)
 ##   --matrix --sieges the M3c balance check for forts and sieges (#105, design/M3C_SIEGES.md §11.2): 900 siege games (9 preset pairings x
 ##                    both seat orders x paths off and on x 25), the same seeds with sieges off, 100 games of the turtle against
 ##                    the computer, and the sieges-off games of band S8 (tools/autoplay/siege_matrix.gd). Prints a pass/miss
@@ -102,6 +105,7 @@ const Matrix := preload("res://tools/autoplay/matrix.gd")
 const PathMatrix := preload("res://tools/autoplay/path_matrix.gd")
 const MagicMatrix := preload("res://tools/autoplay/magic_matrix.gd")
 const SiegeMatrix := preload("res://tools/autoplay/siege_matrix.gd")
+const CandlewakeMatrix := preload("res://tools/autoplay/candlewake_matrix.gd")  # CW-11 (#262)
 const FACTIONS := ["kingdom", "beasts"]
 const MAX_JOBS := 8
 
@@ -138,6 +142,9 @@ func _initialize() -> void:
 	OS.add_logger(catcher)
 	if opts.worker:
 		_run_worker(opts, catcher)
+		return
+	if opts.matrix and opts.candlewake:
+		_run_candlewake_matrix(opts, catcher)
 		return
 	if opts.matrix and opts.sieges:
 		_run_siege_matrix(opts, catcher)
@@ -218,7 +225,7 @@ func _parse(args: PackedStringArray) -> Dictionary:
 		"turn_cap": Simulator.TURN_CAP, "out": "", "list": false, "rulers": false, "builds": ["", ""], "paths": false, "independents": false, "branches": ["", ""],
 		"magic": false, "fog": false, "tithe": "", "save_results": "", "merge": "", "records": false, "no_records": false, "sieges": false,
 		"matrix": false, "jobs": clampi(OS.get_processor_count(), 1, MAX_JOBS), "scale": 1.0, "work_dir": "user://autoplay_matrix",
-		"worker": false, "cell": "", "from": 0, "count": 0, "only": "", "record_m2": "", "note": "", "temperament": ""}
+		"worker": false, "cell": "", "from": 0, "count": 0, "only": "", "record_m2": "", "note": "", "temperament": "", "candlewake": false}
 	var builds_arg := ""
 	var branches_arg := ""
 	var named := ["", ""]  # CW-6: --seat1 and --seat2, as given
@@ -235,6 +242,10 @@ func _parse(args: PackedStringArray) -> Dictionary:
 			continue
 		if key == "--independents":
 			opts.independents = true
+			i += 1
+			continue
+		if key == "--candlewake":  # CW-11 (#262): with --matrix, the Candlewake's pair matrix (CandlewakeMatrix)
+			opts.candlewake = true
 			i += 1
 			continue
 		if key == "--paths":
@@ -703,13 +714,57 @@ func _run_magic_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
 	quit(0 if j.ok else 1)
 
 
+## CW-11 (#262, design/CANDLEWAKE.md §9): the Candlewake's pair matrix. Every pair of the three factions, every preset pairing,
+## both seat orders, every system on; the bands judged per pair (CandlewakeMatrix.judge). `--only TEXT` keeps the cells whose id
+## contains it ("candlewake" for the two Candlewake pairs). Exit 0 unless a game or a worker had an error: the bands are targets
+## to tune toward, reported pass or miss.
+func _run_candlewake_matrix(opts: Dictionary, catcher: ErrorCatcher) -> void:
+	var started := Time.get_ticks_msec()
+	var cells := CandlewakeMatrix.plan(opts.scale, opts.seed)
+	if not str(opts.only).is_empty():
+		cells = cells.filter(func(c): return str(c.id).contains(str(opts.only)))
+	var problems := []
+	var results := _play_items(Matrix.work_items(cells), cells, opts, catcher, problems)
+	var stray := catcher.take()
+	OS.remove_logger(catcher)
+	if not str(opts.save_results).is_empty():
+		var sf := FileAccess.open(opts.save_results, FileAccess.WRITE)
+		if sf != null:
+			sf.store_string(var_to_str({"results": results, "stray": Array(stray), "problems": problems}))
+			sf.close()
+	var errors := 0
+	var violations := 0
+	for r in results:
+		errors += r.errors.size() + r.get("script_errors", []).size()
+		violations += r.violations.size()
+	var md := "## The Candlewake matrix (CW-11)\n\n" + CandlewakeMatrix.table(CandlewakeMatrix.judge(results))
+	md += "\n\n- **Games:** %d in %d cells; errors %d, invariant violations %d." % [results.size(), cells.size(), errors, violations]
+	for e in problems:
+		md += "\n- **Worker problem:** %s" % e
+	if not stray.is_empty():
+		md += "\n- **Script errors outside games:** %d. First: %s" % [stray.size(), stray[0]]
+	md += "\n- **Run:** `--matrix --candlewake%s --seed %d --turn-cap %d --scale %s --jobs %d%s`, %.1f s." % [
+		" --independents" if opts.independents else "", opts.seed, opts.turn_cap, str(opts.scale), opts.jobs,
+		"" if str(opts.only).is_empty() else " --only " + str(opts.only), (Time.get_ticks_msec() - started) / 1000.0]
+	print(md)
+	if not opts.out.is_empty():
+		var f := FileAccess.open(opts.out, FileAccess.WRITE)
+		if f != null:
+			f.store_string(md + "\n")
+			f.close()
+	var ok := errors == 0 and violations == 0 and problems.is_empty() and stray.is_empty()
+	quit(0 if ok else 1)
+
+
 ## Plays the work items, in this process (--jobs 1) or in up to --jobs headless worker processes, and
 ## returns their results. Problems with a worker (it could not start, or wrote no results) go to `problems`.
 func _play_items(items: Array, cells: Array, opts: Dictionary, catcher: ErrorCatcher, problems: Array) -> Array:
 	var out := []
 	if opts.jobs <= 1:
 		for item in items:
-			if opts.sieges:
+			if opts.candlewake:
+				out.append_array(CandlewakeMatrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.independents))
+			elif opts.sieges:
 				out.append_array(SiegeMatrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.independents, _systems(opts)))
 			elif opts.magic:
 				out.append_array(MagicMatrix.play_item(cells, item, opts.turn_cap, catcher.take, opts.independents))
@@ -733,7 +788,9 @@ func _play_items(items: Array, cells: Array, opts: Dictionary, catcher: ErrorCat
 			var args := ["--headless", "--quiet", "--path", project, "-s", "res://tools/autoplay/autoplay.gd", "--", "--matrix-worker",
 				"--cell", str(item.cell), "--from", str(item.from), "--count", str(item.count), "--seed", str(opts.seed),
 				"--turn-cap", str(opts.turn_cap), "--out", path]
-			if opts.sieges:
+			if opts.candlewake:
+				args.append("--candlewake")  # CW-11: every system on, in the cell itself
+			elif opts.sieges:
 				args.append("--sieges")
 				if opts.magic:
 					args.append("--magic")
@@ -774,7 +831,9 @@ func _play_items(items: Array, cells: Array, opts: Dictionary, catcher: ErrorCat
 func _run_worker(opts: Dictionary, catcher: ErrorCatcher) -> void:
 	var item := {"cell": opts.cell, "from": opts.from, "count": opts.count}
 	var results := []
-	if opts.sieges:
+	if opts.candlewake:
+		results = CandlewakeMatrix.play_item(CandlewakeMatrix.plan(1.0, opts.seed), item, opts.turn_cap, catcher.take, opts.independents)
+	elif opts.sieges:
 		var siege_cells := SiegeMatrix.plan(1.0, opts.seed, PathMatrix.load_fixture())
 		results = SiegeMatrix.play_item(siege_cells, item, opts.turn_cap, catcher.take, opts.independents, _systems(opts))
 	elif opts.magic:
