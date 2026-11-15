@@ -88,6 +88,26 @@ func test_every_played_game_is_the_recorded_game_turn_by_turn() -> void:
 			assert_eq(JSON.stringify(got.turns[t]), JSON.stringify(want[t]), "%s: turn %d's state, events and dice" % [c.name, t + 1])
 
 
+func test_a_re_record_names_the_entries_it_moved() -> void:
+	# #183: a change meant to move some old games re-records the fixture and lists what moved. The fixture read back from
+	# JSON (its counts come back as floats) against the same games moves nothing; a changed digest or a new entry moves.
+	var games := _games()
+	assert_eq(Gate.moved_entries(games, games), [], "the fixture against itself")
+	var name := String(Gate.configs()[0].name)
+	var now := games.duplicate(true)
+	now[name]["record"] = "0".repeat(32)
+	now["a_new_config"] = games[name].duplicate(true)
+	var turned := games.duplicate(true)
+	turned[name]["turns"][0]["dice"] = "0".repeat(32)
+	var both := [name, "a_new_config"]
+	both.sort()
+	assert_eq(Gate.moved_entries(games, now), both, "a changed record and a new entry, sorted")
+	assert_eq(Gate.moved_entries(games, turned), [name], "a changed turn")
+	var counted := games.duplicate(true)
+	counted[name]["refused"] = int(games[name].get("refused", 0))
+	assert_eq(Gate.moved_entries(games, counted), [], "a count written as an int is the float read back")
+
+
 func test_the_fixtures_from_before_still_replay() -> void:
 	# The older fixtures guard their own games (test_paths_off, test_m5_fields, test_magic_off, test_sieges_off); here one
 	# whole record of each is replayed from its stored orders, as a quick tripwire next to the CW-0 gate.

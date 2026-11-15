@@ -21,6 +21,11 @@
 ##           (plan.walls.march: each one's path from the yard, through the gate, to its place).
 ## Engines are not fighters and the log does not carry them: the stage passes how many the besiegers still carry
 ## (`engines`, from the game it was given), and they stand at the flanks of the besiegers' lines among their tents.
+## Three sides or more (#265: a neutral fort's Free Holds garrison caught between two players, a third faction arriving at a
+## siege): the near side stands where it would with two (at the gate in an open battle: those from inside, else the
+## garrison holding the ground, else the first side that is not the fort's owner; on and in the fort in a storm or a
+## breach), and every other side forms up outside in the far side's place, side by side across the gate's front, each its
+## own block GROUP_GAP from the next, all facing the walls. The besiegers' camp stands beyond the ends of their row.
 ##
 ## Returns BattleFormation.plan's shape ({"site", "axis" (outward from the walls), "near" (the side at the walls),
 ## "far", "where": "walls", "files", "slots", "extras", "back", "footprint", "fort": {}, "depths", "width"}), its slots
@@ -45,6 +50,7 @@ const TURNS := [0.0, 10.0, -10.0, 20.0, -20.0, 30.0, -30.0, 45.0, -45.0] ## the 
 const LEVEL_OF := {"palisade": 1, "keep": 2, "citadel": 3}
 const MAX_ENGINES := 6
 const WALK_MAX_PITCH := 7.0 ## a fighter room wider than this (knights, the Clans' tuskers) stands in the yard, not on a wall walk
+const GROUP_GAP := 8.0 ## #265: between two sides' blocks standing side by side outside the walls
 
 ## What each fort model's walls are (fort frame, world units), measured off the models as the board draws them (the model
 ## table's `side`): "floor" the yard's height; "outer" how far from the centre the gate side's farthest point stands (the
@@ -280,14 +286,26 @@ static func plan(battle_log: Dictionary, t, world: Dictionary, aspect: float = 2
 			if (siege.get("from_inside", []) as Array).has(String(battle_log.fighters[int(fid)].army)):
 				out_side = si
 	var near := 0
-	if kind == "open":
+	var many := sides.size() > 2
+	if kind == "open" and many:
+		## #265: those from inside at the gate; else a neutral fort's garrison holding the ground; else the first side that is
+		## not the fort's owner
+		var holder := int(siege.get("holder", -1))
+		near = out_side if out_side >= 0 else (holder if holder >= 0 else (_first_but(sides.size(), [gi]) if gi >= 0 else 0))
+	elif kind == "open":
 		near = out_side if out_side >= 0 else (1 - gi if gi >= 0 and sides.size() > 1 else 0)
 	elif gi >= 0:
 		near = gi
 	var far := 1 - near if sides.size() > 1 else near
 	var besieger := 1 - gi if gi >= 0 and sides.size() > 1 else far
-	## the lines: the outside lines as wide as the walls (a storm) or the gap (a breach) are, else as the screen likes
+	if many:
+		far = _first_but(sides.size(), [near])
+		besieger = _first_but(sides.size(), [gi, near]) if gi >= 0 else far
+	## the lines: the outside lines as wide as the walls (a storm) or the gap (a breach) are, else as the screen likes (#265: with
+	## more sides, as keeps the row outside compact)
 	var files := Formation._pick_files(battle_log, aspect, reps)
+	if many:
+		files = Formation.compact_files(battle_log, reps, func(ls: Array) -> float: return row_extent(ls, near))
 	var yard: Dictionary = spec["yard"]
 	var garrison_files := zone_files(yard)
 	if kind == "storm":
@@ -297,6 +315,7 @@ static func plan(battle_log: Dictionary, t, world: Dictionary, aspect: float = 2
 		files = clampi(garrison_files + 2, 3, files)
 	var lines := []
 	var depths := [0.0, 0.0]
+	depths.resize(maxi(2, sides.size()))
 	var widest := 0.0
 	for si in sides.size():
 		lines.append(Formation.side_lines(battle_log, si, garrison_files if (si == near and kind != "open") else files, reps))
@@ -347,9 +366,29 @@ static func _build(battle_log: Dictionary, t, info: Dictionary, kind: String, ne
 	var pivot := to_world(info, 0.0, -outer)
 	var rot := deg_to_rad(deg)
 	var wides := [0.0, 0.0]
+	wides.resize(maxi(2, sides.size()))
 	for si in sides.size():
+		wides[si] = 0.0
 		for ln in lines[si]:
 			wides[si] = maxf(float(wides[si]), float(ln["width"]))
+	## #265: with more than two sides, every side but the near one stands in the far side's place, side by side across the
+	## gate's front (each block's middle `shift` across it); the row's width and depth stand for the far side's below
+	var shift := {}
+	var row_w := 0.0
+	var row_d := 0.0
+	if sides.size() > 2:
+		var row := []
+		for si in sides.size():
+			if si != near:
+				row.append(si)
+		for si in row:
+			row_w += float(wides[si])
+			row_d = maxf(row_d, float(depths[si]))
+		row_w += GROUP_GAP * (row.size() - 1)
+		var x := -row_w * 0.5
+		for si in row:
+			shift[si] = x + float(wides[si]) * 0.5
+			x += float(wides[si]) + GROUP_GAP
 	## --- the side holding the fort (a storm, a breach): on it and in it
 	var yard_z := 0.0
 	if kind != "open":
@@ -370,7 +409,7 @@ static func _build(battle_log: Dictionary, t, info: Dictionary, kind: String, ne
 			extras.append({"type": "bearer" if k == 0 else "musician", "side": near, "pos": pw, "y": world_y(info, float(spec["floor"])), "yaw": face_out})
 		back[near] = to_world(info, 0.0, float((spec["yard"] as Dictionary)["z1"])) ## routed fighters run back to the yard's end
 	## --- the lines outside: s is how far from the gate-side face a line stands (its centre)
-	var trunk := kind == "storm" and String(sides[far].faction) == "beasts"
+	var trunk := kind == "storm" and String(sides[besieger if sides.size() > 2 else far].faction) == "beasts"
 	var front_edge: float
 	if kind == "storm":
 		front_edge = RAM_GAP if trunk else STORM_GAP
@@ -379,6 +418,8 @@ static func _build(battle_log: Dictionary, t, info: Dictionary, kind: String, ne
 	else:
 		front_edge = GATE_MARGIN + float(depths[near]) + Formation.FRONT_GAP
 	var outside: Array = [far] if kind != "open" else [near, far]
+	if sides.size() > 2:
+		outside = ([near] if kind == "open" else []) + shift.keys()
 	for si in outside:
 		var toward_gate: bool = kind == "open" and si == near
 		var s_front := (GATE_MARGIN + float(depths[near])) if toward_gate else front_edge
@@ -389,6 +430,7 @@ static func _build(battle_log: Dictionary, t, info: Dictionary, kind: String, ne
 		var last_tier := -1
 		var line_no := 0
 		var commander_at := Vector2.INF
+		var across: float = shift.get(si, 0.0)
 		for ln in lines[si]:
 			if last_tier >= 0 and int(ln["tier"]) != last_tier:
 				acc += Formation.TIER_GAP
@@ -401,7 +443,7 @@ static func _build(battle_log: Dictionary, t, info: Dictionary, kind: String, ne
 			var fids: Array = ln["fids"]
 			for k in fids.size():
 				var pitch: float = pitches[k]
-				var off: float = run + pitch * 0.5
+				var off: float = run + pitch * 0.5 + across
 				run += pitch
 				var pw := pivot + (to_world(info, off, -(outer + s_mid)) - pivot).rotated(rot)
 				var fid := int(fids[k])
@@ -417,7 +459,7 @@ static func _build(battle_log: Dictionary, t, info: Dictionary, kind: String, ne
 		var spread := Formation.FILE_PITCH * 1.4
 		if commander_at == Vector2.INF:
 			var s_party := s_rear - Formation.LINE_PITCH * 0.5 if toward_gate else s_rear + Formation.LINE_PITCH * 0.5
-			base = pivot + (to_world(info, 0.0, -(outer + s_party)) - pivot).rotated(rot)
+			base = pivot + (to_world(info, across, -(outer + s_party)) - pivot).rotated(rot)
 			spread = Formation.FILE_PITCH * 0.7
 		var lat := Vector2(-fv.y, fv.x)
 		for k in 2:
@@ -425,7 +467,7 @@ static func _build(battle_log: Dictionary, t, info: Dictionary, kind: String, ne
 			extras.append({"type": "bearer" if k == 0 else "musician", "side": si, "pos": p2, "y": maxf(t.height_at(p2), 0.0), "yaw": yaw})
 		## routed fighters run away from the other side: out, or (the side at the gate) back to the gate
 		var run_s := s_rear - 2.0 if toward_gate else s_rear + Formation.ROUT_RUN
-		back[si] = pivot + (to_world(info, 0.0, -(outer + maxf(run_s, 0.5))) - pivot).rotated(rot)
+		back[si] = pivot + (to_world(info, across, -(outer + maxf(run_s, 0.5))) - pivot).rotated(rot)
 	## --- who marches out of the gate
 	var march := {}
 	if kind == "open":
@@ -451,7 +493,15 @@ static func _build(battle_log: Dictionary, t, info: Dictionary, kind: String, ne
 				if absf(lp.x) < keep and absf(lp.y) < keep:
 					wet += 1000
 		sl["lift"] = float(sl["y"]) - maxf(t.height_at(sl["pos"]), 0.0)
-	## --- the scenery, what the camera keeps in view, the ground to clear
+	## --- the scenery, what the camera keeps in view, the ground to clear (#265: with more sides, the row outside stands for
+	## the far side and the besiegers: the camp beyond its ends, the ground cleared round all of it)
+	if sides.size() > 2:
+		depths = depths.duplicate()
+		wides = wides.duplicate()
+		for si in [far, besieger]:
+			if si >= 0 and si < sides.size() and si != near:
+				wides[si] = row_w
+				depths[si] = row_d
 	var scenery := _scenery(battle_log, t, info, kind, near, besieger, depths, wides, front_edge, trunk, engines, rot, pivot)
 	var frame_extra: Array = (scenery["frame"] as Array).duplicate()
 	var face := float(spec["face"])
@@ -581,6 +631,32 @@ static func _garrison(battle_log: Dictionary, info: Dictionary, si: int, kind: S
 			pl["depth"] = Formation.LINE_PITCH
 		pl["tier"] = int(battle_log.fighters[int(fid)].tier)
 	return {"places": places, "last_z": last_z}
+
+
+## #265: how far the row of sides outside the walls reaches (Formation.compact_files' measure here): half its width (every
+## side but `near` side by side, GROUP_GAP apart) or its depth, whichever is more. `lines` by side.
+static func row_extent(lines: Array, near: int) -> float:
+	var w := 0.0
+	var d := 0.0
+	var n := 0
+	for si in lines.size():
+		if si == near:
+			continue
+		var wide := 0.0
+		for ln in lines[si]:
+			wide = maxf(wide, float(ln["width"]))
+		w += wide
+		d = maxf(d, _depth(lines[si]))
+		n += 1
+	return maxf((w + GROUP_GAP * maxi(0, n - 1)) * 0.5, d)
+
+
+## #265: the first side index below `n` that is not in `skip` (0 when all are).
+static func _first_but(n: int, skip: Array) -> int:
+	for si in n:
+		if not skip.has(si):
+			return si
+	return 0
 
 
 ## How many of `rows` (lines of a side) stand between z `z0` and `z1` when their depths are scaled by `tight`.

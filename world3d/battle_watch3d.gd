@@ -9,7 +9,8 @@ extends Control
 ##            path_lifedrinker / path_red_harvest / massive (322 fighters: M3's files), fought on the spot by
 ##            the tests' fixtures; siege_<case> (siege_storm_keep, siege_breach, siege_sally, ...: tests/
 ##            walls_stage_fixtures.gd, with the game they were fought in; magic_<case>: magic_all, magic_sunburst, magic_big ...:
-##            tests/magic_stage_fixtures.gd); default starting_plains), --speed 1|2|4, --paused, --reduced-motion,
+##            tests/magic_stage_fixtures.gd; three_<case>: three_holds, three_fort, three_rivals, the three-sided battles of
+##            tests/three_side_fixtures.gd, #265); default starting_plains), --speed 1|2|4, --paused, --reduced-motion,
 ##            --quit-at-end (prints the frame times, fps and draw calls, then quits), --rung N (a fixed
 ##            quality rung, the automatic ladder off: the min-spec measurement, world3d/README.md),
 ##            --window WxH (the window's size, e.g. 1920x1080)
@@ -24,6 +25,7 @@ const DEFAULT_FIXTURE := "starting_plains"
 const PATH_FIXTURES := "res://tests/battle_playback_fixtures.gd"
 const SIEGE_FIXTURES := "res://tests/walls_stage_fixtures.gd" ## --fixture siege_<case>: a battle at walls (M3c S-5)
 const MAGIC_FIXTURES := "res://tests/magic_stage_fixtures.gd" ## --fixture magic_<case>: a battle with spells (M5-9): magic_all, magic_big ...
+const THREE_FIXTURES := "res://tests/three_side_fixtures.gd" ## --fixture three_<case>: a battle of three sides (#265): three_holds, three_fort ...
 
 var stage: BattleStage3D
 var viewer: BattleReportViewer
@@ -115,6 +117,8 @@ func _process(_delta: float) -> void:
 
 ## Plays `source` on the stage. Returns "" or the plain reason it can't be watched.
 func watch(source: Dictionary, seats: Array = [], report: Dictionary = {}) -> String:
+	if seats.is_empty() and source.get("seats") is Array:
+		seats = source.seats  ## #265: a fixture that names its seat order (a third faction's colour)
 	_seats = seats.duplicate()
 	viewer.visible = false
 	if source.has("numbers"):
@@ -135,6 +139,9 @@ static func load_fixture(fixture_name: String) -> Dictionary:
 	if fixture_name.begins_with("magic_") and ResourceLoader.exists(MAGIC_FIXTURES):
 		var magic_fixtures: Script = load(MAGIC_FIXTURES)
 		return magic_fixtures.call("battle", fixture_name)
+	if fixture_name.begins_with("three_") and ResourceLoader.exists(THREE_FIXTURES):
+		var three_fixtures: Script = load(THREE_FIXTURES)
+		return three_fixtures.call("battle", fixture_name.trim_prefix("three_"))
 	if (fixture_name.begins_with("path_") or fixture_name == "massive") and ResourceLoader.exists(PATH_FIXTURES):
 		var fixtures: Script = load(PATH_FIXTURES)
 		return fixtures.call("battle", fixture_name)

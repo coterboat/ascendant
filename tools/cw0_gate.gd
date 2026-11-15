@@ -6,6 +6,10 @@ extends SceneTree
 ##   godot --headless --path . -s tools/cw0_gate.gd                            compare the engine with the fixture
 ## Record it only on the commit before the change it guards, with FIXTURE_COMMIT set so the note names it:
 ##   FIXTURE_COMMIT=a40d43e godot --headless --path . -s tools/cw0_gate.gd -- --record
+## A change meant to move some old games (#183: a preset's mandates) re-records the file in a commit of its own, keeping the
+## first commit and saying why with `--note TEXT` (as tools/replay_fixture.gd does). Every game is played again, so the games the
+## change doesn't touch come out byte-identical; the run prints which entries moved, for the PR to list:
+##   FIXTURE_COMMIT=a40d43e godot --headless --path . -s tools/cw0_gate.gd -- --record --note "for #183: ..."
 ##
 ## One entry per old feature combination (configs()): no system, rulers, rulers and paths, or rulers, paths and magic, each
 ## with and without forts and sieges, independents and fog of war, in both seat orders, with the builds the new game screen
@@ -37,16 +41,26 @@ func _initialize() -> void:
 		turns = int(args[i + 1])
 	if args.has("--record"):
 		var commit := OS.get_environment("FIXTURE_COMMIT")
+		var note := ""
+		var at := args.find("--note")
+		if at >= 0 and at + 1 < args.size():
+			note = args[at + 1]
+		var old := _recorded_games()
 		var games := {}
 		var t0 := Time.get_ticks_msec()
 		for c in configs():
 			games[String(c.name)] = entry(c, turns)
 			print("%s: start %s, record %s" % [c.name, games[c.name].start, games[c.name].record])
-		var out := {"note": FIRST_NOTE % (commit if not commit.is_empty() else "commit not given"), "turns": turns, "games": games}
+		var first := FIRST_NOTE % (commit if not commit.is_empty() else "commit not given")
+		var out := {"note": first if note.is_empty() else "%s Re-recorded: %s Do not edit by hand." % [first.trim_suffix(" Do not edit by hand."), note],
+			"turns": turns, "games": games}
 		var f := FileAccess.open(OUT, FileAccess.WRITE)
 		f.store_string(JSON.stringify(out, "\t") + "\n")
 		f.close()
 		print("cw0_gate: wrote %d games (%d turns each) in %.1f s" % [games.size(), turns, (Time.get_ticks_msec() - t0) / 1000.0])
+		if not old.is_empty():
+			var moved := moved_entries(old, games)
+			print("cw0_gate: %d of %d entries moved from the fixture before: %s" % [moved.size(), games.size(), ", ".join(moved) if not moved.is_empty() else "none"])
 		quit(0)
 		return
 	var problems := check()
@@ -222,6 +236,31 @@ static func check() -> Array:
 			problems.append("%s: a turn's state, events or computer's dice differ from the fixture (first: turn %s)." % [c.name,
 				_first_diff(got.turns, want.get("turns", []))])
 	return problems
+
+
+## The games of the fixture on disk ({} when there is none), read before a re-record overwrites it.
+static func _recorded_games() -> Dictionary:
+	if not FileAccess.file_exists(OUT):
+		return {}
+	var data = JSON.parse_string(FileAccess.get_file_as_string(OUT))
+	return data.get("games", {}) if data is Dictionary else {}
+
+
+## The names of the entries of `now` that differ from `before` in any digest (or are new), sorted: what a re-record moved.
+## Digests are compared as text, so a number read back from JSON as a float compares equal to the int it was written from.
+static func moved_entries(before: Dictionary, now: Dictionary) -> Array:
+	var out := []
+	for name in now:
+		var a: Dictionary = before.get(name, {})
+		var b: Dictionary = now[name]
+		var same := not a.is_empty() and int(a.get("refused", -1)) == int(b.get("refused", -1)) \
+			and JSON.stringify(a.get("turns", [])) == JSON.stringify(b.get("turns", []))
+		for key in ["start", "record", "final", "dice"]:
+			same = same and String(a.get(key, "")) == String(b.get(key, ""))
+		if not same:
+			out.append(String(name))
+	out.sort()
+	return out
 
 
 static func _first_diff(got: Array, want: Array) -> String:

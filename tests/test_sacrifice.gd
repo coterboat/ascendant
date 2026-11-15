@@ -82,11 +82,12 @@ func test_each_rejection_has_a_plain_reason() -> void:
 	assert_true(second.contains("already gave a Sacrifice order this turn, for Royal Armories"), second)
 	assert_true(second.contains("once per turn"), second)
 	assert_eq(book.orders_for("kingdom").size(), 1, "the second one is not queued")
-	# An owned mandate: the Regent's Court already has Royal Armories.
+	# An owned mandate: the Regent's Court already has its first mandate (#183: read from its preset row).
 	var court := _game({"kingdom": "regents_court"})
-	var owned := RulerRules.sacrifice_check(court, "kingdom", "royal_armories")
+	var first := String(RulerRules.preset_build("regents_court").mandates[0])
+	var owned := RulerRules.sacrifice_check(court, "kingdom", first)
 	assert_eq(owned.code, "owned_mandate")
-	assert_eq(owned.reason, "The Aurel Crown already has Royal Armories. Each mandate can be taken only once.")
+	assert_eq(owned.reason, "The Aurel Crown already has %s. Each mandate can be taken only once." % RulerRules.mandate_name(first))
 	# A foreign mandate: Blood Frenzy is the Clans'.
 	var foreign := RulerRules.sacrifice_check(s, "kingdom", "blood_frenzy")
 	assert_eq(foreign.code, "foreign_mandate")

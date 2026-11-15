@@ -11,6 +11,7 @@ extends "res://tests/test_case.gd"
 const Watch := preload("res://ui/battle/battle_watch.gd")
 const Scenarios := preload("res://tools/battle_log/scenarios.gd")
 const Fx := preload("res://tests/battle_playback_fixtures.gd")
+const ThreeFx := preload("res://tests/three_side_fixtures.gd")
 const STEP := 1.0 / 60.0
 ## §8.2: playback CPU per frame, headless, fixed 1/60 s steps (average and worst frame), on the build box.
 const CPU_AVG_MS := 2.0
@@ -301,9 +302,10 @@ func test_battles_that_cant_be_watched_say_why() -> void:
 	var cut: Dictionary = fx.log.duplicate(true)
 	cut.truncated = true
 	assert_eq(v.show_battle(cut), "This battle is too big to play back. The report has everything.")
-	var three: Dictionary = fx.log.duplicate(true)
-	three.sides.append(three.sides[0].duplicate(true))
-	assert_eq(v.show_battle(three), "Battles with more than two sides can't be watched yet.")
+	var three: Dictionary = ThreeFx.battle("holds")
+	assert_eq(v.show_battle(three.log, three.report, three.seats), "", "#265: a battle of three sides plays (tests/test_three_sided_battles.gd)")
+	assert_false(v.message_panel.visible, "with no message")
+	assert_eq(v.show_battle(cut), "This battle is too big to play back. The report has everything.")
 	assert_eq(v.show_battle(fx.log, fx.report), "", "a good log plays")
 	assert_false(v.message_panel.visible, "and the message goes away")
 	v.free()

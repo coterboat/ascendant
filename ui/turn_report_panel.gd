@@ -11,7 +11,8 @@ extends PanelContainer
 ## notes (AIPlayer.last_plan_notes) for the turn that just resolved, in a box of its own that scrolls
 ## when the notes are long. The host passes them in (AISeat.report_notes), and they are never shown
 ## before the turn resolves, because they describe the computer's simultaneous orders. The section
-## remembers whether the player opened or closed it.
+## remembers whether the player opened or closed it. #286: the rows keep ROWS_MIN_HEIGHT whatever the game-over banner and
+## the notes take; the notes give way first (RowsAndNotes).
 ## Reads the session only and never changes rules state. Builds its children in code.
 ## Art (#10): a recruitment row shows the recruited unit's face at its left (Art), and the panel uses the
 ## style bible's deep indigo.
@@ -65,6 +66,10 @@ const ROW_PORTRAIT := Vector2(40, 40)
 const NOTES_MAX_HEIGHT := 190
 const NOTE_LINE_HEIGHT := 25
 const NOTE_CHARS_PER_LINE := 105
+## #286: the rows keep at least this height (a phase heading and three lines) whatever the game-over banner and the notes take: the notes
+## give way first, down to NOTES_MIN_HEIGHT (two lines; they scroll), and only then does the report grow (RowsAndNotes).
+const ROWS_MIN_HEIGHT := 160
+const NOTES_MIN_HEIGHT := 2 * NOTE_LINE_HEIGHT + 6
 
 var header_label: Label
 var watch_again_button: Button  # M3a.2: hidden unless the host can replay the turn (set_watch_again)
@@ -80,6 +85,7 @@ var victory_box: PanelContainer
 var victory_label: Label
 var rows_box: VBoxContainer
 var scroll: ScrollContainer
+var rows_and_notes: RowsAndNotes  # #286: the rows' scroll over the notes section, sharing what the report leaves them
 var _event_rows: Array[Button] = []
 var _battle_buttons: Array[Button] = []
 var _codex_buttons: Array[Button] = []
@@ -239,7 +245,7 @@ func show_computer_notes(entries: Array) -> void:
 		CodexLink.attach(line, "computer_opponent", codex_requested.emit)
 		notes_body.add_child(line)
 		_note_labels.append(line)
-		notes_scroll.custom_minimum_size = Vector2(0, 28)
+		_set_notes_height(28)
 		_refresh_notes_toggle()
 		return
 	var lines := 0  # rough wrapped line count, for the box's height
@@ -268,8 +274,16 @@ func show_computer_notes(entries: Array) -> void:
 			notes_body.add_child(l)
 			_note_labels.append(l)
 			lines += ceili((String(line).length() + 3) / float(NOTE_CHARS_PER_LINE))
-	notes_scroll.custom_minimum_size = Vector2(0, mini(lines * NOTE_LINE_HEIGHT + 6, NOTES_MAX_HEIGHT))
+	_set_notes_height(mini(lines * NOTE_LINE_HEIGHT + 6, NOTES_MAX_HEIGHT))
 	_refresh_notes_toggle()
+
+
+## #286: the notes box wants `height` for its lines, but asks for no more than NOTES_MIN_HEIGHT of its own: RowsAndNotes gives it the rest
+## while the rows keep ROWS_MIN_HEIGHT.
+func _set_notes_height(height: int) -> void:
+	rows_and_notes.want = height
+	notes_scroll.custom_minimum_size = Vector2(0, mini(height, NOTES_MIN_HEIGHT))
+	rows_and_notes.queue_sort()
 
 
 ## Opens or closes the notes section; the choice holds for the next reports too.
@@ -704,11 +718,17 @@ func _build() -> void:
 	empty_label.visible = false
 	box.add_child(empty_label)
 
+	# #286: the rows and the computer's notes share what the headline, the seats and the banner leave them (RowsAndNotes).
+	rows_and_notes = RowsAndNotes.new()
+	rows_and_notes.name = "RowsAndNotes"
+	rows_and_notes.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	rows_and_notes.gap = float(box.get_theme_constant("separation"))
+	box.add_child(rows_and_notes)
 	scroll = ScrollContainer.new()
 	scroll.name = "Scroll"
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	box.add_child(scroll)
+	rows_and_notes.add_child(scroll)
 	rows_box = VBoxContainer.new()
 	rows_box.name = "Rows"
 	rows_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -720,7 +740,7 @@ func _build() -> void:
 	notes_section.name = "ComputerNotes"
 	notes_section.add_theme_constant_override("separation", 4)
 	notes_section.visible = false
-	box.add_child(notes_section)
+	rows_and_notes.add_child(notes_section)
 	notes_section.add_child(HSeparator.new())
 	var toggle := Button.new()
 	toggle.name = "ComputerNotesToggle"
@@ -737,9 +757,45 @@ func _build() -> void:
 	notes_scroll = ScrollContainer.new()
 	notes_scroll.name = "ComputerNotesScroll"
 	notes_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	notes_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL  # #286: it takes what RowsAndNotes gives the section
 	notes_section.add_child(notes_scroll)
 	notes_body = VBoxContainer.new()
 	notes_body.name = "ComputerNotesBody"
 	notes_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	notes_body.add_theme_constant_override("separation", 4)
 	notes_scroll.add_child(notes_body)
+	rows_and_notes.rows = scroll
+	rows_and_notes.notes = notes_section
+	rows_and_notes.notes_box = notes_scroll
+
+
+## #286: lays the rows' scroll over the computer's notes. The rows keep ROWS_MIN_HEIGHT at least and get every pixel the notes don't take;
+## the notes take the height their lines want (`want`) while that leaves the rows their least, else what is left, never less than their
+## own least (the rule, the toggle and NOTES_MIN_HEIGHT of notes, which scroll). Its minimum is the rows' least with the notes at theirs,
+## so the report grows (and PanelFit shrinks it to the window) only when even that does not fit. The rows used to be the only thing that
+## gave way: on the game's last report, under a five-line banner and 190 px of notes, they were left half a line.
+class RowsAndNotes extends Container:
+	var rows: Control
+	var notes: Control  # the notes section: its rule and toggle, then the notes box
+	var notes_box: Control
+	var want := 0.0  # the notes box's height for its lines
+	var gap := 14.0
+
+	func _get_minimum_size() -> Vector2:
+		var h := float(TurnReportPanel.ROWS_MIN_HEIGHT)
+		if notes != null and notes.visible:
+			h += gap + notes.get_combined_minimum_size().y
+		return Vector2(0.0, h)
+
+	func _notification(what: int) -> void:
+		if what != NOTIFICATION_SORT_CHILDREN or rows == null:
+			return
+		var notes_h := 0.0
+		if notes != null and notes.visible:
+			var least := notes.get_combined_minimum_size().y
+			var full := least
+			if notes_box.visible:
+				full += maxf(want - notes_box.get_combined_minimum_size().y, 0.0)
+			notes_h = clampf(size.y - TurnReportPanel.ROWS_MIN_HEIGHT - gap, least, full)
+			fit_child_in_rect(notes, Rect2(0.0, size.y - notes_h, size.x, notes_h))
+		fit_child_in_rect(rows, Rect2(0.0, 0.0, size.x, maxf(size.y - (notes_h + gap if notes_h > 0.0 else 0.0), 0.0)))

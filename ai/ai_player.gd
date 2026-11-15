@@ -148,6 +148,8 @@ extends RefCounted
 ##   * Mages: _side_summary counts a mage in the second rank and AIMagic.mage_pressure values its spells with the battle
 ##     rules' numbers (a bolt, or what a hex or a shield moves), so _recruit_value buys mages for what they add; _plan_recruits
 ##     keeps at most one mage for every AIMagic.MAGE_PER regular units and never more second-rank fighters than front-rank ones.
+##     #182: a mage is valued for the fight its army will join, not the fort it is recruited in: Shield of Law counts in full
+##     unless an enemy army is within RECRUIT_THREAT moves of the capital (the recruits then defend it, behind its fort).
 ##   * Rituals: AIMagic.plan, after the moves, casts at most one ritual from each army that holds anyway (never one with a move
 ##     order, so never one ordered to attack), in the order of §10.2's table; they take at most AIMagic.RITUAL_SHARE of the gold
 ##     the troops leave and none in a turn the capital needs its recruits. The gold is set aside first (_ritual_gold) and the
@@ -236,6 +238,8 @@ const FIELD_RECRUIT_SAFE := 3
 ## Lifedrinker heals a share of its hits' damage (AutoBattleResolver.LIFEDRINK_DIVISOR) at the end of each
 ## round it still stands: counted for ROUNDS_GUESS rounds, this share of the time (like BERSERK_SHARE).
 const LIFEDRINK_SHARE := 0.5
+## Moves: an enemy army this close to our capital keeps this turn's recruits at home (_capital_threatened).
+const RECRUIT_THREAT := 2
 ## Raiding Parties: a capture's one-off gold counts this much against gold per turn.
 const RAID_WEIGHT := 0.5
 
@@ -1338,10 +1342,7 @@ func _plan_recruits(base: Array) -> Array:
 	for a in base:
 		if a.commander != null:
 			has_cmd = true
-	var threatened := false
-	for e in _foes:
-		if _d(e.location, cap.id) <= 2:
-			threatened = true
+	var threatened := _capital_threatened()
 	# A threatened capital with no commander gets one first: a commander steadies the whole army.
 	if cmd != null and threatened and not has_cmd and _price(cmd) <= gold:
 		out.append(cmd)
@@ -1391,6 +1392,15 @@ func _plan_recruits(base: Array) -> Array:
 		gold -= _price(best)
 		value = best_value
 	return out
+
+
+## Whether an enemy army stands within RECRUIT_THREAT moves of our capital: this turn's recruits then stay to defend it
+## (a commander first, _plan_recruits; #182: the mages' Shield of Law judged behind its fort, _build_ctx).
+func _capital_threatened() -> bool:
+	for e in _foes:
+		if _d(e.location, _me.capital) <= RECRUIT_THREAT:
+			return true
+	return false
 
 
 ## What one `ut` costs us now: RulerRules.recruit_price, the recruitment phase's price.
@@ -1466,7 +1476,8 @@ static func _side_summary(units: Array, ctx: Dictionary = {}) -> Dictionary:
 		"bears": 0, "front": 0, "volley": 0, "skirmish": 0, "fighters": 0, "def_hp": 0.0, "shield_hp": 0.0, "kinds": {},
 		"commanders": 0, "cmd_hp": 0.0, "cmd_def_hp": 0.0, "wings": 0, "iron_hide_hp": 0.0, "rooted": 0,
 		"iron_discipline": false, "frenzy": 0, "wounded_aware": false,
-		"mages": {}, "mages_n": 0, "casts": ctx.get("casts", {}), "shield_ok": ctx.get("shield_ok", true)}  # M5-10: mages cast, from the second rank
+		"mages": {}, "mages_n": 0, "casts": ctx.get("casts", {}), "shield_ok": ctx.get("shield_ok", true),  # M5-10: mages cast, from the second rank
+		"ruler_with": ctx.get("ruler_with", {})}  # #182: {faction id: true} when its ruler casts first beside these mages
 	var stats: Dictionary = ctx.get("stats", {})
 	var disciplined: Dictionary = ctx.get("iron_discipline", {})
 	var frenzy: Dictionary = ctx.get("frenzy", {})
@@ -2293,9 +2304,15 @@ func _build_ctx() -> void:
 		"forest_share": float(forest) / float(front.size()) if not front.is_empty() else 0.0}
 	if _state.magic:
 		# M5-10: every faction's battle spells, for the worth of a mage (AIMagic.mage_pressure), and whether Shield of Law has
-		# anything to cover where our garrison stands.
+		# anything to cover. #182: in the fight our recruits will join, not where they are recruited: while no enemy army is
+		# within RECRUIT_THREAT moves of the capital they march out to the field army, whose fights are attacks, and an
+		# attacker never has a terrain or fort bonus (AutoBattleResolver._ground), so the shield always covers; otherwise
+		# they stay to defend the capital, behind its fort.
 		_ctx["casts"] = AIMagic.cast_profiles(_state)
-		_ctx["shield_ok"] = AIMagic.shield_ok(_state, _me.capital)
+		var field := not _capital_threatened()
+		_ctx["shield_ok"] = AIMagic.shield_ok(_state, _me.capital) or field
+		# ...and a ruler that marches with the field army casts first there, so the mages take the spells it leaves.
+		_ctx["ruler_with"] = {_fid: true} if field and _ruler != null and _ruler_role() == "field" else {}
 
 
 ## A unit's attack, defense and morale for this plan: unit_stats' totals (mandates and path parts), or its type's
