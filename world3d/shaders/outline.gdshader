@@ -11,9 +11,25 @@ uniform vec2 screen = vec2(1600.0, 900.0); // world_view.gd keeps it at the view
 // M3a.2: the fortress close-up's see-through walls (model_common.gdshaderinc): no ink on the ghost part
 uniform vec4 cut_plane = vec4(0.0);
 uniform float cut_y = 0.0;
+// CW-8: a melting building's ink melts with it (model_common.gdshaderinc's wake_melt and melted, the same numbers)
+uniform float prop_melts = 0.0;
+uniform sampler2D prop_wake : filter_nearest, repeat_disable;
+uniform sampler2D prop_data_n : filter_nearest, repeat_disable;
+uniform vec2 prop_origin = vec2(-100.0, -100.0);
+uniform vec2 prop_extent = vec2(1200.0, 800.0);
+uniform vec3 melt_pivot = vec3(0.0);
 varying vec3 v_world;
 
 void vertex() {
+	if (prop_melts > 0.5) {
+		vec3 foot = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+		float id = floor(textureLod(prop_data_n, (foot.xz - prop_origin) / prop_extent, 0.0).r * 255.0 + 0.5);
+		if (id < 254.5) {
+			float melt = textureLod(prop_wake, vec2((id + 0.5) / float(textureSize(prop_wake, 0).x), 0.5), 0.0).b;
+			vec3 m = VERTEX - melt_pivot;
+			VERTEX = vec3(m.x * (1.0 + melt * 0.07), m.y * (1.0 - melt * 0.22), m.z * (1.0 + melt * 0.07)) + melt_pivot;
+		}
+	}
 	// how many world units a pixel spans at this vertex's distance, in model space
 	vec3 view_pos = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	float dist = abs(view_pos.z);

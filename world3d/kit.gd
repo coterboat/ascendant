@@ -843,10 +843,20 @@ static func formation_depth(slots: Array) -> float:
 	return d
 
 
-## The board's formation (design/3D_DIRECTION.md 6.1-6.2), in the army's own frame: facing -Z, the
-## front rank on z = 0, x centred. One block per unit type in `blocks` ([{"type", "n" figures, "rank"
-## 0 front / 1 second (Volley), "sp": Vector2 spacing}]), front rank first, packed into rows no wider
-## than `max_w`. `leaders` ([{"type", "role": "commander" or "ruler", "rank", "sp"}]) stand with their
+## CW-8: a flame drawn in code (a wick's, a window's, a candle-post's): a teardrop of unit height with its foot at the origin, white
+## (its colour comes per instance), shared by everything that burns on the board.
+static var _flame_mesh: ArrayMesh = null
+
+
+static func flame_mesh() -> ArrayMesh:
+	if _flame_mesh == null:
+		var b := Builder.new()
+		b.ball(0.36, Vector3(0, 0.33, 0), Color.WHITE, Vector3(1.0, 0.92, 1.0), 8)
+		b.cyl(0.0, 0.33, 0.62, Vector3(0, 0.69, 0), Color.WHITE, 8)
+		_flame_mesh = b.mesh()
+	return _flame_mesh
+
+
 ## CW-8 (design/CANDLEWAKE.md §10): the Candlewake's massing, a slumped, uneven crowd, never a rectangle. Each regular's place is
 ## nudged by a hash of the army's id and its index, up to SLUMP_X sideways and SLUMP_Z deeper back, its facing up to SLUMP_YAW askew
 ## ("yaw_off", which the layout adds). Leaders and the colour party keep their places. Pure and deterministic: no dice.
@@ -872,6 +882,10 @@ static func _hash01(key: String, i: int, salt: int) -> float:
 	return float(absi(hash("%s:%d:%d" % [key, i, salt])) % 1000) / 1000.0
 
 
+## The board's formation (design/3D_DIRECTION.md 6.1-6.2), in the army's own frame: facing -Z, the
+## front rank on z = 0, x centred. One block per unit type in `blocks` ([{"type", "n" figures, "rank"
+## 0 front / 1 second (Volley), "sp": Vector2 spacing}]), front rank first, packed into rows no wider
+## than `max_w`. `leaders` ([{"type", "role": "commander" or "ruler", "rank", "sp"}]) stand with their
 ## rank: a front-rank ruler leads from the front, a commander (rank 2) stands at the back with the
 ## banner bearer, who carries the army's banner in every army, and the army's other `extras` (M3a.2:
 ## its musician). Returns [{"type", "pos", "role"}].

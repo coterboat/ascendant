@@ -14,6 +14,11 @@ uniform float fig_lift = 0.0;
 void vertex() {
 	v_team = instanced_team ? INSTANCE_CUSTOM.rgb : team;
 	v_hurt = instanced_team ? clamp(1.0 - INSTANCE_CUSTOM.a, 0.0, 1.0) : 0.0;
+	v_melt = wake_melt((MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz); // CW-8: a building in the Wake melts
+	v_mloc = VERTEX;
+	if (v_melt > 0.0) {
+		VERTEX = melted(VERTEX, v_melt);
+	}
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
@@ -21,7 +26,7 @@ void fragment() {
 	if (cut_away() && (IN_SHADOW_PASS || ghost_drop(FRAGCOORD.xy))) {
 		discard;
 	}
-	ALBEDO = model_albedo(COLOR, UV);
+	ALBEDO = wax_albedo(model_albedo(COLOR, UV));
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 	if (fig_lift > 0.0) {

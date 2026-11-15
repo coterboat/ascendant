@@ -8,6 +8,11 @@ render_mode cull_back, depth_draw_opaque;
 void vertex() {
 	v_team = instanced_team ? INSTANCE_CUSTOM.rgb : team;
 	v_hurt = instanced_team ? clamp(1.0 - INSTANCE_CUSTOM.a, 0.0, 1.0) : 0.0;
+	v_melt = wake_melt((MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz); // CW-8: a building in the Wake melts
+	v_mloc = VERTEX;
+	if (v_melt > 0.0) {
+		VERTEX = melted(VERTEX, v_melt);
+	}
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
@@ -17,7 +22,7 @@ void fragment() {
 	if (cut_away() && (IN_SHADOW_PASS || ghost_drop(FRAGCOORD.xy))) {
 		discard;
 	}
-	ALBEDO = model_albedo(COLOR, UV);
+	ALBEDO = wax_albedo(model_albedo(COLOR, UV));
 	if (fig_lift > 0.0) {
 		float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.5);
 		EMISSION = ALBEDO * (0.06 + rim * 0.25) * fig_lift;

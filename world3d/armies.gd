@@ -79,12 +79,12 @@ const RING_TENT := 4.5 ## its tent stands this far behind its last rank
 const GATE_APRON := 9.0 ## a besieged garrison's overflow packs this deep outside its gate
 const SIEGE_BEAT := 1.15 ## a fort beat of the sieges phase (seconds at 1x); a breach takes longer
 const BREACH_BEAT := 1.6
+const WICK_MIN_PX := 5.0 ## CW-8: far out the wick flames grow until a world unit spans this on screen (wick_flame.gdshader)
 
 ## #125: the musician in every colour party (off on the lower quality rungs: the board sets it, musicians_at).
 static var musicians := true
 ## CW-8: the wick flames sway on the quality ladder's top rungs, never with reduced motion (the board sets it, set_flicker).
 static var flicker := true
-static var _wick_mesh: ArrayMesh = null
 static var _wick_mat: ShaderMaterial = null
 
 ## The land changed hands: the board repaints the province's wash and its fortress.
@@ -325,22 +325,13 @@ static func set_flicker(on: bool) -> void:
 		_wick_mat.set_shader_parameter("flicker", 1.0 if on else 0.0)
 
 
-## CW-8: the flame drawn on a wick, a teardrop of unit height with its foot at the origin (scaled to CandleFigures.flame_look's
-## height and width per figure), and its material; shared by every army.
-static func wick_mesh() -> ArrayMesh:
-	if _wick_mesh == null:
-		var b := Kit.Builder.new()
-		b.ball(0.36, Vector3(0, 0.33, 0), Color.WHITE, Vector3(1.0, 0.92, 1.0), 8)
-		b.cyl(0.0, 0.33, 0.62, Vector3(0, 0.69, 0), Color.WHITE, 8)
-		_wick_mesh = b.mesh()
-	return _wick_mesh
-
-
+## CW-8: the wick flames' material (Kit.flame_mesh scaled to CandleFigures.flame_look's height and width per figure); shared by every army.
 static func wick_material() -> ShaderMaterial:
 	if _wick_mat == null:
 		_wick_mat = ShaderMaterial.new()
 		_wick_mat.shader = SH_WICK
 		_wick_mat.set_shader_parameter("flicker", 1.0 if flicker else 0.0)
+		_wick_mat.set_shader_parameter("min_px", WICK_MIN_PX)
 	return _wick_mat
 
 
@@ -985,7 +976,7 @@ func _fill_wicks(e: Dictionary, faded: bool) -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_custom_data = true
-	mm.mesh = wick_mesh()
+	mm.mesh = Kit.flame_mesh()
 	mm.instance_count = n
 	for i in n:
 		mm.set_instance_custom_data(i, look["col"])
