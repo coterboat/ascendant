@@ -37,6 +37,18 @@ One harness window at a time; monkey runs don't take the slot. Each run gets its
 seed picks, as Quick start does), `--focus=AREA[,AREA]`, `--pace=N` (frames between gestures, default 6), `--shots=N` (a shot every
 N gestures, default 60), `--slow-ms=N` (default 400).
 
+**Factions in preview:** `--preview` starts the game as Quick start does with the preview factions on (the Candlewake);
+`--human=candlewake` plays it, and `--foe=ID` (with `--human`) picks the computer's faction (default: the first other faction in the data).
+
+**A scene on its own:** `--scene=res://ui/battle/battle_watch.tscn` (or `res://world3d/battle_watch3d.tscn`) plays that scene
+instead of a game. The battle launchers' own options pass through (`--fixture=three_holds|three_fort|three_rivals`, `--speed`,
+`--paused`, `--no-art`, `--reduced-motion`). The hand waits for the 3D stage's land, then plays for `--minutes`, the only limit
+there. It never presses the launcher's Close, and Esc becomes Space, because closing the view quits the launcher:
+
+```sh
+tools/qa/run_monkey.sh --seed=5 --scene=res://world3d/battle_watch3d.tscn --fixture=three_rivals --minutes=3
+```
+
 ### `--focus`
 
 While the area is on screen the hand aims inside it more than half the time; while it isn't, it often takes a way there: a control
