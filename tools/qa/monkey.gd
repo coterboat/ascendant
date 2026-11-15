@@ -29,6 +29,14 @@ extends SceneTree
 ##   --preview         the new game screen's preview box ticked (the Candlewake, CW-7): Quick start's dice may seat it; with
 ##                     --human=candlewake it is the person's faction (and --human=X --foe=candlewake the computer's)
 ##   --foe=ID          with --human: the computer's faction (default: the first other faction in the data)
+##   --resize          now and then mid-game, the window flips between 1280x720 and 1600x900, or the interface size between 100%
+##                     and 125% (as Settings applies it), whatever panels are open (a replay does not repeat these)
+##   --frantic         half its gestures are a hurried hand: End turn hammered (double and triple clicks), Esc bursts, panels
+##                     opened and shut within a frame or two, the pointer flicked across cards a frame apart (#249's class, live)
+##   --hotseat         two people at one screen (no computer seat): the handoff cover between the seats
+##   --watch           watch mode: the computer plays every seat (Next turn plays one whole turn); the hand presses Next turn
+##                     after 2 to 8 gestures; when a game ends it starts the next (seed +1) in the same process until --turns
+##                     counts every game's turns (a leak shows across games), so --turns=60 is a long night
 ##   --scene=PATH      play a scene instead of a game, e.g. res://ui/battle/battle_watch.tscn or res://world3d/battle_watch3d.tscn with
 ##                     --fixture=three_holds (the launcher reads its own options): the hand works its controls until --minutes
 ##   --replay=FILE     send the events of an events.log again at their frames instead of choosing them (the seed, faction, fog and
@@ -44,7 +52,7 @@ extends SceneTree
 
 const MonkeyLog := preload("res://tools/qa/monkey_log.gd")
 const TITLE_SCENE := "res://ui/title_screen.tscn"
-const AREAS := ["muster", "research", "fort", "battles", "chronicle", "settings"]
+const AREAS := ["muster", "research", "fort", "battles", "chronicle", "settings", "saveload"]
 ## The classes whose controls belong to an area: the hand aims inside them most of the time while one is on screen.
 const FOCUS := {
 	"muster": ["MusterBoard", "UnitStrip", "ArmyCard", "ArmyRow"],
@@ -54,6 +62,7 @@ const FOCUS := {
 		"TurnReportPanel", "BattleLegend", "BattleStrengthBar"],
 	"chronicle": ["ChronicleHud", "ChronicleColumn", "NoticeCard", "NoticeStack", "PlanHud", "PlanPage", "NoticeMedallion"],
 	"settings": ["SettingsPanel"],
+	"saveload": ["GameMenu", "SaveDialog", "LoadScreen", "QuitConfirm"],  # node names of the game's overlays, and the LoadScreen class
 }
 ## The words on a control (its name, text or tooltip's first line) that lead to an area, so the hand finds its way there.
 const OPENERS := {
@@ -63,6 +72,7 @@ const OPENERS := {
 	"battles": ["watch", "battle", "report", "replay", "skip", "march"],
 	"chronicle": ["chronicle", "plan", "notice", "seal", "read"],
 	"settings": ["menu", "settings", "resume", "interface", "volume"],
+	"saveload": ["menu", "save", "load", "continue", "autosave", "turn "],
 }
 ## Screens and panels named in the log while they are on screen: by script class, and the game screen's overlays by node name.
 const PANELS := ["ArmyCard", "ProvinceCard", "OrderCard", "MusterBoard", "ResearchPanel", "FortPanel", "ChronicleColumn", "PlanPage",
@@ -119,6 +129,13 @@ var ui_scale := 100
 var resolution := Vector2i.ZERO
 var fog := true
 var human := ""
+var watch := false
+var hotseat := false
+var resize := false
+var frantic := false
+var games_played := 1  # --watch: the games started in this process
+var turns_before := 0  # --watch: the turns of the games already over
+var mem_turns: Array = []  # [turn, static MB, objects, nodes, orphan nodes, video MB] at each turn's start
 var focus: PackedStringArray = []
 var pace := 6
 var shot_every := 60
@@ -193,6 +210,10 @@ func _initialize() -> void:
 			"selftest": selftest = v
 			"replay": replay_path = v
 			"preview": preview = true
+			"watch": watch = true
+			"hotseat": hotseat = true
+			"resize": resize = true
+			"frantic": frantic = true
 			"foe": foe = v
 			"scene": scene_path = v
 			"fixture", "speed", "paused", "no-art", "reduced-motion": pass  # the battle launchers' own (--scene)
@@ -207,6 +228,9 @@ func _initialize() -> void:
 		fog = bool(replay_options.get("fog", fog))
 		human = String(replay_options.get("human", human))
 		preview = bool(replay_options.get("preview", preview))
+		watch = bool(replay_options.get("watch", watch))
+		hotseat = bool(replay_options.get("hotseat", hotseat))
+		frantic = bool(replay_options.get("frantic", frantic))
 		foe = String(replay_options.get("foe", foe))
 		scene_path = String(replay_options.get("scene", scene_path))
 	if out.is_empty():
@@ -246,7 +270,7 @@ func _run() -> void:
 	var screen := DisplayServer.screen_get_size(DisplayServer.window_get_current_screen())
 	_note("options " + JSON.stringify({"seed": seed_n, "ui_scale": ui_scale, "fog": fog, "human": human, "focus": ",".join(focus),
 		"turns": max_turns, "minutes": max_minutes, "pace": pace, "window": [DisplayServer.window_get_size().x, DisplayServer.window_get_size().y],
-		"screen": [screen.x, screen.y], "build": build, "replay": replay_path, "preview": preview, "foe": foe, "scene": scene_path, "godot": Engine.get_version_info().string}))
+		"screen": [screen.x, screen.y], "build": build, "replay": replay_path, "preview": preview, "watch": watch, "hotseat": hotseat, "frantic": frantic, "foe": foe, "scene": scene_path, "godot": Engine.get_version_info().string}))
 	if not unknown_options.is_empty():
 		_note("unknown options ignored: %s" % " ".join(unknown_options))
 	for a in focus:
@@ -323,9 +347,9 @@ func _wait_seconds(s: float) -> void:
 		await process_frame
 
 
-func _game_config() -> Dictionary:
+func _game_config(dice_seed: int = -1) -> Dictionary:
 	var dice := RandomNumberGenerator.new()
-	dice.seed = seed_n
+	dice.seed = seed_n if dice_seed < 0 else dice_seed
 	var cfg := NewGameScreen.quick_start_config(dice, preview)
 	if not human.is_empty() and (human != String(cfg.players[0]) or (not foe.is_empty() and foe != String(cfg.players[1]))):
 		var other := foe
@@ -337,6 +361,22 @@ func _game_config() -> Dictionary:
 		cfg.builds = {human: RulerRules.preset_build(RulerRules.balanced_preset(human)), other: BuildScreen.computer_build(other, int(cfg.seed), 1)}
 		cfg.temperaments = AISeat.temperaments_for(cfg.players, cfg.ai, int(cfg.seed))
 	human = String(cfg.players[0])
+	if hotseat:
+		cfg.erase("ai")
+		cfg.erase("temperaments")
+		cfg.builds = {}
+		for fid in cfg.players:
+			cfg.builds[String(fid)] = RulerRules.preset_build(RulerRules.balanced_preset(String(fid)))
+	if watch:
+		# Every seat the computer's, at the default level, with its own build and temperament (as the new game screen seats them).
+		cfg.ai = {}
+		cfg.builds = {}
+		for i in cfg.players.size():
+			var fid := String(cfg.players[i])
+			cfg.ai[fid] = NewGameScreen.DEFAULT_LEVEL
+			cfg.builds[fid] = BuildScreen.computer_build(fid, int(cfg.seed), i)
+		cfg.temperaments = AISeat.temperaments_for(cfg.players, cfg.ai, int(cfg.seed))
+		human = ""
 	if not fog:
 		cfg.fog = false
 	return cfg
@@ -362,6 +402,11 @@ func _play() -> void:
 	turn_budget = rng.randi_range(12, 50)
 	while true:
 		var why := _stop_reason()
+		if why == "chain":
+			await _chain()
+			if not verdict.is_empty():
+				return
+			continue
 		if not why.is_empty():
 			verdict = why
 			return
@@ -419,12 +464,13 @@ func _stop_reason() -> String:
 		turn_seen = turn
 		turn_gestures = 0
 		end_tries = 0
-		turn_budget = rng.randi_range(12, 50)
+		turn_budget = rng.randi_range(2, 8) if watch else rng.randi_range(12, 50)
+		_note_memory(turns_before + turn)
 		_pending_shot = "t%02d" % turn
-	if turn > max_turns:
+	if turns_before + turn > max_turns:
 		return "turns"
-	if game.session != null and game.session.is_over() and turn_gestures > 60:
-		return "over"
+	if game.session != null and game.session.is_over() and turn_gestures > (12 if watch else 60):
+		return "chain" if watch else "over"
 	if end_tries >= 40:
 		_note("STUCK: turn %d did not end after %d tries to seal it; up: %s" % [turn, end_tries, _screen()])
 		return "stuck"
@@ -455,6 +501,12 @@ func _gesture() -> void:
 			return
 	if turn_gestures >= turn_budget and rng.randf() < 0.35:
 		await _end_turn()
+		return
+	if frantic and rng.randf() < 0.5:
+		await _frantic_gesture()
+		return
+	if resize and rng.randf() < 0.04:
+		await _resize_gesture()
 		return
 	var roll := rng.randf()
 	if roll < 0.05:
@@ -685,11 +737,10 @@ func _walk(n: Node, clip: Rect2, areas: Array, scroll: ScrollContainer, hidden: 
 	var cls := ""
 	if n.get_script() != null:
 		cls = String(n.get_script().get_global_name())
-	if not cls.is_empty():
-		for area in focus:
-			if FOCUS.has(area) and FOCUS[area].has(cls) and not tags.has(area):
-				tags = tags.duplicate()
-				tags.append(area)
+	for area in focus:
+		if FOCUS.has(area) and ((not cls.is_empty() and FOCUS[area].has(cls)) or FOCUS[area].has(String(n.name))) and not tags.has(area):
+			tags = tags.duplicate()
+			tags.append(area)
 	var c := n as Control
 	if c != null:
 		var r := _win_rect(c)
@@ -1209,6 +1260,129 @@ func _shot(name: String) -> void:
 	_note("shot %s%s%s" % [file, MonkeyLog.SEP, _screen()])
 
 
+## --frantic: one hurried gesture.
+const FRANTIC_OPENERS := ["research", "magic", "chronicle", "ruler", "codex", "turn report", "menu", "plan", "read", "lenses", "?"]
+
+func _frantic_gesture() -> void:
+	var roll := rng.randf()
+	var game := _game()
+	if roll < 0.3 and game != null and game.get("end_turn_button") is Control and (game.end_turn_button as Control).is_visible_in_tree():
+		# End turn hammered: a double click, then one to three more presses a frame or none apart
+		var b: Control = game.end_turn_button
+		var p := _point_in(_win_rect(b), false)
+		last_what = "frantic: hammer the seal \"%s\"" % b.text.replace("\n", " ")
+		await _travel(p, last_what, false)
+		_button(MOUSE_BUTTON_LEFT, true, false, "")
+		_button(MOUSE_BUTTON_LEFT, false, false, "")
+		_button(MOUSE_BUTTON_LEFT, true, true, "")
+		_button(MOUSE_BUTTON_LEFT, false, false, "")
+		for i in rng.randi_range(1, 3):
+			await _frames(rng.randi_range(0, 1))
+			_button(MOUSE_BUTTON_LEFT, true, false, "")
+			_button(MOUSE_BUTTON_LEFT, false, false, "")
+		await process_frame
+		return
+	if roll < 0.55:
+		# Esc bursts: three to eight presses, a frame or none apart
+		var n := rng.randi_range(3, 8)
+		last_what = "frantic: Esc x%d" % n
+		for i in n:
+			_key(KEY_ESCAPE, true, last_what if i == 0 else "")
+			_key(KEY_ESCAPE, false, "")
+			if rng.randf() < 0.5:
+				await process_frame
+		await process_frame
+		return
+	var openers := targets.filter(func(x): return x.kind == "button" and is_instance_valid(x.node) and \
+		FRANTIC_OPENERS.any(func(o): return String(x.what).to_lower().contains(o)))
+	if roll < 0.8 and not openers.is_empty():
+		# a panel opened and shut, two to four times, a frame or two apart
+		for i in rng.randi_range(2, 4):
+			var o: Dictionary = openers[rng.randi_range(0, openers.size() - 1)]
+			if not is_instance_valid(o.node) or not (o.node as Control).is_visible_in_tree():
+				break
+			last_what = "frantic: open and shut %s" % o.what
+			await _travel(_point_in(_win_rect(o.node), false), last_what, false)
+			_button(MOUSE_BUTTON_LEFT, true, false, "")
+			_button(MOUSE_BUTTON_LEFT, false, false, "")
+			await _frames(rng.randi_range(0, 2))
+			_key(KEY_ESCAPE, true, "")
+			_key(KEY_ESCAPE, false, "")
+			await _frames(rng.randi_range(0, 1))
+		return
+	# the pointer flicked across up to ten controls (cards, portraits, rows), one motion a frame or none apart, never settling
+	var pool := targets.filter(func(x): return x.kind != "board_province" and x.kind != "window")
+	if pool.is_empty():
+		await _sweep(12, 0)
+		return
+	last_what = "frantic: flick across %d controls" % mini(10, pool.size())
+	for i in mini(10, pool.size()):
+		var x: Dictionary = pool[rng.randi_range(0, pool.size() - 1)]
+		_motion(_point_in(x.rect, false), last_what if i == 0 else "")
+		if rng.randf() < 0.5:
+			await process_frame
+	await process_frame
+
+
+## --resize: the window to the other size, or the interface to the other scale, mid-game with whatever is open.
+func _resize_gesture() -> void:
+	var up := _screen()
+	if rng.randf() < 0.5:
+		var want := Vector2i(1280, 720) if DisplayServer.window_get_size() != Vector2i(1280, 720) else Vector2i(1600, 900)
+		_note("RESIZE window %s -> %s  @ %s" % [DisplayServer.window_get_size(), want, up])
+		DisplayServer.window_set_size(want)
+	else:
+		var s := GameSettings.load_from(GameSettings.default_path)
+		var want := 125 if s.ui_scale == 100 else 100
+		_note("RESIZE interface %d%% -> %d%%  @ %s" % [s.ui_scale, want, up])
+		s.set_ui_scale(want)
+		s.save()
+		s.apply(self)
+		ui_scale = want
+	last_what = "resize"
+	await _frames(12)
+	_keep_off_the_cursor()
+	await _frames(4)
+
+
+## --watch: the game is over; the next starts in this process (the title's own path, as a rematch takes), seeded seed_n + games.
+func _chain() -> void:
+	turns_before += _turn()
+	games_played += 1
+	_note("game %d over after %d turns in all; game %d starts" % [games_played - 1, turns_before, games_played])
+	change_scene_to_file(TITLE_SCENE)
+	await _frames(4)
+	var title := current_scene as TitleScreen
+	if title == null:
+		verdict = "no_title"
+		return
+	var cfg := _game_config(seed_n + games_played - 1)
+	_note("config " + JSON.stringify(cfg))
+	title.start_game(cfg)
+	var t0 := Time.get_ticks_msec()
+	while not _board_ready():
+		await process_frame
+		if Time.get_ticks_msec() - t0 > 300000:
+			verdict = "no_board"
+			return
+	await _frames(30)
+	turn_seen = _turn()
+	turn_gestures = 0
+	end_tries = 0
+	_note_memory(turns_before + turn_seen)
+
+
+## Memory at a turn's start, for long games: static memory, objects, nodes and orphan nodes (built and never added or freed) and video
+## memory. A count that only grows from turn to turn is a leak.
+func _note_memory(turn: int) -> void:
+	var row := [turn, snappedf(Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0, 0.1),
+		int(Performance.get_monitor(Performance.OBJECT_COUNT)), int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
+		int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT)),
+		snappedf(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, 0.1)]
+	mem_turns.append(row)
+	_note("memory at turn %d: %.1f MB static, %d objects, %d nodes, %d orphan nodes, %.1f MB video" % row)
+
+
 func _finish(how: String) -> void:
 	var g := _game()
 	var summary := {"verdict": how, "seed": seed_n, "human": human, "config_seed": config.get("seed", 0), "turn": _turn(),
@@ -1216,7 +1390,8 @@ func _finish(how: String) -> void:
 		"own_errors": own_errors, "warnings": warnings, "hover_freed": hover_freed, "aim_check": aim_checked, "shots": shots,
 		"minutes": snappedf((Time.get_ticks_msec() - started_msec) / 60000.0, 0.01) if started_msec > 0 else 0.0, "frames": frame_n,
 		"window": [root.size.x, root.size.y], "ui_scale": ui_scale, "fog": fog, "focus": ",".join(focus), "build": build,
-		"replay": replay_path, "slow_frames": slow.size(), "slowest": _slowest(10), "screens": screens_seen.keys()}
+		"replay": replay_path, "slow_frames": slow.size(), "slowest": _slowest(10), "screens": screens_seen.keys(),
+		"watch": watch, "games": games_played, "turns_all_games": turns_before + _turn(), "memory": mem_turns}
 	var f := FileAccess.open(out.path_join("summary.json"), FileAccess.WRITE)
 	if f != null:
 		f.store_string(JSON.stringify(summary, "  ") + "\n")
