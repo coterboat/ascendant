@@ -38,7 +38,7 @@ extends RefCounted
 ##                                                          of the turn, for "what you didn't see"; "needs" a needs() list)
 ##   needs(state, viewer, report_turn, orders = []) -> Array   the current-state "needs you" lines (research, sieges): [{"key", "kind",
 ##                                                          "text", "province", "codex", "variant"}], both screens use it
-##   need_items(needs, state, turn) -> Array                the needs as announcements
+##   need_items(needs, state, report_turn) -> Array         the needs as announcements, dated the turn the player is on
 ##   sorted(items, mode) / filtered(items, hidden_kinds) / counts(items)   the list the column and the stack show
 ##   summary(items, report, state, viewer) -> Dictionary    the line that heads the column
 ##   auto_open(items, mode) -> Dictionary                   {"open": bool, "at": id} for the start of a turn
@@ -741,8 +741,10 @@ static func spell_of(e: Dictionary) -> String:
 	return ""
 
 
-## The needs as announcements, ids "need.<key>.t<turn>".
-static func need_items(list: Array, state: GameState, turn: int) -> Array:
+## The needs as announcements, ids "need.<key>.t<report_turn>". `report_turn` is the turn that just resolved (0 before the first);
+## a need is dated the turn after it, the one the player is on and answers it in (#280: "Needs you · turn 1" on turn 1, never
+## "turn 0"), while news keeps the turn it happened on. The id keeps the report's turn, so a need dismissed or pinned stays so.
+static func need_items(list: Array, state: GameState, report_turn: int) -> Array:
 	var out := []
 	for n in list:
 		var pid := String(n.province)
@@ -755,7 +757,7 @@ static func need_items(list: Array, state: GameState, turn: int) -> Array:
 				headline = "%s is besieged" % place
 			"storm":
 				headline = "You besiege %s" % place
-		out.append({"id": "need.%s.t%d" % [String(n.key), turn], "turn": turn, "kind": "needs_you", "image": "needs_you",
+		out.append({"id": "need.%s.t%d" % [String(n.key), report_turn], "turn": report_turn + 1, "kind": "needs_you", "image": "needs_you",
 			"rank": int(RANKS["needs_you"]), "headline": _cap(headline), "detail": String(n.text), "province": pid, "place": place,
 			"codex": String(n.codex) if RulesCodex.ENTRIES.has(String(n.codex)) else "orders", "battle": {}, "source_rows": [String(n.text)],
 			"important": true, "routine": false, "own": true, "type": "need", "index": -1, "facts": {}, "variant": String(n.variant),

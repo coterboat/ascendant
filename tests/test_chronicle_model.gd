@@ -551,6 +551,30 @@ func test_the_needs_are_one_pure_function_for_both_screens() -> void:
 	assert_eq(items[0].image, "needs_you")
 
 
+## #280 (QA): a need is dated the turn the player is on and answers it in, the turn after the report's ("Needs you · turn 1" on turn 1,
+## never "turn 0"), on its card too; its id keeps the report's turn (so a dismissed or pinned need stays so), and news keeps the turn
+## it happened on.
+func test_a_need_is_dated_the_turn_you_are_on() -> void:
+	var s := GameState.with_paths(8)
+	for on_turn in [1, 6]:
+		var report_turn: int = on_turn - 1  # the turn that just resolved (none yet on turn 1)
+		var research := ChronicleModel.needs(s, CROWN, report_turn).filter(func(n): return n.kind == "research")
+		assert_eq(research.size(), 1, "the research need")
+		var need: Dictionary = ChronicleModel.need_items(research, s, report_turn)[0]
+		assert_eq(int(need.turn), on_turn, "on turn %d the need is dated turn %d" % [on_turn, on_turn])
+		assert_eq(String(need.id), "need.research.t%d" % report_turn, "its id keeps the report's turn")
+		var card := NoticeCard.new()
+		card.setup(need)
+		var meta := card.find_child("Meta", true, false) as Label
+		assert_eq(meta.text, "%s · turn %d" % [ChronicleModel.KIND_NAMES.needs_you, on_turn], "and its card says so")
+		card.free()
+	var t := _grouping_turn()
+	var news := ChronicleModel.build(t.report, t.state, CROWN)
+	assert_false(news.is_empty(), "the turn has news")
+	for it in news:
+		assert_eq(int(it.turn), int(t.report.turn), "news keeps the turn it happened on: %s" % it.headline)
+
+
 func test_a_pin_keeps_a_json_safe_payload_without_the_battle_log() -> void:
 	var t := _grouping_turn()
 	var items := ChronicleModel.build(t.report, t.state, CROWN)
