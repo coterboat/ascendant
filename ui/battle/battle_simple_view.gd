@@ -913,35 +913,48 @@ func _fit_texts() -> void:
 
 ## The caption plate: as wide as its words (at most the free band, less a margin), centred on the free band, its foot
 ## CAPTION_GAP above the controls. A line too long for that wraps to a second line (no more), and the plate grows upward.
+## #294: its lines are laid out at the width the plate gives them before it takes its height from them (as tall as they
+## wrap there, with the space between two lines), so a line still wrapped at an earlier caption's width, or at none yet,
+## never makes it taller; and whatever height it takes, its foot stays put (_keep_caption_foot).
 func _place_caption() -> void:
 	var band := free_band()
-	var v := view_size()
-	var got := 0.0
+	var pad := caption_strip.get_theme_stylebox("panel").get_minimum_size()
+	var got := 0.0  # Got it, and the gap before it
 	if hint_button.visible:
-		got = 12.0 + _font_of(hint_button).get_string_size(hint_button.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x + 24.0
+		got = hint_button.get_combined_minimum_size().x + (hint_button.get_parent() as Control).get_theme_constant("separation")
 	var widest := 0.0
 	for k in 2:
 		var l: Label = caption_labels[k]
 		if not l.text.is_empty():
 			widest = maxf(widest, _font_of(l).get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size_of(l, 18)).x)
-	var w := clampf(widest + got + 32.0, 240.0, minf(CAPTION_MAX_W, band.size.x - 2.0 * MARGIN))
-	var inner := w - got - 30.0
-	var h := 14.0
+	var w := clampf(widest + got + pad.x + 4.0, 240.0, minf(CAPTION_MAX_W, band.size.x - 2.0 * MARGIN))
+	var inner := w - got - pad.x  # the lines' width: the plate's, less its margins and Got it
+	var h := 0.0
 	for k in 2:
 		var l: Label = caption_labels[k]
 		l.visible = k == 0 or not l.text.is_empty()
 		if not l.visible:
 			continue
-		var fs := _font_size_of(l, 18)
-		var line_h := _font_of(l).get_height(fs)
-		var lines := 1
-		if not l.text.is_empty():
-			lines = clampi(ceili(_font_of(l).get_multiline_string_size(l.text, HORIZONTAL_ALIGNMENT_CENTER, inner, fs).y / line_h - 0.01), 1, 2)
-		l.custom_minimum_size = Vector2(inner, line_h * lines)
-		h += line_h * lines
+		l.custom_minimum_size = Vector2(inner, 0.0)
+		l.size = Vector2(inner, l.size.y)
+		## wrapped at that width now (the tree tells a resized label to re-wrap; out of it, as the tests run, nothing does)
+		l.notification(NOTIFICATION_RESIZED)
+		h += l.get_minimum_size().y
+	if hint_button.visible:
+		h = maxf(h, hint_button.get_combined_minimum_size().y)
+	h += pad.y
 	caption_strip.custom_minimum_size = Vector2(w, h)
 	caption_strip.size = Vector2(w, h)
-	caption_strip.position = Vector2(roundf(band.position.x + (band.size.x - w) / 2.0), v.y - controls.bottom_reserve() - CAPTION_GAP - h)
+	caption_strip.position.x = roundf(band.position.x + (band.size.x - w) / 2.0)
+	_keep_caption_foot()
+
+
+## #294: the caption plate's foot stays CAPTION_GAP above the controls whatever height the plate takes: a line its column
+## lays out taller after the plate was placed grows the plate upward, never down under the controls.
+func _keep_caption_foot() -> void:
+	if controls == null:
+		return
+	caption_strip.position.y = view_size().y - controls.bottom_reserve() - CAPTION_GAP - caption_strip.size.y
 
 
 ## Shows or hides the result card. It stands in for the caption while it is up (its why and lines say it all).
@@ -1602,6 +1615,7 @@ func _build_caption() -> void:
 	strip.add_theme_stylebox_override("panel", style)
 	strip.mouse_filter = Control.MOUSE_FILTER_STOP
 	strip.clip_contents = true
+	strip.resized.connect(_keep_caption_foot)
 	frame.add_child(strip)
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 12)
