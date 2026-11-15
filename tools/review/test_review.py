@@ -604,6 +604,106 @@ def png_bytes(size: int = 16) -> bytes:
     return blob
 
 
+def rgba_png(size: int = 32) -> bytes:
+    """A real RGBA PNG whose corners are fully transparent (a disc), so a conversion can be checked for its alpha."""
+    import struct
+    import zlib
+    c = (size - 1) / 2
+    rows = b"".join(bytes([0]) + b"".join(bytes((200, 120, 40, 255 if ((x - c) ** 2 + (y - c) ** 2) ** 0.5 < c else 0))
+                                         for x in range(size)) for y in range(size))
+
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows, 9)) + chunk(b"IEND", b""))
+
+
+@unittest.skipUnless(R._tool("cwebp") and R._tool("dwebp") and R._tool("ffmpeg"),
+                     "needs cwebp, dwebp (brew install webp) and ffmpeg")
+class ApplyConvertTests(unittest.TestCase):
+    """#314: apply writes the format the target names (the game loads art by exact path), and refuses what it can't
+    convert instead of copying it under the wrong name."""
+
+    @classmethod
+    def setUpClass(cls):
+        R.ensure_review_root()
+        cls.name = TAG + "_convert"
+        d = R.REVIEW / cls.name
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "disc.png").write_bytes(rgba_png())
+        subprocess.run([R._tool("ffmpeg"), "-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                        "color=c=0x5080c0:s=32x32", "-frames:v", "1", str(d / "photo.jpg")], check=True)
+        (d / "clip.wav").write_bytes(b"RIFF0000WAVEfmt ")
+        (d / "anim.gif").write_bytes(b"GIF89a")
+        out = f"review/{cls.name}/out"
+        make_batch(cls.name, {"title": "convert", "items": [
+            {"id": "png_to_webp", "file": "disc.png", "target": f"{out}/portrait.webp"},
+            {"id": "jpg_to_webp", "file": "photo.jpg", "target": f"{out}/plate.webp"},
+            {"id": "jpg_to_png", "file": "photo.jpg", "target": f"{out}/medal.png"},
+            {"id": "png_as_png", "file": "disc.png", "target": f"{out}/same.png"},
+            {"id": "wav_to_mp3", "file": "clip.wav", "target": f"{out}/line.mp3"},
+            {"id": "gif_to_webp", "file": "anim.gif", "target": f"{out}/anim.webp"},
+        ]})
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(R.REVIEW / cls.name, ignore_errors=True)
+
+    def setUp(self):
+        d = R.REVIEW / self.name
+        (d / "review.json").unlink(missing_ok=True)
+        shutil.rmtree(d / "out", ignore_errors=True)
+        self.out = d / "out"
+
+    def apply(self, *ids, dry=False):
+        for i in ids:
+            R.decide(self.name, i, verdict="accept")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = R.cmd_apply(type("A", (), {"batch": self.name, "dry_run": dry})())
+        return rc, buf.getvalue()
+
+    def test_a_png_to_a_webp_target_is_converted_with_its_alpha(self):
+        rc, log = self.apply("png_to_webp")
+        self.assertEqual(rc, 0, log)
+        webp = (self.out / "portrait.webp").read_bytes()
+        self.assertEqual((webp[:4], webp[8:12]), (b"RIFF", b"WEBP"), "a real WebP at the target's name")
+        self.assertEqual(webp[12:16], b"VP8X")
+        self.assertTrue(webp[20] & 0x10, "the alpha flag is set: the transparent corners survive")
+        self.assertFalse((self.out / "portrait.png").exists(), "never a .png beside the .webp target")
+        self.assertIn("converted from .png", log)
+
+    def test_a_jpg_is_converted_to_webp_and_to_png(self):
+        rc, log = self.apply("jpg_to_webp", "jpg_to_png")
+        self.assertEqual(rc, 0, log)
+        self.assertEqual((self.out / "plate.webp").read_bytes()[8:12], b"WEBP")
+        self.assertEqual((self.out / "medal.png").read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertFalse(list(self.out.glob("*.jpg")), "no .jpg copied under its own name")
+
+    def test_what_cannot_be_converted_is_refused_and_nothing_is_written(self):
+        rc, log = self.apply("wav_to_mp3", "gif_to_webp")
+        self.assertEqual(rc, 1, "a refused install fails the run, so the Table shows it")
+        self.assertIn("wav_to_mp3: refused", log)
+        self.assertIn("gif_to_webp: refused", log)
+        self.assertIn("refused 2", log)
+        self.assertFalse(self.out.exists() and any(self.out.iterdir()), "nothing under either name")
+
+    def test_an_already_matching_file_is_left_alone(self):
+        self.apply("png_to_webp", "png_as_png")
+        before = {p.name: (p.stat().st_mtime_ns, p.read_bytes()) for p in self.out.iterdir()}
+        rc, log = self.apply("png_to_webp", "png_as_png")
+        self.assertEqual(rc, 0, log)
+        self.assertEqual({p.name: (p.stat().st_mtime_ns, p.read_bytes()) for p in self.out.iterdir()}, before)
+        self.assertIn("same.png  (unchanged)", log)
+        self.assertIn("portrait.webp  (unchanged, converted from .png)", log)
+
+    def test_dry_run_writes_nothing(self):
+        rc, log = self.apply("png_to_webp", "jpg_to_png", dry=True)
+        self.assertEqual(rc, 0, log)
+        self.assertFalse(self.out.exists(), log)
+        self.assertIn("[dry-run] +", log)
+
+
 class PageTests(unittest.TestCase):
     def test_the_page_script_parses(self):
         """A syntax error in index.html's script leaves a blank page and no test would notice: parse it with
