@@ -152,7 +152,7 @@ func test_a_summon_and_a_successor_take_the_next_number_after_musters() -> void:
 	s.armies.erase(RulerRules.ruler_army(s, CROWN))
 	f.ruler_status = RulerRules.DEAD
 	f.successor_turn = 1
-	f.successor_power = 5
+	f.successor_power = f.kept_power  # kept power never goes up, and the Crown's preset sets it (#183)
 	var heir := RulerRules.crown_successor(s, CROWN, 1)
 	assert_true(heir != null)
 	assert_eq(heir.id, "kingdom-4", "the successor's army takes the next number")
