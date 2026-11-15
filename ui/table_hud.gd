@@ -26,7 +26,7 @@ extends Control
 ##                                    gold they leave; the hint line shows in its place while it is empty
 ##   opponent_slot -> HBoxContainer   where the rivals' plaques go
 ##   set_system_label(id, text)       a system button's label (shown beside its icon when wide, hidden when compact)
-##   set_hint(text, tooltip)          the tray's one line of "what to do now"
+##   set_hint(text, tooltip)          the tray's one line of "what to do now", as wide as it needs to read whole in two lines (#277)
 ##   set_floating(kind, control)      the card / legend / hover, which this node positions in the safe area
 ##   hang(kind, control)              the same for pieces that live elsewhere in the tree: the guide, the notice and the board's
 ##                                    playback bar, caption and close-up chip (TableLayout.FLOATING is the give-way order)
@@ -53,6 +53,13 @@ const KEEP_TEXT := ["research", "magic"]
 const SYSTEM_ORDER := ["research", "magic", "ruler", "chronicle", "report", "lenses", "codex", "help"]
 const PLAQUE_MARGIN := Vector2(8.0, 6.0)
 const SEAL_W := 190.0
+## #277: the tray's hint reads whole, in HINT_LINES lines at most. It is as wide as its text needs for that (hint_width), from HINT_MIN_W up
+## to HINT_MAX_W and the room the bottom band leaves beside the seal. A text longer than that still (a long refusal) ends in a visible "…",
+## and its tooltip has it whole. It had a fixed 300 px and two lines, and stopped mid-sentence with no sign of the rest ("Recruit: click your
+## capital, then").
+const HINT_LINES := 2
+const HINT_MIN_W := 300.0
+const HINT_MAX_W := 600.0
 ## The window's size when this node is not in a tree yet (tests): the project's own.
 const DEFAULT_VIEWPORT := Vector2(1600, 900)
 const PULSE_S := 1.1
@@ -93,6 +100,7 @@ var _last_rects := {}
 var _last_overflow := []
 var _pulse: Tween = null
 var _pulsing := false
+var _hint_room := INF  # #277: the widest the hint may be, from the last layout: the bottom band beside the seal, less the tray's padding
 
 
 func _init() -> void:
@@ -328,10 +336,54 @@ func seal_pulsing() -> bool:
 	return _pulsing
 
 
-## Sets the tray's hint line, and its tooltip (the whole how-to).
+## Sets the tray's hint line, and its tooltip (the whole how-to). The line takes the width it needs to read whole (#277).
 func set_hint(text: String, tooltip: String = "") -> void:
 	hint_label.text = text
 	hint_label.tooltip_text = tooltip if not tooltip.is_empty() else TooltipText.wrap_text(text)
+	_fit_hint()
+
+
+## #277: how many lines `text` wraps to in `width` pixels of text, in `font` at `font_size`, the way the hint label wraps it (by words, and
+## inside a word only when one word is wider than the line).
+static func hint_lines(text: String, font: Font, font_size: int, width: float) -> int:
+	var para := TextParagraph.new()
+	para.break_flags = TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND | TextServer.BREAK_ADAPTIVE
+	para.add_string(text, font, font_size)
+	para.width = width
+	return para.get_line_count()
+
+
+## #277: the narrowest text width from `least` to `most` at which `text` wraps to HINT_LINES lines or fewer; `most` when it needs more lines
+## even there (the label then trims it with "…").
+static func hint_width(text: String, font: Font, font_size: int, least: float, most: float) -> float:
+	if most <= least or hint_lines(text, font, font_size, least) <= HINT_LINES:
+		return least
+	if hint_lines(text, font, font_size, most) > HINT_LINES:
+		return most
+	var narrow := least  # too narrow
+	var wide := most  # wide enough
+	while wide - narrow > 1.0:
+		var mid := (narrow + wide) * 0.5
+		if hint_lines(text, font, font_size, mid) <= HINT_LINES:
+			wide = mid
+		else:
+			narrow = mid
+	return ceilf(wide)
+
+
+## #277: the hint takes the width its text needs to read whole in HINT_LINES lines, between HINT_MIN_W and HINT_MAX_W and within the room the
+## bottom band leaves it. Past that it shows its HINT_LINES lines and ends in "…" (the tooltip has the whole text).
+func _fit_hint() -> void:
+	var font := hint_label.get_theme_font("font")
+	var font_size := hint_label.get_theme_font_size("font_size")
+	var pad := hint_label.get_theme_stylebox("normal").get_minimum_size()
+	var most := maxf(minf(HINT_MAX_W, _hint_room), HINT_MIN_W) - pad.x
+	var width := hint_width(hint_label.text, font, font_size, HINT_MIN_W - pad.x, most)
+	var whole := hint_lines(hint_label.text, font, font_size, width) <= HINT_LINES
+	# A label that trims asks for no height of its own: it keeps its lines' height here.
+	var lines_h := HINT_LINES * font.get_height(font_size) + (HINT_LINES - 1) * hint_label.get_theme_constant("line_spacing") + pad.y
+	hint_label.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING if whole else TextServer.OVERRUN_TRIM_WORD_ELLIPSIS
+	hint_label.custom_minimum_size = Vector2(width + pad.x, 0.0 if whole else lines_h)
 
 
 # --- layout ---------------------------------------------------------------------------------------
@@ -396,6 +448,12 @@ func _fit_tray(band_w: float) -> void:
 	var style := tray.get_theme_stylebox("panel")
 	var padding := style.get_margin(SIDE_LEFT) + style.get_margin(SIDE_RIGHT) + tray_tokens.overhead()
 	tray_tokens.set_max_width(maxf(band_w - 2.0 * PLAQUE_MARGIN.x - seal_w - padding, 0.0))
+	# #277: the hint has the same strip while the tray is empty (the empty token slot beside it still costs the row's gap)
+	var room := band_w - 2.0 * PLAQUE_MARGIN.x - seal_w - style.get_margin(SIDE_LEFT) - style.get_margin(SIDE_RIGHT) \
+		- float(hint_label.get_parent().get_theme_constant("separation"))
+	if not is_equal_approx(room, _hint_room):
+		_hint_room = room
+		_fit_hint()
 
 
 ## UI-FIT (#237): the selection card outranks the guide (§1.3), so the guide folds (FirstGameGuide.fold_for_card) when the card
@@ -674,9 +732,9 @@ func _build_bottom() -> void:
 	hint_label.name = "HintLabel"
 	hint_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint_label.max_lines_visible = 2
+	hint_label.max_lines_visible = HINT_LINES
 	hint_label.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
-	hint_label.custom_minimum_size = Vector2(300, 0)
+	hint_label.custom_minimum_size = Vector2(HINT_MIN_W, 0)  # set_hint widens it to fit its text (_fit_hint)
 	hint_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hint_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hint_label.add_theme_font_size_override("font_size", 15)

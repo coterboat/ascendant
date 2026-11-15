@@ -54,6 +54,7 @@ func _screens() -> Array:
 		["guide", _guide],
 		["game", _game],
 		["game_research", _game_research],
+		["game_research_clans", _game_research_clans],
 		["game_report", _game_report],
 		["game_cast", _game_cast],
 	]
@@ -96,6 +97,18 @@ func _rt(c: Control) -> Array:
 	return [r.position.x, r.position.y, r.size.x, r.size.y, c.is_visible_in_tree()]
 
 
+## #287: where a control is drawn: its rect as _rt has it, cut to every ancestor that clips what it holds (a scroll container does).
+func _drawn(c: Control) -> Array:
+	var r: Rect2 = c.get_global_transform() * Rect2(Vector2.ZERO, c.size)
+	var p := c.get_parent()
+	while p != null:
+		if p is Control and (p as Control).clip_contents:
+			var pc := p as Control
+			r = r.intersection(pc.get_global_transform() * Rect2(Vector2.ZERO, pc.size))
+		p = p.get_parent()
+	return [r.position.x, r.position.y, r.size.x, r.size.y, c.is_visible_in_tree()]
+
+
 func _rects(screen: Control) -> Dictionary:
 	var rects := {}
 	if screen is GameScreen:
@@ -115,7 +128,16 @@ func _rects(screen: Control) -> Dictionary:
 			"compact": [1.0 if hud.compact else 0.0, 0.0, 0.0, 0.0, true], "card": _r(map.cards), "safe": _r_rect(hud.safe_area()),
 			"guide": _r(screen.first_game_guide), "map": _r(map.map_view),
 			"research_panel": _rt(research), "research_close": _r(screen.research_hud.panel.close_button) if research != null else [],
-			"report_box": _rt(report_box), "report_close": _r(screen.report_overlay.find_child("CloseReportButton", true, false))}
+			"report_box": _rt(report_box), "report_close": _r(screen.report_overlay.find_child("CloseReportButton", true, false)),
+			"hint_lines": [map.hint_label.get_line_count(), map.hint_label.get_visible_line_count()]}  # #277: the lines it needs, the lines it shows
+		if research != null:  # #287: the tree as drawn (cut to what clips it) and whole, the status and footer lines under it, the More cue
+			var rp: ResearchPanel = screen.research_hud.panel
+			rects["research_tree"] = _drawn(rp.tree_box)
+			rects["research_tree_whole"] = _rt(rp.tree_box)
+			rects["research_status"] = _rt(rp.status_label)
+			rects["research_footer"] = _rt(rp.footer_label)
+			var more = rp.get("tree_more")
+			rects["research_more"] = _rt(more) if more is Control else []
 		if map.cast_dialog != null and map.cast_dialog.visible:  # UI-POLISH-1 (#239): the cast dialog and what it shows
 			rects["cast_panel"] = _r(map.cast_dialog.panel)
 			rects["cast_want"] = map.cast_dialog.panel.get_combined_minimum_size().y
@@ -266,8 +288,9 @@ func _load() -> Control:
 
 
 ## A game with every system on at turn 1, orders phase, the first-game card up (the 2D map: the 3D board's land bake needs a
-## renderer, and the Table, the cards and the panels are the same either way; tests/table_probe.gd has the 3D board).
-func _game() -> Control:
+## renderer, and the Table, the cards and the panels are the same either way; tests/table_probe.gd has the 3D board). The person plays the
+## Crown, or `human`'s faction (#287: the Clans) against the other.
+func _game(human: String = "kingdom") -> Control:
 	var gs := GameSettings.new(SCRATCH.path_join("settings.cfg"))
 	gs.set_board("2d")
 	gs.save()
@@ -276,9 +299,10 @@ func _game() -> Control:
 	var g: GameScreen = load("res://ui/game_screen.tscn").instantiate()
 	g.autosave_enabled = false
 	g.save_store = SaveStore.new(SCRATCH.path_join("saves"))
-	g.start_game({"players": ["kingdom", "beasts"], "seed": 777, "rulers": true, "paths": true, "sieges": true, "fog": true, "magic": true,
-		"independents": true, "ai": {"beasts": "normal"},
-		"builds": {"kingdom": RulerRules.preset_build(RulerRules.balanced_preset("kingdom")), "beasts": BuildScreen.computer_build("beasts", 777, 1)}})
+	var foe := "beasts" if human == "kingdom" else "kingdom"
+	g.start_game({"players": [human, foe], "seed": 777, "rulers": true, "paths": true, "sieges": true, "fog": true, "magic": true,
+		"independents": true, "ai": {foe: "normal"},
+		"builds": {human: RulerRules.preset_build(RulerRules.balanced_preset(human)), foe: BuildScreen.computer_build(foe, 777, 1)}})
 	return g
 
 
@@ -287,6 +311,17 @@ func _game_research() -> Control:
 	var g: GameScreen = _game()
 	g.close_turn_report()
 	g.research_hud.open_magic()
+	return g
+
+
+## #287: the Magic tab as the Clans (the Wild and Blood schools, the tallest cards), with a spellbook change queued so its status line
+## shows under the tree: where the last row of cards ran over the status and footer lines.
+func _game_research_clans() -> Control:
+	var g: GameScreen = _game("beasts")
+	g.close_turn_report()
+	g.research_hud.open_magic()
+	var book := MagicView.spellbook(g.session.state(), "beasts", g.session.current_orders())
+	g.research_hud.panel._request_spellbook(MagicView.moved(book, String(book.order.back()), -1))
 	return g
 
 

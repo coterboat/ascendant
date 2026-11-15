@@ -119,6 +119,24 @@ func test_spell_icons_are_found_by_spell_id() -> void:
 	assert_true(Art.spell_icon("no_such_spell") == null, "an unknown spell has none")
 
 
+## #272: a codex page's plate by the page's RulesCodex key, cached once it is there; null, quietly, for a page without one, an
+## unknown key and no key. Which pages have one is read from the files.
+func test_codex_plates_are_found_by_codex_key() -> void:
+	var landed := 0
+	for key in RulesCodex.ENTRIES:
+		var tex := Art.codex_plate(String(key))
+		if not ResourceLoader.exists(Art.CODEX_PLATE_PATH % key):
+			assert_true(tex == null, "%s has no plate, and that is quiet" % key)
+			continue
+		landed += 1
+		assert_true(tex != null, "%s has its plate" % key)
+		if tex != null:
+			assert_true(Art.codex_plate(String(key)) == tex, "and it is cached: loaded once")
+	assert_true(landed > 0, "the shipped plates are found by their pages' keys")
+	assert_true(Art.codex_plate("") == null, "no key, no plate")
+	assert_true(Art.codex_plate("no_such_page") == null, "a page that isn't there has none")
+
+
 func test_every_faction_has_a_banner_and_every_terrain_a_tile() -> void:
 	for f in FactionData.FACTIONS:
 		var b := Art.banner(f.id)

@@ -258,7 +258,8 @@ func test_the_card_never_blocks_the_map() -> void:
 	_unseen()
 	var game := _game(VS_COMPUTER)
 	var guide := game.first_game_guide
-	assert_true(guide.get_parent() == game and guide.get_index() > game.map.get_index(), "a small card over the map, under every overlay layer")
+	assert_true(_drawn_over(guide, game.map.map_view) and _drawn_over(guide, game.map.table()), "a small card over the board and the Table")
+	assert_true(_layer_of(guide) < game.overlays.layer, "under every overlay layer")
 	assert_true(guide.get_parent() != game.overlays, "not a modal")
 	assert_eq(guide.mouse_filter, Control.MOUSE_FILTER_STOP, "only the card itself takes clicks")
 	assert_true(guide.custom_minimum_size.x <= 400.0, "and it is small")
@@ -272,6 +273,77 @@ func test_the_card_never_blocks_the_map() -> void:
 	assert_eq(guide.offset_top, (hud.placed()["guide"] as Rect2).position.y, "its offsets are the Table's")
 	game.free()
 	_unseen()
+
+
+## #282: on turn 1 the card stayed on top of the Rulers panel and covered its heading, the ruler's name and the portrait: the panel is the
+## map screen's own, and the card sat over the whole map screen. Every panel the player opens covers it now, the map screen's own (the
+## Rulers panel, the sacrifice dialog over it, the cast dialog) as the overlays (the Codex, the research panel) always did, and the card is
+## still up underneath, for when they close.
+func test_a_panel_the_player_opens_covers_the_card() -> void:
+	_unseen()
+	var config := VS_COMPUTER.duplicate()
+	config.merge({"rulers": true, "paths": true, "magic": true, "fog": true})
+	var game := _game(config)
+	var guide := game.first_game_guide
+	var map := game.map
+	assert_true(guide.visible, "turn 1 of a first game: the card is up")
+	game.open_ruler_panel()
+	assert_true(map.ruler_panel != null and map.ruler_panel.visible, "the Rulers panel is open")
+	assert_true(_drawn_over(map.ruler_panel, guide), "and covers the card")
+	map.open_sacrifice_dialog()
+	assert_true(map.sacrifice_dialog != null and map.sacrifice_dialog.visible, "the sacrifice dialog is open over it")
+	assert_true(_drawn_over(map.sacrifice_dialog, guide), "and covers the card too")
+	map.close_ruler_panel()
+	map.open_cast_dialog(RulerRules.ruler_army(game.session.state(), CROWN).id)  # the ruler casts Far Sight from turn 1 (fog)
+	assert_true(map.cast_dialog != null and map.cast_dialog.visible, "the cast dialog is open")
+	assert_true(_drawn_over(map.cast_dialog, guide), "and covers the card")
+	map.close_cast_dialog()
+	game.open_codex("ruler")
+	assert_true(game.codex.visible and _drawn_over(game.codex, guide), "the Codex covers it, as it always did")
+	game.codex.close()
+	game.research_hud.open_panel()
+	assert_true(game.research_hud.panel.visible and _drawn_over(game.research_hud.panel, guide), "and so does the research panel")
+	game.research_hud.close_all()
+	assert_true(guide.visible, "the card was up under them all along")
+	game.free()
+	_unseen()
+
+
+## The canvas layer `n` draws on: its nearest CanvasLayer's, 0 without one.
+static func _layer_of(n: Node) -> int:
+	var p := n
+	while p != null:
+		if p is CanvasLayer:
+			return (p as CanvasLayer).layer
+		p = p.get_parent()
+	return 0
+
+
+## True when `a` draws over `b`: on a higher canvas layer, or on the same one and later in the tree (from their nearest common ancestor,
+## the branch holding `a` comes after the one holding `b`, or `b` holds `a`). Neither sets a z_index.
+static func _drawn_over(a: Node, b: Node) -> bool:
+	if _layer_of(a) != _layer_of(b):
+		return _layer_of(a) > _layer_of(b)
+	var up_a: Array = []
+	var p := a
+	while p != null:
+		up_a.append(p)
+		p = p.get_parent()
+	var up_b: Array = []
+	p = b
+	while p != null:
+		up_b.append(p)
+		p = p.get_parent()
+	for i in up_a.size():
+		var j := up_b.find(up_a[i])
+		if j < 0:
+			continue
+		if i == 0:
+			return false  # `a` holds `b`: a child draws over its parent
+		if j == 0:
+			return true  # `b` holds `a`
+		return (up_a[i - 1] as Node).get_index() > (up_b[j - 1] as Node).get_index()
+	return false
 
 
 # --- who gets a card --------------------------------------------------------------------------------
