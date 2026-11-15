@@ -8,11 +8,16 @@ extends Control
 ## UI-CLUTTER (#238): a province's markers stand side by side (they fanned 15 px apart at 24 px wide, "1 4 8" unreadable), lift clear
 ## of the board's plates (the 3D overlay's taken_rects, the 2D names), and each says what it is: hover names its card and the others
 ## at that province, and a click opens its card in the Chronicle (marker_pressed). Only the discs take the mouse; the layer does not.
+## #278: the 3D board's playback bar, its caption and its close-up chip hang in the Table but draw with the board, under this layer, so
+## a marker on a province under them covered their words. Now the markers of a province under them hide while they show, as if drawn
+## under them, and a marker that would only touch them goes below them (top_rects, row_at).
 ##
 ##   set_markers([{"number", "province", "id", "headline"}])   what to show now ([] clears it)
 ##   pulse(id)                                     swell one marker (its card's place chip was pressed)
 ##   marker(id) -> NumberBadge                     for tests
 ##   point_of(province_id) -> Vector2              where a province is, in this layer's pixels (Vector2(-99999, -99999) when off screen or unknown)
+##   row_at(row, taken, tops) -> Rect2             where a row of markers stands, clear of the board's text and the pieces at its top
+##                                                 (an empty Rect2: it hides under one of those pieces)
 
 const OFFSCREEN := Vector2(-99999, -99999)
 ## The gap between the markers that stand side by side on one province.
@@ -109,7 +114,8 @@ func tooltip_for(id: String) -> String:
 		String(mine.get("headline", "")), p.name if p != null else place, "\n".join(lines)])
 
 
-## Each province's markers in a row on its point, lifted over any plate of the board's under them, in the order the cards are listed.
+## Each province's markers in a row on its point, in the order the cards are listed, clear of the board's text and of the pieces at
+## the board's top (row_at).
 func _place() -> void:
 	var groups := {}  # province -> its markers' entries, in card order
 	for m in _wanted:
@@ -118,6 +124,7 @@ func _place() -> void:
 			groups[pid] = []
 		(groups[pid] as Array).append(m)
 	var taken := taken_rects()
+	var tops := top_rects()
 	for pid in groups:
 		var entries: Array = groups[pid]
 		var p := point_of(String(pid))
@@ -132,18 +139,54 @@ func _place() -> void:
 			continue
 		var w: float = (badges[0] as Control).size.x
 		var total := badges.size() * w + (badges.size() - 1) * GAP
-		var row := Rect2(p - Vector2(total * 0.5, w * 0.5), Vector2(total, w))
-		for k in LIFTS:
-			var top := INF
-			for o: Rect2 in taken:
-				if o.intersects(row):
-					top = minf(top, o.position.y)
-			if top == INF:
-				break
-			row.position.y = top - w - 2.0
+		var row := row_at(Rect2(p - Vector2(total * 0.5, w * 0.5), Vector2(total, w)), taken, tops)
+		if not row.has_area():  # under the playback bar, its caption or the close-up chip, with its province
+			for b in badges:
+				(b as Control).visible = false
+			continue
 		for i in badges.size():
 			(badges[i] as Control).position = (row.position + Vector2(i * (w + GAP), 0.0)).round()
 		taken.append(row)
+
+
+## Where a row of markers stands, from where it starts on its province, or an empty Rect2 when it hides. It lifts over the board's
+## text that it meets (`taken`: the plates, the order marks, the rows placed before it), up to LIFTS times (#238).
+## The pieces at the board's top (`tops`, top_rects) are never lifted over (#278): above them is the Table's top row, which this layer
+## draws under. A row whose middle is under one of them hides, as if drawn under it with its province. A row that would only meet one
+## goes down instead, from where it started, past everything it meets.
+static func row_at(row: Rect2, taken: Array, tops: Array) -> Rect2:
+	for o: Rect2 in tops:
+		if o.has_point(row.get_center()):
+			return Rect2()
+	var up := row
+	for k in LIFTS:
+		var top := INF
+		for o: Rect2 in taken:
+			if o.intersects(up):
+				top = minf(top, o.position.y)
+		if top == INF:
+			break
+		up.position.y = top - up.size.y - 2.0
+	if not _meets(up, tops):
+		return up
+	var down := row
+	var clear: Array = tops + taken
+	for k in LIFTS:
+		var bottom := -INF
+		for o: Rect2 in clear:
+			if o.intersects(down):
+				bottom = maxf(bottom, o.end.y)
+		if bottom == -INF:
+			break
+		down.position.y = bottom + 2.0
+	return down
+
+
+static func _meets(r: Rect2, list: Array) -> bool:
+	for o: Rect2 in list:
+		if o.intersects(r):
+			return true
+	return false
 
 
 ## The board's own text this layer keeps clear of, in its pixels: the 3D board's plates and order marks (BoardOverlay.taken_rects),
@@ -165,6 +208,23 @@ func taken_rects() -> Array:
 		var label: Control = (map.regions[id] as ProvinceRegion).name_label
 		if label != null and label.is_visible_in_tree():
 			var r: Rect2 = label.get_global_transform() * Rect2(Vector2.ZERO, label.size)
+			out.append(Rect2(r.position - origin, r.size))
+	return out
+
+
+## The pieces at the 3D board's top that this layer keeps clear of, in its pixels (#278): the playback bar, its caption and the
+## close-up chip, while they show. The Table places them (MapScreen._hang_board_pieces), but they draw with the board, under this layer.
+func top_rects() -> Array:
+	var out := []
+	if map == null or not is_inside_tree():
+		return out
+	var board = map.board
+	if board == null or not is_instance_valid(board) or board.get("overlay") == null or not board.overlay.has_method("play_bar"):
+		return out
+	var origin := get_global_rect().position
+	for piece in [board.overlay.play_bar(), board.overlay.caption_panel(), board.overlay.closeup_chip()]:
+		if piece is Control and (piece as Control).is_visible_in_tree():
+			var r := (piece as Control).get_global_rect()
 			out.append(Rect2(r.position - origin, r.size))
 	return out
 
