@@ -238,7 +238,7 @@ func _rival_under_fog(col: VBoxContainer, f: Faction) -> void:
 			"Under fog you see a rival ruler only where you can see; it is remembered where you saw it last.", RulesCodex.text("ruler_army")]))
 		where.name = "StatusLabel"
 		_codex_link(where, "ruler_army")
-		var kept := _text(col, "Kept power: %s" % String(sum.kept), TooltipText.plain("Their kept power", RulesCodex.text("intel")))
+		var kept := _text(col, "Kept power: %s" % String(sum.kept_value), TooltipText.plain("Their kept power", RulesCodex.text("intel")))  # #292: said once
 		kept.name = "KeptPowerLabel"
 		_codex_link(kept, "intel")
 		var rank := Breakdown.ability_rank(state, f.id)

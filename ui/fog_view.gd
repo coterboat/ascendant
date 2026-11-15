@@ -272,20 +272,23 @@ static func scout_line(ut: UnitType) -> String:
 ## What `viewer` knows about rival `fid` (§11.1's rival panel): {"text": "What you know about the Thornmane Clans: the
 ## Great Thornmane (kept power 7, seen on turn 5). Mandates: Iron Discipline. They may have more.", "where" (the
 ## ruler's place: "Alive, location unknown", "Alive, glimpsed at Thornvale", "Alive, last seen at Wildmoor 2 turns
-## ago", or a dead ruler's line), "kept" (the kept power line), "mandates" (the mandates line), "path" (the nodes you
-## know, or "")}. {} without fog.
+## ago", or a dead ruler's line), "kept" (the kept power line), "kept_value" (#292: the same for a row that already says
+## "Kept power": "10 at most (the most it could be with the mandates you know)", "7, seen on turn 5"), "mandates" (the
+## mandates line), "path" (the nodes you know, or "")}. {} without fog.
 static func rival_summary(state: GameState, viewer: String, fid: String, intel: Dictionary) -> Dictionary:
 	if not active(state) or state.find_faction(fid) == null:
 		return {}
 	var f := state.find_faction(fid)
 	var k: Dictionary = intel.get(fid, {})
-	var out := {"where": "", "kept": "", "mandates": "", "path": ""}
+	var out := {"where": "", "kept": "", "kept_value": "", "mandates": "", "path": ""}
 	var bits := PackedStringArray()
 	if f.has_ruler():
 		var name := RulerRules.current_name(state, fid)
 		var known := int(k.get("kept_power", -1)) >= 0
 		out.kept = "kept power %d, seen on turn %d" % [f.kept_power, int(k.get("kept_turn", 0))] if known \
 			else "kept power %d at most: the most it could be with the mandates you know" % f.kept_power
+		out.kept_value = "%d, seen on turn %d" % [f.kept_power, int(k.get("kept_turn", 0))] if known \
+			else "%d at most (the most it could be with the mandates you know)" % f.kept_power
 		bits.append("%s (%s)" % [name, out.kept])
 		out.where = ruler_where(state, viewer, fid)
 		var names := f.mandates.map(func(mid): return RulerRules.mandate_name(String(mid)))
