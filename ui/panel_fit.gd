@@ -34,15 +34,23 @@ static func pivot_for(s: float, panel_middle: Vector2, window_middle: Vector2, h
 
 ## Keeps `panel` (a Control of a fixed minimum size, centred by `holder`, a full-window CenterContainer under a plain Control)
 ## inside its viewport from now on: whenever it is shown or moved or resized, and whenever the viewport changes size (a window
-## drag, Settings' interface size).
+## drag, Settings' interface size) while the holder is in the tree.
+## #330: the viewport outlives the panel (the window outlives every game screen), so the fit is hooked to its size_changed as the
+## holder enters the tree and unhooked as it leaves. It was never unhooked: after a game was left, every resize called the fits of
+## that game's freed panels (three errors each, and more with every game left). The fit holds the two by weak reference, so a call
+## that comes after they are freed (one deferred as the holder entered the tree) does nothing.
 static func attach(panel: Control, holder: Control) -> void:
+	var panel_ref: WeakRef = weakref(panel)
+	var holder_ref: WeakRef = weakref(holder)
 	var fit := func() -> void:
-		if not holder.is_inside_tree():
+		var centre := holder_ref.get_ref() as Control
+		var fitted := panel_ref.get_ref() as Control
+		if centre == null or fitted == null or not centre.is_inside_tree():
 			return
-		var window := holder.get_viewport_rect().size
-		var s := scale_for(panel.get_combined_minimum_size(), window)
-		holder.scale = Vector2(s, s)
-		holder.pivot_offset = pivot_for(s, holder.position + panel.position + panel.size * 0.5, window * 0.5, holder.position)
+		var window := centre.get_viewport_rect().size
+		var s := scale_for(fitted.get_combined_minimum_size(), window)
+		centre.scale = Vector2(s, s)
+		centre.pivot_offset = pivot_for(s, centre.position + fitted.position + fitted.size * 0.5, window * 0.5, centre.position)
 	holder.resized.connect(fit)
 	holder.visibility_changed.connect(fit)
 	panel.item_rect_changed.connect(fit)
@@ -51,3 +59,7 @@ static func attach(panel: Control, holder: Control) -> void:
 		if vp != null and not vp.size_changed.is_connected(fit):
 			vp.size_changed.connect(fit)
 		fit.call_deferred())
+	holder.tree_exiting.connect(func() -> void:
+		var vp := holder.get_viewport()
+		if vp != null and vp.size_changed.is_connected(fit):
+			vp.size_changed.disconnect(fit))
