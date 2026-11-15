@@ -1098,8 +1098,8 @@ func _best_capture(g: Dictionary, is_main: bool, objective: String, claimed: Dic
 		var hold_rate := _hold_rate(g.armies, n)  # IND-1: 1.0 where no garrison stands
 		if hold_rate < _risk(float(HOLD_ATTACK_RATE[_level])):
 			continue
-		if _wick.on and not _wick.in_time(g.armies, n):
-			continue  # CW-6 (§8.2): from there our flame could no longer reach a harbour
+		if _wick.on and not _wick.worth_ending(g.armies, n):
+			continue  # CW-6 (§8.2): from there our flame could no longer reach a harbour, and no fight is in reach
 		var score: float
 		if _paths:
 			score = _capture_worth(p) + _rng.randf() * float(JITTER[_level])

@@ -645,7 +645,7 @@ class AIPolicy extends Base:
 				"rituals", "blood_paid", "scouts",
 				# CW-6 (#257), games with the Candlewake only: what AIWick planned (fights for fuel, harbours kept and reached,
 				# armies turned home in time, recruits kept from cooling an army, cold wakes retaken, battles denied a hot army)
-				"fuel", "harbour_holds", "shelter_steps", "home_steps", "home_in_time", "new_armies", "relights", "harvest_fights",
+				"fuel", "harbour_holds", "flame_kept", "home_steps", "home_in_time", "new_armies", "relights", "harvest_fights",
 				"denials"]:
 			if int(st.get(key, 0)) > 0:
 				bump(key, int(st.get(key, 0)))
