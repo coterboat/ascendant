@@ -109,6 +109,10 @@ run_one() {
 			--fog=off) tag="${tag}_nofog" ;;
 			--replay=*) tag="${tag}_replay" ;;
 			--preview) tag="${tag}_preview" ;;
+			--watch) tag="${tag}_watch" ;;
+			--hotseat) tag="${tag}_hotseat" ;;
+			--resize) tag="${tag}_resize" ;;
+			--frantic) tag="${tag}_frantic" ;;
 			--human=*) tag="${tag}_${a#*=}" ;;
 			--fixture=*) tag="${tag}_${a#*=}" ;;
 			--scene=*) local sc="${a##*/}"; tag="${tag}_${sc%.tscn}" ;;

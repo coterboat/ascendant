@@ -49,6 +49,20 @@ there. It never presses the launcher's Close, and Esc becomes Space, because clo
 tools/qa/run_monkey.sh --seed=5 --scene=res://world3d/battle_watch3d.tscn --fixture=three_rivals --minutes=3
 ```
 
+**Who plays:** `--hotseat` seats two people at one screen (the handoff cover between them). `--watch` gives every seat to the
+computer: the hand presses Next turn after 2 to 8 gestures, and when a game ends it starts the next one (seed + 1) in the same
+process, so `--turns` counts every game's turns and a leak shows across games. Each turn's start notes memory (static MB, objects,
+nodes, orphan nodes, video MB), which `summary.json` keeps as `memory`:
+
+```sh
+tools/qa/run_monkey.sh --seed=104 --watch --turns=70 --minutes=45 --shots=300   # a long night: 70 turns over a few games
+```
+
+**A rougher hand:** `--resize` now and then flips the window between 1280x720 and 1600x900, or the interface size between 100% and
+125% (as Settings applies it), with whatever panels are open. `--frantic` makes half the gestures hurried: End turn hammered
+(double and triple clicks), Esc bursts, panels opened and shut a frame or two apart, the pointer flicked across cards a frame
+apart (#249's class, on live input). A replay doesn't repeat a resize.
+
 ### `--focus`
 
 While the area is on screen the hand aims inside it more than half the time; while it isn't, it often takes a way there: a control
@@ -62,6 +76,7 @@ whose words open it, your army or province on the board, or a scroll toward the 
 | `battles` | the battle host (3D stage and Simple view), its controls, the report | every army on the board; Watch, battle, March, and right after March a province next to the army (a garrison or a rival there: a battle) |
 | `chronicle` | the Chronicle, its notices, the Plan | Chronicle, Plan, seal |
 | `settings` | the settings panel | Menu, Settings |
+| `saveload` | the menu, the save dialog, the load screen, the quit question | Menu, Save, Load, Continue, a save's row |
 
 ## What the hand does
 
