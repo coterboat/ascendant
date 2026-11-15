@@ -234,8 +234,12 @@ func test_each_capital_starts_with_army_1_and_the_ruler_army_when_rulers_are_on(
 	var s := _with_rulers(7)
 	assert_true(RulerRules.has_rulers(s))
 	assert_eq(s.armies.size(), 4, "army 1 and the ruler's army for each faction")
-	var expected := {"kingdom": ["kingdom-1", "kingdom-2", "ever_regent", 5, ["royal_armories", "kings_roads"]],
-		"beasts": ["beasts-1", "beasts-2", "fang_chieftain", 5, ["iron_discipline", "drilled_ranks"]]}
+	# Each faction's balanced preset (#183: read from its preset row, which a balance pass may retune).
+	var expected := {}
+	for fid in ["kingdom", "beasts"]:
+		var preset := RulerRules.preset_build(RulerRules.balanced_preset(fid))
+		expected[fid] = ["%s-1" % fid, "%s-2" % fid, preset.ruler, RulerRules.kept_after(preset), preset.mandates]
+	assert_eq([expected.kingdom[2], expected.beasts[2]], ["ever_regent", "fang_chieftain"], "the balanced presets' rulers (§6.1)")
 	for fid in expected:
 		var f := s.find_faction(fid)
 		var e: Array = expected[fid]
@@ -494,9 +498,12 @@ func test_ruler_breakdowns_explain_every_number() -> void:
 	assert_eq(rank.lines.map(func(l): return l.value), [1, 1])
 	assert_true(String(rank.description).begins_with("Mending Light at rank 2: "), rank.description)
 	assert_true(String(rank.description).contains("heals 6 hit points"), rank.description)
-	# Kept power: "Kept power 5 = pool 10 - Royal Armories 3 - King's Roads 2".
+	# Kept power: "Kept power 4 = pool 10 - Heavy Tithes 4 - King's Roads 2", the balanced preset's mandates in the order taken.
 	var kept := Breakdown.kept_power(s, "kingdom")
-	assert_eq(kept.lines.map(func(l): return [l.label, l.value]), [["Power pool", 10], ["Royal Armories", -3], ["King's Roads", -2]])
+	var lines := [["Power pool", RulerData.POWER_POOL]]
+	for mid in RulerRules.preset_build(RulerRules.balanced_preset("kingdom")).mandates:
+		lines.append([RulerRules.mandate_name(mid), -RulerRules.mandate_cost(mid)])
+	assert_eq(kept.lines.map(func(l): return [l.label, l.value]), lines)
 	# A game without rulers explains that instead.
 	var none := Breakdown.kept_power(GameState.new(4), "kingdom")
 	assert_eq(int(none.total), 0)
@@ -539,10 +546,17 @@ func test_ruler_army_on_the_map_reads_plainly_and_explains_every_number() -> voi
 			numbers += 1
 			assert_true(l.tooltip_text.contains("= "), "%s's tooltip shows a breakdown total: %s" % [node_name, l.tooltip_text])
 	assert_true(numbers >= 6, "hit points, attack, defense, morale, kept power and ability rank (%d)" % numbers)
-	assert_eq((panel.find_child("RulerHpLabel", true, false) as Label).text, "Hit points: 19 of 19")
-	assert_eq((panel.find_child("KeptPowerLabel", true, false) as Label).text, "Kept power: 5 of 10")
-	assert_eq((panel.find_child("AbilityLabel", true, false) as Label).text, "Ability: Mending Light, rank 2 (heal 6)")
-	assert_eq((panel.find_child("MandatesLabel", true, false) as Label).text, "Mandates: Royal Armories, King's Roads")
+	# The Crown's balanced preset, Regent's Court (#183: its numbers from its preset row and §1.3).
+	var preset := RulerRules.preset_build(RulerRules.balanced_preset("kingdom"))
+	var kept := RulerRules.kept_after(preset)
+	var hp := RulerRules.stat_value("ever_regent", "hp", kept)
+	var rank := RulerRules.ability_rank(kept)
+	var names: Array = preset.mandates.map(func(m): return RulerRules.mandate_name(m))
+	assert_eq((panel.find_child("RulerHpLabel", true, false) as Label).text, "Hit points: %d of %d" % [hp, hp])
+	assert_eq((panel.find_child("KeptPowerLabel", true, false) as Label).text, "Kept power: %d of %d" % [kept, RulerData.POWER_POOL])
+	assert_eq((panel.find_child("AbilityLabel", true, false) as Label).text, "Ability: Mending Light, rank %d (heal %d)" % [rank,
+		int(RulerData.ABILITIES.mending_light.values[rank - 1])])
+	assert_eq((panel.find_child("MandatesLabel", true, false) as Label).text, "Mandates: %s" % ", ".join(names))
 	_assert_no_raw_ids(header.tooltip_text, "the ruler's summary")
 	# The province badge names the ruler's army instead of counting units.
 	var badges: Array = map.regions["crownkeep"].army_box.get_children()
@@ -550,7 +564,8 @@ func test_ruler_army_on_the_map_reads_plainly_and_explains_every_number() -> voi
 	var ruler_badge: Button = badges.filter(func(b): return b.text == "Ruler")[0]
 	assert_eq(String(ruler_badge.get_meta(CodexLink.META)), "ruler_army")
 	assert_true(ruler_badge.tooltip_text.contains("The Ever-Regent (ruler of the Aurel Crown) at Crownkeep"), ruler_badge.tooltip_text)
-	assert_true(ruler_badge.tooltip_text.contains("Hit points 19 of 19, attack 13, defense 8"), ruler_badge.tooltip_text)
+	assert_true(ruler_badge.tooltip_text.contains("Hit points %d of %d, attack %d, defense %d" % [hp, hp, RulerRules.stat_value("ever_regent",
+		"attack", kept), RulerRules.stat_value("ever_regent", "defense", kept)]), ruler_badge.tooltip_text)
 	# Right-clicking a ruler number opens the codex there.
 	var kept_label := panel.find_child("KeptPowerLabel", true, false) as Label
 	kept_label.gui_input.emit(CodexLink.right_click())
@@ -584,3 +599,21 @@ func test_every_m2_codex_entry_exists_in_one_block() -> void:
 	for fid in BuildPresetData.PRESETS:
 		for p in BuildPresetData.PRESETS[fid]:
 			assert_true(RulesCodex.text("build_presets").contains(String(p.name)), "the presets entry names %s" % p.name)
+
+
+func test_the_presets_entry_states_every_build_from_the_data() -> void:
+	# #183: the codex states each preset as its data has it (ruler, mandates in order, the power it keeps), so a retuned
+	# preset can't leave the entry behind: "Regent's Court (the Ever-Regent with Royal Armories and King's Roads, keeping 5)".
+	var text := RulesCodex.text("build_presets")
+	for fid in BuildPresetData.PRESETS:
+		for p in BuildPresetData.PRESETS[fid]:
+			var names := []
+			for mid in p.mandates:
+				names.append(RulerRules.mandate_name(mid))
+			var kept := RulerRules.kept_after(RulerRules.preset_build(String(p.id)))
+			var what := "%s (%s" % [p.name, RulerRules.ruler_data(String(p.ruler)).name]
+			if names.is_empty():
+				what += ", no mandates)"
+			else:
+				what += " with %s%s)" % [RulerRules._and_list(names), ", keeping %d" % kept if kept > 0 else ""]
+			assert_true(text.contains(what), "the presets entry says %s" % what)

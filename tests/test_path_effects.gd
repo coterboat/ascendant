@@ -9,8 +9,14 @@ const CROWN := "kingdom"
 const CLANS := "beasts"
 
 
+## The Crown's build these tests were written with: the Ever-Regent with Royal Armories and King's Roads, keeping 5. It was the
+## Regent's Court preset until #183 retuned that row (Heavy Tithes would add its gold to every income line below), so it is a
+## build of its own here and the path numbers don't move with the presets. A game with no builds given plays it.
+const COURT := {"ruler": "ever_regent", "mandates": ["royal_armories", "kings_roads"]}
+
+
 func _game(seed_value: int = 7, builds: Dictionary = {}) -> GameState:
-	var s := GameState.with_paths(seed_value, builds, [])
+	var s := GameState.with_paths(seed_value, builds if not builds.is_empty() else {CROWN: COURT}, [])
 	assert_true(s != null, "a game with paths starts")
 	return s
 
@@ -63,8 +69,8 @@ func test_every_unit_effect_is_a_named_part_in_unit_stats_and_breakdown() -> voi
 
 
 func test_path_parts_stack_with_mandates_and_skip_commanders() -> void:
-	# Regent's Court has Royal Armories (+1 attack); Drillyard and the Celestial Host add hp and morale.
-	var s := AscensionRules.with_nodes(_game(7, {CROWN: "regents_court"}), CROWN,
+	# The court build has Royal Armories (+1 attack); Drillyard and the Celestial Host add hp and morale.
+	var s := AscensionRules.with_nodes(_game(7, {CROWN: COURT}), CROWN,
 		["crown_drillyard", "crown_charters", "crown_arbalests", "crown_oath_dawn", "crown_celestial_host"])
 	var spear := _type(s, CROWN, "spearmen")
 	var us := RulerRules.unit_stats(s, CROWN, "spearmen")
@@ -83,7 +89,7 @@ func test_path_parts_stack_with_mandates_and_skip_commanders() -> void:
 	for u in _units_of(s, CROWN, "spearmen"):
 		assert_eq(RulerRules.unit_max_hp(s, u), us.hp)
 	# Without paths there are no path parts and no morale changes.
-	var m2 := RulerRules.unit_stats(GameState.with_rulers(7, {CROWN: "regents_court"}), CROWN, "spearmen")
+	var m2 := RulerRules.unit_stats(GameState.with_rulers(7, {CROWN: COURT}), CROWN, "spearmen")
 	assert_eq(m2.morale, spear.morale)
 	for stat in m2.mods:
 		for m in m2.mods[stat]:
@@ -134,7 +140,7 @@ func test_units_on_the_map_change_at_once_by_the_hp_rule() -> void:
 func test_battles_run_with_path_parts_with_and_without_mandates() -> void:
 	# AutoBattleResolver reads unit_stats' parts (M4-3 explains path parts in the "why"); a path part names
 	# no mandate, so a battle with path parts runs cleanly whether or not the faction owns a mandate.
-	for build in ["regents_court", "warrior_king"]:
+	for build in [COURT, "warrior_king"]:
 		var s := AscensionRules.with_nodes(_game(7, {CROWN: build}), CROWN, ["crown_drillyard", "crown_arbalests"])
 		var crown: Army = null
 		var clans: Army = null

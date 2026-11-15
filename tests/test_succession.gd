@@ -683,7 +683,11 @@ func test_a_session_with_rulers_ends_with_the_builds_on_the_victory_screen_text(
 	assert_eq(session.end_turn(), "")
 	assert_true(session.is_over(), "Fangridge fell")
 	var v := session.victory()
-	assert_true(String(v.text).contains("Builds: Aurel Crown, the Ever-Regent (alive), 5 kept power, mandates: Royal Armories and King's Roads."), v.text)
+	# The Crown plays its balanced preset (#183: its kept power and mandates read from the preset row).
+	var court := RulerRules.preset_build(RulerRules.balanced_preset("kingdom"))
+	var names: Array = court.mandates.map(func(m): return RulerRules.mandate_name(m))
+	assert_true(String(v.text).contains("Builds: Aurel Crown, the Ever-Regent (alive), %d kept power, mandates: %s." % [
+		RulerRules.kept_after(court), RulerRules._and_list(names)]), v.text)
 	assert_eq(session.turn_report().events.back().text, v.text)
 
 

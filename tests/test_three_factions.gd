@@ -342,7 +342,12 @@ func test_all_six_pairings_play_save_load_and_rematch() -> void:
 				var final := session.state()
 				var held := final.provinces.filter(func(p): return p.owner == fid).size()
 				var away := final.armies.filter(func(a): return a.owner == fid and a.location != final.find_faction(fid).capital).size()
-				assert_true(held > 1 or away > 0 or session.is_over(), "%s: %s leaves its capital (%d held, %d armies out)" % [label, fid, held, away])
+				# #183: ground taken counts even when it was lost again before the last turn (the retuned Regent's Court takes
+				# Westwatch on turn 1 against the Candlewake, then loses its army at Stonegate's keep and holds Crownkeep).
+				var took: int = played.events.filter(func(e): return String(e.type) == "captured" and not Array(e.get("factions", [])).is_empty() \
+					and String(e.factions[0]) == fid).size()
+				assert_true(took > 0 or held > 1 or away > 0 or session.is_over(), "%s: %s takes ground or leaves its capital (%d taken, %d held, %d armies out)" % [
+					label, fid, took, held, away])
 			# Save and load: the record round-trips through JSON into the same game.
 			var record := session.record()
 			var loaded := GameSession.from_record(JSON.parse_string(JSON.stringify(record)), AutoBattleResolver.new())

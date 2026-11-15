@@ -446,7 +446,9 @@ func test_notes_never_name_the_research_target_before_it_is_done_and_show_no_ids
 					if text.begins_with("We became"):
 						seen.became += 1
 		var session := _session(players, fid)
-		_play(session, 14, SEED, "greedy" if fid == "beasts" else "ai", check)
+		# #183: the person is played by the computer's brain in both games. With the retuned Regent's Court the greedy policy
+		# lost the Crown's capital on turn 8, before the Clans' computer transformed, so there was no transformation note to check.
+		_play(session, 14, SEED, "ai", check)
 	assert_true(seen.research > 0 and seen.oath >= 2 and seen.became >= 2, "the notes explain research, Oaths and transformations: %s" % seen)
 
 
