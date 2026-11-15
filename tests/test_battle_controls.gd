@@ -8,6 +8,7 @@ extends "res://tests/test_case.gd"
 ## - UX-8 (#221): the scrubber's moment markers sit at their moments' events, a click on one jumps there, and only the
 ##   kinds the battle has are drawn; the bar, the queue row, the Why tab, the plates, the centre, the caption and the
 ##   why panel fit and keep off each other at the three supported sizes, on the Simple view and the 3D stage alike;
+## - #294 (QA): the caption plate is as tall as its lines wrapped at its own width and keeps its foot above the controls;
 ## - the why panel's numbers are BattleExplain's for the current beat (and sum to the log's), its pinned
 ##   fighter is BattleExplain's explanation now, and the round's totals add up to the log's round_end;
 ## - every legend row is drawn by the screen's own drawing function and links a codex entry that exists;
@@ -892,3 +893,80 @@ func test_no_raw_ids_in_the_controls_panel_or_legend() -> void:
 			for id in ids:
 				assert_false(words.has(id), "%s: no raw id '%s' in \"%s\"" % [name, id, text])
 		v.free()
+
+
+## A battle against a Free Holds garrison (the deploy's caption is two lines: the first-visit hint and the garrison's), fought by
+## the rules: the Crown's starting army marches into Westwatch in a game with independents.
+func _garrison_event() -> Dictionary:
+	var s := GameState.new(11)
+	assert_true(s.setup_independents([]), "a game with independents")
+	var army: Army = null
+	for a in s.armies:
+		if a.owner == "kingdom":
+			army = a
+	var r := TurnResolver.resolve(s, {"kingdom": [MoveOrder.new(army.id, "westwatch")]}, 5, AutoBattleResolver.new())
+	for e in r.events:
+		if e.type == "battle" and Array(e.provinces).has("westwatch"):
+			return e
+	fail("the march into Westwatch fought its garrison")
+	return {}
+
+
+## #294 (QA): the caption plate reads whole above the controls, at both sizes, in a queue or not. In the game the plate took
+## its lines' heights as they were last wrapped (at an earlier caption's width, or before they had one) and summed their lines
+## without the space between two, so it grew down under the controls and stayed grown: 52 px on a garrison battle's first
+## caption at 1600x900. Its lines are now laid out at the width the plate gives them before it takes its height from them, and
+## it keeps its foot CAPTION_GAP above the controls whatever height it takes. The suite runs before the scene tree is up, where
+## Godot neither re-wraps a resized label nor tells a resized control, so the test sends the notices the tree would.
+func test_the_caption_reads_whole_above_the_controls() -> void:
+	var root := (Engine.get_main_loop() as SceneTree).root
+	var event := _garrison_event()
+	for at in VIEWS:
+		for queued in [false, true]:
+			for kind in ["simple", "3d"]:
+				var v: BattleSimpleView = BattleSimpleView.new() if kind == "simple" else BattleStage3D.new()
+				v.controls.remember = false
+				root.add_child(v)
+				v.size = at
+				assert_eq(v.show_event(event), "", "the garrison battle plays")
+				if queued:
+					v.controls.set_queue(1, 3, "Battle of Westwatch")
+				var what := "%s at %s%s" % [kind, at, " in a queue" if queued else ""]
+				## the last caption, a short one, its lines wrapped for a narrower plate (as the tree re-wraps a resized label)...
+				v._set_caption([{"text": "Round 1: a short caption.", "codex": "battle_rounds"}])
+				for l in v.caption_labels:
+					(l as Label).size.x = 320.0
+					(l as Label).notification(Control.NOTIFICATION_RESIZED)
+				## ...then the deploy's two lines while they still have that width (a frame before their column lays them out)
+				v._set_caption([])
+				var shown := v.caption_labels.filter(func(l): return (l as Label).visible and not (l as Label).text.is_empty())
+				assert_eq(shown.size(), 2, "%s: the deploy's caption has two lines (the hint and the garrison's)" % what)
+				var strip := Rect2(v.caption_strip.position, v.caption_strip.size)
+				var foot := v.view_size().y - v.controls.bottom_reserve() - BattleSimpleView.CAPTION_GAP
+				assert_true(strip.end.y <= foot + 0.5, "%s: the caption's foot is above the controls (%.1f, at most %.1f)" % [what, strip.end.y, foot])
+				var need := _caption_need(v)
+				assert_true(absf(strip.size.y - need) <= 0.5, "%s: the plate is as tall as its lines wrapped at its width (%.1f; they need %.1f)" % [what,
+					strip.size.y, need])
+				## a plate that grows (a line its column lays out taller) grows upward
+				v.caption_strip.size = v.caption_strip.size + Vector2(0, 24)
+				v.caption_strip.notification(Control.NOTIFICATION_RESIZED)
+				assert_true(v.caption_strip.position.y + v.caption_strip.size.y <= foot + 0.5, "%s: a taller plate keeps its foot above the controls" % what)
+				root.remove_child(v)
+				v.free()
+
+
+## The caption plate's height for its lines as they wrap at the width it gives them (its own, less its margins and Got it),
+## measured on the lines themselves: its margins round the taller of its lines and Got it.
+func _caption_need(v: BattleSimpleView) -> float:
+	var pad := v.caption_strip.get_theme_stylebox("panel").get_minimum_size()
+	var hint: Button = v.hint_button
+	var width := v.caption_strip.size.x - pad.x
+	if hint.visible:
+		width -= hint.get_combined_minimum_size().x + (hint.get_parent() as Control).get_theme_constant("separation")
+	var lines := 0.0
+	for l in v.caption_labels:
+		if (l as Label).visible:
+			(l as Label).size.x = width
+			(l as Label).notification(Control.NOTIFICATION_RESIZED)
+			lines += (l as Label).get_minimum_size().y
+	return pad.y + maxf(lines, hint.get_combined_minimum_size().y if hint.visible else 0.0)
